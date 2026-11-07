@@ -4,7 +4,6 @@ import 'package:uten_imp/shared/paging/scoped_paged_read_view_mixin.dart';
 import 'package:uten_imp/shared/paging/scoped_paged_read.dart';
 import 'package:uten_imp/components/layout/uten_refresh_scope.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
-import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -93,16 +92,19 @@ class _WarehouseTaskRecordsViewState
 
   @override
   void scopedPagedReadOwnerChanged() {
-    ++_requestVersion;
     if (!mounted) return;
+    final rejection = scopedPagedReadRejection;
+    final revision = ++_requestVersion;
     setState(() {
       _result = null;
-      _loading = false;
-      _error = scopedPagedReadRejection?.message;
-      _selected = <String>{};
-      _selectedRows.clear();
+      _loading = rejection == null;
+      _error = rejection?.message;
+      _clearSelection();
+      _decisionFingerprint = null;
+      _decisionKey = null;
       _rows.update(const []);
     });
+    if (rejection == null && !_startedRead) _scheduleRead(revision);
   }
 
   WarehouseTaskCenterPageResult? _result;
@@ -118,9 +120,11 @@ class _WarehouseTaskRecordsViewState
   bool _ascending = _defaultAscending;
   DateTimeRange? _dates = recentMonthDateRange();
   String? _error;
-  bool _loading = false;
+  bool _loading = true;
+  bool _startedRead = false;
   bool _busy = false;
   final _navigation = PageNavigationSession();
+  WarehouseTaskScope? _warehouseScope;
 
   /// 批量确认弹窗/批量办理页打开中：拦截重复触发，但不进入 [_busy]（busy 语义
   /// =网络进行中）。此前弹窗一开就置 busy，接上按钮转圈后用户阅读确认框的整段
@@ -139,6 +143,14 @@ class _WarehouseTaskRecordsViewState
   void didChangeDependencies() {
     super.didChangeDependencies();
     _navigation.attach(context);
+    final scope =
+        context
+            .dependOnInheritedWidgetOfExactType<WarehouseListScope>()
+            ?.scope ??
+        const WarehouseTaskScope.all();
+    final previous = _warehouseScope;
+    _warehouseScope = scope;
+    if (previous != null && previous != scope) _invalidate(reset: true);
   }
 
   @override
@@ -151,19 +163,7 @@ class _WarehouseTaskRecordsViewState
   void initState() {
     super.initState();
     _status = widget.initialStatus;
-    ref.listenManual(authenticatedScopeProvider, (previous, next) {
-      if (previous != next) _invalidate(reset: true);
-    });
-    ref.listenManual(apiBaseUrlProvider, (previous, next) {
-      if (previous != next) _invalidate(reset: true);
-    });
-    ref.listenManual(currentPermissionsProvider, (previous, next) {
-      if (!setEquals(previous, next)) _invalidate(reset: true);
-    });
-    ref.listenManual(warehouseTaskScopeProvider, (previous, next) {
-      if (previous != next) _invalidate(reset: true);
-    });
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load(1));
+    _scheduleRead(_requestVersion);
   }
 
   @override
@@ -200,20 +200,25 @@ class _WarehouseTaskRecordsViewState
     setState(() {
       if (reset) {
         _result = null;
+        _rows.update(const []);
         _headerColumns.clear();
         _sort = _defaultSort;
         _ascending = _defaultAscending;
       }
+      _loading = reload;
       _error = null;
       _clearSelection();
       _decisionFingerprint = null;
       _decisionKey = null;
     });
-    if (reload) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && revision == _requestVersion) _load(1);
-      });
-    }
+    if (reload) _scheduleRead(revision);
+  }
+
+  void _scheduleRead(int revision) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && revision == _requestVersion) _load(1);
+    });
+    WidgetsBinding.instance.ensureVisualUpdate();
   }
 
   String get _effectiveSource => _status?.startsWith('source:') == true
@@ -247,6 +252,7 @@ class _WarehouseTaskRecordsViewState
 
   Future<void> _loadPage(int page, {bool useCache = false}) async {
     if (!mounted) return;
+    _startedRead = true;
     final version = ++_requestVersion;
     setState(() {
       _loading = true;
@@ -306,6 +312,7 @@ class _WarehouseTaskRecordsViewState
           _sort == null ? null : (_ascending ? 'asc' : 'desc'),
         ],
         useCache: useCache,
+        isCurrent: () => version == _requestVersion,
         fetchPage: (target) async {
           final snapshot = await WarehouseTaskPageQuery(
             direction: pageDirection,
@@ -1385,7 +1392,7 @@ class _WarehouseTaskRecordsViewState
             onChanged: _applyDates,
             onClear: () => _applyDates(null),
           ),
-          Text('共 ${result?.total ?? 0} 条'),
+          if (result != null) Text('共 ${result.total} 条'),
         ],
         isLoading: _loading,
         loadingMore: _loading && result != null,

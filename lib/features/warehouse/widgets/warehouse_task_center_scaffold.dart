@@ -29,11 +29,11 @@ import '../../../components/layout/uten_refresh_scope.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../core/router/nav_helpers.dart';
-import '../../../core/router/route_names.dart' show RouteName;
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/warehouse/warehouse_task_scope.dart';
+import '../providers/warehouse_count_refresh.dart';
 import 'warehouse_scope_selector.dart';
 
 /// 一个任务中心大类分段。
@@ -144,16 +144,24 @@ class _WarehouseTaskCenterScaffoldState
         widget.segments.any((segment) => segment.value == widget.initialSegment)
         ? widget.initialSegment
         : null;
+    if (!widget.embedded) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) refreshWarehouseTaskCountsOnEntry(ref);
+      });
+    }
   }
 
   @override
   void didUpdateWidget(WarehouseTaskCenterScaffold oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.initialSegment != oldWidget.initialSegment &&
-        widget.segments.any(
-          (segment) => segment.value == widget.initialSegment,
-        )) {
-      _segment = widget.initialSegment;
+    final initial = widget.initialSegment;
+    final initialChanged = initial != oldWidget.initialSegment;
+    final initialWasAvailable = oldWidget.segments.any(
+      (segment) => segment.value == initial,
+    );
+    if ((initialChanged || (_segment == null && !initialWasAvailable)) &&
+        widget.segments.any((segment) => segment.value == initial)) {
+      _segment = initial;
     }
     // 权限变化导致当前分段被移除时，回到未选择引导态（保持「不预选」范式）。
     if (_segment != null && !widget.segments.any((s) => s.value == _segment)) {
@@ -164,22 +172,21 @@ class _WarehouseTaskCenterScaffoldState
   @override
   Widget build(BuildContext context) {
     _myLocation ??= currentLocationOr(context, widget.location);
-    ref.onPageResume(_myLocation!, () {
-      // onPageResume already excludes first entry; every actual return refreshes.
-      // 负责关系可能刚改过(仓库资料里换了负责人): 一并重取本人可选范围, 记忆的仓不在范围内就回到默认。
-      ref.invalidate(myWarehouseScopeProvider);
-      setState(() => _refreshTick++);
-      widget.onResume?.call();
-    });
-    // 仓库范围变了：各分段列表与分段计数按新范围重拉。
-    ref.listen<WarehouseTaskScope>(warehouseTaskScopeProvider, (
-      previous,
-      next,
-    ) {
-      if (previous == null || previous == next) return;
-      setState(() => _refreshTick++);
-      widget.onResume?.call();
-    });
+    if (!widget.embedded) {
+      ref.onPageResume(_myLocation!, () {
+        // 负责关系可能刚改过，重取本人可选范围。
+        ref.invalidate(myWarehouseScopeProvider);
+        setState(() => _refreshTick++);
+        return widget.onResume?.call();
+      });
+      ref.listen<WarehouseTaskScope>(warehouseTaskScopeProvider, (
+        previous,
+        next,
+      ) {
+        if (previous == null || previous == next) return;
+        setState(() => _refreshTick++);
+      });
+    }
     final warehouseScope = ref.watch(warehouseTaskScopeProvider);
     // 嵌入态：宿主页(合并页)负责 Scaffold/AppBar/搜索/刷新，这里只出小类行 + 正文，
     // 自身 resume 计数与宿主刷新信号相加传导（任一变化都会推进分段重拉）。

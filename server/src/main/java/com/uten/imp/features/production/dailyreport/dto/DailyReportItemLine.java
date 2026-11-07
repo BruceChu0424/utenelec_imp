@@ -54,6 +54,16 @@ public class DailyReportItemLine extends com.uten.imp.common.platformcolumns.Pla
     private BigDecimal boxes;
     private BigDecimal perBoxQty;
     private BigDecimal weight;
+    @jakarta.validation.constraints.Size(max = 8)
+    private String weightEntryMode;
+    /** Expected goods-master kg per base unit, verified by the server before saving. */
+    @com.uten.imp.common.validation.DocumentAmount
+    private BigDecimal unitWeightKgExact;
+    private Integer weightQuantityScale;
+    @jakarta.validation.constraints.Size(max = 7)
+    private String weightQuantityRounding;
+    /** Exact existing report item for preserving an unchanged frozen draft measurement on edit. */
+    private UUID weightSourceReportItemId;
     private String clientName;
     private String sourceDocNo;
     private String remark;

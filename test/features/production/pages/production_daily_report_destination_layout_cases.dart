@@ -96,6 +96,8 @@ void _expectDestinationLayoutHeaderOrder(WidgetTester tester) {
     'color',
     'qty',
     'destination',
+    'weight',
+    'unitWeight',
     'overLimitReason',
     'defectQty',
     'planNo',
@@ -103,9 +105,13 @@ void _expectDestinationLayoutHeaderOrder(WidgetTester tester) {
   ]);
   final quantity = _destinationLayoutHeader('完工申报量 *');
   final destination = _destinationLayoutHeader('产出去向');
+  final measuredWeight = _destinationLayoutHeader('实称总重量');
+  final unitWeight = _destinationLayoutHeader('单重');
   final reason = _destinationLayoutHeader('超限原因');
   expect(quantity, findsOneWidget);
   expect(destination, findsOneWidget);
+  expect(measuredWeight, findsOneWidget);
+  expect(unitWeight, findsOneWidget);
   expect(reason, findsOneWidget);
   expect(
     tester.getTopLeft(quantity).dx,
@@ -113,6 +119,14 @@ void _expectDestinationLayoutHeaderOrder(WidgetTester tester) {
   );
   expect(
     tester.getTopLeft(destination).dx,
+    lessThan(tester.getTopLeft(measuredWeight).dx),
+  );
+  expect(
+    tester.getTopLeft(measuredWeight).dx,
+    lessThan(tester.getTopLeft(unitWeight).dx),
+  );
+  expect(
+    tester.getTopLeft(unitWeight).dx,
     lessThan(tester.getTopLeft(reason).dx),
   );
 }

@@ -19,6 +19,8 @@ public class DailyReportItemDto {
     public String getUnitRateExact() { return unitRate == null ? null : unitRate.toPlainString(); }
     @com.fasterxml.jackson.annotation.JsonProperty(access=com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
     public String getOutputBatchQtyExact() { return outputBatchQty == null ? null : outputBatchQty.toPlainString(); }
+    @com.fasterxml.jackson.annotation.JsonProperty(access=com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    public String getWeightExact() { return weight == null ? null : weight.toPlainString(); }
     private UUID id;
     private Integer lineNo;
     private UUID goodsId;
@@ -46,6 +48,10 @@ public class DailyReportItemDto {
     private BigDecimal boxes;
     private BigDecimal perBoxQty;
     private BigDecimal weight;
+    private String weightEntryMode;
+    private String unitWeightKgExact;
+    private Integer weightQuantityScale;
+    private String weightQuantityRounding;
     private String clientName;
     private String sourceDocNo;
     private String remark;

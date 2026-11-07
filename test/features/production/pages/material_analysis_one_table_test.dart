@@ -31,6 +31,7 @@ import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/performance/ui_work_budget.dart';
+import 'package:uten_imp/core/router/page_resume_provider.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/core/responsive/display_zoom.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
@@ -274,6 +275,18 @@ Future<void> _onlyRoot(WidgetTester tester) async {
 // Main's entry name delegates to the same modal-aware implementation.
 Future<void> _acceptAvailableQuantityChoice(WidgetTester tester) =>
     _continueMaterialSupplyChoice(tester);
+
+Future<void> _returnToMaterialAnalysis(WidgetTester tester) async {
+  final page = tester.element(find.byType(ProductionMaterialAnalysisPage));
+  final resume = ProviderScope.containerOf(
+    page,
+  ).read(pageResumeProvider.notifier);
+  final tick = resume.state.tick;
+  resume.state = (location: '/warehouse', tick: tick + 1);
+  await tester.pump();
+  resume.state = (location: '/production/material-analysis', tick: tick + 2);
+  await tester.pumpAndSettle();
+}
 
 /// Finish a real pre-existing supply modal before tapping the business action.
 Future<void> _openSubmitConfirmation(WidgetTester tester) async {
@@ -1277,7 +1290,7 @@ void main() {
     await tester.enterText(_orderQty('m-2'), '123');
     await _settleRebuild(tester);
     expect(_rowChecked(tester, 'm-2'), isTrue);
-    await tester.pump(const Duration(seconds: 45));
+    await _returnToMaterialAnalysis(tester);
     await tester.pumpAndSettle();
     expect(reads, 2);
     expect(_qtyText(tester, _orderQty('m-2')), '123');
@@ -1287,9 +1300,10 @@ void main() {
         of: find.byKey(
           const ValueKey('material-analysis-public-available-m-2'),
         ),
-        matching: find.text('7877 个'),
+        matching: find.text('8200 个'),
       ),
       findsOneWidget,
+      reason: '当前可用为公共8000加来源独占200，未提交的123单列计算',
     );
     expect(find.text('新主档归属'), findsWidgets);
     expect(find.text('品质已通过 · 等待入库'), findsWidgets);
@@ -1325,7 +1339,7 @@ void main() {
     );
     await tester.enterText(_orderQty('m-2'), '123');
     await _settleRebuild(tester);
-    await tester.pump(const Duration(seconds: 45));
+    await _returnToMaterialAnalysis(tester);
     await tester.pump();
     expect(reads, 2);
     final field = find.byKey(
@@ -1354,7 +1368,7 @@ void main() {
       find.descendant(of: field, matching: find.text('综合主仓-成品子仓')),
       findsOneWidget,
     );
-    await tester.pump(const Duration(seconds: 45));
+    await _returnToMaterialAnalysis(tester);
     await tester.pumpAndSettle();
     expect(
       find.descendant(of: field, matching: find.text('入库后的最新归属')),
@@ -6467,7 +6481,7 @@ void main() {
         }
 
         newDefaults = true;
-        await tester.pump(const Duration(seconds: 46));
+        await _returnToMaterialAnalysis(tester);
         await tester.pumpAndSettle();
         expect(
           tester.widget<TextField>(aggregateRate).controller!.text,
@@ -7639,7 +7653,7 @@ void main() {
     expect(_notices(tester), contains('缺少精确数量'));
   });
 
-  testWidgets('编辑中轮询换了需要量：手输总量的汇总草稿按新快照重新平分拆出的工单数', (tester) async {
+  testWidgets('手动刷新改变需要量：汇总草稿保留总量并按新快照拆单', (tester) async {
     var arrived = false;
     await _pumpSplit(
       tester,
@@ -7675,15 +7689,18 @@ void main() {
     final note = find.byKey(
       const ValueKey('material-aggregate-split-$draftKey'),
     );
-    expect(_splitDetail(tester, note), contains('装配二车间 / 李四 / 超产 0%：1500 个'));
+    expect(
+      _splitDetail(tester, note),
+      contains('装配二车间 / 李四 / 超产 0% / 全部下单：1500 个'),
+    );
 
     arrived = true;
-    await tester.pump(const Duration(seconds: 46));
+    await tester.tap(find.byKey(const Key('material-analysis-refresh')));
     await _settlePreview(tester);
     // 4500 = 需要 400 + 1000 + 1000 + 富余 2100 (三行各 700)。
     final detail = _splitDetail(tester, note);
-    expect(detail, contains('装配二车间 / 李四 / 超产 0%：1100 个'));
-    expect(detail, contains('装配一车间 / 张三 / 超产 0%：3400 个'));
+    expect(detail, contains('装配二车间 / 李四 / 超产 0% / 全部下单：1100 个'));
+    expect(detail, contains('装配一车间 / 张三 / 超产 0% / 全部下单：3400 个'));
     // 按产品视图逐行同步平分数属于「汇总与按产品两视图连通」那项在途改动，
     // 未进 main 前这里只验分单数量随新快照重算。
     expect(tester.takeException(), isNull);

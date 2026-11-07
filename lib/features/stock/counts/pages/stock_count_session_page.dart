@@ -80,6 +80,9 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
 
   final _readingRows = MasterDataTableRowsController<CountStockRow>();
   @override
+  Future<void> onReadViewResumed() => _load(1);
+
+  @override
   void scopedPagedReadOwnerChanged() {
     if (!mounted) return;
     ++_loadGeneration;

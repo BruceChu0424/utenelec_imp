@@ -34,6 +34,7 @@ class _ChildShortageFillPageState extends State<_ChildShortageFillPage> {
   /// 用户亲手撤掉勾的行(其余能下单的行默认都勾着)。
   final Set<String> _deselected = {};
   bool _submitting = false;
+  bool _refreshing = false;
 
   /// 本页已经成功下过几轮：用来区分「一进来就没有缺的」与「补完了」。
   int _rounds = 0;
@@ -85,8 +86,18 @@ class _ChildShortageFillPageState extends State<_ChildShortageFillPage> {
   bool _selected(_ChildShortageLine line) =>
       _checked(line) && _host._tableSubmitQtyOf(line.group) > 0.0001;
 
+  Future<void> _refresh() async {
+    if (_refreshing || _submitting || _host._busy) return;
+    setState(() => _refreshing = true);
+    try {
+      await _host._refreshPreparationFacts(context);
+    } finally {
+      if (mounted) setState(() => _refreshing = false);
+    }
+  }
+
   Future<void> _submit(List<_ChildShortageLine> lines) async {
-    if (_submitting || _host._busy) return;
+    if (_submitting || _refreshing || _host._busy) return;
     final groups = [
       for (final line in lines)
         if (_selected(line)) line.group,
@@ -125,7 +136,7 @@ class _ChildShortageFillPageState extends State<_ChildShortageFillPage> {
         // 下单跑到一半不许退出(返回键、手势都拦住)：按层级一段段提交，退出了就看不到
         // 哪一段没下成，也列不出更深一层。
         return PopScope(
-          canPop: !_submitting,
+          canPop: !_submitting && !_refreshing,
           child: Scaffold(
             key: const Key('child-shortage-page'),
             appBar: UtenAppBar(
@@ -136,35 +147,25 @@ class _ChildShortageFillPageState extends State<_ChildShortageFillPage> {
               // 提交期间按钮常驻但空转（PopScope 已挡返回；传 null 会回落默认
               // 返回），leading 槽恒为 UtenBackButton，标题不再左右跳变。
               leading: UtenBackButton(
-                onPressed: _submitting
+                onPressed: _submitting || _refreshing
                     ? () {}
                     : () => Navigator.of(context).pop(),
               ),
+              actions: [
+                UtenRefreshButton(
+                  key: const Key('child-shortage-refresh'),
+                  enabled: !_submitting && !_refreshing && !_host._busy,
+                  onRefresh: _refresh,
+                ),
+              ],
             ),
             body: Stack(
               children: [
                 lines.isEmpty
                     ? _doneState(theme)
-                    : UtenPageEdgePadding.scroll(
-                        padding: const EdgeInsets.fromLTRB(
-                          UtenSpacing.s16,
-                          UtenSpacing.s12,
-                          UtenSpacing.s16,
-                          // 末尾留白：把最后一行完整滚到右下悬浮操作组上方。
-                          UtenFloatingActionGroup.scrollClearance,
-                        ),
-                        builder: (context, resolvedPagePadding) => ListView(
-                          key: const Key('child-shortage-list'),
-                          padding: resolvedPagePadding,
-                          children: [
-                            _summaryCard(theme, lines, urged),
-                            const SizedBox(height: UtenSpacing.s12),
-                            for (final root in roots) ...[
-                              _rootSection(theme, root, urged),
-                              const SizedBox(height: UtenSpacing.s12),
-                            ],
-                          ],
-                        ),
+                    : UtenPageEdgePadding(
+                        padding: const EdgeInsets.all(UtenSpacing.s16),
+                        child: _table(theme, roots, lines, urged),
                       ),
                 // 遮罩只跟宿主的网络段走(与分桶页、级联页同一份)：提交前宿主还会弹确认框，
                 // 那段时间挂遮罩会把确认框盖在转圈背后点不动。
@@ -215,7 +216,7 @@ class _ChildShortageFillPageState extends State<_ChildShortageFillPage> {
         UtenSelectionSummaryPill(
           clearKey: const Key('child-shortage-clear-selection'),
           count: selectable.length,
-          onClear: !hasChecked || _submitting
+          onClear: !hasChecked || _submitting || _refreshing
               ? null
               : () => _clearSelection(lines),
         ),
@@ -225,7 +226,8 @@ class _ChildShortageFillPageState extends State<_ChildShortageFillPage> {
           icon: Icons.shopping_cart_checkout_rounded,
           // 不转圈：点下去先弹宿主的确认框，转圈会在确认框背后一直转；
           // 真正跑网络段时由上面的遮罩说明在做什么。
-          onPressed: selectable.isEmpty || _submitting || _host._busy
+          onPressed:
+              selectable.isEmpty || _submitting || _refreshing || _host._busy
               ? null
               : () => unawaited(_submit(lines)),
           child: Text(_submitting ? '正在下单…' : '一键下单(${selectable.length})'),
@@ -262,13 +264,6 @@ class _ChildShortageFillPageState extends State<_ChildShortageFillPage> {
                 fontWeight: FontWeight.w800,
               ),
             ),
-            const SizedBox(height: UtenSpacing.s8),
-            Text(
-              '上面的件可以足量生产。',
-              style: theme.textTheme.bodyLarge?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
             const SizedBox(height: UtenSpacing.s24),
             UtenButton(
               key: const Key('child-shortage-back'),
@@ -283,9 +278,204 @@ class _ChildShortageFillPageState extends State<_ChildShortageFillPage> {
     );
   }
 
-  /// 顶部说明 + 三个数：要下单几种、要追加几种、要先选供应方式的几种。
-  Widget _summaryCard(
+  Widget _table(
     ThemeData theme,
+    List<_ChildShortageRoot> roots,
+    List<_ChildShortageLine> lines,
+    Set<String> urged,
+  ) {
+    final byRow = {
+      for (final root in roots)
+        for (final line in root.lines) _rowOf(line): (root: root, line: line),
+    };
+    final blocked = {
+      for (final line in lines)
+        line.group.key: _host._tableIssueBlockedReason(line.group),
+    };
+    final shared = {
+      for (final column in _host._materialTableColumns(
+        theme,
+        revealAssignmentKeys: false,
+      ))
+        column.key: column,
+    };
+    final locked = _submitting || _refreshing || _host._busy;
+    bool issued(_MaterialTableRow row) => _host._tableGroupIssued(row.group!);
+    bool isUrged(_ChildShortageLine line) =>
+        urged.contains(line.material.materialLineId);
+    return MasterDataTableView<_MaterialTableRow>(
+      key: const Key('child-shortage-list'),
+      tableKey: 'production.materialPreparation.childShortage',
+      columns: [
+        MasterColumnDef(
+          key: 'material',
+          label: '物料名称',
+          width: 260,
+          value: (row) => _host._tableGroupLabel(row.group!),
+          cellBuilder: (_, row) {
+            final line = byRow[row]!.line;
+            final name = Text(
+              _host._tableGroupLabel(line.group),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            );
+            final reason = blocked[line.group.key];
+            return Row(
+              children: [
+                Expanded(child: name),
+                if (reason != null)
+                  UtenFieldHintIcon(
+                    key: ValueKey('child-shortage-blocked-${line.group.key}'),
+                    info: reason,
+                    dense: true,
+                  ),
+                if (isUrged(line))
+                  const UtenStatusBadge(
+                    label: '车间在催',
+                    type: UtenStatusBadgeType.danger,
+                    size: UtenStatusBadgeSize.small,
+                  ),
+              ],
+            );
+          },
+        ),
+        shared['goodsCode']!,
+        shared['colorName']!,
+        shared['route']!,
+        MasterColumnDef(
+          key: 'kind',
+          label: '办理',
+          width: 112,
+          value: (row) => row.material!.confirmedRoute == null
+              ? '先选方式'
+              : issued(row)
+              ? '追加'
+              : '下单',
+        ),
+        MasterColumnDef(
+          key: 'shortageQty',
+          label: '还缺数量',
+          width: 134,
+          info: '待认领表示仍需办理，本次下单会优先使用可认领的公共在途。',
+          cellBuilder: (_, row) => _shortageCell(theme, byRow[row]!.line),
+          value: (row) => _host._qty(_host._tableShownQty(row.material!).net),
+        ),
+        MasterColumnDef(
+          key: 'orderQty',
+          label: '本次下单量',
+          width: 146,
+          type: 'number',
+          value: (row) => _host._tableSubmitQtyTextOf(row.group!),
+          cellBuilder: (_, row) => issued(row)
+              ? _host._materialTableAppendQtyCell(theme, row)
+              : _host._materialTableOrderQtyCell(theme, row),
+          cellBuilderHandlesSemantics: true,
+        ),
+        shared['orderMethod']!,
+        MasterColumnDef(
+          key: 'allowedOverproductionRate',
+          label: '允许超产比例',
+          width: 152,
+          info: shared['allowedOverproductionRate']!.info,
+          value: (row) => !_host._tableIssueTarget(row.group!).viaWorkshop
+              ? '—'
+              : _host
+                    ._overproductionPercentController(
+                      materialLineId: row.material!.materialLineId,
+                    )
+                    .text,
+          cellBuilder: (_, row) =>
+              !_host._tableIssueTarget(row.group!).viaWorkshop
+              ? const Text('—')
+              : ProductionOverproductionRateField(
+                  key: ValueKey(
+                    'child-shortage-overproduction-rate-${row.group!.key}',
+                  ),
+                  controller: _host._overproductionPercentController(
+                    materialLineId: row.material!.materialLineId,
+                  ),
+                  enabled: _host._canGenerate && !locked,
+                ),
+        ),
+        shared['productionWorkshop']!,
+        shared['responsible']!,
+        MasterColumnDef(
+          key: 'parent',
+          label: '直接上层物料',
+          width: 172,
+          value: (row) => byRow[row]!.line.parentLabel,
+        ),
+        MasterColumnDef(
+          key: 'root',
+          label: '来源件',
+          width: 260,
+          value: (row) => _host._tableGroupLabel(byRow[row]!.root.group),
+          cellBuilder: (_, row) {
+            final root = byRow[row]!.root;
+            return Tooltip(
+              message: _rootOrderLabel(root),
+              child: Text(
+                _host._tableGroupLabel(root.group),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            );
+          },
+        ),
+      ],
+      items: byRow.keys.toList(growable: false),
+      facets: const {},
+      nullCounts: const {},
+      filters: const {},
+      onFilterChanged: (_, _) {},
+      virtualized: true,
+      expensiveRowMounts: true,
+      showFullscreenToggle: false,
+      showSelectionSummary: false,
+      selectable: true,
+      rowKeyOf: (row) => row.key,
+      rowWidgetKeyOf: (row) =>
+          ValueKey('child-shortage-line-${row.group!.key}'),
+      idOf: (row) => blocked[row.group!.key] == null ? row.group!.key : null,
+      unselectableLeadingBuilder: (_, row) => Checkbox(
+        key: ValueKey('child-shortage-check-${row.group!.key}'),
+        value: false,
+        onChanged: null,
+      ),
+      selectedIds: {
+        for (final line in lines)
+          if (blocked[line.group.key] == null &&
+              !_deselected.contains(line.group.key))
+            line.group.key,
+      },
+      onSelectedIdsChanged: (selected) {
+        if (locked) return;
+        setState(() {
+          for (final line in lines) {
+            final key = line.group.key;
+            if (blocked[key] != null) continue;
+            if (selected.contains(key)) {
+              _deselected.remove(key);
+            } else {
+              _deselected.add(key);
+            }
+          }
+        });
+      },
+      toolbarLeadingActions: [
+        if (roots.length == 1)
+          UtenStatusBadge(
+            label: _rootOrderLabel(roots.single),
+            type: UtenStatusBadgeType.success,
+          ),
+        ..._summaryBadges(lines, urged),
+      ],
+      bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
+      paginationScope: _host._analysis?.analysisId,
+    );
+  }
+
+  List<Widget> _summaryBadges(
     List<_ChildShortageLine> lines,
     Set<String> urged,
   ) {
@@ -300,424 +490,71 @@ class _ChildShortageFillPageState extends State<_ChildShortageFillPage> {
       }
       if (urged.contains(line.material.materialLineId)) urgedCount++;
     }
-    final isDark = theme.brightness == Brightness.dark;
-    final accent = isDark ? UtenColors.warningOnDark : UtenColors.warning;
-    return Container(
-      key: const Key('child-shortage-summary'),
-      padding: const EdgeInsets.all(UtenSpacing.s16),
-      decoration: BoxDecoration(
-        color: isDark ? accent.withValues(alpha: 0.14) : UtenColors.warningBg,
-        borderRadius: UtenRadius.mdAll,
-        border: Border(left: BorderSide(color: accent, width: 4)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.inventory_2_outlined, color: accent, size: 28),
-              const SizedBox(width: UtenSpacing.s12),
-              Expanded(
-                child: Text(
-                  '这些料还没下够单，上面的件做不够数',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: UtenSpacing.s12),
-          Wrap(
-            spacing: UtenSpacing.s8,
-            runSpacing: UtenSpacing.s8,
-            children: [
-              if (toOrder > 0)
-                UtenStatusBadge(
-                  key: const Key('child-shortage-count-order'),
-                  label: '要下单 $toOrder 种',
-                  type: UtenStatusBadgeType.success,
-                  icon: Icons.add_shopping_cart_rounded,
-                  size: UtenStatusBadgeSize.large,
-                ),
-              if (toAppend > 0)
-                UtenStatusBadge(
-                  key: const Key('child-shortage-count-append'),
-                  label: '要追加 $toAppend 种',
-                  type: UtenStatusBadgeType.warning,
-                  icon: Icons.exposure_plus_1_rounded,
-                  size: UtenStatusBadgeSize.large,
-                ),
-              if (routeFirst > 0)
-                UtenStatusBadge(
-                  key: const Key('child-shortage-count-route'),
-                  label: '先维护货品来源 $routeFirst 种',
-                  type: UtenStatusBadgeType.danger,
-                  icon: Icons.alt_route_rounded,
-                  size: UtenStatusBadgeSize.large,
-                ),
-              if (urgedCount > 0)
-                UtenStatusBadge(
-                  key: const Key('child-shortage-count-urged'),
-                  label: '车间在催 $urgedCount 种',
-                  type: UtenStatusBadgeType.danger,
-                  icon: Icons.notifications_active_rounded,
-                  size: UtenStatusBadgeSize.large,
-                ),
-            ],
-          ),
-        ],
-      ),
-    );
+    return [
+      if (toOrder > 0)
+        UtenStatusBadge(
+          key: const Key('child-shortage-count-order'),
+          label: '要下单 $toOrder 种',
+          type: UtenStatusBadgeType.success,
+          icon: Icons.add_shopping_cart_rounded,
+        ),
+      if (toAppend > 0)
+        UtenStatusBadge(
+          key: const Key('child-shortage-count-append'),
+          label: '要追加 $toAppend 种',
+          type: UtenStatusBadgeType.warning,
+          icon: Icons.exposure_plus_1_rounded,
+        ),
+      if (routeFirst > 0)
+        UtenStatusBadge(
+          key: const Key('child-shortage-count-route'),
+          label: '先维护货品来源 $routeFirst 种',
+          type: UtenStatusBadgeType.danger,
+          icon: Icons.alt_route_rounded,
+        ),
+      if (urgedCount > 0)
+        UtenStatusBadge(
+          key: const Key('child-shortage-count-urged'),
+          label: '车间在催 $urgedCount 种',
+          type: UtenStatusBadgeType.danger,
+          icon: Icons.notifications_active_rounded,
+        ),
+    ];
   }
 
-  Widget _rootSection(
-    ThemeData theme,
-    _ChildShortageRoot root,
-    Set<String> urged,
-  ) {
-    final material = root.group.representative;
-    final unit = material.unitName ?? '';
+  String _rootOrderLabel(_ChildShortageRoot root) {
+    final unit = root.group.representative.unitName ?? '';
     final fromOrder = widget.rootKeys != null;
-    final orderedLabel = !root.quantityKnown
-        ? '${fromOrder ? '本次' : ''}已下单，数量见关联单据'
-        : fromOrder
-        ? '${root.appended ? '刚追加' : '刚下单'} ${_host._qty(root.orderedQty)}$unit'
-        : '已下单 ${_host._qty(root.orderedQty)}$unit';
-    return DecoratedBox(
-      key: ValueKey('child-shortage-root-${root.group.key}'),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        borderRadius: UtenRadius.mdAll,
-        border: Border.all(color: theme.colorScheme.outlineVariant),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Container(
-            padding: const EdgeInsets.fromLTRB(
-              UtenSpacing.s16,
-              UtenSpacing.s12,
-              UtenSpacing.s16,
-              UtenSpacing.s12,
-            ),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.surfaceContainerLow,
-              borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(UtenRadius.md),
-              ),
-            ),
-            child: Wrap(
-              crossAxisAlignment: WrapCrossAlignment.center,
-              spacing: UtenSpacing.s12,
-              runSpacing: UtenSpacing.s4,
-              children: [
-                Icon(
-                  Icons.check_circle_rounded,
-                  size: 22,
-                  color: theme.brightness == Brightness.dark
-                      ? UtenColors.successOnDark
-                      : UtenColors.success,
-                ),
-                Text(
-                  _host._tableGroupLabel(root.group),
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                UtenStatusBadge(
-                  label: orderedLabel,
-                  type: UtenStatusBadgeType.success,
-                  size: UtenStatusBadgeSize.large,
-                ),
-                Text(
-                  '下面还缺 ${root.lines.length} 种',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.error,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          for (final line in root.lines)
-            _lineTile(
-              theme,
-              line,
-              urged.contains(line.material.materialLineId),
-            ),
-        ],
-      ),
-    );
+    if (!root.quantityKnown) {
+      return '${fromOrder ? '本次' : ''}已下单，数量见关联单据';
+    }
+    final action = !fromOrder
+        ? '已下单'
+        : root.appended
+        ? '刚追加'
+        : '刚下单';
+    return '$action ${_host._qty(root.orderedQty)}$unit';
   }
 
-  Widget _lineTile(ThemeData theme, _ChildShortageLine line, bool urged) {
-    final group = line.group;
+  Widget _shortageCell(ThemeData theme, _ChildShortageLine line) {
     final material = line.material;
-    final row = _rowOf(line);
-    final blocked = _host._tableIssueBlockedReason(group);
-    final issued = _host._tableGroupIssued(group);
-    final routeConfirmed = material.confirmedRoute != null;
     final shown = _host._tableShownQty(material);
     final unit = material.unitName ?? '';
-    final checked = _checked(line);
-    final assignable = _host._tableAssignable(group);
-    final meta = [
-      if (material.goodsCode?.trim().isNotEmpty == true) material.goodsCode!,
-      if (material.colorName?.trim().isNotEmpty == true) material.colorName!,
-      if (unit.isNotEmpty) unit,
-    ].join(' · ');
-    final kind = !routeConfirmed
-        ? const UtenStatusBadge(
-            label: '先选方式',
-            type: UtenStatusBadgeType.danger,
-            icon: Icons.alt_route_rounded,
-          )
-        : issued
-        ? Tooltip(
-            message:
-                '这种料之前下过 ${_host._qty(_host._tableGroupIssuedQty(group))}$unit，'
-                '这次是在原来的基础上再追加。',
-            child: const UtenStatusBadge(
-              label: '追加',
-              type: UtenStatusBadgeType.warning,
-              icon: Icons.exposure_plus_1_rounded,
-            ),
-          )
-        : const UtenStatusBadge(
-            label: '下单',
-            type: UtenStatusBadgeType.success,
-            icon: Icons.add_shopping_cart_rounded,
-          );
     final covered = shown.residual - shown.net;
-    final shortage = Tooltip(
+    return Tooltip(
       message: covered > 0.0001
-          ? '右边填的是这次要盖住的总量 ${_host._qty(shown.residual)}$unit；'
-                '其中 ${_host._qty(covered)}$unit 会先用别处的公共在途，只为剩下的开新单。'
-          : '还要另外下单 ${_host._qty(shown.net)}$unit 才够。',
+          ? '本次要覆盖 ${_host._qty(shown.residual)}$unit，'
+                '其中 ${_host._qty(covered)}$unit 可先认领公共在途。'
+          : '还要另外下单 ${_host._qty(shown.net)}$unit。',
       child: Text(
         shown.net > 0.0001
             ? '还缺 ${_host._qty(shown.net)}$unit'
             : '待认领 ${_host._qty(_host._childShortageUncovered(material))}$unit',
-        key: ValueKey('child-shortage-net-${group.key}'),
+        key: ValueKey('child-shortage-net-${line.group.key}'),
         style: theme.textTheme.titleSmall?.copyWith(
           color: theme.colorScheme.error,
           fontWeight: FontWeight.w800,
         ),
-      ),
-    );
-    final quantity = SizedBox(
-      width: 132,
-      child: issued
-          ? _host._materialTableAppendQtyCell(theme, row)
-          : _host._materialTableOrderQtyCell(theme, row),
-    );
-    final orderMethod = _host._materialTableOrderMethodCell(row);
-    final overproductionRate = _host._tableIssueTarget(group).viaWorkshop
-        ? SizedBox(
-            width: 152,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text('允许超产比例', style: theme.textTheme.bodySmall),
-                const SizedBox(height: UtenSpacing.s4),
-                ProductionOverproductionRateField(
-                  key: ValueKey(
-                    'child-shortage-overproduction-rate-${group.key}',
-                  ),
-                  controller: _host._overproductionPercentController(
-                    materialLineId: material.materialLineId,
-                  ),
-                  enabled: _host._canGenerate && !_host._busy && !_submitting,
-                ),
-              ],
-            ),
-          )
-        : null;
-    final checkbox = Checkbox(
-      key: ValueKey('child-shortage-check-${group.key}'),
-      value: checked,
-      onChanged: blocked != null || _submitting
-          ? null
-          : (value) => setState(() {
-              if (value == true) {
-                _deselected.remove(group.key);
-              } else {
-                _deselected.add(group.key);
-              }
-            }),
-    );
-    final identity = Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Wrap(
-          crossAxisAlignment: WrapCrossAlignment.center,
-          spacing: UtenSpacing.s8,
-          runSpacing: 2,
-          children: [
-            Text(
-              _host._tableGroupLabel(group),
-              style: theme.textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            if (urged)
-              const UtenStatusBadge(
-                label: '车间在催',
-                type: UtenStatusBadgeType.danger,
-                icon: Icons.notifications_active_rounded,
-                size: UtenStatusBadgeSize.small,
-              ),
-          ],
-        ),
-        if (meta.isNotEmpty)
-          Text(
-            meta,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-        if (line.depth > 1)
-          Text(
-            '用在「${line.parentLabel}」里',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-        if (blocked != null)
-          Padding(
-            padding: const EdgeInsets.only(top: 2),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.info_outline_rounded,
-                  size: 14,
-                  color: theme.colorScheme.error,
-                ),
-                const SizedBox(width: 4),
-                Flexible(
-                  child: Text(
-                    blocked,
-                    key: ValueKey('child-shortage-blocked-${group.key}'),
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.error,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-      ],
-    );
-    final route = SizedBox(
-      width: 120,
-      child: _host._materialTableRouteCell(theme, row),
-    );
-    final workshop = assignable
-        ? SizedBox(
-            width: 132,
-            child: _host._materialTableProductionWorkshopCell(
-              theme,
-              row,
-              revealKey: false,
-            ),
-          )
-        : null;
-    final worker = assignable
-        ? SizedBox(
-            width: 116,
-            child: _host._materialTableResponsibleCell(
-              theme,
-              row,
-              revealKey: false,
-            ),
-          )
-        : null;
-    final indent = (line.depth - 1) * 20.0;
-    return Container(
-      key: ValueKey('child-shortage-line-${group.key}'),
-      decoration: BoxDecoration(
-        color: checked
-            ? theme.colorScheme.primary.withValues(alpha: 0.05)
-            : null,
-        border: Border(
-          top: BorderSide(color: theme.colorScheme.outlineVariant),
-        ),
-      ),
-      padding: EdgeInsets.fromLTRB(
-        UtenSpacing.s8 + indent,
-        UtenSpacing.s8,
-        UtenSpacing.s16,
-        UtenSpacing.s8,
-      ),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          if (constraints.maxWidth >=
-              (overproductionRate == null ? 1232 : 1392)) {
-            return Row(
-              children: [
-                checkbox,
-                const SizedBox(width: UtenSpacing.s4),
-                Expanded(child: identity),
-                const SizedBox(width: UtenSpacing.s12),
-                SizedBox(width: 88, child: kind),
-                SizedBox(width: 132, child: shortage),
-                route,
-                const SizedBox(width: UtenSpacing.s12),
-                quantity,
-                const SizedBox(width: UtenSpacing.s12),
-                orderMethod,
-                if (overproductionRate != null) ...[
-                  const SizedBox(width: UtenSpacing.s8),
-                  overproductionRate,
-                ],
-                if (workshop != null) ...[
-                  const SizedBox(width: UtenSpacing.s8),
-                  workshop,
-                ],
-                if (worker != null) ...[
-                  const SizedBox(width: UtenSpacing.s8),
-                  worker,
-                ],
-              ],
-            );
-          }
-          // 窄屏：名字一行，数量与供应方式换行排开。
-          return Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              checkbox,
-              const SizedBox(width: UtenSpacing.s4),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    identity,
-                    const SizedBox(height: UtenSpacing.s8),
-                    Wrap(
-                      spacing: UtenSpacing.s12,
-                      runSpacing: UtenSpacing.s8,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        kind,
-                        shortage,
-                        route,
-                        quantity,
-                        orderMethod,
-                        ?overproductionRate,
-                        ?workshop,
-                        ?worker,
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          );
-        },
       ),
     );
   }

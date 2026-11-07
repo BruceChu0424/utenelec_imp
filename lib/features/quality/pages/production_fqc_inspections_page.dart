@@ -56,6 +56,9 @@ class _ProductionFqcInspectionsPageState
   int get _refreshPage => _tableRows.visiblePage ?? (_result?.page ?? 1);
 
   @override
+  Future<void> onReadViewResumed() => _load(page: 1);
+
+  @override
   void scopedPagedReadOwnerChanged() {
     _columnQuery = const TableColumnQuery();
     ++_requestVersion;

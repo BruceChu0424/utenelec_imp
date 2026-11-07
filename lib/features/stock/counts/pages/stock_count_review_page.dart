@@ -78,6 +78,9 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage>
   TableColumnQuery _columnsQuery = const TableColumnQuery();
   Map<String, String?> _lineFilters = {};
   @override
+  Future<void> onReadViewResumed() => _load(1);
+
+  @override
   void scopedPagedReadOwnerChanged() {
     if (!mounted) return;
     ++_sequence;

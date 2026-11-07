@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import '../../../shared/repositories/employee_reference_repository.dart';
 import '../../../shared/models/employee_reference.dart';
 // 生产日报编辑页（新建/编辑，全页路由）：与生产计划/销售编辑页同构（统一模板）。
@@ -71,6 +73,8 @@ import '../models/daily_output_allocation.dart';
 import '../models/production_daily_report.dart';
 import '../models/production_exact_quantity.dart';
 import '../../../shared/formatters/exact_decimal.dart';
+import '../../../shared/measurement/weight_quantity_adoption.dart';
+import '../../../shared/widgets/business_precision_dialog.dart';
 import '../models/production_direct_transfer_candidate.dart';
 import '../models/production_material_usage_source.dart';
 import '../models/reportable_plan_line.dart';
@@ -358,6 +362,7 @@ class _ProductionDailyReportEditPageState
       row.qty,
       row.defectQty,
       row.weight,
+      row.weightConfirmation,
       row.planNo,
       row.remark,
       row.overLimitReason,
@@ -466,6 +471,15 @@ class _ProductionDailyReportEditPageState
           'defectQty': row.defectQty.text,
           'defectQuantityTextConfirmed': !row.defectQtyNeedsVerification,
           'weight': row.weight.text,
+          'goodsUnitWeightKgExact': ?row.goodsUnitWeightKg.value,
+          if (row.weightConfirmation.value case final confirmed?)
+            'weightConfirmation': {
+              'quantity': confirmed.quantity,
+              'totalKg': confirmed.totalKg,
+              'unitWeightKg': confirmed.unitWeightKg,
+              if (confirmed.precision case final precision?)
+                'precision': precision.toJson(),
+            },
           'planNo': row.planNo.text,
           'remark': row.remark.text,
         },
@@ -632,6 +646,25 @@ class _ProductionDailyReportEditPageState
           item['defectQuantityTextConfirmed'] != true &&
           (double.tryParse(row.defectQty.text)?.abs() ?? 0) >= 10000000000;
       row.weight.text = draftText(item, 'weight');
+      row.goodsUnitWeightKg.value = productionExactQuantityText(
+        item['goodsUnitWeightKgExact'],
+      );
+      if (item['weightConfirmation'] case final Map<Object?, Object?> proof) {
+        final quantity = productionExactQuantityText(proof['quantity']);
+        final total = productionExactQuantityText(
+          proof['totalKg'],
+          scale: dailyReportWeightScale,
+        );
+        final unitWeight = productionExactQuantityText(proof['unitWeightKg']);
+        if (quantity != null && total != null && unitWeight != null) {
+          row.weightConfirmation.value = (
+            quantity: quantity,
+            totalKg: total,
+            unitWeightKg: unitWeight,
+            precision: BusinessPrecisionChoice.parse(proof['precision']),
+          );
+        }
+      }
       row.planNo.text = draftText(item, 'planNo');
       row.remark.text = draftText(item, 'remark');
       row.executionSegmentVersion = (item['executionSegmentVersion'] as num?)
@@ -650,6 +683,7 @@ class _ProductionDailyReportEditPageState
     _grid.clearSelection();
     _grid.replaceAll(rows);
     _grid.setSelected(selected, true);
+    unawaited(_loadMissingWeightBases(rows));
     // Reload current custody and permissions. Stored quantities never recreate quota.
     _usageSourceCache.clear();
     _clearanceCache.clear();
@@ -735,7 +769,8 @@ class _ProductionDailyReportEditPageState
           ..defectQty.text = item.defectQty > 0
               ? (item.defectQtyText ?? '')
               : ''
-          ..weight.text = item.weight?.toString() ?? ''
+          ..weight.text = item.weightText ?? ''
+          ..goodsUnitWeightKg.value = item.unitWeightKgExact
           ..remark.text = item.remark ?? ''
           ..overLimitReason.text = item.overLimitReason ?? ''
           ..planNo.text = item.planNo ?? ''
@@ -895,7 +930,16 @@ class _ProductionDailyReportEditPageState
           }
           row.qty.text = group.qtyText!;
           row.defectQty.text = group.defectQty > 0 ? group.defectQtyText! : '';
-          row.weight.text = group.weight?.toString() ?? '';
+          row.weight.text = group.weightText ?? '';
+          row.goodsUnitWeightKg.value = it.unitWeightKgExact;
+          _restoreSavedWeightConfirmation(
+            row,
+            mode: it.weightEntryMode,
+            precision: BusinessPrecisionChoice.parse({
+              'scale': it.weightQuantityScale,
+              'rounding': it.weightQuantityRounding,
+            }),
+          );
           row.isFinal = it.isFinal;
           // V736：草稿里已分好的去向(每个上层工单一条 + 送入仓库合成一条)是用户的选择，
           // 还原成本行的固定去向子行，候选加载后只校验、不替换、不标黄。
@@ -903,6 +947,7 @@ class _ProductionDailyReportEditPageState
           rows.add(row);
         }
         _grid.replaceAll(rows);
+        unawaited(_loadMissingWeightBases(rows));
         _detailLoaded = true;
       } on ApiException catch (e) {
         if (mounted) context.appError(e.message);
@@ -1027,10 +1072,21 @@ class _ProductionDailyReportEditPageState
           ..qty.text = qtyText!
           ..defectQty.text = defectText == '0' ? '' : defectText
           ..weight.text = item['weight']?.toString() ?? ''
+          ..goodsUnitWeightKg.value = productionExactQuantityText(
+            item['unitWeightKgExact'],
+          )
           ..planNo.text = item['planNo'] as String? ?? ''
           ..remark.text = item['remark'] as String? ?? ''
           ..overLimitReason.text = item['overLimitReason'] as String? ?? ''
           ..supplementProofId = item['supplementProofId'] as String?;
+        _restoreSavedWeightConfirmation(
+          row,
+          mode: item['weightEntryMode'],
+          precision: BusinessPrecisionChoice.parse({
+            'scale': item['weightQuantityScale'],
+            'rounding': item['weightQuantityRounding'],
+          }),
+        );
         restoreOutputAllocations(row, draftMaps(item['allocations']));
         if (row.supplementProofId != null) {
           row.supplementApprovedActualQty = qty;
@@ -1246,6 +1302,7 @@ class _ProductionDailyReportEditPageState
         code: source.goodsCode,
       );
     if (row.planNo.text.isEmpty) row.planNo.text = source.planNo;
+    row.goodsUnitWeightKg.value ??= source.goodsUnitWeightKgExact;
   }
 
   String _fmt(DateTime d) =>
@@ -1278,6 +1335,178 @@ class _ProductionDailyReportEditPageState
 
   Future<void> _pickGoods(DailyGridRow row) async {
     await _pickSource(row);
+  }
+
+  Future<void> _loadMissingWeightBases(List<DailyGridRow> rows) async {
+    final targets = {
+      for (final row in rows)
+        if (row.goods?.id case final id?)
+          if (row.goodsUnitWeightKg.value == null) row: id,
+    };
+    if (targets.isEmpty || !mounted) return;
+    final scope = ref.read(authenticatedScopeProvider);
+    final repository = ref.read(productionDailyReportRepositoryProvider);
+    bool current() =>
+        mounted &&
+        formDraftIdentityIsCurrent &&
+        scope == ref.read(authenticatedScopeProvider) &&
+        identical(
+          repository,
+          ref.read(productionDailyReportRepositoryProvider),
+        );
+    final ids = targets.values.toSet().toList(growable: false);
+    final basis = <String, String?>{};
+    try {
+      for (var offset = 0; offset < ids.length && current(); offset += 100) {
+        basis.addAll(
+          await AuthenticatedRequestScope.sharedRead(
+            current,
+            () => repository.dailyReportWeightBases(
+              ids.skip(offset).take(100).toList(growable: false),
+            ),
+          ),
+        );
+      }
+    } catch (_) {
+      // A missing reference leaves weighing available as a recorded fact.
+      // Quantity adoption still requires a known master weight.
+      return;
+    }
+    if (!current()) return;
+    for (final entry in targets.entries) {
+      final row = entry.key;
+      if (_grid.rows.contains(row) &&
+          row.goods?.id == entry.value &&
+          row.goodsUnitWeightKg.value == null) {
+        row.goodsUnitWeightKg.value = basis[entry.value];
+      }
+    }
+  }
+
+  void _restoreSavedWeightConfirmation(
+    DailyGridRow row, {
+    required Object? mode,
+    required BusinessPrecisionChoice? precision,
+  }) {
+    final quantity = productionExactQuantityText(row.qty.text);
+    final total = row.measuredWeightKg;
+    final unitWeight = row.goodsUnitWeightKg.value;
+    if (mode == 'WEIGHT' &&
+        quantity != null &&
+        total != null &&
+        unitWeight != null) {
+      row.weightConfirmation.value = (
+        quantity: quantity,
+        totalKg: total,
+        unitWeightKg: unitWeight,
+        precision: precision,
+      );
+    }
+  }
+
+  Future<void> _convertReportWeight(DailyGridRow row) async {
+    if (_saving ||
+        _resumeBlocked ||
+        _createdReportId != null ||
+        row.hasFixedSupplement ||
+        !_grid.rows.contains(row)) {
+      return;
+    }
+    final kg = row.measuredWeightKg;
+    final unitWeight = row.goodsUnitWeightKg.value;
+    final rate = row.unitRateText;
+    final kgUnits = productionExactQuantityUnits(
+      kg,
+      scale: dailyReportWeightScale,
+    );
+    if (kgUnits == null ||
+        kgUnits <= BigInt.zero ||
+        kgUnits > dailyReportWeightMaxUnits) {
+      context.appWarning('实称总重量必须大于 0，最多 14 位整数和 4 位小数');
+      return;
+    }
+    if (unitWeight == null || rate == null || row.reportUnitWeightKg == null) {
+      context.appWarning('请先选择报工来源并在货品资料维护可换算的单重');
+      return;
+    }
+    Object sourceKey() => (
+      row.goods?.id,
+      row.planItemId,
+      row.executionSegmentId,
+      row.executionSegmentSalesAllocationId,
+      row.fqcRecoveryAuthorizationId,
+      row.unitId,
+      row.unitRateText,
+    );
+    final source = sourceKey();
+    final oldQty = row.qty.text;
+    bool current() =>
+        mounted &&
+        formDraftIdentityIsCurrent &&
+        !_saving &&
+        !_resumeBlocked &&
+        _createdReportId == null &&
+        _grid.rows.contains(row) &&
+        source == sourceKey() &&
+        oldQty == row.qty.text &&
+        kg == row.measuredWeightKg &&
+        unitWeight == row.goodsUnitWeightKg.value;
+    WeightQuantityAdoption calculate([BusinessPrecisionChoice? precision]) =>
+        resolveWeightQuantityAdoption(
+          netKg: kg,
+          unitRate: rate,
+          exactMassFactorKg: unitWeight,
+          maxScale: dailyReportWeightScale,
+          choice: precision,
+        );
+    var result = calculate();
+    BusinessPrecisionChoice? precision;
+    if (result.reason case final reason?) {
+      precision = await showBusinessPrecisionDialog(
+        context,
+        BusinessPrecisionRequirement(
+          key: 'production.daily.weight.${row.localRowId}',
+          groupKey: 'production.daily.weight',
+          label: '${row.goods?.name ?? '货品'} · 称重换算完工申报量',
+          maxScale: dailyReportWeightScale,
+          reason: reason,
+        ),
+      );
+      if (precision == null || !mounted || !current()) return;
+      result = calculate(precision);
+    }
+    if (!mounted) return;
+    final quantity = result.qty;
+    final quantityUnits = productionExactQuantityUnits(quantity);
+    if (quantity == null ||
+        quantityUnits == null ||
+        quantityUnits <= BigInt.zero ||
+        quantityUnits > productionQuantityMaxUnits) {
+      context.appWarning('换算未得到可申报的正数，请核对实称总重量和单重');
+      return;
+    }
+    final unitName = ref.read(masterNameServiceProvider).unit(row.unitId);
+    final confirmed = await UtenDialog.show(
+      context,
+      title: '确认称重换算',
+      content: Text(
+        '${row.goods?.name ?? '货品'}\n'
+        '实称总重量 $kg kg\n'
+        '货品资料单重 $unitWeight kg / 基本单位\n'
+        '每报工单位 ${row.reportUnitWeightKg} kg\n'
+        '完工申报量 ${productionQuantityWithUnit(quantity, unitName)}',
+      ),
+      confirmLabel: '采用换算数量',
+    );
+    if (confirmed != true || !current()) return;
+    row.weightConfirmation.value = (
+      quantity: quantity,
+      totalKg: kg!,
+      unitWeightKg: unitWeight,
+      precision: precision,
+    );
+    row.qtyNeedsVerification = false;
+    row.qty.text = quantity;
   }
 
   /// 选报工来源。2026-09-11 起选择器可多选：第一条落到点开的这一行，
@@ -1425,6 +1654,11 @@ class _ProductionDailyReportEditPageState
 
   void _applySource(DailyGridRow row, ReportablePlanLine source) {
     if (!mounted) return;
+    final sameSource =
+        row.goods?.id == source.goodsId &&
+        row.executionSegmentId == source.executionSegmentId &&
+        row.executionSegmentSalesAllocationId ==
+            source.executionSegmentSalesAllocationId;
     setState(() {
       // 选了报工来源 = 这行要进本次日报：新建态自动勾上（保存按钮只认勾选行）。
       if (_isCreate && !row.isSubRow) _grid.setSelected([row], true);
@@ -1445,6 +1679,8 @@ class _ProductionDailyReportEditPageState
         ..clientName = source.clientName
         ..unitRate = source.unitRate
         ..unitRateExact = source.unitRateText
+        ..goodsUnitWeightKg.value = source.goodsUnitWeightKgExact
+        ..weightConfirmation.value = null
         ..qtyNeedsVerification = false
         ..defectQtyNeedsVerification = false
         ..orderQty = source.orderQty
@@ -1480,6 +1716,7 @@ class _ProductionDailyReportEditPageState
             : ''
         ..defectQty.clear()
         ..overLimitReason.clear();
+      if (!sameSource) row.weight.clear();
       _discardOutputAllocations(row);
       _watchProductQty(row);
       if (_departmentId == null && source.departmentId != null) {
@@ -1533,6 +1770,8 @@ class _ProductionDailyReportEditPageState
         ..clientName = null
         ..unitRate = null
         ..unitRateExact = null
+        ..goodsUnitWeightKg.value = null
+        ..weightConfirmation.value = null
         ..orderQty = null
         ..maxReportQty = null
         ..maxReportQtyExact = null
@@ -3028,9 +3267,20 @@ class _ProductionDailyReportEditPageState
         return;
       }
       final weightText = r.weight.text.trim();
-      final weight = weightText.isEmpty ? null : double.tryParse(weightText);
-      if (weightText.isNotEmpty && (weight == null || weight <= 0)) {
-        context.appError('第 ${i + 1} 行实际重量必须大于 0');
+      final weight = productionExactQuantityUnits(
+        r.measuredWeightKg,
+        scale: dailyReportWeightScale,
+      );
+      if (weightText.isNotEmpty &&
+          (weight == null ||
+              weight <= BigInt.zero ||
+              weight > dailyReportWeightMaxUnits)) {
+        context.appError('第 ${i + 1} 行实称总重量必须大于 0，最多 14 位整数和 4 位小数');
+        await _grid.revealError(r, columnKey: 'weight');
+        return;
+      }
+      if (!r.weightConfirmationCurrent) {
+        context.appError('第 ${i + 1} 行重量或单重已变化，请重新确认称重换算，或直接填写完工数量');
         await _grid.revealError(r, columnKey: 'weight');
         return;
       }
@@ -3292,15 +3542,30 @@ class _ProductionDailyReportEditPageState
       final qty = productionQuantityWire(
         r.qty.text.trim().replaceFirst(RegExp(r'\.$'), ''),
       );
-      final weightText = r.weight.text.trim();
-      final weight = weightText.isEmpty ? null : double.tryParse(weightText);
+      final weight = r.measuredWeightKg;
+      final unitWeight = r.goodsUnitWeightKg.value;
+      final confirmed = r.weightConfirmation.value;
       itemsBody.add({
         ...platformRowPayload(r),
         'goodsId': r.goods!.id,
         'qty': qty,
         // 不良数只记录，不改良品数；空或 0 不提交。
         'defectQty': ?productionReportDefectQty(r),
-        'weight': ?weight,
+        if (weight != null)
+          'weight': productionQuantityWire(
+            weight,
+            scale: dailyReportWeightScale,
+          ),
+        if (unitWeight != null) ...{
+          'unitWeightKgExact': productionQuantityWire(unitWeight),
+          'weightEntryMode': confirmed == null ? 'QUANTITY' : 'WEIGHT',
+          if (!_isCreate && r.platformFields.sourceRecordId != null)
+            'weightSourceReportItemId': r.platformFields.sourceRecordId,
+          if (confirmed?.precision case final precision?) ...{
+            'weightQuantityScale': precision.scale,
+            'weightQuantityRounding': precision.rounding,
+          },
+        },
         if (r.colorId != null) 'colorId': r.colorId,
         if (r.unitId != null) 'unitId': r.unitId,
         if (r.unitRateText != null)
@@ -4030,6 +4295,7 @@ class _ProductionDailyReportEditPageState
           ? _openSource
           : null,
       onClearSource: _clearSource,
+      onConvertWeight: _convertReportWeight,
       colorEntries: colorEntries,
       unitEntries: unitEntries,
       standaloneDetails: true,
@@ -4076,7 +4342,11 @@ class _ProductionDailyReportEditPageState
           ? (row, selected) => _grid.setSelected([row], selected)
           : null,
       stickyHeaderPinned: _gridPinned,
-      defaultColumnOrderAnchors: const {'destination': 'qty'},
+      defaultColumnOrderAnchors: const {
+        'destination': 'qty',
+        'weight': 'qty',
+        'unitWeight': 'weight',
+      },
       forceVisibleColumnKeys: {if (showDestinationColumn) 'destination'},
       columns: [
         for (final column in pool) ...[

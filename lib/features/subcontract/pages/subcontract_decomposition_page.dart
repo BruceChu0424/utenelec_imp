@@ -2626,10 +2626,27 @@ class _SubcontractDecompositionPageState
           ),
         ),
         _pendingDrawQtyColumn('orderQty', '订货数量', (row) => row.orderQty),
-        _pendingDrawQtyColumn('drawnQty', '已领', (row) => row.drawnQty),
-        _pendingDrawQtyColumn('pendingQty', '待仓库发', (row) => row.pendingQty),
-        _pendingDrawQtyColumn('drawableQty', '可领', (row) => row.drawableQty),
-        _pendingDrawQtyColumn('shortQty', '还缺', (row) => row.shortQty),
+        _pendingDrawQtyColumn(
+          'drawnQty',
+          subcontractDrawnBudgetLabel,
+          (row) => row.drawnQty,
+        ),
+        _pendingDrawQtyColumn(
+          'pendingQty',
+          subcontractPendingBudgetLabel,
+          (row) => row.pendingQty,
+        ),
+        _pendingDrawQtyColumn(
+          'drawableQty',
+          subcontractDrawableBudgetLabel,
+          (row) => row.drawableQty,
+          info: subcontractDrawBudgetHint,
+        ),
+        _pendingDrawQtyColumn(
+          'shortQty',
+          subcontractShortBudgetLabel,
+          (row) => row.shortQty,
+        ),
         // 「单位」列 2026-10-10 删除（数量+单位口径）：领料行各数量列已内联订货单位
         // （row.unitName），申请行本就没有单位。
         MasterColumnDef(
@@ -2760,14 +2777,20 @@ class _SubcontractDecompositionPageState
   MasterColumnDef<SubcontractPendingRow> _pendingDrawQtyColumn(
     String key,
     String label,
-    double Function(SubcontractDrawTaskRow row) qty,
-  ) => MasterColumnDef(
+    double Function(SubcontractDrawTaskRow row) qty, {
+    String? info,
+  }) => MasterColumnDef(
     key: key,
     label: label,
+    info: info,
     width: 96,
     type: 'number',
     sortable: true,
     columnSearchEnabled: true,
+    exactValueOf: (row) => switch (row) {
+      SubcontractPendingDrawRow(:final row) => row.quantityText(key),
+      _ => null,
+    },
     // 2026-10-10 数量+单位口径：单位(订货单位=委外件单位)内联进数字，
     // 独立「单位」列已删除；排序由表格组件剥单位后缀兜底。
     value: (row) => switch (row) {
@@ -2775,8 +2798,8 @@ class _SubcontractDecompositionPageState
         task,
         key,
       ),
-      SubcontractPendingDrawRow(:final row) => formatQtyWithUnit(
-        qty(row),
+      SubcontractPendingDrawRow(:final row) => formatExactQtyWithUnit(
+        row.quantityText(key),
         row.unitName,
       ),
     },
@@ -2786,8 +2809,8 @@ class _SubcontractDecompositionPageState
           task,
           key,
         ),
-        SubcontractPendingDrawRow(:final row) => formatQtyWithUnit(
-          qty(row),
+        SubcontractPendingDrawRow(:final row) => formatExactQtyWithUnit(
+          row.quantityText(key),
           row.unitName,
         ),
       };

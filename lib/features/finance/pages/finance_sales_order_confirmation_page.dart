@@ -747,7 +747,7 @@ class _FinanceSalesOrderConfirmationPageState
       context.appSuccess('已批量确认 ${tasks.length} 笔，计划部可接手排产');
       final page = _result?.page ?? 1;
       setState(_clearSelectionState);
-      refreshBadges(ref);
+      ref.read(badgeSummaryProvider.notifier).refreshSalesOrderFinance();
       await _load(page);
     } on Object catch (error) {
       if (!mounted) return;

@@ -104,6 +104,9 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
 
   final _readingRows = MasterDataTableRowsController<InstantInventoryRow>();
   @override
+  Future<void> onReadViewResumed() => _refresh();
+
+  @override
   void scopedPagedReadOwnerChanged() {
     if (!mounted) return;
     inlineClearView();

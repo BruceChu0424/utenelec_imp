@@ -213,14 +213,12 @@ abstract class _MaterialAnalysisPageBase
   static const int _requestChunkSize = 500;
   static const int _maxPlansPerPrintJob = 50;
   static const int _maxConcurrentPrintLoads = 5;
-  static const Duration _analysisPollInterval = Duration(seconds: 45);
 
   ProductionMaterialAnalysisView? _analysis;
   final _ownerReadGuard = LatestRequestGuard();
   final _ownerReadTokens = Expando<int>();
   bool _savingGoodsOwnership = false;
   bool _ownerRefreshQueued = false;
-  final Set<BuildContext> _preparationReadContexts = {};
   int _preparationSubmissionScopes = 0;
   String? _preparationScopeSession;
   String? _preparationScopeAnalysis;
@@ -601,11 +599,20 @@ abstract class _MaterialAnalysisPageBase
       busy: _checkingBom,
       onForward: _permissions.contains(Perm.productionMaterialAnalysisForwardRd)
           ? (keys) async {
-              await _checkBomProblems(forwardKeys: keys);
+              await UtenBusyOverlay.run(
+                context,
+                title: '正在转交 BOM 问题',
+                action: () => _checkBomProblems(forwardKeys: keys),
+              );
             }
           : null,
       onRecheck: () async {
-        if (!await _checkBomProblems() && mounted && _bomDiagnostic == null) {
+        final hasIssues = await UtenBusyOverlay.run(
+          context,
+          title: '正在重新检查 BOM',
+          action: _checkBomProblems,
+        );
+        if (!hasIssues && mounted && _bomDiagnostic == null) {
           context.appInfo(_l10n.materialBomIssueClear);
         }
       },
@@ -703,7 +710,6 @@ abstract class _MaterialAnalysisPageBase
   String? _candidateOrderNoFilter;
   final _candidateSearch = TextEditingController();
   final _bomSearch = TextEditingController();
-  Timer? _analysisPollTimer;
   bool _silentAnalysisReloadInFlight = false;
 
   /// 新建分析页的两个分段：勾选销售订单产品 / 录入手工需求单(ADR-130)。
@@ -1237,7 +1243,6 @@ abstract class _MaterialAnalysisPageBase
 
   int _materialOrderSelectionCount(List<_MaterialGroup> groups) =>
       groups.length;
-  bool get _materialAggregateWorking => false;
 
   /// 把这些行按「车间逐层 → 采购 → 委外」分段下达(ADR-102)。全部段都成功返回 true。
   Future<bool> _submitMaterialTableRows(List<_MaterialGroup> groups);
@@ -1464,49 +1469,46 @@ abstract class _MaterialAnalysisPageBase
     if (_warehouseId?.isNotEmpty == true) _warehouseIds.add(_warehouseId!);
     _billDate = DateTime.tryParse(widget.seed.billDate ?? '') ?? _billDate;
     _deliveryDate = DateTime.tryParse(widget.seed.deliveryDate ?? '');
-    _analysisPollTimer = Timer.periodic(
-      _analysisPollInterval,
-      (_) => unawaited(_pollAnalysisIfIdle()),
-    );
     WidgetsBinding.instance.addPostFrameCallback((_) => _boot());
   }
 
-  /// 主表或准备子页可见时共用一个只读轮询；写命令期间让路。
-  /// 编辑期间更新服务端事实，并按原行恢复输入和选择，不执行刷新写命令。
-  Future<void> _pollAnalysisIfIdle() async {
-    if (!mounted) return;
-    final visible =
-        (TickerMode.valuesOf(context).enabled &&
-            ModalRoute.of(context)?.isCurrent == true) ||
-        _preparationReadContexts.any(
-          (scope) =>
-              scope.mounted &&
-              TickerMode.valuesOf(scope).enabled &&
-              ModalRoute.of(scope)?.isCurrent == true,
-        );
-    if (!visible) return;
-    if (_bomDiagnostic != null && !_booting && !_busy && !_checkingBom) {
-      await _checkBomProblems();
-      if (!mounted) return;
-    }
-    if (_analysis == null || _booting || _busy) {
+  Future<void> _refreshPreparationFacts(BuildContext owner) =>
+      UtenBusyOverlay.run(
+        owner,
+        title: '正在刷新物料分析',
+        action: () => _reloadAnalysisSilently(
+          protectUnsavedEditing: true,
+          reportError: true,
+        ),
+      );
+
+  Future<void> _refreshMaterialAnalysis() async {
+    if (_busy || _preparationSubmissionActive) return;
+    if (!_canManage || _hasUnsavedAnalysisEditing) {
+      await _refreshPreparationFacts(context);
       return;
     }
-    await _reloadAnalysisSilently(protectUnsavedEditing: true);
+    await UtenBusyOverlay.run(
+      context,
+      title: '正在刷新物料分析',
+      action: _previewAnalysis,
+    );
+    if (mounted) {
+      _requestCompanionReads(const [_CompanionRead.workshopUrges]);
+    }
   }
 
   bool get _hasUnsavedAnalysisEditing =>
       _editingPriorities ||
       _dirtyRouteGroups.isNotEmpty ||
       _selectedPlanLineIds.isNotEmpty ||
-      // ADR-102：主表现在整张铺开了行内数量输入与下单勾选，轮询期间必须一并让路。
-      // 少了这一条，45 秒一次的静默刷新会把人填了一屏的数和勾选一起冲掉。
+      // Revalidate live facts while preserving selected rows and inputs.
       _hasUnsubmittedMaterialTableInput ||
       _batchQtyControllers.values.any(
         (controller) => controller.text.trim().isNotEmpty,
       );
 
-  /// 动态投影键按快照对象缓存：当前快照每次轮询都要比一次，不必每次重拼整串。
+  /// Cache the dynamic projection key for each immutable snapshot.
   final Expando<String> _projectionKeys = Expando<String>();
   String _projectionKeyOf(ProductionMaterialAnalysisView view) =>
       _projectionKeys[view] ??= _analysisDynamicProjectionKey(view);
@@ -1515,11 +1517,13 @@ abstract class _MaterialAnalysisPageBase
   /// 操作组键恢复到新快照，避免吞掉计划员正在做的决定。
   Future<void> _reloadAnalysisSilently({
     bool protectUnsavedEditing = false,
+    bool reportError = false,
   }) async {
     final analysis = _analysis;
     if (analysis == null ||
         _busy ||
         _booting ||
+        _preparationSubmissionActive ||
         _silentAnalysisReloadInFlight) {
       return;
     }
@@ -1535,6 +1539,7 @@ abstract class _MaterialAnalysisPageBase
       // 写命令、切换分析或更高版本已经到达时不接收此旧读。
       // 新开始的本地编辑由下方保留输入的事实刷新处理。
       if (_busy ||
+          _preparationSubmissionActive ||
           current == null ||
           current.analysisId != analysis.analysisId ||
           view.version < current.version) {
@@ -1543,8 +1548,7 @@ abstract class _MaterialAnalysisPageBase
       // 分析头版本只保护分析本身的写入 CAS；计划审批、派工、仓库发料、
       // 报工/入库和 exact peg 是读侧动态投影，可能在 version/fingerprint
       // 不变时更新。只有头与动态投影都相同才跳过重建。
-      // 2026-09-27：先比较再套用，编辑中也一样——原来有人填数/勾选时不比就整份
-      // 重新套用，45 秒一次整页重画并补发汇总预览，数据其实没变。
+      // Compare before applying, including when there are local edits.
       if (view.version == current.version &&
           view.fingerprint == current.fingerprint &&
           _projectionKeyOf(view) == _projectionKeyOf(current)) {
@@ -1564,8 +1568,10 @@ abstract class _MaterialAnalysisPageBase
           _serverRefreshNotice = _routeDraftRefreshNotice(drafts);
         }
       });
-    } catch (_) {
-      // 静默失败：页面仍显示当前快照，用户可手动刷新。
+    } catch (failure) {
+      if (reportError && mounted && _sessionScopeKey() == sessionScope) {
+        context.appApiError(failure);
+      }
     } finally {
       _silentAnalysisReloadInFlight = false;
       if (mounted && _ownerRefreshQueued) {
@@ -1584,7 +1590,6 @@ abstract class _MaterialAnalysisPageBase
     }
     materialDetailRevision.dispose();
     bucketActionBusyMessage.dispose();
-    _analysisPollTimer?.cancel();
     _candidateSearch.dispose();
     _bomSearch.dispose();
     for (final draft in _manualDemandDrafts) {
@@ -2627,9 +2632,10 @@ class _ProductionMaterialAnalysisPageState
               ),
           if (_analysis != null)
             UtenRefreshButton(
+              key: const Key('material-analysis-refresh'),
               tooltip: '按最新库存刷新分析',
-              enabled: !(_busy || !_canManage),
-              onRefresh: _previewAnalysis,
+              enabled: !_busy && !_preparationSubmissionActive,
+              onRefresh: _refreshMaterialAnalysis,
             ),
         ],
       ),
@@ -2640,8 +2646,7 @@ class _ProductionMaterialAnalysisPageState
             ExcludeFocus(
               excluding: _planSubmissionInProgress,
               child: UtenContentContainer.wide(
-                // 本页有分析结果轮询（_analysisPollTimer 周期性结构重建内容），
-                // 拖选与轮询重建并发会触发框架 CME（准则 §3.4），故退出选择区。
+                // Keep table selection local while asynchronous snapshots apply.
                 selectable: false,
                 child: _booting
                     ? _bootingBody(theme)

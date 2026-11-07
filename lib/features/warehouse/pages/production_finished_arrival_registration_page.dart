@@ -38,6 +38,7 @@ import '../../../components/layout/uten_form_grid.dart';
 import '../../../components/layout/uten_grid_page_scrollbar.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../shared/presentation/workflow_field_guidance.dart';
+import '../../../shared/platform_tables/platform_table_layout.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/authenticated_request_scope.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -949,8 +950,7 @@ class _ProductionFinishedArrivalRegistrationPageState
               ),
               const SizedBox(height: UtenSpacing.s8),
               UtenEditableGrid<_FinishedLotLine>(
-                tableKey:
-                    'features.warehouse.pages.production_finished_arrival_registration_page.ProductionFinishedArrivalRegistrationPageState._buildForm.1',
+                tableKey: finishedArrivalRegistrationTableKey,
                 key: const Key('production-finished-arrival-grid'),
                 controller: _grid,
                 stickyHeaderPinned: _gridPinned,
@@ -1314,6 +1314,11 @@ class _ProductionFinishedArrivalRegistrationPageState
         exactKgOf: _exactKg,
         baseUnitNameOf: (row) => _baseUnitName(row, names),
       ),
+      shared.unitWeight(
+        quantityTextOf: (row) => row.lot.reportedQtyText,
+        enabled: editable,
+        exactKgOf: _exactKg,
+      ),
       shared.weightCheck(
         paramsOf: _paramsOf,
         paramsListenable: _weightCache,
@@ -1340,11 +1345,6 @@ class _ProductionFinishedArrivalRegistrationPageState
         headerInfo:
             '必填，不超过 100 字。选定入库仓库后按「该仓记住的库位 → 货品资料通用库位」'
             '自动带出；黄框 = 预填待核对，可直接修改。登记成功后自动记住为该仓默认库位。',
-      ),
-      shared.unitWeight(
-        quantityTextOf: (row) => row.lot.reportedQtyText,
-        enabled: editable,
-        exactKgOf: _exactKg,
       ),
     ];
   }

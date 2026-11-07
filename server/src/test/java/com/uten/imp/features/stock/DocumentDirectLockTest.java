@@ -364,7 +364,8 @@ class DocumentDirectLockTest {
                 mock(com.uten.imp.application.port.ProductionCostTargetPort.class),
                 mock(com.uten.imp.application.port.ProductionMaterialConsumptionWritePort.class),
                 mock(com.uten.imp.features.production.directtransfer
-                        .ProductionWorkshopDirectTransferService.class));
+                        .ProductionWorkshopDirectTransferService.class),
+                mock(com.uten.imp.application.port.MasterReferenceValidationPort.class));
         UUID id = UUID.randomUUID();
         ProductionDailyReport report = new ProductionDailyReport();
         report.setId(id);

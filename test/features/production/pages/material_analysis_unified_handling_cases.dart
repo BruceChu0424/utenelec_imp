@@ -301,7 +301,7 @@ void materialUnifiedHandlingCases() {
       reason: '旧响应缺审批状态时保留相同入口但不能猜撤回权限',
     );
     expect(find.text('整批撤回 SJ-ROOT-001'), findsOneWidget);
-    await tester.pump(const Duration(seconds: 45));
+    await _returnToMaterialAnalysis(tester);
     await tester.pumpAndSettle();
     expect(detailReads, greaterThanOrEqualTo(2));
     expect(cancel, findsOneWidget, reason: '同版本新计划列表与状态也必须刷新办理能力');

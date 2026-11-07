@@ -142,6 +142,7 @@ public class ProductionDailyReportService {
     /** V584/V585：车间内部直送，审核时同事务放行入线边仓并投给同车间上层工单。 */
     private final com.uten.imp.features.production.directtransfer
             .ProductionWorkshopDirectTransferService directTransfer;
+    private final com.uten.imp.application.port.MasterReferenceValidationPort masterReferences;
     /** V595：持续生产完结时释放直送子件余量后刷新需求状态。字段注入+可空——单测手工构造时缺省跳过。 */
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private com.uten.imp.features.production.fulfillment.ProductionFulfillmentLedgerService fulfillmentLedger;
@@ -153,6 +154,18 @@ public class ProductionDailyReportService {
     private WorkshopMaterialReportGuardPort reportGuard;
     @org.springframework.beans.factory.annotation.Autowired
     private com.uten.imp.common.history.RetainedRecordReader retainedRecords;
+
+    public record GoodsWeightBasis(UUID goodsId, String goodsUnitWeightKgExact) { }
+
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAnyAuthority('production_daily_report:create','production_daily_report:edit')")
+    public List<GoodsWeightBasis> weightBases(List<UUID> goodsIds) {
+        var ids = goodsIds.stream().distinct().toList();
+        masterReferences.requireVisibleGoodsBatch(ids);
+        var values = DailyReportWeightInputs.load(em, ids);
+        return ids.stream().map(id -> new GoodsWeightBasis(id,
+                com.uten.imp.common.util.DecimalText.of(values.get(id)))).toList();
+    }
 
     @Transactional(readOnly = true)
     public PageResponse<DailyReportListItem> list(DailyReportQueryFilter originalFilter, int page, int size, String sort, String order) {
@@ -471,6 +484,9 @@ public class ProductionDailyReportService {
             throw new ApiException(
                     ErrorCode.VALIDATION_FAILED, "生产日报创建请求或明细不能为空");
         }
+        if (req.getItems().stream().filter(Objects::nonNull).anyMatch(line -> line.getWeightSourceReportItemId() != null)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "新增生产日报须使用本次货品单重，不能引用旧日报的称重依据");
+        }
         DailyReportOutputAllocationService.rejectStaleRouteShape(req.getItems());
         UUID actorId = currentUser.requireId();
         String idempotencyKey =
@@ -505,7 +521,7 @@ public class ProductionDailyReportService {
         r.setMakerId(currentUser.requireEmployeeId()); // 制单=当前登录用户（对象级归属）
         r.setStatus(STATUS_DRAFT);
         reportRepo.saveAndFlush(r);
-        saveItems(r, req.getItems());
+        saveItems(r, req.getItems(), List.of());
         itemRepo.flush();
         syncMaterialUsages(r, req);
         outputAllocation.requireMaterialDeclarations(r.getId());
@@ -549,7 +565,7 @@ public class ProductionDailyReportService {
         applyHeader(req, r, workerIds);
         itemRepo.deleteByReportId(id);
         itemRepo.flush();
-        saveItems(r, req.getItems());
+        saveItems(r, req.getItems(), existingItems);
         itemRepo.flush();
         syncMaterialUsages(r, req);
         outputAllocation.requireMaterialDeclarations(r.getId());
@@ -2205,6 +2221,11 @@ public class ProductionDailyReportService {
             addCanonical(parts, path + ".boxes", line.getBoxes());
             addCanonical(parts, path + ".perBoxQty", line.getPerBoxQty());
             addCanonical(parts, path + ".weight", line.getWeight());
+            if (line.getWeightEntryMode() != null) addCanonical(parts, path + ".weightEntryMode", line.getWeightEntryMode());
+            if (line.getUnitWeightKgExact() != null) addCanonical(parts, path + ".unitWeightKgExact", line.getUnitWeightKgExact());
+            if (line.getWeightQuantityScale() != null) addCanonical(parts, path + ".weightQuantityScale", line.getWeightQuantityScale());
+            if (line.getWeightQuantityRounding() != null) addCanonical(parts, path + ".weightQuantityRounding", line.getWeightQuantityRounding());
+            if (line.getWeightSourceReportItemId() != null) addCanonical(parts, path + ".weightSourceReportItemId", line.getWeightSourceReportItemId());
             addCanonical(parts, path + ".clientName", line.getClientName());
             addCanonical(parts, path + ".sourceDocNo", line.getSourceDocNo());
             addCanonical(parts, path + ".remark", line.getRemark());
@@ -2715,7 +2736,8 @@ public class ProductionDailyReportService {
                 Boolean.TRUE.equals(req.getSurplusReturnRequested()));
     }
 
-    private void saveItems(ProductionDailyReport r, List<DailyReportItemLine> lines) {
+    private void saveItems(ProductionDailyReport r, List<DailyReportItemLine> lines,
+                           List<ProductionDailyReportItem> previous) {
         if (lines.stream().anyMatch(line -> line != null && (line.getPrice() != null
                 || line.getTotal() != null || line.getStotal() != null))) {
             throw new ApiException(
@@ -2723,9 +2745,22 @@ public class ProductionDailyReportService {
                     "生产日报只记录数量事实；客户端单价/金额不是计件工资依据，已停止写入");
         }
         lines.stream().filter(Objects::nonNull).forEach(ProductionDailyReportService::requireValidDefect);
+        var measurements = lines.stream().filter(Objects::nonNull).filter(DailyReportWeightInputs::supplied).toList();
+        for (DailyReportItemLine line : measurements) {
+            if (line.getWeight() != null || "WEIGHT".equals(line.getWeightEntryMode())) {
+                DailyReportWeightInputs.requireMeasuredKg(line.getWeight());
+            }
+            if (line.getPlanItemId() == null && line.getExecutionSegmentId() == null) {
+                var unit = masterReferences.resolveVisibleActiveGoodsUnit(line.getGoodsId(), line.getUnitId(),
+                        line.getUnitRate(), line.getLineNo() == null ? 1 : line.getLineNo());
+                line.setUnitId(unit.unitId());
+                line.setUnitRate(unit.unitRate());
+            }
+        }
         lines = outputAllocation.split(r.getId(), outputSupplements.expand(r.getId(),lines));
         outputAllocation.requireAllowance(r.getId(),lines);
         executionSegments.validateDraft(r.getId(), r.getDepartmentId(), lines);
+        validateWeightInputs(measurements, previous);
         canonicalizeSourceSnapshots(lines);
         int auto = 1;
         for (DailyReportItemLine l : lines) {
@@ -2764,6 +2799,10 @@ public class ProductionDailyReportService {
             it.setBoxes(l.getBoxes());
             it.setPerBoxQty(l.getPerBoxQty());
             it.setWeight(l.getWeight());
+            it.setWeightEntryMode(l.getWeightEntryMode());
+            it.setUnitWeightKg(l.getUnitWeightKgExact());
+            it.setWeightQuantityScale(l.getWeightQuantityScale());
+            it.setWeightQuantityRounding(l.getWeightQuantityRounding());
             it.setClientName(l.getClientName());
             it.setSourceDocNo(l.getSourceDocNo());
             it.setRemark(l.getRemark());
@@ -2776,6 +2815,24 @@ public class ProductionDailyReportService {
             itemRepo.save(it);
             com.uten.imp.common.platformcolumns.PlatformColumnSaveLineage.registerSaved(l, it.getId());
             auto++;
+        }
+    }
+
+    private void validateWeightInputs(List<DailyReportItemLine> measurements, List<ProductionDailyReportItem> previous) {
+        if (measurements.isEmpty()) return;
+        var goodsIds = measurements.stream().map(DailyReportItemLine::getGoodsId).distinct().toList();
+        var factors = DailyReportWeightInputs.load(em, goodsIds);
+        var frozen = new DailyReportWeightInputs.FrozenDraftInputs(previous);
+        for (DailyReportItemLine line : measurements) {
+            UUID existingId = line.getWeightSourceReportItemId();
+            if (existingId != null && !frozen.contains(existingId)) {
+                throw new ApiException(ErrorCode.CONFLICT, "原称重明细已变化，请重新打开这张生产日报核对");
+            }
+            BigDecimal current = factors.get(line.getGoodsId());
+            if (!DailyReportWeightInputs.sameDecimal(current, line.getUnitWeightKgExact()) && frozen.canReuse(line)) {
+                current = line.getUnitWeightKgExact();
+            }
+            DailyReportWeightInputs.validate(line, current);
         }
     }
 
@@ -2877,6 +2934,8 @@ public class ProductionDailyReportService {
                 it.getFqcRecoveryAuthorizationId(), it.getPlanNo(),
                 it.getOutboundNo(), it.getOutboundQty(), it.getOrderQty(), it.getStepLegacyId(),
                 it.getOrderDate(), it.getBoxes(), it.getPerBoxQty(), it.getWeight(),
+                it.getWeightEntryMode(), com.uten.imp.common.util.DecimalText.of(it.getUnitWeightKg()),
+                it.getWeightQuantityScale(), it.getWeightQuantityRounding(),
                 it.getClientName(), it.getSourceDocNo(), it.getRemark(), it.isFinal(),
                 it.getDestination(), it.getDirectTransferDemandId(),
                 directTransferLabels.get(it.getId()), it.getOutputRouteReason(),

@@ -76,6 +76,9 @@ class _WorkshopMaterialBinPageState
     extends ConsumerState<WorkshopMaterialBinPage>
     with ScopedPagedReadViewMixin<WorkshopMaterialBinPage> {
   @override
+  Future<void> onReadViewResumed() => _loadHistory(1);
+
+  @override
   void scopedPagedReadOwnerChanged() {
     if (!mounted) return;
     ++_historyLoadGeneration;

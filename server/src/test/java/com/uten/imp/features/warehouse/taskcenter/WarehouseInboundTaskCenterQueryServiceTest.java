@@ -111,6 +111,19 @@ class WarehouseInboundTaskCenterQueryServiceTest {
     }
 
     @Test
+    void directSourceReadsDoNotBuildUnrelatedWarehouseProjectionBranches() {
+        var access = new WarehouseInboundTaskCenterSql.Access(true, true, true, true, true, true, "TRUE");
+        String purchase = WarehouseInboundTaskCenterSql.base(access, WarehouseTaskScope.ALL, null, "TRUE", "PURCHASE");
+        String finished = WarehouseInboundTaskCenterSql.base(access, WarehouseTaskScope.ALL, null, "TRUE", "FINISHED");
+        assertThat(purchase.substring(purchase.indexOf("inbound_source_rows AS")))
+                .contains("FROM purchase_receipts h", "FROM inbound_expectations expectation")
+                .doesNotContain("FROM subcontract_receipts h", "FROM stock_documents archive_origin", "'FINISHED_REGISTRATION'::text");
+        assertThat(finished.substring(finished.indexOf("inbound_source_rows AS")))
+                .contains("'FINISHED_REGISTRATION'::text", "FROM stock_documents archive_origin")
+                .doesNotContain("FROM purchase_receipts h", "FROM subcontract_receipts h", "FROM inbound_expectations expectation");
+    }
+
+    @Test
     void detailAuditIsWrittenOnlyAfterAScopeAuthorizedPhysicalLookupSucceeds() {
         var service=mock(WarehouseInboundTaskCenterQueryService.class);
         var audit=mock(com.uten.imp.audit.AuditDetailViewRecorder.class);

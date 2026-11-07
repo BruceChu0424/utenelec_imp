@@ -6,6 +6,13 @@ int debugMaterialBucketSummaryEvaluations = 0;
 @visibleForTesting
 int debugMaterialCandidateSortEvaluations = 0;
 
+typedef _PreparationBucketSummary = ({
+  List<_BucketRow> rows,
+  int issued,
+  int inProgress,
+  int pending,
+});
+
 @visibleForTesting
 class MaterialAnalysisMakeChildDetails extends StatelessWidget {
   const MaterialAnalysisMakeChildDetails({
@@ -187,6 +194,9 @@ abstract class _MaterialAnalysisProductTasksState
 
   ProductionMaterialAnalysisView? _materialsByLineAnalysis;
   Map<String, ProductionMaterialAnalysisMaterial> _materialsByLine = const {};
+  ProductionMaterialAnalysisView? _aggregateActionsAnalysis;
+  final _aggregateActionsByGoods =
+      <(String, MaterialSupplyRoute), MaterialAnalysisSupplyAction?>{};
 
   /// 按分析行 id 取物料行（每份快照建一次索引；合并批次行的需求聚合用）。
   ProductionMaterialAnalysisMaterial? _materialOfLine(String materialLineId) {
@@ -210,21 +220,34 @@ abstract class _MaterialAnalysisProductTasksState
     if (goodsId == null) return null;
     final analysis = _analysis;
     if (analysis == null) return null;
-    final matches = analysis.supplyActions
-        .where(
-          (action) =>
-              action.operationType == 'AGGREGATE_SUPPLY' &&
-              action.route == route &&
-              action.goodsId == goodsId &&
-              !const [
-                'CANCELLED',
-                'WITHDRAWN',
-                'REVERSED',
-              ].contains(action.status),
-        )
-        .toList();
-    return matches.length == 1 ? matches.single : null;
+    if (!identical(_aggregateActionsAnalysis, analysis)) {
+      _aggregateActionsAnalysis = analysis;
+      _aggregateActionsByGoods.clear();
+      for (final action in analysis.supplyActions) {
+        final id = action.goodsId;
+        final actionRoute = action.route;
+        if (id == null ||
+            actionRoute == null ||
+            action.operationType != 'AGGREGATE_SUPPLY' ||
+            _preparationActionRevoked(action.status)) {
+          continue;
+        }
+        final key = (id, actionRoute);
+        _aggregateActionsByGoods.update(
+          key,
+          (_) => null,
+          ifAbsent: () => action,
+        );
+      }
+    }
+    return _aggregateActionsByGoods[(goodsId, route)];
   }
+
+  bool _preparationActionRevoked(String? status) => const {
+    'CANCELLED',
+    'WITHDRAWN',
+    'REVERSED',
+  }.contains(status?.trim().toUpperCase());
 
   List<_MaterialGroup> _preparationGroupsOf(_BucketRow row) {
     if (row.mergedGroups case final members?) return members;
@@ -567,10 +590,15 @@ abstract class _MaterialAnalysisProductTasksState
       // exact shared supply covers this node. Only the node's own outstanding
       // responsibility can create a MAKE task; an alias's preparation share is
       // a display/command projection and must not create another source task.
+      final group = indexes.groupsByLine[material.materialLineId];
       final uncovered =
-          material.planningUncoveredQty ??
-          material.aggregatePreparation?.planningUncoveredQty ??
-          material.shortageQty;
+          group != null &&
+              material.requiredQty > 0 &&
+              group.representative.materialLineId == material.materialLineId
+          ? _preparationUncoveredQty(group)
+          : material.planningUncoveredQty ??
+                material.aggregatePreparation?.planningUncoveredQty ??
+                material.shortageQty;
       if (uncovered <= 0 && !supplement) continue;
       if (material.confirmedRoute != MaterialSupplyRoute.make) continue;
       final hasActiveTask = material.notifiedTargets.any(
@@ -619,7 +647,7 @@ abstract class _MaterialAnalysisProductTasksState
       result.add(
         _PendingMakeCandidate(
           material: material,
-          group: indexes.groupsByLine[material.materialLineId],
+          group: group,
           parentLabel: parentLabel,
           shortageKindCount: kindCount,
           shortagePathCount: directShortages.length,
@@ -705,7 +733,7 @@ abstract class _MaterialAnalysisProductTasksState
     final byId = {
       for (final product in analysis.products) product.analysisLineId: product,
     };
-    final summaryScope = _preparationPresentationScope;
+    final presentationScope = _preparationPresentationScope;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -766,7 +794,7 @@ abstract class _MaterialAnalysisProductTasksState
                 for (final bucket in _AnalysisBucket.values)
                   SizedBox(
                     width: cardWidth,
-                    child: _bucketEntryTile(bucket, summaryScope),
+                    child: _bucketEntryTile(bucket, presentationScope),
                   ),
               ],
             );
@@ -777,24 +805,15 @@ abstract class _MaterialAnalysisProductTasksState
   }
 
   /// 进行中与未下达分别计数；部分下达任务可同时出现在两侧。
-  final _bucketSummaries =
-      <
-        _AnalysisBucket,
-        ({
-          Object scope,
-          List<_BucketRow> rows,
-          int issued,
-          int inProgress,
-          int pending,
-        })
-      >{};
+  final _bucketSummaries = <_AnalysisBucket, _PreparationBucketSummary>{};
 
-  Widget _bucketEntryTile(_AnalysisBucket bucket, Object summaryScope) {
-    final rows = _bucketRows(bucket);
+  _PreparationBucketSummary _bucketSummaryOf(
+    _AnalysisBucket bucket, {
+    Object? presentationScope,
+  }) {
+    final rows = _bucketRows(bucket, presentationScope: presentationScope);
     var summary = _bucketSummaries[bucket];
-    if (summary == null ||
-        summary.scope != summaryScope ||
-        !identical(summary.rows, rows)) {
+    if (summary == null || !identical(summary.rows, rows)) {
       assert(() {
         debugMaterialBucketSummaryEvaluations += rows.length;
         return true;
@@ -806,7 +825,6 @@ abstract class _MaterialAnalysisProductTasksState
         if (_bucketRowHasPending(row, bucket)) pending++;
       }
       summary = (
-        scope: summaryScope,
         rows: rows,
         issued: issued,
         inProgress: inProgress,
@@ -814,9 +832,14 @@ abstract class _MaterialAnalysisProductTasksState
       );
       _bucketSummaries[bucket] = summary;
     }
-    final issued = summary.issued;
-    final inProgress = summary.inProgress;
-    final pending = summary.pending;
+    return summary;
+  }
+
+  Widget _bucketEntryTile(_AnalysisBucket bucket, Object presentationScope) {
+    final (:rows, :issued, :inProgress, :pending) = _bucketSummaryOf(
+      bucket,
+      presentationScope: presentationScope,
+    );
     return MaterialPreparationRouteCard(
       routeId: bucket.name,
       title: bucket.countLabel(_l10n),
@@ -834,9 +857,11 @@ abstract class _MaterialAnalysisProductTasksState
       onOpen: rows.isNotEmpty && !_busy
           ? () => _openBucketDetail(
               bucket,
-              initialFilter: pending == 0 && issued > 0
+              initialFilter: pending > 0 || issued == 0
+                  ? _PreparationTaskFilter.pending
+                  : inProgress > 0
                   ? _PreparationTaskFilter.inProgress
-                  : _PreparationTaskFilter.pending,
+                  : _PreparationTaskFilter.completed,
             )
           : null,
       onInProgress: inProgress > 0 && !_busy
@@ -855,17 +880,23 @@ abstract class _MaterialAnalysisProductTasksState
     _AnalysisBucket.workshop => Icons.factory_outlined,
   };
 
-  /// 分桶行投影缓存（按分析对象身份）：行投影含 `_pendingMakeCandidates`
-  /// 的 O(物料²) 扫描，而路由转场动画期间入口/详情页每帧重建——不缓存时
-  /// 大分析（几百物料）点入口即页面卡死数十秒。分析快照被 `_applyAnalysis`
-  /// 替换时随之失效；详情页在前台时宿主页轮询暂停，快照天然稳定。
-  List<_BucketRow> _bucketRows(_AnalysisBucket bucket) {
+  Object? _bucketRowsPresentationScope;
+
+  /// 预览与办理方式会改变分桶成员，即使分析对象仍是同一份。卡片与分桶页共用
+  /// 同一投影，转场或仅调整表格布局时继续复用结果。
+  List<_BucketRow> _bucketRows(
+    _AnalysisBucket bucket, {
+    Object? presentationScope,
+  }) {
     final analysis = _analysis;
     if (analysis == null) return const [];
+    final scope = presentationScope ?? _preparationPresentationScope;
     if (_bucketRowsCacheAnalysis == null ||
         !identical(_bucketRowsCacheAnalysis, analysis) ||
+        _bucketRowsPresentationScope != scope ||
         _bucketRowsCache == null) {
       _bucketRowsCacheAnalysis = analysis;
+      _bucketRowsPresentationScope = scope;
       _bucketRowsCache = {};
     }
     // putIfAbsent：空桶也缓存，避免 O(物料²) 投影在转场每帧重算。
@@ -964,10 +995,7 @@ abstract class _MaterialAnalysisProductTasksState
     if (analysis == null) {
       return [for (final group in groups) _BucketRow.group(group)];
     }
-    final actionById = {
-      for (final action in analysis.supplyActions) action.actionId: action,
-    };
-    final byAction = <String, List<_MaterialGroup>>{};
+    final byAction = <MaterialAnalysisSupplyAction, List<_MaterialGroup>>{};
     final plain = <_BucketRow>[];
     for (final group in groups) {
       final representative = group.representative;
@@ -981,21 +1009,16 @@ abstract class _MaterialAnalysisProductTasksState
       // 历史路线不同的组错锁到批次路线显示上。
       if (action != null &&
           (effectiveRoute == null || action.route == effectiveRoute)) {
-        byAction.putIfAbsent(action.actionId, () => []).add(group);
+        byAction.putIfAbsent(action, () => []).add(group);
       } else {
         plain.add(_BucketRow.group(group));
       }
     }
-    final merged = <_BucketRow>[];
-    byAction.forEach((actionId, members) {
-      final action = actionById[actionId];
-      if (action == null) {
-        merged.addAll(members.map(_BucketRow.group));
-        return;
-      }
-      merged.add(_BucketRow.merged(members, action));
-    });
-    return [...plain, ...merged];
+    return [
+      ...plain,
+      for (final entry in byAction.entries)
+        _BucketRow.merged(entry.value, entry.key),
+    ];
   }
 
   bool _bucketRowHasIssued(_BucketRow row, _AnalysisBucket bucket) {
@@ -1015,16 +1038,31 @@ abstract class _MaterialAnalysisProductTasksState
     final route = bucket.supplyRoute;
     return route != null &&
         (row.group?.paths.any(
-              (path) =>
-                  path.notifiedTargets.any((target) => target.target == route),
+              (path) => path.notifiedTargets.any(
+                (target) =>
+                    target.target == route &&
+                    !_preparationActionRevoked(target.status),
+              ),
             ) ??
             false);
   }
 
   bool _bucketRowInProgress(_BucketRow row, _AnalysisBucket bucket) {
-    // 合并批次行：批次成立即在「进行中」清单（与已下达单据/锁定口径一致；
-    // 完成历史也留在本清单可查）。
-    if (row.mergedAction != null) return true;
+    if (row.mergedAction case final action?) {
+      final stages = _preparationGroupsOf(row)
+          .map(_serverFlowStageOf)
+          .whereType<ProductionFlowStage>()
+          .toList(growable: false);
+      if (stages.isNotEmpty &&
+          stages.every((stage) => stage.tone == ProductionFlowTone.done)) {
+        return false;
+      }
+      return const {
+        'OPEN',
+        'CREATED',
+        'IN_PROGRESS',
+      }.contains(action.status?.trim().toUpperCase());
+    }
     final adopted = _preparationGroupsOf(row).where(
       (group) => group.paths.any(
         (material) => material.preparationAdoptedQty > 0.0001,
@@ -1070,12 +1108,12 @@ abstract class _MaterialAnalysisProductTasksState
           (path) => path.notifiedTargets.any((target) {
             if (target.target != route) return false;
             final status = target.status?.trim().toUpperCase();
-            if (status != null && status.isNotEmpty) {
-              return const {'OPEN', 'CREATED', 'IN_PROGRESS'}.contains(status);
+            if (_preparationActionRevoked(status) || target.isRootOutput) {
+              return false;
             }
-            // Missing legacy action status may only use an explicit ongoing
-            // flow stage, never an already-stocked or unknown state.
-            return const {
+            final stage = path.flowStage?.trim().toUpperCase();
+            if (stage == 'BUY_STOCKED' || stage == 'SC_STOCKED') return false;
+            final runningStage = const {
               'BUY_REQUESTED',
               'BUY_PENDING_FINANCE',
               'BUY_WAIT_RECEIPT',
@@ -1089,7 +1127,9 @@ abstract class _MaterialAnalysisProductTasksState
               'SC_WAIT_RETURN',
               'SC_WAIT_IQC',
               'SC_WAIT_STOCK_IN',
-            }.contains(path.flowStage?.trim().toUpperCase());
+            }.contains(stage);
+            return runningStage ||
+                const {'OPEN', 'CREATED', 'IN_PROGRESS'}.contains(status);
           }),
         ) ??
         false;

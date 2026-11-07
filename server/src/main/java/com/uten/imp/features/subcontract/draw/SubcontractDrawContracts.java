@@ -163,12 +163,18 @@ public final class SubcontractDrawContracts {
     /**
      * 任务详情。allowedActions ⊆ {WITHDRAW, CLOSE}, 由服务端按权限与事实给出: 至少有一张待发领料
      * 仓库还没改过才给 WITHDRAW; CLOSE 会连仓库改过的待发领料一起撤回。
+     * baseMaterialCoverageQty 按冻结基础单耗折算可用、待发和在库可领取材料，封顶本方应供套数。
      */
     public record DrawTaskMaterials(
             DrawTaskRow task,
             List<DrawTaskMaterial> materials,
             List<DrawPendingDraft> pendingDrafts,
-            List<String> allowedActions) {
+            List<String> allowedActions,
+            BigDecimal baseMaterialCoverageQty) {
+        public String getBaseMaterialCoverageQtyExact() {
+            return com.uten.imp.common.util.DecimalText.of(baseMaterialCoverageQty);
+        }
+
         public DrawTaskMaterials {
             materials = List.copyOf(materials);
             pendingDrafts = List.copyOf(pendingDrafts);

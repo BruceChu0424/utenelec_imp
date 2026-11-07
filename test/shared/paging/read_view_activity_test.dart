@@ -26,6 +26,8 @@ import 'package:uten_imp/shared/providers/export_context_epoch_provider.dart';
 class _Epoch extends ExportContextEpoch {
   @override
   int build() => 0;
+
+  void advance() => state++;
 }
 
 class _Source {
@@ -56,9 +58,15 @@ class _Source {
 }
 
 class _View extends ConsumerStatefulWidget {
-  const _View({super.key, required this.source, this.resume = false});
+  const _View({
+    super.key,
+    required this.source,
+    this.resume = false,
+    this.scopeRecovery = false,
+  });
   final _Source source;
   final bool resume;
+  final bool scopeRecovery;
   @override
   ConsumerState<_View> createState() => _ViewState();
 }
@@ -97,6 +105,13 @@ class _ViewState extends ConsumerState<_View>
   }
 
   @override
+  Future<void> onReadViewResumed() async {
+    if (!widget.scopeRecovery) return;
+    refreshes++;
+    await load();
+  }
+
+  @override
   Widget build(BuildContext context) {
     if (widget.resume) {
       ref.onPageResume('/list', () async {
@@ -121,8 +136,9 @@ Future<void> _drain(WidgetTester tester) async {
 Future<(_ViewState, ProviderContainer)> _plain(
   WidgetTester tester,
   _Source source,
-  ValueNotifier<bool> active,
-) async {
+  ValueNotifier<bool> active, {
+  bool scopeRecovery = false,
+}) async {
   final key = GlobalKey<_ViewState>();
   final container = ProviderContainer(
     overrides: [exportContextEpochProvider.overrideWith(_Epoch.new)],
@@ -134,7 +150,7 @@ Future<(_ViewState, ProviderContainer)> _plain(
       child: MaterialApp(
         home: ValueListenableBuilder<bool>(
           valueListenable: active,
-          child: _View(key: key, source: source),
+          child: _View(key: key, source: source, scopeRecovery: scopeRecovery),
           builder: (_, visible, child) =>
               TickerMode(enabled: visible, child: child!),
         ),
@@ -863,6 +879,48 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
     },
   );
+
+  for (final replaceByManualRead in [false, true]) {
+    testWidgets(
+      'first list read recovers after scope replacement, manual=$replaceByManualRead',
+      (tester) async {
+        final active = ValueNotifier(true);
+        addTearDown(active.dispose);
+        final source = _Source();
+        final gate = Completer<PagedResult<int>>();
+        source.holds[(0, 1)] = gate;
+        final (view, container) = await _plain(
+          tester,
+          source,
+          active,
+          scopeRecovery: true,
+        );
+        final obsolete = view.load().then<Object>(
+          (result) => result,
+          onError: (Object error) => error,
+        );
+        await _drain(tester);
+        expect(source.calls, [(0, 1)]);
+
+        source.revision = 1;
+        (container.read(exportContextEpochProvider.notifier) as _Epoch)
+            .advance();
+        if (replaceByManualRead) unawaited(view.load());
+        await _drain(tester);
+        expect(view.publications, [1]);
+        expect(view.refreshes, replaceByManualRead ? 0 : 1);
+        expect(view.accepted?.items, hasLength(300));
+
+        gate.complete(source.response(0, 1));
+        await _drain(tester);
+        expect(await obsolete, isA<UiWorkCancelled>());
+        expect(view.publications, [1]);
+        expect(source.calls, [(0, 1), (1, 1), (1, 2), (1, 3)]);
+        await tester.pumpWidget(const SizedBox.shrink());
+      },
+    );
+  }
+
   for (final cursor in [false, true]) {
     testWidgets(
       'EDGE mapping yield cover prevents hidden progress or next batch:cursor=$cursor',

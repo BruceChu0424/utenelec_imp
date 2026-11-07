@@ -281,15 +281,18 @@ public class SubcontractDrawQueryService {
         BigDecimal targetSets = complete.add(task.drawableQty());
 
         List<DrawTaskMaterial> materials = new ArrayList<>();
+        BigDecimal baseCoverage = null;
         boolean anyOpenUnsent = false;
         for (FactLine fact : facts(List.of(orderItemId)).getOrDefault(orderItemId, List.of())) {
             BigDecimal covered = fact.sentQty().add(fact.pendingQty());
+            BigDecimal supported = open ? fact.baseReachableQty() : fact.baseSuppliedQty();
+            baseCoverage = baseCoverage == null ? task.materialQty().min(supported) : baseCoverage.min(supported);
             // 需求 = 我方需发量 LEAST(计划量, f(Qm))(§三.4a): 财务批准的委外商自带料那部分不用我方物料。
             BigDecimal shortQty = fact.neededQty().subtract(covered).subtract(fact.availableQty())
                     .max(BigDecimal.ZERO);
-            BigDecimal drawable = open && fact.lineOpen()
-                    ? SubcontractDrawAllocator.materialQty(targetSets, fact.perUnitQty())
-                            .subtract(covered).max(BigDecimal.ZERO)
+            BigDecimal drawable = open && fact.lineOpen() && task.drawableQty().signum() > 0
+                    ? SubcontractDrawAllocator.drawMaterialQty(targetSets, fact.perUnitQty(), covered,
+                            fact.availableQty(), fact.neededQty(), true)
                     : BigDecimal.ZERO;
             String state;
             if (!fact.lineOpen()) {
@@ -322,7 +325,7 @@ public class SubcontractDrawQueryService {
         if (canOperate && anyOpenUnsent) {
             actions.add("CLOSE");
         }
-        return new DrawTaskMaterials(task, materials, drafts, actions);
+        return new DrawTaskMaterials(task, materials, drafts, actions, baseCoverage);
     }
 
     // ==================== 批量领料预览 ====================
@@ -391,7 +394,7 @@ public class SubcontractDrawQueryService {
                     continue;
                 }
                 lines.add(new SubcontractDrawAllocator.Line(fact.planItemId(), fact.goodsId(), fact.colorId(),
-                        fact.perUnitQty(), fact.plannedQty(), fact.sentQty().add(fact.pendingQty()),
+                        fact.perUnitQty(), fact.neededQty(), fact.sentQty().add(fact.pendingQty()),
                         stocks.getOrDefault(fact.planItemId(), List.of())));
             }
             tasks.add(new SubcontractDrawAllocator.Task(row.orderItemId(), row.orderId(), row.materialQty(),
@@ -409,7 +412,7 @@ public class SubcontractDrawQueryService {
             }
             TaskRow row = batch.rows().get(result.orderItemId());
             parts.add("委外订货单 " + row.orderBillNo() + " 第 " + row.lineNo() + " 行 "
-                    + Objects.toString(row.goodsName(), "") + " 本批可领 " + plain(result.batchDrawableQty())
+                    + Objects.toString(row.goodsName(), "") + " 按备料预算折算，本批可领 " + plain(result.batchDrawableQty())
                     + " " + Objects.toString(row.unitName(), "") + "(填写 " + plain(result.qty()) + ")");
         }
         return prefix + "：" + String.join("；", parts) + "；" + suffix;
@@ -511,10 +514,14 @@ public class SubcontractDrawQueryService {
         Query query = em.createNativeQuery("""
                 SELECT oi.id, facts.plan_item_id, facts.line_no, facts.goods_id, material.code, material.name,
                        facts.color_id, material_color.name, facts.unit_id, material_unit.name,
-                       facts.bom_unit_qty, facts.planned_qty, facts.sent_qty, facts.pending_qty,
-                       facts.available_qty, facts.line_open, facts.needed_qty
+                       facts.bom_unit_qty, facts.sent_qty, facts.pending_qty,
+                       facts.available_qty, facts.line_open, facts.needed_qty,
+                       fn_subcontract_actual_receipt_sets(facts.usable_qty+facts.pending_qty
+                           +CASE WHEN facts.line_open THEN facts.available_qty ELSE 0 END, plan.base_bom_unit_qty),
+                       fn_subcontract_actual_receipt_sets(facts.usable_qty+facts.pending_qty, plan.base_bom_unit_qty)
                 FROM subcontract_order_items oi
                 CROSS JOIN LATERAL fn_subcontract_draw_facts(oi.id) facts
+                JOIN subcontract_material_plan_items plan ON plan.id=facts.plan_item_id
                 LEFT JOIN goods material ON material.id = facts.goods_id
                 LEFT JOIN colors material_color ON material_color.id = facts.color_id
                 LEFT JOIN units material_unit ON material_unit.id = facts.unit_id
@@ -527,8 +534,8 @@ public class SubcontractDrawQueryService {
             facts.computeIfAbsent(uuid(row[0]), ignored -> new ArrayList<>()).add(new FactLine(
                     uuid(row[1]), integer(row[2]), uuid(row[3]), str(row[4]), str(row[5]), uuid(row[6]),
                     str(row[7]), uuid(row[8]), str(row[9]), decimal(row[10]), decimal(row[11]),
-                    decimal(row[12]), decimal(row[13]), decimal(row[14]), Boolean.TRUE.equals(row[15]),
-                    decimal(row[16])));
+                    decimal(row[12]), decimal(row[13]), Boolean.TRUE.equals(row[14]),
+                    decimal(row[15]), decimal(row[16]), decimal(row[17])));
         }
         return facts;
     }
@@ -798,8 +805,8 @@ public class SubcontractDrawQueryService {
     /** 一条计划行的物料级事实(物料基本单位); neededQty = 我方需发量 LEAST(计划量, f(Qm))。 */
     record FactLine(UUID planItemId, Integer lineNo, UUID goodsId, String goodsCode, String goodsName,
                     UUID colorId, String colorName, UUID unitId, String unitName, BigDecimal perUnitQty,
-                    BigDecimal plannedQty, BigDecimal sentQty, BigDecimal pendingQty, BigDecimal availableQty,
-                    boolean lineOpen, BigDecimal neededQty) {
+                    BigDecimal sentQty, BigDecimal pendingQty, BigDecimal availableQty,
+                    boolean lineOpen, BigDecimal neededQty, BigDecimal baseReachableQty, BigDecimal baseSuppliedQty) {
     }
 
     /** 一次批量领料的读取结果与联合分配。 */

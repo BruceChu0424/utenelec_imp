@@ -416,6 +416,40 @@ class SubcontractStepDrawEndToEndTest extends SubcontractFullChainTestContext {
     }
 
     @Test
+    void baseCoverageAndExactMaterialDrawStayDistinctFromTheLossBudget() {
+        String tag = "scstep-budget-grid";
+        var w = fixture.seedWorld(tag);
+        fixture.loginAs(w.superAdminUserId());
+        UUID product = goods(w, tag, "P", "委外");
+        UUID material = goods(w, tag, "M", "采购");
+        fixture.insertBom(product, material, "1");
+        UUID order = subcontractOrder(w, product, "10000", BusinessTime.today().plusDays(5), new BigDecimal("10"));
+        approveSubcontract(w, order);
+        UUID item = itemOf(order);
+        otherIn(w, w.warehouseId(), material, null, "10000", "1");
+
+        var detail = drawQueries.materials(item);
+        qty("10000", detail.task().orderQty(), "订货目标");
+        qty("9090.909", detail.task().drawableQty(), "按含损耗备料上限折算的可领套数");
+        qty("10000", detail.baseMaterialCoverageQty(), "冻结基础单耗覆盖原成品目标");
+        var line = detail.materials().getFirst();
+        qty("11000", line.requiredQty(), "损耗备料上限");
+        qty("1000", line.shortQty(), "仅差损耗备料额度");
+        qty("10000", line.drawableQty(), "本次可领恰好是实际库存");
+        qty("10000", orderProgress.progress(order).items().getFirst().materials().getFirst().drawableQty(),
+                "委外订货进度与任务详情的实物领料量一致");
+
+        var selection = List.of(new DrawItemRequest(item, null));
+        var preview = drawQueries.preview(new DrawPreviewRequest(selection));
+        qty("10000", preview.lines().getFirst().qty(), "预览与详情量一致");
+        var submitted = drawCommands.submit(new DrawSubmitRequest(selection, "budget-grid-" + item));
+        UUID issue = submitted.issueIds().getFirst();
+        assertDraftLine(issue, material, "10000", "10000");
+        materialIssues.approve(issue);
+        qty("10000", returnable(item), "实际发料足以回厂 10000，不强制先发出损耗预算");
+    }
+
+    @Test
     void normalLossAddsSupplyOnceKeepsFinishedTargetAndClosesAllMaterialOnBatchReceipts() {
         String tag = "scstep-normal-loss";
         var w = fixture.seedWorld(tag);

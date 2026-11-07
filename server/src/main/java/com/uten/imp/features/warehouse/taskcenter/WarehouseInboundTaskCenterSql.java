@@ -56,28 +56,37 @@ final class WarehouseInboundTaskCenterSql {
         return base(access, scope, keyword, "TRUE");
     }
     static String base(Access access, WarehouseTaskScope scope, String keyword, String headers) {
+        return base(access, scope, keyword, headers, "ALL");
+    }
+
+    static String base(Access access, WarehouseTaskScope scope, String keyword, String headers, String source) {
         List<String> branches = new ArrayList<>();
-        if (access.workshop().enabled()) branches.add(WarehouseWorkshopMaterialTaskProjection.inbound(access.workshop()));
+        if (access.workshop().enabled() && selected(source, "RETURN")) {
+            branches.add(WarehouseWorkshopMaterialTaskProjection.inbound(access.workshop()));
+        }
         String ctes = "WITH " + WarehouseQualityResultService.taskCenterFactCtes() + ",\n"
                 + ProductionFinishedInboundTaskService.taskCenterFactCtes() + ",\n" + DRAFT_CTES + ",\n";
-        if (access.inbound()) {
+        if (access.inbound() && (selected(source, "PURCHASE") || selected(source, "SUBCONTRACT"))) {
             branches.add(expectations(scope));
             branches.add(exceptions(scope));
         }
-        if (access.purchaseHistory() || access.quality()) {
+        if ((access.purchaseHistory() || access.quality()) && selected(source, "PURCHASE")) {
             branches.add(receipts("PURCHASE", access.purchaseHistory(), scope));
         }
-        if (access.subcontractHistory() || access.quality()) {
+        if ((access.subcontractHistory() || access.quality()) && selected(source, "SUBCONTRACT")) {
             branches.add(receipts("SUBCONTRACT", access.subcontractHistory(), scope));
         }
-        if (access.stock()) {
-            if (access.productionPool()) {
+        if (access.stock() && (selected(source, "FINISHED") || selected(source, "OTHER") || selected(source, "RETURN"))) {
+            if (access.productionPool() && selected(source, "FINISHED")) {
                 branches.add(finishedTasks(scope));
                 branches.add(finishedRegistrations(scope));
             }
             branches.add(stockDocuments(access, scope));
         }
-        if (branches.isEmpty()) throw new IllegalArgumentException("No authorized warehouse source");
+        if (branches.isEmpty()) {
+            if (!source.equals("ALL")) return base(access, scope, keyword, headers);
+            throw new IllegalArgumentException("No authorized warehouse source");
+        }
         return ctes + "inbound_source_rows AS (\n" + String.join("\nUNION ALL\n", branches)
                 + "\n), inbound_rows AS (SELECT *, "
                 + TaskKeywordSearch.rankNamesFirst(keyword, new String[]{}, new String[]{"goods_names"},
@@ -85,6 +94,10 @@ final class WarehouseInboundTaskCenterSql {
                 + " AS keyword_rank FROM inbound_source_rows WHERE "
                 + TaskKeywordSearch.condition(keyword, "search_text", "warehouse_name", "responsible_name", "maker_name", "party_name")
                 + " AND (" + headers + "))\n";
+    }
+
+    private static boolean selected(String source, String branch) {
+        return "ALL".equals(source) || branch.equals(source);
     }
 
     static String predicate(boolean includeStatus) {

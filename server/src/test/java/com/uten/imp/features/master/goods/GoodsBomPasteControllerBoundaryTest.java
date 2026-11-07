@@ -9,6 +9,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 
@@ -40,6 +41,21 @@ class GoodsBomPasteControllerBoundaryTest {
         verify(service).paste(request.capture());
         assertEquals(BomPasteRequest.Mode.APPEND,request.getValue().mode());
         assertEquals(1,request.getValue().targets().size());assertEquals(1,request.getValue().items().size());
+    }
+
+    @Test void signedHistoricalCopyReachesTheServiceForLockedSourceVerification() throws Exception {
+        UUID sourceId = UUID.randomUUID();
+        String requestBody = body("APPEND").replace("\"qty\":1", "\"qty\":1,\"copiedFromBomItemId\":\""
+                + sourceId + "\",\"price\":\"-0.125\",\"total\":\"-0.125\"");
+        when(service.paste(any())).thenReturn(new BomPasteResult(1,1,0,List.of(),List.of()));
+        mvc.perform(post("/api/master/goods/bom/paste").contentType(MediaType.APPLICATION_JSON).content(requestBody))
+                .andExpect(status().isOk());
+        ArgumentCaptor<BomPasteRequest> request = ArgumentCaptor.forClass(BomPasteRequest.class);
+        verify(service).paste(request.capture());
+        var copied = request.getValue().items().getFirst();
+        assertEquals(sourceId, copied.getCopiedFromBomItemId());
+        assertEquals(new BigDecimal("-0.125"), copied.getPrice());
+        assertEquals(new BigDecimal("-0.125"), copied.getTotal());
     }
 
     private String body(String mode) {

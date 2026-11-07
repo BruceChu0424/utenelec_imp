@@ -1,6 +1,41 @@
 part of 'material_analysis_one_table_test.dart';
 
 void materialSharedSourceCases() {
+  testWidgets('入库完成的采购和委外退出进行中徽章，原下达记录仍可查看', (tester) async {
+    final snapshot =
+        jsonDecode(
+              File(
+                'test/fixtures/material_three_1000_after_all_materials.json',
+              ).readAsStringSync(),
+            )
+            as Map<String, dynamic>;
+    for (final material in _records(snapshot['flatMaterials'])) {
+      final stage = material['flowStage']?.toString() ?? '';
+      if (stage.startsWith('BUY_')) material['flowStage'] = 'BUY_STOCKED';
+      if (stage.startsWith('SC_')) material['flowStage'] = 'SC_STOCKED';
+    }
+    await _pump(
+      tester,
+      mutate: (_) => snapshot,
+      permissions: _overSupplyPermissions,
+    );
+    final cards = tester.widgetList<MaterialPreparationRouteCard>(
+      find.byType(MaterialPreparationRouteCard),
+    );
+    for (final route in ['buy', 'subcontract']) {
+      final card = cards.singleWhere((card) => card.routeId == route);
+      expect(card.inProgressCount, 0);
+      expect(card.pendingCount, 0);
+      expect(card.onOpen, isNotNull);
+    }
+    final buy = find.byKey(const Key('material-analysis-entry-buy'));
+    await tester.ensureVisible(buy);
+    await tester.tap(buy);
+    await tester.pumpAndSettle();
+    expect(find.text('已下达记录'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('真库13种材料全部下单后只有3个顶层待下达且采购委外无伪待单', (tester) async {
     final snapshot =
         jsonDecode(

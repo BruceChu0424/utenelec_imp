@@ -61,6 +61,17 @@ public class ProductionDailyReportController {
     private final ReportablePlanLineQueryService reportablePlanLines;
     private final AuditDetailViewRecorder auditViews;
 
+    public record WeightBasisQuery(@jakarta.validation.constraints.NotEmpty @jakarta.validation.constraints.Size(max = 500)
+                                   List<@jakarta.validation.constraints.NotNull UUID> goodsIds) { }
+
+    @PostMapping("/weight-bases")
+    @PreAuthorize("hasAnyAuthority('production_daily_report:create','production_daily_report:edit')")
+    public List<ProductionDailyReportService.GoodsWeightBasis> weightBases(@Valid @RequestBody WeightBasisQuery query,
+            jakarta.servlet.http.HttpServletRequest request) {
+        com.uten.imp.audit.AuditRequestContext.markControlledRead(request);
+        return service.weightBases(query.goodsIds());
+    }
+
     @GetMapping("/reportable-plan-lines")
     @PreAuthorize("hasAuthority('production_daily_report:view')")
     public PageResponse<ReportablePlanLine> reportablePlanLines(

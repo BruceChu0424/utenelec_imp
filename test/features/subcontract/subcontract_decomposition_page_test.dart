@@ -2507,11 +2507,11 @@ void main() {
           'draw-item-planning',
           'draw-item-waiting',
         ]);
-        expect(find.byTooltip('已提交 30 个 的领料，等仓库发出'), findsOneWidget);
+        expect(find.byTooltip('按预算折算待发 30 个，等仓库发出'), findsOneWidget);
         // 状态列文案 + ADR-169 十档整格底色(绿 / 紫 / 青 / 红 / 红——
         // 等计划安排与等待物料都是「不能领」，同红靠文案区分)。
-        expect(find.text('可领 60 个·去领料'), findsOneWidget);
-        expect(find.text('可领 20 个·去领料'), findsOneWidget);
+        expect(find.text('预算可领 60 个·去领料'), findsOneWidget);
+        expect(find.text('预算可领 20 个·去领料'), findsOneWidget);
         expect(find.text('已提交领料·待仓库发料'), findsOneWidget);
         expect(find.text('等计划安排·缺 2 种'), findsOneWidget);
         expect(find.text('等待物料·已备 1/3 种'), findsOneWidget);
@@ -2533,15 +2533,15 @@ void main() {
         ]);
         // 可领与待仓库发同时存在时悬浮提示两者。
         expect(
-          find.byTooltip('可领 20 个；另有 10 个已提交领料，等仓库发料；其余还缺物料，到货后可继续领'),
+          find.byTooltip('预算可领 20 个，另有 10 个按预算折算待发。备料预算还有余量，到货后可继续领'),
           findsOneWidget,
         );
         // 已领 / 待仓库发 / 可领 / 还缺 与货品身份三列(与申请行的数量列并存)。
         for (final label in [
-          '已领',
-          '待仓库发',
-          '可领',
-          '还缺',
+          '已领折算',
+          '待发折算',
+          '预算可领',
+          '备料预算缺口',
           '委外件名称',
           '编号',
           '颜色',
@@ -2737,7 +2737,7 @@ void main() {
         );
         expect(find.byKey(const Key('subcontract-draw-batch')), findsNothing);
         // 只显示可领量，不出现「去领料」入口。
-        expect(find.text('可领 40 个'), findsOneWidget);
+        expect(find.text('预算可领 40 个'), findsOneWidget);
         expect(
           find.byKey(const ValueKey('subcontract-draw-go-item-1')),
           findsNothing,
@@ -2784,18 +2784,22 @@ void main() {
           '物料名称',
           '编号',
           '颜色',
-          '每套用量',
-          '需求',
+          '每套备料上限',
+          '备料上限',
           '已发外',
           '待仓库发',
           '仓库可用',
           '本次可领',
-          '还缺',
+          '备料差额',
           '供应来源',
         ]);
+        expect(
+          find.text('基础用料可覆盖 10000 个', findRichText: true),
+          findsOneWidget,
+        );
         expect(find.text('采购在途 50(PO-9)'), findsOneWidget);
         expect(find.text('未安排'), findsOneWidget);
-        expect(find.text('缺料'), findsWidgets);
+        expect(find.text('备料未满'), findsWidgets);
         expect(find.text('已备'), findsOneWidget);
         expect(find.textContaining('WF-1'), findsOneWidget);
 
@@ -3649,6 +3653,7 @@ SubcontractDrawTaskDetail _detail(
   bool edited = false,
 }) => SubcontractDrawTaskDetail.fromJson(<String, dynamic>{
   'task': drawRowJson(drawRow(orderItemId)),
+  'baseMaterialCoverageQtyExact': '10000',
   'materials': <Map<String, dynamic>>[
     <String, dynamic>{
       'planItemId': 'plan-a',

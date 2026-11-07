@@ -4,7 +4,7 @@ part of 'production_material_analysis_page.dart';
 /// Commands continue to use the host's permission, version and idempotency flow.
 enum _AnalysisBucket { buy, subcontract, workshop }
 
-enum _PreparationTaskFilter { pending, inProgress, blocked }
+enum _PreparationTaskFilter { pending, inProgress, completed, blocked }
 
 extension _AnalysisBucketX on _AnalysisBucket {
   String countLabel(AppLocalizations l10n) => switch (this) {
@@ -157,7 +157,9 @@ class _MaterialAnalysisBucketPageState
   final Map<String, String?> _tableFilters = {};
 
   /// 进行中清单办理追加；本次输入沿用共用核对页。
-  bool get _appendMode => _taskFilter == _PreparationTaskFilter.inProgress;
+  bool get _appendMode =>
+      _taskFilter == _PreparationTaskFilter.inProgress ||
+      _taskFilter == _PreparationTaskFilter.completed;
 
   List<_BucketRow> _filterRows(List<_BucketRow> rows) => rows
       .where((row) {
@@ -170,6 +172,9 @@ class _MaterialAnalysisBucketPageState
             row,
             _bucket,
           ),
+          _PreparationTaskFilter.completed =>
+            _host._bucketRowHasIssued(row, _bucket) &&
+                !_host._bucketRowInProgress(row, _bucket),
           _PreparationTaskFilter.blocked => _host._bucketRowNeedsAttention(
             row,
             _bucket,
@@ -181,10 +186,8 @@ class _MaterialAnalysisBucketPageState
   bool _canSelectTask(_BucketRow row) => switch (_taskFilter) {
     _PreparationTaskFilter.pending => _host._bucketRowCanAct(row, _bucket),
     // 进行中任务可单独勾选追加；已有数量不再次提交。
-    _PreparationTaskFilter.inProgress => _host._bucketRowCanAppend(
-      row,
-      _bucket,
-    ),
+    _PreparationTaskFilter.inProgress ||
+    _PreparationTaskFilter.completed => _host._bucketRowCanAppend(row, _bucket),
     _PreparationTaskFilter.blocked => false,
   };
 
@@ -196,7 +199,6 @@ class _MaterialAnalysisBucketPageState
   @override
   void initState() {
     super.initState();
-    _host._preparationReadContexts.add(context);
     _host.materialDetailRevision.addListener(_refreshFromHost);
     _taskFilter = widget.initialFilter;
     // 宿主页「创建子件任务」后自动选中的子件：进桶时先勾上(能办的才勾)。
@@ -205,6 +207,11 @@ class _MaterialAnalysisBucketPageState
         _selectedIds.add(row.id);
       }
     }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        unawaited(_host._reloadAnalysisSilently(protectUnsavedEditing: true));
+      }
+    });
   }
 
   void _refreshFromHost() {
@@ -214,7 +221,6 @@ class _MaterialAnalysisBucketPageState
   @override
   void dispose() {
     _host.materialDetailRevision.removeListener(_refreshFromHost);
-    _host._preparationReadContexts.remove(context);
     super.dispose();
   }
 
@@ -515,15 +521,23 @@ class _MaterialAnalysisBucketPageState
       });
       return const SizedBox.shrink();
     }
-    final allRows = _host._bucketRows(_bucket);
-    final rows = _filterRows(allRows);
+    final summary = _host._bucketSummaryOf(_bucket);
+    final rows = _filterRows(summary.rows);
     return Scaffold(
       appBar: UtenAppBar(
         title: '${_bucket.countLabel(_host._l10n)} · ${rows.length}',
+        info: _bucket.semanticHint(_host._l10n),
         // 分桶详情是宿主页的命令式子弹层，没有独立路由 scope；权限入口
         // 由宿主页承载（见 PagePermissionAction._scopeFromRouter 的
         // fail-closed 契约——非 go_router 页路由不得解析 scope）。
         showPagePermissionAction: false,
+        actions: [
+          UtenRefreshButton(
+            key: const Key('material-preparation-bucket-refresh'),
+            enabled: !_actionsLocked,
+            onRefresh: () => _host._refreshPreparationFacts(context),
+          ),
+        ],
         leading: UtenBackButton(onPressed: () => Navigator.of(context).pop()),
       ),
       // 下达进行中的遮罩画在**本页**（2026-09-11）：此前是「先 pop 回物料分析
@@ -532,7 +546,7 @@ class _MaterialAnalysisBucketPageState
       // 不另写一份会漂移的。
       body: Stack(
         children: [
-          _bucketBody(theme, analysis, allRows, rows),
+          _bucketBody(theme, analysis, summary, rows),
           // 进度遮罩跟随宿主的**网络调用本身**（planSubmissionProgress），不跟
           // `_running`：后者要到结果弹层看完才落下，遮罩会一直转在弹层背后。
           // 2026-09-12：下达采购/委外的通用加载遮罩（车间仍走下方专用遮罩）。
@@ -561,7 +575,7 @@ class _MaterialAnalysisBucketPageState
   Widget _bucketBody(
     ThemeData theme,
     ProductionMaterialAnalysisView analysis,
-    List<_BucketRow> allRows,
+    _PreparationBucketSummary summary,
     List<_BucketRow> rows,
   ) {
     return SafeArea(
@@ -570,42 +584,11 @@ class _MaterialAnalysisBucketPageState
       child: UtenContentContainer.wide(
         selectable: false,
         child: Padding(
-          // 水平贴 0：提示卡、筛选行与表格和顶栏返回键共用左缘。
+          // 筛选行与表格和顶栏返回键共用左缘。
           padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Container(
-                padding: const EdgeInsets.all(UtenSpacing.s8),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.surfaceContainerLow,
-                  borderRadius: UtenRadius.mdAll,
-                  border: Border.all(color: theme.colorScheme.outlineVariant),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(
-                      Icons.info_outline_rounded,
-                      size: 18,
-                      color: theme.colorScheme.primary,
-                    ),
-                    const SizedBox(width: UtenSpacing.s8),
-                    Expanded(
-                      child: Text(
-                        _bucket.semanticHint(_host._l10n),
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                          height: 1.4,
-                        ),
-                      ),
-                    ),
-                    // 2026-09-05 用户口径：不再给「全选全部 N 条」——表头
-                    // 复选框已覆盖当页，跨页批量从宿主页分桶入口按桶执行。
-                  ],
-                ),
-              ),
-              const SizedBox(height: UtenSpacing.s8),
               UtenFilterToolbar<_PreparationTaskFilter>(
                 segmentsKey: const Key('material-analysis-task-state'),
                 selected: {_taskFilter},
@@ -614,32 +597,28 @@ class _MaterialAnalysisBucketPageState
                   UtenFilterSegment(
                     value: _PreparationTaskFilter.pending,
                     label: _host._l10n.materialPreparationPending,
-                    count: allRows
-                        .where(
-                          (row) => _host._bucketRowHasPending(row, _bucket),
-                        )
-                        .length,
+                    count: summary.pending,
                     countForm: UtenSegmentCountForm.actionable,
                   ),
                   UtenFilterSegment(
                     value: _PreparationTaskFilter.inProgress,
                     label: _host._l10n.materialPreparationInProgress,
-                    count: allRows
-                        .where(
-                          (row) => _host._bucketRowInProgress(row, _bucket),
-                        )
-                        .length,
+                    count: summary.inProgress,
                     countForm: UtenSegmentCountForm.inProgress,
                   ),
                   UtenFilterSegment(
                     value: _PreparationTaskFilter.blocked,
                     label: _host._l10n.materialTaskBlocked,
                     // 这是待处理的子集，沿平台规则不重复挂第二枚红色总任务数。
-                    count: allRows
+                    count: summary.rows
                         .where(
                           (row) => _host._bucketRowNeedsAttention(row, _bucket),
                         )
                         .length,
+                  ),
+                  const UtenFilterSegment(
+                    value: _PreparationTaskFilter.completed,
+                    label: '已下达记录',
                   ),
                 ],
                 onSelectionChanged: (value) {

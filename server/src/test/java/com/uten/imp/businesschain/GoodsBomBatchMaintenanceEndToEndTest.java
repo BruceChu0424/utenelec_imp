@@ -130,6 +130,35 @@ class GoodsBomBatchMaintenanceEndToEndTest {
         assertTrue(bom.list(other).isEmpty());
     }
 
+    @Test void copyRetainsTheStoredSignedAmountsAndRejectsChangedOrUnprovenAmounts() {
+        UUID source = goods("legacy-signed-source"), target = goods("legacy-signed-target");
+        UUID component = goods("legacy-signed-component"), other = goods("legacy-signed-other");
+        UUID sourceItem = edge(source, component, "2", 1);
+        BigDecimal price = new BigDecimal("-0.1250"), total = new BigDecimal("-0.25");
+        db.update("UPDATE goods_bom_items SET price=?,total=? WHERE id=?", price, total, sourceItem);
+        BomItemSaveRequest copied = line(component, "2");
+        copied.setPrice(price);
+        copied.setTotal(total);
+        copied.setCopiedFromBomItemId(sourceItem);
+
+        paste.paste(new BomPasteRequest(BomPasteRequest.Mode.APPEND,
+                List.of(new BomPasteRequest.Target(target, null)), List.of(copied)));
+
+        BomItemView result = bom.list(target).getFirst();
+        assertNotEquals(sourceItem, result.getId());
+        assertEquals(0, price.compareTo(result.getPrice()));
+        assertEquals(0, total.compareTo(result.getTotal()));
+        assertEquals(0, total.compareTo(bom.list(source).getFirst().getTotal()));
+
+        assertThrows(ApiException.class, () -> bom.create(other, copied));
+        assertThrows(ApiException.class, () -> bom.update(target, result.getId(), copied));
+        copied.setTotal(new BigDecimal("-0.24"));
+        assertThrows(ApiException.class, () -> paste.paste(new BomPasteRequest(BomPasteRequest.Mode.APPEND,
+                List.of(new BomPasteRequest.Target(other, null)), List.of(copied))));
+        assertTrue(bom.list(other).isEmpty());
+        assertEquals(0, total.compareTo(bom.list(target).getFirst().getTotal()));
+    }
+
     @Test void overwritePreservesActiveIdentityButCannotReviveAnAutomaticallyRetiredComponent(){
         UUID target=goods("disabled-retain"),component=goods("disabled-retained-component"),active=goods("active-retained-component");
         UUID original=edge(target,component,"7",2),retained=edge(target,active,"3",1);

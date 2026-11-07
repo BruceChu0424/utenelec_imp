@@ -392,7 +392,12 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('还缺 500个'), findsOneWidget, reason: '弹簧有 500 现货, 只缺 500');
-    expect(find.text('用在「自制底座」里'), findsOneWidget, reason: '孙层说清用在哪一件里');
+    expect(find.text('直接上层物料'), findsOneWidget);
+    expect(
+      find.descendant(of: _pageLine('m-g1'), matching: find.text('自制底座')),
+      findsOneWidget,
+      reason: '孙层物料在独立表格列中保留直接上层来源',
+    );
 
     final rateField = find.descendant(
       of: find.byKey(
@@ -833,7 +838,12 @@ void main() {
 
     tester
         .widget<Checkbox>(
-          find.byKey(ValueKey('child-shortage-check-${_groupKey('m-c2')}')),
+          find
+              .descendant(
+                of: _pageLine('m-c2'),
+                matching: find.byType(Checkbox),
+              )
+              .first,
         )
         .onChanged!(false);
     await tester.pump();
@@ -963,7 +973,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('车间在本页打开之后才催：轮询时在催清单自动刷新, 提示条变红', (tester) async {
+  testWidgets('车间在本页打开后才催：手动刷新重取在催清单', (tester) async {
     final store = <Map<String, dynamic>>[];
     await _pump(tester, urgeStore: store);
     expect(find.byKey(const Key('child-shortage-banner-urgent')), findsNothing);
@@ -980,8 +990,10 @@ void main() {
       'gapSummary': '委外件的子料 600个',
       'shortMaterialLineIds': ['m-pc'],
     });
-    // 45 秒一轮的静默轮询：分析没变也照样重取在催清单。
     await tester.pump(const Duration(seconds: 46));
+    await _drain(tester);
+    expect(find.byKey(const Key('child-shortage-banner-urgent')), findsNothing);
+    await tester.tap(find.byKey(const Key('material-analysis-refresh')));
     await _drain(tester);
     expect(
       find.byKey(const Key('child-shortage-banner-urgent')),

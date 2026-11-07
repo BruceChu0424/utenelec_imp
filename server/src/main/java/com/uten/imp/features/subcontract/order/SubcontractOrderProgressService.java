@@ -4,6 +4,7 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.security.CommercialPriceVisibility;
 import com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy;
+import com.uten.imp.features.subcontract.draw.SubcontractDrawAllocator;
 import com.uten.imp.features.subcontract.draw.SubcontractOpenSupplySources;
 import com.uten.imp.features.subcontract.order.dto.OrderProgressContracts;
 import com.uten.imp.features.subcontract.order.dto.OrderProgressContracts.IssueDoc;
@@ -371,7 +372,7 @@ public class SubcontractOrderProgressService {
 
     /**
      * 逐种物料(冻结计划行)：需求 = 我方需发量 needed_i = LEAST(planned_i, f_i(Qm))(ADR-143 §三.4a，
-     * 财务批准的委外商自带料那部分不用我方物料)；本次可领 = MAX(0, f_i(complete + drawable) − covered_i)，
+     * 财务批准的委外商自带料那部分不用我方物料)；本次可领与任务详情共用领料计算，
      * 还缺 = MAX(0, needed_i − covered_i − avail_i)；已关闭领料的行不再可领、不计还缺。
      * 还缺的开放行带在途供应来源，与委外任务详情物料表同一读口({@link SubcontractOpenSupplySources})。
      */
@@ -381,11 +382,8 @@ public class SubcontractOrderProgressService {
                        facts.color_id, c.name, facts.unit_id, u.name,
                        facts.bom_unit_qty, facts.needed_qty, facts.sent_qty, facts.pending_qty,
                        facts.available_qty, facts.usable_qty, facts.line_open,
-                       CASE WHEN facts.line_open THEN GREATEST(0,
-                                fn_subcontract_draw_f(summary.drawn_qty + summary.pending_qty
-                                        + summary.drawable_qty, facts.bom_unit_qty)
-                                - facts.sent_qty - facts.pending_qty)
-                            ELSE 0 END AS drawable_qty,
+                       CASE WHEN facts.line_open AND summary.drawable_qty>0
+                            THEN summary.complete_qty + summary.drawable_qty END AS target_qty,
                        CASE WHEN facts.line_open THEN GREATEST(0,
                                 facts.needed_qty - facts.sent_qty - facts.pending_qty
                                 - facts.available_qty)
@@ -403,7 +401,9 @@ public class SubcontractOrderProgressService {
             BigDecimal sent = bd(row[11]);
             BigDecimal pending = bd(row[12]);
             boolean open = Boolean.TRUE.equals(row[15]);
-            BigDecimal drawable = bd(row[16]);
+            BigDecimal drawable = row[16] == null ? BigDecimal.ZERO
+                    : SubcontractDrawAllocator.drawMaterialQty(bd(row[16]), bd(row[9]), sent.add(pending),
+                            bd(row[13]), required, true);
             BigDecimal shortQty = bd(row[17]);
             List<SupplySource> sources = open && shortQty.signum() > 0
                     ? SubcontractOpenSupplySources.read(em, (UUID) row[2], (UUID) row[5]).stream()
@@ -483,16 +483,16 @@ public class SubcontractOrderProgressService {
             drawState = OrderProgressContracts.NODE_PENDING;
             drawDetail = "领料计划尚未生成";
         } else {
-            StringBuilder detail = new StringBuilder("已领 " + plain(summary.drawnQty()) + "/"
+            StringBuilder detail = new StringBuilder("已领折算 " + plain(summary.drawnQty()) + "/"
                     + plain(orderQty) + unit);
             if (summary.pendingQty().signum() > 0) {
-                detail.append("，待仓库发 ").append(plain(summary.pendingQty())).append(unit);
+                detail.append("，待发折算 ").append(plain(summary.pendingQty())).append(unit);
             }
             if (summary.drawableQty().signum() > 0) {
-                detail.append("，可领 ").append(plain(summary.drawableQty())).append(unit);
+                detail.append("，预算可领 ").append(plain(summary.drawableQty())).append(unit);
             }
             if (summary.shortQty().signum() > 0 && summary.anyOpen()) {
-                detail.append("，还缺 ").append(plain(summary.shortQty())).append(unit);
+                detail.append("，备料预算缺口 ").append(plain(summary.shortQty())).append(unit);
             }
             if (!summary.anyOpen() && !summary.allSent()) {
                 detail.append("，已结束领料");

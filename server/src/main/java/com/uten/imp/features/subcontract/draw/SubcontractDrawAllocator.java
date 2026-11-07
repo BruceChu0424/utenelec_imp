@@ -28,9 +28,10 @@ import java.util.UUID;
  * 第二轮才动公共库存(该仓剩余公共可用多的在前, 同量按仓编码)。同一仓两轮拿到的合成一段,
  * 每个(任务, 计划行, 仓)只出一段; 占用时 reserveDraft 也是先接收该仓专属批次再占公共, 口径一致。
  */
-final class SubcontractDrawAllocator {
+public final class SubcontractDrawAllocator {
 
     private static final int SCALE = 4;
+    private static final BigDecimal MATERIAL_TICK = BigDecimal.ONE.movePointLeft(SCALE);
 
     private SubcontractDrawAllocator() {
     }
@@ -42,7 +43,7 @@ final class SubcontractDrawAllocator {
 
     /** 一条冻结计划行: covered = 已发净量 + 待仓库发。 */
     record Line(UUID planItemId, UUID goodsId, UUID colorId, BigDecimal perUnitQty,
-                BigDecimal plannedQty, BigDecimal coveredQty, List<Stock> stocks) {
+                BigDecimal neededQty, BigDecimal coveredQty, List<Stock> stocks) {
     }
 
     /** 一个委外任务(订货明细); materialShareQty = Qm(套数封顶); requestedQty 为 null 时取本批可领。 */
@@ -103,11 +104,7 @@ final class SubcontractDrawAllocator {
             BigDecimal complete = completeQty(materialShareQty, task.lines());
             BigDecimal reach = materialShareQty;
             for (Line line : task.lines()) {
-                BigDecimal avail = BigDecimal.ZERO;
-                for (Stock stock : line.stocks()) {
-                    avail = avail.add(positive(stock.exactQty()))
-                            .add(publicLeft(publicUsed, line, stock));
-                }
+                BigDecimal avail = available(publicUsed, line);
                 reach = reach.min(sets(line.coveredQty().add(avail), line.perUnitQty()));
             }
             BigDecimal batch = task.lines().isEmpty()
@@ -121,8 +118,8 @@ final class SubcontractDrawAllocator {
             }
             BigDecimal target = complete.add(qty);
             for (Line line : task.lines()) {
-                BigDecimal need = materialQty(target, line.perUnitQty())
-                        .subtract(line.coveredQty()).max(BigDecimal.ZERO);
+                BigDecimal need = drawMaterialQty(target, line.perUnitQty(), line.coveredQty(),
+                        available(publicUsed, line), line.neededQty(), qty.compareTo(batch) == 0);
                 if (need.signum() == 0) {
                     continue;
                 }
@@ -181,6 +178,29 @@ final class SubcontractDrawAllocator {
             }
         }
         return new Result(results, slices);
+    }
+
+    public static BigDecimal drawMaterialQty(BigDecimal target, BigDecimal perUnitQty, BigDecimal covered,
+                                            BigDecimal available, BigDecimal limit, boolean maximumDraw) {
+        BigDecimal requested = materialQty(target, perUnitQty).subtract(covered).max(BigDecimal.ZERO);
+        // A maximum draw can recover the single grid tick lost by sets() then materialQty().
+        // Preserve the exact source quantity only when it fits the frozen allowance and grid.
+        if (maximumDraw && requested.signum() > 0
+                && available.subtract(requested).compareTo(MATERIAL_TICK) == 0
+                && materialQty(target.add(MATERIAL_TICK), perUnitQty).compareTo(covered.add(available)) > 0
+                && available.stripTrailingZeros().scale() <= SCALE
+                && covered.add(available).compareTo(limit) <= 0) {
+            return available;
+        }
+        return requested;
+    }
+
+    private static BigDecimal available(Map<PublicKey, BigDecimal> used, Line line) {
+        BigDecimal available = BigDecimal.ZERO;
+        for (Stock stock : line.stocks()) {
+            available = available.add(positive(stock.exactQty())).add(publicLeft(used, line, stock));
+        }
+        return available;
     }
 
     private static BigDecimal publicLeft(Map<PublicKey, BigDecimal> used, Line line, Stock stock) {

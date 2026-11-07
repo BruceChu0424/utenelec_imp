@@ -10,6 +10,11 @@ import 'platform_table_models.dart';
 import 'procurement_review_column_layout.dart';
 import 'goods_column_layout.dart';
 
+const inboundArrivalRegistrationTableKey =
+    'features.warehouse.pages.inbound_arrival_registration_page.InboundArrivalRegistrationPageState._buildForm.1';
+const finishedArrivalRegistrationTableKey =
+    'features.warehouse.pages.production_finished_arrival_registration_page.ProductionFinishedArrivalRegistrationPageState._buildForm.1';
+
 String platformTableFingerprint(String value) =>
     sha256.convert(utf8.encode(value)).toString().substring(0, 32);
 
@@ -128,6 +133,11 @@ class PlatformTableLayoutNotifier
     'finance.procurement.review.subcontract.items',
   }.contains(tableKey);
   bool get _instantInventory => instantInventoryTableKeys.contains(tableKey);
+  bool get _arrivalRegistration => const {
+    inboundArrivalRegistrationTableKey,
+    finishedArrivalRegistrationTableKey,
+  }.contains(tableKey);
+  bool get _dailyReportItems => tableKey == 'production.daily.items';
   bool get _financeEntry => const {
     'finance.receipt.entry.v1',
     'finance.payment.entry.v1',
@@ -161,7 +171,11 @@ class PlatformTableLayoutNotifier
         ? salesOrderColumnLayoutVersion
         : _instantInventory
         ? instantInventoryColumnLayoutVersion
-        : _financeReview || _materialPreparation || _financeEntry
+        : _financeReview ||
+              _materialPreparation ||
+              _financeEntry ||
+              _arrivalRegistration ||
+              _dailyReportItems
         ? 1
         : 0,
   );
@@ -230,6 +244,27 @@ class PlatformTableLayoutNotifier
         widths: Map.of(decoded.widths)..remove('handle'),
         layoutVersion: 1,
       );
+    }
+    if ((_arrivalRegistration || _dailyReportItems) &&
+        decoded.layoutVersion < 1) {
+      final order = List<String>.of(decoded.order);
+      final pinned = Set<String>.of(decoded.pinned);
+      if (_dailyReportItems &&
+          !order.contains('weight') &&
+          order.contains('qty')) {
+        order.insert(order.indexOf('qty') + 1, 'weight');
+      }
+      if (order.contains('weight')) {
+        order.remove('unitWeight');
+        order.insert(order.indexOf('weight') + 1, 'unitWeight');
+        if (pinned.contains('weight') &&
+            !decoded.hidden.contains('unitWeight')) {
+          pinned.add('unitWeight');
+        } else {
+          pinned.remove('unitWeight');
+        }
+      }
+      return decoded.copyWith(order: order, pinned: pinned, layoutVersion: 1);
     }
     if (tableKey != purchaseOrderItemsTableKey ||
         decoded.layoutVersion >= purchaseOrderColumnLayoutVersion) {

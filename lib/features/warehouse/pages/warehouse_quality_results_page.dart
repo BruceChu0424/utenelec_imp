@@ -118,6 +118,9 @@ class _WarehouseQualityResultsPageState
   final _readingRows =
       MasterDataTableRowsController<WarehouseQualityResultTask>();
   @override
+  Future<void> onReadViewResumed() => _load(1);
+
+  @override
   void scopedPagedReadOwnerChanged() {
     ++_requestVersion;
     if (!mounted) return;

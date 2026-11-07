@@ -284,6 +284,40 @@ String dailyReportCreateRequestHash(Map<String, dynamic> body) {
     for (final field in ['boxes', 'perBoxQty', 'weight']) {
       _add(parts, '$path.$field', line[field], 'DECIMAL');
     }
+    if (line['weightEntryMode'] != null) {
+      _add(parts, '$path.weightEntryMode', line['weightEntryMode']);
+    }
+    if (line['unitWeightKgExact'] != null) {
+      _add(
+        parts,
+        '$path.unitWeightKgExact',
+        line['unitWeightKgExact'],
+        'DECIMAL',
+      );
+    }
+    if (line['weightQuantityScale'] != null) {
+      _add(
+        parts,
+        '$path.weightQuantityScale',
+        line['weightQuantityScale'],
+        'NUMBER',
+      );
+    }
+    if (line['weightQuantityRounding'] != null) {
+      _add(
+        parts,
+        '$path.weightQuantityRounding',
+        line['weightQuantityRounding'],
+      );
+    }
+    if (line['weightSourceReportItemId'] != null) {
+      _add(
+        parts,
+        '$path.weightSourceReportItemId',
+        line['weightSourceReportItemId'],
+        'UUID',
+      );
+    }
     for (final field in ['clientName', 'sourceDocNo', 'remark']) {
       _add(parts, '$path.$field', line[field]);
     }

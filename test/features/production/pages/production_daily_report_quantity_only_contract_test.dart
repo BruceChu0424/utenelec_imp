@@ -28,11 +28,15 @@ void main() {
         expect(source, isNot(contains("label: '金额'")));
       }
       expect(detail, contains("label: '完工申报量'"));
-      // 2026-09-12 用户口径「新建生产日报不显示重量」：编辑表格不再有实际重量
-      // 列（行模型与提交透传保留——历史单回填、既有单 weight 字段不受影响）；
-      // 详情页只读回看重量不变。
-      expect(columns, isNot(contains("key: 'weight'")));
-      expect(edit, contains("'weight': ?weight"));
+      expect(columns, contains("key: 'weight'"));
+      expect(columns, contains("label: '实称总重量'"));
+      expect(columns, contains("key: 'unitWeight'"));
+      expect(columns, contains("label: '单重'"));
+      expect(columns, contains('controller: row.weight'));
+      expect(columns, contains('row.reportUnitWeightKg'));
+      expect(columns, contains('hintText: reference'));
+      expect(edit, contains("'weightEntryMode'"));
+      expect(edit, contains("'unitWeightKgExact'"));
       expect(detail, contains('生成仓库到货登记任务'));
       expect(detail, contains('仓库登记成品仓与库位并送品质部检查'));
       expect(detail, isNot(contains('并生成成品入库草稿')));

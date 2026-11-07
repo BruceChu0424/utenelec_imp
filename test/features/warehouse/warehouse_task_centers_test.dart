@@ -204,6 +204,24 @@ void main() {
     },
   );
 
+  for (final (section, source, firstGrant, newGrant) in const [
+    ('purchase', 'PURCHASE', Perm.stockDocView, Perm.warehouseInboundView),
+    ('finishedIn', 'FINISHED', Perm.warehouseInboundView, Perm.stockDocView),
+  ]) {
+    testWidgets('直接进入 $source 后授权恢复会读取指定小类', (tester) async {
+      final api = _FakeApi();
+      final page = WarehouseInboundTaskCenterPage(initialSection: section);
+      await tester.pumpWidget(app(page, {firstGrant}, api: api));
+      await tester.pumpAndSettle();
+      expect(api.taskListQueries, isEmpty);
+      await tester.pumpWidget(app(page, {firstGrant, newGrant}, api: api));
+      await tester.pumpAndSettle();
+      expect(api.taskListQueries, hasLength(1));
+      _expectTaskQuery(api, direction: 'inbound', source: source);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   for (final entry in <(String, Widget, Set<String>)>[
     ('root', const WarehouseTaskCenterPage(), {Perm.stockDocView}),
     (

@@ -297,6 +297,28 @@ class DailyReportOutputAllocationServiceTest {
         assertTrue(pieces.stream().allMatch(piece->piece.getWeight().signum()>=0));
         assertEquals(0,original.getWeight().compareTo(pieces.stream().map(DailyReportItemLine::getWeight).reduce(BigDecimal.ZERO,BigDecimal::add)));
     }
+
+    @Test void newMeasuredWeightSlicesRequireAnExplicitStorableChoiceAndKeepTheTotal() throws Exception {
+        var original = new DailyReportItemLine();
+        original.setQty(new BigDecimal("4"));
+        original.setWeight(new BigDecimal("0.0002"));
+        original.setWeightEntryMode("WEIGHT");
+        var pieces = new ArrayList<DailyReportItemLine>();
+        for (int index = 0; index < 4; index++) {
+            var item = new DailyReportItemLine();
+            item.setQty(BigDecimal.ONE);
+            pieces.add(item);
+        }
+        assertThrows(com.uten.imp.common.finance.BusinessPrecisionRequiredException.class,
+                () -> DailyReportOutputAllocationService.distributeWeight(original, pieces));
+        try (var ignored = com.uten.imp.common.finance.BusinessPrecisionContext.use(java.util.Map.of(
+                "quantity.slice", new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(4, "HALF_UP")))) {
+            DailyReportOutputAllocationService.distributeWeight(original, pieces);
+        }
+        assertTrue(pieces.stream().allMatch(piece -> piece.getWeight().signum() >= 0 && piece.getWeight().scale() <= 4));
+        assertEquals(0, original.getWeight().compareTo(pieces.stream().map(DailyReportItemLine::getWeight)
+                .reduce(BigDecimal.ZERO, BigDecimal::add)));
+    }
     @Test void theWholeDefectOfOneEntryStaysOnItsFirstSliceOnly() {
         var input=new DailyReportItemLine();input.setQty(new BigDecimal("10"));input.setDefectQty(new BigDecimal("3"));
         var pieces=new java.util.ArrayList<DailyReportItemLine>();

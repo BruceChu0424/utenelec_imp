@@ -151,8 +151,8 @@ class SubcontractChainNoticeTest {
         for (UUID recipient : List.of(drawerId, viewAllId)) {
             verify(notice).publishForUser(
                     eq(recipient),
-                    eq("委外可领料：WO-2026-001 委外成品 可领 40 个"),
-                    argThat(content -> content.contains("现在可领 40 个")
+                    eq("委外可领料：WO-2026-001 委外成品 预算可领 40 个"),
+                    argThat(content -> content.contains("按备料预算可领 40 个")
                             && content.contains("委外任务中心「领料」")
                             && !content.contains("DRAW")),
                     eq(ChainNoticeService.TYPE_TASK),

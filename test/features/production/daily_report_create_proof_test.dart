@@ -70,6 +70,32 @@ void main() {
   }
 
   test(
+    'weighed quantity proof preserves exact decimals and the chosen rounding',
+    () {
+      final body = Map<String, dynamic>.from(_vectors().first['body'] as Map);
+      final first = (body['items'] as List).first as Map<String, dynamic>;
+      first.addAll({
+        'weight': '0.1850',
+        'weightEntryMode': 'WEIGHT',
+        'unitWeightKgExact': '0.0050',
+        'weightQuantityScale': 4,
+        'weightQuantityRounding': 'HALF_UP',
+      });
+      final frozen = _command(body);
+      first['weight'] = 0.185;
+      first['unitWeightKgExact'] = 0.005;
+      expect(dailyReportCreateRequestHash(body), frozen.requestHash);
+      expect(dailyReportCreateFullPayloadHash(body), frozen.fullPayloadHash);
+      first['weightQuantityRounding'] = 'DOWN';
+      expect(dailyReportCreateRequestHash(body), isNot(frozen.requestHash));
+      expect(
+        FrozenDailyReportCreate.restore(frozen.toJson()).bodyJson,
+        frozen.bodyJson,
+      );
+    },
+  );
+
+  test(
     'freeze keeps the actual nested request while editor and request copies change',
     () {
       final body = Map<String, dynamic>.from(_vectors().first['body'] as Map);

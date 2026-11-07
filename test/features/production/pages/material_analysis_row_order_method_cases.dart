@@ -17,6 +17,127 @@ Future<void> _chooseRowOrderMethod(
 }
 
 void materialRowOrderMethodCases() {
+  testWidgets('全选下单：顶层10000回执后按最新需求下达子件，分段显示进度', (tester) async {
+    void applyRequirements(Map<String, dynamic> data, double output) {
+      for (final (id, qty) in [('m-6', output), ('m-2', output / 2)]) {
+        final covered = id == 'm-6' ? 1000 : 0;
+        _fixtureMaterial(data, id).addAll({
+          'requiredQty': qty,
+          'shortageQty': qty - covered,
+          'additionalSupplyRecommendedQty': qty - covered,
+          'planningUncoveredQty': qty - covered,
+          'netShortageQty': qty - covered,
+        });
+      }
+    }
+
+    await _pump(
+      tester,
+      permissions: {
+        ..._overSupplyPermissions,
+        Perm.productionMaterialAnalysisGenerate,
+      },
+      overSupply: true,
+      delayMs: 900,
+      defaultWorkshops: _workshopDefaultsFor(const ['g-m-root', 'g-m-6']),
+      mutate: (data) {
+        (data['allowedActions'] as List).add('GENERATE_PLAN');
+        (data['flatMaterials'] as List).removeWhere(
+          (raw) => !{
+            'm-root',
+            'm-6',
+            'm-2',
+          }.contains((raw as Map)['materialLineId']),
+        );
+        for (final (id, qty, stock, ratio) in [
+          ('m-root', 1000, 0, 1),
+          ('m-6', 1000, 1000, 1),
+          ('m-2', 500, 0, 0.5),
+        ]) {
+          _fixtureMaterial(data, id).addAll({
+            'requiredQty': qty,
+            'sourceRequiredQty': qty,
+            'allocatedAvailableQty': stock,
+            'availableQty': stock,
+            'shortageQty': qty - stock,
+            'additionalSupplyRecommendedQty': qty - stock,
+            'netShortageQty': qty - stock,
+            'bomQty': ratio,
+            'perProductQty': ratio,
+            'parentPerProductQty': 1,
+          });
+        }
+        return data;
+      },
+      preview: (data, typed) {
+        applyRequirements(data, typed['m-root'] ?? 1000);
+        return data;
+      },
+      afterWrite: (data) {
+        final product = (data['products'] as List).first as Map;
+        applyRequirements(data, _num(product['issuedPlanQty']));
+        return data;
+      },
+    );
+    await tester.enterText(_orderQty('m-root'), '10000');
+    await _settlePreview(tester);
+    await _chooseRowOrderMethod(tester, _orderMethod('m-6'), extra: true);
+    final selectAll = find
+        .byKey(const Key('master-data-table-select-all'))
+        .first;
+    if (tester.widget<Checkbox>(selectAll).value != true) {
+      await tester.tap(selectAll);
+      await _settlePreview(tester);
+    }
+    expect(_qtyText(tester, _orderQty('m-6')), '10000');
+    expect(_qtyText(tester, _orderQty('m-2')), '5000');
+
+    final submit = tester
+        .widget<UtenButton>(
+          find.byKey(const Key('material-analysis-submit-orders')),
+        )
+        .onPressed!;
+    submit();
+    submit();
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsOneWidget);
+    expect(find.textContaining('共 3 种，合计 25000'), findsOneWidget);
+    await tester.tap(find.widgetWithText(UtenButton, '确认下单'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(
+      find.byKey(const Key('material-analysis-plan-submission-progress')),
+      findsOneWidget,
+    );
+    await tester.pump(const Duration(milliseconds: 550));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(
+      find.byKey(const Key('material-analysis-action-busy')),
+      findsOneWidget,
+    );
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pumpAndSettle();
+
+    final root = _records(_submits().single.body!['lines']).single;
+    expect(root['qty'], 10000);
+    final groups = _records(_aggregateSubmits().single.body!['groups']);
+    expect(
+      {for (final group in groups) group['route']: group['qty']},
+      {'MAKE': '10000', 'BUY': '5000'},
+    );
+    expect(
+      {
+        for (final group in groups)
+          ...(group['sourceRequestedQtyByMaterialLineId'] as Map),
+      },
+      {'m-6': '10000', 'm-2': '5000'},
+    );
+    expect(
+      find.byKey(const Key('material-analysis-action-busy')),
+      findsNothing,
+    );
+  });
+
   testWidgets('逐行下单方式：父改量即时更新子件且预览保留精确数量与原需求基线', (tester) async {
     await _pump(
       tester,

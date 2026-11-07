@@ -76,6 +76,9 @@ class _WarehouseDocumentHistoryViewState
   final _readingRows =
       MasterDataTableRowsController<WarehouseDocumentHistorySummary>();
   @override
+  Future<void> onReadViewResumed() => _load(1);
+
+  @override
   void scopedPagedReadOwnerChanged() {
     if (!mounted) return;
     ++_requestVersion;

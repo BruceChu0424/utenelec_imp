@@ -61,6 +61,9 @@ mixin ScopedPagedReadViewMixin<W extends ConsumerStatefulWidget>
       if (previous != next && mounted) {
         invalidateScopedPageReads();
         _scopedOwnerChanged();
+        if (_scopedPageReads.isNotEmpty) {
+          readViewActivity.requestResume(_scopedPageReads.keys);
+        }
       }
     });
   }

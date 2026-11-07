@@ -320,7 +320,7 @@ public class GoodsBomPasteService {
             try {
                 GoodsBomItem prior = importColumns == null || targets.isEmpty() ? copiedSource
                         : kept.getOrDefault(targets.getFirst().getId(), Map.of()).get(component.getId());
-                preparedRow(item, component, prior, importColumns, colorNames);
+                preparedRow(item, component, prior, copiedSource, importColumns, colorNames);
             } catch (ApiException invalid) {
                 if (!GoodsPeriodicMaterialRules.isConfirmation(invalid)) {
                     problems.add(problem(line, invalid.getMessage()));
@@ -391,8 +391,9 @@ public class GoodsBomPasteService {
             for (var entry : lineComponents.entrySet()) {
                 GoodsBomItem existingRow = same.get(entry.getValue().getId());
                 BomItemSaveRequest item = items.get(entry.getKey());
-                GoodsBomItem prior = existingRow == null ? provenSources.get(entry.getValue().getId()) : existingRow;
-                GoodsBomItem row = preparedRow(item, entry.getValue(), prior, importColumns, colorNames);
+                GoodsBomItem copiedSource = provenSources.get(entry.getValue().getId());
+                GoodsBomItem prior = existingRow == null ? copiedSource : existingRow;
+                GoodsBomItem row = preparedRow(item, entry.getValue(), prior, copiedSource, importColumns, colorNames);
                 row.setGoods(target);
                 row.setSortOrder(merge && existingRow != null ? existingRow.getSortOrder() : ++sort);
                 if (existingRow == null) {
@@ -433,13 +434,13 @@ public class GoodsBomPasteService {
     }
 
     private GoodsBomItem preparedRow(BomItemSaveRequest item, Goods component, GoodsBomItem prior,
-                                      Set<String> importColumns, Map<UUID, String> colorNames) {
+                                      GoodsBomItem copiedSource, Set<String> importColumns, Map<UUID, String> colorNames) {
         GoodsBomItem row = new GoodsBomItem();
         if (prior != null && (importColumns != null || item.getCopiedFromBomItemId() != null)) {
             row.takeContentFrom(prior);
             row.setComponent(prior.getComponent());
         }
-        bom.apply(item, row, component);
+        bom.apply(item, row, component, importColumns == null ? copiedSource : null);
         if (prior != null && item.getCopiedFromBomItemId() != null) {
             // A redacted/missing price is not permission to replace the source
             // edge's historical null/precision with the component's current price.

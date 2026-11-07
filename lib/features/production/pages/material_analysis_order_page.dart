@@ -27,7 +27,6 @@ class _PreparationOrderPageState extends State<_PreparationOrderPage> {
   @override
   void initState() {
     super.initState();
-    _host._preparationReadContexts.add(context);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _host.setState(() {
@@ -41,13 +40,8 @@ class _PreparationOrderPageState extends State<_PreparationOrderPage> {
         }
         _host._draftBudget.invalidate();
       });
+      unawaited(_host._reloadAnalysisSilently(protectUnsavedEditing: true));
     });
-  }
-
-  @override
-  void dispose() {
-    _host._preparationReadContexts.remove(context);
-    super.dispose();
   }
 
   List<_MaterialTableRow> _rows() {
@@ -172,6 +166,13 @@ class _PreparationOrderPageState extends State<_PreparationOrderPage> {
           appBar: UtenAppBar(
             title: _host._l10n.materialPreparationReview,
             showPagePermissionAction: false,
+            actions: [
+              UtenRefreshButton(
+                key: const Key('material-preparation-order-refresh'),
+                enabled: !_submitting && !_host._busy,
+                onRefresh: () => _host._refreshPreparationFacts(context),
+              ),
+            ],
             // 提交期间按钮常驻但空转（PopScope 已挡返回；传 null 会回落默认
             // 返回），leading 槽恒为 UtenBackButton，标题不再左右跳变。
             leading: UtenBackButton(
@@ -264,23 +265,30 @@ class _PreparationOrderPageState extends State<_PreparationOrderPage> {
                   ],
                 ),
               ),
-              ValueListenableBuilder<String?>(
-                valueListenable: _host.bucketActionBusyMessage,
-                builder: (context, message, _) => message == null
-                    ? const SizedBox.shrink()
-                    : Positioned.fill(
-                        child: message.startsWith('正在生成')
-                            ? _host._planSubmissionOverlay(theme)
-                            : UtenBusyOverlay(
-                                semanticsKey: const Key(
-                                  'material-analysis-action-progress',
-                                ),
-                                title: message,
-                                description: _host._actionBusyDescription(
-                                  message,
-                                ),
-                              ),
-                      ),
+              AnimatedBuilder(
+                animation: Listenable.merge([
+                  _host.bucketActionBusyMessage,
+                  _host.planSubmissionProgress,
+                ]),
+                builder: (context, _) {
+                  if (_host.planSubmissionProgress.value) {
+                    return Positioned.fill(
+                      child: _host._planSubmissionOverlay(theme),
+                    );
+                  }
+                  final message = _host.bucketActionBusyMessage.value;
+                  return message == null
+                      ? const SizedBox.shrink()
+                      : Positioned.fill(
+                          child: UtenBusyOverlay(
+                            semanticsKey: const Key(
+                              'material-analysis-action-progress',
+                            ),
+                            title: message,
+                            description: _host._actionBusyDescription(message),
+                          ),
+                        );
+                },
               ),
             ],
           ),

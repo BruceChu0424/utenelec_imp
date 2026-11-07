@@ -80,6 +80,9 @@ class _WarehouseArrivalExceptionsViewState
   final _readingRows =
       MasterDataTableRowsController<ProcurementArrivalException>();
   @override
+  Future<void> onReadViewResumed() => _load(1);
+
+  @override
   void scopedPagedReadOwnerChanged() {
     ++_requestVersion;
     if (!mounted) return;

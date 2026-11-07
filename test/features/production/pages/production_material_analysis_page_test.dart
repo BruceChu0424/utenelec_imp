@@ -420,35 +420,37 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets(
-    'read-only roles continue polling and stop when the page closes',
-    (tester) async {
-      var reads = 0;
-      await _pumpPage(
-        tester,
-        size: const Size(1400, 1000),
-        permissions: const {Perm.productionMaterialAnalysisRoute},
-        allowedActions: const ['CONFIRM_ROUTES'],
-        analysisId: 'analysis-1',
-        seeded: false,
-        responseOverride: (request) {
-          if (request.method == 'GET' &&
-              request.path == '/production/material-analyses/analysis-1') {
-            reads++;
-          }
-          return null;
-        },
-      );
-      expect(reads, 1);
-      await tester.pump(const Duration(seconds: 45));
-      await tester.pumpAndSettle();
-      expect(reads, 2);
-      await tester.pumpWidget(const SizedBox.shrink());
-      await tester.pump(const Duration(seconds: 45));
-      expect(reads, 2);
-      expect(tester.takeException(), isNull);
-    },
-  );
+  testWidgets('read-only roles refresh on demand and do not poll', (
+    tester,
+  ) async {
+    var reads = 0;
+    await _pumpPage(
+      tester,
+      size: const Size(1400, 1000),
+      permissions: const {Perm.productionMaterialAnalysisRoute},
+      allowedActions: const ['CONFIRM_ROUTES'],
+      analysisId: 'analysis-1',
+      seeded: false,
+      responseOverride: (request) {
+        if (request.method == 'GET' &&
+            request.path == '/production/material-analyses/analysis-1') {
+          reads++;
+        }
+        return null;
+      },
+    );
+    expect(reads, 1);
+    await tester.pump(const Duration(seconds: 45));
+    await tester.pumpAndSettle();
+    expect(reads, 1);
+    await tester.tap(find.byKey(const Key('material-analysis-refresh')));
+    await tester.pumpAndSettle();
+    expect(reads, 2);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(seconds: 45));
+    expect(reads, 2);
+    expect(tester.takeException(), isNull);
+  });
   testWidgets(
     'sales candidate remainder projection retains the canonical paged read binding',
     (tester) async {
@@ -492,7 +494,7 @@ void main() {
   );
 
   testWidgets(
-    'a retained hidden page does not poll BOM diagnostics until visible',
+    'a retained page does not poll BOM diagnostics when hidden or visible',
     (tester) async {
       final visible = ValueNotifier<bool>(true);
       addTearDown(visible.dispose);
@@ -542,13 +544,13 @@ void main() {
         harness.requests
             .where((request) => request.path.endsWith('/bom-diagnostics'))
             .length,
-        before + 1,
+        before,
       );
       expect(tester.takeException(), isNull);
     },
   );
   testWidgets(
-    'visible pending BOM issues recheck automatically without writing another analysis',
+    'manual recheck recovers pending BOM issues without writing another analysis',
     (tester) async {
       var repaired = false;
       final harness = await _pumpPage(
@@ -586,6 +588,12 @@ void main() {
           .length;
       repaired = true;
       await tester.pump(const Duration(seconds: 46));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('material-analysis-bom-issues')),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('重新检查'));
       await tester.pumpAndSettle();
       expect(
         find.byKey(const Key('material-analysis-bom-issues')),
@@ -2359,9 +2367,10 @@ void main() {
   );
 
   testWidgets(
-    'idle persisted analysis polls latest read-only snapshot after 45 seconds',
+    'persisted analysis reads once on bucket entry and refreshes on request',
     (tester) async {
       var detailReads = 0;
+      var ready = false;
       final harness = await _pumpPage(
         tester,
         size: const Size(1200, 900),
@@ -2382,28 +2391,30 @@ void main() {
           final firstProduct =
               (json['products']! as List<dynamic>).first
                   as Map<String, dynamic>;
-          firstProduct['readyNowQty'] = detailReads == 1 ? 0 : 7;
-          firstProduct['canSchedule'] = detailReads != 1;
-          firstProduct['maxSchedulableQty'] = detailReads == 1 ? 0 : 7;
-          firstProduct['readinessRatio'] = detailReads == 1 ? 0 : 0.7;
-          json['version'] = detailReads;
-          json['fingerprint'] = (detailReads == 1 ? 'a' : 'b') * 64;
+          firstProduct['readyNowQty'] = ready ? 7 : 0;
+          firstProduct['canSchedule'] = ready;
+          firstProduct['maxSchedulableQty'] = ready ? 7 : 0;
+          firstProduct['readinessRatio'] = ready ? 0.7 : 0;
+          json['version'] = ready ? 2 : 1;
+          json['fingerprint'] = (ready ? 'b' : 'a') * 64;
           return json;
         },
       );
 
       expect(detailReads, 1);
-      // 2026-09-04 改版口径：产品阻断徽标/门禁图标/勾选框随卡片下线，改为在
-      // 「暂不可安排」桶断言产品被阻断，轮询后在「可安排生产」桶断言解除。
       await _openBucketDetail(tester, 'workshop', stateFilter: '需处理');
-      // 产品列展示「名称（编码）」。
       expect(find.text('测试产品'), findsOneWidget);
-      await _closeBucketDetail(tester);
-
+      expect(detailReads, 2);
+      ready = true;
       await tester.pump(const Duration(seconds: 45));
       await tester.pumpAndSettle();
-
       expect(detailReads, 2);
+      await tester.tap(
+        find.byKey(const Key('material-preparation-bucket-refresh')),
+      );
+      await tester.pumpAndSettle();
+      expect(detailReads, 3);
+      await _closeBucketDetail(tester);
       await _openBucketDetail(tester, 'workshop');
       expect(find.text('测试产品'), findsOneWidget);
       expect(find.text('第二测试产品'), findsOneWidget);
@@ -2518,6 +2529,7 @@ void main() {
     'return refresh applies dynamic plan projection with unchanged CAS header',
     (tester) async {
       var detailReads = 0;
+      var stage = 1;
       await _pumpPage(
         tester,
         size: const Size(1200, 900),
@@ -2546,7 +2558,7 @@ void main() {
             ..['canSchedule'] = false
             ..['maxSchedulableQty'] = 0
             ..['readinessRatio'] = 1
-            ..['planExecutionStatus'] = switch (detailReads) {
+            ..['planExecutionStatus'] = switch (stage) {
               1 => 'IN_PROGRESS',
               2 => 'READY',
               _ => 'COMPLETED',
@@ -2554,12 +2566,12 @@ void main() {
             ..['latestPlanId'] = 'plan-running-1'
             ..['latestPlanNo'] = 'PP-20260828-001'
             ..['planExecutionPlannedQty'] = 10
-            ..['planExecutionInboundQty'] = switch (detailReads) {
+            ..['planExecutionInboundQty'] = switch (stage) {
               1 => 1,
               2 => 3,
               _ => 10,
             }
-            ..['planExecutionProgressRatio'] = switch (detailReads) {
+            ..['planExecutionProgressRatio'] = switch (stage) {
               1 => 0.1,
               2 => 0.3,
               _ => 1.0,
@@ -2570,8 +2582,6 @@ void main() {
         },
       );
 
-      // 2026-09-04 改版口径：执行进度面板迁移到「已转生产」桶详情行；桶页
-      // 打开期间宿主页轮询/恢复刷新暂停，因此每次返回前先关掉详情页。
       // 版本与指纹不变（CAS 头不变），仅动态执行投影变化也必须重建页面。
       Future<String> readTransferredStage() async {
         await _openBucketDetail(tester, 'workshop', stateFilter: '已下达');
@@ -2590,13 +2600,13 @@ void main() {
       final container = ProviderScope.containerOf(
         tester.element(find.byType(ProductionMaterialAnalysisPage)),
       );
+      var before = detailReads;
       container.read(pageResumeProvider.notifier).state = (
         location: '/warehouse/DRAW/draw-1',
         tick: 1,
       );
       await tester.pump();
-      // 在领料单上办了出库(网络层推进本端写修订号, ADR-108)再返回才重拉;
-      // 纯查看后返回交给页面自己的轮询。
+      stage = 2;
       container.read(dataWriteRevisionProvider.notifier).state++;
       container.read(pageResumeProvider.notifier).state = (
         location: '/production/material-analysis',
@@ -2604,14 +2614,16 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(detailReads, 2);
+      expect(detailReads, before + 1);
       expect(await readTransferredStage(), '物料齐套 · 可开工');
 
+      before = detailReads;
       container.read(pageResumeProvider.notifier).state = (
         location: '/warehouse/DRAW/draw-1',
         tick: 3,
       );
       await tester.pump();
+      stage = 3;
       container.read(dataWriteRevisionProvider.notifier).state++;
       container.read(pageResumeProvider.notifier).state = (
         location: '/production/material-analysis',
@@ -2619,7 +2631,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(detailReads, 3);
+      expect(detailReads, before + 1);
       await _openBucketDetail(tester, 'workshop', stateFilter: '已下达');
       expect(find.text('测试产品'), findsNothing, reason: '已完工产品退出进行中清单');
       await _closeBucketDetail(tester);

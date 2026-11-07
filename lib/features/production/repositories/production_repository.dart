@@ -53,6 +53,7 @@ import '../models/material_aggregate_order.dart';
 import '../models/production_plan.dart';
 import '../models/production_work_card.dart';
 import '../models/reportable_plan_line.dart';
+import '../models/production_exact_quantity.dart';
 
 // ───────────────────────── 生产计划单 ─────────────────────────
 
@@ -2362,6 +2363,22 @@ class ProductionDailyReportRepository {
       },
     );
     return PagedResult.fromJsonResponsive(json, ReportablePlanLine.fromJson);
+  }
+
+  Future<Map<String, String?>> dailyReportWeightBases(
+    List<String> goodsIds,
+  ) async {
+    final rows = await api.postList(
+      '/production/daily-reports/weight-bases',
+      body: {'goodsIds': goodsIds},
+    );
+    return {
+      for (final row in rows)
+        if (row['goodsId'] is String)
+          row['goodsId'] as String: productionExactQuantityText(
+            row['goodsUnitWeightKgExact'],
+          ),
+    };
   }
 
   Future<ProductionDailyReportDetail> create(

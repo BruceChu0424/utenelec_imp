@@ -92,6 +92,11 @@ class _FinanceAuditCenterPageState
           'HISTORY',
         }.contains(widget.initialProcurementStatus);
     if (_history && _segment != 'history') _historySegment = _segment;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        ref.read(badgeSummaryProvider.notifier).refreshOnPageEntry();
+      }
+    });
   }
 
   Future<void> _refresh() async {

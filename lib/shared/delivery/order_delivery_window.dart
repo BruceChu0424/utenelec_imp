@@ -810,6 +810,14 @@ class _OrderDeliveryPlanCellState extends State<OrderDeliveryPlanCell> {
 
   @override
   Widget build(BuildContext context) => TextButton(
+    style: widget.readOnly && !UtenControlMetrics.usesTouchTargets(context)
+        ? TextButton.styleFrom(
+            minimumSize: Size.zero,
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
+            textStyle: Theme.of(context).textTheme.bodyMedium,
+          )
+        : null,
     onPressed:
         widget.goodsId?.isNotEmpty == true ||
             widget.readOnly &&
@@ -817,6 +825,10 @@ class _OrderDeliveryPlanCellState extends State<OrderDeliveryPlanCell> {
                 widget.orderItemId != null
         ? _open
         : null,
-    child: Text(orderDeliveryLabel(widget.plan)),
+    child: Text(
+      orderDeliveryLabel(widget.plan),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+    ),
   );
 }

@@ -120,6 +120,9 @@ class _WarehouseSalesOutboundWorkbenchState
   int get _refreshPage => _tableRows.visiblePage ?? (_result?.page ?? 1);
 
   @override
+  Future<void> onReadViewResumed() => _load(1);
+
+  @override
   void scopedPagedReadOwnerChanged() {
     ++_requestVersion;
     if (!mounted) return;

@@ -119,6 +119,9 @@ class _SubcontractShortDeliveryPageState
       widget.repository ?? ref.read(subcontractShortDeliveryRepositoryProvider);
 
   @override
+  Future<void> onReadViewResumed() => _load(page: 1);
+
+  @override
   void scopedPagedReadOwnerChanged() {
     if (!mounted) return;
     setState(() {

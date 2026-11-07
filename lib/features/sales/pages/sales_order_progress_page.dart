@@ -158,6 +158,9 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
   int get _refreshPage => _tableRows.visiblePage ?? (_result?.page ?? _page);
 
   @override
+  Future<void> onReadViewResumed() => _load(1);
+
+  @override
   void scopedPagedReadOwnerChanged() {
     ++_requestVersion;
     if (!mounted) return;

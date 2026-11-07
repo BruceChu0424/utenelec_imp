@@ -23,6 +23,7 @@ import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/formatters/quantity_display.dart';
+import '../../../core/network/business_precision.dart';
 import '../../../shared/widgets/uten_tree_table_cell.dart';
 import '../models/daily_output_allocation.dart'
     show outputAllocationQuantityText;
@@ -58,6 +59,16 @@ class DailyMaterialInput {
 /// 也可以同时展开。
 enum DailyRowGroup { allocations, materials }
 
+typedef DailyReportWeightConfirmation = ({
+  String quantity,
+  String totalKg,
+  String unitWeightKg,
+  BusinessPrecisionChoice? precision,
+});
+
+const dailyReportWeightScale = 4;
+final dailyReportWeightMaxUnits = BigInt.from(10).pow(18) - BigInt.one;
+
 /// 生产日报明细行。货品用 ValueNotifier（点选后单元格自动刷新）；
 /// 完工量是生产声明；颜色为来源任务冻结值，单位作数量输入框后缀。
 class DailyGridRow extends EditableGridRow {
@@ -85,6 +96,23 @@ class DailyGridRow extends EditableGridRow {
   /// 不良数(ADR-129)：只记录，不影响完工申报量、库存与产量分流；空 = 0。
   final TextEditingController defectQty = TextEditingController();
   final TextEditingController weight = TextEditingController(); // 本行实际总重量
+  final goodsUnitWeightKg = ValueNotifier<String?>(null);
+  final weightConfirmation = ValueNotifier<DailyReportWeightConfirmation?>(
+    null,
+  );
+  String? get measuredWeightKg =>
+      productionExactQuantityText(weight.text, scale: dailyReportWeightScale);
+  String? get reportUnitWeightKg => financeExactTrimmed(
+    financeExactMultiplyTexts([goodsUnitWeightKg.value, unitRateText]),
+  );
+  bool get weightConfirmationCurrent {
+    final confirmed = weightConfirmation.value;
+    return confirmed == null ||
+        (confirmed.quantity == productionExactQuantityText(qty.text) &&
+            confirmed.totalKg == measuredWeightKg &&
+            confirmed.unitWeightKg == goodsUnitWeightKg.value);
+  }
+
   final TextEditingController planNo = TextEditingController(); // 关联生产计划号
   final TextEditingController remark = TextEditingController();
   final TextEditingController overLimitReason = TextEditingController();
@@ -444,6 +472,10 @@ class DailyGridRow extends EditableGridRow {
     // 固定追加批次的复制行不带来源，不良数也无处可记。
     c.defectQty.text = hasFixedSupplement ? '' : defectQty.text;
     c.weight.text = weight.text;
+    c.goodsUnitWeightKg.value = goodsUnitWeightKg.value;
+    c.weightConfirmation.value = hasFixedSupplement
+        ? null
+        : weightConfirmation.value;
     c.planNo.text = planNo.text;
     c.remark.text = remark.text;
     c.overLimitReason.text = hasFixedSupplement ? '' : overLimitReason.text;
@@ -497,6 +529,8 @@ class DailyGridRow extends EditableGridRow {
     overLimitReason.dispose();
     defectQty.dispose();
     weight.dispose();
+    goodsUnitWeightKg.dispose();
+    weightConfirmation.dispose();
     planNo.dispose();
     remark.dispose();
     if (_ownsMaterialInput) _materialInput.dispose();
@@ -834,6 +868,7 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
   Future<void> Function(DailyGridRow row)? onOpenSource,
   required Map<String, String> colorEntries,
   required Map<String, String> unitEntries,
+  Future<void> Function(DailyGridRow row)? onConvertWeight,
   bool standaloneDetails = false,
   bool Function(DailyGridRow row)? hasSubRows,
   bool Function(DailyGridRow row)? isLastSubRow,
@@ -1079,7 +1114,10 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
                 valueListenable: row.unitIdNotifier,
                 builder: (context, unitId, _) => TextField(
                   controller: row.qty,
-                  onChanged: (_) => row.qtyNeedsVerification = false,
+                  onChanged: (_) {
+                    row.qtyNeedsVerification = false;
+                    row.weightConfirmation.value = null;
+                  },
                   readOnly: row.hasFixedSupplement,
                   keyboardType: const TextInputType.numberWithOptions(
                     decimal: true,
@@ -1096,6 +1134,89 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
                   ),
                 ),
               ),
+            ),
+    ),
+    EditableGridColumn<DailyGridRow>(
+      key: 'weight',
+      label: '实称总重量',
+      width: 192,
+      numeric: true,
+      exactValueOf: (row) => row.isSubRow ? null : row.weight.text,
+      exactListenableOf: (row) => row.weight,
+      headerInfo: '按千克记录实称净重。点击本列的换算按钮，可按货品资料单重换算完工申报量并确认。',
+      cellBuilder: (context, row) => row.isSubRow
+          ? const SizedBox.shrink()
+          : ListenableBuilder(
+              listenable: Listenable.merge([
+                row.qty,
+                row.weight,
+                row.goodsUnitWeightKg,
+                row.weightConfirmation,
+              ]),
+              builder: (context, _) {
+                final reference = financeExactTrimmed(
+                  financeExactMultiplyTexts([
+                    productionExactQuantityText(row.qty.text),
+                    row.reportUnitWeightKg,
+                  ]),
+                );
+                final hasWeight = row.weight.text.trim().isNotEmpty;
+                return TextField(
+                  key: ValueKey('daily-report-weight-${row.localRowId}'),
+                  controller: row.weight,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  inputFormatters: [productionQuantityInputFormatter],
+                  decoration: UtenInputDecoration(
+                    InputDecoration(
+                      isDense: true,
+                      hintText: reference == null || hasWeight
+                          ? '实称重量'
+                          : '参考 $reference',
+                      suffixText: 'kg',
+                      suffixIcon:
+                          onConvertWeight == null || row.hasFixedSupplement
+                          ? null
+                          : IconButton(
+                              key: ValueKey(
+                                'daily-report-convert-weight-${row.localRowId}',
+                              ),
+                              tooltip: row.goodsUnitWeightKg.value == null
+                                  ? '请先在货品资料维护单重'
+                                  : '按实称总重量换算完工申报量',
+                              icon: const Icon(
+                                Icons.calculate_outlined,
+                                size: 18,
+                              ),
+                              onPressed:
+                                  hasWeight &&
+                                      row.goodsUnitWeightKg.value != null
+                                  ? () => onConvertWeight(row)
+                                  : null,
+                            ),
+                    ),
+                  ),
+                );
+              },
+            ),
+    ),
+    EditableGridColumn<DailyGridRow>(
+      key: 'unitWeight',
+      label: '单重',
+      width: 138,
+      numeric: true,
+      headerInfo: '取自货品资料，以基本单位计。使用其他单位报工时，换算还会应用报工单位的换算率。',
+      exactValueOf: (row) => row.isSubRow ? null : row.goodsUnitWeightKg.value,
+      exactListenableOf: (row) => row.goodsUnitWeightKg,
+      cellBuilder: (_, row) => row.isSubRow
+          ? const SizedBox.shrink()
+          : ValueListenableBuilder(
+              valueListenable: row.goodsUnitWeightKg,
+              builder: (_, _, _) {
+                final weight = row.goodsUnitWeightKg.value;
+                return Text(weight == null ? '—' : '$weight kg');
+              },
             ),
     ),
     EditableGridColumn<DailyGridRow>(
@@ -1493,8 +1614,6 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
         );
       },
     ),
-    // 2026-09-12 用户口径「新建生产日报不显示重量」：实际重量列撤出编辑表格
-    //（行模型 weight 字段保留，回填/提交透传既有单不受影响；详情页只读回看不变）。
     EditableGridColumn<DailyGridRow>(
       key: 'planNo',
       label: '来源子任务',
@@ -1530,6 +1649,9 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
                                 .where((v) => v.isNotEmpty)
                                 .join(' · '),
                         child: TextButton.icon(
+                          style: TextButton.styleFrom(
+                            alignment: AlignmentDirectional.centerStart,
+                          ),
                           onPressed: canOpen
                               ? () => onOpenSource(row)
                               : linked

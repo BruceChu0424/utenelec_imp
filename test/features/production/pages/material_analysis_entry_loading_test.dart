@@ -1,4 +1,4 @@
-// 物料分析准备页的进页等待与轮询 (2026-09-27 用户口径「一进物料分析准备页就弹窗
+// 物料分析准备页的进页等待与手动刷新 (2026-09-27 用户口径「一进物料分析准备页就弹窗
 // 加载，会卡一会」，ADR-102 2026-09-27 修订)。
 //
 // 这里守住的契约：
@@ -6,7 +6,7 @@
 //     库存…」，不闪空候选表、不挂「联合分析」按钮；算完直接显示物料表，服务端
 //     回包里的自动确认条数轻提示，页面零 PUT /routes、零全屏遮罩；
 //  2. 打开已有分析：读取期间是页头骨架 + 一行说明，不是整页正中一个转圈；
-//  3. 45 秒轮询：有人勾着行 (未提交编辑) 时，版本 / 指纹 / 动态投影都没变就
+//  3. 有人勾着行 (未提交编辑) 时，版本 / 指纹 / 动态投影都没变就
 //     不重新套用 (不补发附带读取、不补发汇总预览)；真变了才按保留输入的口径
 //     套用，勾选照旧保留;
 //  4. 打开已有分析、服务端报还有能自动确认的行：静默刷新一次，只有一行小提示、
@@ -725,7 +725,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('轮询：勾着行时数据没变不重新套用，变了才套用且保留勾选', (tester) async {
+  testWidgets('停留期间不刷新，手动刷新只套用有变化的快照且保留勾选', (tester) async {
     final server = _Server();
     await _pumpPage(
       tester,
@@ -756,13 +756,20 @@ void main() {
       '/production/material-analyses/analysis-1',
     );
 
-    // 45 秒一轮：服务端数据没变。
     await tester.pump(const Duration(seconds: 46));
     await tester.pumpAndSettle();
     expect(
       server.count('/production/material-analyses/analysis-1'),
+      detailReads,
+    );
+    expect(server.count('/workshop-urges'), 1);
+    final refresh = find.byKey(const Key('material-analysis-refresh'));
+    await tester.tap(refresh);
+    await tester.pumpAndSettle();
+    expect(
+      server.count('/production/material-analyses/analysis-1'),
       detailReads + 1,
-      reason: '轮询照常读详情',
+      reason: '手动刷新读取详情',
     );
     expect(
       server.count('/future-transfers'),
@@ -771,7 +778,7 @@ void main() {
     );
     expect(server.count('/aggregate-orders/preview'), 0);
     expect(find.text('已选 2 项'), findsOneWidget);
-    // 车间在催不依赖快照，照常随轮询重取。
+    // 即使分析没变，手动刷新仍重取车间在催。
     expect(server.count('/workshop-urges'), 2);
 
     // 服务端真变了 (别人办了到货：可用量变化, 版本进位)。
@@ -786,7 +793,7 @@ void main() {
           {...row, 'availableQty': 300, 'allocatedAvailableQty': 300},
       ],
     };
-    await tester.pump(const Duration(seconds: 46));
+    await tester.tap(refresh);
     await tester.pumpAndSettle();
     expect(server.count('/future-transfers'), 2, reason: '变了才套用');
     expect(find.text('已选 2 项'), findsOneWidget, reason: '套用时保留未提交的勾选');

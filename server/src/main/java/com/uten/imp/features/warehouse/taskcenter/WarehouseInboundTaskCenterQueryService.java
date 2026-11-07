@@ -88,9 +88,10 @@ public class WarehouseInboundTaskCenterQueryService {
         var owner = stockAccess.nativeReadScope("document.maker_id", "stockOwners", rights.owner());
         var access = new WarehouseInboundTaskCenterSql.Access(rights.inbound(),rights.purchaseHistory(),
                 rights.subcontractHistory(),rights.quality(),rights.stock(),rights.canReadProduction(),owner.predicate(),
-                WarehouseWorkshopMaterialTaskProjection.scope(rights.workshop(),materialScopes,scope));
+                WarehouseWorkshopMaterialTaskProjection.scope(
+                        rights.workshop() && (source.equals("ALL") || source.equals("RETURN")), materialScopes, scope));
         var headers = WarehouseTaskHeaderQuery.criteria(com.uten.imp.common.report.NativeReportFacetProducer.selectedScope(filter.columnSearch(),List.of("billNo")), true);
-        String base = WarehouseInboundTaskCenterSql.base(access,scope,filter.keyword(),headers.predicate());
+        String base = WarehouseInboundTaskCenterSql.base(access,scope,filter.keyword(),headers.predicate(),source);
         int page = Math.max(1,filter.page());
         int size = Math.max(1,Math.min(100,filter.size()));
         MapSqlParameterSource parameters = new MapSqlParameterSource()

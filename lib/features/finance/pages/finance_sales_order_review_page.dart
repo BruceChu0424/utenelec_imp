@@ -602,12 +602,15 @@ class _FinanceSalesOrderReviewPageState
         },
       );
       if (!mounted) return;
+      if (!widget.managerReview && formDraftIdentityIsCurrent) {
+        ref.read(badgeSummaryProvider.notifier).refreshSalesOrderFinance();
+      }
       await finishReviewDraft();
       if (!mounted || !formDraftIdentityIsCurrent) return;
       context.appSuccess(
         widget.managerReview ? '负责人审核已通过，已转交财务' : '已确认通过，计划部已可接手排产',
       );
-      refreshBadges(ref);
+      if (widget.managerReview) refreshBadges(ref);
       _closeAfterDecision();
     } on ApiException catch (e) {
       if (mounted) {
@@ -781,10 +784,13 @@ class _FinanceSalesOrderReviewPageState
         },
       );
       if (!mounted) return;
+      if (!widget.managerReview && formDraftIdentityIsCurrent) {
+        ref.read(badgeSummaryProvider.notifier).refreshSalesOrderFinance();
+      }
       await finishReviewDraft();
       if (!mounted || !formDraftIdentityIsCurrent) return;
       context.appSuccess('已驳回，归属销售将收到修正通知');
-      refreshBadges(ref);
+      if (widget.managerReview) refreshBadges(ref);
       _closeAfterDecision();
     } on ApiException catch (e) {
       if (mounted) {

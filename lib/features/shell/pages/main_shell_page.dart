@@ -227,6 +227,12 @@ class _MainShellPageState extends ConsumerState<MainShellPage>
     if (_activeRailPath != location) {
       _activeRailPath = location;
       _pageRailCollapsed = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _activeRailPath != location) return;
+        ref
+            .read(badgeSummaryProvider.notifier)
+            .setWorkbenchVisible(location == RouteName.dashboard);
+      });
     }
 
     // 「返回即刷新」(ADR-108)：回到工作台时按需重拉——期间本端写过数据或距上次
@@ -253,7 +259,7 @@ class _MainShellPageState extends ConsumerState<MainShellPage>
     ];
     final unread = ref.watch(unreadNoticeCountProvider);
     // 导航「工作台」Tab 角标 = 全部模块卡角标之和(服务端徽章汇总算好；外壳常驻
-    // watch 让汇总在整个已登录会话里保持轮询，页面隐藏时它自己暂停)。
+    // watch 保留当前会话快照，轮询只在工作台可见时进行)。
     final workbenchTodos = ref.watch(badgeTotalTodoProvider);
 
     final tabIndex = _exactTabIndex(location);

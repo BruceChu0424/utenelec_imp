@@ -20,6 +20,7 @@ bool isReadOnlyPost(String path) =>
       '/finance/statement-documents/preview',
       '/finance/statement-documents/settlement-preview',
       '/finance/statement-documents/reviews/query',
+      '/production/daily-reports/weight-bases',
     }.contains(_apiPath(Uri.parse(path).path));
 
 /// Reviewed query handlers only. Body-carried contact/bank terms remain out of

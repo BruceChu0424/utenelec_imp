@@ -1,16 +1,18 @@
 // ADR-143 §4.1 委外任务详情：物料表 + 已提交未发的领料 + 服务端放行的动作。
 //
-// 物料表逐种直属物料显示 每套用量 / 需求 / 已发外 / 待仓库发 / 仓库可用 / 本次可领 /
-// 还缺 / 供应来源 / 状态；数量都是服务端算好的结果。底部动作只看服务端
+// 物料表逐种直属物料显示 每套备料上限 / 备料上限 / 已发外 / 待仓库发 / 仓库可用 /
+// 本次可领 / 备料差额 / 供应来源 / 状态。数量都是服务端算好的结果。底部动作只看服务端
 // allowedActions：撤回未发领料(WITHDRAW)、结束领料(CLOSE，必填原因)；
 // 「去领料」只在本行 canDraw 且账号可提交领料时出现。
 // 仓库拣货改过的领料单标「仓库已改过」：委外这边不能撤回，要不发请仓库「退回委外(不发)」。
 import 'package:flutter/material.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -95,6 +97,7 @@ class _SubcontractDrawTaskDetailDialogState
   void _close() => Navigator.of(context).pop();
 
   Future<void> _withdraw(SubcontractDrawTaskDetail detail) async {
+    if (_busy != null) return;
     // 仓库已改过的领料单委外这边撤不回，确认文案只列能撤回的。
     final drafts = detail.pendingDrafts
         .where((draft) => !draft.edited)
@@ -112,11 +115,21 @@ class _SubcontractDrawTaskDetailDialogState
                   '占用的库存会退回，并通知仓库。',
       ),
     );
-    if (confirmed != true || !mounted) return;
+    if (confirmed != true || !mounted || _busy != null) return;
     setState(() => _busy = '正在撤回领料');
     try {
-      final result = await widget.gateway.withdraw([widget.orderItemId]);
-      widget.onChanged?.call();
+      final result = await UtenBusyOverlay.run(
+        context,
+        title: '正在撤回领料',
+        action: () async {
+          final withdrawn = await widget.gateway.withdraw([widget.orderItemId]);
+          if (mounted) {
+            widget.onChanged?.call();
+            await _load();
+          }
+          return withdrawn;
+        },
+      );
       if (!mounted) return;
       context.appSuccess(
         result.withdrawnIssueIds.isEmpty && result.removedLineCount == 0
@@ -124,7 +137,6 @@ class _SubcontractDrawTaskDetailDialogState
             : '已撤回 ${result.removedLineCount} 行未发领料',
       );
       setState(() => _busy = null);
-      await _load();
     } catch (error) {
       if (!mounted) return;
       setState(() => _busy = null);
@@ -133,16 +145,21 @@ class _SubcontractDrawTaskDetailDialogState
   }
 
   Future<void> _closeDraw(SubcontractDrawTaskDetail detail) async {
+    if (_busy != null) return;
     final reason = await showDialog<String>(
       context: context,
       builder: (_) => _CloseDrawReasonDialog(task: detail.task),
     );
-    if (reason == null || !mounted) return;
+    if (reason == null || !mounted || _busy != null) return;
     setState(() => _busy = '正在结束领料');
     try {
-      await widget.gateway.close(widget.orderItemId, reason);
-      widget.onChanged?.call();
+      await UtenBusyOverlay.run(
+        context,
+        title: '正在结束领料',
+        action: () => widget.gateway.close(widget.orderItemId, reason),
+      );
       if (!mounted) return;
+      widget.onChanged?.call();
       context.appSuccess('已结束领料，本任务不再发外');
       Navigator.of(context).pop();
     } catch (error) {
@@ -195,11 +212,15 @@ class _SubcontractDrawTaskDetailDialogState
                       message: '无法加载委外任务详情',
                       description: _error,
                       actionLabel: '重试',
-                      onAction: _load,
+                      onAction: () => UtenBusyOverlay.run(
+                        context,
+                        title: '正在加载委外任务详情',
+                        action: _load,
+                      ),
                     ),
                   )
                 else if (detail != null) ...[
-                  _facts(theme, detail.task),
+                  _facts(theme, detail),
                   const SizedBox(height: UtenSpacing.s12),
                   Flexible(
                     child: SizedBox(
@@ -210,23 +231,6 @@ class _SubcontractDrawTaskDetailDialogState
                   if (detail.pendingDrafts.isNotEmpty) ...[
                     const SizedBox(height: UtenSpacing.s12),
                     _pendingDrafts(theme, detail.pendingDrafts),
-                  ],
-                  if (_busy != null) ...[
-                    const SizedBox(height: UtenSpacing.s8),
-                    Semantics(
-                      liveRegion: true,
-                      child: Row(
-                        children: [
-                          const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          ),
-                          const SizedBox(width: UtenSpacing.s8),
-                          Text(_busy!),
-                        ],
-                      ),
-                    ),
                   ],
                   const SizedBox(height: UtenSpacing.s12),
                   _actions(detail),
@@ -239,7 +243,8 @@ class _SubcontractDrawTaskDetailDialogState
     );
   }
 
-  Widget _facts(ThemeData theme, SubcontractDrawTaskRow task) {
+  Widget _facts(ThemeData theme, SubcontractDrawTaskDetail detail) {
+    final task = detail.task;
     final unit = task.unitName.trim();
     String qty(Object? value) =>
         '${subcontractDrawQty(value)}${unit.isEmpty ? '' : ' $unit'}';
@@ -250,10 +255,12 @@ class _SubcontractDrawTaskDetailDialogState
       ('编号', _label(task.goodsCode)),
       ('颜色', _label(task.colorName)),
       ('订货数量', qty(task.quantityText('orderQty'))),
-      ('已领', qty(task.quantityText('drawnQty'))),
-      ('待仓库发', qty(task.quantityText('pendingQty'))),
-      ('可领', qty(task.quantityText('drawableQty'))),
-      ('还缺', qty(task.quantityText('shortQty'))),
+      (subcontractDrawnBudgetLabel, qty(task.quantityText('drawnQty'))),
+      (subcontractPendingBudgetLabel, qty(task.quantityText('pendingQty'))),
+      (subcontractDrawableBudgetLabel, qty(task.quantityText('drawableQty'))),
+      (subcontractShortBudgetLabel, qty(task.quantityText('shortQty'))),
+      if (detail.baseMaterialCoverageQtyText case final coverage?)
+        ('基础用料可覆盖', qty(coverage)),
       if ((task.deliverDate ?? '').isNotEmpty) ('交期', task.deliverDate!),
     ];
     return Wrap(
@@ -261,21 +268,36 @@ class _SubcontractDrawTaskDetailDialogState
       runSpacing: UtenSpacing.s4,
       children: [
         for (final (label, value) in entries)
-          Text.rich(
-            TextSpan(
-              text: '$label ',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-              children: [
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text.rich(
                 TextSpan(
-                  text: value,
+                  text: '$label ',
                   style: theme.textTheme.bodySmall?.copyWith(
-                    fontWeight: FontWeight.w700,
+                    color: theme.colorScheme.onSurfaceVariant,
                   ),
+                  children: [
+                    TextSpan(
+                      text: value,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+              if (label == '基础用料可覆盖')
+                const UtenFieldHintIcon(
+                  dense: true,
+                  info: '把已发外可用、待发和可领材料按基础单耗折算，最多显示本方应供套数。回厂数量由仓库实际清点。',
+                ),
+              if (label == subcontractDrawableBudgetLabel)
+                const UtenFieldHintIcon(
+                  dense: true,
+                  info: subcontractDrawBudgetHint,
+                ),
+            ],
           ),
       ],
     );

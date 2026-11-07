@@ -116,6 +116,42 @@ void main() {
     expect(groups[3].qty, 20);
   });
 
+  test(
+    'editing restores exact measured slices and never sums partial evidence',
+    () {
+      final first = {
+        ..._item('demand', batch: 'batch', qty: 6, weight: 1),
+        'weightExact': '1.0000000000000001',
+        'unitWeightKgExact': '0.125',
+        'weightEntryMode': 'WEIGHT',
+        'weightQuantityScale': 4,
+        'weightQuantityRounding': 'HALF_UP',
+      };
+      final second = _item('public', batch: 'batch', qty: 4, public: true);
+      final group = _detail(
+        [
+          first,
+          {...second, 'weightExact': '0.0000000000000002'},
+        ],
+        [
+          ('batch', ['demand', 'public'], 10),
+        ],
+      ).inputGroups.single;
+      expect(group.weightText, '1.0000000000000003');
+      expect(group.source.unitWeightKgExact, '0.125');
+      expect(group.source.weightEntryMode, 'WEIGHT');
+      expect(group.source.weightQuantityScale, 4);
+      expect(group.source.weightQuantityRounding, 'HALF_UP');
+      final partial = _detail(
+        [first, second],
+        [
+          ('batch', ['demand', 'public'], 10),
+        ],
+      ).inputGroups.single;
+      expect(partial.weightText, isNull);
+    },
+  );
+
   test('a server batch naming an unknown slice is never editable', () {
     expect(
       () => _detail(

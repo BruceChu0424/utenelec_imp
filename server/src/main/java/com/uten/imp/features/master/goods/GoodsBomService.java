@@ -17,6 +17,7 @@ import com.uten.imp.features.master.lifecycle.MasterObjectAccess;
 import com.uten.imp.features.master.unit.Unit;
 import com.uten.imp.features.master.unit.UnitRepository;
 import com.uten.imp.security.AuthUser;
+import com.uten.imp.security.CurrentAuthorityGuard;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import lombok.RequiredArgsConstructor;
@@ -634,6 +635,11 @@ public class GoodsBomService {
 
     /** 把请求写到组装行上并校验(用量/阶段/计量方式/硬门槛/颜色/供应商)；粘贴命令逐行复用。 */
     void apply(BomItemSaveRequest req, GoodsBomItem r, Goods component) {
+        apply(req, r, component, null);
+    }
+
+    /** verifiedCopySource is supplied only by paste after locking and checking the live source edge. */
+    void apply(BomItemSaveRequest req, GoodsBomItem r, Goods component, GoodsBomItem verifiedCopySource) {
         r.setPendingAmount(null);r.setPendingPeriodic(null);
         Goods previousComponent = r.getComponent();
         BigDecimal previousQty=r.getQty(), previousPrice=r.getPrice(), previousTotal=r.getTotal();
@@ -658,7 +664,6 @@ public class GoodsBomService {
             price = componentChanged || previousComponent==null ? defaultPrice : previousPrice;
         }
         if (price != null) com.uten.imp.common.util.FinancialExactAmount.unitPrice(price,"组装单价");
-        r.setPrice(price);
         // 金额：显式传入优先，否则 qty*price 兜底（无单价则 null）
         BigDecimal total = req.getTotal();
         boolean preserveTotal=previousComponent!=null && previousComponent.getId().equals(component.getId())
@@ -678,6 +683,21 @@ public class GoodsBomService {
             r.setPendingAmount(new GoodsBomItem.PendingAmount(qty,price,original,total,selected));
         }
         if (total != null) com.uten.imp.common.util.FinancialExactAmount.require(total,"组装金额");
+        boolean explicitSigned = negative(req.getPrice()) || negative(req.getTotal());
+        if (explicitSigned || negative(price) || negative(total)) {
+            boolean canReadAmounts = !explicitSigned || CurrentAuthorityGuard.hasAll("goods:price:view")
+                    || CurrentAuthorityGuard.hasAll("goods:price:edit");
+            boolean exactCopy = verifiedCopySource != null && canReadAmounts
+                    && sameNumeric(verifiedCopySource.getQty(), qty)
+                    && sameNumeric(verifiedCopySource.getPrice(), price)
+                    && sameNumeric(verifiedCopySource.getTotal(), total);
+            boolean unchangedHistoricalAmounts = !explicitSigned && preserveTotal && sameNumeric(previousTotal, total);
+            if (!exactCopy && !unchangedHistoricalAmounts) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                        "组装单价和金额必须大于等于 0。复制历史组件时，请重新读取并核对原数量、单价和金额");
+            }
+        }
+        r.setPrice(price);
         r.setTotal(total);
         if (req.hasColorReference()) {
             if (clearsReference(req.getColorId(), req.getColorLegacyId())) {
@@ -700,6 +720,10 @@ public class GoodsBomService {
             }
         }
         r.setSummary(req.getSummary());
+    }
+
+    private static boolean negative(BigDecimal value) {
+        return value != null && value.signum() < 0;
     }
 
     /** 按单边 (组件按工单领料): 用量、阶段、计量方式、基准产量、尾包、硬门槛照请求校验。 */

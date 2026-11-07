@@ -31,7 +31,9 @@ class ReadViewActivity {
   bool _foregroundActive = true;
   bool _disposed = false;
   static const _defaultSlot = 'read';
+  final _reloadSlots = <Object>{};
   bool get _needsResume =>
+      _reloadSlots.isNotEmpty ||
       _latest.values.any((read) => read.resumeNeeded && read.logicalCurrent);
   bool _resumeScheduled = false;
   int _epoch = 0;
@@ -89,6 +91,14 @@ class ReadViewActivity {
     _scheduleResume();
   }
 
+  /// The owner retired its previous query and needs a new pipeline under the
+  /// current scope. A new foreground read can satisfy the request first.
+  void requestResume(Iterable<Object> slots) {
+    if (_disposed) return;
+    _reloadSlots.addAll(slots);
+    _changed();
+  }
+
   /// A complete-set/export consumer may deliberately outlive a hidden view.
   /// Acquire before awaiting that read; releasing demand never revives a ticket
   /// retired before acquisition. Logical/auth/query fences remain mandatory.
@@ -133,6 +143,7 @@ class ReadViewActivity {
   }) async {
     final activeAtAdmission = _synchronize();
     final inactiveAdmission = _everBound && !activeAtAdmission;
+    if (_foregroundActive) _reloadSlots.remove(slot);
     final allowBootstrap = !_everBound;
     final epoch = _epoch;
     final admission = _ReadActivityAdmission(
@@ -181,7 +192,7 @@ class ReadViewActivity {
         !_active ||
         !_foregroundActive ||
         !_needsResume ||
-        _pending != 0 ||
+        (_pending != 0 && _reloadSlots.isEmpty) ||
         _resumeScheduled ||
         onResume == null) {
       return;
@@ -197,12 +208,13 @@ class ReadViewActivity {
               !_foregroundActive ||
               _disposed ||
               !_needsResume ||
-              _pending != 0) {
+              (_pending != 0 && _reloadSlots.isEmpty)) {
             return;
           }
           for (final read in _latest.values) {
             read.resumeNeeded = false;
           }
+          _reloadSlots.clear();
           Future<void>.sync(onResume!).then<void>(
             (_) {},
             onError: (Object _, StackTrace _) {
@@ -224,6 +236,7 @@ class ReadViewActivity {
     }
     _views.clear();
     _latest.clear();
+    _reloadSlots.clear();
     for (final waiter in _foregroundWaiters) {
       waiter.result.complete(false);
     }

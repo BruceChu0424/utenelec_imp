@@ -1,5 +1,4 @@
 import '../../../shared/paging/read_view_activity.dart';
-import '../../../core/formatters/exact_number_text.dart';
 import '../../../core/router/page_navigation_session.dart';
 import '../../../shared/documents/document_unapproval_action.dart';
 import '../../../shared/documents/document_unapproval.dart';
@@ -49,6 +48,8 @@ import '../../../shared/auth/document_permission_set.dart';
 import '../../../shared/auth/document_scope_capability.dart';
 import '../../../shared/auth/document_scope_write_notice.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/measurement/weight_unit.dart';
+import '../../../shared/measurement/widgets/weight_text.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../../../shared/providers/authenticated_scope_provider.dart';
@@ -1521,11 +1522,22 @@ class _ProductionDailyReportDetailPageState
               ),
               MasterColumnDef(
                 key: 'weight',
-                label: '实际重量',
-                width: 100,
+                label: '实称总重量',
+                width: 150,
                 type: 'number',
+                info: '本条明细保存的实称重量。产出拆分时显示本明细分摊的重量。',
                 value: (it) =>
-                    it.weight?.toExactString(minimumFractionDigits: 4),
+                    formatWeightValue(it.weightText, display: WeightDisplay.kg),
+              ),
+              MasterColumnDef(
+                key: 'unitWeight',
+                label: '单重',
+                width: 132,
+                type: 'number',
+                info: '本张日报保存的货品基础单位单重。旧单缺少记录时显示未知。',
+                value: (it) => it.unitWeightKgExact == null
+                    ? '未知'
+                    : formatUnitWeight(it.unitWeightKgExact),
               ),
               MasterColumnDef(
                 // 2026-09-25 单号列统一：明细全量加载，就地排序+按值筛选。

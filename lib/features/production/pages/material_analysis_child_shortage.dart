@@ -89,7 +89,6 @@ abstract class _MaterialAnalysisChildShortageState
   }
 
   static const int _shortageDepthLimit = 10;
-  static const int _shortageRowLimit = 300;
 
   /// 「补下层物料」页是另一条路由：宿主 setState 不会重建它。宿主每次 setState
   /// 都推一下这个信号，页里的行、数量、车间 / 负责人就与主表同一时刻变。
@@ -154,26 +153,16 @@ abstract class _MaterialAnalysisChildShortageState
     }
   }
 
-  /// 45 秒轮询：分析快照有未提交输入时让路，但车间在催的清单是纯读、不碰输入，照常刷新，
-  /// 车间刚催的红色提示条不必等计划员手动刷新。在催清单登记进公共装载器：本轮轮询若
-  /// 换了快照，就与快照的其余附带读取合成一批、只重画一次 (2026-09-27)。
-  @override
-  Future<void> _pollAnalysisIfIdle() async {
-    if (mounted && ModalRoute.of(context)?.isCurrent == true) {
-      _pendingCompanionReads.add(_CompanionRead.workshopUrges);
-    }
-    await super._pollAnalysisIfIdle();
-    if (mounted) _requestCompanionReads(const []);
-  }
-
-  /// 返回本页(从通知、子页面回来)时连同在催清单一起重取 (同上合批)。
+  /// Revalidate workshop reminders with the detail on return or refresh.
   @override
   Future<void> _reloadAnalysisSilently({
     bool protectUnsavedEditing = false,
+    bool reportError = false,
   }) async {
     _pendingCompanionReads.add(_CompanionRead.workshopUrges);
     await super._reloadAnalysisSilently(
       protectUnsavedEditing: protectUnsavedEditing,
+      reportError: reportError,
     );
     if (mounted) _requestCompanionReads(const []);
   }
@@ -427,7 +416,6 @@ abstract class _MaterialAnalysisChildShortageState
     }
 
     final listed = <String>{};
-    var budget = _shortageRowLimit;
     final roots = <_ChildShortageRoot>[];
     final ordered = seeds.entries.toList()
       ..sort((left, right) {
@@ -450,11 +438,10 @@ abstract class _MaterialAnalysisChildShortageState
         int depth,
         Set<String> ancestors,
       ) {
-        if (depth > _shortageDepthLimit || budget <= 0) return;
+        if (depth > _shortageDepthLimit) return;
         for (final child
             in children[parentId] ??
                 const <ProductionMaterialAnalysisMaterial>[]) {
-          if (budget <= 0) return;
           if (_isNonProductionStage(child.controlStage)) continue;
           if (!ancestors.add(child.materialLineId)) continue;
           final childGroup = indexes.groupsByLine[child.materialLineId];
@@ -468,7 +455,6 @@ abstract class _MaterialAnalysisChildShortageState
                 parentLabel: parentLabel,
               ),
             );
-            budget--;
           }
           if (_childShortageDescends(child, childGroup, analysis)) {
             walk(

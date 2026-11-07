@@ -33,6 +33,7 @@ class ReportablePlanLine {
     this.unitName,
     this.unitRate,
     this.unitRateExact,
+    this.goodsUnitWeightKgExact,
     this.maxReportQtyExact,
     this.plannedQtyExact,
     this.producedQtyExact,
@@ -83,6 +84,7 @@ class ReportablePlanLine {
   final String? unitName;
   final double? unitRate;
   final String? unitRateExact;
+  final String? goodsUnitWeightKgExact;
   final String? maxReportQtyExact;
   final String? plannedQtyExact,
       producedQtyExact,
@@ -195,6 +197,9 @@ class ReportablePlanLine {
     unitRate: _asDouble(json['unitRate']),
     unitRateExact: productionExactQuantityText(
       json['unitRateExact'] ?? json['unitRate'],
+    ),
+    goodsUnitWeightKgExact: productionExactQuantityText(
+      json['goodsUnitWeightKgExact'],
     ),
     maxReportQtyExact: productionExactQuantityText(
       json['maxReportQtyExact'] ?? json['maxReportQty'],

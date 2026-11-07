@@ -269,8 +269,6 @@ abstract class _MaterialAnalysisMaterialTableState
       _aggregateTable.saving ||
       _aggregateTable.submission.running;
   @override
-  bool get _materialAggregateWorking => _aggregateTable.saving;
-  @override
   Widget? _materialAggregateToolbarAction() => _aggregateTable.toolbarAction();
 
   @override
@@ -5142,13 +5140,32 @@ abstract class _MaterialAnalysisMaterialTableState
               _tableWorkerFor(group).id?.isNotEmpty != true),
     );
     if (!missing() || _analysis == null) return;
-    await _tableAssignmentCompletion?.future;
-    if (!mounted || !missing() || _analysis == null) return;
-    await _loadTableAssignmentDefaults(
-      _analysis!,
-      mandatory: true,
-      force: true,
-    );
+    await _withMaterialTablePreparationWait('正在核对生产车间和负责人', () async {
+      await _tableAssignmentCompletion?.future;
+      if (!mounted || !missing() || _analysis == null) return;
+      await _loadTableAssignmentDefaults(
+        _analysis!,
+        mandatory: true,
+        force: true,
+      );
+    });
+  }
+
+  Future<void> _withMaterialTablePreparationWait(
+    String message,
+    Future<void> Function() action,
+  ) async {
+    final sessionScope = _sessionScopeKey();
+    bucketActionBusyMessage.value = message;
+    try {
+      await action();
+    } finally {
+      if (mounted &&
+          _sessionScopeKey() == sessionScope &&
+          bucketActionBusyMessage.value == message) {
+        bucketActionBusyMessage.value = null;
+      }
+    }
   }
 
   @override
@@ -6928,12 +6945,15 @@ abstract class _MaterialAnalysisMaterialTableState
   Future<bool> _submitMaterialTableRows(
     List<_MaterialGroup> groups, {
     bool fromShortagePage = false,
-  }) => _withPreparationSubmissionScope(
-    () => _submitMaterialTableRowsInScope(
-      groups,
-      fromShortagePage: fromShortagePage,
-    ),
-  );
+  }) async {
+    if (_preparationSubmissionActive) return false;
+    return _withPreparationSubmissionScope(
+      () => _submitMaterialTableRowsInScope(
+        groups,
+        fromShortagePage: fromShortagePage,
+      ),
+    );
+  }
 
   Future<bool> _submitMaterialTableRowsInScope(
     List<_MaterialGroup> groups, {
@@ -6961,17 +6981,10 @@ abstract class _MaterialAnalysisMaterialTableState
     if (selectedOutputs.keys.any(
       (id) => _tableGroupHasChildren(indexes.groupsByLine[id]!),
     )) {
-      const message = '正在核对本次下单数量和下层需求';
-      bucketActionBusyMessage.value = message;
-      try {
-        await _refreshTableCascadePreview(forSubmission: true);
-      } finally {
-        if (mounted &&
-            _sessionScopeKey() == sessionScope &&
-            bucketActionBusyMessage.value == message) {
-          bucketActionBusyMessage.value = null;
-        }
-      }
+      await _withMaterialTablePreparationWait(
+        '正在核对本次下单数量和下层需求',
+        () => _refreshTableCascadePreview(forSubmission: true),
+      );
       if (!mounted ||
           !_sameAnalysisSnapshot(analysis, sessionScope) ||
           !_preparationSubmissionStillCurrent) {
@@ -6999,7 +7012,7 @@ abstract class _MaterialAnalysisMaterialTableState
     final pending = <_MaterialGroup, double>{};
     final blocked = <String>[];
     // 勾了但本次没有量的行(追加留 0)：批成功后一并撤勾，否则「下单(N)」一直挂着它，
-    // _hasUnsubmittedMaterialTableInput 永真、45 秒轮询也不再跑。
+    // _hasUnsubmittedMaterialTableInput 会一直把已经处理的选择识别成草稿。
     final skipped = <String>{};
     // 只缺「生产车间/负责人」的行先摘出来：这是当场能修好的拦截——新建档货品没有
     // 学习记忆、主档也没写生产车间，首次下达必缺；原来只把它写进确认框的跳过清单，
@@ -7115,7 +7128,7 @@ abstract class _MaterialAnalysisMaterialTableState
     const haltNote = '已停在这一步，后面的段没有提交';
     // 一段成功后：记下这些行，并把它们从「用户亲手填的数」里摘掉。服务端那一侧是
     // **加进**计划产出量，留着它下一次重算就把刚下达的量再加一遍；而且
-    // _hasUnsubmittedMaterialTableInput 会永远为真，45 秒轮询再也不跑。
+    // _hasUnsubmittedMaterialTableInput 会继续把这些行识别成草稿。
     // 注意两套键空间：done 装的是操作组键，填数那张表按物料行 id 记。
     void settle(List<_MaterialGroup> batch) {
       for (final group in batch) {
@@ -7240,16 +7253,31 @@ abstract class _MaterialAnalysisMaterialTableState
     // 「根产品先出计划」保证，汇总预览/提交也按每段结束后的最新快照核对。
     if (!mounted || !_preparationSubmissionStillCurrent) return false;
     if (!halted && split.merged.isNotEmpty && mounted) {
-      final aggregateOk = await _aggregateTable.submit(
-        split.merged,
-        confirmed: true,
-      );
+      // The root receipt has expanded its actual BOM requirement. Look up the
+      // same selected line identities in that snapshot before seeding drafts.
+      // A pre-command row still carries the old baseline even if the editor
+      // already showed the reviewed cascade. Never guess a replacement source.
+      final currentByLine = _analysisIndexes(_analysis!).groupsByLine;
+      final currentGroups = [
+        for (final group in split.merged)
+          if (currentByLine[group.representative.materialLineId]
+              case final current? when current.key == group.key)
+            current,
+      ];
+      final sameSources = currentGroups.length == split.merged.length;
+      final aggregateOk =
+          sameSources &&
+          await _aggregateTable.submit(currentGroups, confirmed: true);
       steps.add((
         label:
             '同料合并下达(${split.merged.length} 行 → '
             '${split.merged.map((group) => _aggregateKeyOf(group.representative)).toSet().length} 种物料)',
         ok: aggregateOk,
-        note: aggregateOk ? null : '未完成的行保留本次数量，可在当前页面继续下单',
+        note: aggregateOk
+            ? null
+            : sameSources
+            ? '未完成的行保留本次数量，可在当前页面继续下单'
+            : '部分物料的来源已变化，请核对原输入和当前来源后再下单',
       ));
     }
 
@@ -7266,8 +7294,7 @@ abstract class _MaterialAnalysisMaterialTableState
         _tableAutoSelectedKeys.remove(key);
         _tableUserDeselectedKeys.remove(key);
         // 下单格里用户填的数已经落库：把它交还给系统(记成当前系统预填值)，紧接着的
-        // 回填就会换成新快照的值。不交还的话这一格永远算「有未提交的手填」，
-        // 45 秒轮询再也不跑。
+        // 回填就会换成新快照的值，草稿只保留尚未下达的输入。
         final order = _tableOrderQtyControllers[key];
         if (order != null) _tableSeededQtyTexts['ORDER|$key'] = order.text;
       }

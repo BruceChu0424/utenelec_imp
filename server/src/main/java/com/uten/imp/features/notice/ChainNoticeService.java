@@ -2871,10 +2871,10 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
         String orderNo = str(task.get("order_bill_no"));
         String target = subcontractTargetName(task);
         String quantity = qtyWithUnit(drawable, task.get("unit_name"));
-        String title = "委外可领料：" + orderNo + " " + target + " 可领 " + quantity;
-        String content = "委外订货单 " + orderNo + " 的委外件 " + target + " 现在可领 " + quantity
-                + "(直属物料已备齐这部分)。请到委外任务中心「领料」核对后提交领料，提交后由仓库发料；"
-                + "可领数量以领料页实时计算为准，被别的委外任务先领走时会变少。";
+        String title = "委外可领料：" + orderNo + " " + target + " 预算可领 " + quantity;
+        String content = "委外订货单 " + orderNo + " 的委外件 " + target + " 按备料预算可领 " + quantity
+                + "。请到委外任务中心「领料」核对各仓实际物料数量后提交，由仓库发料。"
+                + "可领数量随实时库存变化。";
         String route = SUBCONTRACT_DRAW_SEGMENT_ROUTE + orderItemId;
         for (UUID recipient : subcontractDrawRecipients((UUID) task.get("maker_id"))) {
             sendToUser(recipient, TYPE_TASK, title, content, route,

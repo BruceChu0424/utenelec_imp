@@ -101,6 +101,9 @@ class _WarehouseTaskCenterPageState
     if (_group == 'workshopMaterial') {
       _workshopMaterialSection = widget.initialSection;
     }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) refreshWarehouseTaskCountsOnEntry(ref);
+    });
   }
 
   bool get _legacyReturn =>
@@ -152,16 +155,15 @@ class _WarehouseTaskCenterPageState
     ref.onPageResume(_myLocation!, () {
       ref.invalidate(myWarehouseScopeProvider);
       setState(() => _refreshTick++);
-      invalidateWarehouseTaskCounts(ref);
+      return invalidateWarehouseTaskCounts(ref);
     });
-    // 仓库范围变化：分段与计数按新范围重拉（嵌入的三张任务中心也各自监听）。
+    // 分段列表随范围刷新；所选仓的徽章由新范围自身开始一次读取。
     ref.listen<WarehouseTaskScope>(warehouseTaskScopeProvider, (
       previous,
       next,
     ) {
       if (previous == null || previous == next) return;
       setState(() => _refreshTick++);
-      invalidateWarehouseTaskCounts(ref);
     });
 
     // 大类可见性 = 对应旧任务中心路由的守卫（locationAllowedFor 与路由守卫

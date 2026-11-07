@@ -154,6 +154,15 @@ public class ProductionDailyReportItem extends BaseEntity {
     @Column(name = "weight", precision = 18, scale = 4)
     private BigDecimal weight;
 
+    @Column(name = "weight_entry_mode")
+    private String weightEntryMode;
+    @Column(name = "unit_weight_kg")
+    private BigDecimal unitWeightKg;
+    @Column(name = "weight_quantity_scale")
+    private Integer weightQuantityScale;
+    @Column(name = "weight_quantity_rounding")
+    private String weightQuantityRounding;
+
     /** Client 客户名冗余。 */
     @Column(name = "client_name")
     private String clientName;

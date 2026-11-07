@@ -391,7 +391,6 @@ abstract class _MaterialAnalysisPlanActionsState
           key: const Key('material-analysis-submit-orders'),
           size: UtenButtonSize.large,
           icon: Icons.send_rounded,
-          isLoading: _materialAggregateWorking,
           onPressed: _busy || issuable.visible.isEmpty
               ? null
               : () => unawaited(_submitMaterialTableRows(issuable.visible)),

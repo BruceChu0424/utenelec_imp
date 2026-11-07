@@ -99,6 +99,9 @@ class _SalesShipmentTaskWorkbenchState
   int get _refreshPage => _tableRows.visiblePage ?? (_result?.page ?? _page);
 
   @override
+  Future<void> onReadViewResumed() => _load(1);
+
+  @override
   void scopedPagedReadOwnerChanged() {
     if (!mounted) return;
     ++_requestGeneration;

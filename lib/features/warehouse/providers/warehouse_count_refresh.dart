@@ -8,14 +8,23 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../shared/badges/badge_registry.dart';
 import '../../../shared/warehouse/warehouse_task_badges.dart';
+import '../../../shared/warehouse/warehouse_task_scope.dart';
+
+Future<void> refreshWarehouseTaskCountsOnEntry(WidgetRef ref) {
+  if (ref.read(warehouseTaskScopeProvider).isAll) {
+    return ref.read(badgeSummaryProvider.notifier).refreshOnPageEntry();
+  }
+  return refreshSelectedWarehouseBadges(ref, reuseInFlight: true);
+}
 
 /// 仓库写操作成功后(或任务中心返回时)调用：徽章汇总重拉 + 所选仓的汇总重拉。
 /// 写请求本身已由网络层推进本端写修订号, 这里不必再记。
 Future<void> invalidateWarehouseTaskCounts(WidgetRef ref) async {
   invalidateSelectedWarehouseBadges(ref);
-  await refreshBadges(ref);
-  if (!ref.context.mounted) return;
-  // The global summary advances the selected scope's revision. Await the
-  // resulting request rather than the obsolete request from the old revision.
-  await refreshSelectedWarehouseBadges(ref, invalidate: false);
+  // The selected warehouse can publish while the workbench is still
+  // aggregating unrelated departments.
+  await Future.wait([
+    refreshBadges(ref),
+    refreshSelectedWarehouseBadges(ref, invalidate: false),
+  ]);
 }

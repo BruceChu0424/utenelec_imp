@@ -232,7 +232,7 @@ typedef NoticeArrivalRefresh = Future<void> Function();
 final noticeArrivalRefreshProvider = Provider<NoticeArrivalRefresh>((ref) {
   return () async {
     ref.invalidate(noticeListProvider);
-    await ref.read(badgeSummaryProvider.notifier).refresh();
+    await ref.read(badgeSummaryProvider.notifier).refreshForNoticeArrival();
   };
 });
 

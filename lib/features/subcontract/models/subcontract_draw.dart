@@ -419,6 +419,7 @@ class SubcontractDrawTaskDetail {
     required this.materials,
     required this.pendingDrafts,
     required this.allowedActions,
+    this.baseMaterialCoverageQtyText,
   });
 
   static const withdrawAction = 'WITHDRAW';
@@ -427,6 +428,7 @@ class SubcontractDrawTaskDetail {
   final SubcontractDrawTaskRow task;
   final List<SubcontractDrawMaterial> materials;
   final List<SubcontractDrawPendingDraft> pendingDrafts;
+  final String? baseMaterialCoverageQtyText;
 
   /// 服务端放行的动作：WITHDRAW(撤回未发领料) / CLOSE(结束领料)。
   final Set<String> allowedActions;
@@ -440,6 +442,10 @@ class SubcontractDrawTaskDetail {
     }
     return SubcontractDrawTaskDetail(
       task: SubcontractDrawTaskRow.fromJson(task.cast<String, dynamic>()),
+      baseMaterialCoverageQtyText: receiptRecordedDecimal(
+        json,
+        'baseMaterialCoverageQty',
+      ),
       materials: _list(json['materials'], SubcontractDrawMaterial.fromJson),
       pendingDrafts: _list(
         json['pendingDrafts'],

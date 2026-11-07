@@ -403,6 +403,8 @@ void registerDailyReportProductCardTests() {
       'goodsCode',
       'color',
       'qty',
+      'weight',
+      'unitWeight',
       'overLimitReason',
       'defectQty',
       'planNo',

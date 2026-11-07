@@ -7,6 +7,8 @@ import com.uten.imp.features.master.color.Color;
 import com.uten.imp.features.master.supplier.Supplier;
 import com.uten.imp.features.master.goods.importing.GoodsBomImportService;
 import com.uten.imp.common.export.XlsxExportService;
+import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.master.goods.dto.BomItemSaveRequest;
 import com.uten.imp.features.master.goods.dto.BomPasteRequest;
 import com.uten.imp.features.master.goods.dto.BomPasteResult;
@@ -38,6 +40,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -143,6 +146,82 @@ class GoodsBomPasteReplaceTest {
         assertNull(keptRow.getAuditedBy());
         verify(em, times(0)).persist(any());
         assertNotNull(keptRow.getId());
+    }
+
+    @Test
+    void appendCopiesSignedHistoricalAmountsExactlyFromTheVisibleLockedSource() {
+        GoodsBomItem original = signedCopySource();
+        BomItemSaveRequest copied = signedCopyLine(original);
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
+                "tester", null, List.of(new SimpleGrantedAuthority("goods:price:view"))));
+
+        BomPasteResult result = paste.paste(append(copied));
+
+        ArgumentCaptor<GoodsBomItem> written = ArgumentCaptor.forClass(GoodsBomItem.class);
+        verify(em).persist(written.capture());
+        assertEquals(1, result.added());
+        assertSame(target, written.getValue().getGoods());
+        assertEquals(new BigDecimal("-0.123456789012345678901234"), written.getValue().getPrice());
+        assertEquals(new BigDecimal("-0.123456789012345678901234"), written.getValue().getTotal());
+        assertEquals(original.getPrice(), written.getValue().getPrice());
+        assertEquals(original.getTotal(), written.getValue().getTotal());
+        verify(goodsRepo).lockBomParents(Set.of(target.getId(), original.getGoods().getId()));
+    }
+
+    @Test
+    void signedValuesCannotBeCreatedOrEditedAndMismatchedOrHiddenCopyProofCannotBeUsed() {
+        GoodsBomItem original = signedCopySource();
+        BomItemSaveRequest copied = signedCopyLine(original);
+        assertEquals(ErrorCode.CONFLICT, assertThrows(ApiException.class,
+                () -> paste.paste(append(copied))).getCode());
+
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
+                "tester", null, List.of(new SimpleGrantedAuthority("goods:price:view"))));
+        assertEquals(ErrorCode.VALIDATION_FAILED, assertThrows(ApiException.class,
+                () -> bom.apply(copied, new GoodsBomItem(), added)).getCode());
+        assertEquals(ErrorCode.VALIDATION_FAILED, assertThrows(ApiException.class,
+                () -> bom.apply(copied, row(added, "1", 1), added)).getCode());
+
+        copied.setQty(BigDecimal.valueOf(2));
+        assertEquals(ErrorCode.CONFLICT, assertThrows(ApiException.class,
+                () -> paste.paste(append(copied))).getCode());
+        copied.setQty(BigDecimal.ONE);
+        copied.setTotal(new BigDecimal("-0.124"));
+        assertEquals(ErrorCode.CONFLICT, assertThrows(ApiException.class,
+                () -> paste.paste(append(copied))).getCode());
+        copied.setTotal(original.getTotal());
+        UUID hiddenOwner = UUID.randomUUID();
+        original.getGoods().setOwnerEmployeeId(hiddenOwner);
+        when(access.visibleGoodsOwner()).thenReturn(owner -> !hiddenOwner.equals(owner));
+        assertEquals(ErrorCode.CONFLICT, assertThrows(ApiException.class,
+                () -> paste.paste(append(copied))).getCode());
+        verify(em, times(0)).persist(any());
+    }
+
+    private GoodsBomItem signedCopySource() {
+        Goods sourceGoods = goods("LEGACY-SOURCE");
+        GoodsBomItem original = row(added, "1", 1);
+        original.setGoods(sourceGoods);
+        original.setPrice(new BigDecimal("-0.123456789012345678901234"));
+        original.setTotal(original.getPrice());
+        when(goodsRepo.findAllById(anyCollection())).thenReturn(List.of(target, kept, dropped, added, sourceGoods));
+        when(bomRepo.findLiveItemParents(Set.of(original.getId())))
+                .thenReturn(List.<Object[]>of(new Object[]{original.getId(), sourceGoods.getId()}));
+        when(bomRepo.findAllById(Set.of(original.getId()))).thenReturn(List.of(original));
+        return original;
+    }
+
+    private BomPasteRequest append(BomItemSaveRequest item) {
+        return new BomPasteRequest(BomPasteRequest.Mode.APPEND,
+                List.of(new BomPasteRequest.Target(target.getId(), null)), List.of(item));
+    }
+
+    private static BomItemSaveRequest signedCopyLine(GoodsBomItem original) {
+        BomItemSaveRequest line = line(original.getComponent(), "1");
+        line.setCopiedFromBomItemId(original.getId());
+        line.setPrice(original.getPrice());
+        line.setTotal(original.getTotal());
+        return line;
     }
 
     @Test

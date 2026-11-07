@@ -4,8 +4,8 @@
 // 取代此前约 40 个各自 60s 轮询的计数 provider(回一次工作台打出约 40 个请求)。
 //
 // 节奏:
-//   · 登录后立即拉一次, 之后按公共设置轮询(默认60s，合法范围15至600s);
-//   · 页面隐藏/切后台时暂停, 回到前台立即拉一次;
+//   · 登录后立即拉一次；只有工作台可见时按公共设置轮询(默认60s，合法范围15至600s);
+//   · 工作台切后台时暂停，回到前台立即拉一次；业务页停留不轮询；
 //   · 写操作成功、返回工作台、新通知到达时调 [BadgeSummaryNotifier.refresh];
 //   · 兜底(2026-09-24 用户反馈「车间任务点批量开工后分类徽章出不来, 得手动刷新」):
 //     网络层每记一次本端业务写([lastDataWriteProvider]), 静默 [writeSettle] 后补拉一次——
@@ -21,7 +21,6 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_riverpod/legacy.dart';
 
 import '../../core/network/api_client.dart';
 import '../../core/network/authenticated_request_scope.dart';
@@ -34,7 +33,7 @@ import '../providers/app_visibility_provider.dart';
 import '../providers/authenticated_scope_provider.dart';
 import '../repositories/public_settings_repository.dart';
 import 'badge_module.dart';
-import 'badge_registry.dart' show BadgeEntry;
+import 'badge_registry.dart' show BadgeEntry, BadgeFact;
 
 /// 红(待办)与黄(进行中)两个数。
 @immutable
@@ -224,13 +223,6 @@ final badgeSummaryProvider =
       BadgeSummaryNotifier.new,
     );
 
-/// A successful read can leave global totals unchanged while work moves between
-/// warehouses. Scoped queues must still refresh from that new server snapshot.
-final badgeSummaryFetchRevisionProvider = StateProvider<int>((ref) {
-  ref.watch(authenticatedScopeProvider);
-  return 0;
-});
-
 class BadgeSummaryNotifier extends Notifier<BadgeSummary> {
   /// 公共设置尚未成功读取时的默认周期(可见时)。
   static const pollInterval = Duration(seconds: 60);
@@ -245,8 +237,100 @@ class BadgeSummaryNotifier extends Notifier<BadgeSummary> {
   bool _dirty = false;
   bool _active = false;
   bool _visible = true;
+  bool _workbenchVisible = false;
   int _generation = 0;
+  int _salesFinanceRead = 0;
+  int _fullRead = 0;
   int _refreshHolds = 0;
+
+  /// The shell reports its visible tab without rebuilding the badge owner.
+  void setWorkbenchVisible(bool visible) {
+    if (_workbenchVisible == visible) return;
+    _workbenchVisible = visible;
+    _schedulePoll();
+  }
+
+  /// Incoming notices still arrive on business pages. Only the workbench
+  /// revalidates every task category in response to an unsolicited arrival.
+  Future<void> refreshForNoticeArrival() =>
+      _workbenchVisible ? refresh() : Future<void>.value();
+
+  Future<void> refreshOnPageEntry() => _running ?? refresh();
+
+  /// A confirmed sales audit needs only its existing authoritative count.
+  /// Publish the changed fact and all its rollups together while the ordinary
+  /// write refresh reconciles downstream queues.
+  Future<void> refreshSalesOrderFinance() async {
+    if (!_active || !_visible) return;
+    _writeTimer?.cancel();
+    _writeTimer = null;
+    final generation = _generation;
+    final request = ++_salesFinanceRead;
+    final fullRead = _fullRead;
+    final write = ref.read(dataWriteRevisionProvider);
+    final api = ref.read(apiClientProvider);
+    bool current() =>
+        ref.mounted &&
+        generation == _generation &&
+        request == _salesFinanceRead &&
+        fullRead == _fullRead &&
+        identical(api, ref.read(apiClientProvider)) &&
+        write == ref.read(dataWriteRevisionProvider);
+    var reconcile = true;
+    try {
+      final json = await AuthenticatedRequestScope.sharedRead(
+        current,
+        () => api.get(
+          ApiEndpoints.workbenchBadges,
+          query: const {'factSource': 'salesOrderFinance'},
+        ),
+      );
+      if (!current()) return;
+      final fetched = BadgeSummary.fromJson(json);
+      if (fetched.entries.isNotEmpty) {
+        // An older server ignores factSource and sends the complete summary.
+        final next = fetched.keepStaleFrom(state);
+        if (next != state) state = next;
+        _fullRead++;
+        reconcile = false;
+        return;
+      }
+      final count = fetched.facts[BadgeFact.salesOrderFinance];
+      if (count == null || count < 0) return;
+      final currentState = state;
+      final previous = currentState.facts[BadgeFact.salesOrderFinance];
+      if (previous == null) return;
+      final delta = count - previous;
+      if (delta == 0) return;
+      const entry = BadgeEntry.financeAuditCenter;
+      final previousEntry = currentState.entries[entry.name];
+      final previousModule = currentState.modules[entry.module.name];
+      if (previousEntry == null || previousModule == null) return;
+      BadgeCounts change(BadgeCounts counts) =>
+          BadgeCounts(counts.todo + delta, counts.inProgress);
+      state = BadgeSummary(
+        loaded: currentState.loaded,
+        entries: {...currentState.entries, entry.name: change(previousEntry)},
+        modules: {
+          ...currentState.modules,
+          entry.module.name: change(previousModule),
+        },
+        total: change(currentState.total),
+        facts: {...currentState.facts, BadgeFact.salesOrderFinance: count},
+        staleEntries: currentState.staleEntries,
+        staleSources: currentState.staleSources,
+      );
+    } catch (_) {
+      // The full refresh owns fallback and preserves the prior good snapshot.
+    } finally {
+      if (reconcile &&
+          generation == _generation &&
+          request == _salesFinanceRead &&
+          fullRead == _fullRead) {
+        unawaited(refresh());
+      }
+    }
+  }
 
   /// A multi-step user command still marks changes immediately, but expensive
   /// badge reads wait until its outermost scope finishes (including failure).
@@ -317,7 +401,7 @@ class BadgeSummaryNotifier extends Notifier<BadgeSummary> {
     }, fireImmediately: true);
     ref.listen<bool>(appVisibilityProvider, (previous, visible) {
       _visible = visible;
-      if (visible) {
+      if (visible && (_workbenchVisible || _dirty || _writeTimer != null)) {
         unawaited(refresh());
       } else {
         _timer?.cancel();
@@ -328,7 +412,7 @@ class BadgeSummaryNotifier extends Notifier<BadgeSummary> {
     ref.listen<int>(
       connectionRecoveryProvider.select((state) => state.recoveryEpoch),
       (previous, next) {
-        if (next > (previous ?? 0)) unawaited(refresh());
+        if (_workbenchVisible && next > (previous ?? 0)) unawaited(refresh());
       },
     );
     // 本端业务写成功后补拉(见文件头「兜底」): 静默 writeSettle 再拉, 连续写只拉末尾一次。
@@ -378,6 +462,8 @@ class BadgeSummaryNotifier extends Notifier<BadgeSummary> {
           generation == _generation &&
           _refreshHolds == 0) {
         _dirty = false;
+        _writeTimer?.cancel();
+        _writeTimer = null;
         await _fetch(generation);
       }
     } finally {
@@ -397,28 +483,35 @@ class BadgeSummaryNotifier extends Notifier<BadgeSummary> {
             ref.mounted &&
             _active &&
             generation == _generation &&
-            identical(api, ref.read(apiClientProvider)),
+            identical(api, ref.read(apiClientProvider)) &&
+            writeRevision == ref.read(dataWriteRevisionProvider),
         () => api.get(ApiEndpoints.workbenchBadges),
       );
       if (generation != _generation) return;
-      if (writeRevision != ref.read(dataWriteRevisionProvider)) {
-        // The read predates a completed command. Keep the last accepted snapshot
-        // until the tail read, instead of briefly resurrecting completed work.
-        _dirty = true;
-        return;
-      }
       final next = BadgeSummary.fromJson(json).keepStaleFrom(state);
       if (next != state) state = next;
-      ref.read(badgeSummaryFetchRevisionProvider.notifier).state++;
+      _fullRead++;
     } catch (_) {
       // 网络/服务异常保留上一次的数, 下一轮再试。
+      if (generation == _generation &&
+          writeRevision != ref.read(dataWriteRevisionProvider)) {
+        // Retire the old transport promptly so a slow pre-write read does not
+        // block the first post-commit summary on another request's latency.
+        _dirty = true;
+      }
     }
   }
 
   void _schedulePoll() {
     _timer?.cancel();
     _timer = null;
-    if (!_active || !_visible || _refreshHolds > 0 || _running != null) return;
+    if (!_active ||
+        !_visible ||
+        !_workbenchVisible ||
+        _refreshHolds > 0 ||
+        _running != null) {
+      return;
+    }
     _timer = Timer(_pollInterval, () => unawaited(refresh()));
   }
 }

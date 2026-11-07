@@ -134,6 +134,18 @@ public class WorkbenchBadgeService implements WorkbenchBadgeReadPort {
         return readOnly(() -> compute(subset, wanted));
     }
 
+    /** Same principal, transaction and source permission as the full summary. */
+    @org.springframework.transaction.annotation.Transactional(propagation = org.springframework.transaction.annotation.Propagation.NOT_SUPPORTED)
+    public WorkbenchBadgeSummary factSnapshot(String key) {
+        List<WorkbenchBadgeSources.Source> subset = sources.stream()
+                .filter(source -> source.key().equals(key))
+                .toList();
+        if (subset.isEmpty()) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "徽章来源不正确");
+        }
+        return readOnly(() -> compute(subset, Set.of()));
+    }
+
     private WorkbenchBadgeSummary readOnly(WarehouseTaskScopePort.ReadQuery<WorkbenchBadgeSummary> work) {
         return warehouseScopes.withQueryScopeCache(() -> readOnlyTransaction.execute(status -> {
             try {

@@ -560,11 +560,20 @@ public class DailyReportOutputAllocationService {
         if(input.getWeight()==null)return;
         BigDecimal previousBoundary=BigDecimal.ZERO;
         BigDecimal cumulativeQty=BigDecimal.ZERO;
+        boolean measured = input.getWeightEntryMode() != null;
+        int maximumWeightScale = measured ? 4
+                : com.uten.imp.common.util.FinancialExactAmount.MAX_FRACTION_DIGITS;
+        var sliceChoice = measured ? com.uten.imp.common.finance.BusinessPrecisionContext.choices().get("quantity.slice") : null;
         for(int index=0;index<pieces.size();index++) {
             DailyReportItemLine piece=pieces.get(index);
             cumulativeQty=cumulativeQty.add(piece.getQty());
             BigDecimal boundary=index==pieces.size()-1?input.getWeight():
-                    com.uten.imp.common.finance.MoneyPolicy.quantitySlice(input.getWeight(),input.getQty(),BigDecimal.ZERO,cumulativeQty);
+                    com.uten.imp.common.finance.BusinessPrecisionContext.divide(input.getWeight().multiply(cumulativeQty),
+                            input.getQty(), "quantity.slice", "本次数量或重量切片", maximumWeightScale);
+            if (sliceChoice != null && sliceChoice.scale() <= 4 && index < pieces.size() - 1) {
+                boundary = boundary.setScale(sliceChoice.scale(), java.math.RoundingMode.valueOf(sliceChoice.rounding()))
+                        .min(input.getWeight());
+            }
             piece.setWeight(boundary.subtract(previousBoundary));previousBoundary=boundary;
         }
     }

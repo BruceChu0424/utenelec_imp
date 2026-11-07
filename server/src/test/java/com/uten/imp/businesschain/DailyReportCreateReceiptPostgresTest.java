@@ -95,6 +95,57 @@ class DailyReportCreateReceiptPostgresTest {
         assertEquals(before,facts(c.id()));
     }
 
+    @Test void weighingFreezesGoodsMasterBasisAndExactReceiptDespiteALaterMasterEdit() throws Exception {
+        var c = request();
+        var line = c.request().getItems().getFirst();
+        UUID massUnit = UUID.randomUUID();
+        db.update("INSERT INTO units(id,code,name,status) VALUES(?,?,?,?)",
+                massUnit, "DAILY-WEIGHT-" + massUnit, "克", "使用");
+        db.update("INSERT INTO unit_measurement_profiles(unit_id,measurement_dimension,mass_unit_code,provenance) VALUES(?,'MASS','G','MANUAL_GOVERNANCE')", massUnit);
+        db.update("UPDATE goods SET m_weight=125,m_weight_unit_id=? WHERE id=?", massUnit, line.getGoodsId());
+        var basis = new BigDecimal("0.125");
+        assertEquals("0.125", reports.weightBases(List.of(line.getGoodsId())).getFirst().goodsUnitWeightKgExact());
+        line.setWeightEntryMode("WEIGHT");
+        line.setUnitWeightKgExact(basis);
+        BigDecimal rate = line.getUnitRate() == null ? BigDecimal.ONE : line.getUnitRate();
+        line.setWeight(line.getQty().multiply(rate).multiply(basis));
+        byte[] original = json.writeValueAsBytes(c.request());
+
+        var saved = reports.create(c.request());
+        assertEquals("0.125", saved.getItems().getFirst().getUnitWeightKgExact());
+        assertEquals(0, line.getWeight().compareTo(saved.getItems().getFirst().getWeight()));
+        assertEquals("WEIGHT", saved.getItems().getFirst().getWeightEntryMode());
+        db.update("UPDATE goods SET m_weight=130 WHERE id=?", line.getGoodsId());
+
+        var update = json.readValue(original, DailyReportSaveRequest.class);
+        update.setExpectedVersion(saved.getRowVersion());
+        update.setRemark("保留原实称和单重");
+        update.getItems().getFirst().setWeightSourceReportItemId(saved.getItems().getFirst().getId());
+        var updated = reports.update(saved.getId(), update);
+        assertEquals("0.125", updated.getItems().getFirst().getUnitWeightKgExact());
+        assertEquals(0, line.getWeight().compareTo(updated.getItems().getFirst().getWeight()));
+
+        var committed = new Case(c.world(), c.request(), saved.getId(), original);
+        var replayed = resolveBody(original, reader(committed), 200);
+        assertEquals("COMMITTED", replayed.path("status").asText());
+        assertEquals("0.125", replayed.path("detail").path("items").get(0).path("unitWeightKgExact").asText());
+        var changed = json.readValue(original, DailyReportSaveRequest.class);
+        changed.getItems().getFirst().setUnitWeightKgExact(new BigDecimal("0.130"));
+        resolve(changed, reader(committed), 409);
+
+        changed.setIdempotencyKey("daily-manual-weight-" + UUID.randomUUID());
+        var manuallyCounted = changed.getItems().getFirst();
+        manuallyCounted.setWeightEntryMode("QUANTITY");
+        manuallyCounted.setQty(new BigDecimal("2"));
+        manuallyCounted.setWeight(new BigDecimal("0.33"));
+        changed.getMaterialLines().getFirst().setQtyBase(new BigDecimal("2"));
+        login(c.world().superAdminUserId());
+        var separatelyMeasured = reports.create(changed).getItems().getFirst();
+        assertEquals("QUANTITY", separatelyMeasured.getWeightEntryMode());
+        assertEquals(0, new BigDecimal("2").compareTo(separatelyMeasured.getQty()));
+        assertEquals(0, new BigDecimal("0.33").compareTo(separatelyMeasured.getWeight()));
+    }
+
     @Test void aDifferentActorCannotClaimTheReceiptEvenWithGlobalObjectReadPermission() throws Exception {
         var c=create();
         FullChainEndToEndTest fixture=new FullChainEndToEndTest(); beans.autowireBean(fixture);

@@ -14,6 +14,8 @@ import com.uten.imp.features.subcontract.material_return.dto.MaterialReturnSaveR
 import com.uten.imp.features.subcontract.order.SubcontractOrderService;
 import com.uten.imp.features.subcontract.order.dto.OrderItemLine;
 import com.uten.imp.features.subcontract.order.dto.OrderSaveRequest;
+import com.uten.imp.features.subcontract.short_delivery.SubcontractShortDeliveryContracts.DecisionRequest;
+import com.uten.imp.features.subcontract.short_delivery.SubcontractShortDeliveryService;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.*;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.WarehouseArrivalRegisterRequest.ArrivalLine;
 import com.uten.imp.features.warehouse.inbound.WarehouseArrivalRegistrationService;
@@ -41,6 +43,57 @@ class SubcontractMaterialAnalysisSupplyEndToEndTest extends SubcontractFullChain
 
     @BeforeEach void before() { h=new AggregateMaterialOrderEndToEndTest();beans.autowireBean(h);h.before(); }
     @AfterEach void after() { h.after(); }
+
+    @Test void qualifiedSupplementCompletesTheOriginalWorkshopDemandAfterAnAcceptedShortDelivery() {
+        var c = h.createWithChildAndLoss("1000", "0");
+        var world = c.world();
+        var initial = h.analyses.detail(c.analysis());
+        var root = initial.products().stream().filter(row -> row.salesOrderItemId() != null).findFirst().orElseThrow();
+        var parentPlan = h.ordinary.issueWorkshopPlans(c.analysis(), new IssueWorkshopPlansRequest(
+                initial.version(), initial.fingerprint(), "supplement-parent-" + c.analysis(), world.warehouseId(),
+                BusinessTime.today(), BusinessTime.today().plusDays(5), true,
+                List.of(new IssueWorkshopPlansRequest.IssuePlanLine(null, root.analysisLineId(), new BigDecimal("1000"),
+                        null, null, c.workshop(), null, c.worker(), null, null, false, BigDecimal.ZERO))))
+                .plans().getFirst().planId();
+        UUID segment = h.db.queryForObject("""
+                SELECT id FROM production_execution_segments WHERE plan_id=? AND NOT is_deleted
+                """, UUID.class, parentPlan);
+        h.fixture.confirmFullKitRoute(parentPlan, segment);
+        h.fixture.receiveSubcontractMaterial(world, c.child(), "1200");
+        UUID first = order(c, "0", "1000");
+        h.fixture.drawAndIssueSubcontract(first, new BigDecimal("1000"), "supplement-first-draw-" + first);
+        receiveAndStock(c, first, "800", true);
+        InventoryValueWorkTestSupport.drain(beans.getBean(InventoryValueWorkService.class), h.db,
+                List.of(c.common(), c.child(), c.material()));
+        var losses = beans.getBean(SubcontractShortDeliveryService.class);
+        UUID shortCase = h.db.queryForObject("""
+                SELECT id FROM subcontract_short_delivery_cases WHERE order_item_id=? AND closed_at IS NULL
+                """, UUID.class, first);
+        var pending = losses.detail(shortCase).row();
+        losses.decide(shortCase, new DecisionRequest("ACCEPT_LOSS", null, "实际只回厂800，其余另行补单", pending.version()));
+        amount("200", material(refresh(c), c.common()).planningUncoveredQty());
+        assertEquals("WAITING", segmentStatus(segment));
+
+        UUID supplement = order(c, "0", "200");
+        assertEquals("WAITING", segmentStatus(segment));
+        h.fixture.drawAndIssueSubcontract(supplement, new BigDecimal("200"), "supplement-draw-" + supplement);
+        receiveAndStock(c, supplement, "200");
+        InventoryValueWorkTestSupport.drain(beans.getBean(InventoryValueWorkService.class), h.db,
+                List.of(c.common(), c.child(), c.material()));
+        assertEquals("READY", segmentStatus(segment));
+        var draws = beans.getBean(ProductionDrawRequestService.class);
+        var preview = draws.preview(new ProductionDrawRequest.PreviewRequest(
+                List.of(new ProductionDrawRequest.Item(segment, h.version(segment)))));
+        amount("1000", preview.lines().stream().filter(row -> row.goodsId().equals(c.common()))
+                .map(ProductionDrawRequest.Line::qty).reduce(BigDecimal.ZERO, BigDecimal::add));
+        amount("0", h.db.queryForObject("""
+                SELECT COALESCE(SUM(available_qty),0) FROM v_stock_available WHERE goods_id=? AND warehouse_id=?
+                """, BigDecimal.class, c.common(), world.warehouseId()));
+    }
+
+    private String segmentStatus(UUID segment) {
+        return h.db.queryForObject("SELECT status FROM production_execution_segments WHERE id=?", String.class, segment);
+    }
 
     @Test void initialMaximumLossBudgetManufactures1100AndActual1050Fulfills1000With50Public() {
         var c=h.createWithChildAndLoss("1000","10");
@@ -199,23 +252,39 @@ class SubcontractMaterialAnalysisSupplyEndToEndTest extends SubcontractFullChain
                 """,c.material(),c.child(),segment);
     }
     private UUID order(AggregateMaterialOrderEndToEndTest.Case c,String loss) {
-        var batch=h.writer.submit(c.analysis(),h.command(c,List.of(h.input(c,c.common(),"SUBCONTRACT","1000",false)))).batches().getFirst();
+        return order(c,loss,"1000");
+    }
+
+    private UUID order(AggregateMaterialOrderEndToEndTest.Case c,String loss,String qty) {
+        var batch=h.writer.submit(c.analysis(),h.command(c,List.of(h.input(c,c.common(),"SUBCONTRACT",qty,false)))).batches().getFirst();
         UUID application=h.db.queryForObject("SELECT id FROM subcontract_application_items WHERE application_id=? AND NOT is_deleted",UUID.class,batch.documentId());
         var request=new OrderSaveRequest();request.setSettlementMethodId(ReflectionTestUtils.invokeMethod(h.fixture,"activeSettlementMethodId"));
         request.setBillDate(BusinessTime.today());request.setSupplierId(c.world().supplierId());request.setWarehouseId(c.world().warehouseId());
         request.setCurrencyId(c.world().currencyId());request.setExchangeRate(BigDecimal.ONE);request.setTaxRate(BigDecimal.ZERO);
         var line=new OrderItemLine();line.setGoodsId(c.common());line.setApplicationItemId(application);line.setUnitId(c.world().unitId());
-        line.setUnitRate(BigDecimal.ONE);line.setQty(new BigDecimal("1000"));line.setPrice(BigDecimal.ONE);line.setAllowedLossPct(new BigDecimal(loss));
+        line.setUnitRate(BigDecimal.ONE);line.setQty(new BigDecimal(qty));line.setPrice(BigDecimal.ONE);line.setAllowedLossPct(new BigDecimal(loss));
         request.setItems(List.of(line));UUID order=beans.getBean(SubcontractOrderService.class).create(request).getId();
         UUID reviewer=ReflectionTestUtils.invokeMethod(h.fixture,"createApprover",c.world());finance.submit("SUBCONTRACT",order);
         h.fixture.loginAs(reviewer);h.fixture.approvePendingFinance("SUBCONTRACT",order);h.fixture.loginAs(c.world().superAdminUserId());
         return h.db.queryForObject("SELECT id FROM subcontract_order_items WHERE order_id=? AND NOT is_deleted",UUID.class,order);
     }
     private void receiveAndStock(AggregateMaterialOrderEndToEndTest.Case c,UUID item,String actual) {
+        receiveAndStock(c,item,actual,false);
+    }
+
+    private void receiveAndStock(AggregateMaterialOrderEndToEndTest.Case c,UUID item,String actual,boolean shortDelivery) {
         var received=arrivals.register(new WarehouseArrivalRegisterRequest("supply-receive-"+UUID.randomUUID(),"SUBCONTRACT",BusinessTime.today(),
                 c.world().supplierId(),c.world().warehouseId(),null,c.world().employeeId(),null,List.of(new ArrivalLine(c.common(),new BigDecimal(actual),
-                item,null,c.world().unitId(),BigDecimal.ONE,null,null)),null,null));
+                item,null,c.world().unitId(),BigDecimal.ONE,null,null)),null,shortDelivery ? true : null));
         assertEquals("SUBMITTED_FOR_INSPECTION",received.outcome());
+        if (shortDelivery) {
+            var losses = beans.getBean(SubcontractShortDeliveryService.class);
+            UUID shortCase = h.db.queryForObject("""
+                    SELECT id FROM subcontract_short_delivery_cases WHERE order_item_id=? AND closed_at IS NULL
+                    """, UUID.class, item);
+            losses.decide(shortCase,new DecisionRequest("WAIT_MORE",BusinessTime.today().plusDays(2),
+                    "允许已到部分先验收入库",losses.detail(shortCase).row().version()));
+        }
         var inbound=new SubcontractComponentReturnLegEndToEndTest();beans.autowireBean(inbound);ReflectionTestUtils.setField(inbound,"fixture",h.fixture);
         Object pass=ReflectionTestUtils.invokeMethod(inbound,"passIqc",received.receiptId(),"supply-iqc-"+UUID.randomUUID());
         UUID keeper=ReflectionTestUtils.invokeMethod(h.fixture,"createIqcWarehouseConfirmer",c.world(),"supply-keeper-"+UUID.randomUUID().toString().substring(0,8));

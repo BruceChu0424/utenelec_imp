@@ -9,6 +9,7 @@
 import 'dart:async';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -18,6 +19,7 @@ import 'package:uten_imp/core/network/api_endpoints.dart';
 import 'package:uten_imp/core/network/data_write_revision.dart';
 import 'package:uten_imp/core/network/read_scope_revision.dart';
 import 'package:uten_imp/core/network/business_precision.dart';
+import 'package:uten_imp/features/warehouse/providers/warehouse_count_refresh.dart';
 import 'package:uten_imp/core/performance/ui_work_budget.dart';
 import 'package:uten_imp/shared/paging/paged_read_intent.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
@@ -35,7 +37,10 @@ class _BadgeApi extends ApiClient {
   _BadgeApi() : super(Dio());
 
   int calls = 0;
+  int? salesOrderFinanceCount;
+  Object? salesOrderFinanceFailure;
   Completer<void>? gate;
+  Completer<void>? globalGate;
   Object? failWith;
   Map<String, dynamic> body = _summaryJson(todo: 1);
   final Map<String, Map<String, dynamic>> scopedBodies = {};
@@ -49,6 +54,15 @@ class _BadgeApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
+    final count = salesOrderFinanceCount;
+    if (query?['factSource'] == 'salesOrderFinance') {
+      if (salesOrderFinanceFailure case final failure?) throw failure;
+      if (count != null) {
+        return {
+          'facts': {BadgeFact.salesOrderFinance: count},
+        };
+      }
+    }
     if (path != ApiEndpoints.workbenchBadges) {
       throw StateError('unexpected GET $path');
     }
@@ -60,6 +74,7 @@ class _BadgeApi extends ApiClient {
       selectedWarehouseReads.add(warehouseId);
     }
     if (responses.isNotEmpty) return responses.removeAt(0).future;
+    if (query?['scopeWarehouseId'] == null) await globalGate?.future;
     final pending = gate;
     if (pending != null) await pending.future;
     if (checkReadOwner &&
@@ -89,6 +104,17 @@ Map<String, dynamic> _summaryJson({
   'staleEntries': stale,
 };
 
+Map<String, dynamic> _financeSummary(int pending) => {
+  'entries': {
+    'financeAuditCenter': {'todo': pending + 2, 'inProgress': 0},
+  },
+  'modules': {
+    'finance': {'todo': pending + 2, 'inProgress': 0},
+  },
+  'total': {'todo': pending + 2, 'inProgress': 0},
+  'facts': {BadgeFact.salesOrderFinance: pending, BadgeFact.shipmentFinance: 2},
+};
+
 final _scope = StateProvider<AuthenticatedScope?>(
   (ref) => const AuthenticatedScope(userId: 'user-1'),
 );
@@ -103,6 +129,7 @@ const _physicalWarehouse = MyWarehouseScope(
 (ProviderContainer, _BadgeApi) _container({
   WarehouseTaskScope? taskScope,
   Future<MyWarehouseScope> Function()? physicalScope,
+  bool workbenchVisible = true,
 }) {
   final api = _BadgeApi();
   final container = ProviderContainer(
@@ -121,6 +148,9 @@ const _physicalWarehouse = MyWarehouseScope(
   );
   // 保持订阅, 与页面 watch 一致。
   container.listen(badgeSummaryProvider, (_, _) {}, fireImmediately: true);
+  container
+      .read(badgeSummaryProvider.notifier)
+      .setWorkbenchVisible(workbenchVisible);
   return (container, api);
 }
 
@@ -298,14 +328,15 @@ void main() {
     api.scopedBodies['hw'] = inboundSnapshot(0);
     await container.read(badgeSummaryProvider.notifier).refresh();
     await _settle(tester);
-    expectCounts(selected: 0, global: 7);
+    expectCounts(selected: 2, global: 7);
+    expect(api.selectedWarehouseReads, ['hw']);
     subscription.close();
     container.dispose();
     await _settle(tester);
   });
 
   testWidgets(
-    'unchanged global totals still refresh a changed warehouse queue',
+    'global refresh and workbench polling do not reread an open selected warehouse',
     (tester) async {
       final (container, api) = _container(
         physicalScope: () async => _physicalWarehouse,
@@ -330,8 +361,11 @@ void main() {
       expect(container.read(badgeSummaryProvider).total.todo, 1);
       expect(
         container.read(warehouseScopedBadgesProvider(scope)).total.todo,
-        0,
+        1,
       );
+      await tester.pump(BadgeSummaryNotifier.pollInterval);
+      await _settle(tester);
+      expect(api.selectedWarehouseReads, ['hw']);
       subscription.close();
       await _settle(tester);
       container.dispose();
@@ -422,6 +456,133 @@ void main() {
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     _prefs = await SharedPreferences.getInstance();
+  });
+
+  testWidgets('业务页停留不轮询，手动刷新和本端写入仍取新数', (tester) async {
+    final (container, api) = _container(workbenchVisible: false);
+    final badges = container.read(badgeSummaryProvider.notifier);
+    await _settle(tester);
+    expect(api.calls, 1);
+    await badges.refreshForNoticeArrival();
+    await tester.pump(const Duration(minutes: 10));
+    expect(api.calls, 1);
+    await badges.refresh();
+    expect(api.calls, 2);
+    container.read(lastDataWriteProvider.notifier).state = (
+      seq: 1,
+      path: '/sales/orders/example/approve',
+    );
+    await tester.pump(BadgeSummaryNotifier.writeSettle);
+    await _settle(tester);
+    expect(api.calls, 3);
+    badges.setWorkbenchVisible(true);
+    await tester.pump(BadgeSummaryNotifier.pollInterval);
+    expect(api.calls, 4);
+    badges.setWorkbenchVisible(false);
+    await tester.pump(const Duration(minutes: 10));
+    expect(api.calls, 4);
+    container.dispose();
+  });
+
+  testWidgets('仓库本端办理后所选仓徽章先于慢速全站汇总更新且只读一次', (tester) async {
+    final (container, api) = _container(
+      taskScope: const WarehouseTaskScope.warehouse('hw'),
+      physicalScope: () async => _physicalWarehouse,
+      workbenchVisible: false,
+    );
+    api.scopedBodies['hw'] = _summaryJson(todo: 1);
+    late WidgetRef widgetRef;
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: Consumer(
+          builder: (_, ref, _) {
+            widgetRef = ref;
+            ref.watch(warehouseTaskBadgesProvider);
+            return const SizedBox.shrink();
+          },
+        ),
+      ),
+    );
+    await _settle(tester);
+    expect(container.read(warehouseTaskBadgesProvider).total.todo, 1);
+    expect(api.selectedWarehouseReads, ['hw']);
+    api.globalGate = Completer<void>();
+    api.scopedBodies['hw'] = _summaryJson(todo: 0);
+    final refresh = invalidateWarehouseTaskCounts(widgetRef);
+    await _settle(tester);
+    expect(container.read(warehouseTaskBadgesProvider).total.todo, 0);
+    expect(api.selectedWarehouseReads, ['hw', 'hw']);
+    api.globalGate!.complete();
+    await refresh;
+    await _settle(tester);
+    expect(api.selectedWarehouseReads, ['hw', 'hw']);
+    await tester.pumpWidget(const SizedBox.shrink());
+    container.dispose();
+  });
+
+  testWidgets('业务审核分段、财务卡和导航先于慢速全站汇总更新', (tester) async {
+    final (container, api) = _container(workbenchVisible: false);
+    api.body = _financeSummary(1);
+    await _settle(tester);
+    final badges = container.read(badgeSummaryProvider.notifier);
+    final old = Completer<Map<String, dynamic>>();
+    final reconcile = Completer<Map<String, dynamic>>();
+    api.responses.addAll([old, reconcile]);
+    final full = badges.refresh();
+    await _settle(tester);
+    container.read(dataWriteRevisionProvider.notifier).state++;
+    api.salesOrderFinanceCount = 0;
+    await badges.refreshSalesOrderFinance();
+    expect(
+      container.read(badgeFactOrNullProvider(BadgeFact.salesOrderFinance)),
+      0,
+    );
+    expect(
+      container.read(badgeEntryTodoProvider(BadgeEntry.financeAuditCenter)),
+      2,
+    );
+    expect(container.read(badgeModuleTodoProvider(BadgeModule.finance)), 2);
+    expect(container.read(badgeTotalTodoProvider), 2);
+    old.complete(api.body);
+    await _settle(tester);
+    expect(container.read(badgeTotalTodoProvider), 2);
+    reconcile.complete(_financeSummary(0));
+    await full;
+    expect(container.read(badgeTotalTodoProvider), 2);
+    container.dispose();
+  });
+
+  testWidgets('业务审核单项取数失败保留旧数，再以完整汇总更新', (tester) async {
+    final (container, api) = _container(workbenchVisible: false);
+    api.body = _financeSummary(1);
+    await _settle(tester);
+    final reconcile = Completer<Map<String, dynamic>>();
+    api.responses.add(reconcile);
+    api.salesOrderFinanceFailure = StateError('source unavailable');
+    await container
+        .read(badgeSummaryProvider.notifier)
+        .refreshSalesOrderFinance();
+    expect(container.read(badgeTotalTodoProvider), 3);
+    reconcile.complete(_financeSummary(0));
+    await _settle(tester);
+    expect(container.read(badgeTotalTodoProvider), 2);
+    expect(api.calls, 2);
+    container.dispose();
+  });
+
+  testWidgets('兼容返回全站汇总的旧服务器并复用这次读取', (tester) async {
+    final (container, api) = _container(workbenchVisible: false);
+    api.body = _financeSummary(1);
+    await _settle(tester);
+    api.body = _financeSummary(0);
+    await container
+        .read(badgeSummaryProvider.notifier)
+        .refreshSalesOrderFinance();
+    await _settle(tester);
+    expect(container.read(badgeTotalTodoProvider), 2);
+    expect(api.calls, 2);
+    container.dispose();
   });
   testWidgets('写操作完成后迟到的旧徽章不复现，等待新快照再统一更新', (tester) async {
     final (container, api) = _container();

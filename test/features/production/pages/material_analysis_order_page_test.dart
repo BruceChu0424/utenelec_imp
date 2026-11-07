@@ -1,5 +1,6 @@
 import '../../../support/production_person_reference_fixture.dart';
 // 准备三桶与主表共用核对页：沿原 BOM 行输入、预览、选择和下达。
+import 'dart:async';
 import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -22,7 +23,7 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
 
 void main() {
-  testWidgets('准备最新：核对页仍使用共享事实轮询并保留已填写数量', (tester) async {
+  testWidgets('准备最新：核对页手动刷新保留已填写数量，停留期间不刷新', (tester) async {
     late Map<String, dynamic> serverData;
     await _pump(
       tester,
@@ -50,6 +51,19 @@ void main() {
       }
     }
     await tester.pump(const Duration(seconds: 45));
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(
+        of: find.byKey(
+          const ValueKey('material-analysis-public-available-m-b'),
+        ),
+        matching: find.text('1100 件'),
+      ),
+      findsOneWidget,
+    );
+    await tester.tap(
+      find.byKey(const Key('material-preparation-order-refresh')),
+    );
     await tester.pumpAndSettle();
     expect(_qty(tester, 'm-b'), '25');
     expect(_table(tester).selectedIds, contains('PREPARATION|m-b'));
@@ -275,12 +289,25 @@ void main() {
     expect(labels, isNot(contains('本批要用')));
   });
 
-  testWidgets('只选父件只发根计划，下层未选不隐式提交', (tester) async {
-    final harness = await _pump(tester);
+  testWidgets('只选父件显示根计划进度，下层未选不隐式提交', (tester) async {
+    final rootReceipt = Completer<void>();
+    final harness = await _pump(tester, rootReceipt: rootReceipt.future);
     await _openOrder(tester);
     _table(tester).onSelectedIdsChanged!({'PREPARATION|root-1'});
     await tester.pumpAndSettle();
-    await _submit(tester);
+    await tester.tap(
+      find.byKey(const Key('material-preparation-order-submit')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('确认下单'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    const progress = Key('material-analysis-plan-submission-progress');
+    expect(find.byKey(progress), findsOneWidget);
+    expect(find.byType(AlertDialog), findsNothing);
+    rootReceipt.complete();
+    await tester.pumpAndSettle();
+    expect(find.byKey(progress), findsNothing);
     expect(_writes(harness).map((r) => r.path.split('/').last), [
       'issue-plans',
     ]);
@@ -493,7 +520,9 @@ Future<void> _openOrder(
   final rows = bucketTable.items as List<dynamic>;
   final dynamic productRow = rows.singleWhere((dynamic row) {
     // ignore: avoid_dynamic_calls
-    return row.product?.analysisLineId == 'p1';
+    return row.product?.analysisLineId == 'p1' ||
+        // ignore: avoid_dynamic_calls
+        row.group?.representative.materialLineId == 'root-1';
   });
   // ignore: avoid_dynamic_calls
   final id = productRow.id as String;
@@ -634,6 +663,7 @@ Future<_Harness> _pump(
   bool subcontractRoot = false,
   bool subcontractSecondMaterial = false,
   Map<String, dynamic> Function(Map<String, dynamic>)? mutate,
+  Future<void>? rootReceipt,
 }) async {
   tester.view.physicalSize = const Size(1800, 1400);
   tester.view.devicePixelRatio = 1;
@@ -660,6 +690,7 @@ Future<_Harness> _pump(
           return;
         }
         if (request.method != 'GET') harness.writes.add(request);
+        if (request.path.endsWith('/issue-plans')) await rootReceipt;
         final base = persisted;
         final data = switch (request.path) {
           '/business-references/warehouses' => [

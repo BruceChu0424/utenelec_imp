@@ -57,7 +57,8 @@ public record ReportablePlanLine(
         BigDecimal overproductionLimitQty,
         BigDecimal remainingActualSurplusQty,
         /** 2026-10-06：本段已批准、尚未续报承接的固定追加量合计（公共超产额度已被它占用）。 */
-        BigDecimal pendingSupplementQty) {
+        BigDecimal pendingSupplementQty,
+        @com.fasterxml.jackson.annotation.JsonIgnore BigDecimal goodsUnitWeightKg) {
     @com.fasterxml.jackson.annotation.JsonProperty(value="maxReportQtyExact", access=com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
     public String maxReportQtyExact() { return maxReportQty == null ? null : maxReportQty.toPlainString(); }
     @com.fasterxml.jackson.annotation.JsonProperty(value="unitRateExact", access=com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
@@ -70,5 +71,7 @@ public record ReportablePlanLine(
     public String plannedQtyExact() { return exact(plannedQty); }
     @com.fasterxml.jackson.annotation.JsonProperty(value="producedQtyExact", access=com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
     public String producedQtyExact() { return exact(producedQty); }
+    @com.fasterxml.jackson.annotation.JsonProperty(value="goodsUnitWeightKgExact", access=com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    public String goodsUnitWeightKgExact() { return exact(goodsUnitWeightKg); }
     private static String exact(BigDecimal value) { return value == null ? null : value.toPlainString(); }
 }

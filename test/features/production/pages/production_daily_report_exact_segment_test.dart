@@ -81,6 +81,7 @@ part 'production_daily_report_product_card_cases.dart';
 part 'production_daily_report_manual_destination_cases.dart';
 part 'production_daily_report_partial_quantity_cases.dart';
 part 'production_daily_report_destination_layout_cases.dart';
+part 'production_daily_report_weight_entry_cases.dart';
 
 class _ExactSegmentSession extends SessionNotifier {
   int intentEpoch = 0;
@@ -111,6 +112,7 @@ class _ExactSegmentSnapshot extends SessionSnapshotNotifier {
 void main() {
   registerDailyReportDestinationLayoutTests();
   registerDailyReportPartialQuantityTests();
+  registerDailyReportWeightEntryTests();
   registerDailyReportProductCardTests();
   registerDailyReportManualDestinationTests();
   registerDailyReportSessionBoundaryTests();
@@ -302,6 +304,8 @@ void main() {
             'color',
             'qty',
             'destination',
+            'weight',
+            'unitWeight',
             'overLimitReason',
             'defectQty',
             'planNo',
@@ -2783,8 +2787,9 @@ Future<void> _pumpNewReport(
   Set<String> extraPermissions = const {},
   bool followSessionIdentity = false,
   GoRouter? router,
+  Size surfaceSize = const Size(1440, 1000),
 }) async {
-  await setUtenTestSurfaceSize(tester, const Size(1440, 1000));
+  await setUtenTestSurfaceSize(tester, surfaceSize);
   addTearDown(() => setUtenTestSurfaceSize(tester, null));
   SharedPreferences.setMockInitialValues({});
   final preferences = await SharedPreferences.getInstance();

@@ -21,6 +21,7 @@ import org.springframework.transaction.support.SimpleTransactionStatus;
 
 import java.sql.Connection;
 import java.sql.Savepoint;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -49,8 +50,10 @@ class WorkbenchBadgeBrowsingAudienceTest {
                 .flatMap(entry -> Stream.concat(entry.todoFacts().stream(), entry.inProgressFacts().stream()))
                 .map(WorkbenchBadgeCatalog::sourceOf)
                 .collect(Collectors.toSet());
+        var reads = new ArrayList<String>();
         List<WorkbenchBadgeSources.Source> registered = keys.stream()
                 .map(key -> new WorkbenchBadgeSources.Source(key, () -> {
+                    reads.add(key);
                     if (BusinessTaskContext.active()
                             || !(SecurityContextHolder.getContext().getAuthentication().getPrincipal()
                                     instanceof AuthUser reader)
@@ -90,5 +93,10 @@ class WorkbenchBadgeBrowsingAudienceTest {
         assertThat(summary.entries()).containsKey("productionSchedule");
         assertThat(summary.entries().get("productionSchedule").todo()).isEqualTo(5L);
         assertThat(summary.facts()).containsEntry("productionSchedule.count", 5L);
+        reads.clear();
+        WorkbenchBadgeSummary fact = service.factSnapshot("salesOrderFinance");
+        assertThat(fact.entries()).isEmpty();
+        assertThat(fact.facts()).containsExactlyEntriesOf(Map.of("salesOrderFinance.count", 5L));
+        assertThat(reads).containsExactly("salesOrderFinance");
     }
 }

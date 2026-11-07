@@ -89,6 +89,9 @@ public class ReportablePlanLineQueryService {
                     g.code AS goods_code,
                     g.name AS goods_name,
                     g.spec AS goods_spec,
+                    CASE WHEN NOT g.is_deleted AND NOT g.auto_created AND g.status IS DISTINCT FROM '禁用'
+                         THEN g.m_weight END AS goods_unit_weight,
+                    report_weight_profile.mass_unit_code AS goods_weight_mass_code,
                     i.color_id,
                     c.name AS color_name,
                     i.unit_id,
@@ -201,6 +204,7 @@ public class ReportablePlanLineQueryService {
                  AND segment_workshop.is_deleted = FALSE
                 JOIN production_plans p ON p.id = i.plan_id
                 JOIN goods g ON g.id = i.goods_id
+            """ + DailyReportWeightInputs.MASTER_WEIGHT_JOINS + """
                 LEFT JOIN colors c ON c.id = i.color_id
                 LEFT JOIN units u ON u.id = i.unit_id
                 LEFT JOIN LATERAL (
@@ -531,7 +535,9 @@ public class ReportablePlanLineQueryService {
                         rs.getBigDecimal("allowed_overproduction_rate"),
                         rs.getBigDecimal("overproduction_limit_qty"),
                         rs.getBigDecimal("remaining_actual_surplus_qty"),
-                        rs.getBigDecimal("pending_supplement_qty")),
+                        rs.getBigDecimal("pending_supplement_qty"),
+                        DailyReportWeightInputs.kgPerBaseUnit(rs.getBigDecimal("goods_unit_weight"),
+                                rs.getString("goods_weight_mass_code"))),
                 dataArgs.toArray());
 
         int totalPages = total == 0 ? 0 : (int) ((total + size - 1) / size);

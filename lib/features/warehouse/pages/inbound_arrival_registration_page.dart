@@ -42,6 +42,7 @@ import '../../../shared/measurement/weight_prefs.dart';
 import '../../../shared/measurement/weight_unit.dart';
 import '../../../shared/measurement/widgets/weigh_count_dialog.dart';
 import '../../../shared/measurement/widgets/weight_grid_column.dart';
+import '../../../shared/platform_tables/platform_table_layout.dart';
 import '../models/arrival_form_draft_codec.dart';
 import '../models/warehouse_form_draft_codec.dart';
 
@@ -1385,8 +1386,7 @@ class _InboundArrivalRegistrationPageState
               ..._warehouseNotices(theme),
               const SizedBox(height: UtenSpacing.s8),
               UtenEditableGrid<_BatchArrivalLine>(
-                tableKey:
-                    'features.warehouse.pages.inbound_arrival_registration_page.InboundArrivalRegistrationPageState._buildForm.1',
+                tableKey: inboundArrivalRegistrationTableKey,
                 key: const Key('warehouse-arrival-lines-grid'),
                 controller: _lineGrid,
                 stickyHeaderPinned: _gridPinned,
@@ -1740,6 +1740,13 @@ class _InboundArrivalRegistrationPageState
         baseUnitNameOf: _baseUnitName,
         onWeighCount: _weighCount,
       ),
+      shared.unitWeight(
+        quantityTextOf: (line) => line.physicalQtyText,
+        quantityListenableOf: (line) =>
+            Listenable.merge([line.qty, line.giftQty]),
+        enabled: editable,
+        exactKgOf: _exactKg,
+      ),
       shared.weightCheck(
         paramsOf: _paramsOf,
         paramsListenable: _weightCache,
@@ -1815,13 +1822,6 @@ class _InboundArrivalRegistrationPageState
             enabled: editable(line),
           ),
         ),
-      ),
-      shared.unitWeight(
-        quantityTextOf: (line) => line.physicalQtyText,
-        quantityListenableOf: (line) =>
-            Listenable.merge([line.qty, line.giftQty]),
-        enabled: editable,
-        exactKgOf: _exactKg,
       ),
     ];
   }

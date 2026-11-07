@@ -523,7 +523,7 @@ void materialPolicyCases() {
       final originalRateController = tester
           .widget<TextField>(_rateField('m-7'))
           .controller;
-      await tester.pump(const Duration(seconds: 46));
+      await _returnToMaterialAnalysis(tester);
       await tester.pumpAndSettle();
       expect(readStarted, isTrue);
       expect(

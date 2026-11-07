@@ -211,6 +211,11 @@ class ProductionDailyReportItem {
     this.boxes,
     this.perBoxQty,
     this.weight,
+    this.weightExact,
+    this.unitWeightKgExact,
+    this.weightEntryMode,
+    this.weightQuantityScale,
+    this.weightQuantityRounding,
     this.clientName,
     this.sourceDocNo,
     this.remark,
@@ -281,6 +286,14 @@ class ProductionDailyReportItem {
   final double? boxes;
   final double? perBoxQty;
   final double? weight;
+  final String? weightExact;
+  String? get weightText => financeExactDecimal(weightExact ?? weight);
+
+  /// 保存这条明细时记录的货品基础单位单重（千克）。
+  final String? unitWeightKgExact;
+  final String? weightEntryMode;
+  final int? weightQuantityScale;
+  final String? weightQuantityRounding;
   final String? clientName;
   final String? sourceDocNo;
   final String? remark;
@@ -384,6 +397,11 @@ class ProductionDailyReportItem {
         boxes: _asDouble(json['boxes']),
         perBoxQty: _asDouble(json['perBoxQty']),
         weight: _asDouble(json['weight']),
+        weightExact: financeExactDecimal(json['weightExact']),
+        unitWeightKgExact: financeExactDecimal(json['unitWeightKgExact']),
+        weightEntryMode: json['weightEntryMode'] as String?,
+        weightQuantityScale: _asInt(json['weightQuantityScale']),
+        weightQuantityRounding: json['weightQuantityRounding'] as String?,
         clientName: json['clientName'] as String?,
         sourceDocNo: json['sourceDocNo'] as String?,
         remark: json['remark'] as String?,
@@ -458,10 +476,13 @@ class ProductionDailyReportInputGroup {
       ? source.outputSourcePlanNo ??
             (source.planId == planId ? source.planNo : null)
       : source.planNo;
-  double? get weight {
-    final weights = items.map((item) => item.weight).whereType<double>();
-    return weights.isEmpty ? null : weights.fold<double>(0, (a, b) => a + b);
-  }
+
+  /// The original measured total is the exact sum of the server's slices.
+  /// A missing slice leaves the original measurement unknown.
+  String? get weightText => items.isEmpty
+      ? null
+      : financeExactSumTexts(items.map((item) => item.weightText));
+  double? get weight => double.tryParse(weightText ?? '');
 
   /// 本批产出的去向(与提交体同形 `{directTransferDemandId, qty}`)：每个上层工单一条，
   /// 送入仓库的部分(需求份、公共备货、实际超产)合成一条(V736/ADR-127)。

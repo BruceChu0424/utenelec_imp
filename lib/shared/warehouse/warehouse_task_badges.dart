@@ -4,7 +4,7 @@
 //   warehouseDrafts 入口。hub 卡、工作台、导航与任务中心沿用同一投影。
 // · 选了某个仓(主管或负责多个仓的人)：同一个汇总接口带 scopeWarehouseId，服务端只算仓库模块的
 //   入口、各来源都按所选仓计，与带同一参数的列表 total 逐条相等(不再用 list(size:1) 凑数,
-//   也不再单独请求 type-counts)。全站汇总每次轮询有变化时跟着重拉。
+//   也不再单独请求 type-counts)。所选仓读数与全站工作台的轮询分开。
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/network/api_client.dart';
@@ -19,8 +19,7 @@ import '../providers/sensitive_read_boundary_provider.dart';
 import '../providers/retain_read_snapshot.dart';
 import 'warehouse_task_scope.dart';
 
-/// Exact warehouse snapshots survive a brief page departure; their owner proof
-/// is checked again before any retained Riverpod value may be displayed.
+/// The owner proof is checked before any previous value may be displayed.
 typedef _WarehouseBadgeSnapshot = ({
   BadgeSummary summary,
   SensitiveReadBoundary owner,
@@ -35,15 +34,12 @@ final _selectedWarehouseBadgesProvider = FutureProvider.autoDispose
       if (ref.watch(authenticatedScopeProvider) == null) {
         return (summary: BadgeSummary.empty, owner: owner, revision: revision);
       }
-      // 全站汇总有变化(轮询、本端写操作后的补拉)就跟着重拉, 两份数字不会一新一旧。
-      final fetchRevision = ref.watch(badgeSummaryFetchRevisionProvider);
       final api = ref.watch(apiClientProvider);
       final json = await AuthenticatedRequestScope.sharedRead(
         () =>
             ref.mounted &&
             ref.read(sensitiveReadBoundaryProvider) == owner &&
             ref.read(readScopeRevisionProvider) == revision &&
-            ref.read(badgeSummaryFetchRevisionProvider) == fetchRevision &&
             identical(ref.read(apiClientProvider), api),
         () => api.get(
           ApiEndpoints.workbenchBadges,
@@ -136,6 +132,7 @@ void invalidateSelectedWarehouseBadges(WidgetRef ref) =>
 Future<void> refreshSelectedWarehouseBadges(
   WidgetRef ref, {
   bool invalidate = true,
+  bool reuseInFlight = false,
 }) async {
   final warehouseId = ref.read(warehouseTaskScopeProvider).warehouseId;
   if (warehouseId == null) return;
@@ -144,7 +141,9 @@ Future<void> refreshSelectedWarehouseBadges(
   );
   if (physical == null || !physical.canSelectForTasks(warehouseId)) return;
   final provider = _selectedWarehouseBadgesProvider(warehouseId);
-  if (invalidate) ref.invalidate(provider);
+  if (invalidate && (!reuseInFlight || !ref.read(provider).isLoading)) {
+    ref.invalidate(provider);
+  }
   try {
     await ref.read(provider.future);
   } catch (_) {

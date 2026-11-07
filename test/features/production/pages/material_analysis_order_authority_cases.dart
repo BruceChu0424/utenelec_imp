@@ -442,7 +442,7 @@ void materialOrderAuthorityCases() {
       },
     );
     await _showMaterialSummary(tester);
-    await tester.pump(const Duration(seconds: 45));
+    await _returnToMaterialAnalysis(tester);
     await tester.pump();
     expect(snapshot, isNotNull);
     await tester.tap(

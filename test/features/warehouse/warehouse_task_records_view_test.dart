@@ -13,6 +13,7 @@ import 'package:uten_imp/components/data_display/uten_table_output_scope.dart';
 import 'package:uten_imp/components/print/uten_print_preview.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/read_scope_revision.dart';
 import 'package:uten_imp/core/utils/china_datetime.dart';
 import 'package:uten_imp/core/utils/date_range_defaults.dart';
 import 'package:uten_imp/core/network/api_endpoints.dart';
@@ -1947,12 +1948,12 @@ void main() {
         record: 'STOCK_DOC',
         id: 'late-header',
         billNo: 'LATE-HEADER',
-        line: const WarehouseTaskLine(
+        line: WarehouseTaskLine(
           key: 'line-21',
           goodsName: '指定%_货品',
           goodsCode: 'G-21',
           unitName: '件',
-          quantity: 9007199254740993,
+          quantity: int.parse('9007199254740993'),
           quantityText: '9007199254740993.0001',
         ),
       ),
@@ -2015,6 +2016,7 @@ void main() {
               'https://other.unit.test/api';
       }
       await tester.pump();
+      await tester.pump();
       expect(gateway.calls.length, greaterThanOrEqualTo(2));
       final latest = gateway.calls.last;
       if (boundary == 'source') expect(latest.source, 'SUBCONTRACT');
@@ -2046,6 +2048,52 @@ void main() {
       expect(find.text('LATEST-$boundary'), findsOneWidget);
       expect(find.text('LATE-OLD'), findsNothing);
       expect(_table(tester).selectedIds, isEmpty);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  for (final source in ['PURCHASE', 'FINISHED']) {
+    testWidgets('直接进入 $source 并更换读取范围后无需切换分类', (tester) async {
+      final gateway = WarehouseTaskRecordsFakeGateway(
+        const [],
+        controlled: true,
+      );
+      final harness = await _pump(
+        tester,
+        gateway,
+        spec: _ViewSpec(
+          direction: WarehouseTaskDirection.inbound,
+          source: source,
+          sources: warehouseTestInboundSources,
+        ),
+        settle: false,
+      );
+      expect(gateway.calls, hasLength(1));
+      expect(gateway.calls.first.source, source);
+      expect(find.text('共 0 条'), findsNothing);
+      harness.container.read(readScopeRevisionProvider.notifier).state++;
+      await tester.pump();
+      await tester.pump();
+      expect(gateway.calls, hasLength(2));
+      expect(gateway.calls.last.source, source);
+      expect(gateway.calls.last.scope, gateway.calls.first.scope);
+      expect(gateway.calls.last.dateFrom, gateway.calls.first.dateFrom);
+      expect(find.text('当前范围与筛选下没有单据'), findsNothing);
+      gateway.calls.last.result.complete(
+        gateway.pageOf([
+          warehouseTestRecord(
+            source: source,
+            record: 'STOCK_DOC',
+            id: 'current',
+            billNo: 'CURRENT-$source',
+          ),
+        ]),
+      );
+      await tester.pumpAndSettle();
+      gateway.calls.first.result.complete(gateway.pageOf(const []));
+      await tester.pumpAndSettle();
+      expect(find.text('CURRENT-$source'), findsOneWidget);
+      expect(find.text('共 1 条'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
   }

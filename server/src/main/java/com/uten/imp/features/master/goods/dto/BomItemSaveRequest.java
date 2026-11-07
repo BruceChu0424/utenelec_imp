@@ -34,11 +34,10 @@ public class BomItemSaveRequest {
     private Boolean allowPartialPackage;
     // 仅 START/ASSEMBLY/FINISH 可为 true；SHIP/REFERENCE 只能作参考。
     private Boolean hardGate;
+    // The service enforces nonnegative writes and checks any exact historical copy under the source lock.
     @com.uten.imp.common.validation.DocumentAmount
-    @jakarta.validation.constraints.DecimalMin("0")
     private BigDecimal price;        // 单价
     @com.uten.imp.common.validation.DocumentAmount
-    @jakarta.validation.constraints.DecimalMin("0")
     private BigDecimal total;        // 金额（可空，后端兜底 qty*price）
     private UUID colorId;
     private Integer colorLegacyId;   // 旧库颜色主键快照；不能单独用于建立新关系

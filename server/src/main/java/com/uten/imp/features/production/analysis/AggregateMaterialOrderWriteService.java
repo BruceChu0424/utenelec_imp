@@ -146,7 +146,7 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
         }
         Map<UUID,BigDecimal> physicalBefore=physicalStockClaims==null?Map.of():physicalStockClaims.ownedByMaterial(analysisId);
         Map<UUID,BigDecimal> physicalDelta=new HashMap<>();
-        if(physicalStockClaims!=null&&physicalStockClaims.claim(analysisId,physicalLimits,"AGGREGATE-PHYSICAL:"+request.idempotencyKey())) {
+        if(physicalStockClaims!=null&&physicalStockClaims.claim(analysisId,physicalLimits,"AGGREGATE-PHYSICAL:"+analysisId+":"+request.idempotencyKey())) {
             physicalStockClaims.ownedByMaterial(analysisId).forEach((id,qty)->physicalDelta.put(id,qty.subtract(physicalBefore.getOrDefault(id,BigDecimal.ZERO)).max(BigDecimal.ZERO)));
             analysis.refreshLocked(analysisId);
         }

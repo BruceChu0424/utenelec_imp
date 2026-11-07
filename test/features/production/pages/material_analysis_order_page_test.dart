@@ -20,7 +20,6 @@ import 'package:uten_imp/features/production/repositories/production_repository.
 import 'package:uten_imp/features/purchase/repositories/purchase_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
-import 'package:uten_imp/components/layout/uten_table_column_kit.dart';
 
 void main() {
   testWidgets('准备最新：核对页仍使用共享事实轮询并保留已填写数量', (tester) async {
@@ -478,16 +477,33 @@ Future<void> _openOrder(
     await tester.tap(segment);
     await tester.pumpAndSettle();
   }
-  final frozen = find
-      .ancestor(
-        of: find.text('成品A').first,
-        matching: find.byType(UtenFrozenLeadingColumn),
-      )
-      .first;
-  final check = find
-      .descendant(of: frozen, matching: find.byType(Checkbox))
-      .last;
-  tester.widget<Checkbox>(check).onChanged!(true);
+  final bucketTableFinder = find.byWidgetPredicate(
+    (widget) =>
+        widget is MasterDataTableView &&
+        widget.tableKey ==
+            'features.production.pages.material_analysis_bucket_detail.MaterialAnalysisBucketPageState._bucketTable.1',
+  );
+  expect(bucketTableFinder, findsOneWidget);
+  final dynamic bucketTable = tester.widget(bucketTableFinder);
+  // Selection is a table contract; a fitting table need not create a frozen
+  // leading-column wrapper. Keep the actual admission checks before selecting.
+  // ignore: avoid_dynamic_calls
+  expect(bucketTable.selectable, isTrue, reason: '当前桶必须允许真实业务选择');
+  // ignore: avoid_dynamic_calls
+  final rows = bucketTable.items as List<dynamic>;
+  final dynamic productRow = rows.singleWhere((dynamic row) {
+    // ignore: avoid_dynamic_calls
+    return row.product?.analysisLineId == 'p1';
+  });
+  // ignore: avoid_dynamic_calls
+  final id = productRow.id as String;
+  // ignore: avoid_dynamic_calls
+  expect(bucketTable.idOf(productRow), id, reason: '产品p1必须具备当前桶的下单或追加资格');
+  final select =
+      // ignore: avoid_dynamic_calls
+      bucketTable.onSelectedIdsChanged as void Function(Set<String>)?;
+  expect(select, isNotNull);
+  select!({id});
   await tester.pumpAndSettle();
   final action = find.byKey(
     Key(

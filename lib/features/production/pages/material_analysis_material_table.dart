@@ -5659,18 +5659,19 @@ abstract class _MaterialAnalysisMaterialTableState
     if (!target.viaWorkshop && !_canNotify) {
       return '你没有「下达采购 / 委外」的权限，请找管理员开通';
     }
-    if (target.viaWorkshop &&
-        _preparationOrderMethod(group) !=
-            MaterialPreparationOrderMethod.availableOnly) {
-      final actual = _tableIssuedAssignmentOf(group);
-      if (actual != null &&
-          (actual.planExecutionWorkshopId == null ||
-              actual.planExecutionResponsibleId == null)) {
-        return '已下达计划的实际指派不完整或不唯一，请在计划中核对后再追加';
+    if (target.viaWorkshop) {
+      if (_preparationOrderMethod(group) !=
+          MaterialPreparationOrderMethod.availableOnly) {
+        final actual = _tableIssuedAssignmentOf(group);
+        if (actual != null &&
+            (actual.planExecutionWorkshopId == null ||
+                actual.planExecutionResponsibleId == null)) {
+          return '已下达计划的实际指派不完整或不唯一，请在计划中核对后再追加';
+        }
+        final workshop = _tableWorkshopFor(group);
+        if (workshop.id == null) return _tableMissingWorkshopReason;
+        if (_tableWorkerFor(group).id == null) return _tableMissingWorkerReason;
       }
-      final workshop = _tableWorkshopFor(group);
-      if (workshop.id == null) return _tableMissingWorkshopReason;
-      if (_tableWorkerFor(group).id == null) return _tableMissingWorkerReason;
     } else if (group.representative.aggregatePreparation?.actionable != true &&
         !_isExecutableSupplyGroup(group, route, allowExtra: _canOverSupply)) {
       // 外发段最终由 _notifyRoute 里的 _executableSupplyGroups 把关，它比上面

@@ -1593,8 +1593,16 @@ public class MaterialAnalysisService {
         refreshLockedOutcome(analysisId, Map.of(), false, true);
     }
 
+    /** A previously admitted command is still staging its writes; finish its lifecycle once all stages settle. */
+    void refreshPreparationStep(UUID analysisId) {
+        refreshLockedOutcome(analysisId,Map.of(),false,false,true);
+    }
     private RefreshOutcome refreshLockedOutcome(UUID analysisId, Map<UUID, BigDecimal> typedOutputByMaterialLine,
             boolean autoConfirmRoutes, boolean frozenDelivery) {
+        return refreshLockedOutcome(analysisId,typedOutputByMaterialLine,autoConfirmRoutes,frozenDelivery,false);
+    }
+    private RefreshOutcome refreshLockedOutcome(UUID analysisId, Map<UUID, BigDecimal> typedOutputByMaterialLine,
+            boolean autoConfirmRoutes, boolean frozenDelivery,boolean deferCompletion) {
         AnalysisHeader header = lockHeader(analysisId);
         if (!isOpenForFulfillment(header)) {
             throw conflict("物料分析已结束，不能刷新");
@@ -1710,7 +1718,7 @@ public class MaterialAnalysisService {
         updateNodeAllocations(analysisId, allocation.nodeRows(), baseline);
         // Aggregate aliases terminate at BOM_COMPONENT descendants; aggregate anchors have no ROOT_SUPPLY.
         // Root refresh needs direct promises only, including original-root public claims.
-        if (rootSupply != null) rootSupply.refreshRootNodes(analysisId,activeFutureCoverageByMaterial(analysisId,false));
+        if (rootSupply != null) rootSupply.refreshRootNodes(analysisId,activeFutureCoverageByMaterial(analysisId,false),!deferCompletion);
         // 快照 (含顶层行) 写完之后、换指纹之前: 自动确认只看本次重算的结果, 版本只涨一次.
         int autoConfirmed = autoConfirmedRoots + firstConfirm.groupCount()
                 + (autoConfirmRoutes ? autoConfirmDecisiveRoutes(analysisId, sources) : 0);

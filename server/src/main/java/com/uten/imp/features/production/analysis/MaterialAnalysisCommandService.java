@@ -163,11 +163,11 @@ public class MaterialAnalysisCommandService {
             }
         }
         boolean rootStockHandled=rootSupply!=null&&rootSupply.adoptSalesStock(analysisId,rootStockLimits,request.idempotencyKey());
-        if(rootStockHandled)analysisService.refreshLocked(analysisId);
+        if(rootStockHandled)analysisService.refreshPreparationStep(analysisId);
         if(rootSupply!=null&&!publicStockLimits.isEmpty())rootStockHandled=rootSupply.fulfillExisting(analysisId,publicStockLimits.keySet(),
                 request.idempotencyKey(),publicStockLimits)||rootStockHandled;
         if (rootStockHandled) {
-            analysisService.refreshLocked(analysisId);
+            analysisService.refreshPreparationStep(analysisId);
             view = analysisService.detailInternal(analysisId, false);
             groups = selectedGroups(view, request);
         }
@@ -180,9 +180,9 @@ public class MaterialAnalysisCommandService {
         }
         Map<UUID,BigDecimal> physicalBefore=physicalStockClaims==null?Map.of():physicalStockClaims.ownedByMaterial(analysisId);
         Map<UUID,BigDecimal> physicalDelta=new HashMap<>();
-        if(physicalStockClaims!=null&&physicalStockClaims.claim(analysisId,physicalLimits,"NOTIFY-PHYSICAL:"+request.idempotencyKey())) {
+        if(physicalStockClaims!=null&&physicalStockClaims.claim(analysisId,physicalLimits,"NOTIFY-PHYSICAL:"+analysisId+":"+request.idempotencyKey())) {
             physicalStockClaims.ownedByMaterial(analysisId).forEach((id,qty)->physicalDelta.put(id,qty.subtract(physicalBefore.getOrDefault(id,BigDecimal.ZERO)).max(BigDecimal.ZERO)));
-            rootStockHandled=true;analysisService.refreshLocked(analysisId);view=analysisService.detailInternal(analysisId,false);groups=selectedGroups(view,request);
+            rootStockHandled=true;analysisService.refreshPreparationStep(analysisId);view=analysisService.detailInternal(analysisId,false);groups=selectedGroups(view,request);
         }
         requireNoActiveBorrowForSupplyMaterials(
                 analysisId,
@@ -456,7 +456,7 @@ public class MaterialAnalysisCommandService {
         // 都会走到这里。客户端要的是「这次到底有没有产生新的下达」——那由
         // 它按返回快照的 version/fingerprint 是否变化自行判定（只有真的写了东西
         // 才会 refreshLocked 换版本），不改本端点的成功语义（2026-09-15）。
-        if (!created.isEmpty() || !grown.isEmpty() || !claimActionIds.isEmpty() || !makeAdoptedQuantities.isEmpty()) {
+        if (rootStockHandled || !created.isEmpty() || !grown.isEmpty() || !claimActionIds.isEmpty() || !makeAdoptedQuantities.isEmpty()) {
             // 2026-09-05 简化：子件行不再接管原子树需求、不迁移 exact 权益
             // （物料行保持原位单一份数据，计划侧不搬家）；旧模式遗留的委托
             // 由 refreshLocked 开头的批量归还收敛。
@@ -1097,7 +1097,7 @@ public class MaterialAnalysisCommandService {
             privateStockLimits.put(row.materialLineId(),line.qty().multiply(rate));
         }
         if(rootSupply!=null&&rootSupply.adoptSalesStock(analysisId,privateStockLimits,request.idempotencyKey())) {
-            analysisService.refreshLocked(analysisId);preArrange=analysisService.detailInternal(analysisId,false);
+            analysisService.refreshPreparationStep(analysisId);preArrange=analysisService.detailInternal(analysisId,false);
         }
         Map<UUID,BigDecimal> componentPhysicalLimits=new LinkedHashMap<>();
         for(var line:request.lines()) {
@@ -1107,14 +1107,14 @@ public class MaterialAnalysisCommandService {
         }
         Map<UUID,BigDecimal> componentPhysicalBefore=physicalStockClaims==null?Map.of():physicalStockClaims.ownedByMaterial(analysisId);
         Map<UUID,BigDecimal> componentPhysicalDelta=new HashMap<>();
-        if(physicalStockClaims!=null&&physicalStockClaims.claim(analysisId,componentPhysicalLimits,"WORKSHOP-PHYSICAL:"+request.idempotencyKey())) {
+        if(physicalStockClaims!=null&&physicalStockClaims.claim(analysisId,componentPhysicalLimits,"WORKSHOP-PHYSICAL:"+analysisId+":"+request.idempotencyKey())) {
             physicalStockClaims.ownedByMaterial(analysisId).forEach((id,qty)->componentPhysicalDelta.put(id,qty.subtract(componentPhysicalBefore.getOrDefault(id,BigDecimal.ZERO)).max(BigDecimal.ZERO)));
-            analysisService.refreshLocked(analysisId);preArrange=analysisService.detailInternal(analysisId,false);
+            analysisService.refreshPreparationStep(analysisId);preArrange=analysisService.detailInternal(analysisId,false);
         }
         List<IssueWorkshopPlansRequest.IssuePlanLine> writableLines=request.lines().stream()
                 .filter(line->!MaterialOrderQuantity.availableOnly(line.orderMethod())&&!independentMaterials.contains(line.materialLineId())).toList();
         boolean adoptedOnly=adoptWorkshopAvailableOnly(analysisId,request,preArrange,requestHash);
-        if(adoptedOnly) { analysisService.refreshLocked(analysisId);preArrange=analysisService.detailInternal(analysisId,false); }
+        if(adoptedOnly) { analysisService.refreshPreparationStep(analysisId);preArrange=analysisService.detailInternal(analysisId,false); }
         IssueWorkshopPlansRequest writableRequest=new IssueWorkshopPlansRequest(request.version(),request.fingerprint(),request.idempotencyKey(),
                 request.warehouseId(),request.billDate(),request.deliveryDate(),request.approveNow(),writableLines,request.skipAutoClaim());
         List<UUID> makeLines = workshopMakeLines(candidateRoutesByMaterialLine(preArrange), writableRequest);
@@ -1125,7 +1125,7 @@ public class MaterialAnalysisCommandService {
         AnalysisView view = preArrange;
         // 2) 以最新快照逐行生成计划：产品行直接用行 id，候选行解析到刚建/既有子件行。
         if (anchorsChanged) {
-            analysisService.refreshLocked(analysisId);
+            analysisService.refreshPreparationStep(analysisId);
             view = analysisService.detailInternal(analysisId, false);
         }
         // Reuse the exact same transaction snapshot when anchors did not change.

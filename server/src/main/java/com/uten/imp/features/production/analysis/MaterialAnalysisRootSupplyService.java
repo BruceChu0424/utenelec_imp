@@ -128,6 +128,9 @@ public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitleme
     /** Runs after the ordinary BOM allocation: already protected component stock is not spent twice. */
     @Transactional(propagation = Propagation.MANDATORY)
     public void refreshRootNodes(UUID analysisId, Map<UUID,BigDecimal> futureCoverage) {
+        refreshRootNodes(analysisId,futureCoverage,true);
+    }
+    void refreshRootNodes(UUID analysisId, Map<UUID,BigDecimal> futureCoverage,boolean finalizeLifecycle) {
         updateRootQuantities(projectRootNodes(analysisId, futureCoverage, Map.of(), Map.of()));
         em.createNativeQuery("""
                 UPDATE production_material_analysis_items item
@@ -138,7 +141,7 @@ public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitleme
                   AND (item.ready_now_qty,item.ready_by_date_qty,item.ready_start_qty,item.ready_finish_qty,item.ready_ship_qty)
                       IS DISTINCT FROM (0::numeric,0::numeric,0::numeric,0::numeric,0::numeric)
                 """).setParameter("id",analysisId).executeUpdate();
-        em.createNativeQuery("""
+        if(finalizeLifecycle)em.createNativeQuery("""
                 WITH snapshot AS MATERIALIZED (
                   SELECT id,fn_material_analysis_fulfillment_status(id) AS status
                   FROM production_material_analyses WHERE id=:analysisId AND status<>'CANCELLED'

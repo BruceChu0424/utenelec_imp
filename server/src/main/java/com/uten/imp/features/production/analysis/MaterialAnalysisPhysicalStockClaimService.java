@@ -87,15 +87,15 @@ public class MaterialAnalysisPhysicalStockClaimService {
             BigDecimal remaining = entry.getValue().min(nonnegative(material.preparationUncoveredBeforeSharedQty()));
             if (remaining.signum() <= 0) continue;
             final var leaves = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                    SELECT stock.warehouse_id,GREATEST(stock.qty
+                    SELECT stock.warehouse_id,CAST(GREATEST(CAST(stock.qty AS numeric)
                       -COALESCE((SELECT SUM(r.qty-r.consumed_qty-r.released_qty) FROM stock_reservations r
                         WHERE r.goods_id=:goods AND r.color_id IS NOT DISTINCT FROM CAST(:color AS uuid)
                           AND r.warehouse_id=stock.warehouse_id
-                          AND r.status=0 AND NOT r.is_deleted),0),0),
-                      GREATEST(COALESCE(goods.min_qty,0),0),
-                      COALESCE((SELECT SUM(r.qty-r.consumed_qty-r.released_qty) FROM stock_reservations r
+                          AND r.status=0 AND NOT r.is_deleted),CAST(0 AS numeric)),CAST(0 AS numeric)) AS numeric),
+                      CAST(GREATEST(COALESCE(CAST(goods.min_qty AS numeric),CAST(0 AS numeric)),CAST(0 AS numeric)) AS numeric),
+                      CAST(COALESCE((SELECT SUM(r.qty-r.consumed_qty-r.released_qty) FROM stock_reservations r
                         WHERE r.goods_id=:goods AND r.color_id IS NOT DISTINCT FROM CAST(:color AS uuid)
-                          AND r.warehouse_id IS NULL AND r.status=0 AND NOT r.is_deleted),0)
+                          AND r.warehouse_id IS NULL AND r.status=0 AND NOT r.is_deleted),CAST(0 AS numeric)) AS numeric)
                     FROM v_stock_operable_balances stock JOIN goods ON goods.id=stock.goods_id
                     JOIN production_material_analyses analysis ON analysis.id=:analysis
                     WHERE stock.goods_id=:goods AND stock.color_id IS NOT DISTINCT FROM CAST(:color AS uuid)
@@ -152,11 +152,11 @@ public class MaterialAnalysisPhysicalStockClaimService {
     private Map<UUID, BigDecimal> quantities(UUID analysisId, boolean includeFormalized) {
         final var result = new HashMap<UUID, BigDecimal>();
         for (final var row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                SELECT reservation.supply_id,SUM(GREATEST(CASE WHEN reservation.status=0 AND NOT reservation.is_deleted
+                SELECT reservation.supply_id,CAST(SUM(GREATEST(CASE WHEN reservation.status=0 AND NOT reservation.is_deleted
                   THEN reservation.qty-reservation.consumed_qty-reservation.released_qty ELSE 0 END,0)
                   +CASE WHEN :adopted THEN COALESCE((SELECT SUM(handoff.qty)
                     FROM preplan_physical_stock_formalizations handoff
-                    WHERE handoff.source_reservation_id=reservation.id AND handoff.restored_at IS NULL),0) ELSE 0 END)
+                    WHERE handoff.source_reservation_id=reservation.id AND handoff.restored_at IS NULL),0) ELSE 0 END) AS numeric)
                 FROM stock_reservations reservation JOIN production_material_analyses analysis ON analysis.id=reservation.owner_id
                 WHERE reservation.owner_type='PREPLAN_ANALYSIS' AND reservation.owner_id=:analysis
                   AND reservation.source_doc_type='PREPLAN_STOCK_BALANCE' AND reservation.supply_type='STOCK_BALANCE'

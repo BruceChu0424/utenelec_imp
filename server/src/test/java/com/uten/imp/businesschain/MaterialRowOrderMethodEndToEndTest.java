@@ -109,15 +109,17 @@ class MaterialRowOrderMethodEndToEndTest {
         }
     }
 
-    @Test void fullyAvailableSales1000StillReachesPlanningAndOnlyUsesTheExistingStock(){
+    @ParameterizedTest
+    @CsvSource({"AVAILABLE_ONLY,0","AVAILABLE_THEN_ORDER,0","ORDER_ALL,1000"})
+    void fullyAvailableSales1000StillReachesPlanningAndRespectsTheSelectedMethod(String method,String expectedNew){
         var c=salesCase("1000");
         assertDemandAndAvailable(c,"1000");
         var original=reservations(c.salesItem());
-        var request=notify(c,c.view(),"AVAILABLE_ONLY");
+        var request=notify(c,c.view(),method);
         var after=commands.notifySupply(c.view().analysisId(),request);
-        amount("0",purchased(c.view().analysisId()));amount("1000",rootFulfilled(c));
+        amount(expectedNew,purchased(c.view().analysisId()));amount("1000",rootFulfilled(c));
         amount("0",after.products().getFirst().remainingQty());
-        assertEquals("COMPLETED",after.status());
+        if(!method.equals("ORDER_ALL"))assertEquals("COMPLETED",after.status());
         assertEquals(original,reservations(c.salesItem()));
         commands.notifySupply(c.view().analysisId(),request);
         assertEquals(original,reservations(c.salesItem()));
@@ -149,7 +151,7 @@ class MaterialRowOrderMethodEndToEndTest {
     @Test void parentAllOrderPreviewActivatesCoveredChildrenAndOnlyAvailableRetiresThemWithoutWritingOrders(){
         var c=aggregateFixture.createWithChild("1000",1,"SUBCONTRACT");
         aggregateFixture.receive(c,c.common(),"1000");
-        var current=analyses.detail(c.analysis());
+        var current=refresh(c);
         var parent=material(current,c.common());
         amount("1000",parent.sourceRequiredQty());amount("0",parent.shortageQty());
         amount("0",material(current,c.child()).requiredQty());
@@ -167,7 +169,7 @@ class MaterialRowOrderMethodEndToEndTest {
 
     @Test void coveredChildCanOrderItsOwnPublic880WithoutProducingTheParentAndStillNeedsExtraPermission(){
         var c=aggregateFixture.createWithChild("880",1,"SUBCONTRACT");aggregateFixture.receive(c,c.common(),"880");
-        var current=analyses.detail(c.analysis());var child=material(current,c.child());
+        var current=refresh(c);var child=material(current,c.child());
         amount("0",child.requiredQty());amount("880",child.sourceRequiredQty());
         assertEquals("INACTIVE_PARENT_COVERED",child.requirementState());
         var input=new GroupInput("independent-covered-child",List.of(child.materialLineId()),"MAKE",new BigDecimal("880"),true,
@@ -179,7 +181,10 @@ class MaterialRowOrderMethodEndToEndTest {
         AuthUser limited=new AuthUser(original.getId(),original.getEmployeeId(),original.getUsername(),grants,false,true,false);
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(limited,null,limited.getAuthorities()));
         var denied=assertThrows(ApiException.class,()->aggregateOrders.submit(c.analysis(),request));
-        assertEquals(ErrorCode.FORBIDDEN,denied.getCode());
+        // Aggregate admission already reports a blocked preview as CONFLICT;
+        // prove this is the exact permission gate, not an invalid source/route.
+        assertEquals(ErrorCode.CONFLICT,denied.getCode());
+        assertEquals("独立公共备货需要超量下达权限",denied.getMessage());
         assertEquals(0,db.queryForObject("SELECT count(*) FROM production_plans WHERE material_analysis_id=?",Integer.class,c.analysis()));
         assertEquals(0,db.queryForObject("SELECT count(*) FROM preplan_supply_actions WHERE analysis_id=?",Integer.class,c.analysis()));
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(original,null,original.getAuthorities()));
@@ -198,7 +203,7 @@ class MaterialRowOrderMethodEndToEndTest {
     @Test void onlyAvailableAdoptsRealPublicComponentStockInsteadOfReturningANoop(){
         var c=aggregateFixture.create(false,false,"500");
         aggregateFixture.receive(c,c.material(),"1000");
-        var current=analyses.detail(c.analysis());
+        var current=refresh(c);
         var source=current.flatMaterials().stream().filter(row->row.goodsId().equals(c.material())&&row.allocatedAvailableQty().compareTo(new BigDecimal("1000"))==0)
             .findFirst().orElseThrow();
         amount("0",source.exactPeggedQty());amount("0",source.preparationOwnedAvailableQty());
@@ -221,7 +226,7 @@ class MaterialRowOrderMethodEndToEndTest {
 
     @Test void allOrderKeepsUnownedPublic120FreeAndAssignsTheFullNew1000ToItsSource(){
         var c=aggregateFixture.create(false,false,"500");aggregateFixture.receive(c,c.material(),"120");
-        var current=analyses.detail(c.analysis());
+        var current=refresh(c);
         var source=current.flatMaterials().stream().filter(row->row.goodsId().equals(c.material())&&row.allocatedAvailableQty().compareTo(new BigDecimal("120"))==0)
             .findFirst().orElseThrow();
         amount("1000",source.sourceRequiredQty());amount("0",source.preparationOwnedAvailableQty());
@@ -243,7 +248,7 @@ class MaterialRowOrderMethodEndToEndTest {
         UUID sale=aggregateFixture.fixture.createApprovedOrder(c.world(),c.material(),"20","100");
         UUID saleItem=db.queryForObject("SELECT id FROM sales_order_items WHERE order_id=?",UUID.class,sale);
         var oldSales=reservations(saleItem);
-        var current=analyses.detail(c.analysis());
+        var current=refresh(c);
         var source=current.flatMaterials().stream().filter(row->row.goodsId().equals(c.material())&&row.allocatedAvailableQty().compareTo(new BigDecimal("1000"))==0)
             .findFirst().orElseThrow();
         var input=new GroupInput("only-stock-lineage",List.of(source.materialLineId()),"BUY",new BigDecimal("1000"),true,
@@ -273,6 +278,13 @@ class MaterialRowOrderMethodEndToEndTest {
         assertEquals("CANCELLED",cancelled.status());assertEquals(oldSales,reservations(saleItem));
         amount("20",db.queryForObject("SELECT COALESCE(sum(qty-consumed_qty-released_qty),0) FROM stock_reservations WHERE goods_id=? AND status=0 AND NOT is_deleted",BigDecimal.class,c.material()));
         amount("1120",db.queryForObject("SELECT sum(qty) FROM stock_balances WHERE goods_id=?",BigDecimal.class,c.material()));
+    }
+
+    private AnalysisView refresh(AggregateMaterialOrderEndToEndTest.Case c){
+        var current=analyses.detail(c.analysis());
+        var sources=current.products().stream().filter(product->"SALES_ORDER_ITEM".equals(product.sourceType()))
+            .map(product->new PreviewItem("SALES_ORDER_ITEM",product.salesOrderItemId(),null,null,null,null,null,product.deliveryDate(),product.requestedQty())).toList();
+        return analyses.preview(new PreviewRequest(c.analysis(),current.version(),current.fingerprint(),c.world().warehouseId(),key("refresh"),sources));
     }
 
     private SalesCase salesCase(String available){

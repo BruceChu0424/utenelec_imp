@@ -110,6 +110,34 @@ class MaterialRouteAutoConfirmEndToEndTest {
         assertEquals(0,refreshed.autoConfirmedRouteCount());
     }
 
+    @Test void rootSubcontractSourcesKeepDistinctParentLossesForTheSameChildAtExactPrecision(){
+        var w=fixture.seedWorld("root-subcontract-parent-loss");fixture.loginAs(w.superAdminUserId());
+        UUID first=UUID.randomUUID(),second=UUID.randomUUID(),child=UUID.randomUUID();
+        fixture.insertGoods(first,"RSLA-"+first,"一级委外来源甲","委外",w.unitId(),w.unitLegacy());
+        fixture.insertGoods(second,"RSLB-"+second,"一级委外来源乙","委外",w.unitId(),w.unitLegacy());
+        fixture.insertGoods(child,"RSLC-"+child,"两个来源共用的采购子件","采购",w.unitId(),w.unitLegacy());
+        fixture.insertBom(first,child,"2.125");fixture.insertBom(second,child,"2.125");
+        db.update("UPDATE goods SET subcontract_allowed_loss_pct=7.5 WHERE id=?",first);
+        db.update("UPDATE goods SET subcontract_allowed_loss_pct=11.25 WHERE id=?",second);
+        db.update("UPDATE goods SET subcontract_allowed_loss_pct=99 WHERE id=?",child);
+        AnalysisView view=analyses.preview(new PreviewRequest(null,null,null,w.warehouseId(),"root-loss-preview-"+first,
+                List.of(manualSource(w,first,"root-loss-a"),manualSource(w,second,"root-loss-b"))));
+        for(AnalysisView actual:List.of(view,analyses.detail(view.analysisId()))){
+            UUID firstSource=rootByGoods(actual,first).analysisLineId();
+            UUID secondSource=rootByGoods(actual,second).analysisLineId();
+            MaterialView firstChild=actual.flatMaterials().stream().filter(row->child.equals(row.goodsId())
+                    &&firstSource.equals(row.analysisLineId())).findFirst().orElseThrow();
+            MaterialView secondChild=actual.flatMaterials().stream().filter(row->child.equals(row.goodsId())
+                    &&secondSource.equals(row.analysisLineId())).findFirst().orElseThrow();
+            assertEquals(0,new BigDecimal("228.4375").compareTo(firstChild.requiredQty()));
+            assertEquals(0,new BigDecimal("236.4063").compareTo(secondChild.requiredQty()));
+            assertEquals(0,new BigDecimal("2.125").compareTo(firstChild.bomQty()));
+            assertEquals(0,new BigDecimal("2.125").compareTo(secondChild.bomQty()));
+            assertEquals("SUBCONTRACT_OUTBOUND",firstChild.usageReason());
+            assertEquals("SUBCONTRACT_OUTBOUND",secondChild.usageReason());
+        }
+        assertEquals(List.of("PREVIEW"),operations(view.analysisId()));
+    }
     @Test void manualPlanWithoutAMasterRouteOrBomRequiresAnExplicitChoice(){
         var w=fixture.seedWorld("manual-unknown-route");
         UUID goods=UUID.randomUUID();

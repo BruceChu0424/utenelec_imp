@@ -1992,6 +1992,10 @@ public class MaterialAnalysisService {
     }
 
     private record SubcontractSupplyTarget(String nodeRef,UUID parentGoodsId) { }
+    /** First-level edges belong to their original source; deeper edges keep their real parent. */
+    static UUID materialParentGoodsId(MaterialRow row, SourceLine source) {
+        return row.depth() == 1 ? source.goodsId() : row.parentGoodsId();
+    }
 
     /** Protect the full material budget before private pegs are partitioned from the shared pool. */
     static List<BomNode> withGrossSupplyBudget(List<BomNode> nodes) {
@@ -2044,7 +2048,7 @@ public class MaterialAnalysisService {
             BigDecimal parentOutput=parent==null?source.plannedOutputQty().multiply(source.unitRate()):parent.snapshotRequiredQty();
             BigDecimal required=MaterialConsumptionMath.required(parentOutput,row.bomQty(),row.consumptionBasis(),row.basisOutputQty(),row.allowPartialPackage());
             UUID edgeId=UUID.fromString(row.nodeKey().substring(row.nodeKey().lastIndexOf('/')+1));
-            BomNode node=new BomNode(row.analysisItemId(),edgeId,row.depth()==1?source.goodsId():row.parentGoodsId(),row.goodsId(),row.colorId(),row.unitId(),row.depth(),
+            BomNode node=new BomNode(row.analysisItemId(),edgeId,materialParentGoodsId(row,source),row.goodsId(),row.colorId(),row.unitId(),row.depth(),
                     row.nodeKey(),row.parentNodeKey(),row.parentPerProductQty(),row.usage(),row.perProductQty(),required,
                     row.goodsCode(),row.goodsName(),row.spec(),row.colorName(),row.unitName(),row.safetyStockQty(),row.suggestion(),
                     parents.contains(nodeRef(row.analysisItemId(),row.nodeKey())),row.controlStage(),row.consumptionBasis(),row.basisOutputQty(),
@@ -5098,7 +5102,8 @@ public class MaterialAnalysisService {
             if(row.depth()==1)return "SUBCONTRACT".equals(sourcesById.get(row.analysisItemId()).rootRoute());
             MaterialRow parent=materialRowsByNode.get(new MaterialNodeIdentity(row.analysisItemId(),row.parentNodeKey()));
             return parent!=null&&"SUBCONTRACT".equals(parent.confirmedRoute()!=null?parent.confirmedRoute():parent.suggestion());
-        }).map(row->new SubcontractSupplyTarget(nodeRef(row.analysisItemId(),row.nodeKey()),row.parentGoodsId())).toList();
+        }).map(row->new SubcontractSupplyTarget(nodeRef(row.analysisItemId(),row.nodeKey()),
+                materialParentGoodsId(row,sourcesById.get(row.analysisItemId())))).toList();
         Map<String,SubcontractMaterialSupplyRequirement> detailSupplyRules=subcontractSupplyRules(detailSupplyTargets,detailSupply);
         Map<String,FormalCoverageRule> budgetRules=materialRows.stream().collect(Collectors.toMap(row->nodeRef(row.analysisItemId(),row.nodeKey()),
                 row->new FormalCoverageRule(row.requiredQty(),output->detailSupplyRules.getOrDefault(

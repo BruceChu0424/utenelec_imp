@@ -6,6 +6,7 @@ import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
@@ -36,12 +37,17 @@ import org.postgresql.util.ServerErrorMessage;
 @Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+    /** An ApiError remains JSON even when the selected success handler produces a stream/file. */
+    private static ResponseEntity.BodyBuilder errorStatus(int status) {
+        return ResponseEntity.status(status).contentType(MediaType.APPLICATION_JSON);
+    }
+
     @ExceptionHandler(com.uten.imp.common.finance.BusinessPrecisionRequiredException.class)
     public ResponseEntity<ApiError> handlePrecision(com.uten.imp.common.finance.BusinessPrecisionRequiredException ex){
         return precisionResponse(ex.details());
     }
     private ResponseEntity<ApiError> precisionResponse(java.util.Map<String,Object> details){
-        return ResponseEntity.status(422).body(ApiError.of(ErrorCode.PRECISION_CHOICE_REQUIRED,null).withDetails(details));
+        return errorStatus(422).body(ApiError.of(ErrorCode.PRECISION_CHOICE_REQUIRED,null).withDetails(details));
     }
     private java.util.Map<String,Object> precisionDetails(Throwable root){
         return com.uten.imp.common.finance.BusinessPrecisionRequiredException.from(root).map(com.uten.imp.common.finance.BusinessPrecisionRequiredException::details).orElse(null);
@@ -59,7 +65,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(ApiException.class)
     public ResponseEntity<ApiError> handleApi(ApiException ex) {
-        var response = ResponseEntity.status(ex.getCode().getHttpStatus());
+        var response = errorStatus(ex.getCode().getHttpStatus());
         // 并发冲突可重试 (ADR-107) 与密码哈希闸门满 (ADR-110 AUTH_BUSY): 都告诉客户端 1 秒后可重试, 不必当成服务故障。
         if (ex.retryable() || ex.getCode() == ErrorCode.AUTH_BUSY) {
             response.header(HttpHeaders.RETRY_AFTER, "1");
@@ -72,7 +78,7 @@ public class GlobalExceptionHandler {
         List<ApiError.FieldError> fields = ex.getBindingResult().getFieldErrors().stream()
                 .map(f -> new ApiError.FieldError(f.getField(), f.getDefaultMessage()))
                 .toList();
-        return ResponseEntity.status(422)
+        return errorStatus(422)
                 .body(ApiError.of(ErrorCode.VALIDATION_FAILED, "填写的内容有误，请检查后重试", fields));
     }
 
@@ -81,7 +87,7 @@ public class GlobalExceptionHandler {
         List<ApiError.FieldError> fields = ex.getConstraintViolations().stream()
                 .map(v -> new ApiError.FieldError(v.getPropertyPath().toString(), v.getMessage()))
                 .toList();
-        return ResponseEntity.status(422)
+        return errorStatus(422)
                 .body(ApiError.of(ErrorCode.VALIDATION_FAILED, "填写的内容有误，请检查后重试", fields));
     }
 
@@ -91,7 +97,7 @@ public class GlobalExceptionHandler {
         if (ex.isForReturnValue()) {
             log.error("接口返回值校验失败: {}.{}", ex.getMethod().getDeclaringClass().getSimpleName(),
                     ex.getMethod().getName());
-            return ResponseEntity.status(500).body(ApiError.of(ErrorCode.INTERNAL, null));
+            return errorStatus(500).body(ApiError.of(ErrorCode.INTERNAL, null));
         }
         List<ApiError.FieldError> fields = new ArrayList<>();
         for (var result : ex.getParameterValidationResults()) {
@@ -124,19 +130,25 @@ public class GlobalExceptionHandler {
         for (var error : ex.getCrossParameterValidationResults()) {
             fields.add(new ApiError.FieldError("", error.getDefaultMessage()));
         }
-        return ResponseEntity.status(422)
+        return errorStatus(422)
                 .body(ApiError.of(ErrorCode.VALIDATION_FAILED, "填写的内容有误，请检查后重试", fields));
     }
 
     @ExceptionHandler(MissingServletRequestParameterException.class)
     public ResponseEntity<ApiError> handleMissingParam(MissingServletRequestParameterException ex) {
-        return ResponseEntity.status(400)
+        return errorStatus(400)
                 .body(ApiError.of(ErrorCode.MALFORMED_REQUEST, "缺少查询条件: " + ex.getParameterName()));
+    }
+
+    @ExceptionHandler(org.springframework.web.bind.UnsatisfiedServletRequestParameterException.class)
+    public ResponseEntity<ApiError> handleMappingParameter() {
+        return errorStatus(400)
+                .body(ApiError.of(ErrorCode.MALFORMED_REQUEST, "查询条件不符合接口要求"));
     }
 
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     public ResponseEntity<ApiError> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
-        return ResponseEntity.status(400)
+        return errorStatus(400)
                 .body(ApiError.of(ErrorCode.MALFORMED_REQUEST, "查询条件 " + ex.getName() + " 的格式不对"));
     }
 
@@ -145,18 +157,18 @@ public class GlobalExceptionHandler {
     // 否则会被下面的 Exception 兜底吞成 500（API 后端无 SPA 转发，404 是正确语义）。
     @ExceptionHandler({NoResourceFoundException.class, NoHandlerFoundException.class})
     public ResponseEntity<ApiError> handleRouteNotFound() {
-        return ResponseEntity.status(404).body(ApiError.of(ErrorCode.NOT_FOUND, null));
+        return errorStatus(404).body(ApiError.of(ErrorCode.NOT_FOUND, null));
     }
 
     // 路径存在但方法不对 (如已删除的写接口只剩 GET)：405, 不被兜底吞成 500。
     @ExceptionHandler(org.springframework.web.HttpRequestMethodNotSupportedException.class)
     public ResponseEntity<ApiError> handleMethodNotAllowed() {
-        return ResponseEntity.status(405).body(ApiError.of(ErrorCode.METHOD_NOT_ALLOWED, null));
+        return errorStatus(405).body(ApiError.of(ErrorCode.METHOD_NOT_ALLOWED, null));
     }
 
     @ExceptionHandler(JsonBodyTooLargeException.class)
     public ResponseEntity<ApiError> handleJsonBodyTooLarge() {
-        return ResponseEntity.status(ErrorCode.PAYLOAD_TOO_LARGE.getHttpStatus())
+        return errorStatus(ErrorCode.PAYLOAD_TOO_LARGE.getHttpStatus())
                 .body(ApiError.of(ErrorCode.PAYLOAD_TOO_LARGE, null));
     }
 
@@ -170,36 +182,36 @@ public class GlobalExceptionHandler {
             }
             cause = cause.getCause();
         }
-        return ResponseEntity.status(ErrorCode.MALFORMED_REQUEST.getHttpStatus())
+        return errorStatus(ErrorCode.MALFORMED_REQUEST.getHttpStatus())
                 .body(ApiError.of(ErrorCode.MALFORMED_REQUEST, null));
     }
 
     @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
     public ResponseEntity<ApiError> handleUnsupportedMediaType() {
-        return ResponseEntity.status(ErrorCode.UNSUPPORTED_MEDIA_TYPE.getHttpStatus())
+        return errorStatus(ErrorCode.UNSUPPORTED_MEDIA_TYPE.getHttpStatus())
                 .body(ApiError.of(ErrorCode.UNSUPPORTED_MEDIA_TYPE, null));
     }
 
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     public ResponseEntity<ApiError> handleMultipartTooLarge() {
-        return ResponseEntity.status(ErrorCode.PAYLOAD_TOO_LARGE.getHttpStatus())
+        return errorStatus(ErrorCode.PAYLOAD_TOO_LARGE.getHttpStatus())
                 .body(ApiError.of(ErrorCode.PAYLOAD_TOO_LARGE, null));
     }
 
     @ExceptionHandler({MissingServletRequestPartException.class, MultipartException.class})
     public ResponseEntity<ApiError> handleMalformedMultipart() {
-        return ResponseEntity.status(ErrorCode.MALFORMED_REQUEST.getHttpStatus())
+        return errorStatus(ErrorCode.MALFORMED_REQUEST.getHttpStatus())
                 .body(ApiError.of(ErrorCode.MALFORMED_REQUEST, "上传内容缺失或格式不正确"));
     }
 
     @ExceptionHandler(AuthenticationException.class)
     public ResponseEntity<ApiError> handleAuth() {
-        return ResponseEntity.status(401).body(ApiError.of(ErrorCode.UNAUTHORIZED, null));
+        return errorStatus(401).body(ApiError.of(ErrorCode.UNAUTHORIZED, null));
     }
 
     @ExceptionHandler(AccessDeniedException.class)
     public ResponseEntity<ApiError> handleAccessDenied() {
-        return ResponseEntity.status(403).body(ApiError.of(ErrorCode.FORBIDDEN, null));
+        return errorStatus(403).body(ApiError.of(ErrorCode.FORBIDDEN, null));
     }
 
     /**
@@ -232,7 +244,7 @@ public class GlobalExceptionHandler {
             org.springframework.dao.OptimisticLockingFailureException.class,
             jakarta.persistence.OptimisticLockException.class})
     public ResponseEntity<ApiError> handleOptimisticLock() {
-        return ResponseEntity.status(409)
+        return errorStatus(409)
                 .body(ApiError.of(ErrorCode.CONFLICT, "该记录已被他人修改，请刷新后重试"));
     }
 
@@ -255,7 +267,7 @@ public class GlobalExceptionHandler {
     private ResponseEntity<ApiError> retryableConflict(Exception ex, String message) {
         log.warn("Database deadline reached, request rolled back: {} sqlState={}",
                 ex.getClass().getSimpleName(), sqlState(ex));
-        return ResponseEntity.status(409).header(HttpHeaders.RETRY_AFTER, "1")
+        return errorStatus(409).header(HttpHeaders.RETRY_AFTER, "1")
                 .body(ApiError.of(ErrorCode.CONFLICT, message));
     }
 
@@ -306,7 +318,7 @@ public class GlobalExceptionHandler {
     record IntegrityOutcome(ErrorCode code, String message) {}
 
     private static ResponseEntity<ApiError> integrityResponse(IntegrityOutcome outcome) {
-        return ResponseEntity.status(outcome.code().getHttpStatus())
+        return errorStatus(outcome.code().getHttpStatus())
                 .body(ApiError.of(outcome.code(), outcome.message()));
     }
 
@@ -611,6 +623,6 @@ public class GlobalExceptionHandler {
             return integrityResponse(integrityOutcome(ex));
         }
         log.error("未处理异常", ex);
-        return ResponseEntity.status(500).body(ApiError.of(ErrorCode.INTERNAL, null));
+        return errorStatus(500).body(ApiError.of(ErrorCode.INTERNAL, null));
     }
 }

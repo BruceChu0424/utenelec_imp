@@ -17,8 +17,9 @@ import 'package:uten_imp/features/finance/pages/finance_hub_page.dart';
 import 'package:uten_imp/features/finance/pages/finance_report_table_page.dart';
 import 'package:uten_imp/features/finance/widgets/finance_date_range_filter.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import '../../support/master_summary_stream_fixture.dart';
+import '../../support/pump_until.dart';
 import '../../support/table_read_status.dart';
-import '../../support/versioned_summary_test_response.dart';
 
 late SharedPreferences _preferences;
 
@@ -38,7 +39,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       await tester.tap(find.byType(ClientPickerField));
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(api.candidateQueries.single['selectableOnly'], isNot(true));
       await tester.tap(find.text('已隐藏历史客户'));
       await tester.pump();
@@ -219,8 +220,8 @@ Widget _hubApp(Set<String> permissions) => ProviderScope(
   ),
 );
 
-class _ReportApi extends ApiClient {
-  _ReportApi({this.fail = false, this.failure}) : super(Dio());
+class _ReportApi extends MasterSummaryStreamTestApi {
+  _ReportApi({this.fail = false, this.failure});
 
   bool fail;
   final Object? failure;
@@ -229,31 +230,19 @@ class _ReportApi extends ApiClient {
   final candidateQueries = <Map<String, dynamic>>[];
 
   @override
-  Future<Map<String, dynamic>> post(
-    String path, {
-    Object? body,
-    Map<String, dynamic>? query,
-    Map<String, dynamic>? headers,
-  }) async {
-    expect(path, '/business-references/clients/summaries');
-    final request = Map<String, dynamic>.from(body! as Map);
-    final filter = Map<String, dynamic>.from(request['filter'] as Map);
+  List<Map<String, dynamic>> masterSummaryRows(RequestOptions request) {
+    expect(request.path, '/business-references/clients/summaries');
+    final filter = masterSummaryTestParameters(request);
     candidateQueries.add(filter);
-    expect(request['size'], 100);
-    return versionedSummaryTestResponse(
-      [
-        if (filter['selectableOnly'] != true)
-          {
-            'id': 'hidden-customer',
-            'name': '已隐藏历史客户',
-            'categoryId': 'client-root',
-            'status': '使用',
-          },
-      ],
-      request,
-      revision: 'a' * 64,
-      dataVersion: 'b' * 64,
-    );
+    return [
+      if (filter['selectableOnly'] != true)
+        {
+          'id': 'hidden-customer',
+          'name': '已隐藏历史客户',
+          'categoryId': 'client-root',
+          'status': '使用',
+        },
+    ];
   }
 
   @override
@@ -261,25 +250,6 @@ class _ReportApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
-    if (path == '/business-references/clients') {
-      candidateQueries.add({...?query});
-      final items = [
-        if (query?['selectableOnly'] != true)
-          {
-            'id': 'hidden-customer',
-            'name': '已隐藏历史客户',
-            'categoryId': 'client-root',
-            'status': '使用',
-          },
-      ];
-      return {
-        'items': items,
-        'page': 1,
-        'size': 100,
-        'total': items.length,
-        'totalPages': 1,
-      };
-    }
     if (path == '/finance/reports/customer-prepayment/events') {
       reportCalls++;
       lastQuery = Map<String, dynamic>.from(query ?? const {});

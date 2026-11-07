@@ -1598,23 +1598,37 @@ void main() {
     await _pumpReviewPage(tester, repository);
     final field = find.byKey(const Key('finance-order-review-rate-field'));
 
+    Future<void> expectRateError(String message) async {
+      expect(
+        find.ancestor(
+          of: field,
+          matching: find.byWidgetPredicate(
+            (widget) =>
+                widget is Semantics &&
+                (widget.properties.hint?.contains(message) ?? false),
+          ),
+        ),
+        findsOneWidget,
+      );
+      // The active editor exposes the error without mounting its tooltip.
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+      expect(find.byTooltip(RegExp(RegExp.escape(message))), findsOneWidget);
+    }
+
     await tester.enterText(field, '0');
     await tester.pump();
     await tester.tap(find.byKey(const Key('finance-order-review-approve')));
     await tester.pumpAndSettle();
     expect(repository.approved, isEmpty);
-    // 2026-10-10 字段消息契约：错误文案收进格内 ⓘ（Tooltip），不再有裸 errorText。
-    expect(
-      find.byTooltip(RegExp('汇率须大于 0，整数最多 12 位，小数最多 6 位')),
-      findsOneWidget,
-    );
+    await expectRateError('汇率须大于 0，整数最多 12 位，小数最多 6 位');
 
     await tester.enterText(field, '');
     await tester.pump();
     await tester.tap(find.byKey(const Key('finance-order-review-approve')));
     await tester.pumpAndSettle();
     expect(repository.approved, isEmpty);
-    expect(find.byTooltip(RegExp('请填写大于 0 的汇率')), findsOneWidget);
+    await expectRateError('请填写大于 0 的汇率');
   });
 
   testWidgets('通过提交带编辑后的汇率', (tester) async {

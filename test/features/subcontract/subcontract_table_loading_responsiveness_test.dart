@@ -4,6 +4,8 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../../support/pump_until.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/components/layout/uten_filter_toolbar.dart';
@@ -243,20 +245,31 @@ void main() {
       final repository = _DelayedCounts()..rows = [_shortCase];
       await _pump(tester, SubcontractShortDeliveryPage(repository: repository));
       expect(_shortTable(tester).items.single.id, _shortCase.id);
-      repository.rowGate =
-          Completer<PagedResult<SubcontractShortDeliveryCase>>();
+      final oldRead = Completer<PagedResult<SubcontractShortDeliveryCase>>();
+      final newRead = Completer<PagedResult<SubcontractShortDeliveryCase>>();
+      repository.rowGate = oldRead;
+      final beforeFilter = repository.rowCalls;
       await selectFilterSegment(tester, '分批等待中');
-      await tester.pump();
+      await pumpUntil(
+        tester,
+        () => repository.rowCalls > beforeFilter,
+        reason: 'The old scope read must be pending before retirement',
+      );
       final container = ProviderScope.containerOf(
         tester.element(
           find.byKey(const Key('subcontract-short-delivery-table')),
         ),
       );
+      repository.rowGate = newRead;
+      final beforeScopeChange = repository.rowCalls;
       container.read(readScopeRevisionProvider.notifier).state++;
-      await tester.pumpAndSettle();
+      await pumpUntil(
+        tester,
+        () => repository.rowCalls > beforeScopeChange,
+        reason: 'The replacement reader must begin its own query',
+      );
       expect(_shortTable(tester).items, isEmpty);
-      expect(_shortTable(tester).isLoading, isFalse);
-      repository.rowGate!.complete(
+      oldRead.complete(
         const PagedResult(
           items: [_shortCase],
           page: 1,
@@ -265,8 +278,20 @@ void main() {
           totalPages: 1,
         ),
       );
+      await tester.pump();
+      expect(_shortTable(tester).items, isEmpty);
+      newRead.complete(
+        const PagedResult(
+          items: [],
+          page: 1,
+          size: 50,
+          total: 0,
+          totalPages: 0,
+        ),
+      );
       await tester.pumpAndSettle();
       expect(_shortTable(tester).items, isEmpty);
+      expect(_shortTable(tester).isLoading, isFalse);
       expect(tester.takeException(), isNull);
     },
   );

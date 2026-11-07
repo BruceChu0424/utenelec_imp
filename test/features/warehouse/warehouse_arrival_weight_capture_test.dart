@@ -396,20 +396,19 @@ void main() {
       failFirstArrival: true,
     );
 
-    // 列序: 本次实收 → 实称重量(kg) → 称重核对 → 入库仓库(独立「单位」列已删, 2026-10-10
-    // T9: 行单位内联在数量后)。
+    // 实称重量和单重相邻，按原数量分组后核对称重并选入库仓。
     final grid = tester.widget<UtenEditableGrid<EditableGridRow>>(_grid());
     final labels = grid.columns.map((column) => column.label).toList();
     final qty = labels.indexOf('本次实收');
-    expect(labels.sublist(qty, qty + 6), [
+    expect(labels.sublist(qty, qty + 7), [
       '本次实收',
       '赠品数量',
       '实物数量',
       '实称重量(kg)',
+      '单重(g)',
       '称重核对',
       '入库仓库',
     ]);
-    expect(labels.last, '单重(g)');
     expect(labels.contains('单位'), isFalse);
     // 只读数量列单位内联；录入列单位挂输入框尾部。
     expect(

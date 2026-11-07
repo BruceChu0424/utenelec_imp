@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../../support/pump_until.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/inputs/uten_employee_picker.dart';
 import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
@@ -223,7 +225,11 @@ void main() {
       final repeat = _table(tester).onRetry!;
       repeat();
       repeat();
-      await tester.pump();
+      await pumpUntil(
+        tester,
+        () => continuation == 2,
+        reason: 'The guarded retry must reach its second batch',
+      );
       expect(find.byType(UtenBusyOverlay), findsOneWidget);
       expect(continuation, 2);
       retry.complete(_page(2, totalPages: 2));

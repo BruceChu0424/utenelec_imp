@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../../support/pump_until.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/components/layout/uten_picker_confirm_bar.dart';
@@ -429,10 +431,11 @@ void main() {
       (ref) => {Perm.workshopMaterialView},
     );
     final results = <WmMaterialOption?>[];
+    final repo = _RequestRepo();
     await pumpWorkshopMaterialPage(
       tester,
       _pickerButton(results.add),
-      repo: _RequestRepo(),
+      repo: repo,
       permissionState: permissions,
     );
     await tester.tap(find.text('打开物料'));
@@ -457,13 +460,23 @@ void main() {
       tester.element(row),
       listen: false,
     );
+    final denied = Completer<PagedResult<WmMaterialOption>>();
+    repo.pagedResponse = (_) => denied.future;
+    final previousReads = repo.calls.length;
     container.read(permissions.notifier).state = {};
     oldSelect();
     oldConfirm();
+    await pumpUntil(
+      tester,
+      () => repo.calls.length > previousReads,
+      reason: 'The replacement scope must be checked by the server',
+    );
+    expect(row, findsNothing);
+    denied.completeError(ApiException('FORBIDDEN', '没有查看权限', httpStatus: 403));
     await tester.pumpAndSettle();
     expect(results, isEmpty);
     expect(row, findsNothing);
-    await expectTableReadFailureDetails(tester, '账号、服务器或权限已变化，请重新搜索');
+    await expectTableReadFailureDetails(tester, '没有查看权限');
     expect(
       tester
           .widget<UtenButton>(

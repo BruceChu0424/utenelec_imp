@@ -57,6 +57,15 @@ class ReportExportServiceTest {
         verify(repository,never()).insert(any(),any(),anyLong(),anyLong(),anyString(),anyString(),anyString());
         verify(repository,never()).active(any());
     }
+    @Test void tablePdfUsesTheSameDurableQueueAndRecoversItsOriginalIdentity() throws Exception {
+        var request=new ReportExportRequest(UUID.randomUUID(),"sales","ORDER/detail",Map.of("dateFrom","2020-01-01"),null,null,null,"pdf");
+        when(repository.find(request.id())).thenReturn(Optional.empty()).thenReturn(Optional.of(job(request)));
+        var queued=service.submit(request);
+        assertEquals(request.id(),queued.id());assertEquals("pdf",queued.format());
+        verify(repository).insert(eq(request),eq(owner),eq(1L),eq(1L),anyString(),eq("fixture-build"),eq("a".repeat(64)));
+        assertEquals(request.id(),service.submit(request).id());
+        verify(repository,times(1)).insert(any(),any(),anyLong(),anyLong(),anyString(),anyString(),anyString());
+    }
     private ReportExportRepository.Job waiting(ReportExportRequest request,String choices)throws Exception{
         var source=job(request);return new ReportExportRepository.Job(source.id(),owner,1,1,source.request(),"WAITING_PRECISION",false,1,0,source.createdAt(),OffsetDateTime.now(),source.snapshotAt(),OffsetDateTime.now().plusHours(1),"请选择精度",null,0,source.contract(),source.buildIdentity(),source.accessStamp(),choices,"{\"calculationKey\":\"ratio\",\"groupKey\":\"ratio\",\"label\":\"本次报表比率\",\"maxScale\":30,\"reason\":\"NON_TERMINATING\",\"notWritten\":true}");
     }
@@ -106,6 +115,21 @@ class ReportExportServiceTest {
         assertNull(service.get(request.id()).request(),"retired data/projection filters are not returned as a receipt proof");
         when(users.get()).thenReturn(Optional.of(new AuthUser(UUID.randomUUID(),user.getEmployeeId(),"other",Set.of("unit:export"),false,true,false)));
         assertEquals(ErrorCode.NOT_FOUND,assertThrows(ApiException.class,()->service.get(request.id())).getCode());
+    }
+    @Test void recentLargeUnitSelectionsStayMetadataOnlyWhileSpecificReceiptRetainsEveryIdentity() throws Exception {
+        var unitUser=new AuthUser(owner,user.getEmployeeId(),"unit-export",Set.of("unit:export"),false,true,false);
+        when(users.get()).thenReturn(Optional.of(unitUser));when(restorer.restore(owner,1,1L)).thenReturn(unitUser);
+        var ids=java.util.stream.IntStream.range(0,50000).mapToObj(index->new UUID(1,index).toString()).toList();
+        var parameters=Map.of("filter","{}","selectedIds",mapper.writeValueAsString(ids));
+        var first=new ReportExportRequest(UUID.randomUUID(),"master","unit",parameters,null,null,null);
+        var second=new ReportExportRequest(UUID.randomUUID(),"master","unit",parameters,null,null,null);
+        when(repository.recent(owner)).thenReturn(List.of(job(first),job(second)));
+        var recent=service.recent();
+        assertEquals(2,recent.size());assertTrue(recent.stream().allMatch(view->view.request()==null));
+        var wire=mapper.copy().registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
+        assertTrue(wire.writeValueAsBytes(recent).length<16000,"recent metadata must not multiply large private selection proofs");
+        when(repository.find(first.id())).thenReturn(Optional.of(job(first)));
+        assertEquals(first,service.get(first.id()).request(),"specific original receipt still proves the complete frozen selection");
     }
     @Test void oldConsumersAndOtherReportDomainsKeepTheirExistingMetadataContract() throws Exception {
         var request=request(UUID.randomUUID());when(repository.find(request.id())).thenReturn(Optional.of(job(request)));

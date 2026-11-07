@@ -2,12 +2,11 @@ package com.uten.imp.features.warehouse.taskcenter;
 
 import com.uten.imp.common.export.ExportColumn;
 import com.uten.imp.common.export.ExportPayload;
+import com.uten.imp.common.export.ExportPageSink;
 import com.uten.imp.common.export.LegacyExportBudget;
-import com.uten.imp.common.web.ApiException;
-import com.uten.imp.common.web.ErrorCode;
-import com.uten.imp.features.admin.systemsetting.SystemSettingKey;
-import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -18,20 +17,18 @@ import java.util.Map;
  * 仓库任务中心「按筛选结果导出表格」（2026-10-29 用户批注）。
  *
  * <p>与列表接口共用同一查询服务（授权、仓库范围、状态/关键词/表头筛选与排序完全一致），
- * 仅去掉分页语义：按 100 行/页（列表接口的页大小上限）翻页收齐当前筛选的行，行数上限
- * 沿用系统设置「导出行数上限」并被同步导出预算（500 行）压顶。
+ * 在同一只读快照中按 100 行的内部批次收齐当前筛选的全部结果，流式写入同一个文件。
  */
 @Service
+@Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
 public class WarehouseTaskCenterExportService {
     private final WarehouseOutboundTaskCenterQueryService outbound;
     private final WarehouseInboundTaskCenterQueryService inbound;
-    private final SystemSettingsService settings;
 
     public WarehouseTaskCenterExportService(WarehouseOutboundTaskCenterQueryService outbound,
-            WarehouseInboundTaskCenterQueryService inbound, SystemSettingsService settings) {
+            WarehouseInboundTaskCenterQueryService inbound) {
         this.outbound = outbound;
         this.inbound = inbound;
-        this.settings = settings;
     }
 
     public ExportPayload outbound(WarehouseTaskCenterContracts.Filter filter) {
@@ -43,31 +40,33 @@ public class WarehouseTaskCenterExportService {
     }
 
     private ExportPayload collect(WarehouseTaskCenterContracts.Filter filter, boolean outboundDirection) {
-        int maxRows = LegacyExportBudget.maximumRows(settings.readInt(SystemSettingKey.EXPORT_MAX_ROWS));
-        List<Map<String, Object>> all = new ArrayList<>();
+        var sink = ExportPageSink.current();
+        List<ExportColumn> columns = columns(outboundDirection);
+        List<Map<String, Object>> all = sink == null ? new ArrayList<>() : null;
         int seen = 0;
-        for (int page = 1; page <= 2000; page++) {
+        long expected = -1;
+        for (int page = 1; ; page = Math.incrementExact(page)) {
             LegacyExportBudget.checkpoint();
             WarehouseTaskCenterContracts.Filter paged = withPage(filter, page, 100);
             WarehouseTaskCenterContracts.Page result = outboundDirection
                     ? outbound.list(paged,false) : inbound.list(paged,false);
-            if (page == 1) requireRows(maxRows, result.total());
-            for (WarehouseTaskCenterContracts.Row row : result.items()) {
-                all.add(valuesOf(row, outboundDirection));
+            if (result.page() != page || result.size() != 100 || result.items().size() > 100)
+                throw new IllegalStateException("Warehouse task export pagination changed");
+            if (expected < 0) {
+                expected = result.total();
+                if (expected < 0) throw new IllegalStateException("Warehouse task export requires its initial count");
+            } else if (result.total() != expected) {
+                throw new IllegalStateException("Warehouse task export source count changed");
             }
-            seen += result.items().size();
-            requireRows(maxRows, seen);
-            if (result.items().size() < 100 || seen >= result.total()) {
-                return new ExportPayload(columns(outboundDirection), all, seen);
-            }
+            List<Map<String, Object>> rows = result.items().stream().map(row -> valuesOf(row, outboundDirection)).toList();
+            seen = Math.addExact(seen, rows.size());
+            LegacyExportBudget.requireRows(seen);
+            if (seen > expected || rows.size() < 100 && seen < expected)
+                throw new IllegalStateException("Warehouse task export source is incomplete");
+            if (sink == null) all.addAll(rows);
+            else sink.accept(new ExportPayload(columns, rows, seen));
+            if (seen == expected) return new ExportPayload(columns, sink == null ? List.copyOf(all) : List.of(), seen);
         }
-        throw new ApiException(ErrorCode.VALIDATION_FAILED, "仓库任务导出翻页未收敛，请收窄筛选后重试");
-    }
-
-    private static void requireRows(int maxRows, long rows) {
-        if (rows > maxRows) throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                "导出数据超过 " + maxRows + " 行上限，请收窄筛选条件或分批导出");
-        LegacyExportBudget.requireRows(rows);
     }
 
     static WarehouseTaskCenterContracts.Filter withPage(WarehouseTaskCenterContracts.Filter filter, int page, int size) {

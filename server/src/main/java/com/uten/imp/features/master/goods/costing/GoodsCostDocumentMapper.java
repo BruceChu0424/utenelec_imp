@@ -28,8 +28,8 @@ public final class GoodsCostDocumentMapper {
         var calc = snapshot.calculation();
         boolean partial = paths != null && !paths.isEmpty();
         Set<String> includedPaths = partial ? new HashSet<>(paths) : Set.of();
-        if (partial && (includedPaths.size() != paths.size() || includedPaths.size() > 5000
-                || !calc.lines().stream().map(CostLine::path).toList().containsAll(includedPaths)))
+        if (partial && (includedPaths.size() != paths.size()
+                || !calc.lines().stream().map(CostLine::path).collect(java.util.stream.Collectors.toSet()).containsAll(includedPaths)))
             throw invalid("选中物料已经变化，请重新选择");
         List<String> metadata = new ArrayList<>(List.of(
                 "成本单: " + snapshot.sheetNo(), "版本: " + snapshot.sheetVersion() + " / " + kind(snapshot.kind()),

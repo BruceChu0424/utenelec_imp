@@ -68,6 +68,48 @@ public class XlsxExportService {
         }
     }
 
+    public record SourceWorkbook(ExportPayload payload, byte[] bytes) { }
+
+    /** Direct-download compatibility uses the same bounded source/writer contract as jobs.
+     * Only the final small HTTP artifact remains in memory, never every source row. */
+    @org.springframework.transaction.annotation.Transactional(readOnly=true,
+            isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    public SourceWorkbook buildSource(java.util.function.Supplier<ExportPayload> source,
+                                      TableColumnProjection projection, String allowedScope) {
+        java.nio.file.Path directory = null;
+        Throwable failure = null;
+        try {
+            directory = java.nio.file.Files.createTempDirectory("uten-table-sync-");
+            try (var out = new ByteArrayOutputStream(); var writer = openStream(projection, allowedScope, directory)) {
+                var batches = new java.util.concurrent.atomic.AtomicInteger();
+                ExportPayload result;
+                try (var sink = ExportPageSink.open(page -> { writer.accept(page); batches.incrementAndGet(); })) {
+                    result = Objects.requireNonNull(source.get());
+                }
+                if (batches.get() == 0) writer.accept(result);
+                if (projection == null || projection.rowSelection() == null) {
+                    if (writer.rowCount() != result.total()) throw new IllegalStateException("Export source is incomplete");
+                }
+                writer.finish(ExportTemporaryBudget.artifactOutput(out, directory,
+                        ExportOperationCheckpoint::check, ExportResourceLimits.LEGACY_ARTIFACT_BYTES));
+                return new SourceWorkbook(new ExportPayload(result.columns(), List.of(), result.total(),
+                        result.layout(), result.documentMetadata()), out.toByteArray());
+            }
+        } catch (IOException error) {
+            failure = error;
+            throw new IllegalStateException("生成 Excel 失败", error);
+        } catch (RuntimeException | Error error) {
+            failure = error;
+            throw error;
+        } finally {
+            if (directory != null) try { java.nio.file.Files.deleteIfExists(directory); }
+            catch (IOException cleanup) {
+                if (failure != null) failure.addSuppressed(cleanup);
+                else throw new IllegalStateException("导出临时资源未能安全清理，本次未交付文件", cleanup);
+            }
+        }
+    }
+
     /** Bounded page writer; shares the same projection, precision, units and literal text rules. */
     public StreamingWorkbook openStream(TableColumnProjection projection, String allowedScope) {
         return new StreamingWorkbook(projection, allowedScope, null);
@@ -153,12 +195,14 @@ public class XlsxExportService {
         private boolean closed;
         private final class SheetState {
             final Sheet sheet;final List<ExportColumn> columns;final ExportTableLayout layout;int rowIndex=1,dataCount;
+            final boolean document;
+            SheetState continuation;
             final Map<Integer,List<ExportTableLayout.Band>> bands=new java.util.HashMap<>();
             final Map<Integer,List<ExportTableLayout.TextSpan>> spans=new java.util.HashMap<>();
             final Map<Integer,List<ExportTableLayout.SupplementalCell>> supplemental=new java.util.TreeMap<>();
             Sheet notes;int notesRow=1;
-            SheetState(Sheet sheet,List<ExportColumn> columns,ExportTableLayout layout){
-                this.sheet=sheet;this.columns=List.copyOf(columns);this.layout=layout;this.rowIndex=layout==null?1:layout.headerRow()+1;
+            SheetState(Sheet sheet,List<ExportColumn> columns,ExportTableLayout layout,boolean document){
+                this.sheet=sheet;this.columns=List.copyOf(columns);this.layout=layout;this.document=document;this.rowIndex=layout==null?1:layout.headerRow()+1;
                 if(layout!=null){layout.bands().forEach(band->bands.computeIfAbsent(band.row(),key->new java.util.ArrayList<>()).add(band));layout.spans().forEach(span->spans.computeIfAbsent(span.row(),key->new java.util.ArrayList<>()).add(span));
                     layout.supplementalCells().forEach(cell->{if(cell.column()<columns.size())throw new IllegalArgumentException("Supplemental cell overlaps main report");supplemental.computeIfAbsent(layout.headerRow()+cell.rowOffset(),key->new java.util.ArrayList<>()).add(cell);});}
             }
@@ -222,7 +266,7 @@ public class XlsxExportService {
                 }
                 Sheet sheet=workbook.createSheet(safeName);
                 if(layout!=null&&layout.widths().size()<columns.size())throw new IllegalStateException("Template column count changed");
-                state=new SheetState(sheet,columns,layout);sheets.put(id,state);
+                state=new SheetState(sheet,columns,layout,document);sheets.put(id,state);
                 Row labels = sheet.createRow(layout==null?0:layout.headerRow());
                 for (int i = 0; i < columns.size(); i++) {
                     ExportColumn column = columns.get(i);
@@ -390,9 +434,15 @@ public class XlsxExportService {
             if (!state.columns.equals(columns)) {
                 throw new IllegalStateException("Export columns changed while writing");
             }
+            while (state.continuation != null) state = state.continuation;
             for (Map<String, Object> values : rows) {
                 if (Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException();
-                if (state.rowIndex >= 1_048_576) throw new IllegalStateException("Excel row limit exceeded");
+                if (state.rowIndex >= org.apache.poi.ss.SpreadsheetVersion.EXCEL2007.getMaxRows()) {
+                    if (state.layout != null) throw new IllegalStateException("Original template exceeds its worksheet format");
+                    state.continuation = section("continuation-" + sheets.size(), state.sheet.getSheetName() + "-续",
+                            columns, state.document);
+                    state = state.continuation;
+                }
                 Row row = state.sheet.createRow(state.rowIndex++);
                 if(state.layout!=null)row.setHeightInPoints(state.layout.rowHeight());
                 for (int i = 0; i < columns.size(); i++) {
@@ -571,7 +621,9 @@ public class XlsxExportService {
         @Override public long primaryRowCount(){
             if(document==null)return 0;
             String id=document.sections().stream().filter(DocumentPageSink.Section::primary).findFirst().orElseThrow().id();
-            return writer.sheets.get(id).dataCount;
+            long count=0;
+            for(var state=writer.sheets.get(id);state!=null;state=state.continuation)count+=state.dataCount;
+            return count;
         }
         @Override public long rowCount(){return writer.rowCount();}
         @Override public void finish(java.io.OutputStream output)throws IOException {

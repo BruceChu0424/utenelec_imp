@@ -178,15 +178,16 @@ public class AuditController {
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
             @RequestParam(defaultValue = "true") boolean activityOnly,
             @Valid @RequestBody ExportPasswordRequest body) {
-        ExportPayload payload = body.columnProjection()!=null &&
+        var sourceWorkbook = xlsxExport.buildSource(() -> body.columnProjection()!=null &&
                 AuditSessionTableExportService.TABLE_KEY.equals(body.columnProjection().tableKey())
                 ? exportSessions(parseOptionalActorId(actorId),dateFrom,dateTo,snapshotId)
                 : auditQuery.export(validated(new AuditSearchCriteria(
                 action, actorAccount, actorScope, riskLevel, eventCategory, outcome,
                 keyword, targetType, targetId, eventSource, requestId, operationKind,
                 dateFrom, dateTo, snapshotId, parseOptionalActorId(actorId), activityOnly)),
-                runtimeSettings.exportMaxRows());
-        byte[] workbook = xlsxExport.build(payload.columns(), payload.rows(), body.columnProjection(), "view_admin");
+                runtimeSettings.exportMaxRows()), body.columnProjection(), "view_admin");
+        ExportPayload payload = sourceWorkbook.payload();
+        byte[] workbook = sourceWorkbook.bytes();
         byte[] downloadBytes = workbookDownload.protect(workbook, body.password());
         logAuditAccess(
                 "export_audit_log",

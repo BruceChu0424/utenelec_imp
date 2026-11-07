@@ -69,7 +69,7 @@ public class ReportExportService {
                 .filter(job -> {
                     try {authorizeRequest(user,decode(job.request()));return true;}
                     catch(ApiException unauthorized) {return false;}
-                }).map(this::view).toList();
+                }).map(job -> view(job, false)).toList();
     }
 
     @Transactional
@@ -77,8 +77,6 @@ public class ReportExportService {
         AuthUser user=principal();
         authorizeRequest(user,request);
         if(!Set.of("xlsx","pdf").contains(request.format()))throw new ApiException(ErrorCode.VALIDATION_FAILED,"导出格式无效");
-        if(!Set.of("where_used","goods_actual_cost").contains(request.domain()) && !"xlsx".equals(request.format()))
-            throw new ApiException(ErrorCode.VALIDATION_FAILED,"该报表的持久任务仅支持Excel格式");
         if("where_used".equals(request.domain()) && request.columnProjection()!=null)
             throw new ApiException(ErrorCode.VALIDATION_FAILED,"物料反查证据使用原始多表结构，不接收单表投影");
         if("where_used".equals(request.domain()) && (!"where-used".equals(request.report())
@@ -252,6 +250,9 @@ public class ReportExportService {
         catch(java.io.IOException error) { throw new IllegalStateException(error); }
     }
     private View view(ReportExportRepository.Job job) {
+        return view(job, true);
+    }
+    private View view(ReportExportRepository.Job job, boolean includeRequestProof) {
         var request=decode(job.request());
         String state=Set.of("SUCCEEDED","WAITING_PRECISION").contains(job.status()) && job.expiresAt()!=null && job.expiresAt().isBefore(OffsetDateTime.now())?"EXPIRED":job.status();
         // A named job/status alone cannot prove which lost submit was accepted. Return the
@@ -259,7 +260,7 @@ public class ReportExportService {
         // original data/projection access is still current. Old metadata remains readable
         // after a scope change, but cannot leak old private filter/projection contents.
         ReportExportRequest proof=null;
-        if("master".equals(request.domain())&&"unit".equals(request.report())) {
+        if(includeRequestProof&&"master".equals(request.domain())&&"unit".equals(request.report())) {
             try {requireCurrentAccess(job);proof=request;}
             catch(ApiException noLongerCurrent) { /* Preserve legacy metadata behavior, omit proof. */ }
         }

@@ -992,14 +992,12 @@ public class StockQueryService {
             String rack,String keyword,UUID warehouseId,boolean includeDisabled,Map<String,String> filters) {
         var header=shelfHeaderFilters(filters);
         var result=new ArrayList<com.uten.imp.features.stock.dto.ShelfLabelRow>();
-        for(int page=1;page<=101;page++) {
+        for(int page=1;;page=Math.incrementExact(page)) {
             if(Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException();
             var batch=readShelfLabelRows(rack,keyword,warehouseId,includeDisabled,page,500,header);
             result.addAll(batch);
-            if(result.size()>50_000) throw new ApiException(ErrorCode.VALIDATION_FAILED,"打印结果超过50000行，请收窄筛选；本次未生成文件");
             if(batch.size()<500) return result;
         }
-        throw new IllegalStateException("Shelf output pagination did not terminate");
     }
 
     static Map<String,String> shelfHeaderFilters(Map<String,String> filters) {

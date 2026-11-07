@@ -147,7 +147,7 @@ class ActualCostStreamReadPostgresTest {
         db.update("UPDATE stock_value_production_cost_revisions SET input_snapshot=(SELECT jsonb_agg(jsonb_build_object('node',input_node_id,'revision',1)) FROM stock_value_production_cost_inputs) WHERE id=:revision",Map.of("revision",REVISION));
         var batches=new java.util.concurrent.atomic.AtomicInteger();
         assertThatThrownBy(()->read.executeWithoutResult(tx->{
-            try(var source=facts.openStream(query(),LegacyExportBudget.MAX_ROWS,rows->batches.incrementAndGet())) {
+            try(var source=facts.openStream(query(),500,rows->batches.incrementAndGet())) {
                 throw new AssertionError("over-limit source must not open");
             }
         })).isInstanceOf(com.uten.imp.common.web.ApiException.class).hasMessageContaining("后台导出任务");
@@ -159,7 +159,7 @@ class ActualCostStreamReadPostgresTest {
         db.update("UPDATE stock_value_production_cost_revisions SET input_snapshot=(SELECT jsonb_agg(jsonb_build_object('node',input_node_id,'revision',1,'identity','{}'::jsonb)) FROM stock_value_production_cost_inputs) WHERE id=:revision",Map.of("revision",REVISION));
         assertThat(db.queryForObject("SELECT count(*) FROM stock_value_production_cost_inputs",Map.of(),Long.class)).isEqualTo(251L);
         assertThatThrownBy(()->read.executeWithoutResult(tx->{
-            try(var source=facts.openStream(query(),LegacyExportBudget.MAX_ROWS,rows->{})) {throw new AssertionError("over-limit gaps must not open");}
+            try(var source=facts.openStream(query(),500,rows->{})) {throw new AssertionError("over-limit gaps must not open");}
         })).isInstanceOf(com.uten.imp.common.web.ApiException.class).hasMessageContaining("后台导出任务").hasMessageNotContaining("50000");
     }
 

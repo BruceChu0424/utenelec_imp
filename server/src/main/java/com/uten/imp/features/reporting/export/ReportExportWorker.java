@@ -37,6 +37,7 @@ public class ReportExportWorker {
     private final SubmitterPrincipalRestorer restorer;
     private final XlsxExportService xlsx;
     private final TabularPdfExportService pdf;
+    private final ReportTablePdfPages pdfTables;
     private final JdbcTemplate jdbc;
     private final TransactionTemplate shortTx;
     private final TransactionTemplate readTx;
@@ -47,8 +48,8 @@ public class ReportExportWorker {
     @org.springframework.beans.factory.annotation.Autowired
     public ReportExportWorker(ReportExportRepository repository,ReportExportService service,
             ReportExportSource source,SubmitterPrincipalRestorer restorer,XlsxExportService xlsx,
-            TabularPdfExportService pdf,JdbcTemplate jdbc,PlatformTransactionManager transactions) {
-        this.repository=repository;this.service=service;this.source=source;this.restorer=restorer;this.xlsx=xlsx;this.pdf=pdf;this.jdbc=jdbc;
+            TabularPdfExportService pdf,ReportTablePdfPages pdfTables,JdbcTemplate jdbc,PlatformTransactionManager transactions) {
+        this.repository=repository;this.service=service;this.source=source;this.restorer=restorer;this.xlsx=xlsx;this.pdf=pdf;this.pdfTables=pdfTables;this.jdbc=jdbc;
         shortTx=new TransactionTemplate(transactions);
         shortTx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
         shortTx.setTimeout(15);
@@ -57,6 +58,11 @@ public class ReportExportWorker {
         readTx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
         readTx.setIsolationLevel(TransactionDefinition.ISOLATION_REPEATABLE_READ);
         readTx.setTimeout(600);
+    }
+    public ReportExportWorker(ReportExportRepository repository,ReportExportService service,
+            ReportExportSource source,SubmitterPrincipalRestorer restorer,XlsxExportService xlsx,
+            TabularPdfExportService pdf,JdbcTemplate jdbc,PlatformTransactionManager transactions) {
+        this(repository,service,source,restorer,xlsx,pdf,null,jdbc,transactions);
     }
     public ReportExportWorker(ReportExportRepository repository,ReportExportService service,
             ReportExportSource source,SubmitterPrincipalRestorer restorer,XlsxExportService xlsx,
@@ -252,6 +258,25 @@ public class ReportExportWorker {
                         @Override public void begin(DocumentPageSink.Header header){checkpoint(job,rowCount(),deadline);document.begin(header);}
                         @Override public void accept(DocumentPageSink.Page page){checkpoint(job,rowCount(),deadline);document.accept(page);}
                     })) {source.readDocument(request);}
+                }
+                @Override public void finish(OutputStream output)throws IOException{document.finish(output);}
+                @Override public void close()throws IOException{document.close();}
+            };
+        }
+        if("pdf".equals(request.format())) {
+            if(pdfTables==null)throw new IllegalStateException("PDF table adapter is unavailable");
+            var document=pdf.openDocumentStream(service.requireStorage());
+            document.onCheckpoint(()->checkpoint(job,Math.toIntExact(document.primaryRowCount()),deadline));
+            var pages=pdfTables.open(document,source.projection(request),ReportExportSource.scope(request),request.report());
+            return new TaskWriter() {
+                @Override public int rowCount(){return Math.toIntExact(document.primaryRowCount());}
+                @Override public void readSource(){
+                    try(var cursor=com.uten.imp.common.report.ReportExportCursor.open();
+                        var sink=ExportPageSink.open(page->{checkpoint(job,rowCount(),deadline);pages.accept(page);})) {
+                        var remainder=source.read(request);
+                        if(!remainder.rows().isEmpty()||!pages.begun())pages.accept(remainder);
+                        pages.complete();
+                    }
                 }
                 @Override public void finish(OutputStream output)throws IOException{document.finish(output);}
                 @Override public void close()throws IOException{document.close();}

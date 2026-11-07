@@ -346,10 +346,11 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
         ReportContactQuery.hasContactUrlValues(widget.queryParams)) {
       throw const FormatException('敏感列检索必须通过私有请求体提供');
     }
+    final tabularFormat = {'xlsx', 'pdf'}.contains(selection.extension);
     final supportsTask = domain == 'goods_actual_cost'
-        ? {'xlsx', 'pdf'}.contains(selection.extension)
+        ? tabularFormat
         : domain == 'master'
-        ? selection.extension == 'xlsx' &&
+        ? tabularFormat &&
               documentBody.keys.every(
                 (key) =>
                     key == 'format' ||
@@ -357,14 +358,13 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
                     key == 'selectedIds',
               )
         : domain == 'where_used'
-        ? {'xlsx', 'pdf'}.contains(selection.extension) &&
-              documentBody.keys.every((key) => key == 'format')
+        ? tabularFormat && documentBody.keys.every((key) => key == 'format')
         : domain == 'finance'
-        ? selection.extension == 'xlsx' &&
+        ? tabularFormat &&
               documentBody.keys.every(
                 (key) => key == 'format' || key == 'sensitiveFilter',
               )
-        : selection.extension == 'xlsx' && documentBody.isEmpty;
+        : tabularFormat && documentBody.keys.every((key) => key == 'format');
     final selectedOutput =
         selectedIds != null ||
         exportProjection?.rowSelection != null ||
@@ -455,6 +455,14 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
           ),
         );
         return;
+      }
+      if (selection.extension == 'pdf' &&
+          domain != 'where_used' &&
+          domain != 'goods_actual_cost') {
+        throw ApiException(
+          'EXPORT_FORMAT_UNSUPPORTED',
+          '当前服务器尚未开启此报表的PDF导出，请更新服务端后重试；本次未生成文件',
+        );
       }
     }
     final legacyQuery = Map<String, dynamic>.of(query);
@@ -751,7 +759,7 @@ class _ExportFileDialogState extends State<_ExportFileDialog> {
                 children: [
                   Text('导出范围'),
                   UtenFieldHintIcon(
-                    info: '全部结果包含当前分类、搜索和表头筛选下的全部分页；仅已选保留当前勾选的记录。',
+                    info: '全部结果包含当前分类、搜索和表头筛选下的完整记录；仅已选保留当前勾选的记录。',
                     dense: true,
                   ),
                 ],

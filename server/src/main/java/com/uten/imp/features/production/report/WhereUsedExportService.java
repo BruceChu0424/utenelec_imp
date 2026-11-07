@@ -29,7 +29,7 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class WhereUsedExportService {
-    public static final int PAGE_ROWS=200,MAX_ROWS=ExportDocument.MAX_SECTION_ROWS,SYNCHRONOUS_MAX_ROWS=LegacyExportBudget.MAX_ROWS;
+    public static final int PAGE_ROWS=200,MAX_ROWS=ExportDocument.MAX_SECTION_ROWS;
     private final ProductionWhereUsedQueryService query;
     private final SecurityContextCurrentUser currentUser;
     private final EntityManager em;
@@ -97,11 +97,8 @@ public class WhereUsedExportService {
                     filters==null?null:filters.get("selectedProductIds"));
             if (selectedProducts!=null && expected!=selectedProducts.size())
                 throw new ApiException(ErrorCode.CONFLICT,"部分选中产品已变化或不在当前筛选内，请刷新结果后重新勾选导出");
-            int maximum=streaming?MAX_ROWS:SYNCHRONOUS_MAX_ROWS;
             if(expected<0)throw new IllegalStateException("The document source did not supply its primary row count");
             if(!streaming)LegacyExportBudget.requireRows(expected);
-            if(expected>maximum)throw new ApiException(ErrorCode.VALIDATION_FAILED,streaming
-                    ?"筛选结果超过 50000 行，请缩小范围后导出":"同步导出最多 500 行，请使用后台导出任务");
             Prepared prepared=prepare(material,source,from,to,sort,order,response,filters);
             List<com.uten.imp.features.production.report.ReportColumn> columns=response.columns();
             String unit=prepared.unit();

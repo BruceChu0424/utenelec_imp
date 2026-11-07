@@ -159,13 +159,14 @@ public class AccountController {
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order,
             @Valid @RequestBody com.uten.imp.features.master.dto.ContactExportRequest body) {
-        ExportPayload payload = service.export(
+        var sourceWorkbook = xlsxExport.buildSource(() -> service.export(
                 new AccountQueryFilter(body.sensitive().keyword() == null ? keyword : body.sensitive().keyword(),
                         nullFields, code, name, accountType, currencyId, status)
                         .withColumnSearch(headerSearches(body.sensitive().columnSearch())),
                 sort, order,
-                exportLimits.exportMaxRows());
-        byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows(), body.columnProjection(), "master_account");
+                exportLimits.exportMaxRows()), body.columnProjection(), "master_account");
+        ExportPayload payload = sourceWorkbook.payload();
+        byte[] xlsx = sourceWorkbook.bytes();
         byte[] downloadBytes = workbookDownload.protect(xlsx, body.password());
         currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),
                 "export_account", "master_data", String.valueOf(payload.total()), "success"));

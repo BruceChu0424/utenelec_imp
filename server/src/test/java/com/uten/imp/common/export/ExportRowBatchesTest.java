@@ -27,15 +27,27 @@ class ExportRowBatchesTest {
                 .containsExactlyElementsOf(IntStream.range(0, 1001).boxed().toList());
     }
 
-    @Test void limitAndUnknownSinkFailuresPoisonTheOutputRatherThanAllowingAPartialSuccess() {
+    @Test void calculatedRowsBeyondTheOldConfiguredLimitRemainCompleteAndOrdered() {
         List<ExportPayload> pages = new ArrayList<>();
         try (var scope = ExportPageSink.open(pages::add)) {
             var output = new ExportRowBatches(columns, 500);
-            IntStream.range(0, 500).forEach(value -> output.accept(Map.of("id", value)));
-            assertThatThrownBy(() -> output.accept(Map.of("id", 501))).isInstanceOf(ApiException.class);
+            IntStream.range(0,1201).forEach(value->output.accept(Map.of("id",value)));
+            assertThat(output.finish()).isEqualTo(1201);
+        }
+        assertThat(pages).extracting(page->page.rows().size()).containsExactly(500,500,201);
+        assertThat(pages).flatExtracting(ExportPayload::rows).extracting(row->row.get("id"))
+                .containsExactlyElementsOf(IntStream.range(0,1201).boxed().toList());
+    }
+
+    @Test void cancellationAndUnknownSinkFailuresPoisonOutputRatherThanAllowingPartialSuccess() {
+        try(var scope=ExportPageSink.open(page->{})) {
+            var output=new ExportRowBatches(columns,500);
+            IntStream.range(0,500).forEach(value->output.accept(Map.of("id",value)));
+            Thread.currentThread().interrupt();
+            try{assertThatThrownBy(()->output.accept(Map.of("id",500))).isInstanceOf(java.util.concurrent.CancellationException.class);}
+            finally{Thread.interrupted();}
             assertThatThrownBy(output::finish).isInstanceOf(IllegalStateException.class);
         }
-        assertThat(pages).hasSize(1);
         try (var scope = ExportPageSink.open(page -> { throw new IllegalStateException("write outcome unknown"); })) {
             var output = new ExportRowBatches(columns, 500);
             output.accept(Map.of("id", 1));

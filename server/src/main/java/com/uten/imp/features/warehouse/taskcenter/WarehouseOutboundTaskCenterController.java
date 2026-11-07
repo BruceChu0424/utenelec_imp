@@ -89,13 +89,13 @@ public class WarehouseOutboundTaskCenterController {
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order,
             @Valid @RequestBody ExportPasswordRequest body) {
-        ExportPayload payload = exports.outbound(new WarehouseTaskCenterContracts.Filter(source, status, keyword,
+        var workbook = xlsxExport.buildSource(() -> exports.outbound(new WarehouseTaskCenterContracts.Filter(source, status, keyword,
                 billNo, dateFrom, dateTo, scopeWarehouseId, 1, 100, sort, order,
                 WarehouseTaskCenterContracts.TaskView.requested(view)).withColumnSearch(
-                        ColumnKeywordSearch.requestValues(ColumnKeywordSearch.currentRequest())));
-        byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows(), body.columnProjection(),
-                "view_warehouse_task_center");
-        byte[] downloadBytes = workbookDownload.protect(xlsx, body.password());
+                        ColumnKeywordSearch.requestValues(ColumnKeywordSearch.currentRequest()))),
+                body.columnProjection(), "view_warehouse_task_center");
+        ExportPayload payload = workbook.payload();
+        byte[] downloadBytes = workbookDownload.protect(workbook.bytes(), body.password());
         currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),
                 "export_warehouse_task_center", "warehouse_task_center",
                 "outbound/" + payload.total() + "rows", "success"));

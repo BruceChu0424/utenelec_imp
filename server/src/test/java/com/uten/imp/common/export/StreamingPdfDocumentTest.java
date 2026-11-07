@@ -57,17 +57,23 @@ class StreamingPdfDocumentTest {
         assertNoPrivateDirectories();
     }
 
-    @Test void readBudgetAndActualCellBudgetFailClosedBeforeFurtherRows()throws Exception {
+    @Test void completeSourceCountsAndWideBatchesPassTheFormerRowAndCellCutoffs()throws Exception {
         try(var writer=new TabularPdfExportService().openDocumentStream(directory)) {
-            assertThrows(ApiException.class,()->writer.begin(header(60_001)));
+            assertDoesNotThrow(()->writer.begin(header(60_001)));
+            writer.accept(new DocumentPageSink.Page("main",rows(0,200)));
+            assertEquals(200,writer.primaryRowCount());
             assertThrows(IllegalStateException.class,()->writer.finish(new ByteArrayOutputStream()));
         }
         var wide=IntStream.range(0,160).mapToObj(index->new ExportColumn("c"+index,"列"+index,ExportColumn.TEXT)).toList();
         var unknown=new DocumentPageSink.Header("预算",List.of(),List.of(new DocumentPageSink.Section("main","数据",wide,true,false)));
         try(var writer=new TabularPdfExportService().openDocumentStream(directory)) {
             writer.begin(unknown);writer.accept(new DocumentPageSink.Page("main",Collections.nCopies(200,Map.of())));
-            assertThrows(ApiException.class,()->writer.accept(new DocumentPageSink.Page("main",Collections.nCopies(200,Map.of()))));
-            assertEquals(200,writer.primaryRowCount());assertThrows(IllegalStateException.class,()->writer.finish(new ByteArrayOutputStream()));
+            writer.accept(new DocumentPageSink.Page("main",Collections.nCopies(200,Map.of())));
+            assertEquals(400,writer.primaryRowCount());
+            Thread.currentThread().interrupt();
+            try{assertThrows(CancellationException.class,()->writer.accept(new DocumentPageSink.Page("main",List.of(Map.of()))));}
+            finally{Thread.interrupted();}
+            assertThrows(IllegalStateException.class,()->writer.finish(new ByteArrayOutputStream()));
         }
         assertNoPrivateDirectories();
     }
@@ -86,17 +92,27 @@ class StreamingPdfDocumentTest {
         assertNoPrivateDirectories();
     }
 
-    @Test void preciseUnrenderableQuantityAndPageLimitRefuseMisleadingOrPartialPdf()throws Exception {
+    @Test void preciseUnrenderableQuantityFailsAndCompletePdfCanExceedTwoHundredFiftyPaperPages()throws Exception {
         try(var writer=new TabularPdfExportService().openDocumentStream(directory)) {
             writer.begin(header(1));writer.accept(new DocumentPageSink.Page("main",List.of(Map.of("name","产品","qty",new BigDecimal("1E400"),"literal","原文"))));
             assertThrows(ApiException.class,()->writer.finish(new ByteArrayOutputStream()));
         }
         var one=List.of(new ExportColumn("name","产品名称",ExportColumn.TEXT));
+        Path complete=directory.resolve("complete-8000.pdf");
         try(var writer=new TabularPdfExportService().openDocumentStream(directory)) {
             writer.begin(new DocumentPageSink.Header("页数预算",List.of(),List.of(new DocumentPageSink.Section("main","原始数据",one,true,false)),8000));
             for(int start=0;start<8000;start+=200)writer.accept(new DocumentPageSink.Page("main",rows(start,start+200)));
-            var failure=assertThrows(ApiException.class,()->writer.finish(new ByteArrayOutputStream()));assertTrue(failure.getMessage().contains("250"));
+            try(var output=Files.newOutputStream(complete)){writer.finish(output);}
         }
+        try(var document=Loader.loadPDF(complete.toFile())) {
+            assertTrue(document.getNumberOfPages()>250);
+            var text=new PDFTextStripper().getText(document);
+            var identities=java.util.regex.Pattern.compile("产品-([0-9]{4})").matcher(text).results().map(match->Integer.parseInt(match.group(1))).toList();
+            assertEquals(IntStream.range(0,8000).boxed().toList(),identities);
+        }
+        Path protectedCopy=directory.resolve("complete-8000-protected.pdf");
+        new TabularPdfExportService().protect(complete,protectedCopy,"1");
+        try(var document=Loader.loadPDF(protectedCopy.toFile(),"1")){assertTrue(document.isEncrypted());assertTrue(document.getNumberOfPages()>250);}
         assertNoPrivateDirectories();
     }
 

@@ -37,7 +37,7 @@ public class GoodsCostExportController {
 
     public record Request(@NotNull UUID sheetId, @NotNull UUID snapshotId,
             @Pattern(regexp = "xlsx|pdf") String format, @Size(max = 128) String password,
-            @Pattern(regexp = "ALL|MATERIAL|FEES") String section, @Size(max = 5000) List<String> paths,
+            @Pattern(regexp = "ALL|MATERIAL|FEES") String section, List<String> paths,
             @Valid TableColumnProjection columnProjection) {}
 
     @com.uten.imp.common.web.JsonBodyLimit(16 * 1024 * 1024)

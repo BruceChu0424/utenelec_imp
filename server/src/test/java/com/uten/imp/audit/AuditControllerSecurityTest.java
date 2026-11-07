@@ -128,7 +128,8 @@ class AuditControllerSecurityTest {
                 .thenReturn(new ExportPayload(List.of(), List.of(), 0));
         when(auditQuery.detail(42L)).thenReturn(org.mockito.Mockito.mock(AuditLogDetail.class));
         when(runtimeSettings.exportMaxRows()).thenReturn(1_000);
-        when(xlsxExport.build(anyList(), anyList(), isNull(), eq("view_admin"))).thenReturn(new byte[]{1});
+        when(xlsxExport.buildSource(any(), isNull(), eq("view_admin"))).thenAnswer(call ->
+                new XlsxExportService.SourceWorkbook(call.<java.util.function.Supplier<ExportPayload>>getArgument(0).get(), new byte[]{1}));
         when(workbookDownload.protect(any(byte[].class), anyString())).thenReturn(new byte[]{9});
         when(currentUser.get()).thenReturn(Optional.of(new AuthUser(
                 ACTOR_ID,
@@ -298,7 +299,7 @@ class AuditControllerSecurityTest {
         verify(auditQuery).export(
                 any(AuditSearchCriteria.class),
                 eq(1_000));
-        verify(xlsxExport).build(anyList(), anyList(), isNull(), eq("view_admin"));
+        verify(xlsxExport).buildSource(any(), isNull(), eq("view_admin"));
         verify(workbookDownload).protect(eq(new byte[]{1}), eq(EXPORT_PROBE_SECRET));
         verifyNoInteractions(sessionTableExport);
         verify(audit).logExplicit(

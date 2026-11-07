@@ -60,10 +60,6 @@ Future<void> exportOrderDocumentsBatch(
       !(stillCurrent?.call() ?? true)) {
     return;
   }
-  if (uniqueDocuments.length > OrderDocumentExportLimits.documents) {
-    context.appError('一次最多导出100份${kind.label}，请分批选择');
-    return;
-  }
   ProviderContainer? container;
   try {
     container = ProviderScope.containerOf(context, listen: false);
@@ -193,10 +189,19 @@ Future<void> exportOrderDocumentsBatch(
     );
     final packet = await (generate ?? generator.generate)(request);
     if (!current() || !context.mounted) return;
-    final result = OrderDocumentBundleResult.decode(packet);
+    final result = await OrderDocumentBundleResult.decodeComplete(
+      packet,
+      stillCurrent: current,
+    );
+    if (!current() || !context.mounted) return;
     failed.addAll(result.failed.map((id) => numbers[id] ?? id));
     final successfulIds = result.successful.map((value) => value['id']).toSet();
+    final completedIds = <String?>{...successfulIds, ...result.failed};
     if (successfulIds.length != result.successful.length ||
+        completedIds.length !=
+            result.successful.length + result.failed.length ||
+        completedIds.length != proofs.length ||
+        !completedIds.containsAll(proofs.keys) ||
         successfulIds.any((id) => !proofs.containsKey(id)) ||
         result.successful.any(
           (proof) => proof['contentDigest'] != proofs[proof['id']],
@@ -209,15 +214,24 @@ Future<void> exportOrderDocumentsBatch(
     }
     // Re-read each original authorised document on the server immediately before
     // publication. Owner/status/price masking and exact content must still match.
-    await apiClient.post(
-      '${kind.endpoint}/print-authorization',
-      body: {
-        'documents': [
-          for (final proof in result.successful)
-            {'id': proof['id'], 'contentDigest': proof['contentDigest']},
-        ],
-      },
-    );
+    for (
+      var start = 0;
+      start < result.successful.length;
+      start += OrderDocumentExportLimits.authorizationBatchSize
+    ) {
+      if (!current() || !context.mounted) return;
+      final end = (start + OrderDocumentExportLimits.authorizationBatchSize)
+          .clamp(0, result.successful.length);
+      await apiClient.post(
+        '${kind.endpoint}/print-authorization',
+        body: {
+          'documents': [
+            for (final proof in result.successful.sublist(start, end))
+              {'id': proof['id'], 'contentDigest': proof['contentDigest']},
+          ],
+        },
+      );
+    }
     if (!current() || !context.mounted) return;
     final name = result.filename;
     final bytes = result.bytes;

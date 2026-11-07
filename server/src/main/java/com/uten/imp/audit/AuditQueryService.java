@@ -223,20 +223,10 @@ public class AuditQueryService {
             + " and hasAuthority('audit_log:export')")
     public ExportPayload export(AuditSearchCriteria criteria, int maxRows) {
         validateInvestigationScope(criteria);
-        if (maxRows < 1 || maxRows > 100_000) {
-            throw new ApiException(
-                    ErrorCode.VALIDATION_FAILED,
-                    "导出行数上限配置异常，请先在系统设置中调整为 1 至 100000");
-        }
-        int safeMaxRows = Math.min(com.uten.imp.common.export.LegacyExportBudget.maximumRows(maxRows), 10_000);
         // An explicit old online snapshot remains a filter. RR provides the new
         // export view; no inferred maximum ID is used as a completeness watermark.
         Specification<AuditLog> spec = specification(criteria);
         long total = repo.count(spec);
-        if (total > safeMaxRows) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                    "当前筛选结果共 " + total + " 条，超过单次导出上限 " + safeMaxRows + " 条，请缩小日期或筛选范围");
-        }
         var sink=com.uten.imp.common.export.ExportPageSink.current();
         List<Map<String,Object>> rows=sink==null?new ArrayList<>():null;
         List<ExportColumn> currentColumns = new ArrayList<>(EXPORT_COLUMNS);

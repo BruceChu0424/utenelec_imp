@@ -63,8 +63,8 @@ public enum SystemSettingKey {
 
     // ===== 业务限制 =====
     EXPORT_MAX_ROWS("export_max_rows", Type.INT, "100000", 1L, 100_000L,
-            Category.BUSINESS, false, "导出行数上限", "行", 310,
-            "单次导出最大行数 (报表、基础资料、审计导出统一; 超限拒绝, 防内存耗尽和拖库)"),
+            Category.BUSINESS, false, "历史导出行数设置（已停用）", "行", 310,
+            "仅保留历史配置审计；导出完整筛选结果，资源由有界读取、文件与临时空间预算管理"),
     CELEBRATION_AUTO_ENABLED("celebration.auto_enabled", Type.BOOL, "false", null, null,
             Category.BUSINESS, false, "庆典通知自动发布", null, 320,
             "开启后每日 08:00 (北京时间) 自动扫描在职员工生日/入职纪念日并发布庆典通知; 默认关闭, "

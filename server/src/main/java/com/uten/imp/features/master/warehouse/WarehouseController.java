@@ -103,11 +103,12 @@ public class WarehouseController {
             @RequestParam(required = false) Boolean accountable,
             @RequestParam(required = false) Boolean defective,
             @Valid @RequestBody ExportPasswordRequest body) {
-        ExportPayload payload = service.export(new WarehouseQueryFilter(
+        var sourceWorkbook = xlsxExport.buildSource(() -> service.export(new WarehouseQueryFilter(
                         keyword, nullFields, code, name, status, location, parentId, accountable,
                         defective),
-                exportLimits.exportMaxRows());
-        byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows(), body.columnProjection(), "master_warehouse");
+                exportLimits.exportMaxRows()), body.columnProjection(), "master_warehouse");
+        ExportPayload payload = sourceWorkbook.payload();
+        byte[] xlsx = sourceWorkbook.bytes();
         byte[] downloadBytes = workbookDownload.protect(xlsx, body.password());
         currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),
                 "export_warehouse", "master_data", String.valueOf(payload.total()), "success"));

@@ -179,8 +179,9 @@ public class ProductionReportController {
             @RequestParam(required = false) String order,
             @Valid @RequestBody ExportPasswordRequest body) {
         String taskScope = workshopExportScope(report);
-        ExportPayload payload = service.export(report, allParams, sort, order);
-        byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows(), body.columnProjection(), "view_production");
+        var sourceWorkbook = xlsxExport.buildSource(() -> service.export(report, allParams, sort, order), body.columnProjection(), "view_production");
+        ExportPayload payload = sourceWorkbook.payload();
+        byte[] xlsx = sourceWorkbook.bytes();
         byte[] downloadBytes = workbookDownload.protect(xlsx, body.password());
         if (taskScope != null && !taskScope.equals(workshopExportScope(report)))
             throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.CONFLICT,

@@ -367,7 +367,7 @@ class AuditQueryScopeComposer extends StatelessWidget {
                   Flexible(child: runButton),
                   if (actor == null)
                     const UtenFieldHintIcon(
-                      info: '显示当前查询的全部结果；单次导出最多 10,000 条。',
+                      info: '显示并导出当前查询范围内的完整结果。',
                       dense: true,
                     ),
                 ],

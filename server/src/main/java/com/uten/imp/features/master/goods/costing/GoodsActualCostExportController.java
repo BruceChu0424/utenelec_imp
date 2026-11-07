@@ -42,7 +42,7 @@ public class GoodsActualCostExportController {
         boolean asPdf = "pdf".equals(request.format());
         byte[] bytes=downloads.build(asPdf?"pdf":"xlsx",request.password(),request.columnProjection(),section,"view_goods_cost",
                 ()->snapshots.streamExport(new GoodsActualCostQueryPort.Query(request.goodsId(),request.executionSegmentId(),
-                        request.from(),request.to(),request.revisionId()),request.expectedDigest(),LegacyExportBudget.MAX_ROWS));
+                        request.from(),request.to(),request.revisionId()),request.expectedDigest(),com.uten.imp.common.export.ExportDocument.MAX_SECTION_ROWS));
         current.get().ifPresent(user -> audit.logExplicit(user.getId(), user.getLoginAccount(), "export_goods_actual_cost",
                 "master_data", request.goodsId() + ":" + request.expectedDigest() + ":" + (asPdf ? "pdf" : "xlsx"), "success"));
         return ResponseEntity.ok().header("Content-Disposition", DownloadContentDisposition.attachment(

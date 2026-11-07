@@ -16,7 +16,6 @@ import java.util.function.Function;
 /** Reuse each master's original list predicate and DTO mapper without collecting its complete result. */
 public final class MasterExportSource {
     public static final int PAGE_ROWS = BoundedMasterReadSource.BATCH_ROWS;
-    public static final int SYNCHRONOUS_MAX_ROWS = LegacyExportBudget.MAX_ROWS;
     private MasterExportSource() { }
 
     /** Ordinary list requests keep their existing repository implementation and Page contract. */
@@ -46,7 +45,6 @@ public final class MasterExportSource {
                 ? BoundedMasterReadSource.open(em, MasterExportSource::interrupted, total -> {
                     MasterExportSelection.requireComplete(total);
                     ReportQueryKit.requireExportRowCount(maxRows, total);
-                    if (sink == null && total > SYNCHRONOUS_MAX_ROWS) throw LegacyExportBudget.tooManyRows();
                 }) : null;
         try {
             List<Map<String,Object>> collected = sink == null ? new ArrayList<>() : null;
@@ -62,8 +60,6 @@ public final class MasterExportSource {
                     if (expected < 0) throw new IllegalStateException("Master export requires its initial count");
                     MasterExportSelection.requireComplete(expected);
                     ReportQueryKit.requireExportRowCount(maxRows, expected);
-                    if (sink == null && expected > SYNCHRONOUS_MAX_ROWS)
-                        throw LegacyExportBudget.tooManyRows();
                 } else if (result.getTotal() != expected) {
                     throw new IllegalStateException("Master export source count changed");
                 }

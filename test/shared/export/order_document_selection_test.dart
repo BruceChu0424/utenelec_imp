@@ -33,14 +33,22 @@ void main() {
     );
   });
 
-  test('resource limit applies to whole documents, not repeated task rows', () {
-    expect(
-      select(List.generate(101, (i) => (id: '$i', number: '$i'))).issue,
-      contains('100'),
-    );
-    expect(
-      select(List.generate(101, (_) => (id: 'one', number: 'PO-1'))).issue,
-      isNull,
-    );
-  });
+  test(
+    'complete document selection retains more than 500 unique originals',
+    () {
+      final selected = select(
+        List.generate(1201, (i) => (id: '$i', number: '$i')),
+      );
+      expect(selected.issue, isNull);
+      expect(selected.documents, hasLength(1201));
+      expect(
+        selected.documents.map((document) => document.id),
+        List.generate(1201, (i) => '$i'),
+      );
+      expect(
+        select(List.generate(101, (_) => (id: 'one', number: 'PO-1'))).issue,
+        isNull,
+      );
+    },
+  );
 }

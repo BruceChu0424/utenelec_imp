@@ -32,7 +32,8 @@ class FulfillmentWorkbenchExportControllerTest {
         var payload=new ExportPayload(columns,rows,1);
         when(queries.exportSubcontract(eq("IN_PROGRESS"),eq("轴套"),eq(""),isNull(),isNull(),any(),eq(500)))
                 .thenReturn(payload);
-        when(writer.build(eq(columns),eq(rows),isNull(),eq("view_subcontract"))).thenReturn(new byte[]{4,5});
+        when(writer.buildSource(any(),isNull(),eq("view_subcontract"))).thenAnswer(call ->
+                new XlsxExportService.SourceWorkbook(call.<java.util.function.Supplier<ExportPayload>>getArgument(0).get(),new byte[]{4,5}));
         var controller=new FulfillmentWorkbenchExportController(queries,writer,new WorkbookDownloadService(),users,mock(AuditService.class),limits);
         var response=controller.subcontract("IN_PROGRESS","","轴套",null,null,"docNo","desc",null,null,null,null,
                 Map.of("f.planNo","WL-1","search.goodsCode","ABC_20%"),new ExportPasswordRequest(""));
@@ -47,36 +48,39 @@ class FulfillmentWorkbenchExportControllerTest {
         assertTrue(method.getAnnotation(PreAuthorize.class).value().contains("subcontract_order:view"));
     }
     @Test
-    void everyDownloadUsesTheCurrentConfiguredLimitAndNeverWritesATruncatedWorkbook() {
+    void completeResultsIgnoreTheOldConfiguredLimitAndSourceFailureCannotPublishAnotherFile() {
         var queries = mock(FulfillmentWorkbenchQueryService.class);
         var writer = mock(XlsxExportService.class);
         var user = mock(SecurityContextCurrentUser.class);
         when(user.get()).thenReturn(Optional.empty());
         var audit = mock(AuditService.class);
         var limits = mock(ExportLimitPort.class);
-        when(limits.exportMaxRows()).thenReturn(2, 1);
+        when(limits.exportMaxRows()).thenReturn(2, 1, 1);
         var columns = List.of(new ExportColumn("goodsName", "货品名称", ExportColumn.TEXT));
         List<Map<String, Object>> rows = List.of(Map.of("goodsName", "开关一"), Map.of("goodsName", "开关二"));
         var payload = new ExportPayload(columns, rows, 2);
         when(queries.exportPurchase(eq("WAITING_ORDER"), eq("开关"), eq(""), isNull(), isNull(), any(), eq(2)))
                 .thenReturn(payload);
         when(queries.exportPurchase(eq("WAITING_ORDER"), eq("开关"), eq(""), isNull(), isNull(), any(), eq(1)))
-                .thenThrow(new ApiException(ErrorCode.VALIDATION_FAILED, "导出超过系统设置的 1 行上限"));
+                .thenReturn(payload)
+                .thenThrow(new ApiException(ErrorCode.CONFLICT, "导出来源已变化"));
         byte[] bytes = {1, 2, 3};
-        when(writer.build(eq(columns), eq(rows), isNull(), eq("view_purchase"))).thenReturn(bytes);
+        when(writer.buildSource(any(), isNull(), eq("view_purchase"))).thenAnswer(call ->
+                new XlsxExportService.SourceWorkbook(call.<java.util.function.Supplier<ExportPayload>>getArgument(0).get(),bytes));
         var controller = new FulfillmentWorkbenchExportController(queries, writer, new WorkbookDownloadService(), user, audit, limits);
 
         var response = download(controller);
         assertArrayEquals(bytes, response.getBody());
         assertEquals(200, response.getStatusCode().value());
+        assertArrayEquals(bytes, download(controller).getBody());
         var exceeded = assertThrows(ApiException.class, () -> download(controller));
-        assertEquals(ErrorCode.VALIDATION_FAILED, exceeded.getCode());
-        verify(limits, times(2)).exportMaxRows();
+        assertEquals(ErrorCode.CONFLICT, exceeded.getCode());
+        verify(limits, times(3)).exportMaxRows();
         var table = ArgumentCaptor.forClass(FulfillmentWorkbenchTableQuery.class);
         verify(queries).exportPurchase(eq("WAITING_ORDER"), eq("开关"), eq(""), isNull(), isNull(), table.capture(), eq(2));
         assertEquals(Map.of("search.goods", "开关", "supplierName", "华东"), table.getValue().filters());
         assertEquals("docNo", table.getValue().sort());
-        verify(writer, times(1)).build(anyList(), anyList(), any(), anyString());
+        verify(writer, times(3)).buildSource(any(), any(), anyString());
         verifyNoInteractions(audit);
     }
 

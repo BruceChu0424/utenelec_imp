@@ -33,30 +33,36 @@ public class AuditSessionTableExportService {
     @Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @PreAuthorize("hasAuthority('audit_log:view') and hasAuthority('audit_log:export')")
     public ExportPayload export(UUID actor,LocalDate from,LocalDate to,Long snapshot,int maxRows,AuditSessionHeaderQuery headers) {
-        if(maxRows<1||maxRows>100000)throw new ApiException(ErrorCode.VALIDATION_FAILED,"导出行数上限配置异常");
-        int limit=Math.min(10000,LegacyExportBudget.maximumRows(maxRows));
         final int size=100;
+        ExportOperationCheckpoint.check();
         var first=headers.active() ? query.sessionsForExport(actor,from,to,1,size,snapshot,null,headers)
                 : query.sessionsForExport(actor,from,to,1,size,snapshot,null);
-        if(first.total()>limit)throw new ApiException(ErrorCode.VALIDATION_FAILED,"当前会话数超过导出上限，请缩小日期范围");
+        if(first==null||first.total()<0||first.snapshotAuditId()<0)throw incomplete();
+        if(snapshot!=null&&first.snapshotAuditId()!=snapshot)throw changed();
+        long expected=first.total();
+        long expectedPages=expected/size+(expected%size==0?0:1);
         var sink=ExportPageSink.current();
         List<Map<String,Object>> rows=sink==null?new ArrayList<>():null;
         long seen=0;
-        for(int page=1;page<=Math.max(1,first.totalPages());page++) {
+        for(int page=1;;page=Math.incrementExact(page)) {
             ExportOperationCheckpoint.check();
             var next=page==1?first:headers.active()
-                    ?query.sessionsForExport(actor,from,to,page,size,snapshot,first.total(),headers)
-                    :query.sessionsForExport(actor,from,to,page,size,snapshot,first.total());
-            if(next.total()!=first.total()||next.snapshotAuditId()!=first.snapshotAuditId())
-                throw new ApiException(ErrorCode.CONFLICT,"会话查询范围已变化，请刷新后重试");
+                    ?query.sessionsForExport(actor,from,to,page,size,first.snapshotAuditId(),expected,headers)
+                    :query.sessionsForExport(actor,from,to,page,size,first.snapshotAuditId(),expected);
+            if(next==null)throw incomplete();
+            if(next.total()!=expected||next.snapshotAuditId()!=first.snapshotAuditId())throw changed();
+            if(next.page()!=page||next.size()!=size||next.totalPages()!=expectedPages
+                    ||next.items()==null||next.items().size()!=Math.min(size,expected-seen)
+                    ||next.items().stream().anyMatch(Objects::isNull))throw incomplete();
             List<Map<String,Object>> batch=new ArrayList<>(next.items().size());append(batch,next.items());
-            seen+=batch.size();
-            if(seen>limit)throw new ApiException(ErrorCode.VALIDATION_FAILED,"会话数超过导出上限");
-            if(sink==null)rows.addAll(batch);else sink.accept(new ExportPayload(COLUMNS,batch,Math.toIntExact(first.total())));
+            seen=Math.addExact(seen,batch.size());
+            if(sink==null)rows.addAll(batch);else sink.accept(new ExportPayload(COLUMNS,batch,Math.toIntExact(expected)));
+            ExportOperationCheckpoint.check();
+            if(seen==expected)return new ExportPayload(COLUMNS,sink==null?List.copyOf(rows):List.of(),Math.toIntExact(seen));
         }
-        if(seen!=first.total())throw new ApiException(ErrorCode.CONFLICT,"会话结果未完整返回，请刷新后重新导出");
-        return new ExportPayload(COLUMNS,sink==null?rows:List.of(),Math.toIntExact(seen));
     }
+    private static ApiException changed(){return new ApiException(ErrorCode.CONFLICT,"会话查询范围已变化，请刷新后重试");}
+    private static ApiException incomplete(){return new ApiException(ErrorCode.CONFLICT,"会话结果未完整返回，请刷新后重新导出");}
     private void append(List<Map<String,Object>> rows,List<AuditSessionRow> source) {
         for(var item:source) {
             Map<String,Object> row=new LinkedHashMap<>();

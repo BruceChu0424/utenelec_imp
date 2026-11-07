@@ -27,17 +27,19 @@ class DocumentPageSinkTest {
         assertThrows(IllegalArgumentException.class,()->new DocumentPageSink.Header("t",List.of(),List.of(
                 new DocumentPageSink.Section("same","a",columns,true,false),new DocumentPageSink.Section("same","b",columns,false,false))));
     }
-    @Test void rowBudgetPreservesTheOriginalPerSectionBoundAndDoesNotSumSources() {
+    @Test void sectionsAcceptCompleteCountsBeyondFiftyThousandAndKeepTheirIdentities() {
         var columns=List.of(new ExportColumn("q","数量",ExportColumn.QTY));
         var header=new DocumentPageSink.Header("t",List.of(),List.of(
                 new DocumentPageSink.Section("a","当前",columns,true,false),new DocumentPageSink.Section("b","历史",columns,false,false)));
         var budget=new DocumentPageSink.RowBudget();budget.begin(header);
         var rows=Collections.nCopies(200,Map.<String,Object>of("q",1));
-        for(int index=0;index<ExportDocument.MAX_SECTION_ROWS/200;index++) {
+        for(int index=0;index<251;index++) {
             budget.accept(new DocumentPageSink.Page("a",rows));budget.accept(new DocumentPageSink.Page("b",rows));
         }
-        assertThrows(com.uten.imp.common.web.ApiException.class,()->budget.accept(new DocumentPageSink.Page("a",List.of(Map.of("q",1)))));
+        assertDoesNotThrow(()->budget.accept(new DocumentPageSink.Page("a",List.of(Map.of("q",1)))));
+        assertThrows(IllegalStateException.class,()->budget.accept(new DocumentPageSink.Page("unknown",List.of(Map.of("q",1)))));
         var known=new DocumentPageSink.RowBudget();
-        assertThrows(com.uten.imp.common.web.ApiException.class,()->known.begin(new DocumentPageSink.Header("t",List.of(),header.sections(),ExportDocument.MAX_SECTION_ROWS+1L)));
+        assertDoesNotThrow(()->known.begin(new DocumentPageSink.Header("t",List.of(),header.sections(),50_001)));
+        assertThrows(IllegalStateException.class,()->known.begin(header));
     }
 }

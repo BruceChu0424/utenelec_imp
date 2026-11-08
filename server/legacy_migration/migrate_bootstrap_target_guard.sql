@@ -790,6 +790,9 @@ BEGIN
         ('preplan_physical_stock_claim_commands','EMPTY'),
         ('preplan_physical_stock_claim_allocations','EMPTY'),
         ('preplan_physical_stock_formalizations','EMPTY'),
+        -- V1118 explicit receipt-priority intents are business decisions and must be empty before first import.
+        -- Exact supplemental evidence: docs/数据迁移/evidence/2026-11-08-bootstrap-receipt-priority-1118-classification.tsv.
+        ('preplan_receipt_priority_allocations','EMPTY'),
         ('summary_read_domains','SEED_OR_ADMIN'),
         ('summary_read_markers','SEED_OR_ADMIN');
     SELECT string_agg(table_row.relname,', ' ORDER BY table_row.relname)

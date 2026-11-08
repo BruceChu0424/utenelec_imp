@@ -1,0 +1,29 @@
+{
+  "reviewedRange": "V1114..V1119",
+  "tables": {
+    "preplan_receipt_priority_allocations": {
+      "migration": "V1118__preplan_receipt_priority.sql",
+      "declaration": "CREATE TABLE preplan_receipt_priority_allocations (\n    id UUID NOT NULL DEFAULT gen_random_uuid() UNIQUE,\n    allocation_id UUID PRIMARY KEY REFERENCES preplan_supply_action_allocations(id),\n    priority_qty NUMERIC(18,4) NOT NULL CHECK (priority_qty>0)\n);",
+      "sourceSha256": "1e17f23f3906ee210b8d0bb184bdeeafbec346eac733fb4d391f66a530ae131a"
+    }
+  },
+  "indexes": {
+    "preplan_receipt_priority_allocations_id_key": {
+      "migration": "V1118__preplan_receipt_priority.sql",
+      "declaration": "id UUID NOT NULL DEFAULT gen_random_uuid() UNIQUE",
+      "kind": "CREATE TABLE implicit unique index",
+      "table": "preplan_receipt_priority_allocations",
+      "definition": "CREATE UNIQUE INDEX preplan_receipt_priority_allocations_id_key ON public.preplan_receipt_priority_allocations USING btree (id)",
+      "sourceSha256": "1e17f23f3906ee210b8d0bb184bdeeafbec346eac733fb4d391f66a530ae131a"
+    },
+    "preplan_receipt_priority_allocations_pkey": {
+      "migration": "V1118__preplan_receipt_priority.sql",
+      "declaration": "allocation_id UUID PRIMARY KEY",
+      "kind": "CREATE TABLE implicit unique index",
+      "table": "preplan_receipt_priority_allocations",
+      "definition": "CREATE UNIQUE INDEX preplan_receipt_priority_allocations_pkey ON public.preplan_receipt_priority_allocations USING btree (allocation_id)",
+      "sourceSha256": "1e17f23f3906ee210b8d0bb184bdeeafbec346eac733fb4d391f66a530ae131a"
+    }
+  },
+  "removedIndexes": {}
+}

@@ -537,7 +537,7 @@ class ProductionWorkbenchSourceFulfillmentPostgresTest {
                     "sales_order_items", "sales_orders", "goods", "units", "colors");
             for (String migration : new String[]{
                     "V864__production_workbench_source_fulfillment_progress.sql",
-                    "V1120__execution_workbench_actual_top_level_products.sql"}) {
+                    "V1115__execution_workbench_actual_top_level_products.sql"}) {
                 Path direct = Path.of("src/main/resources/db/migration", migration);
                 db.execute(Files.readString(Files.exists(direct) ? direct : Path.of("server").resolve(direct)));
             }

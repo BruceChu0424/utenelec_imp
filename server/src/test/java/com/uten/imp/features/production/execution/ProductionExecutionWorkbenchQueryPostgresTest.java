@@ -244,7 +244,7 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
         int start = migration.lastIndexOf("CREATE OR REPLACE VIEW v_production_material_clearance AS");
         assertThat(start).isGreaterThanOrEqualTo(0);
         jdbc.execute(migration.substring(start, migration.indexOf(';', start) + 1));
-        String topLevel = Files.readString(Path.of("src/main/resources/db/migration/V1120__execution_workbench_actual_top_level_products.sql"));
+        String topLevel = Files.readString(Path.of("src/main/resources/db/migration/V1115__execution_workbench_actual_top_level_products.sql"));
         jdbc.execute(topLevel.substring(0, topLevel.indexOf("CREATE OR REPLACE VIEW v_production_execution_workbench_roots AS")));
         jdbc.update("INSERT INTO departments(id) VALUES (?), (?)", WORKSHOP, OTHER_WORKSHOP);
         jdbc.update("INSERT INTO employees(id, department_id) VALUES (?, ?)", EMPLOYEE, WORKSHOP);

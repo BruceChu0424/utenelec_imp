@@ -1,0 +1,2 @@
+table	bootstrap_policy	audit_policy	source_migration	purpose
+preplan_receipt_priority_allocations	EMPTY	FULL	V1118	原外部供应分配上显式排序的先到替代优先数量，只追加不可改，不能当种子

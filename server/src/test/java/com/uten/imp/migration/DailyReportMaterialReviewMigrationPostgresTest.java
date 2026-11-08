@@ -470,6 +470,7 @@ class DailyReportMaterialReviewMigrationPostgresTest {
                 .forEach((name, definition) -> assertNull(expectedIndexes.put(name, definition)));
         applyReviewedDeclarations(expectedTables, expectedIndexes, "V996..V1071", 134, 316, 0);
         applyReviewedDeclarations(expectedTables, expectedIndexes, "V1072..V1113", 6, 32, 1);
+        applyReviewedDeclarations(expectedTables, expectedIndexes, "V1114..V1119", 1, 2, 0);
         List<String> actualTables = tables();
         TreeMap<String,String> actualIndexes = catalogMap(indexes());
         if (!expectedTables.stream().toList().equals(actualTables) || !expectedIndexes.equals(actualIndexes)) {

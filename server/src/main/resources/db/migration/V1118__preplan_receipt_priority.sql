@@ -33,11 +33,7 @@ CREATE TRIGGER trg_preplan_receipt_priority_allocation
     BEFORE INSERT OR UPDATE OR DELETE ON preplan_receipt_priority_allocations
     FOR EACH ROW EXECUTE FUNCTION fn_guard_preplan_receipt_priority_allocation();
 
-CREATE TRIGGER trg_audit_preplan_receipt_priority_allocations
-    AFTER INSERT OR UPDATE OR DELETE ON preplan_receipt_priority_allocations
-    FOR EACH ROW EXECUTE FUNCTION fn_audit();
-ALTER TABLE preplan_receipt_priority_allocations
-    ENABLE ALWAYS TRIGGER trg_audit_preplan_receipt_priority_allocations;
+SELECT public.fn_audit_track_table('preplan_receipt_priority_allocations', 'FULL', 'data_change', false, NULL, true, NULL);
 
 CREATE FUNCTION fn_preplan_receipt_priority_enabled(p_material UUID)
 RETURNS BOOLEAN LANGUAGE sql STABLE AS $$
@@ -187,7 +183,7 @@ BEGIN
     SELECT pg_get_functiondef('fn_preplan_aggregate_allocation_pending_qty(uuid)'::regprocedure) INTO definition;
     needle:='RETURN LEAST(own_capacity,GREATEST(COALESCE(total_pending,0)-preceding_capacity,0));';
     IF strpos(definition,needle)=0 OR strpos(definition,'RETURN fn_preplan_future_allocation_pending_qty(allocation.id);')=0 THEN
-        RAISE EXCEPTION 'V1123 aggregate pending quantity contract changed';
+        RAISE EXCEPTION 'V1118 aggregate pending quantity contract changed';
     END IF;
     definition:=replace(definition,needle,'RETURN fn_preplan_receipt_priority_planning_qty(p_allocation,LEAST(own_capacity,GREATEST(COALESCE(total_pending,0)-preceding_capacity,0)));');
     EXECUTE replace(definition,'RETURN fn_preplan_future_allocation_pending_qty(allocation.id);',
@@ -196,7 +192,7 @@ BEGIN
     SELECT pg_get_functiondef('fn_production_workbench_component_credits(uuid)'::regprocedure) INTO definition;
     needle:='SELECT allocation.analysis_material_id AS material_id,GREATEST(CASE';
     IF strpos(definition,needle)=0 OR strpos(definition,'END,0) AS qty')=0 THEN
-        RAISE EXCEPTION 'V1123 workbench pending quantity contract changed';
+        RAISE EXCEPTION 'V1118 workbench pending quantity contract changed';
     END IF;
     definition:=replace(definition,needle,'SELECT allocation.analysis_material_id AS material_id,fn_preplan_receipt_priority_planning_qty(allocation.id,GREATEST(CASE');
     EXECUTE replace(definition,'END,0) AS qty','END,0)) AS qty');

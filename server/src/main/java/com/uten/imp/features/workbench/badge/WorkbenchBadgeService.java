@@ -166,9 +166,15 @@ public class WorkbenchBadgeService implements WorkbenchBadgeReadPort {
         Set<String> granted = new HashSet<>();
         Set<String> failed = new HashSet<>();
         taskAudience.browsingRead(() -> {
+            // 每来源语句时限(P3)整份汇总只收紧一次: statement_timeout 本就按语句计, 设在全部
+            // 来源保存点之前, 慢来源回滚到自己的保存点也撤不掉它, 后续来源照样受限; 读完写回
+            // 调用方原值。此前逐来源收紧+写回, 每份汇总多出 2×来源数条语句。
+            if (toRead.isEmpty()) return null;
+            String previousTimeout = limitSourceStatements();
             for (WorkbenchBadgeSources.Source source : toRead) {
                 readFacts(source, facts, granted, failed);
             }
+            restoreStatementTimeout(previousTimeout);
             return null;
         });
 
@@ -215,16 +221,14 @@ public class WorkbenchBadgeService implements WorkbenchBadgeReadPort {
      *
      * <p>每来源语句时限(2026-11-07 读取性能根治 P3): 来源内每条语句不超过
      * {@link #sourceStatementTimeoutMillis}(调用方已更严则保留), 慢来源到点被取消并按上面的
-     * 失败路径进 stale, 不拖住其它来源。时限在保存点内设置——回滚随保存点撤销; 成功路径在
-     * 释放保存点前写回原值(释放会把事务级设置一直留到事务结束)。
+     * 失败路径进 stale, 不拖住其它来源。时限由 {@link #compute} 在全部来源保存点之前收紧一次、
+     * 读完写回一次(2026-11-08 W7), 回滚到本来源保存点不会撤销它。
      */
     private Map<String, Long> readIsolated(WorkbenchBadgeSources.Source source, Set<String> failed) {
         Session session = entityManager.unwrap(Session.class);
         Savepoint savepoint = session.doReturningWork(Connection::setSavepoint);
         try {
-            String previousTimeout = limitSourceStatements();
             Map<String, Long> values = source.reader().get();
-            restoreStatementTimeout(previousTimeout);
             session.doWork(connection -> connection.releaseSavepoint(savepoint));
             sourceDiagnostics.recovered(source.key());
             return values == null ? Map.of() : values;
@@ -253,7 +257,7 @@ public class WorkbenchBadgeService implements WorkbenchBadgeReadPort {
         entityManager.clear();
     }
 
-    /** 收紧本来源的语句时限(原值先物化再改), 返回原值文本供原样写回。 */
+    /** 收紧整份汇总的语句时限(原值先物化再改), 返回原值文本供原样写回。 */
     private String limitSourceStatements() {
         Object[] row = (Object[]) entityManager.createNativeQuery("""
                 WITH previous AS MATERIALIZED (

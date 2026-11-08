@@ -114,14 +114,14 @@ final class WarehouseOutboundTaskCenterSql {
             return projection("SELECT source_type,record_type,id,");
         }
         private String projection(String selectPrefix) {
-            return selectPrefix + """
-                    bill_no,source_doc_no,business_date,
+            return """
+                    %sbill_no,source_doc_no,business_date,
                            party_name,warehouse_name,responsible_name,maker_name,line_count,status,
                            maker_id,stock_status,issue_status,revision,request_id,materials_defined,actionable,
                            line_key,item_id,line_no,goods_code,goods_name,specification,color_name,unit_name,quantity,weight,
                            production_orders.production_order_no,
                            production_orders.production_orders::text
-                    """;
+                    """.formatted(selectPrefix);
         }
         /**
          * 领料单关联的生产工单（2026-10-29 用户批注）：工单 = production_execution_segments.segment_code。

@@ -61,8 +61,12 @@ class ProductionTaskAudienceCountTest {
             assertThat(counts.reportInspection()).isEqualTo(1);
             assertThat(counts.total()).isEqualTo(start ? 6 : 4);
             assertThat(params).containsEntry("employeeId", self).containsEntry("countPreparing", start);
-            verify(em).createNativeQuery(argThat(sql -> sql.contains("task.responsible_employee_id=employee.id")
-                    && sql.contains("employee.id=:employeeId")));
+            // Assignment scope anchors of ProductionWorkshopAssignmentScope: responsibility bound to the
+            // current employee, eligibility gated by the employee status, workshop subtree membership.
+            verify(em).createNativeQuery(argThat(sql -> sql.contains("task.responsible_employee_id=:employeeId")
+                    && sql.contains("assignment_employee.id=:employeeId")
+                    && sql.contains("assignment_employee.status IN ('active','probation','onLeave')")
+                    && sql.contains("task.workshop_department_id IN (")));
         }
     }
 

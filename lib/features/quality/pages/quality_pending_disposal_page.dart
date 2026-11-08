@@ -1410,6 +1410,10 @@ class _ProcurementInspectionDetailPageState
           requestScope: requestScope!,
           iqc: ref.read(procurementInspectionRepositoryProvider),
           fqc: ref.read(productionFqcRepositoryProvider),
+          // 阶段切换(IQC→FQC)时刷新遮罩文案；行状态本页在提交完成后统一重载。
+          onProgress: () {
+            if (mounted) setState(() {});
+          },
         ),
       );
       await requestScope.verify();
@@ -1531,9 +1535,15 @@ class _ProcurementInspectionDetailPageState
           children: [
             _buildBody(),
             // 2026-09-12 用户口径：提交报告执行期间屏幕中间加载动画
-            //（跟随网络调用本身，失败/完成后撤下）。
+            //（跟随网络调用本身，失败/完成后撤下）。W6-H：两段请求按阶段报文案。
             if (_busyDecision)
-              const Positioned.fill(child: UtenBusyOverlay(title: '正在提交检验报告')),
+              Positioned.fill(
+                child: UtenBusyOverlay(
+                  title: _submission?.phase == QualityBatchPhase.fqc
+                      ? '正在批量通过自制产成品'
+                      : '正在提交检验报告',
+                ),
+              ),
           ],
         ),
       ),

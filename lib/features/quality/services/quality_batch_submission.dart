@@ -4,6 +4,9 @@ import '../../../core/network/authenticated_request_scope.dart';
 import '../../warehouse/repositories/procurement_inspection_repository.dart';
 import '../repositories/production_fqc_repository.dart';
 
+/// 整批提交的两段网络阶段；FQC 段只在确有自制产成品时进入。
+enum QualityBatchPhase { iqc, fqc }
+
 /// One receipt stays atomic on the server. Across receipts, the whole report is
 /// one server-side transaction (2026-10-10 decide-report): any conflicting
 /// receipt rolls back everything, and the exact accepted report replays
@@ -105,6 +108,10 @@ class QualityBatchSubmission {
   bool _running = false;
   AuthenticatedRequestScope? _requestScope;
 
+  /// 提交分阶段(W6-H)：IQC 整份报告与 FQC 批量通过是两段网络请求，
+  /// 遮罩文案跟随当前阶段，长批次不再整程一句「正在提交检验报告」。
+  QualityBatchPhase phase = QualityBatchPhase.iqc;
+
   /// 服务端确认判定的检查任务份数(整批展开后); 还没发或从草稿恢复时为空。
   int? fqcProcessedCount;
 
@@ -132,6 +139,10 @@ class QualityBatchSubmission {
     _running = true;
     try {
       await scope.run(() async {
+        // 草稿续传时 IQC 段可能已确认：直接从 FQC 阶段报进度。
+        phase = _acknowledged.length < receipts.length || fqcInspectionIds.isEmpty
+            ? QualityBatchPhase.iqc
+            : QualityBatchPhase.fqc;
         // 2026-10-10 整份检验报告一次提交：服务端 decide-report 单事务原子执行全部
         // 收货单（联合预锁 + 按报告顺序逐单），任一单冲突整批回滚并按单号报错。
         // 此前逐单串行发 decide-batch——N 张单 N 次 HTTP 往返，长批次既慢又容易在
@@ -163,6 +174,8 @@ class QualityBatchSubmission {
         }
         await scope.verify();
         if (fqcInspectionIds.isNotEmpty && !_fqcAcknowledged) {
+          phase = QualityBatchPhase.fqc;
+          onProgress?.call();
           final result = await fqc.passAll(
             inspectionIds: fqcInspectionIds,
             idempotencyKey: fqcIdempotencyKey,

@@ -51,7 +51,13 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 @org.springframework.context.annotation.Import(ProductionJdbcMeasurement.Configuration.class)
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class IqcDecideReportBatchPostgresTest {
-    @DynamicPropertySource static void database(DynamicPropertyRegistry properties){FullChainEndToEndTest.registerDataSource(properties);}
+    @DynamicPropertySource static void database(DynamicPropertyRegistry properties){
+        FullChainEndToEndTest.registerDataSource(properties);
+        // W6 预算测量：-Duten.perf.track-functions=true 让连接自带 track_functions=all，
+        // 预算测试在 decide-report 前后读 pg_stat_user_functions 的累计调用数差值。
+        if(Boolean.getBoolean("uten.perf.track-functions"))
+            properties.add("spring.datasource.hikari.data-source-properties.options",()->"-c track_functions=all");
+    }
     @Autowired AutowireCapableBeanFactory beans;
     @Autowired JdbcTemplate db;
     @Autowired jakarta.persistence.EntityManager em;
@@ -74,6 +80,20 @@ class IqcDecideReportBatchPostgresTest {
 
     private void isolatePerformanceDelivery() {
         if(Boolean.getBoolean("uten.perf.isolate-outbox"))outboxScheduler.close();
+    }
+
+    /** Cumulative authoritative-origin walk calls cluster-wide (stable read; stats flush lags ≤500ms). */
+    private long originWalkCalls()throws Exception{
+        long stable=-1;
+        for(int attempt=0;attempt<8;attempt++){
+            long current=db.queryForObject("""
+                    SELECT COALESCE(sum(calls),0) FROM pg_stat_user_functions
+                    WHERE schemaname='public' AND funcname IN ('fn_imported_business_document_row','fn_imported_business_document_row_internal')
+                    """,Long.class);
+            if(current==stable)return stable;
+            stable=current;Thread.sleep(300);
+        }
+        return stable;
     }
 
     private Stage prepare(){
@@ -162,6 +182,110 @@ class IqcDecideReportBatchPostgresTest {
                 .andReturn().getResponse();
         assertEquals(403,response.getStatus());
         assertEquals(0,passFailEventCount(stage));
+    }
+
+    /**
+     * W6-A 精确唤醒对照(2026-11-08)：报告路径目标集合从「仓×货品×颜色 泛化两臂」改为
+     * 三臂精确(exact peg / 供给动作分配 / ownsQualifiedAt)。铺 12 张只与收货单共享
+     * 维度(同仓×同货品)的兄弟分析：旧泛化臂会唤醒它们，新三臂不应；再在回滚事务里对
+     * 每个兄弟手工 refreshLocked，证明泛化多出的目标在本报告事实下刷新为无操作
+     * (version/fingerprint 与投影行均不变)——「新旧目标集合持久化的分析行完全一致」。
+     */
+    @Test void exactWakeupRefreshesOnlyFactDependentAnalyses()throws Exception{
+        Stage stage=prepare(2,2);
+        UUID sharedGoods=stage.byReceipt().values().stream().flatMap(List::stream)
+                .map(WarehouseIqcScaleFixture.Receipt::goodsId).findFirst().orElseThrow();
+        var analysisBean=beans.getBean(com.uten.imp.features.production.analysis.MaterialAnalysisService.class);
+        List<UUID> siblings=new ArrayList<>();
+        for(int i=0;i<12;i++){
+            var view=analysisBean.preview(new com.uten.imp.features.production.analysis.MaterialAnalysisContracts.PreviewRequest(
+                    null,null,null,stage.world().warehouseId(),"iqc-exact-sibling-"+i+"-"+UUID.randomUUID(),
+                    List.of(new com.uten.imp.features.production.analysis.MaterialAnalysisContracts.PreviewItem("OTHER",null,sharedGoods,null,
+                            stage.world().unitId(),"IQC-EXACT-"+i,"精确唤醒对照夹具",com.uten.imp.common.time.BusinessTime.today(),new BigDecimal("5")))));
+            assertFalse(view.flatMaterials().isEmpty(),"兄弟夹具必须真的展开出同货品物料行");
+            siblings.add(view.analysisId());
+        }
+        Object analysisSpy=org.springframework.test.util.AopTestUtils.getUltimateTargetObject(analyses);
+        // 兄弟分析先物化一次快照(preview 不落快照行，首次刷新必不是无操作，不能当对照基线)。
+        // saveRoutes 空决策也是正规命令入口(带本人锁与幂等)，其收尾 refreshLocked 落快照。
+        SecurityContextHolder.getContext().setAuthentication(stage.actor());
+        for(int i=0;i<siblings.size();i++){
+            var materialized=analysisBean.saveRoutes(siblings.get(i),new com.uten.imp.features.production.analysis.MaterialAnalysisContracts.RouteRequest(
+                    db.queryForObject("SELECT version FROM production_material_analyses WHERE id=?",Long.class,siblings.get(i)),
+                    db.queryForObject("SELECT fingerprint FROM production_material_analyses WHERE id=?",String.class,siblings.get(i)),
+                    "iqc-exact-materialize-"+i+"-"+UUID.randomUUID(),List.of()));
+            assertFalse(materialized.flatMaterials().isEmpty(),"物化后兄弟分析必须有快照行");
+        }
+        Map<String,String> stampsBefore=analysisStamps(siblings);
+        org.mockito.Mockito.clearInvocations(analysisSpy);
+        JsonNode result=call(stage,report(stage,null),200);
+        assertEquals(4,result.path("lineCount").asInt());
+        assertEquals(1,refreshes(stage),"事实依赖的共享分析只刷新一次");
+        // 兄弟分析未被精确唤醒刷新(版本与指纹都不动——没有刷新就没有 CAS 推进)。
+        assertEquals(stampsBefore,analysisStamps(siblings));
+        // 新旧目标集合直接对拍：反射调真实 wakeup 服务的两个目标求值方法，免在测试里复制 SQL。
+        Object wakeupTarget=org.springframework.test.util.AopTestUtils.getUltimateTargetObject(wakeup);
+        List<com.uten.imp.application.port.ProductionInspectionStockInPort.ResolvedReceipt> receipts=
+                stage.byReceipt().entrySet().stream()
+                        .map(entry->new com.uten.imp.application.port.ProductionInspectionStockInPort.ResolvedReceipt(
+                                entry.getValue().getFirst().type(),entry.getKey())).toList();
+        Set<UUID> oldIds=targetIds(org.springframework.test.util.ReflectionTestUtils
+                .invokeMethod(wakeupTarget,"resolvedReceiptTargets",receipts));
+        Set<UUID> newIds=targetIds(org.springframework.test.util.ReflectionTestUtils
+                .invokeMethod(wakeupTarget,"exactReceiptTargets",receipts));
+        assertTrue(newIds.contains(stage.analysisId()),"精确集合必须包含真有供给动作分配的夹具分析");
+        assertTrue(oldIds.containsAll(newIds),"精确集合必须落在旧泛化集合内");
+        assertFalse(java.util.Collections.disjoint(siblings,oldIds),"兄弟夹具必须能被旧泛化臂命中(夹具有效性)");
+        assertTrue(java.util.Collections.disjoint(siblings,newIds),"精确臂不得命中仅有维度泛化关联的分析");
+        // 泛化多出的目标在本报告事实下刷新为无操作：refreshLocked 的 version 是无条件 +1
+        // (bumpFingerprint 设计)，无操作的判据是指纹不变 + 业务投影行(去掉纯簿记列)不变。
+        Map<String,String> projectionBefore=projectionDigest(siblings);
+        Map<String,String> fingerprintsBefore=fingerprints(siblings);
+        // 泛化多出的目标在本报告事实下刷新为无操作：refreshLocked 不是独立命令入口(嵌套锁要求
+        // 外层先持全分析预锁)，用同一正规入口 saveRoutes(空决策) 驱动同一收尾重算。
+        // refreshLocked 的 version 是无条件 +1(bumpFingerprint 设计)，无操作判据=指纹不变+业务投影行不变。
+        SecurityContextHolder.getContext().setAuthentication(stage.actor());
+        for(int i=0;i<siblings.size();i++){
+            analysisBean.saveRoutes(siblings.get(i),new com.uten.imp.features.production.analysis.MaterialAnalysisContracts.RouteRequest(
+                    db.queryForObject("SELECT version FROM production_material_analyses WHERE id=?",Long.class,siblings.get(i)),
+                    fingerprintsBefore.get(siblings.get(i).toString()),
+                    "iqc-exact-noop-probe-"+i+"-"+UUID.randomUUID(),List.of()));
+        }
+        assertEquals(fingerprintsBefore,fingerprints(siblings),"泛化多出的分析刷新必须不改变事实指纹");
+        assertEquals(projectionBefore,projectionDigest(siblings),"泛化多出的分析刷新必须不改变业务投影行");
+    }
+
+    private Map<String,String> analysisStamps(List<UUID> ids){
+        Map<String,String> result=new LinkedHashMap<>();
+        for(UUID id:ids)result.put(id.toString(),db.queryForObject(
+                "SELECT version||'|'||fingerprint FROM production_material_analyses WHERE id=?",String.class,id));
+        return result;
+    }
+
+    private Map<String,String> fingerprints(List<UUID> ids){
+        Map<String,String> result=new LinkedHashMap<>();
+        for(UUID id:ids)result.put(id.toString(),db.queryForObject(
+                "SELECT fingerprint FROM production_material_analyses WHERE id=?",String.class,id));
+        return result;
+    }
+
+    /** 业务投影行摘要：去掉纯簿记列(updated_at/updated_by)，无操作刷新必须逐字节一致。 */
+    private Map<String,String> projectionDigest(List<UUID> ids){
+        Map<String,String> result=new LinkedHashMap<>();
+        for(UUID id:ids)result.put(id.toString(),db.queryForObject("""
+                SELECT md5(string_agg((to_jsonb(material) - 'updated_at' - 'updated_by')::text,'' ORDER BY material.id))
+                FROM production_material_analysis_materials material WHERE material.analysis_id=?
+                """,String.class,id));
+        return result;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Set<UUID> targetIds(Object targets){
+        Set<UUID> ids=new java.util.HashSet<>();
+        for(Object target:(List<Object>)targets){
+            ids.add((UUID)org.springframework.test.util.ReflectionTestUtils.invokeMethod(target,"analysisId"));
+        }
+        return ids;
     }
 
     /**
@@ -344,6 +468,7 @@ class IqcDecideReportBatchPostgresTest {
         var request=report(stage,null);
         Object analysisSpy=org.springframework.test.util.AopTestUtils.getUltimateTargetObject(analyses);
         org.mockito.Mockito.clearInvocations(analysisSpy);
+        long walksBefore=originWalkCalls();
         long started=System.currentTimeMillis();
         JsonNode result;
         ProductionJdbcMeasurement.Sample measured=ProductionJdbcMeasurement.begin();
@@ -351,6 +476,7 @@ class IqcDecideReportBatchPostgresTest {
         finally { ProductionJdbcMeasurement.end(); }
         long elapsed=System.currentTimeMillis()-started;
         System.out.println("[decide-report] 20 receipts x 5 lines elapsedMs=" + elapsed);
+        System.out.println("[decide-report] originWalks=" + (originWalkCalls()-walksBefore));
         System.out.println("[decide-report] breakdown " + json.writeValueAsString(measured.result()));
         assertEquals(20,result.path("receiptCount").asInt());
         assertEquals(100,result.path("lineCount").asInt());
@@ -381,6 +507,7 @@ class IqcDecideReportBatchPostgresTest {
         org.mockito.Mockito.clearInvocations(analysisSpy);
         var resources=CommandResourceMeasurement.begin((org.testcontainers.containers.GenericContainer<?>)
                 org.springframework.test.util.ReflectionTestUtils.getField(FullChainEndToEndTest.class,"POSTGRES"));
+        long walksBefore=originWalkCalls();
         long started=System.currentTimeMillis();
         JsonNode result;
         ProductionJdbcMeasurement.Sample measured=ProductionJdbcMeasurement.begin();
@@ -390,7 +517,8 @@ class IqcDecideReportBatchPostgresTest {
         finally { finished=System.currentTimeMillis();resourceMetrics=resources.finish();ProductionJdbcMeasurement.end(); }
         long elapsed=finished-started;
         System.out.println("[decide-report] pre-stocked 20 receipts x 5 lines run="+run+" elapsedMs=" + elapsed
-                + " jdbcCalls="+measured.jdbcCalls+" logicalStatements="+measured.logicalStatements);
+                + " jdbcCalls="+measured.jdbcCalls+" logicalStatements="+measured.logicalStatements
+                + " originWalks=" + (originWalkCalls()-walksBefore));
         String reportDirectory=System.getProperty("uten.perf.quality-report-directory");
         if(reportDirectory!=null){
             var directory=java.nio.file.Path.of(reportDirectory);java.nio.file.Files.createDirectories(directory);

@@ -25,6 +25,54 @@
 - **R5 前端同层并行**：`material_analysis_aggregate_submission.dart:44-319` 依赖分轮 while——同层车间+委外批并行发（409 竞争重试已有保护）。
 - **R6 命令级子树缓存**：同一次 submit 内 SOURCE/EXACT 闭包（WriteService :831-880/891-957/1094-1130 递归子树 SQL）组间增量合并。
 
+## 3b. R5/R6 定论（2026-11-08 续做会话，实测后不做代码改动）
+
+**阶段计时探针**（临时 `[agg-probe]` System.out，测后已撤；`twentyMaterialLinesCompleteWithinDeadlineBudget` 单跑，
+本机当时负载下 elapsedMs=6,194，与 §1 的 3.7-4.3s 同一命令、机器状态不同，只看**阶段占比**）：
+
+| 阶段 | ms | 说明 |
+|---|---:|---|
+| admissionPreview（预锁前） | 481 | R3 已移出锁窗口 |
+| lockReplayCas | 135 | 预锁+回放+CAS |
+| reviewResolve（锁内复核） | 37 | admission 被接受，无重算 |
+| initialRefresh（refreshLocked+detailInternal） | 329 | 循环前一次 |
+| MAKE 组 resolveGroup | 1 | 纯内存（传入 current） |
+| captureCapacities（SOURCE 闭包一次） | 45 | **R6 目标物实测只占 0.7%** |
+| batchAliasesRoutes（2×refreshLocked+installAliases+copySharedRoutes） | 749 | 全树重算是主体 |
+| issueAnchor（createDraftPlan+savePlanningDraft 计划链） | 1,573 | 单张计划流水线 |
+| anchorGrowth（refreshWithAnchorGrowth） | 359 | |
+| detailIter+externalCohort20（20 BUY 一批） | 1,882 | resolve(20)+20 张采购需求 createProductionDraft+一次 refreshLocked |
+| bridges/finalDetail | 28 | |
+
+**关键事实：20 个 BUY 叶子并没有逐个顺序提交**——`independentExternalPrefix` 在 MAKE 组完成后
+把 20 个 BUY 合成一个 external cohort（`externalCohort20` 一次调用），每叶一次 resolve+refresh 的
+担忧不存在；测试注释「leaves keep the dependent path」指 MAKE 父组与叶子不相交独立、不能同批制造，
+不是叶子逐个串行。
+
+**R5 定论：不做（前提不成立）**。同层并行发两个写请求在现行契约下必 409 一方：
+1. 所有分析写命令带 version+fingerprint CAS（`MaterialAnalysisService.requireCurrent:1438` 严格相等，
+   `notifySupply`/`issueWorkshopPlans`/`submitAggregateOrders` 全部适用）；FulfillmentMutationLocks 把
+   并发命令**串行化**，后到者取锁后 CAS 即失败——「409 竞争重试已有保护」对**跨客户端命令**不成立：
+   `FulfillmentSourceConflictRetryInterceptor` 只自动重跑服务端内部预写来源冲突（retryable
+   FulfillmentSourceConflictException），CAS 冲突是普通 ApiException 直接 409 给客户端。
+2. 前端契约明文「所有携 version/fingerprint 的写入口遇到 409 后都只读 GET 最新详情。**不自动重试写操作**」
+   （production_material_analysis_page.dart:1881），静默重发未确认意图违反输入/未知提交保全。
+   并行=每层必有一段报失败要求人工重试，是回归不是优化。产品视图逐层 issue-plans/notify 串行
+   （material_analysis_material_table.dart:7170-7225）同理是 CAS 下的正确形态。真正的减轮次手段是
+   主文档的备选「服务端按产品整批入口」（2026-10-10 已为外部组做过，issueWorkshopPlansInternal
+   :1075-1090 的 INDEPENDENT- 段），属新入口设计，未在本轮授权范围。
+
+**R6 定论：不新增代码（可合并的闭包重算已被 R1 消除，残余合并=高风险 redesign）**。
+- 预算形状里子树闭包（captureSourceCapacities/readAliasSnapshots/copySharedRoutes 的递归 SQL）只计
+  ~45ms+batchAliasesRoutes 的一小部分；独立制造组的闭包合批 R1（b4ec605b3）已在
+  submitIndependentManufacturing 做掉（captureSourceCapacities(all)/readAliasSnapshots(all)/
+  copySharedRoutes(all) 各一次）；依赖组（子树相交）的逐组重读是**语义要求**——组 N 的别名/分配
+  写入会改组 N+1 的容量数值，跨组缓存必须做「数量增量合并」，出错即静默破坏配量分配业务链。
+- 剩余大头（issueAnchor 1.57s、20 张采购需求 1.69s、5 次 refreshLocked ~1.4s）不属于 R6 的
+  「子树闭包」范畴，分别属计划域流水线、ADR-065 逐组单据语义与全树重算架构。
+- 预算断言维持 10s；「≤3s」在当前架构下未达成也不再由 R5/R6 逼近——按上表阶段分布，
+  下一档收益需动计划链/refreshLocked 次数，超出 P5 已批准范围，留档。
+
 ## 4. W6-A 精确唤醒侦察（schema 已核实，续做直接写）
 
 现泛化路径：`resolvedReceiptTargets`（按 仓×货品×颜色 维度）→ `candidateQuery`（`fn_warehouse_same_main` OR `ownsQualifiedAt` 两分支）→ 唤醒全部同主仓活跃分析逐个 `refreshLocked`。

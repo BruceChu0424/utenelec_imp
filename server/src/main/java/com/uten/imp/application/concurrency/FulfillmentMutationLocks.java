@@ -139,6 +139,23 @@ public class FulfillmentMutationLocks {
         return new Guard(state, true);
     }
 
+    /**
+     * 已持有联合预锁的批量编排专用嵌套入口(W6-B 2026-11-08): 跳过嵌套 recheckPrefixCoverage——
+     * 它会把联合发现整图重跑一遍; 调用方必须在全部嵌套取锁完成后、第一笔写之前用取得预锁的守卫做一次
+     * {@link Guard#verifyUnchanged()} 严格相等复核(重读同一份发现逐行比较, 比覆盖检查更强, 语义不变)。
+     * 诊断开关(verify-nested-footprint)照旧重跑嵌套发现核对覆盖, 测试里的安全网不撤。
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public Guard acquireNestedWithoutRecheck(Supplier<FulfillmentMutationLockPlan> discovery) {
+        Objects.requireNonNull(discovery);
+        FulfillmentLockState.State state = state();
+        if (!state.prepared) {
+            throw FulfillmentLockState.conflict("本入口只用于本事务已持有联合预锁的批量命令，请用普通 acquire");
+        }
+        if (verifyNestedFootprint) requireDiscoveredCovered(discovery);
+        return new Guard(state, false);
+    }
+
     private void lockPrefix(FulfillmentLockState.State state, FulfillmentMutationLockPlan plan,
             Supplier<FulfillmentMutationLockPlan> discovery) {
         // Every source head precedes every source item, including shared request/application sources.

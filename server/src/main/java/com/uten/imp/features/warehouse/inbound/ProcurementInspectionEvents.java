@@ -4,6 +4,7 @@ import jakarta.persistence.EntityManager;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -68,5 +69,48 @@ final class ProcurementInspectionEvents {
                 .setParameter("batchRequestHash", batchRequestHash)
                 .setParameter("actorUserId", actorUserId)
                 .executeUpdate();
+    }
+
+    /** One event row of a batched append; columns mirror {@link #append} one to one. */
+    record EventRow(UUID id, UUID inspectionItemId, String action, BigDecimal baseQty, String reason,
+                    UUID actorEmployeeId, OffsetDateTime occurredAt, BigDecimal releasedAmountLocal,
+                    BigDecimal releasedWeight, String batchRequestHash, UUID actorUserId) { }
+
+    /**
+     * W6-F (2026-11-08)：整份结论的事件落账合并为一条多行 INSERT。行序 = 事件顺序，
+     * 同一行先后 PASS/FAIL 的累计切片数学在调用方内存里按同一顺序完成，occurred_at
+     * 顺序与逐条路径一致(pass_release_value 依赖)；列与单条 INSERT 完全同构。
+     */
+    static void appendAll(EntityManager em, List<EventRow> rows) {
+        if (rows == null || rows.isEmpty()) return;
+        StringBuilder sql = new StringBuilder("""
+                INSERT INTO procurement_inspection_events (
+                    id, inspection_item_id, action, base_qty, reason,
+                    actor_employee_id, occurred_at, requires_warehouse_stock_in,
+                    released_amount_local, released_weight, batch_request_hash, actor_user_id
+                ) VALUES
+                """);
+        for (int i = 0; i < rows.size(); i++) {
+            sql.append(i == 0
+                    ? "(?::uuid,?::uuid,?::text,?::numeric,?::text,?::uuid,?::timestamptz,?::boolean,?::numeric,?::numeric,?::text,?::uuid)"
+                    : ",(?,?,?,?,?,?,?,?,?,?,?,?)");
+        }
+        var query = em.createNativeQuery(sql.toString());
+        int parameter = 1;
+        for (EventRow row : rows) {
+            query.setParameter(parameter++, row.id());
+            query.setParameter(parameter++, row.inspectionItemId());
+            query.setParameter(parameter++, row.action());
+            query.setParameter(parameter++, row.baseQty());
+            query.setParameter(parameter++, row.reason());
+            query.setParameter(parameter++, row.actorEmployeeId());
+            query.setParameter(parameter++, row.occurredAt());
+            query.setParameter(parameter++, PASS.equals(row.action()));
+            query.setParameter(parameter++, row.releasedAmountLocal());
+            query.setParameter(parameter++, row.releasedWeight());
+            query.setParameter(parameter++, row.batchRequestHash());
+            query.setParameter(parameter++, row.actorUserId());
+        }
+        query.executeUpdate();
     }
 }

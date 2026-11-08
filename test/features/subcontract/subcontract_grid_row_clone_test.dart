@@ -183,7 +183,7 @@ void main() {
     expect(keys, isNot(contains('unit')));
   });
 
-  testWidgets('订货列序契约：允许损耗% 紧跟数量（2026-10-10 与采购超收%对齐）', (tester) async {
+  testWidgets('订货列序契约：仓库库存数量、允许损耗% 依次紧跟数量', (tester) async {
     late final List<String> keys;
     await tester.pumpWidget(
       MaterialApp(
@@ -201,7 +201,10 @@ void main() {
         ),
       ),
     );
-    expect(keys.indexOf('allowedLossPct'), keys.indexOf('qty') + 1);
+    // 2026-11-07 用户口径：数量右侧加「仓库库存数量」即时库存参考列；
+    // 允许损耗%（2026-10-10 与采购超收%对齐）顺移一位。
+    expect(keys.indexOf('stockQty'), keys.indexOf('qty') + 1);
+    expect(keys.indexOf('allowedLossPct'), keys.indexOf('stockQty') + 1);
     expect(keys.indexOf('price'), keys.indexOf('allowedLossPct') + 1);
     // 商业条款仍按 币种→税率→结算方式 跟在总金额后。
     expect(keys.sublist(keys.indexOf('amount') + 1, keys.indexOf('remark')), [
@@ -209,5 +212,34 @@ void main() {
       'taxRate',
       'settlement',
     ]);
+  });
+
+  testWidgets('仓库库存数量列只开订货单，其余单据不出现', (tester) async {
+    for (final cfg in [
+      SubcontractDocConfig.inquiry,
+      SubcontractDocConfig.application,
+      SubcontractDocConfig.receipt,
+      SubcontractDocConfig.returnDoc,
+      SubcontractDocConfig.materialIssue,
+      SubcontractDocConfig.materialReturn,
+      SubcontractDocConfig.waste,
+    ]) {
+      late final List<String> keys;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) {
+              keys = subcontractGridColumns(
+                (_) async {},
+                cfg,
+                context: context,
+              ).map((column) => column.key).toList();
+              return const SizedBox();
+            },
+          ),
+        ),
+      );
+      expect(keys, isNot(contains('stockQty')), reason: cfg.type.name);
+    }
   });
 }

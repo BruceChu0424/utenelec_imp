@@ -582,6 +582,52 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     }
 
     /**
+     * 委外订货单行级「仓库库存数量」(/goods-stock 返回体): 按货品×颜色聚合的即时库存,
+     * 口径与货品资料「库存量」列一致 (stock_balances 现存量, 仅参与核算仓库, 不含不良品仓
+     * 与线边仓) —— 直接查 stock_balances 表, 遵循「表访问非跨特性 Java 依赖」的架构边界。
+     * qty 为货品基本单位量; unitName 缺失 (历史无单位) 时为 null, 前端只显数量。
+     * 无余额行的货品×颜色不返回, 调用方按 0 显示。
+     */
+    @Transactional(readOnly = true)
+    public List<GoodsStockBucket> goodsStockBuckets(java.util.Collection<UUID> goodsIds) {
+        if (goodsIds == null || goodsIds.isEmpty()) {
+            return List.of();
+        }
+        List<GoodsStockBucket> buckets = new ArrayList<>();
+        for (Object[] row : com.uten.imp.common.util.NativeQueryResults.objectArrayRows(
+                em.createNativeQuery(
+                """
+                SELECT b.goods_id, b.color_id, SUM(b.qty) AS qty, stock_unit.name AS unit_name
+                FROM stock_balances b
+                JOIN warehouses w ON w.id = b.warehouse_id
+                JOIN goods g ON g.id = b.goods_id
+                LEFT JOIN units stock_unit
+                  ON NOT stock_unit.is_deleted AND NULLIF(btrim(stock_unit.name), '') IS NOT NULL
+                 AND (stock_unit.id = g.unit_id OR (g.unit_id IS NULL
+                      AND stock_unit.legacy_id = NULLIF(g.unit_legacy_id, 0)))
+                WHERE w.is_accountable AND NOT w.is_defective AND NOT w.is_line_side
+                  AND b.goods_id IN (:ids)
+                GROUP BY b.goods_id, b.color_id, stock_unit.name
+                ORDER BY b.goods_id, b.color_id NULLS FIRST
+                """).setParameter("ids", goodsIds))) {
+            buckets.add(new GoodsStockBucket((UUID) row[0], (UUID) row[1],
+                    row[2] == null ? BigDecimal.ZERO : (BigDecimal) row[2],
+                    (String) row[3]));
+        }
+        return buckets;
+    }
+
+    /** 单个货品×颜色桶的即时库存 (行级「仓库库存数量」列数据源)。 */
+    public record GoodsStockBucket(
+            UUID goodsId,
+            UUID colorId,
+            BigDecimal qty,
+            String unitName) {
+        @com.fasterxml.jackson.annotation.JsonProperty("qtyExact")
+        public String qtyExact() { return com.uten.imp.common.util.DecimalText.of(qty); }
+    }
+
+    /**
      * 主档默认条款视图 (/last-terms 返回体; 字段口径见 goods / suppliers 主档列)。
      * subcontractPrice=goods.default_subcontract_price (行价预填)。
      * allowedLossPct=goods.subcontract_allowed_loss_pct (ADR-098 允许损耗记忆, 来源 GOODS_MASTER;

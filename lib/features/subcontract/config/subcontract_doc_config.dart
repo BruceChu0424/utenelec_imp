@@ -70,6 +70,7 @@ class SubcontractDocConfig {
     this.itemHasStep = false, // 工序（进仓/退货明细；B_Step 未迁→暂空白）
     this.itemHasBoxQty = false, // 胶箱数量（材料出明细；老库无源→留空）
     this.itemHasAllowedLossPct = false, // 允许损耗%（订货明细；ADR-098）
+    this.itemHasGoodsStock = false, // 仓库库存数量列（订货明细「数量」旁参考）
     // 明细链路
     this.linkToApplicationItem = false,
     this.linkToOrderItem = false,
@@ -164,6 +165,7 @@ class SubcontractDocConfig {
   final bool itemHasStep; // 工序（进仓/退货）
   final bool itemHasBoxQty; // 胶箱数量（材料出）
   final bool itemHasAllowedLossPct; // 供料损耗上限%（订货；主档记忆预填，成品目标不折减）
+  final bool itemHasGoodsStock; // 仓库库存数量（订货；服务端按货品×颜色下发的即时库存参考）
 
   // 明细链路差异（编辑页"从上游引入"按钮 + 回写 *ItemId）
   final bool linkToApplicationItem; // 订货 → 申请
@@ -259,6 +261,8 @@ class SubcontractDocConfig {
     itemHasWeight: true,
     // 每行供料损耗上限来自货品主档记忆；回厂不足成品目标仍需仓库确认并交委外判定。
     itemHasAllowedLossPct: true,
+    // 2026-11-07 用户口径：数量列右侧加「仓库库存数量」即时库存参考列（只读，不限制下单）。
+    itemHasGoodsStock: true,
     linkToApplicationItem: true,
     showReceived: true,
     approveEffect:

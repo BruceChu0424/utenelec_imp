@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../basic_data/models/master_facet.dart';
 import '../../../core/network/api_client.dart';
+import '../../../shared/models/historical_receipt_facts.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/models/procurement_commercial_terms.dart';
 import '../../../shared/repositories/procurement_terms_loader.dart';
@@ -179,6 +180,31 @@ class SubcontractRepository {
   Future<Map<String, ProcurementLastTerms>> lastTermsByGoods(
     Set<String> goodsIds,
   ) => loadProcurementTerms(api, '$_base/last-terms', goodsIds);
+
+  /// 订货明细行「仓库库存数量」：按货品批量拉取颜色分桶的即时库存（参与核算仓
+  /// 现存量，基本单位；无余额桶不返回，调用方按 0 显示）。返回
+  /// `'goodsId|colorId'`（无色行 colorId 为空串）→ 含单位的展示文本。
+  Future<Map<String, String>> goodsStockTexts(Set<String> goodsIds) async {
+    if (goodsIds.isEmpty) return const {};
+    final rows = await api.getList(
+      '$_base/goods-stock',
+      query: {'goodsIds': goodsIds.join(',')},
+    );
+    return {
+      for (final row in rows)
+        if (row['goodsId'] is String)
+          '${row['goodsId']}|${row['colorId'] as String? ?? ''}': _stockText(
+            row,
+          ),
+    };
+  }
+
+  static String _stockText(Map<String, dynamic> row) {
+    final qty = receiptRecordedDecimal(row, 'qty');
+    final unit = (row['unitName'] as String?)?.trim();
+    if (qty == null) return '0';
+    return unit == null || unit.isEmpty ? qty : '$qty $unit';
+  }
 
   Future<SubcontractDocDetail> update(
     String id,

@@ -168,6 +168,19 @@ public class SubcontractOrderController {
         return result;
     }
 
+    /**
+     * 明细行「仓库库存数量」列 (2026-11-07 用户口径: 数量列右侧的即时库存参考)。
+     * goodsIds 为逗号分隔的货品 UUID, 返回这些货品按颜色聚合的库存桶
+     * {goodsId, colorId, qty, qtyExact, unitName}; 口径 = 货品资料「库存量」列
+     * (参与核算仓现存量, 不含不良品仓/线边仓, 基本单位)。无余额的桶不返回, 前端按 0 显示。
+     */
+    @GetMapping("/goods-stock")
+    @PreAuthorize("hasAuthority('subcontract_order:view')")
+    public List<SubcontractOrderService.GoodsStockBucket> goodsStock(
+            @RequestParam String goodsIds) {
+        return service.goodsStockBuckets(RequestUuidSets.commaSeparated(goodsIds, "货品 ID"));
+    }
+
     @PutMapping("/{id}")
     @PreAuthorize("hasAuthority('subcontract_order:edit')")
     public OrderDetail update(@PathVariable UUID id, @Valid @RequestBody OrderSaveRequest req) {

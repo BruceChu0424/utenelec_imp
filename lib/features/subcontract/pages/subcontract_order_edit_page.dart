@@ -272,6 +272,9 @@ class _SubcontractOrderEditPageState
     super.initState();
     _openedDocumentIdentity = _documentIdentity;
     startFormDraftIdentityGuard();
+    // 行集变化（载入/上游引入/粘贴/删行）→ 回填行级「仓库库存数量」列；
+    // 同一货品上改选（行集不变）在 _pickGoods 里显式触发。
+    _grid.rowsListenable.addListener(_scheduleGoodsStockRefresh);
     WidgetsBinding.instance.addPostFrameCallback((_) => _init());
   }
 
@@ -285,6 +288,7 @@ class _SubcontractOrderEditPageState
 
   @override
   void dispose() {
+    _grid.rowsListenable.removeListener(_scheduleGoodsStockRefresh);
     _gridPinned.dispose();
     _billNo.dispose();
     _remark.dispose();
@@ -644,8 +648,62 @@ class _SubcontractOrderEditPageState
     // 多选带入的每一行都参与新订单保存，重复货品仍由保存前的统一复核处理。
     if (_isCreate) _grid.setSelected([row, ...added], true);
     setState(() {});
+    // 同一行上改选货品不触发 rowsListenable，显式刷新「仓库库存数量」列。
+    _scheduleGoodsStockRefresh();
     // 换货品后按主档默认值预填该货品的整套条款 (不覆盖已选值)。
     await _prefillRememberedTerms();
+  }
+
+  /// 行级「仓库库存数量」列回填：按当前行的货品×颜色多重集签名去重，行集或所选
+  /// 货品变化后批量拉一次 /goods-stock（即时库存现存量，货品资料「库存量」同口径），
+  /// 把展示文本写回各行 notifier；服务端无该货品×颜色的桶 = 库存 0。请求失败静默
+  /// （列保持「—」，不阻塞订货录入），挂在 generation 上防串写旧结果。
+  int _goodsStockGeneration = 0;
+  String? _goodsStockSignature;
+  void _scheduleGoodsStockRefresh() {
+    final generation = ++_goodsStockGeneration;
+    Future.microtask(() {
+      if (!mounted || !formDraftIdentityIsCurrent) return;
+      if (generation != _goodsStockGeneration) return;
+      _refreshGoodsStock(generation);
+    });
+  }
+
+  Future<void> _refreshGoodsStock(int generation) async {
+    final rows = List.of(_grid.rows);
+    final signature = [
+      for (final row in rows)
+        if (row.goods != null) '${row.goods!.id}|${row.colorId ?? ''}',
+    ]..sort();
+    final key = signature.join(',');
+    if (key == _goodsStockSignature) return;
+    _goodsStockSignature = key;
+    if (key.isEmpty) {
+      for (final row in rows) {
+        row.stockQtyTextNotifier.value = null;
+      }
+      return;
+    }
+    try {
+      final texts = await ref
+          .read(subcontractRepositoryProvider(SubcontractDocType.order))
+          .goodsStockTexts({
+            for (final item in signature) item.substring(0, item.indexOf('|')),
+          });
+      if (!mounted ||
+          !formDraftIdentityIsCurrent ||
+          generation != _goodsStockGeneration) {
+        return;
+      }
+      for (final row in rows) {
+        final goodsId = row.goods?.id;
+        row.stockQtyTextNotifier.value = goodsId == null
+            ? null
+            : (texts['$goodsId|${row.colorId ?? ''}'] ?? '0');
+      }
+    } catch (_) {
+      // 静默降级：库存参考列保持「—」。
+    }
   }
 
   /// 行级条款主档默认值预填 (/last-terms)：读货品与供应商主档的默认条款，
@@ -1863,10 +1921,11 @@ class _SubcontractOrderEditPageState
                                         !_loading &&
                                         !_saving &&
                                         !_hasCreatedDocuments,
-                                    // 默认列序 2026-10-10 变更（允许损耗% 紧跟数量，
-                                    // 与采购「允许超收% 紧跟数量」对齐）：bump tableKey
-                                    // 让旧保存布局（含仅拖过列宽的）不再压住新默认序。
-                                    tableKey: 'subcontract.order.items.v2',
+                                    // 默认列序 2026-10-10 变更（允许损耗% 紧跟数量）；
+                                    // 2026-11-07 再变更（仓库库存数量插在数量与允许
+                                    // 损耗% 之间）：bump tableKey 让旧保存布局（含仅
+                                    // 拖过列宽的）不再压住新默认序。
+                                    tableKey: 'subcontract.order.items.v3',
                                     onAddColumn: (hidden) =>
                                         addBusinessGridColumn(
                                           context,

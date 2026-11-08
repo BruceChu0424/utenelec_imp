@@ -91,6 +91,13 @@ class SubcontractGridRow extends EditableGridRow
   final ValueNotifier<String?> stockPlaceNotifier = ValueNotifier<String?>(
     null,
   );
+
+  /// 仓库库存数量（订货明细「数量」旁的即时库存参考，2026-11-07 用户口径）：服务端按
+  /// 货品×颜色桶算好的展示文本（含单位），行集变化后由编辑页统一拉取回填；null = 尚未
+  /// 取到/失败，格内显示「—」。只读展示值不随草稿持久化，恢复后重新拉取。
+  final ValueNotifier<String?> stockQtyTextNotifier = ValueNotifier<String?>(
+    null,
+  );
   // 损耗特有
   final TextEditingController endingQty = TextEditingController();
   final TextEditingController standardQty = TextEditingController();
@@ -384,6 +391,7 @@ class SubcontractGridRow extends EditableGridRow
     girth.dispose();
     boxQty.dispose();
     stockPlaceNotifier.dispose();
+    stockQtyTextNotifier.dispose();
     endingQty.dispose();
     standardQty.dispose();
     wasteRate.dispose();
@@ -616,6 +624,34 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
         ),
       ),
     ),
+    // 2026-11-07 用户口径：数量右侧加「仓库库存数量」——下单时看该货品当前颜色在仓
+    // 现存量（参与核算仓合计，不含不良品仓/线边仓，基本单位），只作参考不限制数量。
+    if (cfg.itemHasGoodsStock)
+      EditableGridColumn<SubcontractGridRow>(
+        key: 'stockQty',
+        label: '仓库库存数量',
+        width: 140,
+        numeric: true,
+        headerInfo:
+            '该货品本行颜色的即时库存现存量：参与核算仓库合计，不含不良品仓与线边仓，'
+            '按货品基本单位显示。供下单参考，不限制订货数量；无颜色行按无色桶匹配。',
+        // 服务端算好下发（行集变化后编辑页统一拉取回填），null=尚未取到显示「—」。
+        textOf: (r) => r.stockQtyTextNotifier.value ?? '',
+        listenableOf: (r) => r.stockQtyTextNotifier,
+        cellBuilder: (context, row) => ValueListenableBuilder<String?>(
+          valueListenable: row.stockQtyTextNotifier,
+          builder: (_, v, _) => Text(
+            (v == null || v.isEmpty) ? '—' : v,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: (v == null || v.isEmpty)
+                  ? Theme.of(context).colorScheme.onSurfaceVariant
+                  : Theme.of(context).colorScheme.onSurface,
+            ),
+          ),
+        ),
+      ),
     // 新批准的领料计划冻结正常损耗加成；旧计划保留原始单耗。
     // ADR-098 的短交容差仍保留，不用它减少订货目标数量。
     if (cfg.itemHasAllowedLossPct)

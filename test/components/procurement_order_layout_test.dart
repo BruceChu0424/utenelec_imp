@@ -69,6 +69,8 @@ void main() {
         'source',
         'supplier',
         'qty',
+        // 2026-11-07 用户口径：数量右侧插入「仓库库存数量」即时库存参考列。
+        'stockQty',
         'allowedLossPct',
         'price',
         'amount',

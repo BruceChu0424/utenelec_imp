@@ -8,6 +8,9 @@ const procurementOrderColumnKeys = <String>[
   'source',
   'supplier',
   'qty',
+  // 委外订货单编辑网格的「仓库库存数量」参考列（2026-11-07，数量右侧）；
+  // 采购网格不产出该 key，排序对采购无影响。
+  'stockQty',
   'allowedOverReceiptPct',
   'allowedLossPct',
   'price',

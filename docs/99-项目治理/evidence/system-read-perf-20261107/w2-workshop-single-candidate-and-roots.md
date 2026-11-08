@@ -11,6 +11,11 @@
   - 真库等价测试 `ProductionExecutionWorkbenchRootsSharedScanPostgresTest`：混合 ANALYSIS/PLAN 根（含 >3 预览、CANCELLED/REVERSED 段、多单位/多色、无段数量回退），V1094 定义与 V1117 定义全列逐值一致；重复执行 V1117 被锚点拒绝。
 - 计时（公司库只读 EXPLAIN ANALYZE，JIT 同开）：
 
+> **2026-11-08 口径更正**：本节与 §4 的公司库计时都是 psql 开 JIT 的读数；应用连接恒关 JIT。
+> 同库关 JIT 复测：根视图整读 404 ms、count 90 ms、段视图整投影排序页 85 ms（V1094 形态，见
+> [w7 证据 §1](w7-growth-guards-and-jit.md)）。下表与 §4 原始数字保留作历史证据，用户可感知时延以 w7 为准；
+> §4「段视图整投影 1.70 s/页是剩余热点」的结论随之撤销。
+
 | 查询 | 改前（V1094 形态） | 改后（V1117） |
 |---|---:|---:|
 | 根视图整读（302 根，实际用户链路 list/group） | 7201 ms | **3773 ms** |

@@ -45,6 +45,7 @@ finance 全目录 1,223 测全绿。迁移要点：mixins 由 `ReadViewActivityM
 - `finance_native_legacy_opening_dialog`、`finance_payroll_preparation`：页 1 响应信封捕获（binding 元数据/balancePool）+ 复合后续读取在同一 activity 块，readScopedPage 不暴露首页原始信封。
 - `finance_statement_document_dialog._OriginalState`：冻结原件核对读，逐批比对 documentMetadata 身份且**刻意不带 idOf**（保留重复行），是文档核对语义不是列表读。
 - `uten_employee_selection_panel`：`allowUnknownTotal` 游口语义 + `onBatch` 渐进前缀显示 + 非 Consumer 组件契约，三者均不在统一入口参数面内。
+- `finance_open_item_classification_dialog._completeReferences`（2026-11-08 W7 盘点补记，本波迁移该文件其余读取时留下）：来源单据 GET 与收/付款、抵销两份完整引用读取在**同一** `readViewActivity.runRead` 代次块内组成一份编辑器快照，`_readGeneration` 一次性退休三者——拆进 `readScopedPage` 会让三份读取各自按查询身份退休，编辑器可能拼出不同代次的来源与引用（与上一项「复合后续读取在同一 activity 块」同因）；读取在分类编辑弹窗内、只有两次请求，迁移无性能收益。保留，不是欠账。
 
 ## 4. P4.2 遗留两问与 keywordPlan 缓存（维持不做）
 

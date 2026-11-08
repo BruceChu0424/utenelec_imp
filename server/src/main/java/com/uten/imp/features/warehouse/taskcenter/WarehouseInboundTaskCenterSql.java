@@ -127,21 +127,58 @@ final class WarehouseInboundTaskCenterSql {
     }
 
     static String count(String base) { return base + " SELECT COUNT(*) FROM inbound_rows " + predicate(true); }
-    /** Count and exclusive facets share the same authorized relation and statement snapshot. */
-    static String metadata(String base) {
+
+    /**
+     * One statement for the whole page: the authorized UNION is materialized once and
+     * feeds the page window, the exact total and (when requested) the exclusive status
+     * and bill facets. Metadata rides the first page row, or the single synthetic row
+     * of an empty page, following {@code FulfillmentWorkbenchPageRead}.
+     */
+    static String page(String base,String sort,String order,String identityFilter,boolean includeMetadata) {
+        String column=WarehouseTaskHeaderQuery.orderExpression(sort,true);
+        String direction="asc".equalsIgnoreCase(order)?"ASC":"DESC";
+        String ordering=(sort==null||sort.isBlank()?"keyword_rank, ":"")+column+" "+direction
+                +" NULLS LAST, sort_time DESC NULLS LAST, source_type, record_type, id, CAST(line_data->>'lineNo' AS integer) NULLS LAST, line_data->>'key'";
         String bill = "(CAST(:billNo AS text) IS NULL OR bill_no=CAST(:billNo AS text))";
         String status = "(:status = '' OR workflow_status = :status)";
-        return base + ", metadata_context AS MATERIALIZED (SELECT workflow_status,bill_no FROM inbound_rows "
-                + predicate(false,false) + ")"
-                + " SELECT 'TOTAL'::text AS bucket,NULL::text AS value,COUNT(*) AS task_count FROM metadata_context WHERE " + bill + " AND " + status
-                + " UNION ALL SELECT 'STATUS',workflow_status,COUNT(*) FROM metadata_context WHERE " + bill
-                + " GROUP BY workflow_status UNION ALL SELECT 'BILL',bill_no,task_count FROM ("
-                + " SELECT bill_no,COUNT(*) AS task_count FROM metadata_context WHERE " + status
-                + " AND bill_no IS NOT NULL GROUP BY bill_no ORDER BY bill_no LIMIT 500) bills ORDER BY bucket,value";
-    }
-    static String facets(String base) {
-        return base + " SELECT workflow_status, COUNT(*) FROM inbound_rows " + predicate(false)
-                + " GROUP BY workflow_status ORDER BY workflow_status";
+        // The snapshot runs the authorized UNION exactly once for rows, total and facets.
+        // Identity lookups keep the relation inline so the row predicate still pushes down
+        // into every UNION branch instead of materializing the whole history.
+        boolean shared = identityFilter.isEmpty();
+        StringBuilder sql=new StringBuilder(base);
+        if (shared) sql.append(", inbound_snapshot AS MATERIALIZED (SELECT * FROM inbound_rows)\n");
+        sql.append(", page_source AS (SELECT * FROM ").append(shared?"inbound_snapshot":"inbound_rows")
+                .append(" ").append(predicate(true)).append(identityFilter).append(")\n")
+                .append(", page_rows AS (\n")
+                .append("  SELECT *,ROW_NUMBER() OVER (ORDER BY ").append(ordering).append(") AS page_position\n")
+                .append("  FROM page_source\n")
+                .append("  ORDER BY ").append(ordering).append(" LIMIT :limit OFFSET :offset\n")
+                .append("), page_summary AS (SELECT COUNT(*) AS total FROM page_source)\n");
+        if (includeMetadata) {
+            sql.append(", metadata_context AS MATERIALIZED (SELECT workflow_status,bill_no FROM ")
+                    .append(shared?"inbound_snapshot":"inbound_rows").append(" ")
+                    .append(predicate(false,false)).append(")\n")
+                    .append(", metadata_totals AS (\n")
+                    .append("  SELECT 'TOTAL'::text AS bucket,NULL::text AS value,COUNT(*) AS task_count FROM metadata_context WHERE ")
+                    .append(bill).append(" AND ").append(status).append("\n")
+                    .append("  UNION ALL SELECT 'STATUS',workflow_status,COUNT(*) FROM metadata_context WHERE ").append(bill)
+                    .append(" GROUP BY workflow_status\n")
+                    .append("  UNION ALL SELECT 'BILL',bill_no,task_count FROM (\n")
+                    .append("   SELECT bill_no,COUNT(*) AS task_count FROM metadata_context WHERE ").append(status)
+                    .append(" AND bill_no IS NOT NULL GROUP BY bill_no ORDER BY bill_no LIMIT 500) bills\n")
+                    .append("), page_metadata AS (\n")
+                    .append("  SELECT COALESCE(jsonb_agg(jsonb_build_array(bucket,value,task_count) ORDER BY bucket,value),'[]'::jsonb)::text AS buckets\n")
+                    .append("  FROM metadata_totals)\n");
+        }
+        sql.append("SELECT page_rows.*,page_summary.total AS page_total");
+        if (includeMetadata) {
+            sql.append(",CASE WHEN page_rows.page_position IS NULL OR page_rows.page_position=:offset+1")
+                    .append(" THEN page_metadata.buckets END AS page_metadata_buckets");
+        }
+        sql.append("\nFROM page_summary");
+        if (includeMetadata) sql.append(" CROSS JOIN page_metadata");
+        sql.append(" LEFT JOIN page_rows ON TRUE ORDER BY page_rows.page_position NULLS LAST");
+        return sql.toString();
     }
 
     static String billNoFacets(String base) { return billNoFacets(base,false); }
@@ -222,8 +259,11 @@ final class WarehouseInboundTaskCenterSql {
                 JOIN goods selected_goods ON selected_goods.id=selected_item.goods_id
                 LEFT JOIN colors selected_color ON selected_color.id=selected_item.color_id
                 LEFT JOIN units selected_unit ON selected_unit.id=selected_item.unit_id
-                LEFT JOIN warehouses selected_warehouse ON selected_warehouse.id=
-                    fn_procurement_item_inbound_warehouse_id(expectation.order_type,selected_item.order_item_id,selected_item.goods_id)
+                LEFT JOIN LATERAL (
+                    SELECT fn_procurement_item_inbound_warehouse_id(expectation.order_type,
+                           selected_item.order_item_id,selected_item.goods_id) AS inbound_warehouse_id
+                ) selected_warehouse_id ON TRUE
+                LEFT JOIN warehouses selected_warehouse ON selected_warehouse.id=selected_warehouse_id.inbound_warehouse_id
                 LEFT JOIN suppliers supplier ON supplier.id=expectation.supplier_id
                 LEFT JOIN employees owner ON owner.id=expectation.owner_employee_id
                 CROSS JOIN LATERAL (
@@ -257,7 +297,7 @@ final class WarehouseInboundTaskCenterSql {
                 ProcurementArrivalControlService.taskCenterWorkRemainingPredicate(),
                 ProcurementArrivalControlService.taskCenterExpectationVisiblePredicate())
                 + scope(scope,"fn_inbound_expectation_warehouse_ids(expectation.id)")
-                + scope(scope,"ARRAY[fn_procurement_item_inbound_warehouse_id(expectation.order_type,selected_item.order_item_id,selected_item.goods_id)]");
+                + scope(scope,"ARRAY[selected_warehouse_id.inbound_warehouse_id]");
     }
 
     private static String exceptions(WarehouseTaskScope scope) {
@@ -547,13 +587,13 @@ final class WarehouseInboundTaskCenterSql {
 
     private static String stockDocuments(Access access, WarehouseTaskScope scope) {
         String pool = access.productionPool()
-                ? " OR (document.doc_type='FINISHED_IN' AND fn_is_production_linked_stock_document(document.id))"
-                  + " OR (document.doc_type='WDRAW' AND fn_is_production_material_return_request(document.id))"
+                ? " OR (document.doc_type='FINISHED_IN' AND production_facts.linked)"
+                  + " OR (document.doc_type='WDRAW' AND production_facts.return_request)"
                 : "";
         String scoped = scope.active() ? " AND ("
                 + scope.predicate("COALESCE(physical.warehouse_id,document.warehouse_id)", ":warehouseScope")
                 + " OR (document.status=0 AND document.maker_id::text=NULLIF(:ownDraftMaker,'')"
-                + " AND NOT fn_is_production_material_return_request(document.id)))" : "";
+                + " AND NOT production_facts.return_request))" : "";
         return """
                 SELECT document.id,
                        CASE document.doc_type WHEN 'FINISHED_IN' THEN 'FINISHED' WHEN 'WDRAW' THEN 'RETURN'
@@ -567,16 +607,16 @@ final class WarehouseInboundTaskCenterSql {
                           WHEN document.status=-1 THEN 'REVERSED'
                           WHEN document.is_closed THEN 'CLOSED'
                           WHEN document.status=1 THEN 'STOCKED'
-                          WHEN document.doc_type='WDRAW' AND fn_is_production_material_return_request(document.id)
+                          WHEN document.doc_type='WDRAW' AND production_facts.return_request
                                THEN 'PENDING_RECEIVE'
-                          WHEN document.doc_type='FINISHED_IN' AND NOT fn_is_production_linked_stock_document(document.id)
+                          WHEN document.doc_type='FINISHED_IN' AND NOT production_facts.linked
                                THEN 'LEGACY_DRAFT'
                           ELSE 'DRAFT' END AS workflow_status,
                        CASE WHEN document.status=0 AND NOT document.is_closed AND document.doc_type='WDRAW'
-                                  AND fn_is_production_material_return_request(document.id) THEN 'RETURN_RECEIVE'
+                                  AND production_facts.return_request THEN 'RETURN_RECEIVE'
                             WHEN document.status=0 AND NOT document.is_closed AND document.doc_type<>'WDRAW'
                                   AND document.doc_type<>'FINISHED_IN'
-                                  AND NOT fn_is_production_linked_stock_document(document.id)
+                                  AND NOT production_facts.linked
                                   AND NOT EXISTS(SELECT 1 FROM stock_balance_adjustment_requests adjustment
                                                  WHERE adjustment.stock_document_id=document.id) THEN 'STOCK_EDIT'
                             ELSE 'STOCK_DETAIL' END AS action, document.id AS target_id,
@@ -584,7 +624,7 @@ final class WarehouseInboundTaskCenterSql {
                            'reportId',document.source_daily_report_id,'authorizedBalanceAdjustment',
                            EXISTS(SELECT 1 FROM stock_balance_adjustment_requests adjustment
                                   WHERE adjustment.stock_document_id=document.id))) AS action_data,
-                       document.maker_id, fn_is_production_linked_stock_document(document.id) AS production_linked,
+                       document.maker_id, production_facts.linked AS production_linked,
                        document.created_at AS sort_time,
                        concat_ws(' ',document.bill_no,document.source_doc_no,warehouse.name,physical.goods_text) AS search_text,
                        physical.goods_codes, physical.goods_names, physical.line_data
@@ -592,6 +632,10 @@ final class WarehouseInboundTaskCenterSql {
                 LEFT JOIN warehouses warehouse ON warehouse.id=document.warehouse_id
                 LEFT JOIN employees maker ON maker.id=document.maker_id
                 LEFT JOIN employees worker ON worker.id=document.worker_id
+                LEFT JOIN LATERAL (
+                    SELECT fn_is_production_linked_stock_document(document.id) AS linked,
+                           fn_is_production_material_return_request(document.id) AS return_request
+                ) production_facts ON TRUE
                 LEFT JOIN LATERAL (
                     SELECT 1 AS line_count,item.id AS item_id,
                            concat_ws(' ',item.goods_code_snapshot,item.goods_name_snapshot,goods.code,goods.name) AS goods_text,

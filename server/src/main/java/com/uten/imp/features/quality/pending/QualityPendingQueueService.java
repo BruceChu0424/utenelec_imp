@@ -100,20 +100,6 @@ public class QualityPendingQueueService {
         if (status != null) {
             bindings.put("queue_status", status);
         }
-        String metadataSql=prefix+"""
-            SELECT (SELECT COUNT(*) FROM eligible WHERE %s AND %s),
-              (SELECT COALESCE(jsonb_agg(jsonb_build_object('value',status,'label',status,'count',qty) ORDER BY status),'[]'::jsonb)::text
-                FROM (SELECT status,COUNT(*) AS qty FROM eligible WHERE %s GROUP BY status) facet_values),
-              (SELECT COALESCE(jsonb_agg(jsonb_build_object('value',kind,'label',CASE kind WHEN 'PURCHASE' THEN '采购收货' WHEN 'SUBCONTRACT' THEN '委外回厂' ELSE '自制产成品' END,'count',qty) ORDER BY kind),'[]'::jsonb)::text
-                FROM (SELECT kind,COUNT(*) AS qty FROM eligible WHERE %s GROUP BY kind) facet_values),
-              (SELECT COALESCE(jsonb_object_agg(kind,qty),'{}'::jsonb)::text FROM (SELECT kind,COUNT(*) AS qty FROM labeled GROUP BY kind) facet_values)
-            """.formatted(kindWhere,statusWhere,kindWhere,statusWhere);
-        Query metadata=em.createNativeQuery(metadataSql);bind(metadata,bindings,headers);
-        Object[] head=NativeQueryResults.objectArrayRows(metadata).getFirst();
-        long total=((Number)head[0]).longValue();int totalPages=total==0?0:(int)Math.min(Integer.MAX_VALUE,(total+size-1)/size);
-        int page=totalPages==0?1:Math.min(wanted,totalPages);
-        Map<String,List<Facet>> facets=Map.of("status",facets(head[1]),"docType",facets(head[2]));
-        Map<String,Long> counts=new LinkedHashMap<>();tree(head[3]).properties().forEach(entry->counts.put(entry.getKey(),entry.getValue().asLong()));
         String ordering="CASE source_key WHEN 'IQC' THEN 0 WHEN 'FQC_SHEET' THEN 1 ELSE 2 END,sequence_at ASC NULLS LAST,identity";
         if(request.sort()!=null&&!request.sort().isBlank()){
             var field=FIELDS.get(request.sort());
@@ -121,10 +107,54 @@ public class QualityPendingQueueService {
                 throw invalid("待检排序字段或方向无效");
             ordering=field.expression()+("desc".equalsIgnoreCase(request.order())?" DESC":" ASC")+" NULLS LAST,identity";
         }else if(!keyword.isEmpty())ordering=TaskKeywordSearch.rankNamesFirstParameter("queue_keyword",new String[]{"goods"},new String[]{"goods_names"},new String[]{"bill_no","party","goods_code","color_name"})+", "+ordering;
-        String pageSql=prefix+" SELECT row_to_json(page_row)::text FROM (SELECT * FROM eligible WHERE "+kindWhere+" AND "+statusWhere
-                +" ORDER BY "+ordering+" LIMIT :queue_limit OFFSET :queue_offset) page_row";
-        Query rows=em.createNativeQuery(pageSql);bind(rows,bindings,headers);rows.setParameter("queue_limit",size).setParameter("queue_offset",(long)(page-1)*size);
-        List<JsonNode> selected=NativeQueryResults.typedRows(rows,String.class).stream().map(this::tree).toList();
+        // One statement shares the materialized three-source UNION between the page
+        // window, the exact total and the facets; metadata rides the first page row
+        // or the synthetic row of an empty page, following FulfillmentWorkbenchPageRead.
+        String pageSql=prefix+"""
+            , page_source AS (SELECT * FROM eligible WHERE %s AND %s)
+            , page_rows AS (
+              SELECT row_to_json(page_row)::text AS row_json,ROW_NUMBER() OVER (ORDER BY %s) AS page_position
+              FROM (SELECT * FROM page_source) page_row ORDER BY %s LIMIT :queue_limit OFFSET :queue_offset
+            ), page_summary AS (SELECT COUNT(*) AS total FROM page_source)
+            , page_metadata AS (
+              SELECT (SELECT COALESCE(jsonb_agg(jsonb_build_object('value',status,'label',status,'count',qty) ORDER BY status),'[]'::jsonb)::text
+                FROM (SELECT status,COUNT(*) AS qty FROM eligible WHERE %s GROUP BY status) facet_values) AS status_facets,
+              (SELECT COALESCE(jsonb_agg(jsonb_build_object('value',kind,'label',CASE kind WHEN 'PURCHASE' THEN '采购收货' WHEN 'SUBCONTRACT' THEN '委外回厂' ELSE '自制产成品' END,'count',qty) ORDER BY kind),'[]'::jsonb)::text
+                FROM (SELECT kind,COUNT(*) AS qty FROM eligible WHERE %s GROUP BY kind) facet_values) AS kind_facets,
+              (SELECT COALESCE(jsonb_object_agg(kind,qty),'{}'::jsonb)::text FROM (SELECT kind,COUNT(*) AS qty FROM labeled GROUP BY kind) facet_values) AS kind_counts
+            )
+            SELECT page_rows.row_json,page_summary.total,
+              CASE WHEN page_rows.page_position IS NULL OR page_rows.page_position=:queue_offset+1 THEN page_metadata.status_facets END AS meta_status,
+              CASE WHEN page_rows.page_position IS NULL OR page_rows.page_position=:queue_offset+1 THEN page_metadata.kind_facets END AS meta_kind,
+              CASE WHEN page_rows.page_position IS NULL OR page_rows.page_position=:queue_offset+1 THEN page_metadata.kind_counts END AS meta_counts
+            FROM page_summary CROSS JOIN page_metadata LEFT JOIN page_rows ON TRUE
+            ORDER BY page_rows.page_position NULLS LAST
+            """.formatted(kindWhere,statusWhere,ordering,ordering,kindWhere,statusWhere);
+        java.util.function.IntFunction<List<Object[]>> readPage=pageNumber->{
+            Query statement=em.createNativeQuery(pageSql);bind(statement,bindings,headers);
+            statement.setParameter("queue_limit",size).setParameter("queue_offset",(long)(pageNumber-1)*size);
+            return NativeQueryResults.objectArrayRows(statement);
+        };
+        List<Object[]> pageRows=readPage.apply(wanted);
+        Object[] head=pageRows.getFirst();
+        long total=((Number)head[1]).longValue();int totalPages=total==0?0:(int)Math.min(Integer.MAX_VALUE,(total+size-1)/size);
+        int page=totalPages==0?1:Math.min(wanted,totalPages);
+        String statusFacets=null,kindFacets=null,kindCounts=null;
+        List<JsonNode> selected=new ArrayList<>();
+        for(Object[] row:pageRows){
+            if(row[2]!=null)statusFacets=String.valueOf(row[2]);
+            if(row[3]!=null)kindFacets=String.valueOf(row[3]);
+            if(row[4]!=null)kindCounts=String.valueOf(row[4]);
+            if(row[0]!=null)selected.add(tree(row[0]));
+        }
+        if(statusFacets==null||kindFacets==null||kindCounts==null)
+            throw new IllegalStateException("Quality queue metadata was not loaded");
+        if(selected.isEmpty()&&total>0&&wanted>1){
+            // A page requested past the end still returns the last real page (original clamping).
+            for(Object[] row:readPage.apply(page))if(row[0]!=null)selected.add(tree(row[0]));
+        }
+        Map<String,List<Facet>> facets=Map.of("status",facets(statusFacets),"docType",facets(kindFacets));
+        Map<String,Long> counts=new LinkedHashMap<>();tree(kindCounts).properties().forEach(entry->counts.put(entry.getKey(),entry.getValue().asLong()));
         Map<String,Set<String>> ids=new LinkedHashMap<>();for(var row:selected)ids.computeIfAbsent(row.path("source_key").asText(),key->new LinkedHashSet<>()).add(row.path("identity").asText());
         Map<String,Object> payloads=new LinkedHashMap<>();ids.forEach((key,identities)->payloads.putAll(owners.get(key).pendingPayloads(key,identities)));
         List<Row> items=new ArrayList<>();for(var row:selected){

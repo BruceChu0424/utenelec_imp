@@ -53,10 +53,17 @@ class WarehouseInboundTaskCenterQueryServiceTest {
         when(stock.nativeReadScope(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.any(OwnerScope.class)))
                 .thenReturn(new com.uten.imp.security.DocumentAccessPolicy.NativeReadScope("1=1",null,Set.of()));
-        when(jdbc.query(org.mockito.ArgumentMatchers.anyString(),
+        org.mockito.Mockito.doAnswer(invocation -> {
+            // The merged page statement returns one synthetic row for an empty page.
+            var resultSet=mock(java.sql.ResultSet.class);
+            when(resultSet.getLong("page_total")).thenReturn(0L);
+            when(resultSet.getString("page_metadata_buckets")).thenReturn("[[\"TOTAL\",null,0]]");
+            when(resultSet.getObject("id")).thenReturn(null);
+            invocation.<org.springframework.jdbc.core.RowCallbackHandler>getArgument(2).processRow(resultSet);
+            return null;
+        }).when(jdbc).query(org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.any(org.springframework.jdbc.core.namedparam.SqlParameterSource.class),
-                org.mockito.ArgumentMatchers.any(org.springframework.jdbc.core.RowMapper.class)))
-                .thenReturn(java.util.Collections.singletonList(new Object[]{"TOTAL",null,0L}));
+                org.mockito.ArgumentMatchers.any(org.springframework.jdbc.core.RowCallbackHandler.class));
         var service=new WarehouseInboundTaskCenterQueryService(jdbc,new ObjectMapper(),current,scopes,stock,
                 mock(ProductionStockTaskAccessPolicy.class),mock(com.uten.imp.features.warehouse.materialbin.WorkshopMaterialScope.class));
         assertThat(service.list(filter("PURCHASE","")).total()).isZero();
@@ -95,7 +102,14 @@ class WarehouseInboundTaskCenterQueryServiceTest {
                 .doesNotContain("FROM subcontract_receipts h","FROM stock_documents document","FROM inbound_expectations expectation");
         assertThat(WarehouseInboundTaskCenterSql.rows(base)).contains("FROM inbound_rows","ORDER BY","LIMIT :limit OFFSET :offset");
         assertThat(WarehouseInboundTaskCenterSql.count(base)).contains(WarehouseInboundTaskCenterSql.predicate(true));
-        assertThat(WarehouseInboundTaskCenterSql.facets(base)).contains(WarehouseInboundTaskCenterSql.predicate(false));
+        // The page statement materializes the relation once for rows, total and both facets.
+        String page=WarehouseInboundTaskCenterSql.page(base,null,null,"",true);
+        assertThat(page).contains("inbound_snapshot AS MATERIALIZED (SELECT * FROM inbound_rows)",
+                        "FROM inbound_snapshot "+WarehouseInboundTaskCenterSql.predicate(true),
+                        "FROM inbound_snapshot "+WarehouseInboundTaskCenterSql.predicate(false,false),
+                        "LIMIT :limit OFFSET :offset","page_metadata_buckets")
+                .containsOnlyOnce("FROM inbound_rows");
+        assertThat(WarehouseInboundTaskCenterSql.page(base,null,null,"",false)).doesNotContain("metadata_context","page_metadata");
         assertThat(WarehouseInboundTaskCenterSql.billNoFacets(base)).doesNotContain("bill_no=CAST(:billNo");
     }
 

@@ -88,41 +88,41 @@ class WarehouseOutboundTaskCenterQueryServiceTest {
         Fixture f = new Fixture(Set.of("stock_doc:view", "warehouse_sales_outbound:view"), true,
                 new OwnerScope(true, Set.of()));
         UUID sharedId = UUID.randomUUID();
-        Query metadata = query(); when(metadata.getResultList()).thenReturn(List.of(
-                new Object[]{"TOTAL",null,4L}, new Object[]{"STATUS","SALES_PENDING",2L},
-                new Object[]{"STATUS","SALES_SHIPPED",1L}, new Object[]{"STATUS","OTHER_APPROVED",1L},
-                new Object[]{"BILL","SAME-NUMBER",4L}));
-        Query rows = query(); when(rows.getResultList()).thenReturn(List.of(
-                row("SALES", "SALES_SHIPMENT", sharedId, "SALES_SHIPPED", OTHER_OWNER, false),
-                row("OTHER", "STOCK_DOC", sharedId, "OTHER_APPROVED", ACTOR, false)));
-        when(f.em.createNativeQuery(anyString())).thenReturn(metadata, rows);
+        Query page = query(); when(page.getResultList()).thenReturn(List.of(
+                mergedRow(row("SALES", "SALES_SHIPMENT", sharedId, "SALES_SHIPPED", OTHER_OWNER, false), 1L, 4L,
+                        "[[\"TOTAL\",null,4],[\"STATUS\",\"SALES_PENDING\",2],[\"STATUS\",\"SALES_SHIPPED\",1],"
+                                + "[\"STATUS\",\"OTHER_APPROVED\",1],[\"BILL\",\"SAME-NUMBER\",4]]"),
+                mergedRow(row("OTHER", "STOCK_DOC", sharedId, "OTHER_APPROVED", ACTOR, false), 2L, 4L, null)));
+        when(f.em.createNativeQuery(anyString())).thenReturn(page);
 
         Page result = f.service.list(new Filter("ALL", null, null, null, null, null, null, 2, 2, "billNo", "asc", TaskView.ALL));
         assertThat(result.page()).isEqualTo(2);
         assertThat(result.total()).isEqualTo(4);
         assertThat(result.items()).extracting(Row::rowKey).containsExactly(
-                "SALES:SALES_SHIPMENT:" + sharedId, "OTHER:STOCK_DOC:" + sharedId);
+                "SALES:SALES_SHIPMENT:" + sharedId + ":empty", "OTHER:STOCK_DOC:" + sharedId + ":empty");
         assertThat(result.items()).allMatch(item -> !item.canHandle());
         verify(f.scopes).withQueryScopeCache(any());
         verify(f.scopes, never()).withScopeCache(any());
         assertThat(result.facets().get("status")).anyMatch(bucket -> bucket.value().equals("SALES_PENDING") && bucket.count() == 2);
-        verify(rows).setParameter("offset", 2L);
-        verify(rows).setParameter("limit", 2);
+        verify(page).setParameter("offset", 2L);
+        verify(page).setParameter("limit", 2);
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
-        verify(f.em, times(2)).createNativeQuery(sql.capture());
-        assertThat(sql.getAllValues().get(1)).contains("UNION ALL", "FROM filtered", "ORDER BY bill_no ASC", "source_type,record_type,bill_no,id", "OFFSET :offset")
+        verify(f.em).createNativeQuery(sql.capture());
+        assertThat(sql.getValue()).contains("UNION ALL", "page_rows", "ORDER BY bill_no ASC",
+                        "source_type,record_type,bill_no,id", "OFFSET :offset", "page_metadata_buckets",
+                        "physical_rows AS", "MATERIALIZED (")
                 .doesNotContain("ORDER BY keyword_rank,bill_no ASC");
-        assertThat(sql.getAllValues().getFirst()).contains("GROUP BY bill_no", "LIMIT 500", "SELECT 'TOTAL'");
         String json = new ObjectMapper().findAndRegisterModules().writeValueAsString(result);
         assertThat(json).doesNotContain("amountLocal", "totalOriginal", "price", "currency", "cost");
     }
 
     @Test void emptySelectedPageSkipsRowsButRetainsExclusiveFacets() {
         Fixture f = new Fixture(Set.of("stock_doc:view"),false,new OwnerScope(true,Set.of()));
-        Query metadata=query();when(metadata.getResultList()).thenReturn(List.of(
-                new Object[]{"TOTAL",null,0L},new Object[]{"STATUS","OTHER_DRAFT",3L},
-                new Object[]{"BILL","OTHER-001",2L}));
-        when(f.em.createNativeQuery(anyString())).thenReturn(metadata);
+        // An empty page is one synthetic row: every projection column NULL, aggregates present.
+        Query page=query();when(page.getResultList()).thenReturn(Collections.singletonList(
+                mergedRow(new Object[19],null,0L,
+                        "[[\"TOTAL\",null,0],[\"STATUS\",\"OTHER_DRAFT\",3],[\"BILL\",\"OTHER-001\",2]]")));
+        when(f.em.createNativeQuery(anyString())).thenReturn(page);
         var result=f.service.list(new Filter("OTHER","OTHER_APPROVED",null,null,null,null,null,9,20));
         assertThat(result.items()).isEmpty();assertThat(result.page()).isEqualTo(1);
         assertThat(result.total()).isZero();
@@ -133,16 +133,15 @@ class WarehouseOutboundTaskCenterQueryServiceTest {
 
     @Test void continuationKeepsExactCountAndRowFactsWithoutQueryingAnyFacet() throws Exception {
         Fixture f=new Fixture(Set.of("stock_doc:view"),false,new OwnerScope(true,Set.of()));
-        Query count=query();when(count.getSingleResult()).thenReturn(3L);
-        Query rows=query();when(rows.getResultList()).thenReturn(Collections.singletonList(
-                row("OTHER","STOCK_DOC",UUID.randomUUID(),"OTHER_DRAFT",ACTOR,true)));
-        when(f.em.createNativeQuery(anyString())).thenReturn(count,rows);
-        var page=f.service.list(new Filter("OTHER",null,null,null,null,null,null,2,2),false);
-        assertThat(page.metadataIncluded()).isFalse();assertThat(page.facets()).isNull();
-        assertThat(page.total()).isEqualTo(3);assertThat(page.page()).isEqualTo(2);assertThat(page.items()).hasSize(1);
-        ArgumentCaptor<String> sql=ArgumentCaptor.forClass(String.class);verify(f.em,times(2)).createNativeQuery(sql.capture());
-        assertThat(sql.getAllValues()).allSatisfy(value->assertThat(value).doesNotContain("metadata_context","GROUP BY status","GROUP BY bill_no"));
-        var json=new ObjectMapper().findAndRegisterModules().readTree(new ObjectMapper().findAndRegisterModules().writeValueAsString(page));
+        Query page=query();when(page.getResultList()).thenReturn(Collections.singletonList(
+                mergedRow(row("OTHER","STOCK_DOC",UUID.randomUUID(),"OTHER_DRAFT",ACTOR,true),1L,3L,null)));
+        when(f.em.createNativeQuery(anyString())).thenReturn(page);
+        var result=f.service.list(new Filter("OTHER",null,null,null,null,null,null,2,2),false);
+        assertThat(result.metadataIncluded()).isFalse();assertThat(result.facets()).isNull();
+        assertThat(result.total()).isEqualTo(3);assertThat(result.page()).isEqualTo(2);assertThat(result.items()).hasSize(1);
+        ArgumentCaptor<String> sql=ArgumentCaptor.forClass(String.class);verify(f.em).createNativeQuery(sql.capture());
+        assertThat(sql.getValue()).doesNotContain("metadata_context","GROUP BY status","GROUP BY bill_no","page_metadata_buckets");
+        var json=new ObjectMapper().findAndRegisterModules().readTree(new ObjectMapper().findAndRegisterModules().writeValueAsString(result));
         assertThat(json.path("metadataIncluded").asBoolean()).isFalse();assertThat(json.path("facets").isNull()).isTrue();
     }
 
@@ -181,9 +180,13 @@ class WarehouseOutboundTaskCenterQueryServiceTest {
                 new OwnerScope(false, Set.of(ACTOR)));
         var plan = WarehouseOutboundTaskCenterSql.build(new Filter("ALL", null, "外壳", null, null, null, null, 1, 20),
                 access, scope, ACTOR.toString());
-        assertThat(plan.cte()).contains("d.doc_type='DRAW' AND ((d.maker_id IN (:stockOwners) OR fn_is_production_linked_stock_document(d.id)))",
+        assertThat(plan.cte()).contains("d.doc_type='DRAW' AND ((d.maker_id IN (:stockOwners) OR production_facts.linked))",
                 "d.doc_type='OTHER_OUT' AND (d.maker_id IN (:stockOwners))",
-                "d.doc_type='FINISHED_OUT' AND (d.maker_id IN (:stockOwners))", "fn_production_draw_requested(d.id)");
+                "d.doc_type='FINISHED_OUT' AND (d.maker_id IN (:stockOwners))", "production_facts.draw_requested",
+                // Each production function is evaluated once per document row, only for DRAW rows.
+                "CASE WHEN d.doc_type='DRAW' THEN fn_is_production_linked_stock_document(d.id) END AS linked",
+                "CASE WHEN d.doc_type='DRAW' THEN fn_production_draw_requested(d.id) END AS draw_requested",
+                "CASE WHEN d.doc_type='DRAW' THEN fn_production_draw_pending(d.id) END AS draw_pending");
         assertThat(plan.cte()).contains("AND NOT COALESCE(warehouse.is_line_side,FALSE)");
         assertThat(plan.parameters().get("stockOwners")).isEqualTo(Set.of(ACTOR));
         assertThat(plan.parameters().get("warehouseScope")).isEqualTo(scope.idsCsv());
@@ -196,12 +199,11 @@ class WarehouseOutboundTaskCenterQueryServiceTest {
         for (boolean participant : List.of(false, true)) {
             Fixture fixture = new Fixture(Set.of("stock_doc:view", "stock_doc:approve", "stock_doc:issue"),
                     participant, new OwnerScope(false, Set.of(ACTOR)));
-            Query metadata = query(); when(metadata.getResultList()).thenReturn(
-                    Collections.singletonList(new Object[]{"TOTAL",null,2L}));
-            Query rows = query(); when(rows.getResultList()).thenReturn(List.of(
-                    row("DRAW", "MATERIAL_DISCOVERY", discovery, "DRAW_DISCOVERY_PENDING", OTHER_OWNER, true),
-                    row("DRAW", "STOCK_DOC", draw, "DRAW_PENDING", OTHER_OWNER, true)));
-            when(fixture.em.createNativeQuery(anyString())).thenReturn(metadata, rows);
+            Query page = query(); when(page.getResultList()).thenReturn(List.of(
+                    mergedRow(row("DRAW", "MATERIAL_DISCOVERY", discovery, "DRAW_DISCOVERY_PENDING", OTHER_OWNER, true), 1L, 2L,
+                            "[[\"TOTAL\",null,2]]"),
+                    mergedRow(row("DRAW", "STOCK_DOC", draw, "DRAW_PENDING", OTHER_OWNER, true), 2L, 2L, null)));
+            when(fixture.em.createNativeQuery(anyString())).thenReturn(page);
 
             Page result = fixture.service.list(new Filter("DRAW", null, null, null, null, null, null, 1, 20));
             assertThat(result.items()).extracting(Row::id).containsExactly(discovery, draw);
@@ -333,6 +335,18 @@ class WarehouseOutboundTaskCenterQueryServiceTest {
     }
 
     private static Query query() { return mock(Query.class, RETURNS_SELF); }
+
+    /** A merged-statement row: projection columns, page_position, page_total, optional metadata buckets. */
+    private static Object[] mergedRow(Object[] base, Long pagePosition, long total, String buckets) {
+        Object[] merged = new Object[WarehouseOutboundTaskCenterSql.PAGE_METADATA_COLUMN + 1];
+        System.arraycopy(base, 0, merged, 0, Math.min(base.length, 19));
+        // Every real projection row carries its physical line key (COALESCE(item.id::text,'empty')).
+        if (base[0] != null) merged[19] = "empty";
+        merged[WarehouseOutboundTaskCenterSql.PAGE_TOTAL_COLUMN - 1] = pagePosition;
+        merged[WarehouseOutboundTaskCenterSql.PAGE_TOTAL_COLUMN] = total;
+        merged[WarehouseOutboundTaskCenterSql.PAGE_METADATA_COLUMN] = buckets;
+        return merged;
+    }
 
     private static Object[] row(String source, String record, UUID id, String status, UUID maker, boolean actionable) {
         return new Object[]{source, record, id, "SAME-NUMBER", "SOURCE-1", LocalDate.of(2026, 10, 1),

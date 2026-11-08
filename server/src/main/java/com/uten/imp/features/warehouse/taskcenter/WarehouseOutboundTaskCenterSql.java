@@ -14,6 +14,10 @@ import java.util.Map;
 final class WarehouseOutboundTaskCenterSql {
     private WarehouseOutboundTaskCenterSql() {}
 
+    /** Column offsets in the merged page statement: 31 projection columns, page_position, then the aggregates. */
+    static final int PAGE_TOTAL_COLUMN = 32;
+    static final int PAGE_METADATA_COLUMN = 33;
+
     private static final java.util.Set<String> ACTIVE_STATUSES = java.util.Set.of(
             "SALES_PENDING","SALES_LEGACY","SUBCONTRACT_PENDING","SUBCONTRACT_DRAFT",
             "DRAW_PENDING","DRAW_PARTIAL","DRAW_DISCOVERY_PENDING","DRAW_WORKSHOP_PENDING","OTHER_DRAFT","FINISHED_DRAFT");
@@ -41,29 +45,56 @@ final class WarehouseOutboundTaskCenterSql {
         }
     }
 
-    record Plan(String cte, Map<String, Object> parameters, String orderBy) {
+    record Plan(String cte, String pageBase, Map<String, Object> parameters, String orderBy, String orderExpression) {
         String countSql() { return cte + " SELECT COUNT(*) FROM filtered"; }
-        /** One source evaluation for exact count and both independently filtered facets. */
-        String metadataSql() {
-            return cte + """
-                 , metadata_context AS MATERIALIZED (
-                   SELECT status,bill_no FROM physical_rows WHERE context_match
-                 )
-                 SELECT 'TOTAL'::text AS bucket,NULL::text AS value,COUNT(*) AS task_count FROM metadata_context
-                 WHERE (CAST(:billNo AS text) IS NULL OR bill_no=CAST(:billNo AS text))
-                   AND (CAST(:status AS text) IS NULL OR status=CAST(:status AS text))
-                 UNION ALL
-                 SELECT 'STATUS',status,COUNT(*) FROM metadata_context
-                 WHERE (CAST(:billNo AS text) IS NULL OR bill_no=CAST(:billNo AS text))
-                 GROUP BY status
-                 UNION ALL
-                 SELECT 'BILL',bill_no,task_count FROM (
-                   SELECT bill_no,COUNT(*) AS task_count FROM metadata_context
-                   WHERE (CAST(:status AS text) IS NULL OR status=CAST(:status AS text))
-                     AND NULLIF(bill_no,'') IS NOT NULL
-                   GROUP BY bill_no ORDER BY bill_no LIMIT 500
-                 ) bills ORDER BY bucket,value
-                 """;
+        /**
+         * One statement for the whole page: the authorized UNION is materialized once
+         * ({@code pageBase}) and feeds the page window, the exact total and (for
+         * interactive pages) both facet buckets; metadata rides the first page row or
+         * the synthetic row of an empty page, following {@code FulfillmentWorkbenchPageRead}.
+         */
+        String pageSql(boolean includeMetadata) {
+            String bill = "(CAST(:billNo AS text) IS NULL OR bill_no=CAST(:billNo AS text))";
+            String statusMatch = "(CAST(:status AS text) IS NULL OR status=CAST(:status AS text))";
+            // The window orders the whole selected relation; production orders are joined
+            // before it only when they are the sort key, otherwise just for the page rows.
+            boolean sortsByProductionOrder = orderExpression.contains("production_orders.");
+            StringBuilder sql = new StringBuilder(pageBase)
+                    .append(", page_source AS (SELECT * FROM physical_rows WHERE context_match AND ")
+                    .append(bill).append(" AND ").append(statusMatch).append(")\n")
+                    .append(", page_rows AS (\n")
+                    .append("  SELECT page_source.*,ROW_NUMBER() OVER (ORDER BY ").append(orderExpression)
+                    .append(") AS page_position\n")
+                    .append("  FROM page_source ")
+                    .append(sortsByProductionOrder ? productionOrderJoin("page_source") : "").append("\n")
+                    .append("  ORDER BY ").append(orderExpression).append(" LIMIT :limit OFFSET :offset\n")
+                    .append("), page_summary AS (SELECT COUNT(*) AS total FROM page_source)\n");
+            if (includeMetadata) {
+                sql.append(", metadata_totals AS (\n")
+                        .append("  SELECT 'TOTAL'::text AS bucket,NULL::text AS value,COUNT(*) AS task_count FROM physical_rows WHERE context_match AND ")
+                        .append(bill).append(" AND ").append(statusMatch).append("\n")
+                        .append("  UNION ALL SELECT 'STATUS',status,COUNT(*) FROM physical_rows WHERE context_match AND ")
+                        .append(bill).append(" GROUP BY status\n")
+                        .append("  UNION ALL SELECT 'BILL',bill_no,task_count FROM (\n")
+                        .append("   SELECT bill_no,COUNT(*) AS task_count FROM physical_rows WHERE context_match AND ")
+                        .append(statusMatch)
+                        .append(" AND NULLIF(bill_no,'') IS NOT NULL GROUP BY bill_no ORDER BY bill_no LIMIT 500) bills\n")
+                        .append("), page_metadata AS (\n")
+                        .append("  SELECT COALESCE(jsonb_agg(jsonb_build_array(bucket,value,task_count) ORDER BY bucket,value),'[]'::jsonb)::text AS buckets\n")
+                        .append("  FROM metadata_totals)\n");
+            }
+            // Same 31 projection columns as rowsSql, then page_position, total and metadata.
+            sql.append(projection("SELECT page_rows.source_type,page_rows.record_type,page_rows.id,"))
+                    .append(",page_rows.page_position,page_summary.total AS page_total");
+            if (includeMetadata) {
+                sql.append(",CASE WHEN page_rows.page_position IS NULL OR page_rows.page_position=:offset+1")
+                        .append(" THEN page_metadata.buckets END AS page_metadata_buckets");
+            }
+            sql.append("\nFROM page_summary");
+            if (includeMetadata) sql.append(" CROSS JOIN page_metadata");
+            sql.append(" LEFT JOIN page_rows ON TRUE\n").append(productionOrderJoin("page_rows"))
+                    .append(" ORDER BY page_rows.page_position NULLS LAST");
+            return sql.toString();
         }
         String rowsSql() {
             return cte + " " + projection() + fromFiltered() + orderBy + " LIMIT :limit OFFSET :offset";
@@ -80,8 +111,11 @@ final class WarehouseOutboundTaskCenterSql {
             return " FROM filtered " + productionOrderJoin() + " ";
         }
         private String projection() {
-            return """
-                    SELECT source_type,record_type,id,bill_no,source_doc_no,business_date,
+            return projection("SELECT source_type,record_type,id,");
+        }
+        private String projection(String selectPrefix) {
+            return selectPrefix + """
+                    bill_no,source_doc_no,business_date,
                            party_name,warehouse_name,responsible_name,maker_name,line_count,status,
                            maker_id,stock_status,issue_status,revision,request_id,materials_defined,actionable,
                            line_key,item_id,line_no,goods_code,goods_name,specification,color_name,unit_name,quantity,weight,
@@ -95,7 +129,8 @@ final class WarehouseOutboundTaskCenterSql {
          * 只在外层行查询对当页行求值，不进 UNION，避免全量历史逐行探测。
          * production_orders JSON 随行带回每个工单的 {code,planId}，前端弹窗按工单跳生产计划详情。
          */
-        private String productionOrderJoin() {
+        private String productionOrderJoin() { return productionOrderJoin("filtered"); }
+        private String productionOrderJoin(String relation) {
             return """
                     LEFT JOIN LATERAL (
                       SELECT string_agg(DISTINCT segment.segment_code,'、' ORDER BY segment.segment_code) AS production_order_no,
@@ -105,27 +140,27 @@ final class WarehouseOutboundTaskCenterSql {
                       WHERE segment.id IN (
                         SELECT package_document.execution_segment_id
                         FROM production_planning_package_documents package_document
-                        WHERE package_document.document_id=filtered.id
+                        WHERE package_document.document_id=%1$s.id
                           AND package_document.document_type='DRAW'
                           AND package_document.execution_segment_id IS NOT NULL
                         UNION
                         SELECT draw_item.execution_segment_id
                         FROM stock_document_items draw_item
-                        WHERE draw_item.doc_id=filtered.id AND NOT draw_item.is_deleted
-                          AND draw_item.execution_segment_id IS NOT NULL
+                        WHERE draw_item.doc_id=%1$s.id AND NOT draw_item.is_deleted
+                        AND draw_item.execution_segment_id IS NOT NULL
                         UNION
                         SELECT demand.execution_segment_id
                         FROM production_planning_package_document_items mapping
                         JOIN production_material_demands demand ON demand.id=mapping.demand_id
-                        WHERE mapping.document_id=filtered.id AND mapping.document_type='DRAW'
-                          AND demand.execution_segment_id IS NOT NULL
+                        WHERE mapping.document_id=%1$s.id AND mapping.document_type='DRAW'
+                        AND demand.execution_segment_id IS NOT NULL
                         UNION
                         SELECT discovery_request.execution_segment_id
                         FROM production_material_discovery_requests discovery_request
-                        WHERE filtered.record_type='MATERIAL_DISCOVERY' AND discovery_request.id=filtered.id
+                        WHERE %1$s.record_type='MATERIAL_DISCOVERY' AND discovery_request.id=%1$s.id
                       )
                     ) production_orders ON TRUE
-                    """;
+                    """.formatted(relation);
         }
         String facetsSql() {
             return cte + " " + """
@@ -164,7 +199,7 @@ final class WarehouseOutboundTaskCenterSql {
                     : access.stockOwners().visibleOwners().isEmpty() ? "FALSE" : "d.maker_id IN (:stockOwners)";
             if (selected(source, "DRAW")) {
                 String drawReadable = access.production()
-                        ? "(" + ownerPredicate + " OR fn_is_production_linked_stock_document(d.id))" : ownerPredicate;
+                        ? "(" + ownerPredicate + " OR production_facts.linked)" : ownerPredicate;
                 branches.add(stock("DRAW", "DRAW", drawReadable, scope));
                 if (access.production()) branches.add(discovery(scope));
                 stockBranch = true;
@@ -196,34 +231,45 @@ final class WarehouseOutboundTaskCenterSql {
         if (union.isEmpty()) throw new IllegalArgumentException("No authorized outbound source");
         if (union.contains(":warehouseScope")) parameters.put("warehouseScope", scope.idsCsv());
         // Status facets omit only their own filter, while retaining source/owner/scope/search/date.
-        String cte = """
+        // pageBase materializes physical_rows once so the merged page statement never
+        // re-runs the UNION for totals or facets; the plain cte stays inline-able for
+        // single-reference identity/facet statements and keeps predicate pushdown there.
+        String withHeader = """
                 WITH source_rows(source_type,record_type,id,bill_no,source_doc_no,business_date,
                      party_name,warehouse_name,responsible_name,maker_name,line_count,status,search_text,
                      maker_id,stock_status,issue_status,revision,request_id,materials_defined,actionable,goods_codes,goods_names,
                      line_key,item_id,line_no,goods_code,goods_name,specification,color_name,unit_name,quantity,weight) AS (
                 """ + union + """
-                ), physical_rows AS (
+                ), physical_rows AS
+                """;
+        String physicalBody = """
+                (
                   SELECT source_rows.*, %s AS keyword_rank,
                     ((:view='ALL' OR (:view='ACTIVE')=(%s))
                      AND (%s) AND (%s)
                      AND (CAST(:dateFrom AS date) IS NULL OR business_date>=CAST(:dateFrom AS date))
                      AND (CAST(:dateTo AS date) IS NULL OR business_date<=CAST(:dateTo AS date))) AS context_match
                   FROM source_rows
-                ), filtered AS (
-                  SELECT * FROM physical_rows WHERE context_match
-                    AND (CAST(:billNo AS text) IS NULL OR bill_no=CAST(:billNo AS text))
-                    AND (CAST(:status AS text) IS NULL OR status=CAST(:status AS text))
                 )
                 """.formatted(TaskKeywordSearch.rankNamesFirst(filter.keyword(), new String[]{}, new String[]{"goods_names"},
                         new String[]{"bill_no", "source_doc_no"}, "goods_codes"),
                         ACTIVE_STATUS_PREDICATE, TaskKeywordSearch.condition(filter.keyword(),
                                 "search_text", "party_name", "warehouse_name", "responsible_name", "maker_name"),headers.predicate());
+        String cte = withHeader + physicalBody + """
+                , filtered AS (
+                  SELECT * FROM physical_rows WHERE context_match
+                    AND (CAST(:billNo AS text) IS NULL OR bill_no=CAST(:billNo AS text))
+                    AND (CAST(:status AS text) IS NULL OR status=CAST(:status AS text))
+                )
+                """;
+        String pageBase = withHeader + "MATERIALIZED " + physicalBody + "\n";
         String direction = "asc".equals(filter.order()) ? "ASC" : "DESC";
         String primary = WarehouseTaskHeaderQuery.orderExpression(filter.sort(),false) + " " + direction + " NULLS LAST";
         // 平级次序补单号：同日期行按单号自然分组（同单明细相邻），不再依赖随机 UUID。
-        return new Plan(cte, Collections.unmodifiableMap(parameters),
-                " ORDER BY " + (filter.sort()==null||filter.sort().isBlank()?"keyword_rank,":"")
-                        + primary + ",source_type,record_type,bill_no,id,line_no NULLS LAST,line_key ");
+        String orderExpression = (filter.sort()==null||filter.sort().isBlank()?"keyword_rank,":"")
+                + primary + ",source_type,record_type,bill_no,id,line_no NULLS LAST,line_key";
+        return new Plan(cte, pageBase, Collections.unmodifiableMap(parameters),
+                " ORDER BY " + orderExpression + " ", orderExpression);
     }
 
     private static boolean selected(String requested, String source) {
@@ -338,12 +384,12 @@ final class WarehouseOutboundTaskCenterSql {
                 -- including their fully issued or reversed history.
                 AND NOT COALESCE(warehouse.is_line_side,FALSE)
                 AND NOT COALESCE(item_warehouse.is_line_side,FALSE)
-                AND (fn_production_draw_requested(d.id) OR (d.status=-1 AND EXISTS (
+                AND (production_facts.draw_requested OR (d.status=-1 AND EXISTS (
                   SELECT 1 FROM production_planning_package_document_items provenance
                   WHERE provenance.document_type='DRAW' AND provenance.document_id=d.id)))
                 """ : "";
         String actionable = draw ? "(d.status IN(0,1) AND NOT d.is_closed AND d.issue_status<2"
-                + " AND fn_is_production_linked_stock_document(d.id) AND fn_production_draw_pending(d.id))"
+                + " AND production_facts.linked AND production_facts.draw_pending)"
                 : "(d.status=0 AND NOT d.is_closed)";
         return "SELECT '" + source + "','STOCK_DOC',d.id,d.bill_no,COALESCE(NULLIF(d.plan_no,''),d.source_doc_no),d.bill_date,"
                 + "COALESCE(department.name,client.name,supplier.name,''),COALESCE(item_warehouse.name,warehouse.name,''),"
@@ -367,6 +413,13 @@ final class WarehouseOutboundTaskCenterSql {
                 LEFT JOIN suppliers supplier ON supplier.id=d.supplier_id
                 LEFT JOIN employees worker ON worker.id=d.worker_id
                 LEFT JOIN employees maker ON maker.id=d.maker_id
+                LEFT JOIN LATERAL (
+                  -- Production linkage is asked up to three times per row; the STABLE
+                  -- functions are index-backed but PostgreSQL does not dedupe calls.
+                  SELECT CASE WHEN d.doc_type='DRAW' THEN fn_is_production_linked_stock_document(d.id) END AS linked,
+                         CASE WHEN d.doc_type='DRAW' THEN fn_production_draw_requested(d.id) END AS draw_requested,
+                         CASE WHEN d.doc_type='DRAW' THEN fn_production_draw_pending(d.id) END AS draw_pending
+                ) production_facts ON TRUE
                 LEFT JOIN LATERAL (
                   SELECT CASE WHEN COUNT(DISTINCT request.id)=1 THEN MIN(request.id::text)::uuid END AS request_id
                   FROM production_material_discovery_lines line

@@ -62,8 +62,11 @@ class OwnedPostgres:
         self.evidence["container_id"] = self.cid
         self._verify_owned()
         for _ in range(150):
-            result = self.docker("exec", self.cid, "pg_isready", "-U", "postgres", check=False)
-            if result.returncode == 0 and self.docker("exec", self.cid, "cat", "/proc/1/comm").stdout.strip() == "postgres":
+            # The image entrypoint serves initdb through a temporary server on the
+            # same socket, stops it, then execs the final postgres as PID 1. Check
+            # PID 1 first so pg_isready can only be answered by the final server.
+            if self.docker("exec", self.cid, "cat", "/proc/1/comm", check=False).stdout.strip() == "postgres" \
+                    and self.docker("exec", self.cid, "pg_isready", "-U", "postgres", check=False).returncode == 0:
                 break
             time.sleep(.1)
         else:

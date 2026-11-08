@@ -49,7 +49,10 @@ class PurchaseReceiptSuccessorQuantityPostgresTest {
             assertThat(audit(c,historical.item())).isEqualTo(audit);
             for(var legacy:HISTORICAL_ORDER_ITEMS.entrySet()){
                 assertThat(scalar(c,"SELECT reference_price_precision_policy IS NULL AND unapproval_source_item_id IS NULL FROM "+legacy.getKey()+" WHERE id=?",legacy.getValue())).isEqualTo("t");
-                assertThat(scalar(c,"SELECT (to_jsonb(i)-ARRAY['charged_base_qty','gift_base_qty','quantity_adoption_version','quantity_precision_policy','reference_price_precision_policy','unapproval_source_item_id'])::text FROM "+legacy.getKey()+" i WHERE id=?",legacy.getValue()))
+                // V1119 adds material_supply_loss_factor/material_supply_funded_loss_factor to
+                // subcontract_order_items (null on pre-V1119 rows); like the successor-quantity
+                // columns they are a later intentional addition, not a rewritten historical fact.
+                assertThat(scalar(c,"SELECT (to_jsonb(i)-ARRAY['charged_base_qty','gift_base_qty','quantity_adoption_version','quantity_precision_policy','reference_price_precision_policy','unapproval_source_item_id','material_supply_loss_factor','material_supply_funded_loss_factor'])::text FROM "+legacy.getKey()+" i WHERE id=?",legacy.getValue()))
                     .isEqualTo(HISTORICAL_ORDER_FACTS.get(legacy.getKey()));
             }
         }

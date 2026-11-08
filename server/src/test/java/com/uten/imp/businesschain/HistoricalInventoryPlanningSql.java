@@ -4,6 +4,8 @@ import org.hibernate.resource.jdbc.spi.StatementInspector;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -85,6 +87,55 @@ public final class HistoricalInventoryPlanningSql implements StatementInspector 
                     SELECT id FROM production_material_analysis_items WHERE analysis_id=? AND FALSE
                     """);
 
+    // 9a73f9584 的「到货优先补原父层」投影自 V1118 起存在，历史架构（<=1099）没有这些
+    // 函数和优先分配表。历史场景继续按原承诺口径证明 V1100/V1113 的续跑语义，这里把带
+    // 优先投影的语句还原成无该投影的等价 SQL：列数与 ? 占位符个数保持不变，优先能力在
+    // 旧架构上恰好退化为不存在（headroom 列为 NULL、优先 planning_qty 恒等于 pending_qty、
+    // 优先阻塞守卫恒不成立），与引入该提交之前的行为一致。
+    private static final Pattern RECEIPT_PRIORITY_PLANNING_LATERAL = Pattern.compile(
+            "CROSS JOIN LATERAL \\(\\s*SELECT CASE WHEN action\\.route IN \\('BUY','SUBCONTRACT'\\)\\s*"
+                    + "AND action\\.operation_type='SUPPLY' AND pending_qty\\.qty>0\\s*"
+                    + "THEN fn_preplan_receipt_priority_planning_qty\\(allocation\\.id,pending_qty\\.qty\\)\\s*"
+                    + "ELSE pending_qty\\.qty END AS qty\\s*\\) planning_qty");
+    private static final Pattern RECEIPT_PRIORITY_INTENT_PENDING = Pattern.compile(
+            "CASE WHEN raw\\.pending_qty>0 AND fn_preplan_receipt_priority_enabled\\(raw\\.analysis_material_id\\)\\s*"
+                    + "THEN fn_preplan_receipt_priority_planning_qty\\(raw\\.id,raw\\.pending_qty\\)\\s*"
+                    + "ELSE raw\\.pending_qty END AS pending_qty");
+    private static final Pattern RECEIPT_PRIORITY_CLAIMANT_HEADROOM = Pattern.compile(
+            "CASE WHEN action\\.operation_type='SUPPLY'\\s*"
+                    + "THEN fn_preplan_receipt_priority_order_headroom\\(material\\.id\\)\\s*"
+                    + "END AS priority_headroom");
+    private static final Pattern RECEIPT_PRIORITY_BLOCKED_MATERIAL = Pattern.compile(
+            "CASE WHEN EXISTS \\(\\s*SELECT 1 FROM preplan_supply_action_allocations allocation\\s*"
+                    + "JOIN preplan_receipt_priority_allocations priority ON priority\\.allocation_id=allocation\\.id\\s*"
+                    + "JOIN preplan_supply_actions action ON action\\.id=allocation\\.action_id\\s*"
+                    + "WHERE allocation\\.analysis_material_id=child\\.id.*?child\\.id::text\\) END\\s*END",
+            Pattern.DOTALL);
+
+    private static boolean mentionsReceiptPriority(String sql) {
+        return sql.contains("fn_preplan_receipt_priority") || sql.contains("preplan_receipt_priority_allocations");
+    }
+
+    /** @return 无优先投影的等价语句；不认识带优先标记的语句或占位符数变化时返回 null 原样放行。 */
+    private static String revertReceiptPriorityProjections(String sql) {
+        if (!mentionsReceiptPriority(sql)) return null;
+        String reverted = sql;
+        Matcher lateral = RECEIPT_PRIORITY_PLANNING_LATERAL.matcher(reverted);
+        if (lateral.find()) {
+            reverted = new StringBuilder(reverted).delete(lateral.start(), lateral.end()).toString()
+                    .replace("planning_qty.qty", "pending_qty.qty");
+        }
+        reverted = RECEIPT_PRIORITY_INTENT_PENDING.matcher(reverted).replaceFirst("raw.pending_qty AS pending_qty");
+        reverted = RECEIPT_PRIORITY_CLAIMANT_HEADROOM.matcher(reverted).replaceFirst("NULL::numeric AS priority_headroom");
+        reverted = RECEIPT_PRIORITY_BLOCKED_MATERIAL.matcher(reverted).replaceFirst("NULL::text");
+        // 未消除干净或占位符被改动时不得猜测改写：按原语句放行，让数据库报出确切缺失对象。
+        if (mentionsReceiptPriority(reverted)
+                || reverted.chars().filter(ch -> ch == '?').count() != sql.chars().filter(ch -> ch == '?').count()) {
+            return null;
+        }
+        return reverted;
+    }
+
     static void requireOriginalPlanningSchema(JdbcTemplate jdbc) {
         assertTrue(jdbc.queryForObject("""
                 SELECT to_regclass('public.preplan_sales_stock_adoptions') IS NULL
@@ -98,6 +149,10 @@ public final class HistoricalInventoryPlanningSql implements StatementInspector 
 
     @Override
     public String inspect(String sql) {
+        // Revert the newest projection first, then let the older planning reverts see the
+        // statement in the shape their fingerprints were taken from.
+        String withoutReceiptPriority = revertReceiptPriorityProjections(sql);
+        if (withoutReceiptPriority != null) sql = withoutReceiptPriority;
         if (!sql.contains("planning_quantity_mode") && !sql.contains("fn_preplan_adopted_sales_stock_base")
                 && !sql.contains("preplan_physical_stock_formalizations")) {
             return sql;

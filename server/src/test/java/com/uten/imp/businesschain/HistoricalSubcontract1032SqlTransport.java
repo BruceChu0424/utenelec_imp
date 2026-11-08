@@ -81,8 +81,8 @@ final class HistoricalSubcontract1032SqlTransport {
                 FROM subcontract_material_issue_items issue WHERE issue.id=:issue
                 """, false))
     );
-    private static final Map<String,String> ORIGINAL_JDBC_SQL=Map.of(
-        "fb35f6004d16353eced9be6bf46222706b4cd83efede723431566b1150299ee6", """
+    private static final Map<String,String> ORIGINAL_JDBC_SQL=java.util.Map.ofEntries(
+        Map.entry("fb35f6004d16353eced9be6bf46222706b4cd83efede723431566b1150299ee6", """
                 SELECT DISTINCT order_doc.bill_no AS order_bill_no,
                        c.goods_name_snapshot AS goods_name,
                        c.goods_code_snapshot AS goods_code,
@@ -118,8 +118,8 @@ final class HistoricalSubcontract1032SqlTransport {
                            AND (oi.allowed_loss_pct IS NULL OR current_return.delivered_qty
                                 < (oi.qty*(100-oi.allowed_loss_pct)*0.01))))
                 ORDER BY goods_name
-                """,
-        "2d75f6ea0af7572638a2d3dfbfbb731586ba4dbe5ae0919d90c0e509fcb316a0", """
+                """),
+        Map.entry("2d75f6ea0af7572638a2d3dfbfbb731586ba4dbe5ae0919d90c0e509fcb316a0", """
                 SELECT item.material_basis_qty IS NOT NULL
                    AND item.material_basis_qty*COALESCE(item.unit_rate,1)=?
                    AND EXISTS(SELECT 1 FROM subcontract_material_plan_items plan
@@ -133,9 +133,46 @@ final class HistoricalSubcontract1032SqlTransport {
                                AND NOT EXISTS(SELECT 1 FROM subcontract_receipt_material_consumptions reversed
                                    WHERE reversed.reversal_of=c.id)))
                 FROM subcontract_receipt_items item WHERE item.id=?
-                """);
+                """),
+        // V1119 order-material budget choices did not exist at 1032: the original gate is
+        // V868's per-order fn_subcontract_order_kit_shortages hard conflict. cap_factor is
+        // pinned NULL so current Java throws the same 409 without a usable choice token.
+        Map.entry("0f0347464e2f26e7c7c2197b7ad499c924edb2c43f121b9423928c4efaeade5e", """
+                WITH scope AS (
+                    SELECT CAST(string_to_array(CAST(? AS text), ',') AS uuid[]) AS ids
+                ), original AS (
+                    SELECT shortage.goods_id, shortage.color_id, goods.code AS goods_code,
+                           goods.name AS goods_name, color.name AS color_name, unit.name AS unit_name,
+                           shortage.need_qty,
+                           shortage.exact_free_qty + shortage.public_free_qty AS available_qty,
+                           GREATEST(shortage.need_qty - shortage.exact_free_qty - shortage.public_free_qty, 0) AS short_qty,
+                           shortage.need_qty AS base_qty, NULL::numeric AS capped_qty, NULL::numeric AS cap_factor
+                    FROM scope
+                    CROSS JOIN LATERAL unnest(scope.ids) AS original_orders(order_id)
+                    CROSS JOIN LATERAL fn_subcontract_order_kit_shortages(original_orders.order_id) shortage
+                    JOIN goods ON goods.id = shortage.goods_id
+                    LEFT JOIN colors color ON color.id = shortage.color_id
+                    LEFT JOIN units unit ON unit.id = goods.unit_id
+                )
+                SELECT original.* FROM original
+                ORDER BY original.goods_id, original.color_id NULLS FIRST
+                """),
+        // The V1119 supply-loss factor columns did not exist at 1032 and the original command
+        // stored nothing; the bind-safe no-op keeps the five positional parameters untouched.
+        Map.entry("0bab05da978a1ec2cb9bd7a37f677481ddf7ca5312be331b987a6f1635e90b45", """
+                UPDATE subcontract_order_items SET remark = remark
+                WHERE FALSE AND ?::numeric IS NULL AND ?::numeric IS NULL
+                  AND order_id = ANY(CAST(string_to_array(CAST(? AS text), ',') AS uuid[]))
+                  AND ?::numeric IS NULL AND ?::numeric IS NULL
+                """));
     private static final Pattern NORMAL_LIMIT=Pattern.compile(
             "(?is)'(?:''|[^'])*'|\"(?:\"\"|[^\"])*\"|--[^\\r\\n]*|/\\*.*?\\*/|\\b(fn_subcontract_normal_receipt_limit|fn_subcontract_physical_receipt_capacity)\\(\\s*([a-z_][a-z0-9_]*\\.id|\\?)\\s*\\)");
+    /** V1119 wraps the stored allowance with a factor column that cannot exist at 1032;
+     * with the factor always NULL the value is exactly the stored allowed_loss_pct
+     * (fn_subcontract_supply_unit_qty already coalesces a NULL pct to 0). Only the exact
+     * owner-column call shape is admitted; any other shape still fails on the old catalog. */
+    private static final Pattern EFFECTIVE_LOSS=Pattern.compile(
+            "(?is)\\bfn_subcontract_effective_supply_loss_pct\\(\\s*([a-z_][a-z0-9_]*\\.allowed_loss_pct)\\s*,\\s*[a-z_][a-z0-9_]*\\.material_supply_loss_factor\\s*\\)");
 
     static DataSource dataSource(DataSource actual) {
         return new OriginalDataSource(actual);
@@ -190,6 +227,7 @@ final class HistoricalSubcontract1032SqlTransport {
     static String originalJdbcSql(String sql) {
         String original=ORIGINAL_JDBC_SQL.get(fingerprint(sql));
         if(original!=null)return original;
+        sql=originalEffectiveLoss(sql);
         if(!sql.contains("fn_subcontract_normal_receipt_limit")
                 &&!sql.contains("fn_subcontract_physical_receipt_capacity"))return sql;
         var match=NORMAL_LIMIT.matcher(sql);var out=new StringBuffer();
@@ -203,6 +241,17 @@ final class HistoricalSubcontract1032SqlTransport {
         match.appendTail(out);
         // Unrecognized future calls remain real SQL and fail on the untouched
         // old catalog. Quoted identifiers/literals/comments stay byte-for-byte.
+        return out.toString();
+    }
+
+    /** The pre-V1119 effective allowance in owner SQL: the stored allowed_loss_pct itself. */
+    private static String originalEffectiveLoss(String sql) {
+        if(!sql.contains("fn_subcontract_effective_supply_loss_pct"))return sql;
+        var match=EFFECTIVE_LOSS.matcher(sql);var out=new StringBuffer();
+        while(match.find()) {
+            match.appendReplacement(out,java.util.regex.Matcher.quoteReplacement("COALESCE("+match.group(1)+", 0)"));
+        }
+        match.appendTail(out);
         return out.toString();
     }
 

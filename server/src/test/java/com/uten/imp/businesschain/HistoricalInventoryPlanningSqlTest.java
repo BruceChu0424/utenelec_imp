@@ -13,6 +13,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -82,6 +83,79 @@ class HistoricalInventoryPlanningSqlTest {
         assertThat(current).contains("+fn_preplan_adopted_sales_stock_base(item.id)");
         assertThat(historical).isEqualTo(current.replace("+fn_preplan_adopted_sales_stock_base(item.id)", ""));
         assertThat(historical).contains("FROM preplan_root_output_events e WHERE e.analysis_item_id=item.id");
+    }
+
+    @Test
+    void parentSupplyCoverageLosesOnlyTheReceiptPriorityProjection() throws Exception {
+        String current = (String) ReflectionTestUtils.getField(Class.forName(
+                "com.uten.imp.features.production.analysis.MaterialAnalysisService"), "ACTIVE_FUTURE_COVERAGE_SQL");
+        String jdbc = jdbcSql(current, new MapSqlParameterSource("analysisId", UUID.randomUUID()));
+        String historical = new HistoricalInventoryPlanningSql().inspect(jdbc);
+        assertThat(historical).isNotEqualTo(jdbc)
+                .doesNotContain("fn_preplan_receipt_priority", "planning_qty")
+                // uncapped 别名必须保留：retained_pending 仍引用它，且 planning 等于 uncapped 时
+                // 恒走原 pending 分支，正好恢复 9a73f9584 之前的承诺口径。
+                .contains("pending_qty.qty AS uncapped_qty,pending_qty.qty,")
+                .contains("CASE WHEN raw.qty=raw.uncapped_qty THEN retained.pending_qty");
+        assertThat(historical.chars().filter(ch -> ch == '?').count())
+                .isEqualTo(jdbc.chars().filter(ch -> ch == '?').count());
+    }
+
+    @Test
+    void aggregatePrivateIntentDropsOnlyTheReceiptPriorityPendingCap() throws Exception {
+        EntityManager em = recorder();
+        var constructor = Class.forName("com.uten.imp.features.production.analysis.AggregatePrivateIntentReader")
+                .getDeclaredConstructor(EntityManager.class);
+        constructor.setAccessible(true);
+        Object reader = constructor.newInstance(em);
+        ReflectionTestUtils.invokeMethod(reader, "read", UUID.randomUUID());
+        var sql = ArgumentCaptor.forClass(String.class);
+        verify(em).createNativeQuery(sql.capture());
+        String jdbc = jdbcSql(sql.getValue(), new MapSqlParameterSource("analysis", UUID.randomUUID()));
+        String historical = new HistoricalInventoryPlanningSql().inspect(jdbc);
+        assertThat(historical).isNotEqualTo(jdbc)
+                .doesNotContain("fn_preplan_receipt_priority")
+                .contains("raw.pending_qty AS pending_qty");
+        assertThat(historical.chars().filter(ch -> ch == '?').count())
+                .isEqualTo(jdbc.chars().filter(ch -> ch == '?').count());
+    }
+
+    @Test
+    void inboundAllocationCandidatesKeepTheirShapeWithoutPriorityHeadroom() throws Exception {
+        EntityManager em = recorder();
+        Object projection = mock(Class.forName(
+                "com.uten.imp.features.production.analysis.PreplanInboundAllocationProjectionService"), CALLS_REAL_METHODS);
+        ReflectionTestUtils.setField(projection, "em", em);
+        UUID externalItem = UUID.randomUUID();
+        ReflectionTestUtils.invokeMethod(projection, "preplanCandidates", Set.of(externalItem), false);
+        var sql = ArgumentCaptor.forClass(String.class);
+        verify(em).createNativeQuery(sql.capture());
+        String jdbc = jdbcSql(sql.getValue(), new MapSqlParameterSource("externalItemIds", externalItem)
+                .addValue("includeIqcContinuations", false));
+        String historical = new HistoricalInventoryPlanningSql().inspect(jdbc);
+        assertThat(historical).isNotEqualTo(jdbc)
+                .doesNotContain("fn_preplan_receipt_priority")
+                .contains("NULL::numeric AS priority_headroom");
+        assertThat(historical.chars().filter(ch -> ch == '?').count())
+                .isEqualTo(jdbc.chars().filter(ch -> ch == '?').count());
+    }
+
+    @Test
+    void receiptPriorityBlockedGuardsDisappearBeforeThePriorityTableExisted() throws Exception {
+        String fragment = (String) ReflectionTestUtils.getField(Class.forName(
+                "com.uten.imp.features.production.analysis.AggregateMaterialOrderWriteService"),
+                "PRIORITY_BLOCKED_MATERIAL_SQL");
+        var inspector = new HistoricalInventoryPlanningSql();
+        String cancelled = inspector.inspect("SELECT BOOL_OR(fn_preplan_material_has_qualified_receipt(child.id)),MIN(\n"
+                + fragment + "\n)\nFROM production_material_analysis_materials child");
+        assertThat(cancelled.replaceAll("\\s+", " ")).isEqualTo(
+                "SELECT BOOL_OR(fn_preplan_material_has_qualified_receipt(child.id)),MIN( NULL::text )"
+                        + " FROM production_material_analysis_materials child");
+        String blocked = inspector.inspect("SELECT child.id,\n" + fragment
+                + "\nAS priority_blocked_goods_code FROM production_material_analysis_materials child");
+        assertThat(blocked.replaceAll("\\s+", " ")).isEqualTo(
+                "SELECT child.id, NULL::text AS priority_blocked_goods_code"
+                        + " FROM production_material_analysis_materials child");
     }
 
     private static EntityManager recorder() {

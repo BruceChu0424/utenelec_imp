@@ -22,7 +22,9 @@ import java.util.stream.Collectors;
  * 降到 0(物料被别的单占走、已全部下单、申请关闭)撤卡。只锁水位行, 不锁任何业务单据。
  * 提醒时水位记通知侧卡上实际写的可下单量, 不记本类先读到的数(两次读取之间物料可能被别处用掉, 见
  * SubcontractDrawRecheckService)。
- * 水位行按申请明细 id 一条语句插齐, 外键 KEY SHARE 与下单命令锁申请明细的顺序一致(都按 id)。
+ * 水位行一条语句插齐, 外键 KEY SHARE 加在申请明细行上的顺序与下单命令的
+ * FulfillmentMutationLocks 前缀锁完全一致: 先 application_id 再明细 id(订单可同时引用
+ * 多张申请的明细, 两种顺序在多申请下单时会互为环)。
  */
 @Service
 @RequiredArgsConstructor
@@ -56,7 +58,7 @@ public class SubcontractApplicationKitRecheckService {
                 INSERT INTO subcontract_application_kit_notice_marks(application_item_id)
                 SELECT item.id FROM subcontract_application_items item
                 WHERE item.id = ANY(CAST(string_to_array(CAST(? AS text), ',') AS uuid[]))
-                ORDER BY item.id
+                ORDER BY item.application_id, item.id
                 ON CONFLICT (application_item_id) DO NOTHING
                 """, idList);
         Map<UUID, BigDecimal> previousMarks = new java.util.LinkedHashMap<>();

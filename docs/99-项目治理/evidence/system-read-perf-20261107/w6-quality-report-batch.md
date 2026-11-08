@@ -80,7 +80,20 @@ decide-report 409「本次操作处理时间过长已自动取消，没有生效
 | 场景 20×5 | 改前（W6 前，本机当日） | 改后（W6 后，本机当日） |
 |---|---|---|
 | decide-report 命令 | **40s 命令截止取消（409）**，JDBC 段 38,102ms / 4,362 语句 | **9,813ms 完成（200）**，JDBC 段 8,021ms / 3,727 语句 / 1,867 次调用 |
-| `fn_imported_business_document(_row)(_internal)` 调用 | — | **originWalks=0**（track_functions 计数，整个 20×5 命令零权威图遍历——W1 登记表读侧 + W6 报告路径全链） |
+| `fn_imported_business_document(_row)(_internal)` 调用 | — | ~~originWalks=0~~ **作废**：该次运行没开函数跟踪，`pg_stat_user_functions` 恒不计数，0 是假零（见下「更正：遍历计数口径」） |
+
+### 更正：遍历计数口径（2026-11-08 04:24 复核）
+
+初版写的「originWalks=0，整个 20×5 命令零权威图遍历」不成立：计时运行按规定不开
+`track_functions`（全局税），而集群级 `pg_stat_user_functions` 只在开跟踪时计数，打印的差值恒为 0。
+开跟踪实测一份 2×2 报告（`trackedSmallReportCountsWritePathAuthoritativeCalls`，319 语句）：
+`fn_imported_business_document_row` 入口 **2 次**、递归 `_internal` 遍历步 **33 次**。来源是 V1115
+写路径守卫 `fn_guard_imported_business_document_archive`：原生单据的运行时写入仍调权威函数，
+登记表未命中即下钻递归遍历——这正是「写路径保留权威函数」的设计口径，不是回归。W1 达成的是
+**读路径**零遍历（登记表谓词 + P1 增长守卫证明）。随测试修正：计时用例未开跟踪时打印
+`n/a(track_functions off)`；统计读取改为等 11s 无变化（空闲后端最长 10s 才刷出函数统计）；
+开跟踪用例断言计数必须 >0（防假零）并按每行 20 步封顶作遍历预算。20×5 规模未在开跟踪下复测
+（跟踪税会把计时推向 40s 截止）。
 
 - 语句数同机对照 −14.5%（4,362→3,727）；elapsed 的 38s→9.8s 除语句合并外还含本机 I/O 状态回暖
   （改前连基线都无法完成，改后在同一机器完整通过且远低于 40s 截止）。绝对值与 2026-10-13 的 11.2s
@@ -103,7 +116,7 @@ decide-report 409「本次操作处理时间过长已自动取消，没有生效
 | `AggregateMaterialOrderEndToEndTest#twentyMaterialLinesCompleteWithinDeadlineBudget` | 绿 | elapsedMs=7,240（10s 断言内；V1119 迁移+回归无恙） |
 | `ImportedDocumentRegistryGrowthPostgresTest`（W7 新建 P1 增长守卫） | 绿 | 历史 1 万/10 万/100 万注入下 p50=2.5/2.9/**2.1ms**——曲线平，登记表无顺序扫描节点 |
 | `DataLifecycleRegistryContractTest` | 绿 | 5/5（V1119 登记合同成立） |
-| `preStockedTwentyReceiptBatchAlsoCompletesWithinDeadlineBudget` | 该批红→**安静复测绿** | 该批 elapsedMs=42,621（`<35_000` 不过），运行期与并行会话主树 `mvn test`（真库容器）全程重叠；同代码安静复测 26,583ms 绿，见下方 A/B。语句 14,200、jdbcCalls 10,680、**originWalks=0**；断言未改 |
+| `preStockedTwentyReceiptBatchAlsoCompletesWithinDeadlineBudget` | 该批红→**安静复测绿** | 该批 elapsedMs=42,621（`<35_000` 不过），运行期与并行会话主树 `mvn test`（真库容器）全程重叠；同代码安静复测 26,583ms 绿，见下方 A/B。语句 14,200、jdbcCalls 10,680（打印的 originWalks=0 为未开跟踪的假零，见 §4 更正）；断言未改 |
 
 ### 更正：preStocked 同机 A/B（2026-11-08 02:37–02:52）
 

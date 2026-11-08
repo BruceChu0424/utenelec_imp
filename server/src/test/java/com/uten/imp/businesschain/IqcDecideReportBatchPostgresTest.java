@@ -82,18 +82,45 @@ class IqcDecideReportBatchPostgresTest {
         if(Boolean.getBoolean("uten.perf.isolate-outbox"))outboxScheduler.close();
     }
 
-    /** Cumulative authoritative-origin walk calls cluster-wide (stable read; stats flush lags ≤500ms). */
-    private long originWalkCalls()throws Exception{
-        long stable=-1;
-        for(int attempt=0;attempt<8;attempt++){
-            long current=db.queryForObject("""
-                    SELECT COALESCE(sum(calls),0) FROM pg_stat_user_functions
-                    WHERE schemaname='public' AND funcname IN ('fn_imported_business_document_row','fn_imported_business_document_row_internal')
-                    """,Long.class);
-            if(current==stable)return stable;
-            stable=current;Thread.sleep(300);
+    private static final List<String> AUTHORITATIVE_FUNCTIONS=List.of(
+            "fn_imported_business_document_row","fn_imported_business_document_row_internal");
+
+    /** pg_stat_user_functions counts nothing unless track_functions is on; timing runs leave it off. */
+    private boolean functionsTracked(){
+        return "all".equals(db.queryForObject("SHOW track_functions",String.class));
+    }
+
+    /**
+     * Cumulative authoritative-function calls cluster-wide, per function. Backends flush
+     * function stats lazily (an idle backend may hold them up to 10s), so the read waits
+     * until the totals have stayed unchanged for 11s.
+     */
+    private Map<String,Long> authoritativeCalls()throws Exception{
+        Map<String,Long> stable=null;
+        long stableSince=0;
+        for(int attempt=0;attempt<60;attempt++){
+            Map<String,Long> current=new LinkedHashMap<>();
+            for(String function:AUTHORITATIVE_FUNCTIONS)current.put(function,db.queryForObject(
+                    "SELECT COALESCE(sum(calls),0) FROM pg_stat_user_functions WHERE schemaname='public' AND funcname=?",
+                    Long.class,function));
+            long now=System.currentTimeMillis();
+            if(!current.equals(stable)){stable=current;stableSince=now;}
+            else if(now-stableSince>=11_000)return stable;
+            Thread.sleep(500);
         }
         return stable;
+    }
+
+    /** Untracked runs print n/a instead of a zero that only means "nothing was counted". */
+    private Map<String,Long> callsBefore()throws Exception{
+        return functionsTracked()?authoritativeCalls():null;
+    }
+
+    private String originWalks(Map<String,Long> before)throws Exception{
+        if(before==null)return "n/a(track_functions off)";
+        Map<String,Long> after=authoritativeCalls();
+        return "row="+(after.get(AUTHORITATIVE_FUNCTIONS.get(0))-before.get(AUTHORITATIVE_FUNCTIONS.get(0)))
+                +" internal="+(after.get(AUTHORITATIVE_FUNCTIONS.get(1))-before.get(AUTHORITATIVE_FUNCTIONS.get(1)));
     }
 
     private Stage prepare(){
@@ -459,6 +486,33 @@ class IqcDecideReportBatchPostgresTest {
     }
 
     /**
+     * 遍历计数口径（2026-11-08 复核）：计时运行不开函数跟踪，pg_stat_user_functions 恒不计数，
+     * 预算用例因此只打 n/a——此前打印的「originWalks=0」就是这个假零。本用例只在
+     * -Duten.perf.track-functions=true 时运行，实测一份 2×2 报告里写路径守卫(V1115
+     * fn_guard_imported_business_document_archive)调用权威函数的次数：原生单据写入仍走
+     * fn_imported_business_document_row，登记表未命中即下钻递归 _internal——这是「写路径保留
+     * 权威函数」的设计口径；读路径零遍历由登记表谓词与 P1 增长守卫证明。
+     * 2026-11-08 实测基线：入口 2 次、递归遍历步 33 次(4 行)；预算按每行 20 步封顶。
+     */
+    @Test void trackedSmallReportCountsWritePathAuthoritativeCalls()throws Exception{
+        org.junit.jupiter.api.Assumptions.assumeTrue(functionsTracked(),"仅在 -Duten.perf.track-functions=true 时计数");
+        isolatePerformanceDelivery();
+        Stage stage=prepare(2,2);
+        Map<String,Long> before=authoritativeCalls();
+        ProductionJdbcMeasurement.Sample measured=ProductionJdbcMeasurement.begin();
+        try { assertEquals(4,call(stage,report(stage,null),200).path("lineCount").asInt()); }
+        finally { ProductionJdbcMeasurement.end(); }
+        Map<String,Long> after=authoritativeCalls();
+        long entries=after.get(AUTHORITATIVE_FUNCTIONS.get(0))-before.get(AUTHORITATIVE_FUNCTIONS.get(0));
+        long walkSteps=after.get(AUTHORITATIVE_FUNCTIONS.get(1))-before.get(AUTHORITATIVE_FUNCTIONS.get(1));
+        System.out.println("[decide-report] tracked 2x2 statements="+measured.logicalStatements
+                +" row="+entries+" internal="+walkSteps);
+        // 开跟踪时写路径守卫必有权威调用；读到 0 说明计数口径失效(统计未刷出或跟踪没生效)。
+        assertTrue(entries>0&&walkSteps>0,"开跟踪的报告写入必须计到权威函数调用: row="+entries+" internal="+walkSteps);
+        assertTrue(walkSteps<=20L*4,"每行写入的权威遍历步超出预算: internal="+walkSteps);
+    }
+
+    /**
      * 40 秒命令截止的余量证据：20 张收货单 × 5 行(100 行、混合类型、共享订货单)整份一次提交，
      * 普通与全预入库(先入库后检，单张最重形态)各量一遍；20 张上限(全预入库实测 ~30s)的余量依据。
      */
@@ -468,7 +522,7 @@ class IqcDecideReportBatchPostgresTest {
         var request=report(stage,null);
         Object analysisSpy=org.springframework.test.util.AopTestUtils.getUltimateTargetObject(analyses);
         org.mockito.Mockito.clearInvocations(analysisSpy);
-        long walksBefore=originWalkCalls();
+        Map<String,Long> walksBefore=callsBefore();
         long started=System.currentTimeMillis();
         JsonNode result;
         ProductionJdbcMeasurement.Sample measured=ProductionJdbcMeasurement.begin();
@@ -476,7 +530,7 @@ class IqcDecideReportBatchPostgresTest {
         finally { ProductionJdbcMeasurement.end(); }
         long elapsed=System.currentTimeMillis()-started;
         System.out.println("[decide-report] 20 receipts x 5 lines elapsedMs=" + elapsed);
-        System.out.println("[decide-report] originWalks=" + (originWalkCalls()-walksBefore));
+        System.out.println("[decide-report] originWalks=" + originWalks(walksBefore));
         System.out.println("[decide-report] breakdown " + json.writeValueAsString(measured.result()));
         assertEquals(20,result.path("receiptCount").asInt());
         assertEquals(100,result.path("lineCount").asInt());
@@ -507,7 +561,7 @@ class IqcDecideReportBatchPostgresTest {
         org.mockito.Mockito.clearInvocations(analysisSpy);
         var resources=CommandResourceMeasurement.begin((org.testcontainers.containers.GenericContainer<?>)
                 org.springframework.test.util.ReflectionTestUtils.getField(FullChainEndToEndTest.class,"POSTGRES"));
-        long walksBefore=originWalkCalls();
+        Map<String,Long> walksBefore=callsBefore();
         long started=System.currentTimeMillis();
         JsonNode result;
         ProductionJdbcMeasurement.Sample measured=ProductionJdbcMeasurement.begin();
@@ -518,7 +572,7 @@ class IqcDecideReportBatchPostgresTest {
         long elapsed=finished-started;
         System.out.println("[decide-report] pre-stocked 20 receipts x 5 lines run="+run+" elapsedMs=" + elapsed
                 + " jdbcCalls="+measured.jdbcCalls+" logicalStatements="+measured.logicalStatements
-                + " originWalks=" + (originWalkCalls()-walksBefore));
+                + " originWalks=" + originWalks(walksBefore));
         String reportDirectory=System.getProperty("uten.perf.quality-report-directory");
         if(reportDirectory!=null){
             var directory=java.nio.file.Path.of(reportDirectory);java.nio.file.Files.createDirectories(directory);

@@ -405,6 +405,14 @@ def allowed_skip(case, method, runtime_platform=None):
     # arrives wrapped in the JUnit assumption preamble, so match by containment.
     if "Pinned private WPF dependency fixture is unavailable: " in reason:
         return True
+    # The W6 statement-budget measurement (IqcDecideReportBatchPostgresTest)
+    # only counts pg_stat_user_functions under -Duten.perf.track-functions=true
+    # (track_functions=all is a measurement-only connection mode with its own
+    # tax); every ordinary shard run reports this assumption skip by design.
+    # The reason text is unique to the programmatic track-functions gate and
+    # arrives wrapped in the JUnit assumption preamble, so match by containment.
+    if "仅在 -Duten.perf.track-functions=true 时计数" in reason:
+        return True
     if method["id"] == WORKBOOK_REVIEW:
         return (method.get("system_property_gates") == [{"named": WORKBOOK_PROPERTY, "matches": ".+"}]
                 and not case.get("workbook_property_present", False)

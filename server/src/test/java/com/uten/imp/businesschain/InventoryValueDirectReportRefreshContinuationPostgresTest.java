@@ -57,6 +57,11 @@ class InventoryValueDirectReportRefreshContinuationPostgresTest {
     @Test void exactReportGenerationResumesBothPhysicalAndConsumptionRootsWithoutRewritingHistory()throws Exception {
         HistoricalOrmMappings.requireOriginalSchema(jdbc,1071);
         HistoricalInventoryPlanningSql.requireOriginalPlanningSchema(jdbc);
+        // Retained-record reads consult the V1120 registry while this chain stays
+        // at V1071 (then 1072); install the real read-side table and lookup
+        // function from the same current migrated catalog rejectUnprovedCopies copies.
+        MigratedProjectionSchema.createCurrentTables(jdbc,"imported_document_registry");
+        MigratedProjectionSchema.createCurrentFunctions(jdbc,"fn_imported_business_document_registered");
         var scenario=new AggregateMaterialDirectTransferEndToEndTest();beans.autowireBean(scenario);
         scenario.before();
         UUID consumption=failedScope(scenario::sharedChildActuallyHandsOverToEachOriginalParentWithinOneMemberShare);

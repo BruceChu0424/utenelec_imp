@@ -63,6 +63,11 @@ class InventoryValueOutputRefreshContinuationPostgresTest {
     @Test void sameConfirmedDocumentResumesItsOriginalRootWithoutRepricingOrInventingSourceFacts() throws Exception {
         HistoricalOrmMappings.requireOriginalSchema(jdbc,1065);
         HistoricalInventoryPlanningSql.requireOriginalPlanningSchema(jdbc);
+        // Retained-record reads consult the V1120 registry while this chain stays
+        // at V1065 (then 1066); install the real read-side table and lookup
+        // function from the same current migrated catalog rejectActiveDirty copies.
+        MigratedProjectionSchema.createCurrentTables(jdbc,"imported_document_registry");
+        MigratedProjectionSchema.createCurrentFunctions(jdbc,"fn_imported_business_document_registered");
         try(var choices=BusinessPrecisionContext.use(Map.of())){
             var scenario=new MakePublicSupplyEndToEndTest();beans.autowireBean(scenario);scenario.prepare();
             Set<UUID> existing=new HashSet<>(jdbc.queryForList("SELECT execution_segment_id FROM stock_value_production_cost_objects",UUID.class));

@@ -11,6 +11,7 @@ import com.uten.imp.features.finance.report.ReportTableResponse;
 import com.uten.imp.features.warehouse.materialbin.close.WorkshopMaterialCloseService;
 import com.uten.imp.features.warehouse.materialbin.close.WorkshopMaterialCloseService.Result;
 import com.uten.imp.features.warehouse.materialbin.close.WorkshopMaterialCloseService.TriggerKind;
+import com.uten.imp.support.MigratedProjectionSchema;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
@@ -99,6 +100,11 @@ class PlasticUsageAttachmentPostgresTest {
     @Test
     void attachmentEightReadsTheClosedPeriodsWithTheTemplateColumnsInOrder() throws Exception {
         HistoricalOrmMappings.requireOriginalSchema(db, 1087);
+        // Retained-record reads consult the V1120 registry while this chain stays
+        // at V1087 (then 1088); install the real read-side table and lookup
+        // function from the current migrated catalog like the other pinned chains.
+        MigratedProjectionSchema.createCurrentTables(db, "imported_document_registry");
+        MigratedProjectionSchema.createCurrentFunctions(db, "fn_imported_business_document_registered");
         // 一期: 发 3 公斤、退回 0.5、盘剩 1.3 → 实际 1.2; 报工 5 件 x 0.2 公斤 → 理论 1.0
         CloseBench bench = CloseBench.create(beans, "plastic");
         UUID granule = bench.granule("塑料颗粒", "OWN");

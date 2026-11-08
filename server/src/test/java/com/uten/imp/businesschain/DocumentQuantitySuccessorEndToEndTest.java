@@ -4,6 +4,7 @@ import com.uten.imp.application.port.DocumentUnapprovalPort;
 import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.features.documents.DocumentUnapprovalService;
+import com.uten.imp.support.MigratedProjectionSchema;
 import com.uten.imp.testsupport.FixtureDatabaseProperties;
 import com.uten.imp.testsupport.TestFlyway;
 import java.math.BigDecimal;
@@ -54,10 +55,20 @@ class DocumentQuantitySuccessorEndToEndTest {
     private static final List<String> FAMILIES=List.of("purchaseOrder","purchaseReceipt","purchaseReturn","subcontractReceipt","subcontractMaterialReturn","salesReturn");
     @DynamicPropertySource static void database(DynamicPropertyRegistry registry)throws Exception {
         DB.start();TestFlyway.configure().dataSource(DB.getJdbcUrl(),DB.getUsername(),DB.getPassword()).locations("classpath:db/migration").target("1032").load().migrate();
+        // The real V1032 public commands inside originalSubcontract1032 read retained
+        // metadata through the V1120 registry lookup; install the real read-side
+        // table and function from the current migrated catalog, then retire both
+        // so this class's own forward migration can install V1120 itself at boot.
+        JdbcTemplate seed=new JdbcTemplate(
+                new org.springframework.jdbc.datasource.DriverManagerDataSource(DB.getJdbcUrl(),DB.getUsername(),DB.getPassword()));
+        MigratedProjectionSchema.createCurrentTables(seed,"imported_document_registry");
+        MigratedProjectionSchema.createCurrentFunctions(seed,"fn_imported_business_document_registered");
         if(LEGACY.isEmpty())seedLegacy();
         if(originalSubcontract==null)originalSubcontract=HistoricalInventoryJdbc.originalSubcontract1032(
                 new org.springframework.jdbc.datasource.DriverManagerDataSource(DB.getJdbcUrl(),DB.getUsername(),DB.getPassword()),
                 DB.getJdbcUrl(),DB.getUsername(),DB.getPassword());
+        seed.execute("DROP FUNCTION IF EXISTS public.fn_imported_business_document_registered(text,uuid)");
+        seed.execute("DROP TABLE IF EXISTS public.imported_document_registry");
         FixtureDatabaseProperties.bindSameRole(registry,DB::getJdbcUrl,DB::getUsername,DB::getPassword);
     }
     public static final class Cleanup extends AbstractTestExecutionListener {

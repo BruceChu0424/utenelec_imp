@@ -18,7 +18,7 @@ class TaskContinuationMetadataHttpTest {
                 new FulfillmentWorkbenchPage.Capabilities(false,false),Map.of(),Map.of());
         var rowsOps=new FulfillmentWorkbenchPage(List.of(),1,100,0,0,null,fullOps.capabilities(),null,null,false);
         var operations=mock(FulfillmentWorkbenchQueryService.class,call->
-                call.getMethod().getName().equals("query")?call.getArguments().length==11?rowsOps:fullOps:RETURNS_DEFAULTS.answer(call));
+                call.getMethod().getName().equals("queryVersioned")?Boolean.TRUE.equals(call.getArguments()[10])?fullOps:rowsOps:RETURNS_DEFAULTS.answer(call));
         var scopes=mock(WarehouseTaskScopePort.class);
         when(scopes.currentForRead(org.mockito.ArgumentMatchers.any())).thenReturn(WarehouseTaskScopePort.WarehouseTaskScope.ALL);
         var fullWarehouse=new WarehouseTaskCenterContracts.Page(List.of(),1,100,0,0,Map.of());

@@ -30,7 +30,8 @@ import java.util.regex.Pattern;
  * EntityManager and its strict SQL/locking assertions. No Mockito leniency. */
 public final class ImportedDocumentFixture {
     private static final String MUTABLE="SELECT fn_imported_business_document(:table,:id)";
-    private static final Pattern METADATA=Pattern.compile("SELECT id, fn_imported_business_document\\(:table,id\\) FROM public\\.([a-z][a-z0-9_]*) WHERE id IN \\(:ids\\)");
+    // V1120: retained-record metadata reads the maintained registry; commands keep the authority.
+    private static final Pattern METADATA=Pattern.compile("SELECT id, fn_imported_business_document_registered\\(:table,id\\) FROM public\\.([a-z][a-z0-9_]*) WHERE id IN \\(:ids\\)");
     private static final Pattern SOURCES=Pattern.compile("SELECT id FROM public\\.([a-z][a-z0-9_]*) WHERE id IN \\(:ids\\) AND fn_imported_business_document\\(:table,id\\)");
     private static final String DELETIONS="SELECT DISTINCT ON (source_id) source_id, recorded_at, actor_name, payload->>'deleted_reason' FROM business_record_history WHERE source_table=:table AND source_id IN (:ids) AND operation='SOFT_DELETE' ORDER BY source_id,id DESC";
     private static final String MEASUREMENT="SELECT b.id,(h.id IS NOT NULL OR u.id IS NULL) AS measurement_pending, CASE WHEN h.id IS NOT NULL THEN h.reason WHEN u.id IS NULL THEN 'MISSING_BASE_UNIT' END AS measurement_hold_reason FROM stock_balances b JOIN goods g ON g.id=b.goods_id LEFT JOIN stock_measurement_holds h ON h.stock_balance_id=b.id AND h.released_at IS NULL LEFT JOIN units u ON NOT u.is_deleted AND NULLIF(btrim(u.name),'') IS NOT NULL AND (u.id=g.unit_id OR (g.unit_id IS NULL AND u.legacy_id=NULLIF(g.unit_legacy_id,0))) WHERE b.id IN (:ids)";
@@ -240,9 +241,9 @@ public final class ImportedDocumentFixture {
     }
 
     private static boolean originControlQuery(String sql) {
-        return sql.startsWith("SELECT fn_imported_business_document(")
-                ||sql.startsWith("SELECT id, fn_imported_business_document(")
-                ||sql.startsWith("SELECT id FROM public.")&&sql.contains("fn_imported_business_document(");
+        return sql.startsWith("SELECT fn_imported_business_document")
+                ||sql.startsWith("SELECT id, fn_imported_business_document")
+                ||sql.startsWith("SELECT id FROM public.")&&sql.contains("fn_imported_business_document");
     }
 
     private static String normalize(String sql) { return sql.strip().replaceAll("\\s+"," "); }

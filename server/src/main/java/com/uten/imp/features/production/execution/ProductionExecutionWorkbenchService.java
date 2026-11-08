@@ -42,13 +42,14 @@ public class ProductionExecutionWorkbenchService {
     /** 段级动作：在开工确认表里认料。 */
     static final String ACTION_CHOOSE = "CHOOSE";
     private static final String BIN_STATE_KNOWN = WorkshopMaterialStatePort.KNOWN;
-    /** The ongoing queue never inherits a historical-list originScope request. */
+    /** The ongoing queue never inherits a historical-list originScope request. Analyses are
+     * not archive documents (no V926 guard), so only plan roots can be imported history. */
     private static final String CURRENT_ROOT_PREDICATE = """
             (CASE root.root_type
-              WHEN 'PLAN' THEN NOT fn_imported_business_document('production_plans', root.root_id)
-              WHEN 'ANALYSIS' THEN NOT fn_imported_business_document('production_material_analyses', root.root_id)
+              WHEN 'PLAN' THEN NOT %s
+              WHEN 'ANALYSIS' THEN TRUE
               ELSE FALSE END)
-            """;
+            """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.registeredSql("production_plans", "root.root_id"));
 
     private final EntityManager em;
     private final ProductionDocumentAccessPolicy productionAccess;
@@ -304,10 +305,33 @@ public class ProductionExecutionWorkbenchService {
             UUID workshopDepartmentId, LocalDate dateFrom, LocalDate dateTo,
             String preparationFilter, String routeFilter,
             String analysisNo, String segmentCode, String sort, String order) {
+        return workshopTasks(requestedPage, requestedSize, keyword, rawStatus, workshopDepartmentId, dateFrom, dateTo,
+                preparationFilter, routeFilter, analysisNo, segmentCode, sort, order, INTERACTIVE_PAGE_SIZE);
+    }
+
+    /**
+     * 导出批次读取：与 {@link #workshopTasks} 同一谓词、排序与可见范围，只是单批上限对齐
+     * ReportQueryKit 的 500 行批次——交互页的 100 行上限曾让导出第一批就被判「不完整」。
+     */
+    @Transactional(readOnly = true)
+    public PageResponse<ProductionExecutionWorkbenchSegment> workshopTaskExportBatch(
+            int requestedPage, int requestedSize, String keyword, String rawStatus,
+            UUID workshopDepartmentId, LocalDate dateFrom, LocalDate dateTo,
+            String preparationFilter, String routeFilter,
+            String analysisNo, String segmentCode, String sort, String order) {
+        return workshopTasks(requestedPage, requestedSize, keyword, rawStatus, workshopDepartmentId, dateFrom, dateTo,
+                preparationFilter, routeFilter, analysisNo, segmentCode, sort, order, EXPORT_BATCH_SIZE);
+    }
+
+    private PageResponse<ProductionExecutionWorkbenchSegment> workshopTasks(
+            int requestedPage, int requestedSize, String keyword, String rawStatus,
+            UUID workshopDepartmentId, LocalDate dateFrom, LocalDate dateTo,
+            String preparationFilter, String routeFilter,
+            String analysisNo, String segmentCode, String sort, String order, int sizeCap) {
         UUID employeeId = currentUser.employeeId().orElse(null);
         boolean seeAll = allWorkshopReads();
         if (employeeId == null && !seeAll) {
-            int size = boundedSize(requestedSize);
+            int size = boundedSize(requestedSize, sizeCap);
             return new PageResponse<>(List.of(), 1, size, 0, 0);
         }
         String status = normalizeTaskStatus(rawStatus);
@@ -330,10 +354,10 @@ public class ProductionExecutionWorkbenchService {
                         keyword, workshopDepartmentId, dateFrom, dateTo, history,
                         routeFilter, analysisNo, segmentCode),
                 requestedPage,
-                requestedSize,
+                boundedSize(requestedSize, sizeCap),
                 orderBy,
                 operatorRouteMemory,
-                !history,true);
+                !history,true,sizeCap);
     }
 
     /** workshopTasks/workshopTaskFacets 共用的 WHERE 谓词（单号值筛选也在此拼接）。 */
@@ -469,6 +493,43 @@ public class ProductionExecutionWorkbenchService {
         String status = normalizeTaskStatus(rawStatus);
         String predicate = workshopTaskPredicate(status, workshopDepartmentId, keyword, preparationFilter, routeFilter, null, null);
         boolean history = "COMPLETED".equals(status);
+        UUID scopedEmployeeId = seeAll ? null : employeeId;
+        if (!com.uten.imp.common.web.NativeFacetCandidates.active()) {
+            // 两列桶一次候选（2026-11-07 读取性能根治）：同一谓词的段视图只求值一次，
+            // 两组桶的值、计数、排序与各自 500 桶上限和原两条查询一致。
+            Query query = em.createNativeQuery("""
+                    WITH facet_candidates AS MATERIALIZED (
+                        SELECT COALESCE(%s, '') AS source_plan, COALESCE(task.segment_code, '') AS segment
+                        FROM v_production_execution_workbench_segments task WHERE %s
+                    ), source_plan_buckets AS (
+                        SELECT 0 AS facet_rank, source_plan AS bucket_value, COUNT(*) AS bucket_count
+                        FROM facet_candidates GROUP BY source_plan HAVING source_plan <> ''
+                        ORDER BY source_plan LIMIT :facetLimit
+                    ), segment_buckets AS (
+                        SELECT 1 AS facet_rank, segment AS bucket_value, COUNT(*) AS bucket_count
+                        FROM facet_candidates GROUP BY segment
+                        ORDER BY segment LIMIT :facetLimit
+                    )
+                    SELECT facet_rank, bucket_value, bucket_count FROM source_plan_buckets
+                    UNION ALL
+                    SELECT facet_rank, bucket_value, bucket_count FROM segment_buckets
+                    ORDER BY 1, 2
+                    """.formatted(ROOT_ANALYSIS_NO_SQL, predicate));
+            bindWorkshopTaskFilters(query, scopedEmployeeId, keyword,
+                    workshopDepartmentId, dateFrom, dateTo, history,
+                    routeFilter, null, null);
+            query.setParameter("facetLimit", com.uten.imp.common.web.TableFacets.DEFAULT_LIMIT);
+            List<java.util.Map<String, Object>> sourcePlans = new ArrayList<>();
+            List<java.util.Map<String, Object>> segments = new ArrayList<>();
+            for (Object[] row : NativeQueryResults.objectArrayRows(query)) {
+                var bucket = NativeFacets.bucket(row[1] == null ? "" : row[1].toString(), ((Number) row[2]).longValue());
+                (((Number) row[0]).intValue() == 0 ? sourcePlans : segments).add(bucket);
+            }
+            java.util.Map<String, List<java.util.Map<String, Object>>> result = new java.util.LinkedHashMap<>();
+            result.put("sourcePlan", sourcePlans);
+            result.put("segment", segments);
+            return result;
+        }
         String from = " FROM v_production_execution_workbench_segments task WHERE "
                 + predicate;
         var sourcePlanQuery = NativeFacets.query(em, "sourcePlan", """
@@ -479,7 +540,6 @@ public class ProductionExecutionWorkbenchService {
         var segmentQuery = NativeFacets.query(em, "segment",
                 "SELECT COALESCE(task.segment_code, ''), COUNT(*)" + from
                 + " GROUP BY 1 ORDER BY 1");
-        UUID scopedEmployeeId = seeAll ? null : employeeId;
         for (var query : List.of(sourcePlanQuery, segmentQuery)) {
             bindWorkshopTaskFilters(query, scopedEmployeeId, keyword,
                     workshopDepartmentId, dateFrom, dateTo, history,
@@ -736,8 +796,9 @@ public class ProductionExecutionWorkbenchService {
      * 可开工越靠前）。档位与状态筛选四桶一一对应（preparationPredicate 同款谓词）：
      * 0 = 可开工（零料/已发料且 READY/DISPATCHED）；1 = 已提交领料·待仓库发料；
      * 2 = 待认料或待开启整批领料 (ADR-131)；3 = 物料齐套·去领料；4 = 等料 (WAITING)。
-     * 同档位内再按既有键稳定排序。CASE 短路保证领料谓词里的 EXISTS 只对
-     * READY/DISPATCHED 行求值。
+     * 同档位内再按既有键稳定排序。CASE 短路保证领料谓词里的 EXISTS 与档位函数只对
+     * READY/DISPATCHED 行求值（WAITING 直接落第 4 档）。排序在候选 CTE 上对全部候选
+     * 求值：车间任务页与导出都按页拼出完整列表，次序必须跨页一致。
      */
     private static final String SEGMENT_ORDER_READINESS = """
             ORDER BY CASE
@@ -759,6 +820,10 @@ public class ProductionExecutionWorkbenchService {
                      task.segment_no ASC,
                      task.segment_id ASC
             """.formatted(unresolvedBinMaterialPredicate(), drawRequestedPredicate());
+
+    private static final String FN_SPLIT_BATCH_EMPTY_ISSUED = "fn_split_batch_empty_issued(task.segment_id)";
+    private static final String FN_ACTUAL_SUPPLEMENT_MATERIAL_READY = "fn_actual_supplement_material_ready(task.segment_id)";
+    private static final String FN_MATERIAL_DISCOVERY_PENDING = "fn_material_discovery_pending(task.segment_id)";
 
     private PageResponse<ProductionExecutionWorkbenchSegment> segmentPage(
             String predicate,
@@ -789,9 +854,21 @@ public class ProductionExecutionWorkbenchService {
             String orderBy,
             String operatorRouteMemory,
             boolean planningFacts,boolean workshopReader) {
+        return segmentPage(predicate,binder,requestedPage,requestedSize,orderBy,operatorRouteMemory,
+                planningFacts,workshopReader,INTERACTIVE_PAGE_SIZE);
+    }
+
+    private PageResponse<ProductionExecutionWorkbenchSegment> segmentPage(
+            String predicate,
+            java.util.function.Consumer<Query> binder,
+            int requestedPage,
+            int requestedSize,
+            String orderBy,
+            String operatorRouteMemory,
+            boolean planningFacts,boolean workshopReader,int sizeCap) {
         try(var readScope=com.uten.imp.common.util.InteractiveTaskReadScope.open(em)){
             return readSegmentPage(predicate,binder,requestedPage,requestedSize,orderBy,
-                    operatorRouteMemory,planningFacts,workshopReader);
+                    operatorRouteMemory,planningFacts,workshopReader,sizeCap);
         }
     }
 
@@ -802,18 +879,19 @@ public class ProductionExecutionWorkbenchService {
             int requestedSize,
             String orderBy,
             String operatorRouteMemory,
-            boolean planningFacts,boolean workshopReader) {
-        int size = boundedSize(requestedSize);
+            boolean planningFacts, boolean workshopReader, int sizeCap) {
+        int size = boundedSize(requestedSize, sizeCap);
         int page = Math.max(requestedPage, 1);
-        String from = " FROM v_production_execution_workbench_segments task WHERE "
-                + predicate;
-        Query count = em.createNativeQuery("SELECT COUNT(*)" + from);
-        binder.accept(count);
-        long total = ((Number) count.getSingleResult()).longValue();
-        int totalPages = pages(total, size);
-        if (totalPages > 0 && page > totalPages) page = totalPages;
-        // 逐种物料事实(ADR-095)只在取页数据时按行 LATERAL 计算一次；计数查询不付这笔代价。
-        String dataFrom = " FROM v_production_execution_workbench_segments task"
+        // count/data 一次候选（2026-11-07 读取性能根治）：段视图按谓词在一条语句里只求值
+        // 一次——总数从候选 CTE 派生，排序键（含「等待物料」档位 CASE，WAITING 行短路
+        // 不调函数）对全部候选求值以保持跨页一致的全局次序，逐行物料/齐套等富化只对
+        // 本页行计算。
+        String candidates = "SELECT task.* FROM v_production_execution_workbench_segments task WHERE " + predicate;
+        String pageSegments = "SELECT task.*, ROW_NUMBER() OVER (" + orderBy + ") AS page_position"
+                + " FROM segment_candidates task " + orderBy + " LIMIT :limit OFFSET :offset";
+        // 逐种物料事实(ADR-095)只在取页数据时按行 LATERAL 计算一次；计数不付这笔代价。
+        // readiness LATERAL：三个逐行档位函数在投影里多处引用，每行各求值一次。
+        String dataFrom = " FROM page_segments task"
                 + " LEFT JOIN LATERAL fn_execution_segment_material_summary(task.segment_id) material ON TRUE"
                 + " JOIN production_execution_segments rate_segment ON rate_segment.id=task.segment_id"
                 + " LEFT JOIN production_material_discovery_requests discovery ON discovery.execution_segment_id=task.segment_id AND discovery.status IN ('PENDING','CONFIGURED')"
@@ -825,15 +903,22 @@ public class ProductionExecutionWorkbenchService {
                 + " AND (recovery_authority.disposition_code='REWORK' OR fn_fqc_replenishment_material_ready(recovery_authority.id)))) AS allowed) report_origin ON TRUE"
                 // ADR-131 车间内料仓用料状态：每行只算一次，状态列与「要不要过开工确认表」共用。
                 + " LEFT JOIN LATERAL (SELECT fn_segment_bin_material_state(task.segment_id) AS state) bin_material ON TRUE"
-                + " WHERE " + predicate;
+                + " LEFT JOIN LATERAL (SELECT " + FN_SPLIT_BATCH_EMPTY_ISSUED + " AS split_empty_issued,"
+                + " " + FN_ACTUAL_SUPPLEMENT_MATERIAL_READY + " AS supplement_ready,"
+                + " " + FN_MATERIAL_DISCOVERY_PENDING + " AS discovery_pending) readiness ON TRUE";
         UUID actionEmployee=currentUser.employeeId().orElse(null);
         // Only newly broadened personal-task rows lose task eligibility. The
         // ordinary plan-owner workbench keeps its original command contract.
         boolean actionAll=!workshopReader || currentUser.get().map(AuthUser::isSuperAdmin).orElse(false);
         String actionScope=actionAll?"TRUE":actionEmployee==null?"FALSE":assignmentPredicate("task")
                 .replace(":employeeId",":workshopActionEmployee");
-        Query data = em.createNativeQuery(segmentSelect() + ", ("+actionScope+") AS original_task_scope" + dataFrom + "\n" + orderBy
-                + "\n LIMIT :limit OFFSET :offset");
+        String dataSql = "WITH segment_candidates AS MATERIALIZED (" + candidates + "),"
+                + " page_segments AS MATERIALIZED (" + pageSegments + ")\n"
+                + segmentSelect("readiness.split_empty_issued", "readiness.supplement_ready", "readiness.discovery_pending")
+                + ", ("+actionScope+") AS original_task_scope,"
+                + " (SELECT COUNT(*) FROM segment_candidates) AS candidate_total" + dataFrom
+                + "\n ORDER BY task.page_position";
+        Query data = em.createNativeQuery(dataSql);
         binder.accept(data);
         if(!actionAll && actionEmployee!=null)data.setParameter("workshopActionEmployee",actionEmployee);
         boolean activeOperator = workshopMembership.isActiveOperator();
@@ -847,6 +932,21 @@ public class ProductionExecutionWorkbenchService {
         data.setParameter("limit", size);
         data.setParameter("offset", (long) (page - 1) * size);
         List<Object[]> rows = NativeQueryResults.objectArrayRows(data);
+        long total = rows.isEmpty() ? 0L : ((Number) rows.getFirst()[81]).longValue();
+        if (rows.isEmpty() && page > 1) {
+            // 页码超过末页：与原「先计数、再钳到末页取数」一致——空页才单独计数并收回。
+            Query count = em.createNativeQuery("SELECT COUNT(*) FROM v_production_execution_workbench_segments task WHERE " + predicate);
+            binder.accept(count);
+            total = ((Number) count.getSingleResult()).longValue();
+            int lastPage = pages(total, size);
+            if (lastPage > 0) {
+                page = lastPage;
+                data.setParameter("offset", (long) (page - 1) * size);
+                rows = NativeQueryResults.objectArrayRows(data);
+                if (!rows.isEmpty()) total = ((Number) rows.getFirst()[81]).longValue();
+            }
+        }
+        int totalPages = pages(total, size);
         var usage = materialUsage.forVisibleSegments(rows.stream().map(row -> uuid(row[0])).toList());
         java.util.Map<UUID, PlanningFacts> planning = planningFacts
                 ? planningFacts(rows, activeOperator && productionAccess.hasAuthority("production_execution:start")
@@ -1161,6 +1261,17 @@ public class ProductionExecutionWorkbenchService {
     }
 
     static String segmentSelect() {
+        return segmentSelect(FN_SPLIT_BATCH_EMPTY_ISSUED, FN_ACTUAL_SUPPLEMENT_MATERIAL_READY, FN_MATERIAL_DISCOVERY_PENDING);
+    }
+
+    /**
+     * 数据页里逐行物料/齐套函数的一次求值（2026-11-07 读取性能根治）：把
+     * fn_split_batch_empty_issued / fn_actual_supplement_material_ready /
+     * fn_material_discovery_pending 挪进 readiness LATERAL 后，投影里全部改读
+     * readiness 列——每行每函数只算一次，替换前同一投影最多各算 5/4/4 次。
+     * ORDER BY 走 {@link #boundedSegmentOrder}。
+     */
+    static String segmentSelect(String splitEmptyIssued, String supplementReady, String discoveryPending) {
         return """
                 SELECT task.segment_id, task.plan_id, task.plan_no,
                        task.segment_code, task.sales_order_nos,
@@ -1173,14 +1284,14 @@ public class ProductionExecutionWorkbenchService {
                        task.fqc_failed_qty,
                        task.finished_inbound_pending_qty, task.inbound_qty,
                        task.segment_status,
-                       CASE WHEN fn_split_batch_empty_issued(task.segment_id) OR fn_actual_supplement_material_ready(task.segment_id) THEN 'KIT_READY' ELSE task.material_status END,
-                       CASE WHEN fn_split_batch_empty_issued(task.segment_id) OR fn_actual_supplement_material_ready(task.segment_id) THEN 'PREPARED' ELSE task.preparation_status END,
-                       (task.material_status = 'KIT_READY' OR fn_split_batch_empty_issued(task.segment_id) OR fn_actual_supplement_material_ready(task.segment_id)) AS material_ready,
-                       task.warehouse_ready, %s,
+                       CASE WHEN %1$s OR %2$s THEN 'KIT_READY' ELSE task.material_status END,
+                       CASE WHEN %1$s OR %2$s THEN 'PREPARED' ELSE task.preparation_status END,
+                       (task.material_status = 'KIT_READY' OR %1$s OR %2$s) AS material_ready,
+                       task.warehouse_ready, (task.issued OR %1$s OR %2$s),
                        FALSE,
                        (:allowRequestDraw AND task.segment_status IN ('READY','DISPATCHED')
                          AND EXISTS (SELECT 1 FROM production_execution_segments start_segment
-                           JOIN %4$s start_plan ON start_plan.id=start_segment.plan_id
+                           JOIN %6$s start_plan ON start_plan.id=start_segment.plan_id
                            WHERE start_segment.id=task.segment_id
                              AND start_segment.start_route IN ('FULL_KIT','CONTINUOUS')
                              AND start_segment.workshop_department_id IS NOT NULL
@@ -1194,7 +1305,7 @@ public class ProductionExecutionWorkbenchService {
                        CASE
                            WHEN bin_material.state = 'NEED_CHOICE' THEN '请先在开工确认表里认料'
                            WHEN bin_material.state = 'NEED_BIN' THEN '请先开启本车间整批领料'
-                           WHEN fn_material_discovery_pending(task.segment_id) THEN
+                           WHEN %3$s THEN
                              CASE WHEN discovery.id IS NULL THEN '请提交领料，由仓库填写实际材料'
                                ELSE '等待仓库填写实际材料并办理发料' END
                            WHEN NOT report_origin.allowed THEN '固定追加工单请从追加计划回原批次续报'
@@ -1207,15 +1318,15 @@ public class ProductionExecutionWorkbenchService {
                        END,
                        task.plan_begin_date, task.plan_end_date,
                        task.lock_version,
-                       (task.zero_material AND NOT fn_material_discovery_pending(task.segment_id)),
-                       (:allowRequestDraw AND NOT fn_material_discovery_pending(task.segment_id) AND EXISTS (SELECT 1 FROM production_execution_segments current_segment
+                       (task.zero_material AND NOT %3$s),
+                       (:allowRequestDraw AND NOT %3$s AND EXISTS (SELECT 1 FROM production_execution_segments current_segment
                            WHERE current_segment.id = task.segment_id
                              AND current_segment.status IN ('WAITING','READY','DISPATCHED','IN_PROGRESS')
                              AND current_segment.start_route IN ('FULL_KIT','CONTINUOUS')
                              AND current_segment.auto_promote_when_ready = TRUE
                              AND current_segment.is_deleted = FALSE)),
-                       %s,
-                       (:allowRequestDraw AND %s),
+                       %4$s,
+                       (:allowRequestDraw AND %5$s),
                        (:allowRequestDraw AND fn_can_split_execution_batch(task.segment_id)),
                        (SELECT source_segment_id FROM production_execution_segments WHERE id=task.segment_id),
                        EXISTS(SELECT 1 FROM production_execution_segment_splits WHERE source_segment_id=task.segment_id),
@@ -1231,7 +1342,7 @@ public class ProductionExecutionWorkbenchService {
                        (:allowRequestDraw AND task.segment_status IN ('WAITING','READY','DISPATCHED')
                          AND fn_can_change_execution_route(task.segment_id)),
                        EXISTS(SELECT 1 FROM production_execution_segments command_segment
-                         JOIN %4$s command_plan ON command_plan.id=command_segment.plan_id
+                         JOIN %6$s command_plan ON command_plan.id=command_segment.plan_id
                          JOIN production_planning_packages command_package ON command_package.id=command_segment.package_id
                          WHERE command_segment.id=task.segment_id AND NOT command_segment.is_deleted
                            AND command_plan.status=1 AND NOT command_plan.is_deleted
@@ -1258,7 +1369,7 @@ public class ProductionExecutionWorkbenchService {
                        task.planned_inbound_qty,rate_segment.allowed_overproduction_rate,
                        rate_segment.overproduction_rate_version,rate_request.id,rate_request.requested_rate,
                        fn_execution_overproduction_policy_applies(rate_segment.id),
-                       (SELECT actual_output_supplement_request_id FROM %4$s production_plans WHERE id=task.plan_id),
+                       (SELECT actual_output_supplement_request_id FROM %6$s production_plans WHERE id=task.plan_id),
                        -- 2026-10-06：原任务行上「已批准未续报承接」的固定追加量——它占住了公共超产
                        -- 额度，页面据此给出「回原批次续报」入口与待续报提示；无待续报为 0/null。
                        fn_actual_supplement_pending_qty(rate_segment.id, NULL),
@@ -1268,14 +1379,14 @@ public class ProductionExecutionWorkbenchService {
                             AND proof.id IS NOT NULL
                             AND NOT EXISTS(SELECT 1 FROM production_actual_output_supplement_reversals reversal WHERE reversal.proof_id=proof.id)
                             AND NOT EXISTS(SELECT 1 FROM production_actual_output_supplement_claims claim
-                                JOIN %6$s report ON report.id=claim.report_id
+                                JOIN %8$s report ON report.id=claim.report_id
                                 WHERE claim.proof_id=proof.id AND claim.event_type='CLAIM' AND NOT report.is_deleted
                                   AND report.status IN(0,1)
                                   AND NOT EXISTS(SELECT 1 FROM production_actual_output_supplement_claims release WHERE release.source_claim_id=claim.id))
                           ORDER BY request.created_at DESC LIMIT 1),
-                       fn_material_discovery_pending(task.segment_id),
+                       %3$s,
                        discovery.id, discovery.status,
-                       (:allowRequestDraw AND fn_material_discovery_pending(task.segment_id)
+                       (:allowRequestDraw AND %3$s
                          AND bin_material.state NOT IN ('NEED_CHOICE','NEED_BIN')
                          AND rate_segment.start_route IN ('FULL_KIT','CONTINUOUS')
                          AND discovery.id IS NULL AND task.segment_status IN ('WAITING','READY','DISPATCHED')),
@@ -1287,7 +1398,7 @@ public class ProductionExecutionWorkbenchService {
                        (:allowRequestDraw AND task.segment_status IN ('READY','DISPATCHED')
                          AND bin_material.state <> 'NEED_BIN'
                          AND EXISTS (SELECT 1 FROM production_execution_segments confirm_segment
-                           JOIN %4$s confirm_plan ON confirm_plan.id=confirm_segment.plan_id
+                           JOIN %6$s confirm_plan ON confirm_plan.id=confirm_segment.plan_id
                            JOIN production_planning_packages confirm_package ON confirm_package.id=confirm_segment.package_id
                            WHERE confirm_segment.id=task.segment_id
                              AND confirm_segment.workshop_department_id IS NOT NULL
@@ -1297,17 +1408,19 @@ public class ProductionExecutionWorkbenchService {
                              AND confirm_package.status='CONFIRMED' AND NOT confirm_package.is_deleted
                              AND (bin_material.state = 'NEED_CHOICE' OR confirm_segment.start_route IS NULL))),
                        COALESCE((SELECT SUM(disposition.qty) FROM production_over_limit_dispositions disposition
-                         JOIN %5$s reported ON reported.id=disposition.report_id
+                         JOIN %7$s reported ON reported.id=disposition.report_id
                          WHERE disposition.execution_segment_id=task.segment_id
                            AND disposition.status IN('PENDING','HELD','RETURNED')
                            AND reported.status=1 AND NOT reported.is_deleted),0),
                        (SELECT disposition.id FROM production_over_limit_dispositions disposition
-                         JOIN %5$s reported ON reported.id=disposition.report_id
+                         JOIN %7$s reported ON reported.id=disposition.report_id
                          WHERE disposition.execution_segment_id=task.segment_id
                            AND disposition.status IN('PENDING','HELD','RETURNED')
                            AND reported.status=1 AND NOT reported.is_deleted
                          ORDER BY disposition.created_at DESC,disposition.id DESC LIMIT 1)
-                """.formatted(effectiveIssuedPredicate(), drawRequestedPredicate(), ordinaryDrawRequestablePredicate("bin_material.state"), nativeRowsByKey("production_plans","id","task.plan_id"), nativeRowsByKey("production_daily_reports","id","disposition.report_id"), nativeRowsByKey("production_daily_reports","id","claim.report_id"));
+                """.formatted(splitEmptyIssued, supplementReady, discoveryPending,
+                drawRequestedPredicate(), ordinaryDrawRequestablePredicate("bin_material.state"),
+                nativeRowsByKey("production_plans","id","task.plan_id"), nativeRowsByKey("production_daily_reports","id","disposition.report_id"), nativeRowsByKey("production_daily_reports","id","claim.report_id"));
     }
 
     /**
@@ -1444,12 +1557,12 @@ public class ProductionExecutionWorkbenchService {
                       AND producing.product_unit_rate>0
                       AND producing_plan.status=1 AND NOT producing_plan.is_deleted
                       AND NOT producing_plan.is_closed AND NOT producing_plan.is_canceled AND NOT producing_plan.is_stopped
-                      AND NOT fn_imported_business_document('production_plans',producing_plan.id)
+                      AND %s
                       AND producing_package.status='CONFIRMED' AND NOT producing_package.is_deleted
                       AND fn_workshop_direct_relationship_allows(producing.id,short_material.demand_id)
                     GROUP BY producing.source_plan_item_id
                 ) source_capacity
-                """;
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativePredicate("production_plans", "producing_plan"));
     }
 
     /** ADR-131：与领料命令入口、开工确认表同一个状态函数。 */
@@ -1680,8 +1793,16 @@ public class ProductionExecutionWorkbenchService {
     }
 
     private static int boundedSize(int requested) {
-        return Math.min(Math.max(requested, 1), 100);
+        return boundedSize(requested, INTERACTIVE_PAGE_SIZE);
     }
+
+    private static int boundedSize(int requested, int cap) {
+        return Math.min(Math.max(requested, 1), cap);
+    }
+
+    /** 交互页单页上限；导出走 ReportQueryKit 的 500 行批次（{@link #workshopTaskExportBatch}）。 */
+    private static final int INTERACTIVE_PAGE_SIZE = 100;
+    static final int EXPORT_BATCH_SIZE = 500;
 
     private static int pages(long total, int size) {
         return total == 0 ? 0 : (int) ((total + size - 1) / size);

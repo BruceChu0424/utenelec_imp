@@ -16,6 +16,7 @@ import 'package:uten_imp/shared/badges/badge_registry.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
+import '../../helpers/workbench_read_fixture.dart';
 import '../../support/audit_screenshot_support.dart';
 
 void main() {
@@ -285,42 +286,46 @@ class _Gateway implements OperationsWorkbenchGateway {
     this.order = order;
     filters = {...columnFilters};
     this.page = page;
-    return OperationsWorkbenchData(
-      department: department,
-      summary: const OperationsWorkbenchSummary(
-        totalTasks: 4,
-        overdueTasks: 0,
-        openTasks: 4,
-        openQty: 8,
-        statusCounts: {'WAITING_ORDER': 4},
+    return workbenchPageSlice(
+      OperationsWorkbenchData(
+        department: department,
+        summary: const OperationsWorkbenchSummary(
+          totalTasks: 4,
+          overdueTasks: 0,
+          openTasks: 4,
+          openQty: 8,
+          statusCounts: {'WAITING_ORDER': 4},
+        ),
+        items: [
+          for (final entry in ['-8.0000', '0.0000', '2.5000', null].indexed)
+            OperationsWorkbenchTask.fromJson({
+              'taskId': 'request-item-${entry.$1}',
+              'supplyRoute': 'BUY',
+              'taskStatus': 'WAITING_ORDER',
+              'requiredQty': 8,
+              'allocatedQty': [0, 8, 10.5, 0][entry.$1],
+              'fulfilledQty': [0, 8, 10.5, 0][entry.$1],
+              'openQty': [8, 0, 0, 8][entry.$1],
+              'goodsName': ['未下单物料', '已全部下单', '超量下单', '旧响应未知量'][entry.$1],
+              'goodsCode': 'GD00${entry.$1}',
+              'unitName': '个',
+              'planNo': 'WL-20261027',
+              'actionDocType': 'PURCHASE_REQUEST',
+              'actionDocId': 'request-1',
+              'actionDocNo': 'CGSQ-001',
+              'actionDocCanView': true,
+              'actionDocItemId': 'request-item-${entry.$1}',
+              'differenceQtyExact': entry.$2,
+            }, department),
+        ],
+        page: 1,
+        size: size,
+        total: 4,
+        totalPages: 1,
+        capabilities: const OperationsWorkbenchCapabilities(),
       ),
-      items: [
-        for (final entry in ['-8.0000', '0.0000', '2.5000', null].indexed)
-          OperationsWorkbenchTask.fromJson({
-            'taskId': 'request-item-${entry.$1}',
-            'supplyRoute': 'BUY',
-            'taskStatus': 'WAITING_ORDER',
-            'requiredQty': 8,
-            'allocatedQty': [0, 8, 10.5, 0][entry.$1],
-            'fulfilledQty': [0, 8, 10.5, 0][entry.$1],
-            'openQty': [8, 0, 0, 8][entry.$1],
-            'goodsName': ['未下单物料', '已全部下单', '超量下单', '旧响应未知量'][entry.$1],
-            'goodsCode': 'GD00${entry.$1}',
-            'unitName': '个',
-            'planNo': 'WL-20261027',
-            'actionDocType': 'PURCHASE_REQUEST',
-            'actionDocId': 'request-1',
-            'actionDocNo': 'CGSQ-001',
-            'actionDocCanView': true,
-            'actionDocItemId': 'request-item-${entry.$1}',
-            'differenceQtyExact': entry.$2,
-          }, department),
-      ],
-      page: page,
-      size: size,
-      total: 4,
-      totalPages: 1,
-      capabilities: const OperationsWorkbenchCapabilities(),
+      page,
+      size,
     );
   }
 }

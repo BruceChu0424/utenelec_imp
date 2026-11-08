@@ -18,6 +18,7 @@ import 'package:uten_imp/features/operations_workbench/pages/operations_workbenc
 import 'package:uten_imp/features/operations_workbench/repositories/operations_workbench_repository.dart';
 import 'package:uten_imp/shared/badges/badge_registry.dart';
 import '../../helpers/badge_summary_fixture.dart';
+import '../../helpers/workbench_read_fixture.dart';
 import '../../support/filter_segment_tap.dart';
 
 class _FakeGateway implements OperationsWorkbenchGateway {
@@ -45,7 +46,7 @@ class _FakeGateway implements OperationsWorkbenchGateway {
     String? needTo,
   }) async {
     statuses.add(status);
-    return data;
+    return workbenchPageSlice(data, page, size);
   }
 }
 

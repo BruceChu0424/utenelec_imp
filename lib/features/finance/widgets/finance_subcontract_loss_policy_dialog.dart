@@ -18,6 +18,7 @@ import '../../../shared/drafts/form_draft_mixin.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/paging/complete_paged_snapshot.dart';
 import '../../../shared/paging/read_view_activity.dart';
+import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
 import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../../shared/providers/export_context_epoch_provider.dart';
 import 'finance_source_table.dart';
@@ -75,7 +76,7 @@ class _PolicyDirectory extends ConsumerStatefulWidget {
 }
 
 class _PolicyDirectoryState extends ConsumerState<_PolicyDirectory>
-    with ReadViewActivityMixin<_PolicyDirectory> {
+    with ScopedPagedReadViewMixin<_PolicyDirectory> {
   @override
   Future<void> onReadViewResumed() => _load();
   late final ApiClient _api;
@@ -102,6 +103,23 @@ class _PolicyDirectoryState extends ConsumerState<_PolicyDirectory>
     super.dispose();
   }
 
+  Future<PagedResult<Map<String, dynamic>>> _fetchPage(
+    int page,
+    int size,
+    String keyword,
+  ) async => PagedResult.fromJsonResponsive<Map<String, dynamic>>(
+    await _api.get(
+      widget.chooseSource ? '$_base/source-choices' : _base,
+      query: {
+        'supplierId': widget.supplierId,
+        'keyword': keyword,
+        'page': page,
+        'size': size,
+      },
+    ),
+    (row) => row,
+  );
+
   Future<void> _load() async {
     if (!_current || _busy) return;
     setState(() {
@@ -110,29 +128,24 @@ class _PolicyDirectoryState extends ConsumerState<_PolicyDirectory>
     });
     try {
       final keyword = _keyword.text;
-      final result = await readViewActivity.runRead(
-        () => _current,
-        () => loadCompletePagedResult<Map<String, dynamic>>(
-          isCurrent: () => _current,
-          idOf: (row) => widget.chooseSource
-              ? row['goodsId'] == null || row['unitId'] == null
-                    ? null
-                    : _dimensionId(row)
-              : row['id'],
-          loadPage: (page, size) async =>
-              PagedResult.fromJsonResponsive<Map<String, dynamic>>(
-                await _api.get(
-                  widget.chooseSource ? '$_base/source-choices' : _base,
-                  query: {
-                    'supplierId': widget.supplierId,
-                    'keyword': keyword,
-                    'page': page,
-                    'size': size,
-                  },
-                ),
-                (row) => row,
-              ),
-        ),
+      final result = await readScopedPage<Map<String, dynamic>>(
+        1,
+        slot: 'subcontract-loss-policies',
+        idOf: (row) => widget.chooseSource
+            ? row['goodsId'] == null || row['unitId'] == null
+                  ? null
+                  : _dimensionId(row)
+            : row['id'],
+        query: [_api, widget.supplierId, widget.chooseSource, keyword],
+        currentQuery: () => [
+          _api,
+          widget.supplierId,
+          widget.chooseSource,
+          _keyword.text,
+        ],
+        isCurrent: () => _current,
+        fetchPage: (page) async => _fetchPage(page, 100, keyword),
+        fetchPageSized: (page, size) async => _fetchPage(page, size, keyword),
       );
       if (_current) {
         setState(() {

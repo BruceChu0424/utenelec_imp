@@ -100,6 +100,8 @@ mixin ScopedPagedReadViewMixin<W extends ConsumerStatefulWidget>
     bool Function()? isCurrent,
     bool Function()? canPrefetch,
     void Function(Object)? onPrefetchError,
+    void Function(PagedResult<R> provisional)? onProvisionalBatch,
+    int maxConcurrentPages = 1,
   }) {
     final key = (R, slot);
     final entry =
@@ -128,6 +130,12 @@ mixin ScopedPagedReadViewMixin<W extends ConsumerStatefulWidget>
             isCurrent: current,
             isOwnerCurrent: ownerCurrent,
             useCache: useCache,
+            maxConcurrentPages: maxConcurrentPages,
+            onProvisionalBatch: onProvisionalBatch == null
+                ? null
+                : (partial) {
+                    if (current()) onProvisionalBatch(partial);
+                  },
             canPrefetch: () =>
                 current() && (canPrefetch?.call() ?? _scopedViewActive),
             onPrefetchError: (error) {

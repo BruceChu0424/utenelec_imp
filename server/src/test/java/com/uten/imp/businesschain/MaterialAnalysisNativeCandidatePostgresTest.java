@@ -105,8 +105,10 @@ class MaterialAnalysisNativeCandidatePostgresTest {
 
         proveRealNativeAndInheritedArchiveFixtures(world);
         Profile before = profile(c.analysis());
-        assertTrue(before.provenanceCalls() > 0,
-                "The actual canonical native-proof function must execute in the measured transaction");
+        assertEquals(0, before.provenanceWalks(),
+                "V1120: the read classifies origin through the registry, never the graph walk");
+        assertTrue(before.registryLookups() > 0,
+                "The native-origin predicate must still execute in the measured transaction");
         assertFalse(before.quantities().isEmpty());
         assertEquals(0, new BigDecimal("3").compareTo(before.quantities().values().stream()
                 .reduce(BigDecimal.ZERO, BigDecimal::add)));
@@ -119,7 +121,8 @@ class MaterialAnalysisNativeCandidatePostgresTest {
         assertEquals(before.quantities().keySet(), after.quantities().keySet());
         before.quantities().forEach((key, quantity) -> assertEquals(0,
                 quantity.compareTo(after.quantities().get(key)), "Physical planned output changed for " + key));
-        assertEquals(before.provenanceCalls(), after.provenanceCalls(),
+        assertEquals(0, after.provenanceWalks());
+        assertEquals(before.registryLookups(), after.registryLookups(),
                 "Four unrelated, genuinely approved and stocked orders must not add native-proof candidates");
     }
 
@@ -143,6 +146,13 @@ class MaterialAnalysisNativeCandidatePostgresTest {
         assertNotNull(legacyId);
         assertEquals(1, db.update("UPDATE subcontract_applications SET legacy_id=? WHERE id=?",
                 legacyId, retainedDraft.getId()));
+        // V1120 maintenance contract: a source re-keyed after its children recomputes their verdicts.
+        db.queryForObject("SELECT public.fn_refresh_imported_document_registry(?)", Long.class,
+                "subcontract_application_items");
+        assertEquals(List.of(retainedItem), db.queryForList("""
+                SELECT row_id FROM imported_document_registry
+                WHERE table_name='subcontract_application_items' AND row_id IN (?,?)
+                """, UUID.class, retainedItem, nativeItem));
         assertTrue(Boolean.TRUE.equals(db.queryForObject("""
                 SELECT NULLIF(to_jsonb(item)->>'legacy_id','') IS NULL
                    AND NULLIF(to_jsonb(item)->>'legacy_import_run_id','') IS NULL
@@ -255,7 +265,7 @@ class MaterialAnalysisNativeCandidatePostgresTest {
                         assertEquals("on", readOnly.getString(1));
                     }
                 }
-                long before = provenanceCalls(connection);
+                long before = provenanceCalls(connection), beforeLookups = registryLookups(connection);
                 Map<String, BigDecimal> quantities = new LinkedHashMap<>();
                 try (PreparedStatement query = connection.prepareStatement(parentQuery())) {
                     query.setObject(1, analysisId);
@@ -265,8 +275,9 @@ class MaterialAnalysisNativeCandidatePostgresTest {
                     }
                 }
                 long calls = provenanceCalls(connection) - before;
-                assertTrue(calls >= 0);
-                return new Profile(Map.copyOf(quantities), calls);
+                long lookups = registryLookups(connection) - beforeLookups;
+                assertTrue(calls >= 0 && lookups >= 0);
+                return new Profile(Map.copyOf(quantities), calls, lookups);
             } finally {
                 connection.rollback();
             }
@@ -280,6 +291,18 @@ class MaterialAnalysisNativeCandidatePostgresTest {
                 """)) {
             assertTrue(rows.next());
             return rows.getLong(1);
+        }
+    }
+
+    private static long registryLookups(Connection connection) throws Exception {
+        try (PreparedStatement statement = connection.prepareStatement(
+                "SELECT COALESCE(sum(seq_scan+COALESCE(idx_scan,0)),0) FROM pg_stat_xact_user_tables WHERE schemaname=? AND relname=?")) {
+            statement.setString(1, "public");
+            statement.setString(2, "imported_document_registry");
+            try (ResultSet rows = statement.executeQuery()) {
+                assertTrue(rows.next());
+                return rows.getLong(1);
+            }
         }
     }
 
@@ -304,5 +327,5 @@ class MaterialAnalysisNativeCandidatePostgresTest {
                 """;
     }
 
-    private record Profile(Map<String, BigDecimal> quantities, long provenanceCalls) {}
+    private record Profile(Map<String, BigDecimal> quantities, long provenanceWalks, long registryLookups) {}
 }

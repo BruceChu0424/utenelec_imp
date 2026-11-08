@@ -200,15 +200,12 @@ public class ProductionOverproductionRateService {
                      AND plan.actual_output_supplement_request_id IS NULL)
                 FROM production_plan_items item JOIN production_plans plan ON plan.id=item.plan_id
                 WHERE plan.id IN (:plans) AND plan.status=0 AND NOT plan.is_deleted AND NOT item.is_deleted
-                    AND NULLIF(to_jsonb(item)->>'legacy_id','') IS NULL
-                    AND NULLIF(to_jsonb(item)->>'legacy_import_run_id','') IS NULL
-                    AND NOT fn_imported_business_document('production_plan_items',item.id)
-                    AND NULLIF(to_jsonb(plan)->>'legacy_id','') IS NULL
-                    AND NULLIF(to_jsonb(plan)->>'legacy_import_run_id','') IS NULL
-                    AND NOT fn_imported_business_document('production_plans',plan.id)
+                    AND %s AND %s
                     AND NOT EXISTS(SELECT 1 FROM production_execution_segments segment WHERE segment.source_plan_item_id=item.id)
                 ORDER BY item.id
-                """+(lock?" FOR UPDATE OF item":"")).setParameter("plans",plans)).stream().map(row ->
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativePredicate("production_plan_items","item"),
+                        com.uten.imp.common.history.ImportedBusinessDocumentScope.nativePredicate("production_plans","plan"))
+                +(lock?" FOR UPDATE OF item":"")).setParameter("plans",plans)).stream().map(row ->
                 new DraftRate((UUID)row[0],(UUID)row[1],decimal(row[2]),((Number)row[3]).longValue(),Boolean.TRUE.equals(row[4]))).toList();
     }
 

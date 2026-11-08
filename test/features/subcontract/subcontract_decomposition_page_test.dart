@@ -42,6 +42,7 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/badges/badge_registry.dart';
 import 'package:uten_imp/shared/models/subcontract_task_source.dart';
 import '../../helpers/badge_summary_fixture.dart';
+import '../../helpers/workbench_read_fixture.dart';
 
 const _decomposePermissions = {
   Perm.subcontractApplicationView,
@@ -3293,8 +3294,11 @@ class _Gateway implements OperationsWorkbenchGateway {
       'status': status,
       'filters': Map<String, String?>.from(columnFilters),
     });
-    if (inProgress && status == 'IN_PROGRESS') return _inProgressData();
-    return response == null ? data : await response!();
+    if (inProgress && status == 'IN_PROGRESS') {
+      return workbenchPageSlice(_inProgressData(), page, size);
+    }
+    final raw = response == null ? data : await response!();
+    return workbenchPageSlice(raw, page, size);
   }
 }
 

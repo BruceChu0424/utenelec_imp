@@ -86,6 +86,7 @@ Future<VersionedSummarySnapshot<T>> readVersionedSummarySnapshot<T>({
   int maxConcurrentPages = 1,
   required T Function(Map<String, dynamic> row) decode,
   required Object? Function(T row) idOf,
+  void Function(PagedResult<T> provisional)? onProvisionalBatch,
 }) async {
   String? snapshot;
   String? firstAuthority;
@@ -96,6 +97,7 @@ Future<VersionedSummarySnapshot<T>> readVersionedSummarySnapshot<T>({
     batchSize: batchSize,
     maxConcurrentPages: maxConcurrentPages,
     idOf: idOf,
+    onProvisionalBatch: onProvisionalBatch,
     loadPage: (page, size) async {
       final raw = await loadPage(page, size, snapshot);
       final revision = raw['readSnapshotRevision'];

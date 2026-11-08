@@ -11,6 +11,7 @@ import '../../../shared/providers/export_context_epoch_provider.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/paging/complete_paged_snapshot.dart';
 import '../../../shared/paging/read_view_activity.dart';
+import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
 import 'finance_source_table.dart';
 
 /// Selects an explicitly reviewed source identity; names never resolve an ID.
@@ -29,7 +30,7 @@ class _MaterialContextPicker extends ConsumerStatefulWidget {
 }
 
 class _MaterialContextPickerState extends ConsumerState<_MaterialContextPicker>
-    with ReadViewActivityMixin<_MaterialContextPicker> {
+    with ScopedPagedReadViewMixin<_MaterialContextPicker> {
   late final ApiClient _api;
   late final int _epoch;
   final _search = TextEditingController();
@@ -60,6 +61,27 @@ class _MaterialContextPickerState extends ConsumerState<_MaterialContextPicker>
     super.dispose();
   }
 
+  Future<PagedResult<Map<String, dynamic>>> _fetchPage(
+    int page,
+    int size,
+    String keyword,
+    Set<Map<String, dynamic>> acceptedItems,
+  ) async => PagedResult.fromJsonResponsive<Map<String, dynamic>>(
+    await _api.get(
+      '/finance/material-statements',
+      query: {
+        'page': page,
+        'size': size,
+        if (keyword.isNotEmpty) 'keyword': keyword,
+      },
+    ),
+    (row) {
+      final item = Map<String, dynamic>.unmodifiable(row);
+      acceptedItems.add(item);
+      return item;
+    },
+  );
+
   Future<void> _load({bool search = false}) async {
     if (!_current) return;
     if (search) _keyword = _search.text.trim();
@@ -74,28 +96,16 @@ class _MaterialContextPickerState extends ConsumerState<_MaterialContextPicker>
     bool current() =>
         _current && generation == _generation && keyword == _keyword;
     try {
-      final result = await readViewActivity.runRead(
-        current,
-        () => loadCompletePagedResult<Map<String, dynamic>>(
-          isCurrent: current,
-          idOf: (row) => row['id'],
-          loadPage: (page, size) async =>
-              PagedResult.fromJsonResponsive<Map<String, dynamic>>(
-                await _api.get(
-                  '/finance/material-statements',
-                  query: {
-                    'page': page,
-                    'size': size,
-                    if (keyword.isNotEmpty) 'keyword': keyword,
-                  },
-                ),
-                (row) {
-                  final item = Map<String, dynamic>.unmodifiable(row);
-                  acceptedItems.add(item);
-                  return item;
-                },
-              ),
-        ),
+      final result = await readScopedPage<Map<String, dynamic>>(
+        1,
+        slot: 'material-contexts',
+        idOf: (row) => row['id'],
+        query: [_api, keyword],
+        currentQuery: () => [_api, _keyword],
+        isCurrent: current,
+        fetchPage: (page) async => _fetchPage(page, 100, keyword, acceptedItems),
+        fetchPageSized: (page, size) async =>
+            _fetchPage(page, size, keyword, acceptedItems),
       );
       if (!current()) return;
       setState(() {

@@ -28,4 +28,19 @@ record WarehouseTaskPageMetadata(long total, Map<String,Long> statuses,
                 bills.entrySet().stream().map(entry -> new WarehouseTaskCenterContracts.StatusFacet(
                         entry.getKey(),entry.getKey(),entry.getValue())).toList());
     }
+
+    /** Buckets arrive as one JSON array on the first row of the merged page statement. */
+    static WarehouseTaskPageMetadata fromJson(String buckets) {
+        List<Object[]> rows = new java.util.ArrayList<>();
+        try {
+            for (var bucket : new com.fasterxml.jackson.databind.ObjectMapper().readTree(buckets)) {
+                rows.add(new Object[]{bucket.get(0).asText(),
+                        bucket.get(1).isNull() ? null : bucket.get(1).asText(),
+                        bucket.get(2).asLong()});
+            }
+        } catch (java.io.IOException failure) {
+            throw new IllegalStateException("Invalid warehouse page metadata", failure);
+        }
+        return from(rows);
+    }
 }

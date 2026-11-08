@@ -58,8 +58,8 @@ class SubcontractApplicationDecompositionPreviewTest {
         verify(fixture.em).createNativeQuery(sql.capture());
         assertThat(sql.getValue())
                 .contains("fn_procurement_order_reserves_source('SUBCONTRACT', o.id)")
-                .contains("NOT fn_imported_business_document('subcontract_application_items', i.id)")
-                .contains("NOT fn_imported_business_document('subcontract_applications', a.id)")
+                .contains(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativePredicate("subcontract_application_items", "i"))
+                .contains(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativePredicate("subcontract_applications", "a"))
                 .doesNotContain("supplier_id", "price", "amount_original", "amount_local");
     }
 

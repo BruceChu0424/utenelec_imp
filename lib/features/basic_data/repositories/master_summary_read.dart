@@ -50,6 +50,9 @@ Future<PagedResult<T>> readCompleteMasterSummary<T>(
   required T Function(Map<String, dynamic>) decode,
   required Object? Function(T) idOf,
 }) async {
+  // Captured before any await: the view's provisional slot lives in the zone
+  // of the ScopedPagedRead that owns these rows.
+  final provisional = PagedReadIntent.currentProvisional;
   final parent = PagedReadIntent.currentRead;
   final owner = await api.captureRequestScope(
     isCurrent: () => parent?.call() ?? true,
@@ -67,12 +70,24 @@ Future<PagedResult<T>> readCompleteMasterSummary<T>(
       },
       consume: (frames) async {
         final stream = CompleteSummaryStream(frames);
+        // This complete read owns the view's rows, so it claims the slot unless
+        // another reader in the same zone already did.
+        final publish = provisional != null && provisional.claim()
+            ? provisional.publish
+            : null;
         try {
           final result = await readVersionedSummarySnapshot<T>(
             isCurrent: () => owner.isCurrent,
             decode: decode,
             idOf: idOf,
             loadPage: stream.page,
+            onProvisionalBatch: publish == null
+                ? null
+                : (partial) {
+                    if (owner.isCurrent) {
+                      publish(partial as PagedResult<Object?>);
+                    }
+                  },
           );
           return result.page;
         } finally {

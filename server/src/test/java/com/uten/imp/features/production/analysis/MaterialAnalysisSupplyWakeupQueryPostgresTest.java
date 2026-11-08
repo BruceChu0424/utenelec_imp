@@ -299,11 +299,13 @@ class MaterialAnalysisSupplyWakeupQueryPostgresTest {
         var actual=(List<MaterialAnalysisSupplyWakeupService.AnalysisTarget>)selector.invoke(service,arguments);
         String current=lastSql;
         String dimension=dimension(current).replaceAll("\\s+"," ").trim();
-        // Keep the original golden hash after translating the indexed keys and full-row classifier to the reviewed forms.
+        // Keep the original golden hash after translating the indexed keys and the classifier
+        // (V1120 registry, formerly the full-row walk) to the reviewed forms.
         String originalEntryDimension=dimension
                 .replace("archive_origin.legacy_id IS NULL", "NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL")
                 .replace("archive_origin.legacy_import_run_id IS NULL", "NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL")
-                .replaceAll("fn_imported_business_document_row\\('([a-z_][a-z_0-9]*)',to_jsonb\\(archive_origin\\)\\)",
+                .replaceAll("EXISTS\\(SELECT 1 FROM imported_document_registry archive_registry WHERE "
+                        + "archive_registry\\.table_name='([a-z_][a-z_0-9]*)' AND archive_registry\\.row_id=archive_origin\\.id\\)",
                         "fn_imported_business_document('$1',archive_origin.id)");
         if (DIMENSION_HASHES.containsKey(method)) assertEquals(DIMENSION_HASHES.get(method),HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(originalEntryDimension.getBytes(StandardCharsets.UTF_8))),"reviewed actual-warehouse source UNION predicates are unchanged apart from the indexed origin check");
         if(DIMENSION_HASHES.containsKey(method))assertReviewedNativeOriginDelta(method,dimension);

@@ -746,7 +746,7 @@ public class SalesOrderService {
             com.uten.imp.common.history.ImportedBusinessDocumentScope.Origin requestedOrigin) {
         var origin = taskResponsibility
                 ? com.uten.imp.common.history.ImportedBusinessDocumentScope.Origin.CURRENT : requestedOrigin;
-        String imported = "fn_imported_business_document('sales_orders',o.id)";
+        String imported = com.uten.imp.common.history.ImportedBusinessDocumentScope.registeredSql("sales_orders", "o.id");
         String originPredicate = switch (origin) {
             case CURRENT -> "NOT " + imported;
             case LEGACY -> imported;
@@ -762,7 +762,7 @@ public class SalesOrderService {
                 LEFT JOIN employees finance_reviewer
                   ON finance_reviewer.id = o.finance_rejected_by
                 LEFT JOIN sales_order_items i ON i.order_id = o.id AND i.is_deleted = false
-                  AND (%s OR NOT fn_imported_business_document('sales_order_items',i.id))
+                  AND (%s OR NOT %s)
                 LEFT JOIN LATERAL (
                     SELECT COALESCE(SUM(si.qty) FILTER (WHERE s.finance_audit = 0 AND s.finance_rejected = false
                                AND COALESCE(s.finance_gate_version, 0) >= 2
@@ -778,11 +778,11 @@ public class SalesOrderService {
                     JOIN sales_shipments s ON s.id = si.shipment_id
                     WHERE si.order_item_id IN (SELECT oi.id FROM sales_order_items oi
                                                WHERE oi.order_id = o.id AND oi.is_deleted = false
-                                                 AND NOT fn_imported_business_document('sales_order_items',oi.id))
+                                                 AND NOT %s)
                       AND COALESCE(si.is_deleted, false) = false
                       AND COALESCE(s.is_deleted, false) = false
-                      AND NOT fn_imported_business_document('sales_shipment_items',si.id)
-                      AND NOT fn_imported_business_document('sales_shipments',s.id)
+                      AND NOT %s
+                      AND NOT %s
                       AND s.status = 0 AND s.rejected = false AND s.shipment_kind <> 'LEGACY'
                 ) ship ON TRUE
                 WHERE o.is_deleted = false
@@ -796,7 +796,12 @@ public class SalesOrderService {
                         AND o.status = 0
                         AND (o.finance_rejected = false AND o.manager_review_state<>'REJECTED'))
                   ))
-                """.formatted(imported, originPredicate, importedHistory) + " AND " + ownerScope.predicate();
+                """.formatted(imported,
+                        com.uten.imp.common.history.ImportedBusinessDocumentScope.registeredSql("sales_order_items", "i.id"),
+                        com.uten.imp.common.history.ImportedBusinessDocumentScope.registeredSql("sales_order_items", "oi.id"),
+                        com.uten.imp.common.history.ImportedBusinessDocumentScope.registeredSql("sales_shipment_items", "si.id"),
+                        com.uten.imp.common.history.ImportedBusinessDocumentScope.registeredSql("sales_shipments", "s.id"),
+                        originPredicate, importedHistory) + " AND " + ownerScope.predicate();
         return """
                 SELECT o.id::text, o.bill_no,
                        CAST(o.bill_date AS text), CAST(o.deliver_date AS text),
@@ -816,15 +821,15 @@ public class SalesOrderService {
                        ship.approved_qty AS shipment_approved_qty,
                        o.status AS bill_status,
                        COALESCE(SUM(GREATEST(%s,0)),0) AS outstanding_qty,
-                       fn_imported_business_document('sales_orders',o.id) AS legacy_imported, o.manager_review_state, o.manager_reject_reason,
+                       %s AS legacy_imported, o.manager_review_state, o.manager_reject_reason,
                        CASE WHEN COUNT(DISTINCT COALESCE(i.unit_id::text,'UNKNOWN:'||i.goods_id::text))
                            FILTER(WHERE %s)>1 THEN NULL
                          ELSE COALESCE(SUM(%s),0) END AS delivery_draft_qty,
                        COALESCE(BOOL_OR((%s)>0),false) AS has_delivery_draft
                 """.formatted(taskResponsibility ? physicalShipmentReservationSql("i") : "i.reserved_qty",
                         SalesOrderChainSql.unplannedQtySql("i"),
-                        SalesOrderChainSql.outstandingSql("i"), physicalDeliveryPredicate("i"), bomDeliveryDraftCapacitySql("i"),
-                        bomDeliveryDraftCapacitySql("i")) + base + "\n" + """
+                        SalesOrderChainSql.outstandingSql("i"), imported, physicalDeliveryPredicate("i"),
+                        bomDeliveryDraftCapacitySql("i"), bomDeliveryDraftCapacitySql("i")) + base + "\n" + """
                 GROUP BY o.id, o.bill_no, o.bill_date, o.deliver_date, c.name,
                          o.finance_confirmed, o.finance_rejected,
                          o.finance_rejected_reason, finance_reviewer.full_name,

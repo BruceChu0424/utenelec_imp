@@ -18,6 +18,7 @@ import '../../../shared/paging/complete_paged_snapshot.dart';
 import '../../../shared/paging/paged_read_intent.dart';
 import '../../../shared/paging/read_view_activity.dart';
 import '../../../shared/paging/scoped_paged_read.dart';
+import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
 import '../../../shared/providers/export_context_epoch_provider.dart';
 import '../providers/finance_name_provider.dart';
 import 'ar_ap_picker_dialog.dart';
@@ -44,7 +45,7 @@ class _AdvanceDirectory extends ConsumerStatefulWidget {
 }
 
 class _AdvanceDirectoryState extends ConsumerState<_AdvanceDirectory>
-    with ReadViewActivityMixin<_AdvanceDirectory> {
+    with ScopedPagedReadViewMixin<_AdvanceDirectory> {
   @override
   Future<void> onReadViewResumed() => _load();
   late final ApiClient _api;
@@ -68,6 +69,29 @@ class _AdvanceDirectoryState extends ConsumerState<_AdvanceDirectory>
     _load();
   }
 
+  Future<PagedResult<Map<String, dynamic>>> _fetchSettlements(
+    int page,
+    int size,
+    String? id,
+    String kind,
+  ) async => PagedResult.fromJsonResponsive<Map<String, dynamic>>(
+    await _api.get(
+      id == null
+          ? '/finance/supplier-prepayments'
+          : '/finance/supplier-prepayments/$id/settlements',
+      query: {
+        'page': page,
+        'size': size,
+        if (id == null && widget.supplierId != null)
+          'supplierId': widget.supplierId,
+        if (id == null && widget.currencyId != null)
+          'currencyId': widget.currencyId,
+        if (id != null) 'kind': kind,
+      },
+    ),
+    (row) => row,
+  );
+
   Future<void> _load() async {
     if (!_current || _busy) return;
     setState(() {
@@ -84,27 +108,16 @@ class _AdvanceDirectoryState extends ConsumerState<_AdvanceDirectory>
         if (PagedReadIntent.currentActivity?.call() == false) {
           throw const UiWorkCancelled();
         }
-        final complete = await loadCompletePagedResult<Map<String, dynamic>>(
-          isCurrent: () => _current,
+        final complete = await readScopedPage<Map<String, dynamic>>(
+          1,
+          slot: 'supplier-prepayments',
           idOf: (row) => row[id == null ? 'paymentId' : 'id'],
-          loadPage: (page, size) async =>
-              PagedResult.fromJsonResponsive<Map<String, dynamic>>(
-                await _api.get(
-                  id == null
-                      ? '/finance/supplier-prepayments'
-                      : '/finance/supplier-prepayments/$id/settlements',
-                  query: {
-                    'page': page,
-                    'size': size,
-                    if (id == null && widget.supplierId != null)
-                      'supplierId': widget.supplierId,
-                    if (id == null && widget.currencyId != null)
-                      'currencyId': widget.currencyId,
-                    if (id != null) 'kind': kind,
-                  },
-                ),
-                (row) => row,
-              ),
+          query: [_api, id, widget.supplierId, widget.currencyId, kind],
+          currentQuery: () => [_api, id, widget.supplierId, widget.currencyId, _kind],
+          isCurrent: () => _current,
+          fetchPage: (page) async => _fetchSettlements(page, 100, id, kind),
+          fetchPageSized: (page, size) async =>
+              _fetchSettlements(page, size, id, kind),
         );
         return (source: source, complete: complete);
       });

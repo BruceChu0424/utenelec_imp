@@ -27,6 +27,7 @@ import '../../../shared/models/paged_result.dart';
 import '../../../shared/paging/complete_paged_snapshot.dart';
 import '../../../shared/paging/read_view_activity.dart';
 import '../../../shared/paging/scoped_paged_read.dart';
+import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
 import 'finance_entry_file_picker.dart';
 import 'finance_source_table.dart';
 import 'finance_durable_command_dialog.dart';
@@ -208,7 +209,7 @@ class _ConfirmationDirectory extends ConsumerStatefulWidget {
 }
 
 class _ConfirmationDirectoryState extends ConsumerState<_ConfirmationDirectory>
-    with ReadViewActivityMixin<_ConfirmationDirectory> {
+    with ScopedPagedReadViewMixin<_ConfirmationDirectory> {
   late final ApiClient _api;
   late final int _epoch;
   String _kind = 'PENDING';
@@ -237,6 +238,24 @@ class _ConfirmationDirectoryState extends ConsumerState<_ConfirmationDirectory>
     _load();
   }
 
+  Future<PagedResult<Map<String, dynamic>>> _fetchPage(
+    int page,
+    int size,
+    String kind,
+  ) async => PagedResult.fromJsonResponsive<Map<String, dynamic>>(
+    await _api.get(
+      kind == 'PENDING' ? '$_path/candidates' : _path,
+      query: {
+        'supplierId': widget.supplierId,
+        'currencyId': widget.currencyId,
+        'page': '$page',
+        'size': '$size',
+        if (kind == 'PENDING') 'status': 'PENDING',
+      },
+    ),
+    (row) => Map<String, dynamic>.unmodifiable(row),
+  );
+
   Future<void> _load() async {
     if (!_current) return;
     final generation = ++_generation, kind = _kind;
@@ -246,26 +265,15 @@ class _ConfirmationDirectoryState extends ConsumerState<_ConfirmationDirectory>
       _error = null;
     });
     try {
-      final data = await readViewActivity.runRead(
-        current,
-        () => loadCompletePagedResult<Map<String, dynamic>>(
-          isCurrent: current,
-          idOf: (row) => row['id'],
-          loadPage: (page, size) async =>
-              PagedResult.fromJsonResponsive<Map<String, dynamic>>(
-                await _api.get(
-                  kind == 'PENDING' ? '$_path/candidates' : _path,
-                  query: {
-                    'supplierId': widget.supplierId,
-                    'currencyId': widget.currencyId,
-                    'page': '$page',
-                    'size': '$size',
-                    if (kind == 'PENDING') 'status': 'PENDING',
-                  },
-                ),
-                (row) => Map<String, dynamic>.unmodifiable(row),
-              ),
-        ),
+      final data = await readScopedPage<Map<String, dynamic>>(
+        1,
+        slot: 'procurement-recognitions',
+        idOf: (row) => row['id'],
+        query: [_api, widget.supplierId, widget.currencyId, kind],
+        currentQuery: () => [_api, widget.supplierId, widget.currencyId, _kind],
+        isCurrent: current,
+        fetchPage: (page) async => _fetchPage(page, 100, kind),
+        fetchPageSized: (page, size) async => _fetchPage(page, size, kind),
       );
       if (current()) setState(() => _rows = data.items);
     } catch (e) {

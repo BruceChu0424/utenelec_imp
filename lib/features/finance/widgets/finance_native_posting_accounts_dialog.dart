@@ -17,6 +17,7 @@ import '../../../shared/models/paged_result.dart';
 import '../../../shared/paging/complete_paged_snapshot.dart';
 import '../../../shared/paging/read_view_activity.dart';
 import '../../../shared/paging/scoped_paged_read.dart';
+import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
 import '../../../shared/providers/export_context_epoch_provider.dart';
 import 'finance_auxiliary_dialog.dart';
 import 'finance_source_table.dart';
@@ -36,7 +37,7 @@ class _Directory extends ConsumerStatefulWidget {
 }
 
 class _DirectoryState extends ConsumerState<_Directory>
-    with ReadViewActivityMixin<_Directory> {
+    with ScopedPagedReadViewMixin<_Directory> {
   @override
   Future<void> onReadViewResumed() => _load();
   late final ApiClient _api;
@@ -59,6 +60,12 @@ class _DirectoryState extends ConsumerState<_Directory>
     _load();
   }
 
+  Future<PagedResult<Map<String, dynamic>>> _fetchPage(int page, int size) async =>
+      PagedResult.fromJsonResponsive<Map<String, dynamic>>(
+        await _api.get(_path, query: {'page': page, 'size': size}),
+        (row) => row,
+      );
+
   Future<void> _load() async {
     if (!_current || _busy) return;
     final generation = ++_generation;
@@ -67,17 +74,15 @@ class _DirectoryState extends ConsumerState<_Directory>
       _error = null;
     });
     try {
-      final result = await readViewActivity.runRead(
-        () => _current && generation == _generation,
-        () => loadCompletePagedResult<Map<String, dynamic>>(
-          isCurrent: () => _current && generation == _generation,
-          idOf: (row) => row['id'],
-          loadPage: (page, size) async =>
-              PagedResult.fromJsonResponsive<Map<String, dynamic>>(
-                await _api.get(_path, query: {'page': page, 'size': size}),
-                (row) => row,
-              ),
-        ),
+      final result = await readScopedPage<Map<String, dynamic>>(
+        1,
+        slot: 'native-posting-accounts',
+        idOf: (row) => row['id'],
+        query: const [_path],
+        currentQuery: () => const [_path],
+        isCurrent: () => _current && generation == _generation,
+        fetchPage: (page) async => _fetchPage(page, 100),
+        fetchPageSized: _fetchPage,
       );
       if (!_current || generation != _generation) return;
       setState(() {

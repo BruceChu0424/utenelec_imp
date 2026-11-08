@@ -128,7 +128,9 @@ class DocumentStatusCountSqlContractTest {
         String plain = DocumentStatusCountQueryService.countSql("salesShipment", source, "owner_scope", false, false);
         assertThat(plain)
                 .startsWith("SELECT COUNT(*) FILTER (WHERE o.status = 0 AND ")
-                .endsWith(" FROM sales_shipments o WHERE o.is_deleted = false AND NOT fn_imported_business_document('sales_shipments',o.id) AND owner_scope")
+                .endsWith(" FROM sales_shipments o WHERE o.is_deleted = false AND NOT "
+                        + com.uten.imp.common.history.ImportedBusinessDocumentScope.registeredSql("sales_shipments", "o.id")
+                        + " AND owner_scope")
                 .doesNotContain(";")
                 .doesNotContain(":shipmentKind")
                 .doesNotContain(":docType");
@@ -137,7 +139,9 @@ class DocumentStatusCountSqlContractTest {
         assertThat(sliced).endsWith(" AND owner_scope AND o.shipment_kind = :shipmentKind");
         String stock = DocumentStatusCountQueryService.countSql(
                 "stockDocument", DocumentDraftCountQueryService.STOCK_DOCUMENT, "1=1", false, true);
-        assertThat(stock).endsWith(" FROM stock_documents o WHERE o.is_deleted = false AND NOT fn_imported_business_document('stock_documents',o.id) AND 1=1 AND o.doc_type = :docType");
+        assertThat(stock).endsWith(" FROM stock_documents o WHERE o.is_deleted = false AND NOT "
+                + com.uten.imp.common.history.ImportedBusinessDocumentScope.registeredSql("stock_documents", "o.id")
+                + " AND 1=1 AND o.doc_type = :docType");
     }
 
     private static List<String> keys(String kind) {

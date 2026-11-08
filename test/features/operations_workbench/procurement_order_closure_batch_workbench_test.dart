@@ -22,6 +22,7 @@ import 'package:uten_imp/shared/widgets/procurement_order_closure_selection_acti
 import 'package:uten_imp/core/theme/light_theme.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
+import '../../helpers/workbench_read_fixture.dart';
 import '../subcontract/fake_subcontract_draw_gateway.dart';
 import '../../support/audit_screenshot_support.dart';
 
@@ -57,40 +58,46 @@ class _Gateway implements OperationsWorkbenchGateway {
     String? needTo,
   }) async {
     reads++;
-    return OperationsWorkbenchData(
-      department: department,
-      summary: const OperationsWorkbenchSummary(
-        totalTasks: 3,
-        overdueTasks: 0,
-        openTasks: 3,
-        openQty: 9,
-        statusCounts: {'IN_PROGRESS': 3, 'WAITING_ORDER': 1},
+    return workbenchPageSlice(
+      OperationsWorkbenchData(
+        department: department,
+        summary: const OperationsWorkbenchSummary(
+          totalTasks: 3,
+          overdueTasks: 0,
+          openTasks: 3,
+          openQty: 9,
+          statusCounts: {'IN_PROGRESS': 3, 'WAITING_ORDER': 1},
+        ),
+        items: [
+          for (var i = 0; i < (application ? 1 : 3); i++)
+            OperationsWorkbenchTask.fromJson({
+              'taskId': 'row-$i',
+              'planNo': 'PLAN-$i',
+              'goodsName': '货品$i',
+              'requiredQty': 3,
+              'openQty': 3,
+              'taskStatus': application ? 'WAITING_ORDER' : 'FINANCE_APPROVED',
+              if (legacyClosure) 'displayStage': 'ORDER_CLOSE_PENDING',
+              'supplyRoute': subcontract ? 'SUBCONTRACT' : 'PURCHASE',
+              'actionDocType': application || (mixedApplication && i == 2)
+                  ? (subcontract
+                        ? 'SUBCONTRACT_APPLICATION'
+                        : 'PURCHASE_REQUEST')
+                  : (subcontract ? 'SUBCONTRACT_ORDER' : 'PURCHASE_ORDER'),
+              'actionDocId': i < 2 ? 'order-1' : 'order-2',
+              'actionDocNo': i < 2 ? 'ORDER-1' : 'ORDER-2',
+              'actionDocStatus': '1',
+              'actionDocCanView': true,
+            }, department),
+        ],
+        page: 1,
+        size: size,
+        total: application ? 1 : 3,
+        totalPages: 1,
+        capabilities: const OperationsWorkbenchCapabilities(),
       ),
-      items: [
-        for (var i = 0; i < (application ? 1 : 3); i++)
-          OperationsWorkbenchTask.fromJson({
-            'taskId': 'row-$i',
-            'planNo': 'PLAN-$i',
-            'goodsName': '货品$i',
-            'requiredQty': 3,
-            'openQty': 3,
-            'taskStatus': application ? 'WAITING_ORDER' : 'FINANCE_APPROVED',
-            if (legacyClosure) 'displayStage': 'ORDER_CLOSE_PENDING',
-            'supplyRoute': subcontract ? 'SUBCONTRACT' : 'PURCHASE',
-            'actionDocType': application || (mixedApplication && i == 2)
-                ? (subcontract ? 'SUBCONTRACT_APPLICATION' : 'PURCHASE_REQUEST')
-                : (subcontract ? 'SUBCONTRACT_ORDER' : 'PURCHASE_ORDER'),
-            'actionDocId': i < 2 ? 'order-1' : 'order-2',
-            'actionDocNo': i < 2 ? 'ORDER-1' : 'ORDER-2',
-            'actionDocStatus': '1',
-            'actionDocCanView': true,
-          }, department),
-      ],
-      page: page,
-      size: size,
-      total: application ? 1 : 3,
-      totalPages: 1,
-      capabilities: const OperationsWorkbenchCapabilities(),
+      page,
+      size,
     );
   }
 

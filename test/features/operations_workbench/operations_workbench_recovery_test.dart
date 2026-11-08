@@ -13,6 +13,7 @@ import 'package:uten_imp/shared/badges/badge_registry.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
+import '../../helpers/workbench_read_fixture.dart';
 
 void main() {
   testWidgets('open workbench reloads itself after connection recovery', (
@@ -112,21 +113,25 @@ class _RecoveringGateway implements OperationsWorkbenchGateway {
     if (calls == 1) {
       throw NetworkException('网络暂时不可用');
     }
-    return OperationsWorkbenchData(
-      department: department,
-      summary: const OperationsWorkbenchSummary(
-        totalTasks: 0,
-        overdueTasks: 0,
-        openTasks: 0,
-        openQty: 0,
-        statusCounts: {},
+    return workbenchPageSlice(
+      OperationsWorkbenchData(
+        department: department,
+        summary: const OperationsWorkbenchSummary(
+          totalTasks: 0,
+          overdueTasks: 0,
+          openTasks: 0,
+          openQty: 0,
+          statusCounts: {},
+        ),
+        items: const [],
+        page: 1,
+        size: size,
+        total: 0,
+        totalPages: 0,
+        capabilities: const OperationsWorkbenchCapabilities(),
       ),
-      items: const [],
-      page: 1,
-      size: size,
-      total: 0,
-      totalPages: 0,
-      capabilities: const OperationsWorkbenchCapabilities(),
+      page,
+      size,
     );
   }
 }

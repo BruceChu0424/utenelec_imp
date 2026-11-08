@@ -76,6 +76,7 @@ class WorkbenchBadgeBrowsingAudienceTest {
         Session session = mock(Session.class);
         when(connection.setSavepoint()).thenReturn(mock(Savepoint.class));
         when(entityManager.unwrap(Session.class)).thenReturn(session);
+        BadgeStatementBudgetStubs.accept(entityManager);
         when(session.doReturningWork(any())).thenAnswer(call ->
                 ((ReturningWork<?>) call.getArgument(0)).execute(connection));
         doAnswer(call -> {

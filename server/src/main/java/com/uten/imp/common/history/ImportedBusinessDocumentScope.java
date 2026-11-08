@@ -15,12 +15,14 @@ import java.util.Set;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
-/** One origin contract for business lists; master records and physical stock are not documents. */
+/** One origin contract for business lists; master records and physical stock are not documents.
+ * Reads classify provenance through the V1120 registry of imported rows (one indexed lookup);
+ * write guards and command checks keep the authoritative V926/V933 graph walk. */
 public final class ImportedBusinessDocumentScope {
     public enum Origin { CURRENT, LEGACY, ALL }
     // Server-owned physical source contracts, verified against the migrated schema.
-    // A direct legacy key is a cheap necessary condition; the authoritative graph
-    // check remains mandatory for provenance-only and inherited imports.
+    // A direct legacy key is a cheap necessary condition; the registry carries every
+    // imported row, including provenance-only and inherited imports.
     private static final Set<String> NATIVE_TABLES = Set.of(
             "plan_order_item_links", "procurement_order_approval_cases", "procurement_order_qty_change_logs",
             "production_daily_report_items", "production_daily_reports", "production_plan_items", "production_plans",
@@ -54,7 +56,7 @@ public final class ImportedBusinessDocumentScope {
 
     public static boolean legacyOnly() { return origin() == Origin.LEGACY; }
 
-    /** The database function also recognizes provenance-only imports and imported parent ownership. */
+    /** The registry also recognizes provenance-only imports and imported parent ownership. */
     public static Predicate predicate(Root<?> root, CriteriaBuilder cb) {
         return predicate(root,cb,origin());
     }
@@ -84,24 +86,19 @@ public final class ImportedBusinessDocumentScope {
     }
 
     /** Same native-only source as the original JSON prefilter, with usable legacy
-     * indexes and one shared SQL owner. This is neither an origin cache nor a
-     * replacement for the inherited-source authority. */
+     * indexes and one shared SQL owner. The registry is the read-side materialization
+     * of the authoritative verdict, not a cache that a caller may refresh. */
     public static String nativeTable(String table) {
         return "(SELECT * FROM " + table + " archive_origin WHERE " + nativePredicate(table,"archive_origin") + ")";
     }
 
-    /** Correlated reads must select their real relationship before classifying
-     * provenance. Otherwise a cheap legacy-key index can cause PostgreSQL to
-     * traverse unrelated document graphs before applying the caller's join. */
+    /** Correlated reads select their real relationship, then apply the same native predicate. */
     public static String nativeRowsByKey(String table,String keyColumn,String referenceAliasField) {
         String predicate=nativePredicate(table,"archive_origin");
-        if(keyColumn==null || !keyColumn.matches("[a-zA-Z_][a-zA-Z0-9_]*")
-                || referenceAliasField==null
-                || !referenceAliasField.matches("[a-zA-Z_][a-zA-Z0-9_]*\\.[a-zA-Z_][a-zA-Z0-9_]*"))
+        if(keyColumn==null || !keyColumn.matches("[a-zA-Z_][a-zA-Z0-9_]*") || !reference(referenceAliasField))
             throw new IllegalArgumentException("Invalid internal native relationship");
-        return "LATERAL (WITH selected AS MATERIALIZED (SELECT candidate.* FROM "+table
-                +" candidate WHERE candidate."+keyColumn+"="+referenceAliasField+") "
-                +"SELECT archive_origin.* FROM selected archive_origin WHERE "+predicate+")";
+        return "LATERAL (SELECT archive_origin.* FROM "+table+" archive_origin WHERE archive_origin."+keyColumn
+                +"="+referenceAliasField+" AND "+predicate+")";
     }
 
     /** Correlated/materialized sources use the same predicate after their exact
@@ -111,7 +108,29 @@ public final class ImportedBusinessDocumentScope {
         if (!alias.matches("[a-zA-Z_][a-zA-Z0-9_]*")) throw new IllegalArgumentException("Invalid internal SQL alias");
         String direct = WITHOUT_LEGACY_KEY.contains(table) ? "" : alias+".legacy_id IS NULL AND ";
         if (WITH_IMPORT_RUN.contains(table)) direct += alias+".legacy_import_run_id IS NULL AND ";
-        return direct+"NOT fn_imported_business_document_row('"+table+"',to_jsonb("+alias+"))";
+        return direct+"NOT "+registeredSql(table,alias+".id");
+    }
+
+    /** Imported verdict of one server-owned table row, e.g. {@code registeredSql("sales_orders","o.id")}. */
+    public static String registeredSql(String table,String idReference) {
+        if (table==null || !table.matches("[a-z][a-z0-9_]*") || !reference(idReference))
+            throw new IllegalArgumentException("Invalid internal provenance reference");
+        return "EXISTS(SELECT 1 FROM imported_document_registry archive_registry WHERE archive_registry.table_name='"
+                +table+"' AND archive_registry.row_id="+idReference+")";
+    }
+
+    /** Typed polymorphic sources resolve their relation through the same scope mapping as the
+     * authority. The relation differs per row, so this stays a per-row registered lookup: a
+     * set-based anti-join on a computed relation name would hash every registration. */
+    public static String scopedRegisteredSql(String scopeReference,String idReference) {
+        if (!reference(scopeReference) || !reference(idReference))
+            throw new IllegalArgumentException("Invalid internal provenance reference");
+        return "fn_imported_business_document_registered(fn_imported_business_document_scope_table("
+                +scopeReference+"),"+idReference+")";
+    }
+
+    private static boolean reference(String value) {
+        return value!=null && value.matches("[a-zA-Z_][a-zA-Z0-9_]*\\.[a-zA-Z_][a-zA-Z0-9_]*");
     }
 
     /** Action queues and source selectors never inherit a caller's historical-list scope. */
@@ -129,23 +148,7 @@ public final class ImportedBusinessDocumentScope {
     private static jakarta.persistence.criteria.Expression<Boolean> imported(Root<?> root, CriteriaBuilder cb) {
         Table table = root.getJavaType().getAnnotation(Table.class);
         if (table == null) throw new IllegalArgumentException("Business origin requires a mapped table");
-        return cb.function("fn_imported_business_document", Boolean.class, cb.literal(table.name()), root.get("id"));
-    }
-
-    public static String importedSql(String alias) {
-        if (!alias.matches("[a-zA-Z_][a-zA-Z0-9_]*")) throw new IllegalArgumentException("Invalid internal SQL alias");
-        return "(NULLIF(to_jsonb(" + alias + ")->>'legacy_id','') IS NOT NULL"
-                + " OR NULLIF(to_jsonb(" + alias + ")->>'legacy_import_run_id','') IS NOT NULL)";
-    }
-
-    public static String currentSql(String alias) { return "NOT " + importedSql(alias); }
-
-    public static String predicateSql(String alias) {
-        return switch (origin()) {
-            case CURRENT -> currentSql(alias);
-            case LEGACY -> importedSql(alias);
-            case ALL -> "TRUE";
-        };
+        return cb.function("fn_imported_business_document_registered", Boolean.class, cb.literal(table.name()), root.get("id"));
     }
 
     /** Ignore automatic lifecycle segments in legacy history; explicit dates/search/ownership remain. */

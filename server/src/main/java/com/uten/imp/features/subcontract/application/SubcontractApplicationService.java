@@ -240,8 +240,8 @@ public class SubcontractApplicationService {
                                     GROUP BY src.application_item_id
                                 ) pending ON pending.application_item_id = i.id
                                 WHERE i.id IN (:itemIds)
-                                  AND NOT fn_imported_business_document('subcontract_application_items', i.id)
-                                  AND NOT fn_imported_business_document('subcontract_applications', a.id)
+                                  AND %s
+                                  AND %s
                                   AND i.is_deleted = FALSE
                                   AND a.status = 1
                                   AND a.is_deleted = FALSE
@@ -252,7 +252,9 @@ public class SubcontractApplicationService {
                                         - COALESCE(i.ordered_qty, 0)
                                         - COALESCE(pending.pending_qty, 0) > 0
                                 ORDER BY i.id
-                                """)
+                                """.formatted(
+                                        com.uten.imp.common.history.ImportedBusinessDocumentScope.nativePredicate("subcontract_application_items", "i"),
+                                        com.uten.imp.common.history.ImportedBusinessDocumentScope.nativePredicate("subcontract_applications", "a")))
                         .setParameter("itemIds", itemIds));
 
         Map<UUID, Object[]> rowsByItemId = new LinkedHashMap<>();

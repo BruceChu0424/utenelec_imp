@@ -717,12 +717,17 @@ class _QualityBatchApprovalPageState
           ? '自制产成品整批提交中，响应丢失重试不会重复判定。'
           : '整份报告提交中。';
     }
+    // W6-H 分阶段文案：IQC 整份报告与 FQC 批量通过是两段请求，按当前阶段说话。
+    if (submission.phase == QualityBatchPhase.fqc) {
+      return '自制产成品 ${submission.fqcInspectionIds.length} 项批量通过中'
+          '（检验报告已确认）；响应丢失重试会核对原报告，不会重复判定。';
+    }
     final buffer = StringBuffer(
       '${submission.receipts.length} 张收货单一次提交'
       '（服务端单事务原子执行，任一单冲突整批回滚）',
     );
     if (submission.fqcInspectionIds.isNotEmpty) {
-      buffer.write('，另含自制产成品 ${submission.fqcInspectionIds.length} 项');
+      buffer.write('，随后批量通过自制产成品 ${submission.fqcInspectionIds.length} 项');
     }
     buffer.write('；响应丢失重试会核对原报告，不会重复判定。');
     return buffer.toString();
@@ -867,7 +872,9 @@ class _QualityBatchApprovalPageState
                     if (_submitting)
                       Positioned.fill(
                         child: UtenBusyOverlay(
-                          title: '正在提交检验报告',
+                          title: _submission?.phase == QualityBatchPhase.fqc
+                              ? '正在批量通过自制产成品'
+                              : '正在提交检验报告',
                           description: _submitOverlayDescription(),
                         ),
                       ),

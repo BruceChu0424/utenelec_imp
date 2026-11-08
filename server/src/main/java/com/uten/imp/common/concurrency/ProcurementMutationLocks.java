@@ -57,6 +57,15 @@ public class ProcurementMutationLocks {
     public FulfillmentMutationLocks.Guard inspection(String type,UUID receiptId,Collection<UUID> inspectionIds) {
         return receipts(List.of(new ProcurementMutationFootprint.ReceiptRef(type,receiptId,new java.util.HashSet<>(inspectionIds))));
     }
+    /**
+     * 整份检验报告路径(W6-B): 本事务已用 {@link #receipts} 持有联合预锁, 逐单行锁的嵌套取锁
+     * 只做内存覆盖检查(诊断开关照旧重跑发现), 不再整图重跑覆盖复核; 调用方在全部行锁到手、
+     * 第一笔写之前用联合守卫做一次严格相等复核(verifyUnchanged), 比覆盖复核更强。
+     */
+    public FulfillmentMutationLocks.Guard inspectionHeld(String type,UUID receiptId,Collection<UUID> inspectionIds) {
+        return locks.acquireNestedWithoutRecheck(()->footprint.receipts(List.of(
+                new ProcurementMutationFootprint.ReceiptRef(type,receiptId,new java.util.HashSet<>(inspectionIds)))));
+    }
     public record StockInRef(String type,UUID receiptId,List<UUID> passEventIds,java.util.Map<UUID,UUID> warehouseByPassEvent) {
         public StockInRef { warehouseByPassEvent=java.util.Map.copyOf(warehouseByPassEvent==null?java.util.Map.of():warehouseByPassEvent); }
         public StockInRef(String type,UUID receiptId,List<UUID> passEventIds){this(type,receiptId,passEventIds,java.util.Map.of());}

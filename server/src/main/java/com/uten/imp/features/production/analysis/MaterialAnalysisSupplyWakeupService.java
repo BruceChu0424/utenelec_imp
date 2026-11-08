@@ -92,20 +92,38 @@ public class MaterialAnalysisSupplyWakeupService {
     @Transactional(propagation = Propagation.MANDATORY)
     public void afterQualityReportCompleted(List<ResolvedReceipt> receipts, List<ReceiptStockIn> partialBatches) {
         Map<UUID, AnalysisTarget> targets = new TreeMap<>();
-        for (AnalysisTarget target : resolvedReceiptTargets(receipts)) targets.put(target.analysisId(), target);
+        for (AnalysisTarget target : exactReceiptTargets(receipts)) targets.put(target.analysisId(), target);
         for (AnalysisTarget target : inspectionStockInTargets(partialBatches)) targets.put(target.analysisId(), target);
         refreshTargets(List.copyOf(targets.values()));
     }
 
     /** Single-receipt callbacks and complete reports share exactly the same qualified source scope. */
     private List<AnalysisTarget> resolvedReceiptTargets(Collection<ResolvedReceipt> receipts) {
-        if (receipts.isEmpty()) return List.of();
+        return analysisTargets(resolvedReceiptDimensionQuery(receipts, false));
+    }
+
+    /**
+     * W6-A 精确唤醒（2026-11-08）：报告路径的目标集合从「仓×货品×颜色 泛化命中」改为
+     * 「事实依赖精确求目标」三臂——① 本报告收货单上的 exact peg 受益分析
+     * （preplan_analysis_stock_exact_pegs.source_receipt_type/source_receipt_id 直指收货单，
+     * 无需按维度反推）；② 这些收货单明细对应订货明细上的供给动作分配
+     * （receipt_items.order_item_id → 订货明细的 request/application item =
+     * preplan_supply_action_allocations.external_item_id → analysis_id）；③ 保留
+     * ownsQualifiedAt（分析在该实际仓×货品×颜色上已有合格供给余额/FORMALIZE 权益），
+     * 删除 fn_warehouse_same_main 泛化臂。其余调用方（到货通知、红冲、完工入库）维持泛化两臂。
+     */
+    private List<AnalysisTarget> exactReceiptTargets(Collection<ResolvedReceipt> receipts) {
+        return analysisTargets(resolvedReceiptDimensionQuery(receipts, true));
+    }
+
+    private Query resolvedReceiptDimensionQuery(Collection<ResolvedReceipt> receipts, boolean exact) {
+        if (receipts.isEmpty()) return em.createNativeQuery("SELECT NULL::uuid,NULL::uuid WHERE FALSE");
         List<UUID> purchase = receipts.stream().filter(receipt -> "PURCHASE".equals(receipt.receiptType()))
                 .map(ResolvedReceipt::receiptId).filter(java.util.Objects::nonNull).toList();
         List<UUID> subcontract = receipts.stream().filter(receipt -> "SUBCONTRACT".equals(receipt.receiptType()))
                 .map(ResolvedReceipt::receiptId).filter(java.util.Objects::nonNull).toList();
-        if (purchase.isEmpty() && subcontract.isEmpty()) return List.of();
-        return analysisTargets(candidateQuery("""
+        if (purchase.isEmpty() && subcontract.isEmpty()) return em.createNativeQuery("SELECT NULL::uuid,NULL::uuid WHERE FALSE");
+        return candidateQuery("""
                         SELECT DISTINCT actual.warehouse_id, inspection.goods_id, inspection.color_id
                         FROM procurement_inspection_items inspection
                         CROSS JOIN LATERAL (
@@ -126,9 +144,10 @@ public class MaterialAnalysisSupplyWakeupService {
                                  WHERE receipt.id = inspection.receipt_id
                                    AND receipt.status = 1 AND receipt.is_deleted = FALSE))
                         )
-                    """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("purchase_receipts"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("subcontract_receipts")))
-                    .setParameter("purchaseReceiptIds", uuidParameter(purchase))
-                    .setParameter("subcontractReceiptIds", uuidParameter(subcontract)));
+                    """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("purchase_receipts"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("subcontract_receipts")),
+                exact)
+                .setParameter("purchaseReceiptIds", uuidParameter(purchase))
+                .setParameter("subcontractReceiptIds", uuidParameter(subcontract));
     }
 
     /** Arrival notices only; the quality closeout orchestration refreshes the complete receipt scope. */
@@ -350,7 +369,15 @@ public class MaterialAnalysisSupplyWakeupService {
 
     /** Materialize this event's dimensions before evaluating warehouse ancestry or fulfillment. */
     private Query candidateQuery(String dimensionSql) {
-        return em.createNativeQuery("WITH dimensions AS MATERIALIZED (\n" + dimensionSql + """
+        return candidateQuery(dimensionSql, false);
+    }
+
+    /**
+     * [exact] 为真时按 W6-A 三臂精确求目标（exact peg / 供给动作分配 / ownsQualifiedAt），
+     * 维度泛化的 fn_warehouse_same_main 臂不再参与；为假时维持原有泛化两臂，其余调用方不动。
+     */
+    private Query candidateQuery(String dimensionSql, boolean exact) {
+        String head = "WITH dimensions AS MATERIALIZED (\n" + dimensionSql + """
                 ), candidates AS MATERIALIZED (
                     SELECT DISTINCT analysis.id, analysis.maker_id, analysis.status,
                            analysis.warehouse_id, dimension.warehouse_id AS source_warehouse_id,
@@ -365,18 +392,67 @@ public class MaterialAnalysisSupplyWakeupService {
                     WHERE analysis.is_deleted = FALSE
                       AND analysis.warehouse_id IS NOT NULL
                 )
-                SELECT DISTINCT analysis.id, analysis.maker_id
-                FROM candidates analysis
-                WHERE (analysis.status IN ('ACTIVE','PARTIALLY_PLANNED')
-                    OR analysis.status='COMPLETED'
-                      AND fn_material_analysis_fulfillment_status(analysis.id)<>'COMPLETED')
-                  AND (fn_warehouse_same_main(analysis.source_warehouse_id,analysis.warehouse_id)
-                """ + " OR " + MaterialAnalysisWakeupScopeSql.ownsQualifiedAt(
+                """;
+        if (!exact) {
+            return em.createNativeQuery(head + """
+                    SELECT DISTINCT analysis.id, analysis.maker_id
+                    FROM candidates analysis
+                    WHERE (analysis.status IN ('ACTIVE','PARTIALLY_PLANNED')
+                        OR analysis.status='COMPLETED'
+                          AND fn_material_analysis_fulfillment_status(analysis.id)<>'COMPLETED')
+                      AND (fn_warehouse_same_main(analysis.source_warehouse_id,analysis.warehouse_id)
+                    """ + " OR " + MaterialAnalysisWakeupScopeSql.ownsQualifiedAt(
+                            "analysis.id", "analysis.source_material_id", "analysis.source_warehouse_id",
+                            "analysis.goods_id", "analysis.color_id") + """
+                        )
+                    ORDER BY analysis.id
+                    """);
+        }
+        return em.createNativeQuery(head + """
+                , fact_dependent AS (
+                    SELECT peg.beneficiary_analysis_id AS analysis_id
+                    FROM preplan_analysis_stock_exact_pegs peg
+                    WHERE (peg.source_receipt_type='PURCHASE'
+                          AND peg.source_receipt_id = ANY(CAST(string_to_array(:purchaseReceiptIds, ',') AS uuid[])))
+                       OR (peg.source_receipt_type='SUBCONTRACT'
+                          AND peg.source_receipt_id = ANY(CAST(string_to_array(:subcontractReceiptIds, ',') AS uuid[])))
+                    UNION
+                    SELECT allocation.analysis_id
+                    FROM preplan_supply_action_allocations allocation
+                    WHERE allocation.external_item_id IN (
+                            SELECT order_item.request_item_id
+                            FROM %1$s receipt_item
+                            JOIN purchase_order_items order_item ON order_item.id=receipt_item.order_item_id
+                            WHERE receipt_item.receipt_id = ANY(CAST(string_to_array(:purchaseReceiptIds, ',') AS uuid[]))
+                              AND receipt_item.is_deleted=FALSE AND order_item.is_deleted=FALSE)
+                       OR allocation.external_item_id IN (
+                            SELECT order_item.application_item_id
+                            FROM %2$s receipt_item
+                            JOIN subcontract_order_items order_item ON order_item.id=receipt_item.order_item_id
+                            WHERE receipt_item.receipt_id = ANY(CAST(string_to_array(:subcontractReceiptIds, ',') AS uuid[]))
+                              AND receipt_item.is_deleted=FALSE AND order_item.is_deleted=FALSE)
+                    UNION
+                    SELECT analysis.id
+                    FROM candidates analysis
+                    WHERE %3$s
+                ), eligible AS MATERIALIZED (
+                    SELECT analysis.id, analysis.maker_id
+                    FROM production_material_analyses analysis
+                    WHERE analysis.is_deleted = FALSE
+                      AND analysis.warehouse_id IS NOT NULL
+                      AND (analysis.status IN ('ACTIVE','PARTIALLY_PLANNED')
+                        OR analysis.status='COMPLETED'
+                          AND fn_material_analysis_fulfillment_status(analysis.id)<>'COMPLETED')
+                )
+                SELECT DISTINCT eligible.id, eligible.maker_id
+                FROM fact_dependent matched JOIN eligible ON eligible.id = matched.analysis_id
+                ORDER BY eligible.id
+                """.formatted(
+                com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("purchase_receipt_items"),
+                com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("subcontract_receipt_items"),
+                MaterialAnalysisWakeupScopeSql.ownsQualifiedAt(
                         "analysis.id", "analysis.source_material_id", "analysis.source_warehouse_id",
-                        "analysis.goods_id", "analysis.color_id") + """
-                    )
-                ORDER BY analysis.id
-                """);
+                        "analysis.goods_id", "analysis.color_id")));
     }
 
     private List<AnalysisTarget> analysisTargets(Query query) {

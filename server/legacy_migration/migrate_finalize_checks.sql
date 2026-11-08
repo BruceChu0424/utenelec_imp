@@ -28,3 +28,12 @@ BEGIN
     END IF;
 END;
 $reject$;
+-- V1120 maintenance contract: a row loaded before its source can change verdicts,
+-- so the import recomputes the imported-document registry inside its own transaction.
+DO $imported_registry$
+BEGIN
+    IF to_regprocedure('public.fn_refresh_imported_document_registry(text)') IS NOT NULL THEN
+        PERFORM public.fn_refresh_imported_document_registry(NULL);
+    END IF;
+END;
+$imported_registry$;

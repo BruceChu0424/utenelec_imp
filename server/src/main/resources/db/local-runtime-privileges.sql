@@ -26,7 +26,9 @@ DECLARE
         'legacy_migration_checkpoints','legacy_subcontract_order_import_sources',
         'legacy_finance_import_sources','legacy_procurement_receipt_import_sources',
         'legacy_quantity_counter_import_sources','legacy_production_plan_counter_import_sources',
-        'legacy_production_plan_counter_import_contexts','stock_measurement_holds'];
+        'legacy_production_plan_counter_import_contexts','stock_measurement_holds',
+        -- V1120: imported verdicts are read by the runtime and written only by maintenance.
+        'imported_document_registry'];
     private_relations constant text[] := ARRAY[
         'flyway_schema_history','business_test_object_cleanup_intents',
         -- V977 contains the private reviewed personnel plan; a no-op callback
@@ -40,7 +42,9 @@ DECLARE
         'fn_business_test_reset_verify_purged','fn_clear_business_test_object_metadata',
         'fn_audit_track_table','fn_audit_seal_privileges','fn_migrate_financial_amount_columns',
         'fn_capture_stock_measurement_holds','fn_verify_stock_original_measurement_basis',
-        'fn_audit_stock_measurement_hold_columns'];
+        'fn_audit_stock_measurement_hold_columns',
+        -- V1120: registry sync/forget stay callable and refuse non-maintenance sessions themselves.
+        'fn_imported_document_registry_proven','fn_refresh_imported_document_registry'];
     -- V964/V965 freeze these ACLs inside their independent catalog seals. A
     -- general application grant must never reopen private preimages or merge/
     -- code-release commands, nor rewrite a valid seal during a no-op startup.

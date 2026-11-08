@@ -31,6 +31,7 @@ import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -191,6 +192,13 @@ public class ProcurementInspectionService implements ProcurementInspectionPort, 
         if (request.receipts().size() > 20) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "一次最多提交 20 张收货单的检验报告");
         }
+        // W6-H：整份报告的明细总行数上限(重测后定 200，20×5 预算形状=100 行留一倍余量)，
+        // 防止长报告进入 40s 命令截止前必然超时的形态。
+        int totalLines = request.receipts().stream()
+                .mapToInt(receipt -> receipt.items() == null ? 0 : receipt.items().size()).sum();
+        if (totalLines > 200) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "一次检验报告最多 200 行明细，请分多份报告提交");
+        }
         List<ProcurementInspectionBatchCommand> commands = new ArrayList<>(request.receipts().size());
         Set<String> seenReceipts = new HashSet<>();
         for (var receipt : request.receipts()) {
@@ -212,19 +220,25 @@ public class ProcurementInspectionService implements ProcurementInspectionPort, 
         List<Map<UUID, Object[]>> rowLocks = new ArrayList<>(commands.size());
         for (int i = 0; i < request.receipts().size(); i++) {
             var receipt = request.receipts().get(i);
+            // W6-B: 联合预锁已覆盖各单足迹，逐单行锁的嵌套取锁跳过覆盖复核发现；
+            // 下一行的严格相等复核重读同一份联合发现，比被跳过的覆盖检查更强。
             rowLocks.add(lockInspectionRows(receipt.receiptType(), receipt.receiptId(),
-                    commandInspectionIds(commands.get(i))));
+                    commandInspectionIds(commands.get(i)), true));
         }
         // 全部行锁到手、尚未写入：整份报告的预读来源做一次严格复核。
         unionGuard.verifyUnchanged();
         var outcomes = new ArrayList<com.uten.imp.features.warehouse.inbound.dto.BatchInspectionReportResponse.Outcome>(
                 commands.size());
+        // W6-E：整份报告的订单结案不在逐单收尾里重算，收齐收货单引用后按订单去重一次重算
+        //（多张收货单常指向同一张订货单；重算值对同一订单幂等，值变化守卫再过滤空写）。
+        List<Object[]> deferredClosureReceipts = new ArrayList<>(commands.size());
         stockInProduction.withQualityReport(followup -> {
             for (int i = 0; i < request.receipts().size(); i++) {
                 var receipt = request.receipts().get(i);
                 boolean replayed;
                 try {
-                    replayed = executeBatch(receipt.receiptType(), receipt.receiptId(), commands.get(i), rowLocks.get(i), followup);
+                    replayed = executeBatch(receipt.receiptType(), receipt.receiptId(), commands.get(i), rowLocks.get(i),
+                            followup, deferredClosureReceipts);
                 } catch (ApiException failure) {
                     throw new ApiException(failure.getCode(),
                             reportReceiptLabel(receipt.receiptType(), receipt.receiptId()) + "：" + failure.getMessage(),
@@ -234,10 +248,20 @@ public class ProcurementInspectionService implements ProcurementInspectionPort, 
                         receipt.receiptType(), receipt.receiptId(), replayed));
             }
         });
+        recalculateDeferredOrderClosures(deferredClosureReceipts);
         int lineCount = commands.stream().mapToInt(command -> command.lines().size()).sum();
         boolean replay = outcomes.stream().allMatch(com.uten.imp.features.warehouse.inbound.dto.BatchInspectionReportResponse.Outcome::replayed);
         return new com.uten.imp.features.warehouse.inbound.dto.BatchInspectionReportResponse(
                 outcomes.size(), lineCount, replay, List.copyOf(outcomes));
+    }
+
+    /** 报告路径的延迟结案重算：按类型分桶后各一次多收货单去重重算。 */
+    private void recalculateDeferredOrderClosures(List<Object[]> receipts) {
+        Map<String, List<UUID>> byType = new LinkedHashMap<>();
+        for (Object[] entry : receipts) {
+            byType.computeIfAbsent((String) entry[0], ignored -> new ArrayList<>()).add((UUID) entry[1]);
+        }
+        byType.forEach((type, ids) -> ProcurementOrderClosurePolicy.recalculateReceipts(em, type, ids));
     }
 
     private static List<UUID> commandInspectionIds(ProcurementInspectionBatchCommand command) {
@@ -263,12 +287,20 @@ public class ProcurementInspectionService implements ProcurementInspectionPort, 
     /** [rows] 传入已锁行（整份报告联合预锁路径）；null = 本方法自取行锁（单张报告路径）。 */
     private boolean executeBatch(String receiptType, UUID receiptId, ProcurementInspectionBatchCommand command,
                                  Map<UUID, Object[]> lockedRows) {
-        return executeBatch(receiptType, receiptId, command, lockedRows, null);
+        return executeBatch(receiptType, receiptId, command, lockedRows, null, null);
     }
 
     private boolean executeBatch(String receiptType, UUID receiptId, ProcurementInspectionBatchCommand command,
                                  Map<UUID, Object[]> lockedRows,
                                  com.uten.imp.application.port.ProductionInspectionStockInPort.QualityReport followup) {
+        return executeBatch(receiptType, receiptId, command, lockedRows, followup, null);
+    }
+
+    /** [deferredClosureReceipts] 非空(整份报告路径)时订单结案不在本单收尾重算，收齐后按订单去重一次重算。 */
+    private boolean executeBatch(String receiptType, UUID receiptId, ProcurementInspectionBatchCommand command,
+                                 Map<UUID, Object[]> lockedRows,
+                                 com.uten.imp.application.port.ProductionInspectionStockInPort.QualityReport followup,
+                                 List<Object[]> deferredClosureReceipts) {
         Map<UUID, Object[]> rows = lockedRows != null ? lockedRows
                 : lockInspectionRows(receiptType, receiptId, commandInspectionIds(command));
         for (var line : command.lines()) requireInspectionRow(rows, line.inspectionItemId(), receiptType);
@@ -313,21 +345,156 @@ public class ProcurementInspectionService implements ProcurementInspectionPort, 
         }
         List<ProcurementIqcStockInService.PreStockedRelease> preStocked = new ArrayList<>();
         List<UUID> qualityEvents = new ArrayList<>();
+        // W6-F(2026-11-08)：非重放路径逐事件先只做内存裁决(顺序即事件顺序，同一行的
+        // PASS/FAIL 仍按事件顺序用累计量切片)，随后行更新、事件落账、出站事件各并成
+        // 一条多行语句；逐行守卫语义(状态门 + 恰好一行)以条数核对保持不变。
+        List<BatchedDisposition> batched = new ArrayList<>(command.events().size());
         for (var event : command.events()) {
             if (replay) {
                 notifyDispositionReplay(receiptType, receiptId, event.inspectionItemId(), event.id(),
                         event.action(), (Boolean) history.get(event.id())[5]);
             } else {
-                applyDisposition(receiptType, receiptId, rows.get(event.inspectionItemId()), event.id(),
-                        event.action(), event.quantity(), event.reason(), command.requestHash(), preStocked, qualityEvents);
+                batched.add(computeBatchedDisposition(rows.get(event.inspectionItemId()), event.id(),
+                        event.action(), event.quantity(), event.reason()));
             }
+        }
+        if (!batched.isEmpty()) {
+            writeBatchedDispositions(receiptType, receiptId, batched, command.requestHash(), preStocked, qualityEvents);
         }
         if (!qualityEvents.isEmpty()) {
             consideration.freezeQualityEvents(commandInspectionIds(command), qualityEvents);
             procurementValue.qualityRecordedBatch(qualityEvents,currentUser.requireId());
         }
-        completeReceiptDisposition(receiptType, receiptId, preStocked, followup);
+        completeReceiptDisposition(receiptType, receiptId, preStocked, followup, deferredClosureReceipts);
         return replay;
+    }
+
+    /** 一次结论的纯内存裁决结果；行级累计(passed/failed/status)按事件顺序推进后回写到行数组。 */
+    private record BatchedDisposition(UUID inspectionItemId, UUID eventId, String action, BigDecimal requested,
+            String reason, BigDecimal passed, BigDecimal failed, String status, OffsetDateTime occurredAt,
+            BigDecimal releasedAmount, BigDecimal releasedWeight, UUID preStockedWarehouseId,
+            String preStockedPlace) { }
+
+    /** 与逐条 applyDisposition 相同的状态门、余量校验与切片数学，只不做数据库写。 */
+    private BatchedDisposition computeBatchedDisposition(Object[] row, UUID eventId, String action,
+            BigDecimal requested, String reason) {
+        UUID inspectionItemId = (UUID) row[0];
+        String currentStatus = (String) row[10];
+        if (!PENDING.equals(currentStatus) && !PARTIAL.equals(currentStatus)) {
+            throw new ApiException(ErrorCode.CONFLICT, "该待检明细已全部结案或已撤销");
+        }
+        BigDecimal received = dec(row[6]);
+        BigDecimal passed = dec(row[8]);
+        BigDecimal failed = dec(row[9]);
+        BigDecimal resolvedBefore = passed.add(failed);
+        BigDecimal remaining = received.subtract(passed).subtract(failed);
+        if (requested == null) {
+            requested = remaining; // 不传量 = 全量处置（傻瓜式一键合格/不合格）
+        }
+        if (requested.signum() <= 0 || requested.compareTo(remaining) > 0) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "质检数量必须大于 0 且不得超过待检数量 " + remaining.stripTrailingZeros().toPlainString());
+        }
+        OffsetDateTime now = OffsetDateTime.now();
+        // 合格放行的价值切片与财务不合格金额、退货可退额度同一口径(ProcurementIqcAmountSplit)。
+        BigDecimal releasedAmount = "PASS".equals(action)
+                ? releasedAmountSlice(dec(row[7]), received, resolvedBefore, requested)
+                : null;
+        BigDecimal trustedReceivedWeight = nullableDec(row[12]);
+        BigDecimal releasedWeight = "PASS".equals(action)
+                ? releasedWeightSlice(trustedReceivedWeight, received, resolvedBefore, requested)
+                : null;
+        if ("PASS".equals(action)) {
+            passed = passed.add(requested);
+        } else {
+            failed = failed.add(requested);
+        }
+        BigDecimal resolved = passed.add(failed);
+        String nextStatus = resolved.compareTo(received) == 0 ? RESOLVED : PARTIAL;
+        // PASS and FAIL of one row execute in that order. The next event must
+        // use the just-written cumulative quantity for amount/weight intervals.
+        row[8] = passed;
+        row[9] = failed;
+        row[10] = nextStatus;
+        return new BatchedDisposition(inspectionItemId, eventId, action, requested, reason, passed, failed,
+                nextStatus, now, releasedAmount, releasedWeight, (UUID) row[13], (String) row[14]);
+    }
+
+    /** 行更新一条多行 UPDATE、事件落账一条多行 INSERT、出站事件一次批量 INSERT。 */
+    private void writeBatchedDispositions(String receiptType, UUID receiptId, List<BatchedDisposition> batched,
+            String batchRequestHash, List<ProcurementIqcStockInService.PreStockedRelease> preStocked,
+            List<UUID> qualityEvents) {
+        // 同一明细可能展开成先后多条事件(decide 的每行 PASS+FAIL 两条)：内存裁决按事件顺序
+        // 推进累计量，每明细取**最后一条**事件的累计值即终态；VALUES 每明细恰好一行，
+        // UPDATE 条数核对与逐行「恰好一行」守卫等价。
+        Map<UUID, BatchedDisposition> finalByItem = new LinkedHashMap<>();
+        for (BatchedDisposition disposition : batched) {
+            finalByItem.put(disposition.inspectionItemId(), disposition);
+        }
+        StringBuilder updateSql = new StringBuilder("""
+                UPDATE procurement_inspection_items item
+                SET passed_base_qty = v.passed_qty, failed_base_qty = v.failed_qty, status = v.status,
+                    passed_at = CASE WHEN v.passed_qty > 0 THEN v.occurred_at ELSE item.passed_at END,
+                    updated_at = v.occurred_at
+                FROM (VALUES
+                """);
+        int index = 0;
+        for (BatchedDisposition ignored : finalByItem.values()) {
+            updateSql.append(index++ == 0
+                    ? "(?::uuid,?::numeric,?::numeric,?::text,?::timestamptz)"
+                    : ",(?,?,?,?,?)");
+        }
+        updateSql.append("""
+                ) AS v(id,passed_qty,failed_qty,status,occurred_at)
+                WHERE item.id = v.id AND item.status IN ('PENDING','PARTIAL')
+                """);
+        var update = em.createNativeQuery(updateSql.toString());
+        int parameter = 1;
+        for (BatchedDisposition disposition : finalByItem.values()) {
+            update.setParameter(parameter++, disposition.inspectionItemId());
+            update.setParameter(parameter++, disposition.passed());
+            update.setParameter(parameter++, disposition.failed());
+            update.setParameter(parameter++, disposition.status());
+            update.setParameter(parameter++, disposition.occurredAt());
+        }
+        int updated = update.executeUpdate();
+        if (updated != finalByItem.size()) {
+            throw new ApiException(ErrorCode.CONFLICT, "待检状态已变化，请刷新后重试");
+        }
+        UUID actor = currentUser.requireEmployeeId();
+        UUID actorUser = currentUser.requireId();
+        List<ProcurementInspectionEvents.EventRow> eventRows = new ArrayList<>(batched.size());
+        List<BusinessEventPublisher.OutboxEvent> outbound = new ArrayList<>();
+        for (BatchedDisposition disposition : batched) {
+            eventRows.add(new ProcurementInspectionEvents.EventRow(disposition.eventId(),
+                    disposition.inspectionItemId(), disposition.action(), disposition.requested(),
+                    disposition.reason(), actor, disposition.occurredAt(),
+                    disposition.releasedAmount(), disposition.releasedWeight(), batchRequestHash,
+                    "PASS".equals(disposition.action()) || "FAIL".equals(disposition.action()) ? actorUser : null));
+            if ("PASS".equals(disposition.action())) {
+                qualityEvents.add(disposition.eventId());
+                if (disposition.preStockedWarehouseId() != null) {
+                    preStocked.add(new ProcurementIqcStockInService.PreStockedRelease(
+                            disposition.eventId(), disposition.inspectionItemId(),
+                            disposition.preStockedWarehouseId(), disposition.preStockedPlace()));
+                } else {
+                    outbound.add(new BusinessEventPublisher.OutboxEvent(EVENT_IQC_STOCK_IN_PENDING,
+                            "PROCUREMENT_INSPECTION_PASS", disposition.eventId(),
+                            Map.of("receiptType", receiptType, "receiptId", receiptId,
+                                   "inspectionItemId", disposition.inspectionItemId()),
+                            EVENT_IQC_STOCK_IN_PENDING + ':' + disposition.eventId()));
+                }
+            } else if ("FAIL".equals(disposition.action())) {
+                qualityEvents.add(disposition.eventId());
+                outbound.add(new BusinessEventPublisher.OutboxEvent(EVENT_IQC_REJECTION_DETECTED,
+                        "PROCUREMENT_INSPECTION_ITEM", disposition.inspectionItemId(),
+                        Map.of("receiptType", receiptType, "receiptId", receiptId,
+                               "inspectionEventId", disposition.eventId()),
+                        EVENT_IQC_REJECTION_DETECTED + ':' + disposition.inspectionItemId()));
+            }
+        }
+        ProcurementInspectionEvents.appendAll(em, eventRows);
+        outbox.publishOnceBatch(outbound);
     }
 
     private static ApiException batchReplayConflict() {
@@ -451,7 +618,15 @@ public class ProcurementInspectionService implements ProcurementInspectionPort, 
 
     /** The complete receipt remains locked until every event and final reconciliation commits. */
     private Map<UUID, Object[]> lockInspectionRows(String receiptType, UUID receiptId, List<UUID> inspectionIds) {
-        var mutationGuard = mutationLocks.inspection(receiptType, receiptId, inspectionIds);
+        return lockInspectionRows(receiptType, receiptId, inspectionIds, false);
+    }
+
+    /** [heldPrefix] 本事务已持整份报告的联合预锁: 嵌套取锁跳过覆盖复核发现，严格复核由报告路径统一做。 */
+    private Map<UUID, Object[]> lockInspectionRows(String receiptType, UUID receiptId, List<UUID> inspectionIds,
+                                                   boolean heldPrefix) {
+        var mutationGuard = heldPrefix
+                ? mutationLocks.inspectionHeld(receiptType, receiptId, inspectionIds)
+                : mutationLocks.inspection(receiptType, receiptId, inspectionIds);
         lockReceiptMutationDimensions(receiptType, receiptId);
         @SuppressWarnings("unchecked")
         List<Object[]> rows = em.createNativeQuery("""
@@ -600,6 +775,14 @@ public class ProcurementInspectionService implements ProcurementInspectionPort, 
     private ProcurementIqcStockInService.PreStockedAutoStockIn completeReceiptDisposition(
             String receiptType, UUID receiptId, List<ProcurementIqcStockInService.PreStockedRelease> preStocked,
             com.uten.imp.application.port.ProductionInspectionStockInPort.QualityReport followup) {
+        return completeReceiptDisposition(receiptType, receiptId, preStocked, followup, null);
+    }
+
+    /** [deferredClosureReceipts] 非空(整份报告路径)时结案重算延迟到报告末尾按订单去重一次执行。 */
+    private ProcurementIqcStockInService.PreStockedAutoStockIn completeReceiptDisposition(
+            String receiptType, UUID receiptId, List<ProcurementIqcStockInService.PreStockedRelease> preStocked,
+            com.uten.imp.application.port.ProductionInspectionStockInPort.QualityReport followup,
+            List<Object[]> deferredClosureReceipts) {
         // 委外回厂短交待判定(ADR-098 × ADR-090)：已上架的合格行先不转正(heldPassEventIds)，也不改投
         // 「待仓库确认入库」——货已经在库位上，委外判定后由判定的同一事务自动转正，仓库没有要做的事。
         var autoStockIn = iqcStockIn.confirmPreStockedReleases(receiptType, receiptId, preStocked);
@@ -612,7 +795,13 @@ public class ProcurementInspectionService implements ProcurementInspectionPort, 
         boolean wakeProduction = productionWakePending(receiptType, receiptId, wholeReceiptResolved);
         // Closure reads warehouse-stocked/returned quantities, not PASS/FAIL.
         // No intermediate event changes those inputs; reconcile each order once.
-        recalculateOrderClosure(receiptType, receiptId);
+        // W6-E：无自动入库批次时本次结论没有改变任何结案输入(结案只读上架量/退货/判定损耗)，
+        // 跳过重算；报告路径一律收齐后按订单去重一次重算。
+        if (deferredClosureReceipts != null) {
+            deferredClosureReceipts.add(new Object[]{receiptType, receiptId});
+        } else if (!preStocked.isEmpty() || !autoStockIn.batches().isEmpty()) {
+            recalculateOrderClosure(receiptType, receiptId);
+        }
         if (wakeProduction) {
             if (followup == null) stockInProduction.afterQualityReceiptResolved(receiptType, receiptId, autoStockIn.batches());
             else followup.afterQualityReceiptResolved(receiptType, receiptId, autoStockIn.batches());

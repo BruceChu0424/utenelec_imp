@@ -396,16 +396,17 @@ class ProductionMaterialAnalysisScalePostgresTest {
             try {
                 jdbc.execute("SET LOCAL track_functions='all'");
                 String beforeActions = supplyActionFingerprint(analysisId);
-                long before = transactionProvenanceCalls();
+                long before = transactionProvenanceCalls(), beforeLookups = registryLookups();
                 var plan = provenancePlan(em.createNativeQuery("EXPLAIN (ANALYZE,BUFFERS,TIMING OFF,FORMAT JSON) " + sql)
                         .setParameter("analysisId", analysisId).setParameter("actorId", actor).getSingleResult().toString());
-                long calls = transactionProvenanceCalls() - before;
+                long calls = transactionProvenanceCalls() - before, lookups = registryLookups() - beforeLookups;
                 evidence.putAll(Map.of("event", "provenance-scope-probe", "kind", "supply-cancellation",
-                        "references", references, "classifierCalls", calls));
+                        "references", references, "classifierWalks", calls, "registryLookups", lookups));
                 assertEquals(beforeActions, supplyActionFingerprint(analysisId),
                         "valid original physical item/header links and action facts must remain unchanged");
-                assertTrue(calls > 0 && calls <= references * 2,
-                        "each physical item/header may be classified at most once per reference; calls=" + calls + ", references=" + references);
+                assertEquals(0, calls, "V1120: origin is read from the registry, never the graph walk");
+                assertTrue(lookups > 0 && lookups <= references * 2,
+                        "each physical item/header may be classified at most once per reference; lookups=" + lookups + ", references=" + references);
                 saveProvenancePlan("supply-" + references, plan);
             } finally { status.setRollbackOnly(); }
         });
@@ -423,15 +424,16 @@ class ProductionMaterialAnalysisScalePostgresTest {
         new org.springframework.transaction.support.TransactionTemplate(transactionManager).executeWithoutResult(status -> {
             try {
                 jdbc.execute("SET LOCAL track_functions='all'");
-                long before = transactionProvenanceCalls();
+                long before = transactionProvenanceCalls(), beforeLookups = registryLookups();
                 var plan = provenancePlan(em.createNativeQuery("EXPLAIN (ANALYZE,BUFFERS,TIMING OFF,FORMAT JSON) " + sql)
                         .setParameter("segmentId", segment).setParameter("incrementOnly", false).getSingleResult().toString());
                 int rows = plan.path("Plan").path("Actual Rows").asInt();
-                long calls = transactionProvenanceCalls() - before;
+                long calls = transactionProvenanceCalls() - before, lookups = registryLookups() - beforeLookups;
                 evidence.putAll(Map.of("event", "provenance-scope-probe", "kind", "promotion-segment",
-                        "selectedSegments", 1, "classifierCalls", calls, "selectedRows", rows));
+                        "selectedSegments", 1, "classifierWalks", calls, "registryLookups", lookups, "selectedRows", rows));
                 assertEquals(1, rows, "the same confirmed segment/package/plan remains eligible");
-                assertEquals(1, calls, "unrelated approved plans must not enter the native classifier");
+                assertEquals(0, calls, "V1120: origin is read from the registry, never the graph walk");
+                assertTrue(lookups >= 1, "the selected plan still passes the native-origin predicate");
                 saveProvenancePlan("promotion-one-plan", plan);
             } finally { status.setRollbackOnly(); }
         });
@@ -439,10 +441,18 @@ class ProductionMaterialAnalysisScalePostgresTest {
         emit(evidence);
     }
 
+    /** Authoritative graph walks (entry and walk) within the current transaction. */
     private long transactionProvenanceCalls() {
         return jdbc.queryForObject("""
                 SELECT COALESCE(sum(calls),0) FROM pg_stat_xact_user_functions
-                WHERE schemaname='public' AND funcname='fn_imported_business_document_row'
+                WHERE schemaname='public' AND funcname IN ('fn_imported_business_document_row','fn_imported_business_document_row_internal')
+                """, Long.class);
+    }
+
+    private long registryLookups() {
+        return jdbc.queryForObject("""
+                SELECT COALESCE(sum(seq_scan+COALESCE(idx_scan,0)),0) FROM pg_stat_xact_user_tables
+                WHERE schemaname='public' AND relname='imported_document_registry'
                 """, Long.class);
     }
 

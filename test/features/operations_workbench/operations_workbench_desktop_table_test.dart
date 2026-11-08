@@ -18,6 +18,7 @@ import 'package:uten_imp/shared/badges/badge_registry.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
+import '../../helpers/workbench_read_fixture.dart';
 
 void main() {
   testWidgets(
@@ -493,7 +494,7 @@ class _RecordingGateway implements OperationsWorkbenchGateway {
     String? needTo,
   }) async {
     this.columnFilters.add(Map<String, String?>.of(columnFilters));
-    return data;
+    return workbenchPageSlice(data, page, size);
   }
 }
 
@@ -519,7 +520,7 @@ class _FakeGateway implements OperationsWorkbenchGateway {
     String? issuedTo,
     String? needFrom,
     String? needTo,
-  }) async => data;
+  }) async => workbenchPageSlice(data, page, size);
 }
 
 /// 其余请求（徽章、仓库字典预热等）一律回空, 不走真网络（ADR-184 起覆写

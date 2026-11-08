@@ -123,24 +123,35 @@ public class WarehouseInboundTaskCenterQueryService {
                     WarehouseInboundTaskCenterSql.billNoFacets(base,true),parameters,false);
             return new Page(List.of(),1,1,0,0,Map.of());
         }
-        WarehouseTaskPageMetadata metadata = identity == null && includeMetadata
-                ? WarehouseTaskPageMetadata.from(jdbc.query(WarehouseInboundTaskCenterSql.metadata(base),parameters,
-                        (rs,index) -> new Object[]{rs.getString(1),rs.getString(2),rs.getLong(3)})) : null;
-        Long total = metadata == null
-                ? jdbc.queryForObject(WarehouseInboundTaskCenterSql.count(base)+identityFilter,parameters,Long.class)
-                : metadata.total();
-        long count=total==null?0:total;
+        // One statement evaluates the authorized UNION once and returns page rows,
+        // the exact total and (for interactive pages) both facet buckets together.
+        boolean wantsMetadata = identity == null && includeMetadata;
+        String pageSql = WarehouseInboundTaskCenterSql.page(base,filter.sort(),filter.order(),identityFilter,wantsMetadata);
+        List<Row> collected = new java.util.ArrayList<>();
+        long[] totalHolder = {0};
+        String[] bucketsHolder = {null};
+        jdbc.query(pageSql,parameters,rs -> {
+            totalHolder[0]=rs.getLong("page_total");
+            if (wantsMetadata) {
+                String buckets=rs.getString("page_metadata_buckets");
+                if (buckets!=null) bucketsHolder[0]=buckets;
+            }
+            if (rs.getObject("id")!=null) collected.add(row(rs,rights));
+        });
+        long count = totalHolder[0];
         long pages=count==0?0:(count+size-1)/size;
         int effectivePage=count==0?1:(int)Math.min(page,Math.min(Integer.MAX_VALUE,pages));
-        parameters.addValue("offset",((long)effectivePage-1)*size);
-        List<Row> rows = count == 0 ? List.of()
-                : jdbc.query(WarehouseInboundTaskCenterSql.rows(base,filter.sort(),filter.order(),identityFilter),parameters,
-                        (rs,index) -> row(rs,rights));
-        rows=physicalCommandRows(rows,rights,filter.scopeWarehouseId()==null);
+        if (collected.isEmpty() && count>0 && page>1) {
+            // A page requested past the end still returns the last real page (original clamping).
+            parameters.addValue("offset",((long)effectivePage-1)*size);
+            jdbc.query(pageSql,parameters,rs -> { if (rs.getObject("id")!=null) collected.add(row(rs,rights)); });
+        }
+        List<Row> rows=physicalCommandRows(List.copyOf(collected),rights,filter.scopeWarehouseId()==null);
         if(identity!=null) return new Page(rows,1,1,count,rows.isEmpty()?0:1,Map.of());
         if(!includeMetadata) return new Page(rows,effectivePage,size,count,(int)Math.min(Integer.MAX_VALUE,pages),null,false);
         // Identity-only and metadata-free requests have already returned above.
-        var completeMetadata=Objects.requireNonNull(metadata,"Warehouse task metadata was not loaded");
+        var completeMetadata=WarehouseTaskPageMetadata.fromJson(
+                Objects.requireNonNull(bucketsHolder[0],"Warehouse task metadata was not loaded"));
         List<StatusFacet> facets = completeMetadata.statuses().entrySet().stream().map(entry -> {
             Presentation presentation=presentation(entry.getKey());
             return new StatusFacet(entry.getKey(),presentation.label(),entry.getValue());

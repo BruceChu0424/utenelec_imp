@@ -19,6 +19,7 @@ import 'package:uten_imp/features/operations_workbench/pages/operations_workbenc
 import 'package:uten_imp/features/operations_workbench/repositories/operations_workbench_repository.dart';
 import 'package:uten_imp/shared/badges/badge_registry.dart';
 import '../../helpers/badge_summary_fixture.dart';
+import '../../helpers/workbench_read_fixture.dart';
 import '../../support/filter_segment_tap.dart';
 
 /// 选中工具条分段：分段铺得开时直接点；小屏放不下时工具条收成「分类」下拉
@@ -1402,17 +1403,20 @@ class _FakeGateway implements OperationsWorkbenchGateway {
     this.columnFilters.add(Map.of(columnFilters));
     datesFrom.add(dateFrom);
     datesTo.add(dateTo);
+    OperationsWorkbenchData effective;
     if (exception != null && dataAfterExceptionFilter != null) {
-      return dataAfterExceptionFilter!;
+      effective = dataAfterExceptionFilter!;
+    } else {
+      // 概览请求（status=null）返回带完整计数的数据；选中具体阶段后的加载
+      // 才触发「刷新后选项缺失」场景（返回无 statusCounts 的数据）。
+      final specificStatus =
+          status != null && status != kOperationsWorkbenchOpenStatus;
+      effective =
+          specificStatus && dataAfterStatusFilter != null
+          ? dataAfterStatusFilter!
+          : data;
     }
-    // 概览请求（status=null）返回带完整计数的数据；选中具体阶段后的加载
-    // 才触发「刷新后选项缺失」场景（返回无 statusCounts 的数据）。
-    final specificStatus =
-        status != null && status != kOperationsWorkbenchOpenStatus;
-    if (specificStatus && dataAfterStatusFilter != null) {
-      return dataAfterStatusFilter!;
-    }
-    return data;
+    return workbenchPageSlice(effective, page, size);
   }
 }
 
@@ -1446,10 +1450,10 @@ class _RefreshBlockingGateway implements OperationsWorkbenchGateway {
   }) {
     _calls++;
     // 首次（initState 概览）立即返回；此后每次加载都挂起，等测试手动放行。
-    if (_calls == 1) return Future.value(data);
+    if (_calls == 1) return Future.value(workbenchPageSlice(data, page, size));
     final pending = Completer<OperationsWorkbenchData>();
     _pending = pending;
-    return pending.future;
+    return pending.future.then((value) => workbenchPageSlice(value, page, size));
   }
 }
 

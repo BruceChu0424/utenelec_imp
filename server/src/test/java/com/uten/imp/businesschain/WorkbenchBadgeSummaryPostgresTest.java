@@ -706,7 +706,9 @@ class WorkbenchBadgeSummaryPostgresTest {
         // 110 保留「汇总 ≪ 逐端点轮询」的量级约束, 不追平环境噪声。
         // 2026-11 财务复原批次并入 application/financeApplication 两个新来源后实测 120:
         // 各来源仍各读一次自己的计数查询(与原端点同一条), 无重复 SQL 可删, 按实测上调。
-        assertThat(summary.logicalStatements).as("语句预算").isLessThanOrEqualTo(120);
+        // 2026-11-08 W7: P3 每来源语句时限原先逐来源收紧+写回(实测 227, +2×来源数), 改为整份
+        // 汇总收紧一次、写回一次后实测 122 = 120 + 这 2 条; 上限只计入这 2 条时限保护本身。
+        assertThat(summary.logicalStatements).as("语句预算").isLessThanOrEqualTo(122);
     }
 
     // ---------------------------------------------------------------------------------------

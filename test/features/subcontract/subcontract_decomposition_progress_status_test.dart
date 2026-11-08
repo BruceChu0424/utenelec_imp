@@ -24,6 +24,7 @@ import 'package:uten_imp/shared/models/subcontract_short_delivery.dart'
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
+import '../../helpers/workbench_read_fixture.dart';
 import 'fake_subcontract_draw_gateway.dart';
 
 class _Api extends ApiClient {
@@ -92,7 +93,14 @@ class _Gateway implements OperationsWorkbenchGateway {
             ),
           ]
         : <OperationsWorkbenchTask>[];
-    return OperationsWorkbenchData(
+    return workbenchPageSlice(_progressData(department, items), page, size);
+  }
+}
+
+OperationsWorkbenchData _progressData(
+  OperationsWorkbenchDepartment department,
+  List<OperationsWorkbenchTask> items,
+) => OperationsWorkbenchData(
       department: department,
       summary: const OperationsWorkbenchSummary(
         totalTasks: 4,
@@ -131,8 +139,6 @@ class _Gateway implements OperationsWorkbenchGateway {
         ],
       },
     );
-  }
-}
 
 OperationsWorkbenchTask _order(
   String id,

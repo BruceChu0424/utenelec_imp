@@ -597,6 +597,9 @@ class _OperationsWorkbenchPageState
             page,
             batchSize: batchSize,
           )).toPagedReadSnapshot(),
+          // Every workbench batch carries the server's read proof (V1123
+          // domain), so two continuation batches may be in flight at once.
+          maxConcurrentPages: 2,
         );
         return (cached
                 as PagedReadSnapshot<

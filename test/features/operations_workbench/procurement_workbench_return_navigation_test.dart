@@ -27,6 +27,7 @@ import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
+import '../../helpers/workbench_read_fixture.dart';
 import '../subcontract/fake_subcontract_draw_gateway.dart';
 
 enum _ReturnKind { quickView, staleView, saved, refreshFails }
@@ -212,7 +213,10 @@ void main() {
           await tester.pump(const Duration(milliseconds: 300));
           await tester.pump();
           expect(fixture.gateway.loads, initialLoads + 1);
-          first.complete(_data(subcontract, 'FIRST-NEW', totalPages: 2));
+          // One complete read of 101 rows: batch 1 carries rows 1-100, batch 2
+          // the last row; both batches carry the same server read proof.
+          final twoBatches = _twoBatchData(subcontract);
+          first.complete(twoBatches);
           await tester.pump();
           await tester.pump();
           for (
@@ -230,15 +234,7 @@ void main() {
               ApiException('FORBIDDEN', 'ACCESS-REMOVED', httpStatus: 403),
             );
           } else {
-            second.complete(
-              _data(
-                subcontract,
-                'SECOND-NEW',
-                page: 2,
-                totalPages: 2,
-                taskId: 'task-second',
-              ),
-            );
+            second.complete(twoBatches);
           }
           await tester.pumpAndSettle();
           if (forbidden) {
@@ -259,18 +255,18 @@ void main() {
             expect(table.selectedIds, isEmpty);
           } else {
             expect(find.text('FIRST-NEW'), findsOneWidget);
-            expect(find.text('SECOND-NEW'), findsOneWidget);
+            final table = tester
+                .widget<MasterDataTableView<OperationsWorkbenchTask>>(
+                  tableFinder,
+                );
+            // Row 101 lives below the virtualized viewport; the accepted
+            // result must hold it, in server order, exactly once.
+            expect(table.items, hasLength(101));
+            expect(table.items.first.planNo, 'FIRST-NEW');
+            expect(table.items.last.planNo, 'SECOND-NEW');
             expect(find.text('PLAN-A'), findsNothing);
             expect(tester.state(tableFinder), same(tableState));
-            expect(
-              tester
-                  .widget<MasterDataTableView<OperationsWorkbenchTask>>(
-                    tableFinder,
-                  )
-                  .refreshedPages
-                  .keys,
-              [1],
-            );
+            expect(table.refreshedPages.keys, [1]);
           }
           expect(tester.takeException(), isNull);
           await tester.pumpWidget(const SizedBox.shrink());
@@ -452,8 +448,50 @@ class _Gateway implements OperationsWorkbenchGateway {
     loads++;
     final pending = next ?? pageResponses.remove(page);
     next = null;
-    return pending == null ? _data(subcontract, 'PLAN-A') : pending.future;
+    return pending == null
+        ? workbenchPageSlice(_data(subcontract, 'PLAN-A'), page, size)
+        : pending.future.then((value) => workbenchPageSlice(value, page, size));
   }
+}
+
+/// One complete-read result of 101 rows served at the standard batch size 100:
+/// the gateway's slice turns it into batch 1 (rows 1-100) and batch 2 (row 101).
+OperationsWorkbenchData _twoBatchData(bool subcontract) {
+  final department = subcontract
+      ? OperationsWorkbenchDepartment.subcontract
+      : OperationsWorkbenchDepartment.purchase;
+  return OperationsWorkbenchData(
+    department: department,
+    summary: OperationsWorkbenchSummary(
+      totalTasks: 101,
+      overdueTasks: 0,
+      openTasks: 101,
+      openQty: 404,
+      statusCounts: const {'IN_PROGRESS': 101},
+    ),
+    items: [
+      for (var i = 1; i <= 101; i++)
+        OperationsWorkbenchTask.fromJson({
+          'taskId': 'task-$i',
+          'planNo': i == 1 ? 'FIRST-NEW' : (i == 101 ? 'SECOND-NEW' : 'B-$i'),
+          'goodsName': 'Part $i',
+          'requiredQty': 4,
+          'openQty': 4,
+          'taskStatus': 'FINANCE_APPROVED',
+          'supplyRoute': subcontract ? 'SUBCONTRACT' : 'PURCHASE',
+          'actionDocType': subcontract ? 'SUBCONTRACT_ORDER' : 'PURCHASE_ORDER',
+          'actionDocId': 'order-$i',
+          'actionDocNo': 'ORDER-$i',
+          'actionDocCanView': true,
+          'actionDocStatus': '1',
+        }, department),
+    ],
+    page: 1,
+    size: 100,
+    total: 101,
+    totalPages: 2,
+    capabilities: const OperationsWorkbenchCapabilities(),
+  );
 }
 
 class _Api extends ApiClient {

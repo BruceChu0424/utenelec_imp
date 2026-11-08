@@ -85,17 +85,27 @@ public class WarehouseOutboundTaskCenterQueryService {
             bind(query,sql);com.uten.imp.common.web.NativeFacets.rowsOf(query);
             return new Page(List.of(),1,1,0,0,Map.of());
         }
-        var metadata = includeMetadata?WarehouseTaskPageMetadata.from(NativeQueryResults.objectArrayRows(
-                bind(em.createNativeQuery(sql.metadataSql()), sql))):null;
-        long total = metadata==null?((Number)bind(em.createNativeQuery(sql.countSql()),sql).getSingleResult()).longValue():metadata.total();
+        // One statement evaluates the authorized UNION once and returns page rows,
+        // the exact total and (for interactive pages) both facet buckets together.
+        String pageSql = sql.pageSql(includeMetadata);
+        java.util.function.LongFunction<List<Object[]>> readPage = offset -> NativeQueryResults.objectArrayRows(
+                bind(em.createNativeQuery(pageSql), sql).setParameter("limit", filter.size()).setParameter("offset", offset));
+        List<Object[]> result = readPage.apply((long) (filter.page() - 1) * filter.size());
+        if (result.isEmpty()) throw new IllegalStateException("Outbound task page is missing its aggregate row");
+        long total = ((Number) result.getFirst()[WarehouseOutboundTaskCenterSql.PAGE_TOTAL_COLUMN]).longValue();
+        String buckets = includeMetadata ? result.stream().map(row -> row[WarehouseOutboundTaskCenterSql.PAGE_METADATA_COLUMN])
+                .filter(java.util.Objects::nonNull).map(Object::toString).findFirst()
+                .orElseThrow(() -> new IllegalStateException("Outbound task metadata was not loaded")) : null;
         int totalPages = (int) Math.min(Integer.MAX_VALUE, (total + filter.size() - 1L) / filter.size());
         int page = totalPages == 0 ? 1 : Math.min(filter.page(), totalPages);
-        List<Row> items = total == 0 ? List.of() : NativeQueryResults.objectArrayRows(
-                bind(em.createNativeQuery(sql.rowsSql()), sql)
-                        .setParameter("limit", filter.size()).setParameter("offset", (long) (page - 1) * filter.size()))
-                .stream().map(row -> map(row, access)).toList();
+        if (result.stream().allMatch(row -> row[0] == null) && total > 0 && filter.page() > 1) {
+            // A page requested past the end still returns the last real page (original clamping).
+            result = readPage.apply((long) (page - 1) * filter.size());
+        }
+        List<Row> items = result.stream().filter(row -> row[0] != null).map(row -> map(row, access)).toList();
         items=physicalCommandRows(items,filter,ownDraftMaker);
         if (!includeMetadata) return new Page(items,page,filter.size(),total,totalPages,null,false);
+        var metadata = WarehouseTaskPageMetadata.fromJson(buckets);
         Map<String, Long> counts = metadata.statuses();
         List<StatusFacet> facets = new ArrayList<>();
         STATES.forEach((key, value) -> {

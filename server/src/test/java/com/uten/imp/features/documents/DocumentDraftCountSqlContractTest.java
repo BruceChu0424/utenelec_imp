@@ -90,7 +90,7 @@ class DocumentDraftCountSqlContractTest {
                     .startsWith("SELECT count(*) FROM " + source.table() + " o WHERE ")
                     .contains("o.is_deleted = false")
                     .contains("o.status = 0")
-                    .contains("NOT fn_imported_business_document('" + source.table() + "',o.id)")
+                    .contains("NOT " + com.uten.imp.common.history.ImportedBusinessDocumentScope.registeredSql(source.table(), "o.id"))
                     .endsWith("AND 1=1");
             // 红冲(-1)/已审(1) 不是草稿：等号口径不能退化成 <> 或 <=。
             assertThat(sql).doesNotContain("o.status <>").doesNotContain("o.status <=");
@@ -120,7 +120,8 @@ class DocumentDraftCountSqlContractTest {
         assertThat(sql).isEqualTo(
                 "SELECT count(*) FROM purchase_orders o WHERE o.is_deleted = false"
                         + " AND o.status = 0"
-                        + " AND NOT fn_imported_business_document('purchase_orders',o.id)"
+                        + " AND NOT EXISTS(SELECT 1 FROM imported_document_registry archive_registry"
+                        + " WHERE archive_registry.table_name='purchase_orders' AND archive_registry.row_id=o.id)"
                         + " AND COALESCE((SELECT c.status FROM procurement_order_approval_cases c"
                         + " WHERE c.order_type = 'PURCHASE' AND c.order_id = o.id"
                         + " ORDER BY c.attempt DESC LIMIT 1), 'NONE')"

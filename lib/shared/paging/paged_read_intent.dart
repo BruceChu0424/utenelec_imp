@@ -1,14 +1,28 @@
 import 'dart:async';
 
+import '../models/paged_result.dart';
+
 /// The immutable query/reader fence retires its HTTP reads. This cancellation
 /// intent never applies to a business command or retries an uncertain write.
 abstract final class PagedReadIntent {
   static final _readCurrentKey = Object();
   static final _activityKey = Object();
   static final _bootstrapKey = Object();
+  static final _provisionalKey = Object();
 
   static bool Function()? get currentRead =>
       Zone.current[_readCurrentKey] as bool Function()?;
+
+  /// The first-batch publication slot of the complete read running in this
+  /// zone, if its view opted in. Only the reader whose rows are the view's rows
+  /// may claim it; auxiliary complete reads in the same zone never publish.
+  static PagedReadProvisionalSink? get currentProvisional =>
+      Zone.current[_provisionalKey] as PagedReadProvisionalSink?;
+
+  static R provisionalRead<R>(
+    PagedReadProvisionalSink sink,
+    R Function() action,
+  ) => runZoned(action, zoneValues: {_provisionalKey: sink});
 
   static List<PagedReadActivityFence> get _activities =>
       Zone.current[_activityKey] as List<PagedReadActivityFence>? ?? const [];
@@ -82,4 +96,25 @@ class PagedReadActivityFence {
   });
   final bool Function() isCurrent;
   final bool allowInactiveBootstrap;
+}
+
+/// One-shot provisional publication for a complete read: the first validated
+/// batch may be shown while the same response keeps streaming. The owner's
+/// publish callback re-checks its request/owner fence and binds the rows as
+/// pending; totals, exports and batch actions still wait for the complete
+/// result, and a failed read retires the provisional rows as a whole.
+class PagedReadProvisionalSink {
+  PagedReadProvisionalSink(this._publish);
+  final void Function(PagedResult<Object?> partial) _publish;
+  bool _claimed = false;
+
+  /// The first complete reader of the view's rows claims the slot; nested or
+  /// auxiliary complete reads in the same zone get `false` and never publish.
+  bool claim() {
+    if (_claimed) return false;
+    _claimed = true;
+    return true;
+  }
+
+  void publish(PagedResult<Object?> partial) => _publish(partial);
 }

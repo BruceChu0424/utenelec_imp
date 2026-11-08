@@ -381,7 +381,7 @@ class DailyReportDraftClaimsPostgresTest {
                         String normalized=sql.replaceAll("\\s+"," ").toLowerCase(java.util.Locale.ROOT);
                         int from=normalized.indexOf(" from ");
                         if(normalized.startsWith("select ")&&!normalized.startsWith("select count(")&&from>0
-                                &&!normalized.substring(0,from).contains("fn_imported_business_document(")) {
+                                &&!normalized.substring(0,from).contains("fn_imported_business_document")) {
                             probe.headerSelectLists.add(normalized.substring(0,from));
                         }
                     }

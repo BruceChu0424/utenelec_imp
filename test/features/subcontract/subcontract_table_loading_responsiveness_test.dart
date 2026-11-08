@@ -27,6 +27,7 @@ import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/models/subcontract_short_delivery.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
+import '../../helpers/workbench_read_fixture.dart';
 import '../../support/filter_segment_tap.dart';
 import 'fake_subcontract_draw_gateway.dart';
 
@@ -414,10 +415,14 @@ class _DelayedWorkbench
     String? needFrom,
     String? needTo,
   }) {
-    if (immediate) return Future.value(_workbenchData);
+    if (immediate) {
+      return Future.value(workbenchPageSlice(_workbenchData, page, size));
+    }
     final completer = Completer<OperationsWorkbenchData>();
     pending.add(completer);
-    return completer.future;
+    return completer.future.then(
+      (value) => workbenchPageSlice(value, page, size),
+    );
   }
 }
 

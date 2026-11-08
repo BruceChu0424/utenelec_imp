@@ -68,9 +68,8 @@ public class FulfillmentWorkbenchController {
                 : FulfillmentWorkbenchTableQuery.from(sort, order, params, null, null, null, null);
         // 仓库数据范围(ADR-149): 服务端按本人范围强制过滤; scopeWarehouseId = 在可选范围内挑一个仓(含下级)。
         var scope=warehouseScopes.currentForRead(scopeWarehouseId);
-        if (!com.uten.imp.common.web.PageMetadataRequest.included(com.uten.imp.common.util.ColumnKeywordSearch.currentRequest()))
-            return queryService.query("WAREHOUSE",status,keyword,exception,dateFrom,dateTo,page,size,table,scope,false);
-        return queryService.query("WAREHOUSE", status, keyword, exception, dateFrom, dateTo, page, size, table,scope);
+        return queryService.queryVersioned("WAREHOUSE",status,keyword,exception,dateFrom,dateTo,page,size,table,scope,
+                metadataRequested());
     }
 
     /** 生产待领待办数(徽章来源 productionDraw): 与列表同一仓库范围(ADR-149, 发料仓)。 */
@@ -111,10 +110,8 @@ public class FulfillmentWorkbenchController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate needTo,
             @RequestParam Map<String, String> params) {
         var table=FulfillmentWorkbenchTableQuery.from(sort,order,params,issuedFrom,issuedTo,needFrom,needTo);
-        if (!com.uten.imp.common.web.PageMetadataRequest.included(com.uten.imp.common.util.ColumnKeywordSearch.currentRequest()))
-            return queryService.query("PURCHASE",status,keyword,exception,dateFrom,dateTo,page,size,table,
-                    WarehouseTaskScopePort.WarehouseTaskScope.ALL,false);
-        return queryService.query("PURCHASE",status,keyword,exception,dateFrom,dateTo,page,size,table);
+        return queryService.queryVersioned("PURCHASE",status,keyword,exception,dateFrom,dateTo,page,size,table,
+                WarehouseTaskScopePort.WarehouseTaskScope.ALL,metadataRequested());
     }
 
     @GetMapping("/purchase/count")
@@ -141,10 +138,13 @@ public class FulfillmentWorkbenchController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate needTo,
             @RequestParam Map<String, String> params) {
         var table=FulfillmentWorkbenchTableQuery.from(sort,order,params,issuedFrom,issuedTo,needFrom,needTo);
-        if (!com.uten.imp.common.web.PageMetadataRequest.included(com.uten.imp.common.util.ColumnKeywordSearch.currentRequest()))
-            return queryService.query("SUBCONTRACT",status,keyword,exception,dateFrom,dateTo,page,size,table,
-                    WarehouseTaskScopePort.WarehouseTaskScope.ALL,false);
-        return queryService.query("SUBCONTRACT",status,keyword,exception,dateFrom,dateTo,page,size,table);
+        return queryService.queryVersioned("SUBCONTRACT",status,keyword,exception,dateFrom,dateTo,page,size,table,
+                WarehouseTaskScopePort.WarehouseTaskScope.ALL,metadataRequested());
+    }
+
+    /** Continuation batches opt out of summary metadata; every batch still carries its read proof. */
+    private static boolean metadataRequested() {
+        return com.uten.imp.common.web.PageMetadataRequest.included(com.uten.imp.common.util.ColumnKeywordSearch.currentRequest());
     }
 
     @GetMapping("/subcontract/count")

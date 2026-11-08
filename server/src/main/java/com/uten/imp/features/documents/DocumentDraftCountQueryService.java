@@ -268,7 +268,7 @@ public class DocumentDraftCountQueryService {
     /** Operational counts use actual source ancestry even when a history list was requested. */
     static String currentSourcePredicate(DraftSource source) {
         if (!source.table().matches("[a-z][a-z0-9_]*")) throw new IllegalArgumentException("Invalid fixed document table");
-        return "NOT fn_imported_business_document('" + source.table() + "',o.id)";
+        return "NOT " + com.uten.imp.common.history.ImportedBusinessDocumentScope.registeredSql(source.table(), "o.id");
     }
 
     /**

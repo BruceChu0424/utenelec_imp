@@ -48,7 +48,7 @@ class ProductionWorkshopTaskExportServiceTest {
         for (int page = 1; page <= 3; page++) {
             int start = (page - 1) * 500, end = Math.min(1001, start + 500);
             var rows = IntStream.range(start, end).mapToObj(this::task).toList();
-            when(reader.workshopTasks(page, 500, "轨道", "COMPLETED", workshop, from, to,
+            when(reader.workshopTaskExportBatch(page, 500, "轨道", "COMPLETED", workshop, from, to,
                     null, null, "WL001", "ZX001", "segment", "desc")).thenReturn(
                     new PageResponse<>(rows, page, 500, 1001, 3));
         }
@@ -59,8 +59,10 @@ class ProductionWorkshopTaskExportServiceTest {
         }
         assertEquals(List.of(500, 500, 1), batches.stream().map(b -> b.rows().size()).toList());
         assertEquals(1001, batches.stream().flatMap(b -> b.rows().stream()).map(r -> r.get("segment")).distinct().count());
-        verify(reader, times(3)).workshopTasks(anyInt(), eq(500), eq("轨道"), eq("COMPLETED"), eq(workshop),
+        verify(reader, times(3)).workshopTaskExportBatch(anyInt(), eq(500), eq("轨道"), eq("COMPLETED"), eq(workshop),
                 eq(from), eq(to), isNull(), isNull(), eq("WL001"), eq("ZX001"), eq("segment"), eq("desc"));
+        verify(reader, never()).workshopTasks(anyInt(), anyInt(), any(), any(), any(), any(), any(),
+                any(), any(), any(), any(), any(), any());
     }
     @Test void workbookPreservesExactQuantityUnitAndLiteralNames() throws Exception {
         var t = task(1); when(t.productName()).thenReturn("=HYPERLINK(unsafe)");

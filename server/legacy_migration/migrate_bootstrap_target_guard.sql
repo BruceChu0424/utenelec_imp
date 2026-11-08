@@ -219,6 +219,7 @@ BEGIN
         ('goods_weight_observations','EMPTY'),
         ('goods_weight_profiles','SEED_OR_ADMIN'),
         ('hr_task_claims','EMPTY'),
+        ('imported_document_registry','EMPTY'),
         ('inbound_expectation_items','EMPTY'),
         ('inbound_expectations','EMPTY'),
         ('inventory_cost_gl_links','EMPTY'),

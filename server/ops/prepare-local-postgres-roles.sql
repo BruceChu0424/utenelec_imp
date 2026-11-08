@@ -305,6 +305,7 @@ BEGIN
                         'legacy_subcontract_order_import_sources', 'legacy_finance_import_sources',
                         'legacy_procurement_receipt_import_sources', 'legacy_quantity_counter_import_sources',
                         'legacy_production_plan_counter_import_sources', 'legacy_production_plan_counter_import_contexts',
+                        'imported_document_registry',
                         'flyway_schema_history', 'audit_log', 'audit_log_archive') LOOP
         EXECUTE format('REVOKE ALL ON TABLE public.%I FROM PUBLIC, uten RESTRICT', relation.relname);
         -- Table REVOKE does not remove column-level grants or grant options.
@@ -333,7 +334,8 @@ BEGIN
                    WHERE n.nspname = 'public' AND p.prokind = 'f' AND (
                        p.proname IN ('business_data_reset', 'fn_require_runtime_maintenance', 'fn_require_runtime_refresh',
                            'fn_business_test_reset_verify_purged', 'fn_clear_business_test_object_metadata',
-                           'fn_audit_track_table', 'fn_audit_seal_privileges', 'fn_migrate_financial_amount_columns')
+                           'fn_audit_track_table', 'fn_audit_seal_privileges', 'fn_migrate_financial_amount_columns',
+                           'fn_imported_document_registry_proven', 'fn_refresh_imported_document_registry')
                        OR p.proname LIKE 'fn\_register\_legacy\_%' ESCAPE '\'
                        OR p.proname LIKE 'fn\_import\_legacy\_%' ESCAPE '\') LOOP
         EXECUTE format('REVOKE ALL ON FUNCTION public.%I(%s) FROM PUBLIC, uten RESTRICT', routine.proname, routine.args);
@@ -348,7 +350,8 @@ BEGIN
                         'legacy_migration_rejects', 'legacy_migration_checkpoints',
                         'legacy_subcontract_order_import_sources', 'legacy_finance_import_sources',
                         'legacy_procurement_receipt_import_sources', 'legacy_quantity_counter_import_sources',
-                        'legacy_production_plan_counter_import_sources', 'legacy_production_plan_counter_import_contexts') LOOP
+                        'legacy_production_plan_counter_import_sources', 'legacy_production_plan_counter_import_contexts',
+                        'imported_document_registry') LOOP
         FOREACH privilege_name IN ARRAY ARRAY['INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER', 'SELECT WITH GRANT OPTION'] LOOP
             IF has_table_privilege('uten', relation.oid, privilege_name) THEN
                 RAISE EXCEPTION 'Refused: runtime retains protected evidence write or delegation authority';

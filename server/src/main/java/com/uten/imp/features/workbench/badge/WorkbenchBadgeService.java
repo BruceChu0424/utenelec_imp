@@ -62,6 +62,9 @@ public class WorkbenchBadgeService implements WorkbenchBadgeReadPort {
     @PersistenceContext
     private EntityManager entityManager;
 
+    /** 每个来源单条语句的时限上限(P3, 默认 5 秒); 调用方事务更严的时限原样保留。 */
+    private long sourceStatementTimeoutMillis = 5_000L;
+
     public WorkbenchBadgeService(
             List<WorkbenchBadgeSources> contributors,
             PlatformTransactionManager transactionManager,
@@ -163,9 +166,15 @@ public class WorkbenchBadgeService implements WorkbenchBadgeReadPort {
         Set<String> granted = new HashSet<>();
         Set<String> failed = new HashSet<>();
         taskAudience.browsingRead(() -> {
+            // 每来源语句时限(P3)整份汇总只收紧一次: statement_timeout 本就按语句计, 设在全部
+            // 来源保存点之前, 慢来源回滚到自己的保存点也撤不掉它, 后续来源照样受限; 读完写回
+            // 调用方原值。此前逐来源收紧+写回, 每份汇总多出 2×来源数条语句。
+            if (toRead.isEmpty()) return null;
+            String previousTimeout = limitSourceStatements();
             for (WorkbenchBadgeSources.Source source : toRead) {
                 readFacts(source, facts, granted, failed);
             }
+            restoreStatementTimeout(previousTimeout);
             return null;
         });
 
@@ -209,6 +218,11 @@ public class WorkbenchBadgeService implements WorkbenchBadgeReadPort {
     /**
      * 在保存点内读一个来源: 成功返回字段 → 数; 无权访问返回 null(不记失败);
      * 其它异常回滚到保存点、记入 failed 并返回 null。
+     *
+     * <p>每来源语句时限(2026-11-07 读取性能根治 P3): 来源内每条语句不超过
+     * {@link #sourceStatementTimeoutMillis}(调用方已更严则保留), 慢来源到点被取消并按上面的
+     * 失败路径进 stale, 不拖住其它来源。时限由 {@link #compute} 在全部来源保存点之前收紧一次、
+     * 读完写回一次(2026-11-08 W7), 回滚到本来源保存点不会撤销它。
      */
     private Map<String, Long> readIsolated(WorkbenchBadgeSources.Source source, Set<String> failed) {
         Session session = entityManager.unwrap(Session.class);
@@ -241,6 +255,26 @@ public class WorkbenchBadgeService implements WorkbenchBadgeReadPort {
         session.doWork(connection -> connection.rollback(savepoint));
         // 失败的查询可能留下半截实体状态; 只读汇总不持有任何待写实体, 清掉即可。
         entityManager.clear();
+    }
+
+    /** 收紧整份汇总的语句时限(原值先物化再改), 返回原值文本供原样写回。 */
+    private String limitSourceStatements() {
+        Object[] row = (Object[]) entityManager.createNativeQuery("""
+                WITH previous AS MATERIALIZED (
+                    SELECT current_setting('statement_timeout') AS value, setting::bigint AS millis
+                    FROM pg_settings WHERE name = 'statement_timeout')
+                SELECT previous.value,
+                       set_config('statement_timeout',
+                           (CASE WHEN previous.millis = 0 OR previous.millis > :cap THEN :cap
+                                 ELSE previous.millis END)::text, true)
+                FROM previous
+                """).setParameter("cap", sourceStatementTimeoutMillis).getSingleResult();
+        return (String) row[0];
+    }
+
+    private void restoreStatementTimeout(String previous) {
+        entityManager.createNativeQuery("SELECT set_config('statement_timeout', :value, true)")
+                .setParameter("value", previous).getSingleResult();
     }
 
     private static long sum(List<String> keys, Map<String, Long> facts) {

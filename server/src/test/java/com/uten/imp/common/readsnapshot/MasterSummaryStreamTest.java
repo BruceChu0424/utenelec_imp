@@ -82,6 +82,37 @@ class MasterSummaryStreamTest {
         verify(em,times(102)).clear();
     }
 
+    @Test void streamInvariantFactsResolveOncePerCursorAndLookupsOnlyQueryUnseenKeys() throws Exception {
+        var invariant = new AtomicInteger();
+        var lookedUp = new ArrayList<List<Integer>>();
+        var response = new MockHttpServletResponse();
+        summaries.stream("goods-master-list","master_goods","goods:view",query,null,
+                (filter,page,size,sort,order)->{
+                    // Scope/subtree/keyword-plan style facts: same value for every batch.
+                    String fact = BoundedMasterReadSource.memo(List.of("fact",filter),
+                            () -> "resolved-" + invariant.incrementAndGet());
+                    assertThat(fact).isEqualTo("resolved-1");
+                    // Label maps: batch keys overlap (key 0 every batch, key=page new), misses remembered.
+                    var labels = BoundedMasterReadSource.<Integer,String>lookup("labels",
+                            Arrays.asList(0, page, null, -1), keys -> {
+                                lookedUp.add(List.copyOf(keys));
+                                Map<Integer,String> found = new HashMap<>();
+                                for (Integer key:keys) if (key >= 0) found.put(key,"label-"+key);
+                                return found;
+                            });
+                    assertThat(labels).containsEntry(0,"label-0").containsEntry(page,"label-"+page).doesNotContainKey(-1);
+                    return page(page,size,350);
+                },response);
+        assertThat(frames(response).getLast().get("type").asText()).isEqualTo("complete");
+        assertThat(invariant).hasValue(1);
+        // First batch asks 0,1,-1; later batches only their new page key; -1 (a miss) is never re-queried.
+        assertThat(lookedUp).containsExactly(List.of(0,1,-1),List.of(2),List.of(3),List.of(4));
+        // Outside a cursor nothing is cached.
+        assertThat(BoundedMasterReadSource.memo("fact",() -> "a")).isEqualTo("a");
+        assertThat(BoundedMasterReadSource.<Integer,String>lookup("labels",List.of(7),keys -> Map.of(7,"x"))).containsEntry(7,"x");
+        assertThat(BoundedMasterReadSource.<Integer,String>lookup("labels",List.of(7),keys -> Map.of())).isEmpty();
+    }
+
     @Test void finalCommittedDriftRetiresEveryProvisionalFrameAndNeverPublishesCompletion() throws Exception {
         doAnswer(call->{
             call.getArgument(2,BiFunction.class).apply(proof,(Runnable)()->{});

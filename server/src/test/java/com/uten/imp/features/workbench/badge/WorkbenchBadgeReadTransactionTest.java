@@ -49,6 +49,7 @@ class WorkbenchBadgeReadTransactionTest {
         when(scopes.withQueryScopeCache(any())).thenAnswer(call->((WarehouseTaskScopePort.ReadQuery<?>) call.getArgument(0)).read());
         var target=new WorkbenchBadgeService(List.of(contributor),manager,scopes,com.uten.imp.testsupport.TaskAudienceTestSupport.direct());
         EntityManager em=mock(EntityManager.class); Session session=mock(Session.class); when(em.unwrap(Session.class)).thenReturn(session);
+        BadgeStatementBudgetStubs.accept(em);
         when(session.doReturningWork(any())).thenAnswer(call->((ReturningWork<?>)call.getArgument(0)).execute(
                 ((ConnectionHolder)TransactionSynchronizationManager.getResource(dataSource)).getConnection()));
         doAnswer(call->{((Work)call.getArgument(0)).execute(((ConnectionHolder)TransactionSynchronizationManager.getResource(dataSource)).getConnection());return null;}).when(session).doWork(any());

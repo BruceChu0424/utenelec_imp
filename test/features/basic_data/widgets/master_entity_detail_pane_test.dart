@@ -15,6 +15,7 @@ import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:uten_imp/components/feedback/uten_context_menu.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
@@ -423,15 +424,51 @@ void main() {
       await tester.pump(const Duration(milliseconds: 1));
     }
     expect(reads, [1, 2]);
-    expect(_table(tester).items, isEmpty);
-    expect(_table(tester).isLoading, isTrue);
+    // 2026-11-07 P4.1：首批已校验即先发布 provisional 行；加载状态未清除，
+    // 依赖总计的操作（导出/打印/批量/写入）仍被禁用，首批不是完整列表。
+    expect(_table(tester).items, hasLength(100));
+    expect(_table(tester).isLoading, isFalse);
+    expect(_table(tester).loadingMore, isTrue);
+    expect(_table(tester).totalPages, 1);
     gate.complete(
       _fullBatch(data, const MasterPaneQuery(categoryId: 'cat-1', page: 2)),
     );
     await tester.pumpAndSettle();
     expect(_table(tester).items, hasLength(150));
     expect(_table(tester).isLoading, isFalse);
+    expect(_table(tester).loadingMore, isFalse);
     expect(_table(tester).totalPages, 1);
+    expect(reads, [1, 2]);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('主档完整流断流时 provisional 首批整体退休不留半份列表', (tester) async {
+    final data = [
+      for (var i = 0; i < 150; i++) _Row('f$i', '断流$i', '使用', i + 1),
+    ];
+    final fail = Completer<PagedResult<_Row>>();
+    final reads = <int>[];
+    await _pump(
+      tester,
+      _FakeBatchRepository(),
+      _FakeStatusRepository(),
+      settle: false,
+      loadPage: (query) async {
+        reads.add(query.page);
+        return query.page == 2 ? fail.future : _fullBatch(data, query);
+      },
+    );
+    for (var frame = 0; reads.length < 2 && frame < 20; frame++) {
+      await tester.pump(const Duration(milliseconds: 1));
+    }
+    // Provisional first batch visible while the stream is still open...
+    expect(_table(tester).items, hasLength(100));
+    expect(_table(tester).loadingMore, isTrue);
+    fail.completeError(ApiException('PRIMARY_UNAVAILABLE', '读取中断'));
+    await tester.pumpAndSettle();
+    // ...and retired as a whole when the read fails: no half list stays.
+    expect(_table(tester).items, isEmpty);
+    expect(_table(tester).loadingMore, isFalse);
     expect(reads, [1, 2]);
     expect(tester.takeException(), isNull);
   });

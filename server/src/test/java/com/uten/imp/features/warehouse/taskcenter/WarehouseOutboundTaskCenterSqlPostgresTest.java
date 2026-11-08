@@ -232,6 +232,20 @@ class WarehouseOutboundTaskCenterSqlPostgresTest {
         assertThat(pageTwo.get(1).get("source_type")).isEqualTo("OTHER");
         assertThat(rows(plan, 3, 2).getFirst().get("source_type")).isEqualTo("SALES");
         assertThat(rows(plan, 3, 2).getFirst().get("id")).isEqualTo(shared);
+        // The merged page statement returns the same rows plus exact total and facet buckets.
+        var merged = mergedPage(plan, 2, 2);
+        assertThat(merged).extracting(row -> row.get("bill_no")).containsExactly("C-SC", "SAME");
+        assertThat(merged).allSatisfy(row -> assertThat(((Number) row.get("page_total")).longValue()).isEqualTo(5L));
+        var metadata = WarehouseTaskPageMetadata.fromJson(merged.stream().map(row -> row.get("page_metadata_buckets"))
+                .filter(java.util.Objects::nonNull).map(Object::toString).findFirst().orElseThrow());
+        assertThat(metadata.total()).isEqualTo(5L);
+        assertThat(metadata.statuses().values().stream().mapToLong(Long::longValue).sum()).isEqualTo(5L);
+        // Past-the-end pages return no rows but still carry total and facets on the synthetic row.
+        var beyondEnd = mergedPage(plan, 9, 2);
+        assertThat(beyondEnd).hasSize(1);
+        assertThat(beyondEnd.getFirst().get("id")).isNull();
+        assertThat(((Number) beyondEnd.getFirst().get("page_total")).longValue()).isEqualTo(5L);
+        assertThat(beyondEnd.getFirst().get("page_metadata_buckets")).isNotNull();
         var same = plan("ALL", null, "SAME", null, null, full(), WarehouseTaskScope.ALL, "");
         assertThat(count(same)).isEqualTo(2);
         assertThat(jdbc.queryForList(same.billNoFacetsSql(), parameters(same))).hasSize(4);
@@ -449,6 +463,10 @@ class WarehouseOutboundTaskCenterSqlPostgresTest {
     }
     private static List<Map<String,Object>> rows(WarehouseOutboundTaskCenterSql.Plan plan, int page, int size) {
         return jdbc.queryForList(plan.rowsSql(), parameters(plan).addValue("limit", size).addValue("offset", (long)(page-1)*size));
+    }
+    /** The merged page statement: rows plus total plus facet buckets from one UNION evaluation. */
+    private static List<Map<String,Object>> mergedPage(WarehouseOutboundTaskCenterSql.Plan plan, int page, int size) {
+        return jdbc.queryForList(plan.pageSql(true), parameters(plan).addValue("limit", size).addValue("offset", (long)(page-1)*size));
     }
     private static void sale(UUID id, String bill, UUID warehouse) {
         jdbc.update("""

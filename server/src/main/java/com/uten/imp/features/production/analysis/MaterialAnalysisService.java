@@ -1399,6 +1399,11 @@ public class MaterialAnalysisService {
         return readHeader(analysisId,true);
     }
 
+    /** Lock-free header snapshot for pure-read pre-lock work (aggregate submit's admission preview). */
+    AnalysisHeader headerSnapshot(UUID analysisId) {
+        return readHeader(analysisId,false);
+    }
+
     private AnalysisHeader readHeader(UUID analysisId,boolean forUpdate) {
         Object[] row = oneRow(em.createNativeQuery("""
                 SELECT id, warehouse_id, status, version, fingerprint,
@@ -2436,14 +2441,10 @@ public class MaterialAnalysisService {
                                 JOIN selected_request request ON request.id = item.request_id
                                 WHERE item.id = allocation.external_item_id
                                   AND item.is_deleted = FALSE
-                                  AND NULLIF(to_jsonb(item)->>'legacy_id','') IS NULL
-                                  AND NULLIF(to_jsonb(item)->>'legacy_import_run_id','') IS NULL
-                                  AND NOT fn_imported_business_document('purchase_request_items',item.id)
+                                  AND %1$s
                                   AND request.id = action.external_document_id
                                   AND request.is_deleted = FALSE
-                                  AND NULLIF(to_jsonb(request)->>'legacy_id','') IS NULL
-                                  AND NULLIF(to_jsonb(request)->>'legacy_import_run_id','') IS NULL
-                                  AND NOT fn_imported_business_document('purchase_requests',request.id)
+                                  AND %2$s
                                   AND request.status IN (0,1)
                                   AND request.is_stopped = FALSE))))
                       OR (action.public_surplus_qty > 0 AND NOT EXISTS (
@@ -2456,14 +2457,10 @@ public class MaterialAnalysisService {
                         JOIN selected_request request ON request.id = item.request_id
                         WHERE item.id = action.public_surplus_external_item_id
                           AND item.is_deleted = FALSE
-                          AND NULLIF(to_jsonb(item)->>'legacy_id','') IS NULL
-                          AND NULLIF(to_jsonb(item)->>'legacy_import_run_id','') IS NULL
-                          AND NOT fn_imported_business_document('purchase_request_items',item.id)
+                          AND %1$s
                           AND request.id = action.external_document_id
                           AND request.is_deleted = FALSE
-                          AND NULLIF(to_jsonb(request)->>'legacy_id','') IS NULL
-                          AND NULLIF(to_jsonb(request)->>'legacy_import_run_id','') IS NULL
-                          AND NOT fn_imported_business_document('purchase_requests',request.id)
+                          AND %2$s
                           AND request.status IN (0,1)
                           AND request.is_stopped = FALSE))))
                     OR
@@ -2483,14 +2480,10 @@ public class MaterialAnalysisService {
                                 JOIN selected_application application ON application.id = item.application_id
                                 WHERE item.id = allocation.external_item_id
                                   AND item.is_deleted = FALSE
-                                  AND NULLIF(to_jsonb(item)->>'legacy_id','') IS NULL
-                                  AND NULLIF(to_jsonb(item)->>'legacy_import_run_id','') IS NULL
-                                  AND NOT fn_imported_business_document('subcontract_application_items',item.id)
+                                  AND %3$s
                                   AND application.id = action.external_document_id
                                   AND application.is_deleted = FALSE
-                                  AND NULLIF(to_jsonb(application)->>'legacy_id','') IS NULL
-                                  AND NULLIF(to_jsonb(application)->>'legacy_import_run_id','') IS NULL
-                                  AND NOT fn_imported_business_document('subcontract_applications',application.id)
+                                  AND %4$s
                                   AND application.status IN (0,1)))))
                       OR (action.public_surplus_qty > 0 AND NOT EXISTS (
                         WITH selected_item AS MATERIALIZED (
@@ -2502,14 +2495,10 @@ public class MaterialAnalysisService {
                         JOIN selected_application application ON application.id = item.application_id
                         WHERE item.id = action.public_surplus_external_item_id
                           AND item.is_deleted = FALSE
-                          AND NULLIF(to_jsonb(item)->>'legacy_id','') IS NULL
-                          AND NULLIF(to_jsonb(item)->>'legacy_import_run_id','') IS NULL
-                          AND NOT fn_imported_business_document('subcontract_application_items',item.id)
+                          AND %3$s
                           AND application.id = action.external_document_id
                           AND application.is_deleted = FALSE
-                          AND NULLIF(to_jsonb(application)->>'legacy_id','') IS NULL
-                          AND NULLIF(to_jsonb(application)->>'legacy_import_run_id','') IS NULL
-                          AND NOT fn_imported_business_document('subcontract_applications',application.id)
+                          AND %4$s
                           AND application.status IN (0,1)))))
                     OR
                     (action.external_document_type = 'PREPLAN_MAKE_TASK' AND NOT EXISTS (
@@ -2521,7 +2510,11 @@ public class MaterialAnalysisService {
                               WHERE shared.action_id=action.id AND shared.anchor_analysis_item_id=child.id AND shared.analysis_id=action.analysis_id)))
                           AND child.is_deleted = FALSE))
                   )
-                """;
+                """.formatted(
+                        com.uten.imp.common.history.ImportedBusinessDocumentScope.nativePredicate("purchase_request_items", "item"),
+                        com.uten.imp.common.history.ImportedBusinessDocumentScope.nativePredicate("purchase_requests", "request"),
+                        com.uten.imp.common.history.ImportedBusinessDocumentScope.nativePredicate("subcontract_application_items", "item"),
+                        com.uten.imp.common.history.ImportedBusinessDocumentScope.nativePredicate("subcontract_applications", "application"));
     }
 
     /** Reconcile actionable coverage from authoritative downstream lifecycle facts. */

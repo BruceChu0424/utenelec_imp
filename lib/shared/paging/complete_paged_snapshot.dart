@@ -18,6 +18,11 @@ Future<PagedResult<T>> loadCompletePagedResult<T>({
   Object? Function(T row)? idOf,
   void Function(List<T> rows, int total, bool hasMore)? onBatch,
   FutureOr<void> Function(PagedResult<T> page)? onPage,
+  // Provisional first-batch display (2026-11-07 user decision): rows already
+  // validated may render while the same response keeps streaming. Totals and
+  // every total-dependent action still wait for the complete frame; a failed
+  // or retired read takes the provisional rows down with it.
+  void Function(PagedResult<T> provisional)? onProvisionalBatch,
   bool requireStableTotal = true,
   bool allowUnknownTotal = false,
   bool unknownPageCountIsHorizon = false,
@@ -42,6 +47,7 @@ Future<PagedResult<T>> loadCompletePagedResult<T>({
   final parent = PagedReadIntent.currentRead;
   final activity = PagedReadIntent.currentActivity;
   final bootstrapAllowed = PagedReadIntent.allowsInactiveBootstrap;
+  var provisionalPublished = false;
   bool logicalCurrent() => isCurrent() && (parent?.call() ?? true);
   bool current() => logicalCurrent() && (activity?.call() ?? true);
   final pipeline = maxConcurrentPages == 1
@@ -150,6 +156,21 @@ Future<PagedResult<T>> loadCompletePagedResult<T>({
         throw ApiException('SNAPSHOT_CHANGED', '数据在读取期间已变化，请刷新后重新读取完整结果');
       }
       pipeline?.accepted();
+      if (hasMore && !provisionalPublished && onProvisionalBatch != null) {
+        // Only the first validated batch is published; the complete result
+        // replaces it. The server's exact total rides along unchanged.
+        provisionalPublished = true;
+        onProvisionalBatch(
+          first.withRows(
+            List<T>.of(rows),
+            page: 1,
+            size: rows.length,
+            total: knownTotal ? result.total : rows.length,
+            totalPages: 1,
+          ),
+        );
+        if (!current()) throw const UiWorkCancelled();
+      }
       if (!hasMore) {
         work.ensureCurrent();
         final combined = await first.withRowsFromResponsive(

@@ -36,11 +36,56 @@ public final class BoundedMasterReadSource {
                 : cursor.read(repository, em, type, specification, pageable, filter);
     }
 
+    /**
+     * Stream-invariant facts of one counted cursor (scope, category subtree, keyword
+     * plan) are computed once per snapshot instead of once per 100-row batch. The
+     * cursor already rejects any filter change, and the repeatable-read snapshot
+     * keeps the facts stable. Outside a cursor the supplier runs every time.
+     */
+    @SuppressWarnings("unchecked")
+    public static <V> V memo(Object key, java.util.function.Supplier<V> supplier) {
+        Session cursor = CURRENT.get();
+        if (cursor == null) return supplier.get();
+        if (Thread.currentThread() != cursor.owner) throw new IllegalStateException("Master read owner changed");
+        if (cursor.memo.containsKey(key)) return (V) cursor.memo.get(key);
+        V value = supplier.get();
+        cursor.memo.put(key, value);
+        return value;
+    }
+
+    /**
+     * Id-to-label lookups reuse what earlier batches of the same snapshot loaded and
+     * query only the ids not seen yet (misses are remembered too). Values must be
+     * plain facts, never managed entities: each batch clears the persistence context.
+     */
+    @SuppressWarnings("unchecked")
+    public static <K, V> Map<K, V> lookup(Object domain, Collection<K> keys,
+            java.util.function.Function<Collection<K>, Map<K, V>> loader) {
+        Session cursor = CURRENT.get();
+        if (cursor == null) return loader.apply(keys);
+        if (Thread.currentThread() != cursor.owner) throw new IllegalStateException("Master read owner changed");
+        Map<K, V> cache = (Map<K, V>) cursor.lookups.computeIfAbsent(domain, ignored -> new HashMap<>());
+        List<K> missing = keys.stream().filter(Objects::nonNull).filter(key -> !cache.containsKey(key)).distinct().toList();
+        if (!missing.isEmpty()) {
+            Map<K, V> loaded = loader.apply(missing);
+            for (K key : missing) cache.put(key, loaded.get(key));
+        }
+        Map<K, V> result = new HashMap<>();
+        for (K key : keys) {
+            if (key == null) continue;
+            V value = cache.get(key);
+            if (value != null) result.put(key, value);
+        }
+        return result;
+    }
+
     public static final class Session implements AutoCloseable {
         final EntityManager em;
         final Runnable checkpoint;
         final LongConsumer countPolicy;
         final Thread owner = Thread.currentThread();
+        final Map<Object, Object> memo = new HashMap<>();
+        final Map<Object, Map<?, ?>> lookups = new HashMap<>();
         Class<?> type;
         Sort sort;
         Object filter;

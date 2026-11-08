@@ -158,9 +158,15 @@ public class GoodsService {
     @Transactional(readOnly = true)
     public PageResponse<GoodsListItem> list(GoodsQueryFilter f, int page, int size, String sort, String order) {
         requireHeaderVisibility(f,sort);
-        List<UUID> subtreeIds = resolveCategoryScopeIds(f);
-        var scope = goodsScope();
-        var keyword = keywordPlan(f);
+        // A complete stream reads the same filter batch after batch inside one
+        // repeatable-read snapshot: scope, subtree and keyword plan are resolved
+        // once per cursor (outside a cursor they resolve on every call as before).
+        List<UUID> subtreeIds = com.uten.imp.common.readsnapshot.BoundedMasterReadSource.memo(
+                List.of("goods.subtree", f), () -> resolveCategoryScopeIds(f));
+        var scope = com.uten.imp.common.readsnapshot.BoundedMasterReadSource.memo(
+                List.of("goods.scope"), this::goodsScope);
+        var keyword = com.uten.imp.common.readsnapshot.BoundedMasterReadSource.memo(
+                List.of("goods.keyword", f), () -> keywordPlan(f));
         // 2026-10-02 恢复编号升序默认（与货品选择弹窗、新建/粘贴后的「跳末页看新货品」
         // 口径一致）：此前临时改成创建时间倒序让新货品置顶，与用户定的「复制落最后面」
         // 相反；显式排序参数仍然覆盖默认值。
@@ -208,21 +214,30 @@ public class GoodsService {
                         .setParameter("ids", content.stream().map(Goods::getId).toList())
                         .getResultList());
         // 历史只读回显：UUID 缺失时按本页 legacy 快照批量补颜色/单位名，绝不建立新关系。
-        Map<Integer, String> colorNames = colorNamesFor(
-                content.stream().filter(g -> g.getColor() == null).map(Goods::getColorLegacyId).toList());
-        Map<Integer, String> unitNames = unitNamesFor(
-                content.stream().filter(g -> g.getUnit() == null).map(Goods::getUnitLegacyId).toList());
+        // 完整流内同一快照的名称映射跨批复用，只查本批新出现的键。
+        Map<Integer, String> colorNames = com.uten.imp.common.readsnapshot.BoundedMasterReadSource.lookup(
+                "goods.legacyColorNames",
+                content.stream().filter(g -> g.getColor() == null).map(Goods::getColorLegacyId).toList(),
+                this::colorNamesFor);
+        Map<Integer, String> unitNames = com.uten.imp.common.readsnapshot.BoundedMasterReadSource.lookup(
+                "goods.legacyUnitNames",
+                content.stream().filter(g -> g.getUnit() == null).map(Goods::getUnitLegacyId).toList(),
+                this::unitNamesFor);
         // 历史只读回显：UUID 缺失时按本页 legacy 快照批量补模具编号（列表「模具编号」列）。
         Map<Integer, Mould> mouldsByLegacy = mouldsByLegacyFor(
                 content.stream().filter(g -> g.getMould() == null).map(Goods::getMouldLegacyId).toList());
         Map<UUID, BigDecimal> stockByGoods = stockQuantitiesFor(
                 content.stream().map(Goods::getId).toList());
         // 所属仓库名 (V587)：一次批量取名，不在拼行时逐行碰关联触发懒加载 (N+1)。
-        Map<UUID, String> owningWarehouseNames = relationships.warehouseNames(
-                content.stream().map(GoodsService::owningWarehouseIdOf).toList());
+        Map<UUID, String> owningWarehouseNames = com.uten.imp.common.readsnapshot.BoundedMasterReadSource.lookup(
+                "goods.owningWarehouseNames",
+                content.stream().map(GoodsService::owningWarehouseIdOf).toList(),
+                ids -> relationships.warehouseNames(ids));
         // 归属车间名 (V590)：同一批量取名口径。
-        Map<UUID, String> owningWorkshopNames = relationships.departmentNames(
-                content.stream().map(GoodsService::owningWorkshopIdOf).toList());
+        Map<UUID, String> owningWorkshopNames = com.uten.imp.common.readsnapshot.BoundedMasterReadSource.lookup(
+                "goods.owningWorkshopNames",
+                content.stream().map(GoodsService::owningWorkshopIdOf).toList(),
+                ids -> relationships.departmentNames(ids));
         List<GoodsListItem> items = content.stream()
                 .map(g -> {
                     var item = toList(g, colorNames, unitNames, mouldsByLegacy, stockByGoods,

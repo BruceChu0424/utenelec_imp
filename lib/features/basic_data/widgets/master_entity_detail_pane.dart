@@ -1310,6 +1310,16 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
       _listError = null;
       _pageNum = page;
     });
+    // First-batch rows may render while the complete stream continues.
+    // _listLoading stays true until the complete result, which keeps export,
+    // print, batch and write entry points disabled; any failed or retired read
+    // takes the provisional rows down and restores what was on screen before.
+    var showedProvisional = false;
+    final beforeProvisional = _displayedQueryStale ? null : _page;
+    void retireProvisional() {
+      if (showedProvisional) _page = beforeProvisional;
+    }
+
     try {
       bool requestCurrent() =>
           readerCurrent() && _listRequests.isCurrent(generation);
@@ -1326,6 +1336,15 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
           isCurrent: requestCurrent,
           isOwnerCurrent: readerCurrent,
           useCache: useCache,
+          onProvisionalBatch: (partial) {
+            if (!mounted || !requestCurrent()) return;
+            showedProvisional = true;
+            setState(() {
+              _page = partial;
+              _pageNum = 1;
+              _displayedQueryStale = false;
+            });
+          },
           canPrefetch: () =>
               !widget.externalSearchPending &&
               TickerMode.valuesOf(context).enabled &&
@@ -1355,18 +1374,30 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
         _displayedQueryStale = false;
       });
     } on ApiException catch (e) {
-      if (isRetiredViewRead(e)) return;
+      if (isRetiredViewRead(e)) {
+        if (mounted && _listRequests.isCurrent(generation)) {
+          setState(retireProvisional);
+        }
+        return;
+      }
       if (!readerCurrent() || !_listRequests.isCurrent(generation)) return;
       if (_pageAccessDenied(e)) _pageReads.invalidate();
       setState(() {
+        retireProvisional();
         if (_displayedQueryStale || _pageAccessDenied(e)) _page = null;
         _displayedQueryStale = false;
         _listError = e.message;
       });
     } catch (error) {
-      if (isRetiredViewRead(error)) return;
+      if (isRetiredViewRead(error)) {
+        if (mounted && _listRequests.isCurrent(generation)) {
+          setState(retireProvisional);
+        }
+        return;
+      }
       if (!readerCurrent() || !_listRequests.isCurrent(generation)) return;
       setState(() {
+        retireProvisional();
         if (_displayedQueryStale) _page = null;
         _displayedQueryStale = false;
         _listError = '加载${_c.noun}列表失败'; // TODO(l10n): 补 arb

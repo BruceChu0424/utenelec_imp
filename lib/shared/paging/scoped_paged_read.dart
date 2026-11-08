@@ -150,6 +150,10 @@ class ScopedPagedRead<T> {
     bool Function()? canPrefetch,
     void Function(Object)? onPrefetchError,
     bool revalidateWindow = true,
+    void Function(PagedResult<T> provisional)? onProvisionalBatch,
+    // Continuation batches of one stable-total snapshot may be fetched
+    // concurrently (identity, total and revision checks stay per batch).
+    int maxConcurrentPages = 1,
   }) {
     final ownerCurrent = isOwnerCurrent ?? isCurrent;
     if (_disposed || !isCurrent() || !ownerCurrent()) {
@@ -179,21 +183,40 @@ class ScopedPagedRead<T> {
     } else {
       session.beginRead();
     }
+    // Provisional first-batch display (2026-11-07): only a fresh read without
+    // an accepted result publishes its validated first batch as pending rows.
+    // The complete frame replaces them; every failure path keeps the reader's
+    // existing retirement (session.fail/invalidate), so a half list is never
+    // mistaken for the complete result.
+    final provisionalSink = onProvisionalBatch == null || _accepted != null
+        ? null
+        : PagedReadProvisionalSink((partial) {
+            if (!current() || partial is! PagedResult<T>) return;
+            onProvisionalBatch(session.bindResult(partial, pending: true));
+          });
     late final _CompleteFlight<T> flight;
     Future<PagedResult<T>> load() async {
       try {
-        var result = fetchComplete != null
-            ? await PagedReadIntent.scopedRead(
+        final sink = provisionalSink;
+        Future<PagedResult<T>> complete() => fetchComplete != null
+            ? PagedReadIntent.scopedRead(
                 baseCurrent,
                 fetchComplete,
                 bootstrap: PagedReadIntent.allowsInactiveBootstrap,
               )
-            : await loadCompletePagedResult<T>(
+            : loadCompletePagedResult<T>(
                 loadPage: (batch, size) =>
                     fetchPageSized?.call(batch, size) ?? fetchPage(batch),
                 isCurrent: baseCurrent,
                 idOf: idOf ?? this.idOf,
+                maxConcurrentPages: maxConcurrentPages,
+                onProvisionalBatch: sink == null || !sink.claim()
+                    ? null
+                    : (partial) => sink.publish(partial as PagedResult<Object?>),
               );
+        var result = await (sink == null
+            ? complete()
+            : PagedReadIntent.provisionalRead(sink, complete));
         if (!current()) throw StateError('Paged read owner changed');
         if (_accepted != null &&
             _accepted!.readScopeVersion != result.readScopeVersion) {

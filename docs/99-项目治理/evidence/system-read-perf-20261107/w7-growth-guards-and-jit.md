@@ -87,10 +87,13 @@ ANALYZE，JIT 同开」：psql 会话默认 `jit=on`，而根视图/段视图这
 `system_read_perf_wave_w6c_w7`）与当前本地 main（`5a1ea982e`）的 V1115–V1119
 （`execution_workbench_actual_top_level_products` / `production_overproduction_request_optional_reason` /
 `production_daily_report_local_weight_basis` / `preplan_receipt_priority` /
-`subcontract_material_shortage_choices`）同号不同文件；另有在途工作树已用到 V1124
-（`subcontract-material-shortage-20261107`、`warehouse-physical-stock-20261107`）。合并时须把本分支五个
-迁移整体顺延到 main 当时最高号之后，并同步：迁移内自引用注释（V1116/V1117/V1119 头注）、按文件名
-读取迁移的测试（`ProductionExecutionWorkbenchRootsSharedScanPostgresTest`、
-`ProductionExecutionWorkbenchGrowthPostgresTest` 读 V1094/V1117，`DataLifecycleRegistryContractTest` 读
-V1119）、`docs/数据迁移/README.md` 头注、`ForwardMigrationSequenceContractTest` 连续性，以及 W1
-回填（约 190 万行、6–9 分钟）的维护窗口安排。本轮按授权不合并、不推送。
+`subcontract_material_shortage_choices`）同号不同文件。main 这五个号是 2026-11-08 主链 CI 修复时由
+V1120–V1124 前移重编号而来，且已随 `5a1ea982e` 推送——**已发布、不能再动**；两条在途工作树
+（`subcontract-material-shortage-20261107`、`warehouse-physical-stock-20261107`）里的 V1120–V1124 是重编号前的
+旧号副本，以 main 为准。合并时本分支五个迁移整体顺延为 **V1120–V1124**（相对顺序不变），并同步：迁移内
+自引用注释（V1116/V1117/V1119 头注）、按文件名读取迁移的测试（`ProductionExecutionWorkbenchRootsSharedScanPostgresTest`、
+`ProductionExecutionWorkbenchGrowthPostgresTest` 读 V1094/V1117，`DataLifecycleRegistryContractTest` 读 V1119）、
+`docs/数据迁移/README.md` 头注、`ForwardMigrationSequenceContractTest` 连续性，以及 W1 回填（公司库约 190 万行、
+6–9 分钟）的维护窗口安排。**本地验收注意**：5434 开发库 `uten_imp` 已应用过旧号 V1120–V1124（main 重编号前的
+候选），合并后的构建在它上面会撞 Flyway 历史，须先按 5434 克隆配方另起干净库再测（未经用户同意不动原库）。
+本轮按授权不合并、不推送。

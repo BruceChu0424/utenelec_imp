@@ -97,7 +97,7 @@ public class MaterialAnalysisSupplyWakeupService {
         refreshTargets(List.copyOf(targets.values()));
     }
 
-    /** Single-receipt callbacks and complete reports share exactly the same qualified source scope. */
+    /** The single-receipt callbacks share exactly the same qualified source scope. */
     private List<AnalysisTarget> resolvedReceiptTargets(Collection<ResolvedReceipt> receipts) {
         return analysisTargets(resolvedReceiptDimensionQuery(receipts, false));
     }

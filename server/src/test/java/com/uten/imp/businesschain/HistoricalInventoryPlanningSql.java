@@ -16,8 +16,12 @@ public final class HistoricalInventoryPlanningSql implements StatementInspector 
             "spring.jpa.properties.hibernate.session_factory.statement_inspector="
                     + "com.uten.imp.businesschain.HistoricalInventoryPlanningSql";
     static final String BEFORE_V1097_PROPERTY = PROPERTY + "$BeforeV1097";
+    // 4d27c9be1 (V1120) moved the archive-origin guards from
+    // fn_imported_business_document_row(...) to the registry EXISTS lookup, so the
+    // fingerprints below follow the current statement shapes; the transported
+    // semantics of every entry are unchanged.
     private static final String ROOT_SUPPLY_STATEMENT =
-            "4072299f5e9898ab161e1e71ae5c52b633b53bda759dcec1d9f45a4436ae4050";
+            "a83c72edd7031757498d5df51dfd6e39671b64ce93019ea551dd0703ce240f7f";
 
     private static final String ABSENT_SALES_CLAIMS = """
             SELECT root_material_id, requested_qty FROM production_material_analysis_items
@@ -47,8 +51,8 @@ public final class HistoricalInventoryPlanningSql implements StatementInspector 
               AND (action.requested_qty>0 OR action.public_surplus_qty>0)
             """;
     private static final Map<String,String> PRE_V1097 = Map.of(
-            "02867918d5820df3915c963d2b73f4cc21e4f6e7e03ef2264e610692be6c706b", NO_SUBCONTRACT_SOURCE,
-            "24f9bbb4502153ac3e9f180b2849586865703927ce707332fc3530d711345560", NO_SUBCONTRACT_SOURCE);
+            "92160cd84b71c355c5546f528093cd29979bb589ee335572dbea8aac4a3f27c1", NO_SUBCONTRACT_SOURCE,
+            "0355dce531f8db2d53f95034d548778399f286878a608809106f9d84077cff7d", NO_SUBCONTRACT_SOURCE);
 
     private static final Map<String,String> ORIGINAL = Map.of(
             // The original source INSERT from 396baff53 keeps every JDBC operand.

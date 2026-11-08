@@ -21,7 +21,7 @@ import static org.mockito.Mockito.when;
 
 class MaterialAnalysisSupplyWakeupServiceTest {
 
-    @Test void singlePurchaseSubcontractAndReportUseOneResolvedReceiptSelector() {
+    @Test void purchaseAndSubcontractShareOneResolvedSelectorWhileTheReportUsesExactPegs() {
         EntityManager em=mock(EntityManager.class);
         Query candidates=query(List.of());
         List<String> statements=routeQueries(em,candidates);
@@ -34,7 +34,25 @@ class MaterialAnalysisSupplyWakeupServiceTest {
         service.afterSubcontractReceiptApproved(subcontract);
         service.afterQualityReportCompleted(List.of(
                 new com.uten.imp.application.port.ProductionInspectionStockInPort.ResolvedReceipt("PURCHASE",purchase)),List.of());
-        assertThat(statements).hasSize(3).allMatch(sql -> sql.equals(statements.getFirst()));
+        // 0957ff6f0 (W6-A) keeps exactly one resolved-receipt selector for both
+        // single-receipt callbacks, while the completed-report path resolves its own
+        // fact-dependent targets: exact pegs, supply-action allocations and
+        // ownsQualifiedAt; the generalized fn_warehouse_same_main arm no longer
+        // wakes report targets.
+        assertThat(statements).hasSize(3);
+        assertThat(statements.get(1)).isEqualTo(statements.getFirst());
+        assertThat(statements.getFirst())
+                .contains("inspection.status = 'RESOLVED'")
+                .contains("fn_warehouse_same_main(analysis.source_warehouse_id,analysis.warehouse_id)")
+                .contains("v_preplan_stock_entitlement_beneficiary_balance owned")
+                .contains("ORDER BY analysis.id");
+        assertThat(statements.get(2))
+                .contains("FROM preplan_analysis_stock_exact_pegs peg")
+                .contains("FROM preplan_supply_action_allocations allocation")
+                .contains("v_preplan_stock_entitlement_beneficiary_balance owned")
+                .contains("SELECT DISTINCT eligible.id, eligible.maker_id")
+                .contains("ORDER BY eligible.id")
+                .doesNotContain("fn_warehouse_same_main");
     }
 
     @Test void mixedReportUnionsResolvedAndPartialTargetsWithoutLosingFailureOnlyReceipts() {

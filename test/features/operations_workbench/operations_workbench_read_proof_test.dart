@@ -70,8 +70,7 @@ void main() {
       proof.readSnapshotRevision,
     );
     expect(
-      (rebuilt as PagedReadSnapshot<OperationsWorkbenchTask,
-              OperationsWorkbenchData>)
+      rebuilt
           .snapshot
           .items
           .map((row) => row.taskId),

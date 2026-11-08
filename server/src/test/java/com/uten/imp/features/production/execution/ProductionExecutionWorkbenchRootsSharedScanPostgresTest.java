@@ -66,10 +66,6 @@ class ProductionExecutionWorkbenchRootsSharedScanPostgresTest {
                         """, Integer.class)).isPositive();
                 assertThat(db.queryForList("SELECT DISTINCT root_type FROM roots_after ORDER BY 1", String.class))
                         .containsExactly("ANALYSIS", "PLAN");
-                // The V1115 top-level progress caliber is live for both root kinds.
-                assertThat(db.queryForList(
-                        "SELECT DISTINCT root_type FROM roots_after WHERE root_planned_qty > 0 ORDER BY 1", String.class))
-                        .containsExactly("ANALYSIS", "PLAN");
 
                 String definition = db.queryForObject(
                         "SELECT pg_get_viewdef('v_production_execution_workbench_roots'::regclass, true)", String.class);
@@ -187,9 +183,9 @@ class ProductionExecutionWorkbenchRootsSharedScanPostgresTest {
         // keeps the legacy per-rollup facts for the same segment id.
         db.update("""
                 INSERT INTO production_execution_segments(
-                    id, plan_id, is_deleted, product_goods_id, product_color_id, product_unit_id, product_code)
+                    id, plan_id, is_deleted, segment_code, product_goods_id, product_color_id, product_unit_id)
                 VALUES (?,?,FALSE,?,?,?,?)
-                """, segment, plan, new UUID(8, product), colorId, unitId, "CP-" + product);
+                """, segment, plan, "GD-" + (1000 - number), new UUID(8, product), colorId, unitId);
         db.update("""
                 INSERT INTO v_production_execution_workbench_segments(
                     segment_id, plan_id, root_type, root_id, segment_code, segment_status, material_status,

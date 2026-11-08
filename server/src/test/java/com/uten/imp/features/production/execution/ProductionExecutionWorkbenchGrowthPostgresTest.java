@@ -156,8 +156,8 @@ class ProductionExecutionWorkbenchGrowthPostgresTest {
                 FROM generate_series(1,2)n""");
         // The V1115 top-level caliber joins the real segment table for the same segment ids.
         db.update("""
-                INSERT INTO production_execution_segments(id,plan_id,is_deleted,product_goods_id,product_unit_id,product_code)
-                SELECT md5('segment'||n)::uuid, md5('plan1')::uuid, FALSE, md5('goods')::uuid, md5('unit')::uuid, 'G-1'
+                INSERT INTO production_execution_segments(id,plan_id,is_deleted,segment_code,product_goods_id,product_unit_id)
+                SELECT md5('segment'||n)::uuid, md5('plan1')::uuid, FALSE, 'GD-'||n, md5('goods')::uuid, md5('unit')::uuid
                 FROM generate_series(1,2)n""");
     }
 

@@ -462,12 +462,12 @@ OperationsWorkbenchData _twoBatchData(bool subcontract) {
       : OperationsWorkbenchDepartment.purchase;
   return OperationsWorkbenchData(
     department: department,
-    summary: OperationsWorkbenchSummary(
+    summary: const OperationsWorkbenchSummary(
       totalTasks: 101,
       overdueTasks: 0,
       openTasks: 101,
       openQty: 404,
-      statusCounts: const {'IN_PROGRESS': 101},
+      statusCounts: {'IN_PROGRESS': 101},
     ),
     items: [
       for (var i = 1; i <= 101; i++)

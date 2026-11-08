@@ -23,6 +23,7 @@ import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
+import '../../helpers/workbench_read_fixture.dart';
 import '../subcontract/fake_subcontract_draw_gateway.dart';
 
 final _reader = StateProvider<AuthenticatedScope?>(
@@ -508,12 +509,19 @@ class _Gateway implements OperationsWorkbenchGateway {
       'filters': Map.of(columnFilters),
     });
     return gates.isEmpty
-        ? _page(
-            department == OperationsWorkbenchDepartment.subcontract,
-            count,
-            status,
+        ? workbenchPageSlice(
+            _page(
+              department == OperationsWorkbenchDepartment.subcontract,
+              count,
+              status,
+            ),
+            page,
+            size,
           )
-        : gates.removeFirst().future;
+        : gates
+              .removeFirst()
+              .future
+              .then((value) => workbenchPageSlice(value, page, size));
   }
 }
 

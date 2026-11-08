@@ -93,6 +93,50 @@ class PagedReadSnapshot<RowT, SnapshotT> extends PagedResult<RowT>
   }
 }
 
+/// A typed snapshot whose response carries the server's complete-read proofs.
+/// Only such batches may join a concurrent continuation; the proof survives
+/// every local rebuild of the same accepted result.
+class VersionedPagedReadSnapshot<RowT, SnapshotT>
+    extends PagedReadSnapshot<RowT, SnapshotT>
+    implements VersionedPagedResultProof {
+  VersionedPagedReadSnapshot({
+    required super.page,
+    required super.snapshot,
+    super.rebuildSnapshot,
+    required this.readSnapshotRevision,
+    required this.readDataVersion,
+  }) : super(revision: (readSnapshotRevision, readDataVersion));
+
+  @override
+  final String readSnapshotRevision;
+  @override
+  final String? readDataVersion;
+
+  @override
+  VersionedPagedReadSnapshot<RowT, SnapshotT> withRows(
+    List<RowT> rows, {
+    int page = 1,
+    int? size,
+    int? total,
+    int? totalPages,
+  }) {
+    final combined = super.withRows(
+      rows,
+      page: page,
+      size: size,
+      total: total,
+      totalPages: totalPages,
+    );
+    return VersionedPagedReadSnapshot(
+      page: combined,
+      snapshot: combined.snapshot,
+      rebuildSnapshot: combined.rebuildSnapshot,
+      readSnapshotRevision: readSnapshotRevision,
+      readDataVersion: readDataVersion,
+    );
+  }
+}
+
 /// One complete result per query/owner. Internal batches are sequential and
 /// cancellable; there is no neighboring-page cache or scroll-triggered read.
 class ScopedPagedRead<T> {

@@ -775,6 +775,9 @@ class _SubcontractDecompositionPageState
           fetchPage: (page) async => (await fetch(page)).toPagedReadSnapshot(),
           fetchPageSized: (page, batchSize) async =>
               (await fetch(page, batchSize: batchSize)).toPagedReadSnapshot(),
+          // Same workbench endpoint and read proof as the operations
+          // workbench page: two continuation batches may be in flight.
+          maxConcurrentPages: 2,
         );
         next =
             (cached

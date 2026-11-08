@@ -16,6 +16,7 @@ import 'package:uten_imp/features/operations_workbench/pages/operations_workbenc
 import 'package:uten_imp/features/operations_workbench/repositories/operations_workbench_repository.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
+import '../../helpers/workbench_read_fixture.dart';
 import '../../support/filter_segment_tap.dart';
 import '../../support/audit_screenshot_support.dart';
 
@@ -239,7 +240,7 @@ class _Gateway
   }) {
     final result = Completer<OperationsWorkbenchData>();
     reads.add((from: dateFrom, result: result));
-    return result.future;
+    return result.future.then((value) => workbenchPageSlice(value, page, size));
   }
 }
 

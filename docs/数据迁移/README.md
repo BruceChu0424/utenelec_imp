@@ -1,6 +1,6 @@
 > **2026-11-06 主链核对：** 本轮范围为主线全量 CI、根因修复与文档同步。可视化流程工作树继续独立。当前版本和分阶段验证见[当前版本验证](../99-项目治理/当前版本验证.md)。
 
-> **当前本地候选源码目录：V1117/1056（2026-11-07）**，含 14 份点分版本。V1117 按锚点校验加 `pg_get_viewdef` 原地改写 `v_production_execution_workbench_roots`：8 个聚合共享一次 MATERIALIZED 段视图求值（V1094 每个聚合各展开一次），聚合口径、列集与列序不变，根行逐值对拍对称差为 0。公司库已应用版本与验证状态以目标 Flyway 历史及实际回执为准。下方较早清册是历史核对记录。
+> **当前本地候选源码目录：V1118/1057（2026-11-07）**，含 14 份点分版本。V1118 登记 `fulfillment-workbench` 读取新鲜度域：履约工作台采购/委外/仓库三页全部源表（视图重写依赖+页面富集函数体闭包共 59 张）各 4 条 statement marker 触发器（V1104/V1110 形态，末尾统一挂持久事务门），`FulfillmentWorkbenchQueryService.queryVersioned` 以 `VersionedSummaryPages` 双 RR 栅栏给每页批下发 readScopeVersion/readSnapshotRevision/readDataVersion 凭据，客户端并发管线据此开续页并发（maxConcurrentPages=2）；只加读取凭据，不改写路径、权限、页上限或业务口径。V1117 按锚点校验加 `pg_get_viewdef` 原地改写 `v_production_execution_workbench_roots`：8 个聚合共享一次 MATERIALIZED 段视图求值（V1094 每个聚合各展开一次），聚合口径、列集与列序不变，根行逐值对拍对称差为 0。公司库已应用版本与验证状态以目标 Flyway 历史及实际回执为准。下方较早清册是历史核对记录。
 
 > **V1116 订货单关单时刻：** 给采购/委外订货单增加 `closed_at`（由触发器随 `is_closed` 维护），履约任务投影的已关单 30 天窗口改读真实关单时刻而非会被导入重置的 `updated_at`；切换时原生近 31 天已关单沿用原时刻，导入历史单退出候选，原生分段计数逐值不变。
 

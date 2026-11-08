@@ -555,21 +555,40 @@ class OperationsWorkbenchCapabilities {
 
 class OperationsWorkbenchData {
   /// Keep summary, capabilities and facets together with the actual row page.
+  /// Concurrent continuation batches join one complete read only when every
+  /// batch carries the same server read proof (see [toPagedReadSnapshot]).
   PagedReadSnapshot<OperationsWorkbenchTask, OperationsWorkbenchData>
-  toPagedReadSnapshot() => PagedReadSnapshot(
-    page: PagedResult(
-      items: items,
-      page: page,
-      size: size,
-      total: total,
-      totalPages: totalPages,
-      facets: facets,
-      facetNullCounts: nullCounts,
-      readScopeVersion: readScopeVersion,
-    ),
-    snapshot: this,
-    rebuildSnapshot: withPage,
-  );
+  toPagedReadSnapshot() => readSnapshotRevision == null || readDataVersion == null
+      ? PagedReadSnapshot(
+          page: PagedResult(
+            items: items,
+            page: page,
+            size: size,
+            total: total,
+            totalPages: totalPages,
+            facets: facets,
+            facetNullCounts: nullCounts,
+            readScopeVersion: readScopeVersion,
+          ),
+          snapshot: this,
+          rebuildSnapshot: withPage,
+        )
+      : VersionedPagedReadSnapshot(
+          page: PagedResult(
+            items: items,
+            page: page,
+            size: size,
+            total: total,
+            totalPages: totalPages,
+            facets: facets,
+            facetNullCounts: nullCounts,
+            readScopeVersion: readScopeVersion,
+          ),
+          snapshot: this,
+          rebuildSnapshot: withPage,
+          readSnapshotRevision: readSnapshotRevision!,
+          readDataVersion: readDataVersion!,
+        );
 
   /// Render the table controls before a query has returned. This is a UI-only
   /// placeholder: it must never be accepted as server data or category counts.
@@ -591,7 +610,9 @@ class OperationsWorkbenchData {
        facets = const {},
        nullCounts = const {},
        metadataIncluded = false,
-       readScopeVersion = null;
+       readScopeVersion = null,
+       readSnapshotRevision = null,
+       readDataVersion = null;
 
   const OperationsWorkbenchData({
     required this.department,
@@ -606,6 +627,8 @@ class OperationsWorkbenchData {
     this.nullCounts = const {},
     this.metadataIncluded = true,
     this.readScopeVersion,
+    this.readSnapshotRevision,
+    this.readDataVersion,
     // Keep the public summary argument while representing omitted batch metadata.
     // ignore: prefer_initializing_formals
   }) : _summary = summary;
@@ -619,6 +642,11 @@ class OperationsWorkbenchData {
       ));
   final bool metadataIncluded;
   final String? readScopeVersion;
+
+  /// Complete-read proofs (64 hex) the server stamps on every workbench page.
+  /// A concurrent complete read rejects any batch without them.
+  final String? readSnapshotRevision;
+  final String? readDataVersion;
   final List<OperationsWorkbenchTask> items;
   final int page;
   final int size;
@@ -643,6 +671,8 @@ class OperationsWorkbenchData {
     nullCounts: nullCounts,
     metadataIncluded: metadataIncluded,
     readScopeVersion: readScopeVersion,
+    readSnapshotRevision: readSnapshotRevision,
+    readDataVersion: readDataVersion,
   );
 
   List<OperationsWorkbenchMetric> get metrics => summary.metricsFor(department);
@@ -689,6 +719,8 @@ class OperationsWorkbenchData {
           : null,
       metadataIncluded: metadataIncluded,
       readScopeVersion: json['readScopeVersion'] as String?,
+      readSnapshotRevision: json['readSnapshotRevision'] as String?,
+      readDataVersion: json['readDataVersion'] as String?,
       items: rawItems
           .map(
             (item) => OperationsWorkbenchTask.fromJson(

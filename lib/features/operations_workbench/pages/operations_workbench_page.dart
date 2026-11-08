@@ -597,9 +597,9 @@ class _OperationsWorkbenchPageState
             page,
             batchSize: batchSize,
           )).toPagedReadSnapshot(),
-          // Concurrency stays 1: the workbench endpoints do not yet emit the
-          // readSnapshotRevision/readDataVersion proofs the concurrent batch
-          // pipeline requires (W4 finding); P2 already made each batch cheap.
+          // Every workbench batch carries the server's read proof (V1118
+          // domain), so two continuation batches may be in flight at once.
+          maxConcurrentPages: 2,
         );
         return (cached
                 as PagedReadSnapshot<

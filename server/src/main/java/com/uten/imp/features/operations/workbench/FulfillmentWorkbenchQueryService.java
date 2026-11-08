@@ -10,10 +10,10 @@ import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.readsnapshot.VersionedSummaryPages;
 import com.uten.imp.security.DocumentAccessPolicy.NativeReadScope;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
-import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.annotation.Isolation;
@@ -38,7 +38,6 @@ import java.util.UUID;
  * 并按 {@link FulfillmentWorkbenchAccessPolicy} 对无权限的 action 元数据脱敏。
  */
 @Service
-@RequiredArgsConstructor
 public class FulfillmentWorkbenchQueryService {
 
     private static final Set<String> DEPARTMENTS =
@@ -282,8 +281,84 @@ public class FulfillmentWorkbenchQueryService {
             """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("stock_documents"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("stock_document_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plans"),
                 com.uten.imp.common.history.ImportedBusinessDocumentScope.registeredSql("production_plans", "archive_scope.plan_id"));
 
+    /** Read-freshness domain marked by every source table of the three page reads (V1118). */
+    static final String READ_DOMAIN = "fulfillment-workbench";
+
     private final EntityManager em;
     private final FulfillmentWorkbenchAccessPolicy accessPolicy;
+    private final VersionedSummaryPages versionedPages;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public FulfillmentWorkbenchQueryService(EntityManager em, FulfillmentWorkbenchAccessPolicy accessPolicy,
+                                            VersionedSummaryPages versionedPages) {
+        this.em = em;
+        this.accessPolicy = accessPolicy;
+        this.versionedPages = versionedPages;
+    }
+
+    /** Focused query/export callers without the complete-read owner; {@link #queryVersioned} refuses them. */
+    public FulfillmentWorkbenchQueryService(EntityManager em, FulfillmentWorkbenchAccessPolicy accessPolicy) {
+        this(em, accessPolicy, null);
+    }
+
+    /**
+     * The interactive page entry: the same rows as {@link #query}, read inside one
+     * REPEATABLE_READ snapshot whose data revision is fenced before and after the read.
+     * Page and metadata selection are outside the revision, so every continuation batch
+     * of one query carries the same proof and may be fetched concurrently by the client.
+     */
+    public FulfillmentWorkbenchPage queryVersioned(String department, String status, String keyword, String exception,
+            LocalDate dateFrom, LocalDate dateTo, int page, int size, FulfillmentWorkbenchTableQuery table,
+            WarehouseTaskScope warehouseScope, boolean includeMetadata) {
+        if (versionedPages == null) throw new IllegalStateException("Versioned workbench reads require their snapshot owner");
+        if (!DEPARTMENTS.contains(department)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "工作台部门不正确");
+        }
+        var request = new VersionedSummaryPages.Request(READ_DOMAIN, readAuthorizationDomain(department),
+                readIdentity(department, status, keyword, exception, dateFrom, dateTo, table, warehouseScope),
+                "all", Math.max(page, 1), Math.min(Math.max(size, 1), 100), 100, null);
+        var snapshot = versionedPages.read(request, () -> { }, () -> queryRows(department, status, keyword, exception,
+                dateFrom, dateTo, page, size, table, warehouseScope, false, includeMetadata));
+        return snapshot.value().withReadProof(snapshot.readScopeVersion(), snapshot.readSnapshotRevision(),
+                snapshot.readDataVersion());
+    }
+
+    /** The existing read-scope fingerprint of each department's own owner policy. */
+    static String readAuthorizationDomain(String department) {
+        return switch (department) {
+            case "PURCHASE" -> "native_purchase_owner";
+            case "SUBCONTRACT" -> "native_subcontract_owner";
+            default -> "native_warehouse_tasks";
+        };
+    }
+
+    /** Every input that selects or orders rows; never the page number or the metadata choice. */
+    static Map<String, Object> readIdentity(String department, String status, String keyword, String exception,
+            LocalDate dateFrom, LocalDate dateTo, FulfillmentWorkbenchTableQuery table, WarehouseTaskScope scope) {
+        Map<String, Object> identity = new java.util.TreeMap<>();
+        identity.put("department", department);
+        identity.put("status", status == null ? "" : status.strip());
+        identity.put("keyword", KeywordSearch.phrase(keyword));
+        identity.put("exception", exception == null ? "" : exception.strip().toUpperCase());
+        identity.put("dateFrom", String.valueOf(dateFrom));
+        identity.put("dateTo", String.valueOf(dateTo));
+        if (table != null) {
+            Map<String, Object> controls = new java.util.TreeMap<>();
+            controls.put("sort", String.valueOf(table.sort()));
+            controls.put("order", String.valueOf(table.order()));
+            controls.put("filters", new java.util.TreeMap<>(table.filters()));
+            controls.put("issuedFrom", String.valueOf(table.issuedFrom()));
+            controls.put("issuedTo", String.valueOf(table.issuedTo()));
+            controls.put("needFrom", String.valueOf(table.needFrom()));
+            controls.put("needTo", String.valueOf(table.needTo()));
+            identity.put("table", controls);
+        }
+        WarehouseTaskScope effective = scope == null ? WarehouseTaskScope.ALL : scope;
+        identity.put("warehouseScope", Map.of("active", effective.active(),
+                "includeUnassigned", effective.includeUnassigned(),
+                "warehouseIds", effective.warehouseIds().stream().map(UUID::toString).sorted().toList()));
+        return identity;
+    }
 
     /** Category entry reads one aggregate, without rows, sorting or table facets. */
     @Transactional(readOnly = true)

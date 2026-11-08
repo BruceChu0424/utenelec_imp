@@ -558,7 +558,8 @@ class OperationsWorkbenchData {
   /// Concurrent continuation batches join one complete read only when every
   /// batch carries the same server read proof (see [toPagedReadSnapshot]).
   PagedReadSnapshot<OperationsWorkbenchTask, OperationsWorkbenchData>
-  toPagedReadSnapshot() => readSnapshotRevision == null || readDataVersion == null
+  toPagedReadSnapshot() =>
+      readSnapshotRevision == null || readDataVersion == null
       ? PagedReadSnapshot(
           page: PagedResult(
             items: items,

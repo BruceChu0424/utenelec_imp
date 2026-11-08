@@ -256,7 +256,8 @@ class ScopedPagedRead<T> {
                 maxConcurrentPages: maxConcurrentPages,
                 onProvisionalBatch: sink == null || !sink.claim()
                     ? null
-                    : (partial) => sink.publish(partial as PagedResult<Object?>),
+                    : (partial) =>
+                          sink.publish(partial as PagedResult<Object?>),
               );
         var result = await (sink == null
             ? complete()

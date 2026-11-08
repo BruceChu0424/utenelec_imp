@@ -101,7 +101,8 @@ class _MaterialContextPickerState extends ConsumerState<_MaterialContextPicker>
         query: [_api, keyword],
         currentQuery: () => [_api, _keyword],
         isCurrent: current,
-        fetchPage: (page) async => _fetchPage(page, 100, keyword, acceptedItems),
+        fetchPage: (page) async =>
+            _fetchPage(page, 100, keyword, acceptedItems),
         fetchPageSized: (page, size) async =>
             _fetchPage(page, size, keyword, acceptedItems),
       );

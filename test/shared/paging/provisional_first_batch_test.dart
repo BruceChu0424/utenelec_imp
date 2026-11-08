@@ -25,63 +25,72 @@ void main() {
     );
   }
 
-  test('only the first validated batch is published, with the exact total', () async {
-    final provisional = <PagedResult<String>>[];
-    final result = await loadCompletePagedResult<String>(
-      loadPage: (page, size) async => pageOf(page),
-      isCurrent: () => true,
-      idOf: (row) => row,
-      onProvisionalBatch: provisional.add,
-    );
-    expect(provisional, hasLength(1));
-    expect(provisional.single.items, hasLength(100));
-    expect(provisional.single.items.first, 'row-0');
-    expect(provisional.single.total, total);
-    expect(provisional.single.readScopeVersion, 'scope-a');
-    expect(result.items, hasLength(total));
-    expect(result.total, total);
-  });
+  test(
+    'only the first validated batch is published, with the exact total',
+    () async {
+      final provisional = <PagedResult<String>>[];
+      final result = await loadCompletePagedResult<String>(
+        loadPage: (page, size) async => pageOf(page),
+        isCurrent: () => true,
+        idOf: (row) => row,
+        onProvisionalBatch: provisional.add,
+      );
+      expect(provisional, hasLength(1));
+      expect(provisional.single.items, hasLength(100));
+      expect(provisional.single.items.first, 'row-0');
+      expect(provisional.single.total, total);
+      expect(provisional.single.readScopeVersion, 'scope-a');
+      expect(result.items, hasLength(total));
+      expect(result.total, total);
+    },
+  );
 
-  test('a single-batch result is published only as the complete result', () async {
-    final provisional = <PagedResult<String>>[];
-    final result = await loadCompletePagedResult<String>(
-      loadPage: (page, size) async => const PagedResult<String>(
-        items: ['only'],
-        page: 1,
-        size: 100,
-        total: 1,
-        totalPages: 1,
-      ),
-      isCurrent: () => true,
-      idOf: (row) => row,
-      onProvisionalBatch: provisional.add,
-    );
-    expect(provisional, isEmpty);
-    expect(result.items, ['only']);
-  });
+  test(
+    'a single-batch result is published only as the complete result',
+    () async {
+      final provisional = <PagedResult<String>>[];
+      final result = await loadCompletePagedResult<String>(
+        loadPage: (page, size) async => const PagedResult<String>(
+          items: ['only'],
+          page: 1,
+          size: 100,
+          total: 1,
+          totalPages: 1,
+        ),
+        isCurrent: () => true,
+        idOf: (row) => row,
+        onProvisionalBatch: provisional.add,
+      );
+      expect(provisional, isEmpty);
+      expect(result.items, ['only']);
+    },
+  );
 
-  test('the shared reader binds provisional rows to the same session, then replaces them', () async {
-    final reader = ScopedPagedRead<String>(idOf: (row) => row);
-    final provisional = <PagedResult<String>>[];
-    final result = await reader.read(
-      1,
-      scope: 'goods',
-      fetchPage: (page) async => pageOf(page),
-      isCurrent: () => true,
-      onProvisionalBatch: provisional.add,
-    );
-    expect(provisional, hasLength(1));
-    // Provisional rows carry the reader's owner proof: the view may render them
-    // while the read continues, and retirement retires them with the session.
-    final binding = readWindowBindingOf(provisional.single.items)!;
-    expect(binding.isCurrent, isTrue);
-    expect(
-      binding.sameSession(readWindowBindingOf(result.items)),
-      isTrue,
-      reason: 'provisional and complete rows share one reader session',
-    );
-    expect(readWindowBindingOf(result.items)?.pending, isFalse);
-  });
+  test(
+    'the shared reader binds provisional rows to the same session, then replaces them',
+    () async {
+      final reader = ScopedPagedRead<String>(idOf: (row) => row);
+      final provisional = <PagedResult<String>>[];
+      final result = await reader.read(
+        1,
+        scope: 'goods',
+        fetchPage: (page) async => pageOf(page),
+        isCurrent: () => true,
+        onProvisionalBatch: provisional.add,
+      );
+      expect(provisional, hasLength(1));
+      // Provisional rows carry the reader's owner proof: the view may render them
+      // while the read continues, and retirement retires them with the session.
+      final binding = readWindowBindingOf(provisional.single.items)!;
+      expect(binding.isCurrent, isTrue);
+      expect(
+        binding.sameSession(readWindowBindingOf(result.items)),
+        isTrue,
+        reason: 'provisional and complete rows share one reader session',
+      );
+      expect(readWindowBindingOf(result.items)?.pending, isFalse);
+    },
+  );
 
   test('a failure after the provisional batch fails the whole read', () async {
     final reader = ScopedPagedRead<String>(idOf: (row) => row);
@@ -125,22 +134,30 @@ void main() {
     expect(provisional, isEmpty);
   });
 
-  test('a refresh with an accepted result keeps it pending instead of a half list', () async {
-    final reader = ScopedPagedRead<String>(idOf: (row) => row);
-    await reader.read(1, scope: 'goods', fetchPage: (page) async => pageOf(page), isCurrent: () => true);
-    reader.refresh();
-    final provisional = <PagedResult<String>>[];
-    final result = await reader.read(
-      1,
-      scope: 'goods',
-      fetchPage: (page) async => pageOf(page),
-      isCurrent: () => true,
-      onProvisionalBatch: provisional.add,
-    );
-    // refresh() drops the accepted result, so this is a fresh read again.
-    expect(provisional, hasLength(1));
-    expect(result.items, hasLength(total));
-  });
+  test(
+    'a refresh with an accepted result keeps it pending instead of a half list',
+    () async {
+      final reader = ScopedPagedRead<String>(idOf: (row) => row);
+      await reader.read(
+        1,
+        scope: 'goods',
+        fetchPage: (page) async => pageOf(page),
+        isCurrent: () => true,
+      );
+      reader.refresh();
+      final provisional = <PagedResult<String>>[];
+      final result = await reader.read(
+        1,
+        scope: 'goods',
+        fetchPage: (page) async => pageOf(page),
+        isCurrent: () => true,
+        onProvisionalBatch: provisional.add,
+      );
+      // refresh() drops the accepted result, so this is a fresh read again.
+      expect(provisional, hasLength(1));
+      expect(result.items, hasLength(total));
+    },
+  );
 
   test('complete readers in the view zone claim the slot once', () async {
     final published = <PagedResult<Object?>>[];

@@ -101,44 +101,40 @@ OperationsWorkbenchData _progressData(
   OperationsWorkbenchDepartment department,
   List<OperationsWorkbenchTask> items,
 ) => OperationsWorkbenchData(
-      department: department,
-      summary: const OperationsWorkbenchSummary(
-        totalTasks: 4,
-        overdueTasks: 0,
-        openTasks: 4,
-        openQty: 30,
-        statusCounts: {
-          'WAITING_ORDER': 1,
-          'ORDER_PENDING_APPROVAL': 1,
-          'FINANCE_APPROVED': 3,
-          'FINANCE_REJECTED': 1,
-          'IN_PROGRESS': 5,
-        },
-        exceptionCounts: {'SHORT_DELIVERY': 1, 'FINANCE_REJECTED': 1},
+  department: department,
+  summary: const OperationsWorkbenchSummary(
+    totalTasks: 4,
+    overdueTasks: 0,
+    openTasks: 4,
+    openQty: 30,
+    statusCounts: {
+      'WAITING_ORDER': 1,
+      'ORDER_PENDING_APPROVAL': 1,
+      'FINANCE_APPROVED': 3,
+      'FINANCE_REJECTED': 1,
+      'IN_PROGRESS': 5,
+    },
+    exceptionCounts: {'SHORT_DELIVERY': 1, 'FINANCE_REJECTED': 1},
+  ),
+  items: items,
+  page: 1,
+  size: 50,
+  total: items.length,
+  totalPages: 1,
+  capabilities: const OperationsWorkbenchCapabilities(
+    canCreateSubcontractOrder: true,
+  ),
+  facets: const {
+    'status': [
+      MasterFacetBucket(
+        value: 'SHORT_DELIVERY',
+        label: 'SHORT_DELIVERY',
+        count: 1,
       ),
-      items: items,
-      page: 1,
-      size: 50,
-      total: items.length,
-      totalPages: 1,
-      capabilities: const OperationsWorkbenchCapabilities(
-        canCreateSubcontractOrder: true,
-      ),
-      facets: const {
-        'status': [
-          MasterFacetBucket(
-            value: 'SHORT_DELIVERY',
-            label: 'SHORT_DELIVERY',
-            count: 1,
-          ),
-          MasterFacetBucket(
-            value: 'AT_SUPPLIER',
-            label: 'AT_SUPPLIER',
-            count: 1,
-          ),
-        ],
-      },
-    );
+      MasterFacetBucket(value: 'AT_SUPPLIER', label: 'AT_SUPPLIER', count: 1),
+    ],
+  },
+);
 
 OperationsWorkbenchTask _order(
   String id,

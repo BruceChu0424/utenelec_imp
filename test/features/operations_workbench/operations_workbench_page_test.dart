@@ -1411,8 +1411,7 @@ class _FakeGateway implements OperationsWorkbenchGateway {
       // 才触发「刷新后选项缺失」场景（返回无 statusCounts 的数据）。
       final specificStatus =
           status != null && status != kOperationsWorkbenchOpenStatus;
-      effective =
-          specificStatus && dataAfterStatusFilter != null
+      effective = specificStatus && dataAfterStatusFilter != null
           ? dataAfterStatusFilter!
           : data;
     }
@@ -1453,7 +1452,9 @@ class _RefreshBlockingGateway implements OperationsWorkbenchGateway {
     if (_calls == 1) return Future.value(workbenchPageSlice(data, page, size));
     final pending = Completer<OperationsWorkbenchData>();
     _pending = pending;
-    return pending.future.then((value) => workbenchPageSlice(value, page, size));
+    return pending.future.then(
+      (value) => workbenchPageSlice(value, page, size),
+    );
   }
 }
 

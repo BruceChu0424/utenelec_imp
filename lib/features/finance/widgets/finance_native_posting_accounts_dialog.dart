@@ -58,11 +58,13 @@ class _DirectoryState extends ConsumerState<_Directory>
     _load();
   }
 
-  Future<PagedResult<Map<String, dynamic>>> _fetchPage(int page, int size) async =>
-      PagedResult.fromJsonResponsive<Map<String, dynamic>>(
-        await _api.get(_path, query: {'page': page, 'size': size}),
-        (row) => row,
-      );
+  Future<PagedResult<Map<String, dynamic>>> _fetchPage(
+    int page,
+    int size,
+  ) async => PagedResult.fromJsonResponsive<Map<String, dynamic>>(
+    await _api.get(_path, query: {'page': page, 'size': size}),
+    (row) => row,
+  );
 
   Future<void> _load() async {
     if (!_current || _busy) return;

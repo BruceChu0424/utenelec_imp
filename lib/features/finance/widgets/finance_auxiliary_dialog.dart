@@ -140,7 +140,8 @@ class _AuxiliaryDirectoryState extends ConsumerState<_AuxiliaryDirectory>
         query: [_api, widget.accountCode, widget.role, keyword],
         currentQuery: () => [_api, widget.accountCode, widget.role, _keyword],
         isCurrent: current,
-        fetchPage: (page) async => _fetchPage(page, 100, keyword, acceptedItems),
+        fetchPage: (page) async =>
+            _fetchPage(page, 100, keyword, acceptedItems),
         fetchPageSized: (page, size) async =>
             _fetchPage(page, size, keyword, acceptedItems),
       );

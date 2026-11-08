@@ -69,13 +69,10 @@ void main() {
       (rebuilt as VersionedPagedResultProof).readSnapshotRevision,
       proof.readSnapshotRevision,
     );
-    expect(
-      rebuilt
-          .snapshot
-          .items
-          .map((row) => row.taskId),
-      ['task-1', 'task-2'],
-    );
+    expect(rebuilt.snapshot.items.map((row) => row.taskId), [
+      'task-1',
+      'task-2',
+    ]);
   });
 
   test(
@@ -113,9 +110,13 @@ void main() {
       expect(result.items, hasLength(350));
       expect(result.items.first.taskId, 'task-1');
       expect(result.items.last.taskId, 'task-350');
-      final typed = (result as PagedReadSnapshot<OperationsWorkbenchTask,
-              OperationsWorkbenchData>)
-          .snapshot;
+      final typed =
+          (result
+                  as PagedReadSnapshot<
+                    OperationsWorkbenchTask,
+                    OperationsWorkbenchData
+                  >)
+              .snapshot;
       expect(typed.summary.totalTasks, 350, reason: 'first batch metadata');
       expect(typed.items, hasLength(350));
     },
@@ -137,28 +138,31 @@ void main() {
     );
   });
 
-  test('a batch without proof is refused before any tail is scheduled', () async {
-    final requested = <int>[];
-    await expectLater(
-      loadCompletePagedResult<OperationsWorkbenchTask>(
-        isCurrent: () => true,
-        maxConcurrentPages: 2,
-        idOf: (row) => row.taskId,
-        loadPage: (page, size) async {
-          requested.add(page);
-          return parse(
-            pageJson(page, size, 250, proof: false),
-          ).toPagedReadSnapshot();
-        },
-      ),
-      throwsA(
-        isA<ApiException>().having(
-          (e) => e.code,
-          'code',
-          'INCOMPLETE_READ_PROTOCOL',
+  test(
+    'a batch without proof is refused before any tail is scheduled',
+    () async {
+      final requested = <int>[];
+      await expectLater(
+        loadCompletePagedResult<OperationsWorkbenchTask>(
+          isCurrent: () => true,
+          maxConcurrentPages: 2,
+          idOf: (row) => row.taskId,
+          loadPage: (page, size) async {
+            requested.add(page);
+            return parse(
+              pageJson(page, size, 250, proof: false),
+            ).toPagedReadSnapshot();
+          },
         ),
-      ),
-    );
-    expect(requested, [1]);
-  });
+        throwsA(
+          isA<ApiException>().having(
+            (e) => e.code,
+            'code',
+            'INCOMPLETE_READ_PROTOCOL',
+          ),
+        ),
+      );
+      expect(requested, [1]);
+    },
+  );
 }

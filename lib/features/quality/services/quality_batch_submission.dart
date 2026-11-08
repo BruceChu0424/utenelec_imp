@@ -140,7 +140,8 @@ class QualityBatchSubmission {
     try {
       await scope.run(() async {
         // 草稿续传时 IQC 段可能已确认：直接从 FQC 阶段报进度。
-        phase = _acknowledged.length < receipts.length || fqcInspectionIds.isEmpty
+        phase =
+            _acknowledged.length < receipts.length || fqcInspectionIds.isEmpty
             ? QualityBatchPhase.iqc
             : QualityBatchPhase.fqc;
         // 2026-10-10 整份检验报告一次提交：服务端 decide-report 单事务原子执行全部

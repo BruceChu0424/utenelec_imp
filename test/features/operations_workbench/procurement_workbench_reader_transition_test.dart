@@ -318,10 +318,9 @@ class _Gateway implements OperationsWorkbenchGateway {
             page,
             size,
           )
-        : responses
-              .removeFirst()
-              .future
-              .then((value) => workbenchPageSlice(value, page, size));
+        : responses.removeFirst().future.then(
+            (value) => workbenchPageSlice(value, page, size),
+          );
   }
 }
 

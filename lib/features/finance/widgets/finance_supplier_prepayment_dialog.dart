@@ -111,7 +111,13 @@ class _AdvanceDirectoryState extends ConsumerState<_AdvanceDirectory>
           slot: 'supplier-prepayments',
           idOf: (row) => row[id == null ? 'paymentId' : 'id'],
           query: [_api, id, widget.supplierId, widget.currencyId, kind],
-          currentQuery: () => [_api, id, widget.supplierId, widget.currencyId, _kind],
+          currentQuery: () => [
+            _api,
+            id,
+            widget.supplierId,
+            widget.currencyId,
+            _kind,
+          ],
           isCurrent: () => _current,
           fetchPage: (page) async => _fetchSettlements(page, 100, id, kind),
           fetchPageSized: (page, size) async =>

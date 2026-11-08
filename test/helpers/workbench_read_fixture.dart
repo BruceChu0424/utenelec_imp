@@ -28,10 +28,7 @@ OperationsWorkbenchData workbenchPageSlice(
   return OperationsWorkbenchData(
     department: source.department,
     summary: first && source.metadataIncluded ? source.summary : null,
-    items: rows
-        .skip((served - 1) * size)
-        .take(size)
-        .toList(growable: false),
+    items: rows.skip((served - 1) * size).take(size).toList(growable: false),
     page: served,
     size: size,
     total: rows.length,

@@ -325,8 +325,13 @@ final class ProductionJdbcMeasurement {
                 || normalized.startsWith("with recursive roots(") && normalized.contains(", walk as (")) return "bom.validation";
         if (normalized.startsWith("with recursive roots as")) return "bom.lock_footprint";
         if (normalized.startsWith("with recursive roots(")) return "bom.expansion";
-        if (normalized.startsWith("update purchase_orders order_doc set is_closed")) return "purchase.order_closure";
-        if (normalized.startsWith("update subcontract_orders order_doc set is_closed")) return "subcontract.order_closure";
+        // W6-E(2026-11-08)：结案重算语句改为 WITH candidate_orders/closure 两条物化 CTE,
+        // 不再以 UPDATE 开头; 标签按本策略独有的 CTE 名 + UPDATE 目标一起钉住, 仍不放宽到
+        // 任意含表名的语句(普通业务查询里出现表名不会误计)。
+        if (normalized.startsWith("with candidate_orders as materialized")
+                && normalized.contains("update purchase_orders order_doc set is_closed")) return "purchase.order_closure";
+        if (normalized.startsWith("with candidate_orders as materialized")
+                && normalized.contains("update subcontract_orders order_doc set is_closed")) return "subcontract.order_closure";
         if (normalized.startsWith("insert into production_fqc_pass_all_batch_items")) return "fqc.batch_item_insert";
         if (normalized.startsWith("select id, request_hash, created_by")
                 && normalized.contains("from production_fqc_decision_events")) return "fqc.decision_replay";

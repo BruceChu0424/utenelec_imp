@@ -88,7 +88,12 @@ class ProcurementInspectionBatchEndToEndTest {
                 assertEquals(audit,orderUpdates(source),"A decision that stocks nothing cannot change the order closure");
             });
         } finally {ProductionJdbcMeasurement.end();}
-        assertEquals(1,closureUpdates(sample,type),"Three receipt items of one order require one actual order UPDATE");
+        // W6-E(2026-11-08)：结案只读上架量/退货/判定损耗, 本命令没有自动入库批次也没有上架行,
+        // 结案输入一项未变, 重算整条跳过——不再是「无条件空 UPDATE 一次」; 逐明细多次重算同样
+        // 会被这里的 0 抓住。「同订单恰好重算一次」的口径由真实入库路径钉住:
+        // ProcurementIqcPreStockInEndToEndTest(先入库后检自动转正)与 IqcTriggerProfileEndToEndTest(仓库确认入库)。
+        assertEquals(0,closureUpdates(sample,type),
+                "Three receipt items that stock nothing must not touch the order at all; the once-per-order recalc is pinned by the stocked paths");
         assertEquals(1,sample.commits);
         assertEquals(1,sample.fingerprints.getOrDefault(receiptLockFingerprint(),0L),
                 "The complete receipt SELECT FOR UPDATE executes once, including PASS+FAIL of the same row");

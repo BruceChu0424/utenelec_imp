@@ -29,6 +29,7 @@ import '../../../shared/providers/export_context_epoch_provider.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/paging/complete_paged_snapshot.dart';
 import '../../../shared/paging/read_view_activity.dart';
+import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
 import '../../../shared/paging/scoped_paged_read.dart';
 import '../../report/shared/report_cell.dart';
 import '../../report/shared/report_data.dart';
@@ -144,7 +145,7 @@ class FinanceStatementDocumentDialog extends ConsumerStatefulWidget {
 }
 
 class _DirectoryState extends ConsumerState<FinanceStatementDocumentDialog>
-    with ReadViewActivityMixin<FinanceStatementDocumentDialog> {
+    with ScopedPagedReadViewMixin<FinanceStatementDocumentDialog> {
   late final ApiClient _api;
   late final int _epoch;
   String _kind = 'REVIEWS';
@@ -180,6 +181,34 @@ class _DirectoryState extends ConsumerState<FinanceStatementDocumentDialog>
     });
   }
 
+  Future<PagedResult<Map<String, dynamic>>> _fetchPage(
+    int page,
+    int size,
+    String kind,
+  ) async => PagedResult.fromJsonResponsive<Map<String, dynamic>>(
+    kind == 'REVIEWS'
+        ? await _api.post(
+            '$_base/reviews/query',
+            body: widget.scope,
+            query: {'page': page, 'size': size},
+          )
+        : await _api.get(
+            '$_base/profiles',
+            query: {
+              'kind': kind,
+              'templateKey': kind == 'CONTEXT'
+                  ? widget.scope['templateKey']
+                  : 'ALL',
+              if (kind != 'OWN') 'partyRole': widget.scope['partyRole'],
+              if (kind != 'OWN') 'partyId': widget.scope['partyId'],
+              'currencyId': widget.scope['currencyId'],
+              'page': page,
+              'size': size,
+            },
+          ),
+    (row) => Map<String, dynamic>.unmodifiable(row),
+  );
+
   Future<void> _load() async {
     if (!_current) {
       return;
@@ -191,37 +220,15 @@ class _DirectoryState extends ConsumerState<FinanceStatementDocumentDialog>
       _error = null;
     });
     try {
-      final data = await readViewActivity.runRead(
-        current,
-        () => loadCompletePagedResult<Map<String, dynamic>>(
-          isCurrent: current,
-          idOf: (row) => row['id'],
-          loadPage: (page, size) async =>
-              PagedResult.fromJsonResponsive<Map<String, dynamic>>(
-                kind == 'REVIEWS'
-                    ? await _api.post(
-                        '$_base/reviews/query',
-                        body: widget.scope,
-                        query: {'page': page, 'size': size},
-                      )
-                    : await _api.get(
-                        '$_base/profiles',
-                        query: {
-                          'kind': kind,
-                          'templateKey': kind == 'CONTEXT'
-                              ? widget.scope['templateKey']
-                              : 'ALL',
-                          if (kind != 'OWN')
-                            'partyRole': widget.scope['partyRole'],
-                          if (kind != 'OWN') 'partyId': widget.scope['partyId'],
-                          'currencyId': widget.scope['currencyId'],
-                          'page': page,
-                          'size': size,
-                        },
-                      ),
-                (row) => Map<String, dynamic>.unmodifiable(row),
-              ),
-        ),
+      final data = await readScopedPage<Map<String, dynamic>>(
+        1,
+        slot: 'statement-documents',
+        idOf: (row) => row['id'],
+        query: [_api, kind, widget.scope],
+        currentQuery: () => [_api, _kind, widget.scope],
+        isCurrent: current,
+        fetchPage: (page) async => _fetchPage(page, 100, kind),
+        fetchPageSized: (page, size) async => _fetchPage(page, size, kind),
       );
       if (current()) setState(() => _rows = data.items);
     } catch (e) {

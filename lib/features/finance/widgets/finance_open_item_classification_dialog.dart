@@ -21,6 +21,7 @@ import '../../../shared/models/paged_result.dart';
 import '../../../shared/paging/complete_paged_snapshot.dart';
 import '../../../shared/paging/read_view_activity.dart';
 import '../../../shared/paging/scoped_paged_read.dart';
+import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
 
 const _categories = {
   'GOODS': '货款',
@@ -80,7 +81,7 @@ class _ClassificationDirectory extends ConsumerStatefulWidget {
 
 class _ClassificationDirectoryState
     extends ConsumerState<_ClassificationDirectory>
-    with ReadViewActivityMixin<_ClassificationDirectory> {
+    with ScopedPagedReadViewMixin<_ClassificationDirectory> {
   late final ApiClient _api;
   late final int _epoch;
   List<Map<String, dynamic>> _items = [];
@@ -102,6 +103,23 @@ class _ClassificationDirectoryState
     _load();
   }
 
+  Future<PagedResult<Map<String, dynamic>>> _fetchPage(
+    int page,
+    int size,
+  ) async => PagedResult.fromJsonResponsive<Map<String, dynamic>>(
+    await _api.get(
+      '/finance/open-item-classifications',
+      query: {
+        'direction': widget.receivable ? 'AR' : 'AP',
+        'page': '$page',
+        'size': '$size',
+        if (widget.partyId != null) 'partyId': widget.partyId,
+        if (widget.currencyId != null) 'currencyId': widget.currencyId,
+      },
+    ),
+    (row) => Map<String, dynamic>.unmodifiable(row),
+  );
+
   Future<void> _load() async {
     if (!_current) return;
     final generation = ++_generation;
@@ -111,27 +129,20 @@ class _ClassificationDirectoryState
       _error = null;
     });
     try {
-      final result = await readViewActivity.runRead(
-        current,
-        () => loadCompletePagedResult<Map<String, dynamic>>(
-          isCurrent: current,
-          idOf: (row) => row['ledgerId'],
-          loadPage: (page, size) async =>
-              PagedResult.fromJsonResponsive<Map<String, dynamic>>(
-                await _api.get(
-                  '/finance/open-item-classifications',
-                  query: {
-                    'direction': widget.receivable ? 'AR' : 'AP',
-                    'page': '$page',
-                    'size': '$size',
-                    if (widget.partyId != null) 'partyId': widget.partyId,
-                    if (widget.currencyId != null)
-                      'currencyId': widget.currencyId,
-                  },
-                ),
-                (row) => Map<String, dynamic>.unmodifiable(row),
-              ),
-        ),
+      final result = await readScopedPage<Map<String, dynamic>>(
+        1,
+        slot: 'open-item-classifications',
+        idOf: (row) => row['ledgerId'],
+        query: [_api, widget.receivable, widget.partyId, widget.currencyId],
+        currentQuery: () => [
+          _api,
+          widget.receivable,
+          widget.partyId,
+          widget.currencyId,
+        ],
+        isCurrent: current,
+        fetchPage: (page) async => _fetchPage(page, 100),
+        fetchPageSized: _fetchPage,
       );
       if (current()) setState(() => _items = result.items);
     } catch (error) {

@@ -19,6 +19,7 @@ import '../../../shared/models/paged_result.dart';
 import '../../../shared/paging/complete_paged_snapshot.dart';
 import '../../../shared/paging/read_view_activity.dart';
 import '../../../shared/paging/scoped_paged_read.dart';
+import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
 import '../../../shared/widgets/business_employee_picker.dart';
 import '../../basic_data/widgets/uten_client_picker.dart';
 import '../../basic_data/widgets/uten_supplier_picker.dart';
@@ -62,7 +63,7 @@ class _AuxiliaryDirectory extends ConsumerStatefulWidget {
 }
 
 class _AuxiliaryDirectoryState extends ConsumerState<_AuxiliaryDirectory>
-    with ReadViewActivityMixin<_AuxiliaryDirectory> {
+    with ScopedPagedReadViewMixin<_AuxiliaryDirectory> {
   late final ApiClient _api;
   late final int _epoch;
   final _search = TextEditingController();
@@ -93,6 +94,29 @@ class _AuxiliaryDirectoryState extends ConsumerState<_AuxiliaryDirectory>
     super.dispose();
   }
 
+  Future<PagedResult<Map<String, dynamic>>> _fetchPage(
+    int page,
+    int size,
+    String keyword,
+    Set<Map<String, dynamic>> acceptedItems,
+  ) async => PagedResult.fromJsonResponsive<Map<String, dynamic>>(
+    await _api.get(
+      '/finance/auxiliary-items',
+      query: {
+        if (widget.accountCode != null) 'accountCode': widget.accountCode,
+        if (widget.role != null) 'role': widget.role,
+        'keyword': keyword,
+        'page': '$page',
+        'size': '$size',
+      },
+    ),
+    (row) {
+      final item = Map<String, dynamic>.unmodifiable(row);
+      acceptedItems.add(item);
+      return item;
+    },
+  );
+
   Future<void> _load({bool search = false}) async {
     if (!_current) return;
     final previousKeyword = _keyword;
@@ -111,31 +135,16 @@ class _AuxiliaryDirectoryState extends ConsumerState<_AuxiliaryDirectory>
       }
     });
     try {
-      final data = await readViewActivity.runRead(
-        current,
-        () => loadCompletePagedResult<Map<String, dynamic>>(
-          isCurrent: current,
-          idOf: (row) => row['id'],
-          loadPage: (page, size) async =>
-              PagedResult.fromJsonResponsive<Map<String, dynamic>>(
-                await _api.get(
-                  '/finance/auxiliary-items',
-                  query: {
-                    if (widget.accountCode != null)
-                      'accountCode': widget.accountCode,
-                    if (widget.role != null) 'role': widget.role,
-                    'keyword': keyword,
-                    'page': '$page',
-                    'size': '$size',
-                  },
-                ),
-                (row) {
-                  final item = Map<String, dynamic>.unmodifiable(row);
-                  acceptedItems.add(item);
-                  return item;
-                },
-              ),
-        ),
+      final data = await readScopedPage<Map<String, dynamic>>(
+        1,
+        slot: 'auxiliary-items',
+        idOf: (row) => row['id'],
+        query: [_api, widget.accountCode, widget.role, keyword],
+        currentQuery: () => [_api, widget.accountCode, widget.role, _keyword],
+        isCurrent: current,
+        fetchPage: (page) async => _fetchPage(page, 100, keyword, acceptedItems),
+        fetchPageSized: (page, size) async =>
+            _fetchPage(page, size, keyword, acceptedItems),
       );
       if (!current()) return;
       setState(() {

@@ -2,6 +2,7 @@ import '../shared/finance_complete_summary_read.dart';
 import 'finance_summary_scope_field.dart';
 import '../../../shared/paging/versioned_summary_read.dart';
 import '../../../shared/paging/read_view_activity.dart';
+import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import 'package:flutter/material.dart';
 import '../../../shared/paging/complete_paged_snapshot.dart';
@@ -105,7 +106,7 @@ class _Manager extends ConsumerStatefulWidget {
 }
 
 class _ManagerState extends ConsumerState<_Manager>
-    with ReadViewActivityMixin<_Manager> {
+    with ScopedPagedReadViewMixin<_Manager> {
   @override
   Future<void> onReadViewResumed() => _load();
   late final int _epoch;
@@ -131,6 +132,20 @@ class _ManagerState extends ConsumerState<_Manager>
     _load();
   }
 
+  Future<PagedResult<Map<String, dynamic>>> _fetchEntries(
+    int page,
+    int size,
+  ) async {
+    final value = await _api.get(
+      '$_base/entries',
+      query: {'period': widget.period, 'page': page, 'size': size},
+    );
+    return PagedResult.fromJson({
+      ...value,
+      'items': value['rows'] ?? const <Map<String, dynamic>>[],
+    }, (row) => row);
+  }
+
   Future<void> _load() async {
     if (!_current || _busy) return;
     setState(() {
@@ -141,19 +156,15 @@ class _ManagerState extends ConsumerState<_Manager>
       final loaded = await readViewActivity.runRead(() => _current, () async {
         final Map<String, dynamic> value;
         if (widget.mode == 'assignment') {
-          final complete = await loadCompletePagedResult<Map<String, dynamic>>(
-            isCurrent: () => _current,
+          final complete = await readScopedPage<Map<String, dynamic>>(
+            1,
+            slot: 'expense-entries',
             idOf: (row) => row['entryId'],
-            loadPage: (page, size) async {
-              final value = await _api.get(
-                '$_base/entries',
-                query: {'period': widget.period, 'page': page, 'size': size},
-              );
-              return PagedResult.fromJson({
-                ...value,
-                'items': value['rows'] ?? const <Map<String, dynamic>>[],
-              }, (row) => row);
-            },
+            query: [_api, widget.period],
+            currentQuery: () => [_api, widget.period],
+            isCurrent: () => _current,
+            fetchPage: (page) async => _fetchEntries(page, 100),
+            fetchPageSized: _fetchEntries,
           );
           value = {'rows': complete.items};
         } else {

@@ -190,7 +190,7 @@ public class FinanceBatchEntryService {
     public static final class CancelledBatch extends ApiException {
         private final Map<String,Object> details;
         CancelledBatch(Map<String,Object> details){super(ErrorCode.CONFLICT,"原批次已确认未写并取消，请核对原回执后编辑");this.details=details;}
-        public Map<String,Object> details(){return details;}
+        @Override public Map<String,Object> details(){return details;}
     }
 
     private <T> T convert(JsonNode node, Class<T> type) {

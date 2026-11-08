@@ -54,20 +54,23 @@ void main() {
                 matching: find.byType(UtenTableCellFrame),
               )
               .first;
+          // The shared resize handle is layered above the header row, so find
+          // this column's handle and start the drag inside the header edge.
           final grip = find.descendant(
-            of: header,
+            of: find.byWidgetPredicate(
+              (widget) =>
+                  widget is UtenColumnResizeHandle && widget.label == '号',
+            ),
             matching: find.byWidgetPredicate(
               (widget) =>
                   widget is GestureDetector &&
-                  widget.onHorizontalDragUpdate != null &&
-                  widget.onHorizontalDragStart == null,
+                  widget.onHorizontalDragUpdate != null,
             ),
           );
           expect(grip, findsOneWidget);
-          await tester.dragFrom(
-            tester.getCenter(grip) - const Offset(2, 0),
-            const Offset(-400, 0),
-          );
+          final start = tester.getCenter(grip) - const Offset(2, 0);
+          expect(tester.getRect(header).contains(start), isTrue);
+          await tester.dragFrom(start, const Offset(-400, 0));
           await tester.pumpAndSettle();
           final hint = find.descendant(
             of: header,

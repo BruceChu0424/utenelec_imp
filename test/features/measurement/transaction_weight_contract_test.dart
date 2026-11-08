@@ -44,9 +44,11 @@ void main() {
     expect(dailyEdit, contains("row.weight.text = group.weightText ?? '';"));
     expect(dailyGrid, contains("label: '实称总重量'"));
     expect(dailyEdit, contains("'weight': productionQuantityWire("));
+    // a582da8c8 起确认记录携带 mode（WEIGHT 按总重 / UNIT 按单重）；未确认仍
+    // 提交 'QUANTITY'——数量保持唯一计划事实，只有确认换算才改变口径。
     expect(
       dailyEdit,
-      contains("'weightEntryMode': confirmed == null ? 'QUANTITY' : 'WEIGHT'"),
+      contains("'weightEntryMode': confirmed?.mode ?? 'QUANTITY'"),
     );
     expect(dailyEdit, contains("'unitWeightKgExact'"));
     for (final edit in [purchaseEdit, salesEdit]) {

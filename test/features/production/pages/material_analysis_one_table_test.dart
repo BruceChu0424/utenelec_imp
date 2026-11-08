@@ -130,9 +130,11 @@ Future<Finder> _resizeMaterialHandlingColumn(
     (widget) => widget is UtenColumnResizeHandle && widget.label == '物料办理',
   );
   expect(handle, findsOneWidget);
-  // Start at the shared column handle, rather than a label's inner container.
+  // Start from the shared column handle, rather than a label's inner container.
   // Its public resize contract leaves the host's desktop/touch minimum intact.
-  final column = tableCellFrame(handle);
+  // 2026-11 a78fa7ce4 起手柄在表头行上层 overlay，不再嵌在表头格内；表头格按
+  // 列标签文本锚定，宽度语义（该列的 UtenTableCellFrame）不变。
+  final column = tableHeaderCell('物料办理');
   tester
       .widget<UtenColumnResizeHandle>(handle)
       .onResize(width - tester.getSize(column).width);

@@ -535,7 +535,8 @@ void _registerProductDetailsResizeTests() {
         matching: find.byWidgetPredicate(
           (widget) =>
               widget is MouseRegion &&
-              widget.cursor == SystemMouseCursors.resizeColumn,
+              // a78fa7ce4：手柄光标改用现行常量（resizeColumn 的非废弃同义名）。
+              widget.cursor == SystemMouseCursors.resizeLeftRight,
         ),
       );
       final focus = Focus.of(tester.element(mouse));

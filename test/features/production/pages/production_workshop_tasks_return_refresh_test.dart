@@ -135,7 +135,15 @@ void main() {
         await selectFilterSegment(tester, '生产中');
         await tester.pumpAndSettle();
         expect(find.text('产品 A'), findsOneWidget);
-        expect(find.text(unknown ? '提交待核对' : '草稿'), findsOneWidget);
+        // 草稿状态锚在原任务行的恢复入口内：a2054a2d0 起顶栏「草稿」按钮也用
+        // 默认文案（全站一致），全局找「草稿」会撞上顶栏按钮。
+        expect(
+          find.descendant(
+            of: find.byKey(const ValueKey('workshop-task-draft-segment-a')),
+            matching: find.text(unknown ? '提交待核对' : '草稿'),
+          ),
+          findsOneWidget,
+        );
         await tester.tap(
           find.byKey(const ValueKey('workshop-task-draft-segment-a')),
         );

@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/shared/platform_tables/platform_table_layout.dart';
+import 'package:uten_imp/shared/platform_tables/procurement_review_column_layout.dart';
 
 void main() {
   for (final type in ['purchase', 'subcontract']) {
@@ -45,9 +46,35 @@ void main() {
         expect(upgraded.filters, isEmpty);
         expect(upgraded.sortColumn, seed.sortColumn);
         expect(upgraded.sortAscending, isFalse);
-        expect(upgraded.layoutVersion, 1);
+        // a2054a2d0 raised the layout version to move currency after the
+        // original amount; an upgraded layout is stamped with the current one.
+        expect(upgraded.layoutVersion, financeProcurementReviewLayoutVersion);
         final customized = upgraded.copyWith(order: seed.order);
         expect(notifier.decode(customized.toJson())!.order, seed.order);
+
+        // A version-1 layout only moves the former default currency placement
+        // once; other preferences stay intact and a later custom order is kept.
+        const v1 = PlatformTableLayout(
+          order: ['goods', 'price', 'currency', 'amountOriginal', 'remark'],
+          widths: {'goods': 220},
+          hidden: {'remark'},
+          pinned: {'goods'},
+          layoutVersion: 1,
+        );
+        final moved = notifier.decode(v1.toJson())!;
+        expect(moved.order, [
+          'goods',
+          'price',
+          'amountOriginal',
+          'currency',
+          'remark',
+        ]);
+        expect(moved.widths, v1.widths);
+        expect(moved.hidden, v1.hidden);
+        expect(moved.pinned, v1.pinned);
+        expect(moved.layoutVersion, financeProcurementReviewLayoutVersion);
+        final reordered = moved.copyWith(order: v1.order);
+        expect(notifier.decode(reordered.toJson())!.order, v1.order);
       },
     );
   }

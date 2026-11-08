@@ -45,7 +45,14 @@ void main() {
     expect(item.amountText, raw);
     expect(item.withPlatformFields({'version': 0}).amountText, raw);
     expect(item.toCreateJson()['amount'], raw);
-    expect(expenseItemColumns.last.exactValueOf!(item), raw);
+    // Look the amount column up by key: a2054a2d0 placed the currency column
+    // after it, so it is no longer the last column.
+    expect(
+      expenseItemColumns
+          .singleWhere((column) => column.key == 'amount')
+          .exactValueOf!(item),
+      raw,
+    );
     expect(
       financeExactTrimmed(
         financeExactSumTexts([item.amountText, '0.000000000000000000000001']),

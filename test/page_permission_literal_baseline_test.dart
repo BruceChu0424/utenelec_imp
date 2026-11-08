@@ -659,6 +659,25 @@ const _reviewedSourceGuards = <String, ({int legacyCount, Map<String, int> token
     legacyCount: 0,
     tokens: {'Perm.goodsBomEdit': 1, 'Perm.productionWhereUsedView': 1},
   ),
+  // a2054a2d0: when every badge is empty, the ordinary /production/schedule
+  // entry opens the pending segment only for accounts that can read it. The
+  // added production_plan:view reference is exactly the read guard of
+  // ProductionScheduleController.pending (super admins hold every catalog
+  // code). It only picks the first read-only segment and enables no action;
+  // the server still authorizes the read. The other 14 references are legacy.
+  'lib/features/production/pages/production_board_page.dart': (
+    legacyCount: 14,
+    tokens: {
+      'Perm.productionDailyReportView': 1,
+      'Perm.productionExecutionOverview': 1,
+      'Perm.productionMaterialAnalysisCreate': 1,
+      'Perm.productionMaterialAnalysisRefresh': 1,
+      'Perm.productionPlanApprove': 5,
+      'Perm.productionPlanDelete': 3,
+      'Perm.productionPlanFlags': 1,
+      'Perm.productionPlanView': 2,
+    },
+  ),
   // ADR-185: action grants are rechecked across picker/preview/consent awaits.
   // Object visibility, top-level scope and atomic validation remain server-owned.
   'lib/features/basic_data/widgets/goods_bom_batch_maintenance_dialog.dart': (
@@ -1148,7 +1167,7 @@ bool get _canApprove => _has(Perm.salesShipmentFinanceApprove);
         (sum, entry) =>
             sum + _reviewedIncrementFor(entry.key, entry.value.tokens),
       ),
-      347, // Prior348 minus the retired quote-only preparation reference;
+      348, // Prior 347 + the exact production-board pending read guard above;
       // the global 835 cap and wrong-token/copied-file rejection stay fixed.
     );
   });

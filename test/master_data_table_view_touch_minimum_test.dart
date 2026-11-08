@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/layout/uten_table_column_kit.dart';
 import 'package:uten_imp/core/responsive/display_zoom.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/core/theme/uten_tokens.dart';
@@ -142,18 +143,20 @@ void main() {
       final state = tableKey.currentState;
       final header = _header(tester);
       final grip = find.descendant(
-        of: header,
+        of: find.byWidgetPredicate(
+          (widget) => widget is UtenColumnResizeHandle && widget.label == '办理',
+        ),
         matching: find.byWidgetPredicate(
           (widget) =>
               widget is GestureDetector &&
               widget.onHorizontalDragUpdate != null &&
-              widget.onHorizontalDragStart == null &&
               widget.behavior == HitTestBehavior.opaque,
         ),
       );
       // Drag the real shared grip inside this header and verify its hit path
       // before asserting the resulting desktop and touch width budgets.
       final start = tester.getCenter(grip) - const Offset(2, 0);
+      expect(tester.getRect(header).contains(start), isTrue);
       final gripRender = tester.renderObject(grip);
       expect(
         tester

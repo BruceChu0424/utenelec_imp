@@ -62,8 +62,10 @@ Widget _app({
                     key: 'x$i',
                     label: '补列$i',
                     width: 150,
-                    textOf: (r) => 'x$i-${r.name}',
-                    cellBuilder: (_, r) => Text('x$i-${r.name}'),
+                    // 43e0aea69：默认列宽按内容适配（声明的 150 只是初值），
+                    // 补列内容须足够宽，横滚才有把普通列滚出视口的余量。
+                    textOf: (r) => 'x$i-横向滚动长内容补列${r.name}',
+                    cellBuilder: (_, r) => Text('x$i-横向滚动长内容补列${r.name}'),
                   ),
               ],
               showAddRow: false,
@@ -132,7 +134,7 @@ void main() {
     // 初始（未滚动）：数量列是可编辑 TextField（原件，非快照）。
     expect(find.byType(TextField), findsWidgets);
 
-    await tester.drag(find.text('x1-甲'), const Offset(-500, 0));
+    await tester.drag(find.text('x1-横向滚动长内容补列甲'), const Offset(-500, 0));
     await tester.pumpAndSettle();
 
     // 快照文本钉在左缘（选择列 44 + 数量列 150 = 194 之内）；被滚走的普通列出视口。

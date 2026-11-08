@@ -85,8 +85,11 @@ Widget _page(
                   key: 'tail',
                   label: 'Reference',
                   width: 1000,
-                  textOf: (_) => 'Reference',
-                  cellBuilder: (_, _) => const Text('Reference'),
+                  // 43e0aea69：默认列宽按内容适配（声明的 1000 只是初值），
+                  // 尾列内容须足够宽，横滚区才有余量让固定副本挂载。
+                  textOf: (_) => 'Reference-横向滚动宽列参考内容-0123456789-横向滚动宽列参考内容',
+                  cellBuilder: (_, _) =>
+                      const Text('Reference-横向滚动宽列参考内容-0123456789-横向滚动宽列参考内容'),
                 ),
             ],
           ),

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/components/layout/uten_segment_row.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
@@ -186,7 +187,21 @@ void main() {
       expect(files.ownerCanUpload, status == 'PENDING');
       expect(files.ownerCanDelete, status == 'PENDING');
       expectAttachmentUploadAvailable(tester, available: status == 'PENDING');
-      expect(find.textContaining('登记结果后（包括部分检验）'), findsOneWidget);
+      // The freeze rule stays available from the section title's hint icon;
+      // it is no longer a standalone sentence under the files.
+      const freezeRule = '登记结果后（包括部分检验），文件保留供查阅，不能替换或删除。';
+      expect(find.textContaining('登记结果后（包括部分检验）'), findsNothing);
+      expect(
+        find.descendant(
+          of: find.byType(AttachmentSection),
+          matching: find.byWidgetPredicate(
+            (widget) =>
+                widget is UtenFieldHintIcon &&
+                widget.info?.contains(freezeRule) == true,
+          ),
+        ),
+        findsOneWidget,
+      );
       expect(tester.takeException(), isNull);
     });
   }

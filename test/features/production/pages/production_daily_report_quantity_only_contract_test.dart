@@ -37,8 +37,10 @@ void main() {
       expect(columns, contains('hintText: reference'));
       expect(edit, contains("'weightEntryMode'"));
       expect(edit, contains("'unitWeightKgExact'"));
-      expect(detail, contains('生成仓库到货登记任务'));
-      expect(detail, contains('仓库登记成品仓与库位并送品质部检查'));
+      // a582da8c8 起确认语改为 facts+consequences（UtenConfirmationSummary）：
+      // 送仓产出先登记成品仓和库位并送检，合格且实收后才增加可用库存。
+      expect(detail, contains('送仓产出先登记成品仓和库位并送检'));
+      expect(detail, contains('合格且实收后才增加可用库存'));
       expect(detail, isNot(contains('并生成成品入库草稿')));
       expect(edit, contains("'fqcRecoveryAuthorizationId'"));
       expect(edit, isNot(contains('_warehouseId')));

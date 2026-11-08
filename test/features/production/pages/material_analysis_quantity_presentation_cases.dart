@@ -149,7 +149,9 @@ void materialQuantityPresentationCases() {
       final handle = find.byWidgetPredicate(
         (widget) => widget is UtenColumnResizeHandle && widget.label == '追加下单',
       );
-      final column = tableCellFrame(handle);
+      // 2026-11 a78fa7ce4 起手柄在表头行上层 overlay，不再嵌在表头格内；
+      // 表头格按列标签文本锚定，宽度语义不变。
+      final column = tableHeaderCell('追加下单');
       tester
           .widget<UtenColumnResizeHandle>(handle)
           .onResize(110 - tester.getSize(column).width);
@@ -342,10 +344,7 @@ void materialQuantityPresentationCases() {
   );
 }
 
-double _quantityColumnWidth(WidgetTester tester) {
-  final handle = find.byWidgetPredicate(
-    (widget) => widget is UtenColumnResizeHandle && widget.label == '下单数量',
-  );
-  final column = tableCellFrame(handle);
-  return tester.getSize(column).width;
-}
+double _quantityColumnWidth(WidgetTester tester) =>
+    // 2026-11 a78fa7ce4 起手柄在表头行上层 overlay，不再嵌在表头格内；表头格
+    // 按列标签文本锚定，量的仍是「下单数量」列的 UtenTableCellFrame 宽度。
+    tester.getSize(tableHeaderCell('下单数量')).width;

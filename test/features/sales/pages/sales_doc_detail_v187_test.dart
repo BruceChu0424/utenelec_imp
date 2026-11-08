@@ -458,7 +458,17 @@ void main() {
       },
     );
 
-    expect(find.text('币种'), findsNothing);
+    // 8e7259901 shows the order currency as a line column beside the amount.
+    // Outside the line table the currency stays a money suffix: the summary
+    // has no separate currency or exchange-rate fact.
+    expect(
+      find.descendant(
+        of: find.byType(MasterDataTableView<SalesDocItem>),
+        matching: find.text('币种'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('币种'), findsOneWidget);
     expect(find.text('汇率'), findsNothing);
     expect(find.text('订单金额'), findsOneWidget);
     expect(find.text('160.00 美元'), findsWidgets);

@@ -12,6 +12,7 @@ import '../../support/uten_test_actions.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/server_selection.dart';
+import 'package:uten_imp/components/layout/uten_table_column_kit.dart';
 import 'package:uten_imp/features/basic_data/models/goods_bom_item.dart';
 import 'package:uten_imp/features/basic_data/repositories/goods_bom_repository.dart';
 import 'package:uten_imp/features/basic_data/widgets/goods_bom_tab.dart';
@@ -769,16 +770,24 @@ void main() {
       Finder header() => tableCellFrame(find.text('组件名称'));
 
       Future<void> narrow() async {
+        // a78fa7ce4：列宽手柄从表头格内移到表头行上方 overlay 的
+        // UtenColumnResizeHandle（中心骑列边界），不再嵌在表头格里。
+        // 本页该标签仅一个手柄（含编辑态两次调用均唯一，已实测）。
+        final handle = find.byWidgetPredicate(
+          (widget) =>
+              widget is UtenColumnResizeHandle && widget.label == '组件名称',
+        );
+        expect(handle, findsOneWidget);
         final grip = find.descendant(
-          of: header(),
+          of: handle,
           matching: find.byWidgetPredicate(
             (widget) =>
                 widget is GestureDetector &&
                 widget.onHorizontalDragUpdate != null &&
-                widget.onHorizontalDragStart == null &&
                 widget.behavior == HitTestBehavior.opaque,
           ),
         );
+        expect(grip, findsOneWidget);
         await tester.ensureVisible(grip);
         await tester.dragFrom(
           tester.getCenter(grip) - const Offset(2, 0),

@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/inputs/uten_field_message.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
+import 'package:uten_imp/components/layout/uten_table_column_kit.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/responsive/display_zoom.dart';
 import 'package:uten_imp/core/theme/uten_control_theme.dart';
@@ -179,16 +180,25 @@ void main() {
               ? const TextScaler.linear(2)
               : TextScaler.noScaling,
         );
+        // a78fa7ce4：列宽手柄从表头格内的 8px 命中区改为表头行上方 overlay 的
+        // UtenColumnResizeHandle（16px，中心骑列边界），不再嵌在表头格里。
+        // 按手柄类型 + 列标签定位（本页仅此一列一个手柄），交互不变式
+        // （命中、拖到下限、触控目标）照旧。
+        final handle = find.byWidgetPredicate(
+          (widget) =>
+              widget is UtenColumnResizeHandle && widget.label == '实称重量(kg)',
+        );
+        expect(handle, findsOneWidget);
         final grip = find.descendant(
-          of: header(),
+          of: handle,
           matching: find.byWidgetPredicate(
             (widget) =>
                 widget is GestureDetector &&
                 widget.onHorizontalDragUpdate != null &&
-                widget.onHorizontalDragStart == null &&
                 widget.behavior == HitTestBehavior.opaque,
           ),
         );
+        expect(grip, findsOneWidget);
         await tester.ensureVisible(grip);
         await tester.pumpAndSettle();
         final start = tester.getCenter(grip) - const Offset(2, 0);
@@ -576,7 +586,11 @@ void main() {
       final before = cellWidth!;
       factor.value = 0.85;
       await tester.pumpAndSettle();
-      expect(cellWidth! - before, closeTo(48 / .85 - 48, 1e-6));
+      // 43e0aea69：默认列宽经 utenTableColumnContentWidth 向上取整到整逻辑像素，
+      // chromeWidthOf 的触控补偿按 ≤1px 量化传递（向上取整不缩小触控目标，
+      // UtenControlMetrics 的 48px 下限口径不变）。
+      expect(cellWidth! - before, greaterThanOrEqualTo(48 / .85 - 48 - 1));
+      expect(cellWidth! - before, lessThanOrEqualTo(48 / .85 - 48 + 1));
       expect(row.text.text, '实称重量12345');
       await tester.enterText(find.byType(TextField), '实称重量123451234512345');
       await tester.pump();

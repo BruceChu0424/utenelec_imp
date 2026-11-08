@@ -411,9 +411,9 @@
     "kind": "raw-close-icon",
     "path": "lib/features/production/widgets/production_daily_grid_columns.dart",
     "owner": "dailyGridColumns",
-    "fingerprint": "f77850406a948145f5960665088a0af51d6344ef6b595e52bd7d4900defcce42",
+    "fingerprint": "89fda216190f85ac7b124ed0da9f7e0f008246a202753330b0074ed0f0195382",
     "count": 1,
-    "reason": "Clears a production-daily source field."
+    "reason": "Clears a production-daily source field; the unchanged clear action now uses the row-height source icon helper."
   },
   {
     "kind": "raw-close-icon",

@@ -13,7 +13,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
-import 'package:uten_imp/components/layout/uten_table_column_kit.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/shared/models/department_node.dart';
 import 'package:uten_imp/shared/repositories/department_repository.dart';
@@ -33,10 +32,10 @@ void main() {
     final quantityLabel = AppLocalizations.of(
       tester.element(_bucketTable()),
     ).materialRequired;
-    expect(_filterArrowOf('物料名称'), findsOneWidget);
-    expect(_filterArrowOf('编号'), findsOneWidget);
-    expect(_headerColumn(quantityLabel), findsOneWidget);
-    expect(_filterArrowOf(quantityLabel), findsOneWidget);
+    expect(_filterArrowOf(tester, '物料名称'), findsOneWidget);
+    expect(_filterArrowOf(tester, '编号'), findsOneWidget);
+    expect(_headerColumn(tester, quantityLabel), findsOneWidget);
+    expect(_filterArrowOf(tester, quantityLabel), findsOneWidget);
     final table = tester.widget<MasterDataTableView<dynamic>>(_bucketTable());
     final quantityColumn = table.columns.firstWhere(
       (column) => column.key == 'requiredQty',
@@ -46,7 +45,7 @@ void main() {
 
     // Exercise the private row's exact numeric projection through its real UI,
     // rather than widening its contravariant callback to Object/dynamic.
-    await tester.tap(_headerText(quantityLabel).hitTestable());
+    await tester.tap(_headerText(tester, quantityLabel).hitTestable());
     await tester.pumpAndSettle();
     final quantityInput = find.byKey(const Key('uten-column-keyword-input'));
     await tester.enterText(quantityInput, '>9');
@@ -54,7 +53,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('甲产品'), findsNWidgets(2));
     expect(find.text('乙子件'), findsOneWidget);
-    await tester.tap(_headerText(quantityLabel).hitTestable());
+    await tester.tap(_headerText(tester, quantityLabel).hitTestable());
     await tester.pumpAndSettle();
     await tester.tap(find.text('所有').last);
     await tester.pumpAndSettle();
@@ -68,7 +67,7 @@ void main() {
       table.facets['goodsCode']!.map((bucket) => (bucket.value, bucket.count)),
       unorderedEquals([('P-alpha', 1), ('P-beta', 1), ('P-gamma', 1)]),
     );
-    await tester.tap(_headerText('编号').hitTestable());
+    await tester.tap(_headerText(tester, '编号').hitTestable());
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('uten-column-keyword-input')), findsOneWidget);
     expect(find.text('P-alpha (1)'), findsOneWidget);
@@ -78,13 +77,13 @@ void main() {
     expect(find.text('乙子件'), findsOneWidget);
 
     // 撤回「所有」，换成货品筛选：同名货品合并一桶(不按行 id 各成一桶)。
-    await tester.tap(_headerText('编号').hitTestable());
+    await tester.tap(_headerText(tester, '编号').hitTestable());
     await tester.pumpAndSettle();
     await tester.tap(find.text('所有'));
     await tester.pumpAndSettle();
     expect(find.text('甲产品'), findsNWidgets(2));
 
-    await tester.tap(_headerText('物料名称').hitTestable());
+    await tester.tap(_headerText(tester, '物料名称').hitTestable());
     await tester.pumpAndSettle();
     expect(find.text('甲产品 (2)'), findsOneWidget);
     expect(find.text('乙子件 (1)'), findsOneWidget);
@@ -92,9 +91,12 @@ void main() {
     await tester.pumpAndSettle();
     // 两行数据 + 表头高亮显示的当前筛选值(激活筛选看得见)。
     expect(find.text('甲产品'), findsNWidgets(3));
-    expect(_headerCell('物料名称'), findsOneWidget);
+    expect(_headerCell(tester, '物料名称'), findsOneWidget);
     expect(
-      find.descendant(of: _headerCell('物料名称'), matching: find.text('甲产品')),
+      find.descendant(
+        of: _headerCell(tester, '物料名称'),
+        matching: find.text('甲产品'),
+      ),
       findsOneWidget,
     );
     expect(find.text('乙子件'), findsNothing);
@@ -110,27 +112,35 @@ Finder _bucketTable() => find.byWidgetPredicate(
           'features.production.pages.material_analysis_bucket_detail.MaterialAnalysisBucketPageState._bucketTable.1',
 );
 
-Finder _headerColumn(String label) {
-  final grip = find.descendant(
-    of: _bucketTable(),
-    matching: find.byWidgetPredicate(
-      (widget) => widget is UtenColumnResizeHandle && widget.label == label,
+Finder _headerColumn(WidgetTester tester, String label) {
+  // 2026-11 a78fa7ce4 起列宽手柄搬进表头行上层 overlay，不再是表头格后代；
+  // 表头格改锚筛选格自身的稳定 key（列 key）——激活筛选时表头文字会换成桶值
+  // （如只显示「甲产品」），按文字锚定会找丢。
+  final table = tester.widget<MasterDataTableView<dynamic>>(_bucketTable());
+  final column = table.columns.firstWhere((c) => c.label == label);
+  return tableCellFrame(
+    find.descendant(
+      of: _bucketTable(),
+      matching: find.byKey(ValueKey('master-column-filter-${column.key}')),
     ),
   );
-  return tableCellFrame(grip);
 }
 
-Finder _headerCell(String label) => find
-    .descendant(of: _headerColumn(label), matching: find.byType(InkWell))
+Finder _headerCell(WidgetTester tester, String label) => find
+    .descendant(
+      of: _headerColumn(tester, label),
+      matching: find.byType(InkWell),
+    )
     .first;
 
 /// The header center can belong to its separate information button. Hit the
 /// actual visible label to open the filter, preserving the info action too.
-Finder _headerText(String label) =>
-    find.descendant(of: _headerCell(label), matching: find.byType(Text)).first;
+Finder _headerText(WidgetTester tester, String label) => find
+    .descendant(of: _headerCell(tester, label), matching: find.byType(Text))
+    .first;
 
-Finder _filterArrowOf(String label) => find.descendant(
-  of: _headerColumn(label),
+Finder _filterArrowOf(WidgetTester tester, String label) => find.descendant(
+  of: _headerColumn(tester, label),
   matching: find.byIcon(Icons.arrow_drop_down_rounded),
 );
 

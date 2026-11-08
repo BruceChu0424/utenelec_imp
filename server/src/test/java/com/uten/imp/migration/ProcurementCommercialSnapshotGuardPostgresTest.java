@@ -17,10 +17,15 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -890,12 +895,24 @@ class ProcurementCommercialSnapshotGuardPostgresTest {
                     return query;
                 });
         when(query.executeUpdate()).thenAnswer(invocation -> {
-            String jdbcSql = sql[0]
-                    .replace(":receiptType", "?")
-                    .replace(":sourceId", "?");
-            try (PreparedStatement update = connection.prepareStatement(jdbcSql)) {
-                update.setString(1, params.get("receiptType").toString());
-                update.setObject(2, params.get("sourceId"));
+            // Rewrite named parameters to positional '?' in textual order exactly like
+            // the JPA provider does; :sourceIds is collection-valued and spans one '?'
+            // per element, so a prefix replace of ":sourceId" would glue a stray 's'
+            // onto the placeholder (PostgreSQL: trailing junk after parameter "$1s").
+            List<Object> bindings = new ArrayList<>();
+            Matcher named = Pattern.compile(":(sourceIds|receiptType)").matcher(sql[0]);
+            StringBuilder jdbcSql = new StringBuilder();
+            while (named.find()) {
+                Object value = params.get(named.group(1));
+                List<?> items = value instanceof Collection<?> ids ? List.copyOf(ids) : List.of(value);
+                named.appendReplacement(jdbcSql, String.join(",", Collections.nCopies(items.size(), "?")));
+                bindings.addAll(items);
+            }
+            named.appendTail(jdbcSql);
+            try (PreparedStatement update = connection.prepareStatement(jdbcSql.toString())) {
+                for (int parameter = 1; parameter <= bindings.size(); parameter++) {
+                    update.setObject(parameter, bindings.get(parameter - 1));
+                }
                 return update.executeUpdate();
             }
         });

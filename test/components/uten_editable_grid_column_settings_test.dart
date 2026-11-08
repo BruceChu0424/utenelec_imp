@@ -192,6 +192,99 @@ void main() {
     },
   );
 
+  testWidgets('edge drag moves a wide column past narrower edge columns', (
+    tester,
+  ) async {
+    // 回归（2026-11-08）：43e0aea69 起默认列宽按内容适配，宽列+窄邻列常见。
+    // 拖拽浮层被钳制在表头行内，槽位若按钳制后中心判定，宽列永远越不过
+    // 比它窄 8px 以上的首/末列；槽位须按未钳制的指针虚拟中心判定
+    // （与货品资料同一份 UtenColumnHeaderDragHost，见 UtenTableColumnKit.md 3.2）。
+    tester.view.physicalSize = const Size(1000, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    final changes = <(List<String>, Set<String>, Set<String>)>[];
+    const wideValue = '长内容值-用于内容适配出明显更宽的列';
+    final controller = UtenEditableGridController<_Row>(initial: [_Row()]);
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ListView(
+            children: [
+              UtenEditableGrid<_Row>(
+                controller: controller,
+                columns: [
+                  EditableGridColumn<_Row>(
+                    key: 'wide',
+                    label: '宽列',
+                    width: 320,
+                    textOf: (_) => wideValue,
+                    cellBuilder: (_, _) => const Text(wideValue),
+                  ),
+                  EditableGridColumn<_Row>(
+                    key: 'n1',
+                    label: '列B',
+                    width: 80,
+                    textOf: (_) => 'b',
+                    cellBuilder: (_, _) => const Text('b'),
+                  ),
+                  EditableGridColumn<_Row>(
+                    key: 'n2',
+                    label: '列C',
+                    width: 80,
+                    textOf: (_) => 'c',
+                    cellBuilder: (_, _) => const Text('c'),
+                  ),
+                ],
+                showAddRow: false,
+                showRowDelete: false,
+                onColumnSettingsChanged: (o, h, p) => changes.add((o, h, p)),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // 夹具真实触发旧缺陷几何：宽列比窄尾列宽 8px 以上。
+    final dynamic state = tester.state(find.byType(UtenEditableGrid<_Row>));
+    // ignore: avoid_dynamic_calls
+    final wideWidth = state.columnDragWidth(0) as double;
+    // ignore: avoid_dynamic_calls
+    final narrowWidth = state.columnDragWidth(2) as double;
+    expect(wideWidth, greaterThan(narrowWidth + 8));
+
+    // 宽列（首列）拖到表头行右缘外 → 落到最后：列B → 列C → 宽列。
+    final right = await tester.startGesture(tester.getCenter(find.text('宽列')));
+    await right.moveBy(const Offset(2000, 0));
+    await tester.pump();
+    await right.up();
+    await tester.pumpAndSettle();
+    expect(changes, isNotEmpty);
+    expect(changes.last.$1.last, 'wide', reason: '宽列拖到右缘外应落到末位');
+    expect(
+      tester.getTopLeft(find.text('宽列')).dx,
+      greaterThan(tester.getTopLeft(find.text('列C')).dx),
+    );
+
+    // 宽列（现末列）再拖到左缘外 → 落回第一：宽列 → 列B → 列C。
+    final left = await tester.startGesture(tester.getCenter(find.text('宽列')));
+    await left.moveBy(const Offset(-2000, 0));
+    await tester.pump();
+    await left.up();
+    await tester.pumpAndSettle();
+    expect(changes.last.$1.first, 'wide', reason: '宽列拖到左缘外应落到首位');
+    expect(
+      tester.getTopLeft(find.text('宽列')).dx,
+      lessThan(tester.getTopLeft(find.text('列B')).dx),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('required column stays visible (chooser locked + drag no-op)', (
     tester,
   ) async {

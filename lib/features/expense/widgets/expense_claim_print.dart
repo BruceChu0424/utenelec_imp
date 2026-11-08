@@ -88,6 +88,10 @@ Future<UtenPrintTable> expensePrintItemsTable(
 
   final includeRevision =
       projection?.columns.any((column) => column.key == '_revision') == true;
+  // Item tables show the claim currency beside the amount. A visible currency
+  // column must have a printed value, or the projected print is rejected.
+  final includeCurrency =
+      projection?.columns.any((column) => column.key == 'currency') == true;
   final revision = ExpenseSubmissionRevision.fromClaim(claim);
   final statuses = <String, String>{
     for (final row
@@ -103,6 +107,7 @@ Future<UtenPrintTable> expensePrintItemsTable(
         '费用科目',
         '说明',
         '金额（元）',
+        if (includeCurrency) '币种',
         if (includeRevision) '变更',
         for (final column in historicalColumns) column.label,
       ],
@@ -112,6 +117,7 @@ Future<UtenPrintTable> expensePrintItemsTable(
         'category',
         'description',
         'amount',
+        if (includeCurrency) 'currency',
         if (includeRevision) '_revision',
         for (final column in historicalColumns) column.key,
       ],
@@ -121,6 +127,7 @@ Future<UtenPrintTable> expensePrintItemsTable(
         100,
         260,
         100,
+        if (includeCurrency) 80,
         if (includeRevision) 100,
         for (final column in historicalColumns) column.width,
       ],
@@ -136,6 +143,7 @@ Future<UtenPrintTable> expensePrintItemsTable(
             ExpenseCategory.fromApi(sourceRows[index]['category']).label,
             sourceRows[index]['description']?.toString() ?? '',
             sourceRows[index]['amount']?.toString() ?? '',
+            if (includeCurrency) expenseClaimCurrencyName,
             if (includeRevision) statuses[sourceRows[index]['id']] ?? '本次记录',
             for (final column in historicalColumns)
               historicalValue(sourceRows[index], column.key),

@@ -1603,13 +1603,16 @@ mixin UtenColumnHeaderDragHost<T extends StatefulWidget> on State<T> {
   }
 
   /// 槽位 = 中心点落在被拖列之前/之上的其他可见列个数（标准插入下标语义）。
+  ///
+  /// 槽位用未钳制的虚拟中心（rawDx）判定：浮层视觉上仍被
+  /// [_clampedReorderDx] 限制在表头行内，但拖到行缘外时，用户的指针已越过
+  /// 末列（或首列）中点，应能落到最前/最后槽位——按钳制后中心判定会让宽列
+  /// 永远越不过比它窄 8px 以上的邻列（内容适配列宽后常见）。行内位移两者
+  /// 相同，行为不变。
   int _computeReorderSlot(double rawDx) {
     final from = columnReorder.value.fromIndex;
     if (from == null) return 0;
-    final center =
-        _reorderLeftOf(from) +
-        _clampedReorderDx(rawDx) +
-        columnDragWidth(from) / 2;
+    final center = _reorderLeftOf(from) + rawDx + columnDragWidth(from) / 2;
     var slot = 0;
     var left = 0.0;
     for (final c in reorderVisibleColumns) {

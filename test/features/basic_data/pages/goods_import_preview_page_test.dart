@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -9,6 +10,7 @@ import 'package:uten_imp/components/data_display/uten_review_input_cell.dart';
 import 'package:uten_imp/components/inputs/uten_input.dart';
 import 'package:uten_imp/components/inputs/uten_table_cell_spec.dart';
 import 'package:uten_imp/components/layout/uten_content_container.dart';
+import 'package:uten_imp/components/layout/uten_table_column_kit.dart';
 import 'package:uten_imp/core/responsive/display_zoom.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/theme/dark_theme.dart';
@@ -789,6 +791,34 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+
+  testWidgets('窄屏大字号把核对列拖到最窄仍完整显示原值和导入值标签', (tester) async {
+    await _open(
+      tester,
+      mode: GoodsImportMode.mixed,
+      report: _report(source: [_source.first], changes: const [_categoryMove]),
+      size: const Size(390, 1100),
+      scale: 2,
+    );
+    final handle = find.byWidgetPredicate(
+      (widget) => widget is UtenColumnResizeHandle && widget.label == '类别',
+    );
+    await tester.ensureVisible(handle);
+    await tester.pumpAndSettle();
+    final drag = await tester.startGesture(
+      tester.getCenter(handle),
+      kind: PointerDeviceKind.mouse,
+    );
+    await drag.moveBy(const Offset(-600, 0));
+    await tester.pump();
+    await drag.up();
+    await tester.pumpAndSettle();
+    final cell = tester.getRect(find.byType(UtenReviewInputCell).last);
+    for (final label in ['原值', '导入值']) {
+      expect(tester.getRect(find.text(label)).right, lessThan(cell.right));
+    }
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('保留原值的分类差异不提示迁移也不替换', (tester) async {
     final result = _Result();

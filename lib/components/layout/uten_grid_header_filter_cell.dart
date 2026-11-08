@@ -289,6 +289,8 @@ class _GridHeaderFilterCellState extends State<GridHeaderFilterCell> {
               Expanded(
                 child: Align(
                   alignment: AlignmentDirectional.centerStart,
+                  // Size to the label so the cell keeps its content height.
+                  heightFactor: 1,
                   child: widget.headerInfo == null
                       ? label
                       : UtenColumnHeaderInfo(

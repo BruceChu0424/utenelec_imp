@@ -22,6 +22,46 @@ class _Row {
 
 const _rows = <_Row>[_Row('a1', 'a2', 'a3')];
 
+/// 宽列（长内容适配出宽列）+ 两个窄列：内容适配列宽不等，宽列比窄列宽
+/// 8px 以上，正是钳制槽位旧缺陷的几何。
+Widget _wideTable() {
+  return MaterialApp(
+    home: Scaffold(
+      body: SizedBox(
+        width: 800,
+        child: MasterDataTableView<_Row>(
+          columns: [
+            MasterColumnDef<_Row>(
+              key: 'wide',
+              label: '宽列',
+              width: 320,
+              value: (r) => '长内容值-用于内容适配出明显更宽的列',
+            ),
+            MasterColumnDef<_Row>(
+              key: 'n1',
+              label: '列2',
+              width: 80,
+              value: (r) => r.v2,
+            ),
+            MasterColumnDef<_Row>(
+              key: 'n2',
+              label: '列3',
+              width: 80,
+              value: (r) => r.v3,
+            ),
+          ],
+          items: const [_Row('b2', 'c3', 'd4')],
+          facets: const {},
+          nullCounts: const {},
+          filters: const {},
+          onFilterChanged: (_, _) {},
+          embedded: true,
+        ),
+      ),
+    ),
+  );
+}
+
 /// 「表头设置 x/y」按钮文案：x=当前可见列数，y=总列数。隐藏一列后 x 减 1。
 Finder _chooserLabel(int visible, int total) =>
     find.text('表头设置 $visible/$total');
@@ -157,6 +197,56 @@ void main() {
       lessThan(tester.getTopLeft(find.text('a1')).dx),
     );
     // 排序不隐藏：三列都在。
+    expect(_chooserLabel(3, 3), findsOneWidget);
+  });
+
+  testWidgets('edge drag moves a wide column past narrower edge columns', (
+    tester,
+  ) async {
+    // 回归（2026-11-08）：43e0aea69 起默认列宽按内容适配，宽列+窄邻列常见。
+    // 拖拽浮层被钳制在表头行内，槽位若按钳制后中心判定，宽列永远越不过
+    // 比它窄 8px 以上的首/末列（center 上限 total-wFrom/2+4 追不上邻列中点）。
+    // 槽位须按未钳制的指针虚拟中心判定（UtenTableColumnKit.md 3.2）。
+    await tester.pumpWidget(_wideTable());
+    await tester.pumpAndSettle();
+
+    // 夹具真实触发旧缺陷几何：宽列比窄尾列宽 8px 以上。
+    final dynamic state = tester.state(find.byType(MasterDataTableView<_Row>));
+    // ignore: avoid_dynamic_calls
+    final wideWidth = state.columnDragWidth(0) as double;
+    // ignore: avoid_dynamic_calls
+    final narrowWidth = state.columnDragWidth(2) as double;
+    expect(wideWidth, greaterThan(narrowWidth + 8));
+
+    // 宽列（首列）拖到表头行右缘外 → 落到最后：列2 → 列3 → 宽列。
+    final right = await tester.startGesture(tester.getCenter(find.text('宽列')));
+    await right.moveBy(const Offset(2000, 0));
+    await tester.pump();
+    await right.up();
+    await tester.pumpAndSettle();
+    expect(
+      tester.getTopLeft(find.text('宽列')).dx,
+      greaterThan(tester.getTopLeft(find.text('列3')).dx),
+      reason: '宽列拖到右缘外应落到末位，不被窄尾列卡住',
+    );
+    // 表体同步换序。
+    expect(
+      tester.getTopLeft(find.text('长内容值-用于内容适配出明显更宽的列')).dx,
+      greaterThan(tester.getTopLeft(find.text('d4')).dx),
+    );
+    expect(_chooserLabel(3, 3), findsOneWidget);
+
+    // 宽列（现末列）再拖到左缘外 → 落回第一：宽列 → 列2 → 列3。
+    final left = await tester.startGesture(tester.getCenter(find.text('宽列')));
+    await left.moveBy(const Offset(-2000, 0));
+    await tester.pump();
+    await left.up();
+    await tester.pumpAndSettle();
+    expect(
+      tester.getTopLeft(find.text('宽列')).dx,
+      lessThan(tester.getTopLeft(find.text('列2')).dx),
+      reason: '宽列拖到左缘外应落到首位，不被窄首列卡住',
+    );
     expect(_chooserLabel(3, 3), findsOneWidget);
   });
 

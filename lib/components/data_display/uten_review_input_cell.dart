@@ -1,4 +1,7 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+import '../inputs/uten_table_cell_auto_width.dart';
 import '../inputs/uten_table_cell_spec.dart';
 import '../../shared/formatters/exact_decimal.dart';
 
@@ -16,6 +19,28 @@ class UtenReviewInputCell extends StatelessWidget {
     this.replacementEnabled = true,
     this.showValueLabels = false,
   });
+
+  static const _originalLabel = '原值';
+  static const _importedLabel = '导入值';
+  static const double _valueLabelGap = 6;
+
+  /// Width of the [showValueLabels] label and gap ahead of each value at the
+  /// current text scale. Table hosts add their editor and cell insets to keep
+  /// a narrow column from pushing the labelled row past its edge.
+  static double valueLabelsWidthOf(BuildContext context) {
+    final style = Theme.of(context).textTheme.bodySmall ?? const TextStyle();
+    final scaler = MediaQuery.textScalerOf(context);
+    final direction = Directionality.of(context);
+    double labelWidth(String label) => utenTableCellTextWidth(
+      label,
+      style: style,
+      textScaler: scaler,
+      textDirection: direction,
+    );
+    return math.max(labelWidth(_originalLabel), labelWidth(_importedLabel)) +
+        _valueLabelGap;
+  }
+
   final String? before;
   final String? after;
   final String? beforeLabel;
@@ -73,10 +98,10 @@ class UtenReviewInputCell extends StatelessWidget {
                     ? Row(
                         children: [
                           Text(
-                            '原值',
+                            _originalLabel,
                             style: Theme.of(context).textTheme.bodySmall,
                           ),
-                          const SizedBox(width: 6),
+                          const SizedBox(width: _valueLabelGap),
                           Expanded(
                             child: ExcludeSemantics(
                               child: Tooltip(
@@ -93,11 +118,11 @@ class UtenReviewInputCell extends StatelessWidget {
                   children: [
                     changed
                         ? Text(
-                            '导入值',
+                            _importedLabel,
                             style: Theme.of(context).textTheme.bodySmall,
                           )
                         : const SizedBox.shrink(),
-                    SizedBox(width: changed ? 6 : 0),
+                    SizedBox(width: changed ? _valueLabelGap : 0),
                     Expanded(child: child),
                   ],
                 ),

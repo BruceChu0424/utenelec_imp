@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
@@ -136,6 +137,7 @@ class _GoodsImportPreviewPageState extends State<GoodsImportPreviewPage> {
   List<GoodsImportProblemRow> _indexedRows = const [];
   Set<int> _indexedReady = const {};
   Map<int, GoodsImportReviewRow> _indexedChanges = const {};
+  Set<String> _indexedReviewedFields = const {};
   Map<int, List<GoodsImportError>> _indexedErrors = const {};
   List<GoodsImportError> _activeErrors = const [];
   List<ProductCategoryNode> _indexedTree = const [];
@@ -159,6 +161,23 @@ class _GoodsImportPreviewPageState extends State<GoodsImportPreviewPage> {
     return _indexedChanges;
   }
 
+  /// Editable fields whose cells can show the original/imported value pair.
+  Set<String> get _reviewedFields {
+    _ensureIndex();
+    return _indexedReviewedFields;
+  }
+
+  /// Server review fields that are edited through another import column.
+  static const _reviewFieldAliases = {
+    'clientModel': 'cNumber',
+    'categoryId': 'categoryPath',
+    'colorId': 'colorName',
+    'unitId': 'unitName',
+  };
+
+  static bool _reviewsField(GoodsImportChange change, String field) =>
+      change.field == field || _reviewFieldAliases[change.field] == field;
+
   void _ensureIndex() {
     if (_indexedRevision == _categoryRevision &&
         identical(_indexedReport, _report)) {
@@ -171,6 +190,13 @@ class _GoodsImportPreviewPageState extends State<GoodsImportPreviewPage> {
         .where((row) => !_removed.contains(row))
         .toSet();
     _indexedChanges = {for (final row in _report.reviewRows) row.rowNum: row};
+    _indexedReviewedFields = {
+      for (final row in _report.reviewRows)
+        for (final change in row.changes) ...[
+          change.field,
+          ?_reviewFieldAliases[change.field],
+        ],
+    };
     _indexedFields = {for (final row in _indexedRows) ...row.cells.keys};
     _indexedErrors = {};
     _activeErrors = _report.errors
@@ -611,14 +637,7 @@ class _GoodsImportPreviewPageState extends State<GoodsImportPreviewPage> {
     );
     final changes =
         _changes[row.rowNum]?.changes ?? const <GoodsImportChange>[];
-    final old = changes.where(
-      (change) =>
-          change.field == field ||
-          (field == 'cNumber' && change.field == 'clientModel') ||
-          (field == 'categoryPath' && change.field == 'categoryId') ||
-          (field == 'colorName' && change.field == 'colorId') ||
-          (field == 'unitName' && change.field == 'unitId'),
-    );
+    final old = changes.where((change) => _reviewsField(change, field));
     // Only the server review knows the current master value. A new/local-only
     // draft must never present the original file text as an existing value.
     final before = old.isEmpty ? controller.text : old.first.oldValue;
@@ -830,7 +849,21 @@ class _GoodsImportPreviewPageState extends State<GoodsImportPreviewPage> {
             key: entry.key,
             label: entry.value,
             width: entry.key == 'categoryPath' ? 340 : 240,
-            minimumWidthOf: (_) => 80,
+            // A reviewed value adds its 原值/导入值 label ahead of the editor.
+            // The first layout sizes columns from the header alone, so the
+            // label, an empty editor and the cell insets set the minimum.
+            minimumWidthOf: (context) =>
+                !_readOnlyFields.contains(entry.key) &&
+                    _reviewedFields.contains(entry.key)
+                ? math.max(
+                    80,
+                    UtenReviewInputCell.valueLabelsWidthOf(context) +
+                        UtenEditableGridCellSpec.contentPaddingOf(
+                          context,
+                        ).horizontal +
+                        UtenSpacing.s24,
+                  )
+                : 80,
             measureValueOf: entry.key == 'code'
                 ? (row) =>
                       _value(row, 'code').isEmpty ? '自动编号' : _value(row, 'code')

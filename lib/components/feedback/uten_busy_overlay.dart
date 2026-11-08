@@ -295,7 +295,11 @@ class UtenBusyOverlayCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final compact = MediaQuery.sizeOf(context).width < 600;
+    final canvasWidth = MediaQuery.sizeOf(context).width;
+    final compact = canvasWidth < 600;
+    // Same tiny-canvas cut as UtenDialogHeading's explicit leading: below it
+    // the spinner moves above the copy instead of squeezing it into a column.
+    final stacked = canvasWidth < 280;
     final text = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
@@ -359,13 +363,22 @@ class UtenBusyOverlayCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     ExcludeSemantics(
-                      child: Row(
-                        spacing: compact ? UtenSpacing.s12 : UtenSpacing.s16,
-                        children: [
-                          progress,
-                          Expanded(child: text),
-                        ],
-                      ),
+                      child: stacked
+                          ? Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              spacing: UtenSpacing.s12,
+                              children: [progress, text],
+                            )
+                          : Row(
+                              spacing: compact
+                                  ? UtenSpacing.s12
+                                  : UtenSpacing.s16,
+                              children: [
+                                progress,
+                                Expanded(child: text),
+                              ],
+                            ),
                     ),
                     if (onCancel != null) ...[
                       const SizedBox(height: UtenSpacing.s16),

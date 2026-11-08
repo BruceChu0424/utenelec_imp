@@ -189,6 +189,52 @@ void main() {
   );
 
   test(
+    'a visible currency column prints the claim currency instead of failing',
+    () async {
+      final claim = ExpenseClaim(
+        id: 'claim',
+        claimNo: 'BX1',
+        applicantId: 'user',
+        applicantName: '测试',
+        title: '测试',
+        items: [
+          ExpenseItem(
+            id: 'item',
+            category: ExpenseCategory.transport,
+            amount: 12.5,
+            date: DateTime.utc(2026, 9, 29),
+            description: '说明内容',
+          ),
+        ],
+        totalAmount: 12.5,
+        status: ExpenseClaimStatus.draft,
+        createdAt: DateTime.utc(2026, 9, 29),
+      );
+      const projection = TableColumnProjection(
+        tableKey: 'expense.claim.items',
+        columns: [
+          TableProjectedColumn(
+            key: 'amount',
+            label: '金额',
+            width: 140,
+            type: 'money',
+          ),
+          TableProjectedColumn(
+            key: 'currency',
+            label: '币种',
+            width: 80,
+            type: 'text',
+          ),
+        ],
+      );
+      final items = await expensePrintItemsTable(claim, projection: projection);
+      expect(items.columnKeys, ['amount', 'currency']);
+      expect(items.headers, ['金额', '币种']);
+      expect(items.rows.single.last, expenseClaimCurrencyName);
+    },
+  );
+
+  test(
     'A4 claim contains all items across pages and all correction events',
     () async {
       final claim = ExpenseClaim(

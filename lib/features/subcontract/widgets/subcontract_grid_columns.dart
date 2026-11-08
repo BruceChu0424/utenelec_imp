@@ -625,7 +625,7 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
       ),
     ),
     // 2026-11-07 用户口径：数量右侧加「仓库库存数量」——下单时看该货品当前颜色在仓
-    // 现存量（参与核算仓合计，不含不良品仓/线边仓，基本单位），只作参考不限制数量。
+    // 现存量（参与核算仓合计，不含不良品仓/车间内料仓，基本单位），只作参考不限制数量。
     if (cfg.itemHasGoodsStock)
       EditableGridColumn<SubcontractGridRow>(
         key: 'stockQty',
@@ -633,7 +633,7 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
         width: 140,
         numeric: true,
         headerInfo:
-            '该货品本行颜色的即时库存现存量：参与核算仓库合计，不含不良品仓与线边仓，'
+            '该货品本行颜色的即时库存现存量：参与核算仓库合计，不含不良品仓与车间内料仓，'
             '按货品基本单位显示。供下单参考，不限制订货数量；无颜色行按无色桶匹配。',
         // 服务端算好下发（行集变化后编辑页统一拉取回填），null=尚未取到显示「—」。
         textOf: (r) => r.stockQtyTextNotifier.value ?? '',

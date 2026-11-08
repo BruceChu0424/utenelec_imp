@@ -103,7 +103,31 @@ decide-report 409「本次操作处理时间过长已自动取消，没有生效
 | `AggregateMaterialOrderEndToEndTest#twentyMaterialLinesCompleteWithinDeadlineBudget` | 绿 | elapsedMs=7,240（10s 断言内；V1119 迁移+回归无恙） |
 | `ImportedDocumentRegistryGrowthPostgresTest`（W7 新建 P1 增长守卫） | 绿 | 历史 1 万/10 万/100 万注入下 p50=2.5/2.9/**2.1ms**——曲线平，登记表无顺序扫描节点 |
 | `DataLifecycleRegistryContractTest` | 绿 | 5/5（V1119 登记合同成立） |
-| `preStockedTwentyReceiptBatchAlsoCompletesWithinDeadlineBudget` | **断言红（环境边界）** | 命令成功完成 elapsedMs=42,621，`<35_000` 断言不过；语句 14,200、jdbcCalls 10,680、**originWalks=0**。本机当日 ~8.7ms/语句（Defender+容器冷态，正常热态 1-2ms），14,200 条 × 开销 ≈ 40s；2026-10-13 CI 同形状 ~19s。**不改断言**，CI 复核为准；重路径=逐收货单先入库后检的入库确认链（W6-D 定论未动的部分），语句数与遍历数证明非本批改动回归 |
+| `preStockedTwentyReceiptBatchAlsoCompletesWithinDeadlineBudget` | 该批红→**安静复测绿** | 该批 elapsedMs=42,621（`<35_000` 不过），运行期与并行会话主树 `mvn test`（真库容器）全程重叠；同代码安静复测 26,583ms 绿，见下方 A/B。语句 14,200、jdbcCalls 10,680、**originWalks=0**；断言未改 |
+
+### 更正：preStocked 同机 A/B（2026-11-08 02:37–02:52）
+
+上表 preStocked 行初版把 42.6s 归因于「~8.7ms/语句机器态」与「2026-10-13 CI 同形状 ~19s」，两处均不成立：
+该批实测 JDBC 36,708ms / 14,200 语句 ≈ **2.6ms/语句**（8.7ms 是 §1 普通 20×5 改前冷态的值，14,200×8.7ms≈124s
+对不上 42.6s）；仓库记录里 2026-10-13 该形状是 **37,881ms 超 35,000ms 门禁**
+（`2026-10-13-前端行为与徽章全平台审查.md`「本地合并收口」节），ADR-090 首测 29.7s，没有 ~19s 的记录。
+改前「语句数与遍历数证明非本批回归」也缺改前语句数。以下用同机 A/B 补齐：两份临时 detached 工作树
+（改前 `deaae5bff` / 改后 `0957ff6f0`，各自 `target-perf`，不碰共享工作树），先后各跑一次（计时段开始前核对本机无其他 JVM）。
+
+| preStocked 20×5（同一测试方法） | 语句 | jdbcCalls | JDBC 段 | commit 段(2 次) | elapsedMs | `<35s` |
+|---|---:|---:|---:|---:|---:|---|
+| 改前 `deaae5bff`（安静） | 14,741 | 11,221 | 23,612ms | 1,626ms | 27,292 | 绿 |
+| 改后 `0957ff6f0`（安静，紧接其后） | **14,200** | 10,680 | 22,897ms | 1,670ms | **26,583** | **绿** |
+| 改后（上方最终验证批，与并行会话 mvn 重叠） | 14,200 | 10,680 | 36,708ms | 2,494ms | 42,621 | 红 |
+
+- 本批对先入库后检形状：语句 −541（−3.7%）、调用 −541、耗时 −0.7s；功能断言（20 单/100 行/1 次分析刷新/
+  实物+资金+价值事实/原键重放零刷新且事实不变）改后两轮都过（那次红只差方法末尾的计时断言）。
+- 42.6s 那次与安静复测语句数完全相同，多出的时间全在每语句与提交的数据库响应（JDBC 2.6 vs 1.6ms/语句，
+  commit 2,494 vs 1,670ms）——是并行负载，不是代码回归。
+- 改后安静复测同时验证了提交版 V1119（批后只加长 legacy 行 `term_note` 文本）：Flyway 迁到 v1119 成功，
+  `DataLifecycleRegistryContractTest` 5/5 绿。
+- 余量：26.6s 距 35s 断言 8.4s、距 40s 命令截止 13.4s；重路径仍是逐收货单先入库后检的入库确认链
+  （W6-D 定论未动部分），绝对值以 CI 为准。
 
 ## 5. 坑（本会话）
 
@@ -113,3 +137,6 @@ decide-report 409「本次操作处理时间过长已自动取消，没有生效
 - track_functions=all 经 hikari options 下发是**全局税**：3939 语句的报告从 ~11s 拖到 ~38s，撞 40s 命令截止。
   计时基线绝不能带跟踪；遍历计数用小场景另测。
 - 本机当日（Defender+容器冷态）每语句 ~8.7ms，是热态的 4-8 倍——绝对计时数字只做同机前后对照。
+- 计时测试红了先查同时段有没有别的 JVM/容器（`tasklist | grep java` + 命令行认领）：preStocked 42.6s 那次
+  与并行会话主树 `mvn test` 全程重叠，同代码安静复测 26.6s。机器态归因要拿本次实测的每语句毫秒与
+  提交毫秒对照，不沿用别的场景的均摊值；改前/改后语句数用临时 detached 工作树同机 A/B 取证。

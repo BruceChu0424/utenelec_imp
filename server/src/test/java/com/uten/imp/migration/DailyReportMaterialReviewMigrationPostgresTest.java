@@ -471,6 +471,10 @@ class DailyReportMaterialReviewMigrationPostgresTest {
         applyReviewedDeclarations(expectedTables, expectedIndexes, "V996..V1071", 134, 316, 0);
         applyReviewedDeclarations(expectedTables, expectedIndexes, "V1072..V1113", 6, 32, 1);
         applyReviewedDeclarations(expectedTables, expectedIndexes, "V1114..V1119", 1, 2, 0);
+        // V1120..V1124 (the 2026-11-08 read-performance block renumbered from
+        // V1115..V1119): the registry table and its primary key are the entire
+        // table/index delta; the other four migrations only add functions/triggers.
+        applyReviewedDeclarations(expectedTables, expectedIndexes, "V1120..V1124", 1, 1, 0);
         List<String> actualTables = tables();
         TreeMap<String,String> actualIndexes = catalogMap(indexes());
         if (!expectedTables.stream().toList().equals(actualTables) || !expectedIndexes.equals(actualIndexes)) {

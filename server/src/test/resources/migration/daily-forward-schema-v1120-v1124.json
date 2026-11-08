@@ -1,0 +1,21 @@
+{
+  "reviewedRange": "V1120..V1124",
+  "tables": {
+    "imported_document_registry": {
+      "migration": "V1120__imported_document_registry.sql",
+      "declaration": "CREATE TABLE public.imported_document_registry (\n    table_name text NOT NULL,\n    row_id uuid NOT NULL,\n    registered_at timestamptz NOT NULL DEFAULT now(),\n    CONSTRAINT imported_document_registry_pkey PRIMARY KEY (table_name, row_id)\n);",
+      "sourceSha256": "cf4d9059327e2d8bebec48aac44c6b7a6b475a44e41695c67297939a9b8c687a"
+    }
+  },
+  "indexes": {
+    "imported_document_registry_pkey": {
+      "migration": "V1120__imported_document_registry.sql",
+      "declaration": "CONSTRAINT imported_document_registry_pkey PRIMARY KEY (table_name, row_id)",
+      "kind": "CREATE TABLE implicit unique index",
+      "table": "imported_document_registry",
+      "definition": "CREATE UNIQUE INDEX imported_document_registry_pkey ON public.imported_document_registry USING btree (table_name, row_id)",
+      "sourceSha256": "cf4d9059327e2d8bebec48aac44c6b7a6b475a44e41695c67297939a9b8c687a"
+    }
+  },
+  "removedIndexes": {}
+}

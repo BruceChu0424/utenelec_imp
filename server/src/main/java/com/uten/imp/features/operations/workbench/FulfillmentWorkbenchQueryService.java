@@ -281,7 +281,7 @@ public class FulfillmentWorkbenchQueryService {
             """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("stock_documents"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("stock_document_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plans"),
                 com.uten.imp.common.history.ImportedBusinessDocumentScope.registeredSql("production_plans", "archive_scope.plan_id"));
 
-    /** Read-freshness domain marked by every source table of the three page reads (V1118). */
+    /** Read-freshness domain marked by every source table of the three page reads (V1123). */
     static final String READ_DOMAIN = "fulfillment-workbench";
 
     private final EntityManager em;

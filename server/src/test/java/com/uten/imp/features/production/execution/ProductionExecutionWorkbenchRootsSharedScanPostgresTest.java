@@ -17,7 +17,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * V1117 rewrites the V1094 root view in place so every rollup reads one materialized
+ * V1122 rewrites the V1094 root view in place so every rollup reads one materialized
  * segment-view evaluation. Both definitions run over the same migrated column shapes and
  * the same mixed roots; every output column must stay value-for-value identical.
  */
@@ -46,7 +46,7 @@ class ProductionExecutionWorkbenchRootsSharedScanPostgresTest {
                 int roots = seed(db);
 
                 db.execute("CREATE TEMP TABLE roots_before ON COMMIT DROP AS SELECT * FROM v_production_execution_workbench_roots");
-                db.execute(migration("V1117__execution_workbench_roots_shared_segment_scan.sql"));
+                db.execute(migration("V1122__execution_workbench_roots_shared_segment_scan.sql"));
                 db.execute("CREATE TEMP TABLE roots_after ON COMMIT DROP AS SELECT * FROM v_production_execution_workbench_roots");
 
                 assertThat(db.queryForObject("SELECT COUNT(*) FROM roots_before", Integer.class)).isEqualTo(roots);
@@ -69,7 +69,7 @@ class ProductionExecutionWorkbenchRootsSharedScanPostgresTest {
                 assertThat(definition.split("v_production_execution_workbench_segments", -1)).hasSize(2);
                 // The anchors refuse a second rewrite instead of rewriting an unknown shape.
                 db.execute("SAVEPOINT rerun");
-                assertThatThrownBy(() -> db.execute(migration("V1117__execution_workbench_roots_shared_segment_scan.sql")))
+                assertThatThrownBy(() -> db.execute(migration("V1122__execution_workbench_roots_shared_segment_scan.sql")))
                         .hasMessageContaining("Execution workbench root rollup anchors changed");
                 db.execute("ROLLBACK TO SAVEPOINT rerun");
             } finally {

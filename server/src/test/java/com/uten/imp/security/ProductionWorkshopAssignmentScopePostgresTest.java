@@ -24,7 +24,7 @@ class ProductionWorkshopAssignmentScopePostgresTest {
     private static final PostgreSQLContainer PG = new PostgreSQLContainer("postgres:16-alpine");
     private static JdbcTemplate db;
 
-    /** The pre-V1116-era per-row walk, kept verbatim as the reference verdict. */
+    /** The pre-V1121-era per-row walk, kept verbatim as the reference verdict. */
     private static final String REFERENCE = """
             EXISTS (
                 WITH RECURSIVE workshop_tree(id) AS (

@@ -30,7 +30,7 @@ import java.util.regex.Pattern;
  * EntityManager and its strict SQL/locking assertions. No Mockito leniency. */
 public final class ImportedDocumentFixture {
     private static final String MUTABLE="SELECT fn_imported_business_document(:table,:id)";
-    // V1115: retained-record metadata reads the maintained registry; commands keep the authority.
+    // V1120: retained-record metadata reads the maintained registry; commands keep the authority.
     private static final Pattern METADATA=Pattern.compile("SELECT id, fn_imported_business_document_registered\\(:table,id\\) FROM public\\.([a-z][a-z0-9_]*) WHERE id IN \\(:ids\\)");
     private static final Pattern SOURCES=Pattern.compile("SELECT id FROM public\\.([a-z][a-z0-9_]*) WHERE id IN \\(:ids\\) AND fn_imported_business_document\\(:table,id\\)");
     private static final String DELETIONS="SELECT DISTINCT ON (source_id) source_id, recorded_at, actor_name, payload->>'deleted_reason' FROM business_record_history WHERE source_table=:table AND source_id IN (:ids) AND operation='SOFT_DELETE' ORDER BY source_id,id DESC";

@@ -72,7 +72,7 @@ class ImportedDocumentAncestryWalkPostgresTest {
                     END $runtime$;
                     """);
             sql.execute("GRANT SELECT,UPDATE ON fixture_origin_dag TO uten");
-            // V1115 production ACL: the runtime reads registered verdicts and never writes them.
+            // V1120 production ACL: the runtime reads registered verdicts and never writes them.
             sql.execute("GRANT SELECT ON imported_document_registry TO uten");
         }
     }
@@ -242,7 +242,7 @@ class ImportedDocumentAncestryWalkPostgresTest {
         List<UUID> chain=graph(4);UUID leaf=chain.getFirst(),inherited=chain.getLast(),nativeId=graph(2).getLast();
         try(var connection=owner();var update=connection.prepareStatement("UPDATE fixture_origin_dag SET legacy_id=211 WHERE id=?")) {
             update.setObject(1,leaf);update.executeUpdate();
-            // V1115 maintenance contract: re-keying a source recomputes the rows that inherit from it.
+            // V1120 maintenance contract: re-keying a source recomputes the rows that inherit from it.
             try(var refresh=connection.prepareStatement("SELECT fn_refresh_imported_document_registry(?)")) {
                 refresh.setString(1,"fixture_origin_dag");refresh.executeQuery().close();
             }

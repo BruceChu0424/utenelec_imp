@@ -85,7 +85,7 @@ class ProductionOverproductionRateEndToEndTest {
         // removes it from action selectors, never from an existing rate's facts.
         db.update("UPDATE production_daily_reports SET legacy_id=?,row_version=row_version+1 WHERE id=?",
                 940000000+Math.floorMod(report.hashCode(),1000000),report);
-        // V1115 maintenance contract: re-keying a source recomputes its inheriting children.
+        // V1120 maintenance contract: re-keying a source recomputes its inheriting children.
         db.queryForObject("SELECT fn_refresh_imported_document_registry(?)",Long.class,"production_daily_report_items");
         assertTrue(db.queryForObject("SELECT fn_imported_business_document('production_daily_reports',?)",Boolean.class,report));
         var retained=rates.planningRates(Set.of(plan));

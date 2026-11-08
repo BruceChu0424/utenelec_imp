@@ -18,19 +18,19 @@ class DataLifecycleRegistryContractTest {
     private static final Path MIGRATION = Path.of(
             "src/main/resources/db/migration/V954__data_lifecycle_registry_and_task_run_evidence.sql");
     private static final Path WAVE_MIGRATION = Path.of(
-            "src/main/resources/db/migration/V1119__system_read_perf_wave_w6c_w7.sql");
+            "src/main/resources/db/migration/V1124__system_read_perf_wave_w6c_w7.sql");
 
     private static String migration() throws IOException {
         return Files.readString(MIGRATION);
     }
 
-    /** V1119 (W7 2026-11-08)：增长大表按 SOFT_ARCHIVE 只登记不搬移，清册锚点齐全。 */
+    /** V1124 (W7 2026-11-08)：增长大表按 SOFT_ARCHIVE 只登记不搬移，清册锚点齐全。 */
     @Test
     void growthTablesAreRegisteredSoftArchiveWithoutMovement() throws IOException {
         String sql = Files.readString(WAVE_MIGRATION);
         for (String expected : new String[]{
                 "'master_record_versions'", "'production_plan_costs'", "'legacy_import_staging'"}) {
-            assertThat(sql).as("V1119 清册必须登记 %s", expected).contains(expected);
+            assertThat(sql).as("V1124 清册必须登记 %s", expected).contains(expected);
         }
         assertThat(sql).contains("'SOFT_ARCHIVE'");
         // 只登记不搬移是本轮的显式边界，登记行不得声称已开始搬移或删除。

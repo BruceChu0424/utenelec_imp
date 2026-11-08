@@ -404,7 +404,7 @@ class ProductionMaterialAnalysisScalePostgresTest {
                         "references", references, "classifierWalks", calls, "registryLookups", lookups));
                 assertEquals(beforeActions, supplyActionFingerprint(analysisId),
                         "valid original physical item/header links and action facts must remain unchanged");
-                assertEquals(0, calls, "V1115: origin is read from the registry, never the graph walk");
+                assertEquals(0, calls, "V1120: origin is read from the registry, never the graph walk");
                 assertTrue(lookups > 0 && lookups <= references * 2,
                         "each physical item/header may be classified at most once per reference; lookups=" + lookups + ", references=" + references);
                 saveProvenancePlan("supply-" + references, plan);
@@ -432,7 +432,7 @@ class ProductionMaterialAnalysisScalePostgresTest {
                 evidence.putAll(Map.of("event", "provenance-scope-probe", "kind", "promotion-segment",
                         "selectedSegments", 1, "classifierWalks", calls, "registryLookups", lookups, "selectedRows", rows));
                 assertEquals(1, rows, "the same confirmed segment/package/plan remains eligible");
-                assertEquals(0, calls, "V1115: origin is read from the registry, never the graph walk");
+                assertEquals(0, calls, "V1120: origin is read from the registry, never the graph walk");
                 assertTrue(lookups >= 1, "the selected plan still passes the native-origin predicate");
                 saveProvenancePlan("promotion-one-plan", plan);
             } finally { status.setRollbackOnly(); }

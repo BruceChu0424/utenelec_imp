@@ -300,7 +300,7 @@ class MaterialAnalysisSupplyWakeupQueryPostgresTest {
         String current=lastSql;
         String dimension=dimension(current).replaceAll("\\s+"," ").trim();
         // Keep the original golden hash after translating the indexed keys and the classifier
-        // (V1115 registry, formerly the full-row walk) to the reviewed forms.
+        // (V1120 registry, formerly the full-row walk) to the reviewed forms.
         String originalEntryDimension=dimension
                 .replace("archive_origin.legacy_id IS NULL", "NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL")
                 .replace("archive_origin.legacy_import_run_id IS NULL", "NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL")

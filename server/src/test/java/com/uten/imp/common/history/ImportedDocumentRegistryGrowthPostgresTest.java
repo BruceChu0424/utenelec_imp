@@ -23,7 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p>生产 SQL 构造器 {@link ImportedBusinessDocumentScope#nativeTable} 生成的
  * 「键列可空判定 + NOT EXISTS(登记表)」谓词是全部列表/徽章/计数查询的读侧形态
- * (W1/V1115)。本守卫用一次性容器按真实 DDL 形状铺 stock_document_items 与
+ * (W1/V1120)。本守卫用一次性容器按真实 DDL 形状铺 stock_document_items 与
  * imported_document_registry，注入 10× 历史，断言关键查询计划里登记表不出现
  * 全表扫描节点、同机三次采样耗时不随历史体量增长。</p>
  */

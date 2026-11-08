@@ -488,7 +488,7 @@ class IqcDecideReportBatchPostgresTest {
     /**
      * 遍历计数口径（2026-11-08 复核）：计时运行不开函数跟踪，pg_stat_user_functions 恒不计数，
      * 预算用例因此只打 n/a——此前打印的「originWalks=0」就是这个假零。本用例只在
-     * -Duten.perf.track-functions=true 时运行，实测一份 2×2 报告里写路径守卫(V1115
+     * -Duten.perf.track-functions=true 时运行，实测一份 2×2 报告里写路径守卫(V1120
      * fn_guard_imported_business_document_archive)调用权威函数的次数：原生单据写入仍走
      * fn_imported_business_document_row，登记表未命中即下钻递归 _internal——这是「写路径保留
      * 权威函数」的设计口径；读路径零遍历由登记表谓词与 P1 增长守卫证明。
@@ -644,7 +644,7 @@ class IqcDecideReportBatchPostgresTest {
                                     "plan",json.readTree(explained).get(0),"sourceIdentity",
                                     System.getProperty("uten.perf.source-identity","unspecified")));
                 }
-                assertEquals(0,calls,"V1115: the projection classifies origin through the registry, never the graph walk");
+                assertEquals(0,calls,"V1120: the projection classifies origin through the registry, never the graph walk");
                 assertTrue(lookups>0&&lookups<=bound,"Classify only physical item/header references of the selected analysis; lookups="
                         +lookups+", bound="+bound);
             } catch(java.io.IOException failure) {

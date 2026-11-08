@@ -58,7 +58,7 @@ class ImportedBusinessNativeSourcePostgresTest extends AuthSessionPostgresTestSu
             var optimized=jdbc.queryForList("SELECT id FROM "+ImportedBusinessDocumentScope.nativeTable(table)+" source WHERE id IN (?,?,?)",UUID.class,ids.toArray());
             assertThat(original).as("nonempty original native set: %s",table).containsExactly(ids.getFirst());
             assertThat(optimized).as("the registry carries the inherited-source verdict: %s",table).containsExactlyElementsOf(original);
-            // Maintenance-identity inserts registered their own verdicts through the V1115 guard.
+            // Maintenance-identity inserts registered their own verdicts through the V1120 guard.
             assertThat(jdbc.queryForList("SELECT row_id FROM imported_document_registry WHERE table_name=? AND row_id IN (?,?,?)",
                     UUID.class,table,ids.get(0),ids.get(1),ids.get(2))).containsExactlyInAnyOrder(ids.get(1),ids.get(2));
         }
@@ -89,7 +89,7 @@ class ImportedBusinessNativeSourcePostgresTest extends AuthSessionPostgresTestSu
         assertThat(newRows).containsExactlyElementsOf(oldRows);
     }
 
-    /** The pre-V1115 read: JSON direct keys plus the pure V933 walk, never the registry. */
+    /** The pre-V1120 read: JSON direct keys plus the pure V933 walk, never the registry. */
     private static String originalSource(String table) {
         return "(SELECT * FROM "+table+" archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL "
                 +"AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL "

@@ -16,7 +16,7 @@ import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
 /** One origin contract for business lists; master records and physical stock are not documents.
- * Reads classify provenance through the V1115 registry of imported rows (one indexed lookup);
+ * Reads classify provenance through the V1120 registry of imported rows (one indexed lookup);
  * write guards and command checks keep the authoritative V926/V933 graph walk. */
 public final class ImportedBusinessDocumentScope {
     public enum Origin { CURRENT, LEGACY, ALL }

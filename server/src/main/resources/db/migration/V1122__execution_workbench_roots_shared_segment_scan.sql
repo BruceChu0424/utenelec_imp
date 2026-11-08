@@ -1,10 +1,10 @@
 -- =====================================================================
--- V1117：生产执行根视图共享一次段视图求值（2026-11-07 系统读取性能根治 W2）
+-- V1122：生产执行根视图共享一次段视图求值（2026-11-07 系统读取性能根治 W2）
 --
 -- v_production_execution_workbench_roots（V1094）的 8 个聚合各自展开一次
 -- v_production_execution_workbench_segments：每次展开都重跑计划谱系递归、逐段
 -- 谱系查找、需求/预留聚合与齐套函数，取数据页或单个根时整段视图被算 8 遍。
--- 本迁移沿用 V923/V1116 的锚点校验 + pg_get_viewdef 原地改写：段视图只在一个
+-- 本迁移沿用 V923/V1121 的锚点校验 + pg_get_viewdef 原地改写：段视图只在一个
 -- MATERIALIZED CTE 里求值一次，8 个聚合共享同一份段事实；CTE 只取聚合实际读取
 -- 的列，段视图里只供其他读者使用的列（如 blocked_reason 的物料保管函数、
 -- 关联订单预览）不被多算。8 个聚合、根集合、状态口径、列集与列序都不变。
@@ -61,7 +61,7 @@ BEGIN
     EXECUTE 'CREATE OR REPLACE VIEW v_production_execution_workbench_roots AS ' || definition;
     EXECUTE format('COMMENT ON VIEW v_production_execution_workbench_roots IS %L',
         concat_ws(' ', obj_description('v_production_execution_workbench_roots'::regclass, 'pg_class'),
-            'V1117: every rollup reads one materialized evaluation of the segment view'
+            'V1122: every rollup reads one materialized evaluation of the segment view'
             || ' (V1094 expanded the segment view once per rollup).'));
 END;
 $$;

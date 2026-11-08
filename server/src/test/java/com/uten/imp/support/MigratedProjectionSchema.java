@@ -195,7 +195,7 @@ public final class MigratedProjectionSchema {
     /** Installs the real current imported-document policy for explicitly modeled projection tables.
      * Source ownership FKs remain the fixture's responsibility; this is not a full-chain schema.
      * Real marker triggers are essential: the production lookup rejects unregistered table names.
-     * V1115 reads the maintained registry; projection fixtures register through the same guard. */
+     * V1120 reads the maintained registry; projection fixtures register through the same guard. */
     public static void installImportedDocumentPolicy(JdbcTemplate target, String... guardedTables) {
         Catalog catalog = CATALOGS.computeIfAbsent(CURRENT, MigratedProjectionSchema::readCatalog);
         for (String table : guardedTables) {

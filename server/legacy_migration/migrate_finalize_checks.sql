@@ -28,7 +28,7 @@ BEGIN
     END IF;
 END;
 $reject$;
--- V1115 maintenance contract: a row loaded before its source can change verdicts,
+-- V1120 maintenance contract: a row loaded before its source can change verdicts,
 -- so the import recomputes the imported-document registry inside its own transaction.
 DO $imported_registry$
 BEGIN

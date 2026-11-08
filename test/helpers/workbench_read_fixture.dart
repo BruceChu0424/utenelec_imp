@@ -12,7 +12,7 @@ String workbenchReadProof(String label) =>
 /// complete read: the requested page/size window with the exact row count,
 /// the whole result's total, an over-the-end page clamped to the last page,
 /// metadata only on the first batch, and the same scope/revision/data-version
-/// proof on every batch (V1118). Concurrent complete reads reject batches
+/// proof on every batch (V1123). Concurrent complete reads reject batches
 /// without these, so fakes return their plain data through this function.
 OperationsWorkbenchData workbenchPageSlice(
   OperationsWorkbenchData source,

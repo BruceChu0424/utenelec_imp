@@ -10,7 +10,7 @@ import 'package:uten_imp/shared/paging/scoped_paged_read.dart';
 import '../../helpers/workbench_read_fixture.dart';
 
 /// The workbench complete read joins the bounded concurrent pipeline only
-/// through the server's per-batch read proof (V1118 `fulfillment-workbench`).
+/// through the server's per-batch read proof (V1123 `fulfillment-workbench`).
 void main() {
   Map<String, dynamic> pageJson(
     int page,

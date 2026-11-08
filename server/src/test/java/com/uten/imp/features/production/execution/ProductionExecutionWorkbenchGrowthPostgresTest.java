@@ -25,7 +25,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 列表(同一 {@code CURRENT_ROOT_PREDICATE})结果精确、逐根计划探查不被已完结历史拖动。
  *
  * <p>公司库形状：7,570 张计划里 7,470 张是导入历史根(全部登记、没有执行段)，约 4% 仍未
- * 完结。本守卫在当前迁移结构上(V1094 根视图 + V1117 共享段扫描，真实列/约束/索引)注入同形
+ * 完结。本守卫在当前迁移结构上(V1094 根视图 + V1122 共享段扫描，真实列/约束/索引)注入同形
  * 历史，断言：徽章数恒等于原生根数、全量根数恒等于原生根 + 未完结历史根；已完结的历史计划
  * 在计划状态条件处短路，逐根「计划还有未完成明细」探查只对未完结的计划执行，且走
  * production_plan_items 的计划索引。</p>
@@ -70,7 +70,7 @@ class ProductionExecutionWorkbenchGrowthPostgresTest {
                 MigratedProjectionSchema.copyConstrainedTablesFromMigratedCatalog(connection,
                         "production_plans", "production_plan_items", "subplan_links", "imported_document_registry");
                 db.execute(migration("V1094__execution_workbench_top_level_product_caliber.sql"));
-                db.execute(migration("V1117__execution_workbench_roots_shared_segment_scan.sql"));
+                db.execute(migration("V1122__execution_workbench_roots_shared_segment_scan.sql"));
                 seedCurrentRoots(db);
 
                 int kept = CURRENT_ANALYSES + CURRENT_PLANS;

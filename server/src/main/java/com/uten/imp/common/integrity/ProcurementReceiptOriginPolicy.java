@@ -10,7 +10,7 @@ import java.util.Collection;
 import java.util.UUID;
 
 /** Shared origin boundary for receipt actions and actionable IQC/warehouse task projections.
- * Commands keep the authoritative walk; read projections use the V1115 registry. */
+ * Commands keep the authoritative walk; read projections use the V1120 registry. */
 public final class ProcurementReceiptOriginPolicy {
     private ProcurementReceiptOriginPolicy() { }
 

@@ -6,9 +6,9 @@
 ALTER TABLE purchase_orders ADD COLUMN closed_at timestamptz;
 ALTER TABLE subcontract_orders ADD COLUMN closed_at timestamptz;
 COMMENT ON COLUMN purchase_orders.closed_at IS
- 'Moment is_closed became true (V1116 trigger). NULL for open orders and for orders closed before V1116 outside the then-current 30-day task window.';
+ 'Moment is_closed became true (V1121 trigger). NULL for open orders and for orders closed before V1121 outside the then-current 30-day task window.';
 COMMENT ON COLUMN subcontract_orders.closed_at IS
- 'Moment is_closed became true (V1116 trigger). NULL for open orders and for orders closed before V1116 outside the then-current 30-day task window.';
+ 'Moment is_closed became true (V1121 trigger). NULL for open orders and for orders closed before V1121 outside the then-current 30-day task window.';
 
 -- Cutover keeps every visible task identical: a native order whose window membership
 -- depended on updated_at keeps that instant (31 days covers any session time zone).

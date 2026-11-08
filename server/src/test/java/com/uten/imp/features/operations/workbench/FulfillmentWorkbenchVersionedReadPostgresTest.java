@@ -39,7 +39,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 /**
- * The workbench page proof on the fully migrated schema (V1118): every page of one
+ * The workbench page proof on the fully migrated schema (V1123): every page of one
  * query carries the same revision, any committed write to a page source moves it,
  * and page number/metadata choice never enter it. Business rows are out of scope
  * here; the page SQL itself is exercised over the real catalog.

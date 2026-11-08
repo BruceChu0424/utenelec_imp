@@ -997,7 +997,7 @@ class AuditTriggerCoverageMigrationContractTest {
     /** NONE: 不挂行级审计。分组即理由。 */
     static final List<NoneGroup> NONE = List.of(
             new NoneGroup("imported_document_registry",
-                    "V1115 导入单据登记表是 V926/V933 权威来源判定的读取侧物化，可由 fn_refresh_imported_document_registry 按纯遍历全量重算；原单据由各自表审计，运行账号只读，不复制为第二份行审计",
+                    "V1120 导入单据登记表是 V926/V933 权威来源判定的读取侧物化，可由 fn_refresh_imported_document_registry 按纯遍历全量重算；原单据由各自表审计，运行账号只读，不复制为第二份行审计",
                     Set.of("imported_document_registry")),
             new NoneGroup("summary_read_freshness",
                     "V1095 完整列表的域字典与事务变化标记仅维护读取新鲜度；不保存原单、业务内容或授权决定，业务事实仍由原表审计，不重复复制技术协调态",

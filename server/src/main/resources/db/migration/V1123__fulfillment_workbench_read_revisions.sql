@@ -4,7 +4,7 @@
 -- page reads: every public base table reachable from the page SQL
 -- (FulfillmentWorkbenchQueryService/PageRead and their finance helpers)
 -- through view rewrite dependencies and function bodies, as resolved on the
--- V1117 schema. Over-inclusion only retires an in-flight complete read (the
+-- V1122 schema. Over-inclusion only retires an in-flight complete read (the
 -- client retries); a missing source could stitch two data versions, so the
 -- closure is deliberately conservative. The imported-document registry is
 -- excluded: it is a pure projection of these business tables' own writes.

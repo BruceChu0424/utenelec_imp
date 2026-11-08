@@ -106,7 +106,7 @@ class MaterialAnalysisNativeCandidatePostgresTest {
         proveRealNativeAndInheritedArchiveFixtures(world);
         Profile before = profile(c.analysis());
         assertEquals(0, before.provenanceWalks(),
-                "V1115: the read classifies origin through the registry, never the graph walk");
+                "V1120: the read classifies origin through the registry, never the graph walk");
         assertTrue(before.registryLookups() > 0,
                 "The native-origin predicate must still execute in the measured transaction");
         assertFalse(before.quantities().isEmpty());
@@ -146,7 +146,7 @@ class MaterialAnalysisNativeCandidatePostgresTest {
         assertNotNull(legacyId);
         assertEquals(1, db.update("UPDATE subcontract_applications SET legacy_id=? WHERE id=?",
                 legacyId, retainedDraft.getId()));
-        // V1115 maintenance contract: a source re-keyed after its children recomputes their verdicts.
+        // V1120 maintenance contract: a source re-keyed after its children recomputes their verdicts.
         db.queryForObject("SELECT public.fn_refresh_imported_document_registry(?)", Long.class,
                 "subcontract_application_items");
         assertEquals(List.of(retainedItem), db.queryForList("""

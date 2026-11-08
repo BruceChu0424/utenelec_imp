@@ -116,14 +116,25 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
         // locking, accept it only when both inputs are byte-identical (header version +
         // tree fingerprint, claimable shared fingerprint); any drift falls back to the
         // in-lock recomputation. Never a stale acceptance, only a shorter lock window.
+        // A committed receipt already proves this exact command finished, and the replay
+        // branch below returns the stored receipt without ever consuming the admission
+        // preview. Probe the receipt lock-free so an idempotent replay skips the whole
+        // pre-lock preview read; the authoritative re-read stays under the lock, where an
+        // in-flight concurrent submit still blocks exactly as before.
+        boolean receiptCommitted=!NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT 1 FROM production_material_analysis_commands
+                WHERE analysis_id=:analysis AND operation='AGGREGATE_ORDER' AND idempotency_key=:key
+                """).setParameter("analysis",analysisId).setParameter("key",request.idempotencyKey())).isEmpty();
         MaterialAnalysisService.AnalysisHeader admissionHeader=null;String admissionClaimable=null;Preview preReviewed=null;
-        try {
-            admissionHeader=analysis.headerSnapshot(analysisId);
-            admissionClaimable=commands.sharedClaimableFingerprint(analysisId);
-            MaterialAnalysisIssuePreviewOverlay preOverlay=MaterialAnalysisIssuePreviewOverlay.create();
-            analysis.projectIssuePreviewBase(analysisId,preOverlay);
-            preReviewed=previews.resolve(analysisId,request.previewRequest(),analysis.issuePreviewView(analysisId,preOverlay,Map.of()));
-        } catch(ApiException rejectedByOpenState) { preReviewed=null; }
+        if(!receiptCommitted) {
+            try {
+                admissionHeader=analysis.headerSnapshot(analysisId);
+                admissionClaimable=commands.sharedClaimableFingerprint(analysisId);
+                MaterialAnalysisIssuePreviewOverlay preOverlay=MaterialAnalysisIssuePreviewOverlay.create();
+                analysis.projectIssuePreviewBase(analysisId,preOverlay);
+                preReviewed=previews.resolve(analysisId,request.previewRequest(),analysis.issuePreviewView(analysisId,preOverlay,Map.of()));
+            } catch(ApiException rejectedByOpenState) { preReviewed=null; }
+        }
         var guard=commands.lockAnalysisWithClaimableShared(analysisId);
         var header=analysis.headerAfterPrelock(analysisId);
         access.requireWritable(header.makerId(),"只能下达本人负责的物料分析",analysis.scopeForAnalysis());

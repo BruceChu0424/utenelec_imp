@@ -385,6 +385,103 @@ class HealthContractTest(unittest.TestCase):
     def setUp(self):
         self.now_epoch = 1786492800
 
+    @staticmethod
+    def _backfilled_history() -> list:
+        """Company shape since 2026-11-07: dotted backfills rank after larger integers.
+
+        Ranks 1..8 carry integer versions 1..8; then 7.1 and 8.1 land AFTER 8
+        (backfilled migrations, see the migration README dotted-version note),
+        then integers resume with 9. Uniqueness and script binding still hold.
+        """
+        rows = [
+            {
+                "installedRank": index,
+                "version": str(index),
+                "description": f"migration {index}",
+                "type": "SQL",
+                "script": f"V{index}__migration_{index}.sql",
+                "checksum": index * 17,
+                "success": True,
+            }
+            for index in range(1, 9)
+        ]
+        for rank, version in ((9, "7.1"), (10, "8.1"), (11, "9")):
+            suffix = version.replace(".", "_")
+            rows.append(
+                {
+                    "installedRank": rank,
+                    "version": version,
+                    "description": f"backfill {version}".replace(".", " "),
+                    "type": "SQL",
+                    "script": f"V{suffix}__backfill_{suffix}.sql",
+                    "checksum": rank * 17,
+                    "success": True,
+                }
+            )
+        return rows
+
+    def test_backfilled_dotted_versions_ranking_after_larger_integers_pass(self):
+        report = health.evaluate(
+            policy(), repo_info(1, self.now_epoch), repo_info(2, self.now_epoch),
+            archiver(self.now_epoch), self._backfilled_history(),
+        )
+        self.assertEqual("PASS", report["status"])
+        self.assertEqual(9, report["databaseIdentity"]["flyway"]["headVersion"])
+        self.assertEqual(11, report["databaseIdentity"]["flyway"]["successfulMigrationCount"])
+
+    def test_integer_history_regression_still_fails_closed(self):
+        rows = self._backfilled_history()
+        rows.append(
+            {
+                "installedRank": 12,
+                "version": "6",
+                "description": "migration 6 again",
+                "type": "SQL",
+                "script": "V6__migration_6.sql",
+                "checksum": 210,
+                "success": True,
+            }
+        )
+        with self.assertRaisesRegex(repo2.ContractError, "duplicated"):
+            health._flyway_identity(rows)
+        # A fresh dotted backfill after the current head stays legal.
+        rows[-1] = {
+            "installedRank": 12,
+            "version": "9.1",
+            "description": "backfill 9 1",
+            "type": "SQL",
+            "script": "V9_1__backfill_9_1.sql",
+            "checksum": 215,
+            "success": True,
+        }
+        identity = health._flyway_identity(rows)
+        self.assertEqual(12, identity["successfulMigrationCount"])
+        # New integers may only advance: 10 after 11 regresses the integer chain.
+        rows.append(
+            {
+                "installedRank": 13,
+                "version": "11",
+                "description": "migration 11",
+                "type": "SQL",
+                "script": "V11__migration_11.sql",
+                "checksum": 220,
+                "success": True,
+            }
+        )
+        rows.append(
+            {
+                "installedRank": 14,
+                "version": "10",
+                "description": "migration 10 late",
+                "type": "SQL",
+                "script": "V10__migration_10.sql",
+                "checksum": 225,
+                "success": True,
+            }
+        )
+        with self.assertRaisesRegex(repo2.ContractError, "integer history versions"):
+            health._flyway_identity(rows)
+
     def test_dual_repo_seven_full_and_fresh_wal_pass(self):
         report = health.evaluate(
             policy(), repo_info(1, self.now_epoch), repo_info(2, self.now_epoch), archiver(self.now_epoch), flyway_history()

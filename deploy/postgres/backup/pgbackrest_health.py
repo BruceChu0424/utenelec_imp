@@ -354,7 +354,7 @@ def _flyway_identity(value: Any) -> dict[str, Any]:
     canonical_rows: list[dict[str, Any]] = []
     versions: set[tuple[int, ...]] = set()
     prior_rank = -1
-    prior_version = (0,)
+    prior_integer_version = (0,)
     for row in value:
         if not isinstance(row, dict) or set(row) != expected:
             raise ContractError("Flyway history row schema differs from the canonical query")
@@ -366,8 +366,15 @@ def _flyway_identity(value: Any) -> dict[str, Any]:
         if rank <= prior_rank:
             raise ContractError("Flyway history installedRank is not strictly increasing")
         version_key = _flyway_history_version_key(version,row["script"])
-        if version_key in versions or version_key <= prior_version:
-            raise ContractError("Flyway history versions are duplicated or not in semantic order")
+        if version_key in versions:
+            raise ContractError("Flyway history versions are duplicated")
+        # 后补点分版本(如 990.1 应用在 999 之后, 见迁移 README「点分版本」)按 installedRank
+        # 晚于更大整数是合法形态: 全局语义排序只约束整数版本, 与 ForwardMigrationSequence-
+        # ContractTest「点分不参与整版连续性检查」同口径; 点分行仍受唯一性+脚本绑定约束。
+        if len(version_key) == 1:
+            if version_key <= prior_integer_version:
+                raise ContractError("Flyway integer history versions are not strictly increasing")
+            prior_integer_version = version_key
         if row["type"] != "SQL" or row["success"] is not True:
             raise ContractError("Flyway history contains a non-SQL or unsuccessful row")
         if type(checksum) is not int or not -(2**31) <= checksum <= 2**31 - 1:
@@ -382,7 +389,6 @@ def _flyway_identity(value: Any) -> dict[str, Any]:
         canonical_rows.append(row)
         versions.add(version_key)
         prior_rank = rank
-        prior_version = version_key
     payload = json.dumps(
         canonical_rows, sort_keys=True, separators=(",", ":"), ensure_ascii=False
     ).encode("utf-8")

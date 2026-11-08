@@ -438,9 +438,9 @@ public class ProcurementInspectionService implements ProcurementInspectionPort, 
                     updated_at = v.occurred_at
                 FROM (VALUES
                 """);
-        int index = 0;
-        for (BatchedDisposition ignored : finalByItem.values()) {
-            updateSql.append(index++ == 0
+        // 只拼行数占位符，值由下面的按序绑定循环逐行写入；首行带显式类型转换。
+        for (int row = 0; row < finalByItem.size(); row++) {
+            updateSql.append(row == 0
                     ? "(?::uuid,?::numeric,?::numeric,?::text,?::timestamptz)"
                     : ",(?,?,?,?,?)");
         }

@@ -194,7 +194,10 @@ class WorkbenchBadgeSourceFailureTest {
                 });
                 java.sql.Connection blocker = dataSource.getConnection();
                 blocker.setAutoCommit(false);
-                blocker.createStatement().execute("LOCK TABLE badge_timeout_probe IN ACCESS EXCLUSIVE MODE");
+                // 锁随事务持有到回滚；语句本身用完即关，不留未关闭资源。
+                try (var lockStatement = blocker.createStatement()) {
+                    lockStatement.execute("LOCK TABLE badge_timeout_probe IN ACCESS EXCLUSIVE MODE");
+                }
                 try {
                     List<String> limitsSeenAfterSlow = new java.util.concurrent.CopyOnWriteArrayList<>();
                     Set<String> keys = Arrays.stream(WorkbenchBadgeCatalog.values())

@@ -111,7 +111,8 @@ class GoodsStreamBatchGrowthPostgresTest {
         requireBomPresenceJpqlUnchanged();
         var jdbc = db.getJdbcTemplate();
         int batchRows = BoundedMasterReadSource.BATCH_ROWS;
-        assertTrue(batchRows > 70, "固定批的 BOM 分档占用前 70 个货品");
+        // 布局的 1-70 分档加最后一位占位父件依赖批大小 ≥ 71；BATCH_ROWS 是编译常量，
+        // 对它的断言恒真(静态分析死代码)。前提被破坏时下方 subList(60, 70) 会直接越界拦下。
         // 一个完整流批次：最后一个是自动补录的占位货品；组件 20 个正常 + 2 个占位。
         jdbc.execute("CREATE TEMP TABLE batch AS SELECT n, md5('batch'||n)::uuid AS id"
                 + " FROM generate_series(1," + batchRows + ")n");

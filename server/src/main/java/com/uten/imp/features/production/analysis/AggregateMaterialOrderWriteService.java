@@ -226,7 +226,6 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
             boolean skipClaims=input.skipClaims(request.skipClaims());
             boolean manufacturing=requireExecutableGroup(group,request,onlyAvailable);
             if(group.safetyQty().signum()>0&&!safetyDimensions.add(group.goodsId()+":"+Objects.toString(group.colorId(),"")))throw invalid("同一物料公共安全库存补库只能提交一次");
-            Set<UUID> selectedIds=group.sources().stream().map(SourcePreview::materialLineId).collect(Collectors.toSet());
             boolean retainedMakeResponsibility=retainedMakeResponsibility(group,current);
             List<AdoptedClaim> adoptedClaims=new ArrayList<>();
             // One material split into several orders (ADR-120 §8) commits group by group. A sibling's new

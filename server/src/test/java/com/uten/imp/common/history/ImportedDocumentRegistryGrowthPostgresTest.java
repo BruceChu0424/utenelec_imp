@@ -41,26 +41,23 @@ class ImportedDocumentRegistryGrowthPostgresTest {
     @BeforeEach void fixture() throws Exception {
         connection = DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
         jdbc = new JdbcTemplate(new SingleConnectionDataSource(connection, true));
+        // 登记表按 V1120 真实 DDL 形状：主键 (table_name,row_id) 即查找索引，无其他列。
         jdbc.execute("""
                 CREATE TABLE imported_document_registry (
-                  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
                   table_name TEXT NOT NULL,
                   row_id UUID NOT NULL,
-                  guard_columns TEXT[] NOT NULL DEFAULT '{}',
                   registered_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-                  CONSTRAINT imported_document_registry_identity UNIQUE (table_name, row_id)
+                  CONSTRAINT imported_document_registry_pkey PRIMARY KEY (table_name, row_id)
                 )""");
-        jdbc.execute("CREATE INDEX imported_document_registry_lookup"
-                + " ON imported_document_registry (table_name, row_id)");
         // 形状取自 32 张 NATIVE_TABLES 中生产最大的 stock_document_items(62 万行)：
-        // 自带 legacy_id 键列 + 大体积历史。
+        // 自带 legacy_id 键列(真实类型 INT) + 大体积历史；只铺读谓词碰到的键列。
         jdbc.execute("CREATE TABLE stock_document_items ("
-                + "id UUID PRIMARY KEY, legacy_id UUID, document_id UUID NOT NULL)");
+                + "id UUID PRIMARY KEY, legacy_id INT)");
     }
 
     @Test void registryPredicateStaysIndexDrivenWhileImportedHistoryGrows() throws Exception {
-        jdbc.update("INSERT INTO stock_document_items(id,document_id)"
-                + " SELECT md5('active'||n)::uuid,md5('doc'||n)::uuid FROM generate_series(1,200)n");
+        jdbc.update("INSERT INTO stock_document_items(id)"
+                + " SELECT md5('active'||n)::uuid FROM generate_series(1,200)n");
         String scoped = "SELECT count(*) FROM " + ImportedBusinessDocumentScope.nativeTable("stock_document_items");
         int previous = 0;
         for (int history : List.of(10_000, 100_000, 1_000_000)) {

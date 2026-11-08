@@ -166,6 +166,9 @@ class FixtureSchemaDriftGuardPostgresTest {
             "fixture_entitlement_lots",
             // SubcontractApplicationKitPostgresTest(ADR-156): 公共可用库存的替身, 由夹具视图 v_stock_available 读取。
             "fixture_public_stock",
+            // WorkbenchBadgeSourceFailureTest 的慢来源锁探针：另一连接持排他锁构造
+            // 语句时限取消路径，单列整数表不是业务 schema 关系。
+            "badge_timeout_probe",
             // BusinessIdentifierRegistryMigrationContractTest 里对迁移 SQL 做
             // contains 断言时，字面量拼接出的伪表名（不是真的建表语句）。
             "upper");
@@ -271,6 +274,9 @@ class FixtureSchemaDriftGuardPostgresTest {
             // Private two-parent DAG proves archive ancestry deduplication, cycles and
             // fail-closed reachability. It is an algorithm oracle, not an ERP table.
             "com/uten/imp/migration/ImportedDocumentAncestryWalkPostgresTest.java#fixture_origin_dag",
+            // Same oracle family: this TRUNCATE probe proves a maintenance truncate
+            // retires the relation's registry registrations; never a business table.
+            "com/uten/imp/migration/ImportedDocumentAncestryWalkPostgresTest.java#fixture_origin_truncate",
             // Only this bootstrap guard's unreviewed-root-table negative oracle;
             // it must not exist in the real schema or become an import exemption.
             "com/uten/imp/migration/LegacyBootstrapCoordinatorPostgresTest.java#unexpected_bootstrap_fact",

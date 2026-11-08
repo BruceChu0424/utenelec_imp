@@ -63,6 +63,11 @@ class InventoryValueFutureConsumerContinuationPostgresTest {
     @Test void futureDirtyCannotSelfBlockTheOriginalRootButAnActivePlanStillBlocks()throws Exception{
         HistoricalOrmMappings.requireOriginalSchema(jdbc,1099);
         HistoricalInventoryPlanningSql.requireOriginalPlanningSchema(jdbc);
+        // Retained-record reads consult the V1120 registry while this chain stays
+        // at V1099; install the real read-side table and lookup function from the
+        // same current migrated catalog rejectActiveDirty copies below.
+        MigratedProjectionSchema.createCurrentTables(jdbc,"imported_document_registry");
+        MigratedProjectionSchema.createCurrentFunctions(jdbc,"fn_imported_business_document_registered");
         var scenario=scenario();
         AssertionError original=assertThrows(AssertionError.class,scenario::allDirectChildrenStartAtOnceAndEachTransferTopsUpTheRunningParent);
         assertTrue(original.getMessage().startsWith("Inventory-value work remained pending for fixture goods after 45 seconds:"),original::getMessage);

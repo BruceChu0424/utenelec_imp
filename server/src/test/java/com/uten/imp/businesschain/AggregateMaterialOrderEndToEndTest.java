@@ -922,6 +922,53 @@ class AggregateMaterialOrderEndToEndTest {
         }
     }
 
+    /** R7 budget: one real aggregate submit of 20 distinct material lines plus their
+     *  shared MAKE parent. The parent's subtree intersects every leaf, so the leaves
+     *  follow the dependent path; this is the user-visible "batch order from the
+     *  preparation page" shape the plan budgets. */
+    @Test void twentyMaterialLinesCompleteWithinDeadlineBudget() {
+        String tag="aggregate-budget-"+UUID.randomUUID();
+        var world=fixture.seedWorld(tag);fixture.loginAs(world.superAdminUserId());
+        Object assignment=ReflectionTestUtils.invokeMethod(fixture,"productionAssignment",tag);
+        UUID workshop=ReflectionTestUtils.invokeMethod(assignment,"workshopId"),worker=ReflectionTestUtils.invokeMethod(assignment,"workerId");
+        com.uten.imp.features.warehouse.materialbin.WorkshopBinTestSupport.openUnderMain(
+                beans.getBean(com.uten.imp.features.warehouse.materialbin.WorkshopBinService.class),db,
+                beans.getBean(org.springframework.transaction.PlatformTransactionManager.class),workshop,world.warehouseId());
+        UUID parent=UUID.randomUUID();
+        fixture.insertGoods(parent,"AG-B20-"+parent,"预算成品","自制",world.unitId(),world.unitLegacy());
+        List<UUID> materials=new ArrayList<>();Map<UUID,String> routes=new LinkedHashMap<>();routes.put(parent,"MAKE");
+        for(int index=0;index<20;index++){
+            UUID material=UUID.randomUUID();
+            fixture.insertGoods(material,"AG-B20-M"+index+"-"+material,"预算物料"+index,"采购",world.unitId(),world.unitLegacy());
+            fixture.insertBom(parent,material,"1");materials.add(material);routes.put(material,"BUY");
+        }
+        fixture.seedGoodsSources(routes);
+        UUID root=UUID.randomUUID();
+        fixture.insertGoods(root,"AG-B20-R-"+root,"预算顶层","自制",world.unitId(),world.unitLegacy());
+        fixture.insertBom(root,parent,"1");
+        UUID order=fixture.createApprovedOrder(world,root,"20","100");
+        UUID orderItem=db.queryForObject("SELECT id FROM sales_order_items WHERE order_id=?",UUID.class,order);
+        var view=analyses.preview(new MaterialAnalysisContracts.PreviewRequest(null,null,null,world.warehouseId(),"budget-"+UUID.randomUUID(),
+                List.of(new PreviewItem("SALES_ORDER_ITEM",orderItem,null,null,null,null,null,BusinessTime.today().plusDays(10),new BigDecimal("20")))));
+        Case c=new Case(world,view.analysisId(),parent,null,materials.getFirst(),workshop,worker);
+        analyses.saveRoutes(view.analysisId(),new RouteRequest(view.version(),view.fingerprint(),"budget-routes-"+UUID.randomUUID(),
+                view.flatMaterials().stream().filter(MaterialView::actionable).map(row->new RouteDecision(row.materialLineId(),row.actionGroupKey(),row.sourceSuggestion(),null)).toList()));
+        List<GroupInput> groups=new ArrayList<>();
+        groups.add(input(c,parent,"MAKE","20",false));
+        for(UUID material:materials)groups.add(input(c,material,"BUY","20",false));
+        var command=command(c,groups);
+        long beganAt=System.nanoTime();
+        var issued=writer.submit(c.analysis(),command);
+        long elapsedMs=(System.nanoTime()-beganAt)/1_000_000;
+        System.out.println("[aggregate-submit-20] elapsedMs="+elapsedMs);
+        assertEquals(21,issued.batches().size());
+        assertEquals(1,count("SELECT COUNT(*) FROM production_plans WHERE material_analysis_id=? AND NOT is_deleted",c.analysis()));
+        amount("400",db.queryForObject("SELECT SUM(item.qty) FROM purchase_request_items item WHERE NOT item.is_deleted AND item.request_id IN(SELECT external_document_id FROM preplan_supply_actions WHERE analysis_id=? AND route='BUY' AND status<>'CANCELLED')",BigDecimal.class,c.analysis()));
+        assertTrue(writer.submit(c.analysis(),command).replayed(),"budget scenario must stay idempotent");
+        long budgetMs=10_000; // baseline 4.3s (before R1/R3); R1+R3 measured 3.7-3.9s. Retry storms stay far below.
+        assertTrue(elapsedMs<=budgetMs,"20 material lines must complete within "+budgetMs+"ms, took "+elapsedMs);
+    }
+
     @Test void independentManufacturingCohortStillReservesSharedScarceMaterialSequentially() {
         CohortCase cohort=createIndependentCohort();Case c=cohort.c();
         receive(c,c.material(),"1");

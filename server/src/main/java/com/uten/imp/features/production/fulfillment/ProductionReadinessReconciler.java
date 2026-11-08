@@ -71,12 +71,18 @@ public class ProductionReadinessReconciler {
                 transactions.executeWithoutResult(ignored -> {
                     jdbc.queryForObject("SELECT set_config('lock_timeout','500ms',true)", String.class);
                     jdbc.queryForObject("SELECT set_config('statement_timeout','5s',true)", String.class);
+                    // R3/G (2026-11-08): an aggregate submit already holding this plan skips
+                    // this round instantly. The reconciler never queues behind a submit and
+                    // never lengthens the submit's lock-wait window with its own 500ms wait;
+                    // a busy plan is re-examined by a later batch through the cursor.
+                    jdbc.queryForObject("SELECT id FROM production_plans WHERE id=? FOR UPDATE NOWAIT",
+                            UUID.class, candidate.planId());
                     footprint.lockPlan(candidate.planId(), List.of());
                     readiness.reconcileWaitingSegment(candidate.planId(), candidate.segmentId(), candidate.warehouseId());
                 });
             } catch (RuntimeException error) {
-                log.warn("自动核对备料暂未完成，执行段 {}，错误类型 {}，后续轮次继续核对",
-                        candidate.segmentId(), error.getClass().getSimpleName());
+                log.debug("自动核对备料本轮未处理执行段 {}（计划 {} 正被其他命令持有或本轮超时），后续轮次继续",
+                        candidate.segmentId(), candidate.planId());
             }
         }
         if (processed == candidates.size() && candidates.size() < BATCH_SIZE) cursor = null;

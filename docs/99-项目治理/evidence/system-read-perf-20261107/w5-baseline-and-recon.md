@@ -1,23 +1,49 @@
-# W5（P5 物料批量下单）基线与侦察 2026-11-07（进行中，未改码）
+# W5（P5 物料批量下单）基线、R1/R3 实现与续做侦察 2026-11-08
 
-## 1. 基线（本会话实测）
+## 1. 预算（R7，已建测试）
 
-- `AggregateMaterialOrderEndToEndTest`（Testcontainers 全链）现状：**33/33 全绿，538.2s**（均 ≈16s/测，含 Spring 上下文与 FullChain 夹具搭建）。
-- 尚无「20 行物料端到端」预算测试——计划 R7 要求先测当前值再定预算：需要新夹具（一个分析下 20 个独立物料行，`insertGoods`+BOM+已审订单+MRP 导入，参照 `selectAllThreeProducts...` 的 GroupInput 构造与 `createWithChild`/多成品循环夹具形态）。
-- 2026-10-13 历史参照：preview 0.34s / submit 1.66-7.64s、30 组 14.5s→4.5s。
+`AggregateMaterialOrderEndToEndTest#twentyMaterialLinesCompleteWithinDeadlineBudget`：1 个 MAKE 父件 + 20 个独立 BUY 物料全选下达（父件子树与全部叶子相交 → 叶子走依赖路径），断言 21 批、1 计划、BUY 合计 400、幂等重放。
 
-## 2. 代码侦察（本轮已核实，续做直接用）
+| 阶段 | elapsedMs（Testcontainers 全链） |
+|---|---:|
+| 基线（R1/R3 前） | 4,299 |
+| R1 后 | 3,665 |
+| R1+R3 后（34/34 全绿） | 3,882（同机波动 ±300ms） |
 
-- `submit` 主循环（AggregateMaterialOrderWriteService.java:101-294）：幂等重放→`guard.verifyUnchanged`→**锁内完整重算 preview**（projectIssuePreviewBase + previews.resolve，:122-125）→逐组循环内 `refreshLocked`+`detailInternal` 每组 2-4 次（:229/:244/:252/:267/:274/:277/:282）。
-- **已有两级合批**：`submitExternalCohort`（外部单据批量：一次 preview、一次 createBatches、末尾一次 refreshLocked）与 `submitIndependentManufacturing`（自制合批：两次 refreshLocked + 逐 plan em.flush/clear）。`independentExternalPrefix`/`independentManufacturing` 是独立判定。
-- **R1 放宽点**：`independentManufacturing`(:442-479) 目前对以下情况整体回退逐组：任一行存在**可认领** makePublicSupplyRefs/sharedFutureSupplyRefs（哪怕该组本身 skipClaims/retainedMakeResponsibility 不会认领——顺序路径的认领判定在 :259-262，合批路径完全没有认领逻辑，所以保守拒绝）、priorityMakeSupplement/borrowedIn/borrowedOut>0、owner 为 AGGREGATE_MAKE、safetyQty>0、availableOnly。放宽方向=把「存在可认领供给」改为「该组实际会认领才拒绝」（复用顺序路径的 originalFlow/retainedMakeResponsibility/skipClaims 判定），子树不相交证明（祖先游走）保留。
-- R2：`previews.resolve` 同分析锁内可加 (analysisId,version,fingerprint,request) 短缓存，保留指纹比对与 (id,xmin) 复核。
-- R3：preview 纯读段（projectIssuePreviewBase+resolve）可移到 `lockAnalysisWithClaimableShared` 之前一次；reconciler try-lock 跳过被 submit 锁定的计划（与 W6 G 同项）。
-- R4：W1 守卫单遍历已落地；审计 digest 扩展（V830 先例扩大到投影维护 UPDATE）待做。
-- R5：前端同层并行（material_analysis_aggregate_submission.dart 依赖分轮）。
-- R6：同一次 submit 内 SOURCE/EXACT 闭包命令级缓存（:831-880/891-957/1094-1130 递归子树 SQL）。
-- 预算验收：数量/来源/认领/别名逐值对拍零差异；`independentManufacturingCohortStillReservesSharedScarceMaterialSequentially`（稀缺料顺序保留）与 `aSecondPlanFailureRollsBack...`（整批回滚）是 R1 的重要护栏。
+预算断言收紧为 **10s**（撞锁重跑场景余量）；「≤3s」目标留待 R5（前端同层并行）与 R6（命令级子树缓存）逼近。参考：2026-10-13 历史中位 submit 1.66-7.64s。
 
-## 3. 已知锁事实（W5/W6 共用，来自调研与记忆）
+## 2. 已实现（随本文件提交）
 
-ProductionReadinessReconciler 已是 REQUIRES_NEW + lock_timeout 500ms + statement 5s/读 2s，撞锁自己放弃；放大来自 submit 被 reconciler 先持有的 production_plans FOR UPDATE 行锁挡住→FulfillmentSourceConflictRetryInterceptor 整笔重跑 ≤5 次。FulfillmentMutationLocks 也是行锁。
+- **R1 扩合批**：`independentManufacturing` 新增 `requestSkipClaims` 参数；「存在可认领供给即整体回退」改为「该组实际会认领才回退」——判定复用顺序路径口径 `!input.skipClaims(request.skipClaims()) && !retainedMakeResponsibility(group, view)`；子树相交/借料/safety/availableOnly/nested-make 守卫全部保留。`retainedMakeResponsibility` 从 submit 内联抽取为 static 助手（顺序路径同引用，口径单一来源）。护栏 `independentManufacturingCohort...Sequentially`、`aSecondPlanFailureRollsBack...`、全量 34 场景绿。
+- **R3 锁窗口压缩**：submit 的 admission preview（projectIssuePreviewBase + issuePreviewView + resolve）移到 `lockAnalysisWithClaimableShared` **之前**计算；锁后三重校验（header version、tree fingerprint、`commands.sharedClaimableFingerprint` 认领共享足迹指纹）任一漂移即回退锁内重算——绝不陈旧接受。新入口：`MaterialAnalysisService.headerSnapshot`（免锁头快照）、`MaterialAnalysisCommandService.sharedClaimableFingerprint`（只读足迹指纹）。
+- **R3b / W6-G reconciler try-lock**：`ProductionReadinessReconciler` 每候选先 `SELECT ... FOR UPDATE NOWAIT` 探测计划行——正被 submit 持有立即跳过本轮（原 500ms 等待），reconciler 自身不再排队、不放大 submit 的锁等待窗口；游标轮次兜底。
+- **R4 定论：已由现状覆盖**。分析投影表审计本就是 V830 窄函数（`fn_audit_route_columns`，3 列）+ 列 WHEN 门（items 表 5 列）——refreshLocked 的投影维护 UPDATE 不触发整行审计；写侧剩余守卫成本已由 W1 单遍历消除。无需新迁移。
+
+## 3. 未做（续做从这里开始）
+
+- **R2 preview 短缓存**：`previews.resolve` 是纯内存（对传入 view 计算），submit 内逐组请求形态各异，跨请求缓存命中面小且需 (id,xmin) 复核面；待预算逼近 3s 时再评估是否值得。
+- **R5 前端同层并行**：`material_analysis_aggregate_submission.dart:44-319` 依赖分轮 while——同层车间+委外批并行发（409 竞争重试已有保护）。
+- **R6 命令级子树缓存**：同一次 submit 内 SOURCE/EXACT 闭包（WriteService :831-880/891-957/1094-1130 递归子树 SQL）组间增量合并。
+
+## 4. W6-A 精确唤醒侦察（schema 已核实，续做直接写）
+
+现泛化路径：`resolvedReceiptTargets`（按 仓×货品×颜色 维度）→ `candidateQuery`（`fn_warehouse_same_main` OR `ownsQualifiedAt` 两分支）→ 唤醒全部同主仓活跃分析逐个 `refreshLocked`。
+
+精确目标集合（报告路径 `afterQualityReportCompleted`）三臂，schema 锚点全部已核实：
+1. **精确 peg**：`preplan_analysis_stock_exact_pegs.source_receipt_type/source_receipt_id` 直指本报告收货单 → `beneficiary_analysis_id`（表列已含收货单引用，无需 join 反推）。
+2. **供给动作分配**：receipt_items（purchase/subcontract 均有 `order_item_id`）→ `preplan_supply_action_allocations.external_item_id` = 订单明细 → `analysis_id`。
+3. **同池已拥有**：保留 `ownsQualifiedAt` 分支（分析在收货实际仓×货品×颜色上已有合格供给余额/FORMALIZE 权益），**只删 `fn_warehouse_same_main` 泛化分支**。
+
+验收：计划要求「新旧目标集合下持久化的分析行完全一致」对照测试（泛化集合刷新为无操作是前提，用 T1 的 10-30 个共享分析夹具铺开）。`candidateQuery` 加 exact 形态参数，其余调用方（到货通知等）维持现状。`inspectionStockInTargets`（先入库后检批次）另路不动。
+
+## 5. 其余 W6 锚点（照主文档 P6）
+
+- B 三轮→两轮：decideReport 联合发现 ③a 嵌套 recheckPrefixCoverage + ④ verifyUnchanged（`FulfillmentLockState` prefixRechecked/prefixVerified 双状态位）；「已持有联合前缀」重载跳过嵌套 recheck（严格相等复核更强）。
+- F 语句合并：每单待检行 `UPDATE ... FROM (VALUES ...)`、事件多行 INSERT 一条（保持 occurred_at 顺序）、outbox 多行 INSERT+RETURNING。
+- E 结案去重、D 整批边界（资金冻结/品质价值转移整报告一批）、C 守卫降本（W1 已消大头+同事务内存证明复用）、H 报告总行数上限（重测后定 100-200）+ 分阶段遮罩文案。
+- 预算：`IqcDecideReportBatchPostgresTest` twentyReceipt/preStocked（[decide-report] elapsedMs；基线 2026-10-13=11.2s），`track_functions='all'` 记 `fn_imported_business_document_row_internal` 调用数。
+
+## 6. 坑（本会话踩过）
+
+- **mvn test 运行期间绝不可同时改代码再编译**——test-classes 竞争产生 NoClassDefFoundError/TypeNotPresent 假失败（5 例，重跑全绿）。源码 Edit（不跑 mvn）安全。
+- 测试打印 elapsed 只在 stdout，grep 过滤会缓冲到进程结束才出——用 TaskOutput 等待而非轮询日志。

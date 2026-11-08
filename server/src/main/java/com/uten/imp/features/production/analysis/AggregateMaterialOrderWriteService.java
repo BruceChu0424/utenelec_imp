@@ -101,6 +101,19 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
 
     @Override @Transactional public SubmitResult submit(UUID analysisId,SubmitRequest request) {
         validateRequest(request);tx.bind();
+        // R3: the admission preview is a pure read of this analysis' projection and the
+        // claimable shared supply. Compute it before entering the lock window and, after
+        // locking, accept it only when both inputs are byte-identical (header version +
+        // tree fingerprint, claimable shared fingerprint); any drift falls back to the
+        // in-lock recomputation. Never a stale acceptance, only a shorter lock window.
+        MaterialAnalysisService.AnalysisHeader admissionHeader=null;String admissionClaimable=null;Preview preReviewed=null;
+        try {
+            admissionHeader=analysis.headerSnapshot(analysisId);
+            admissionClaimable=commands.sharedClaimableFingerprint(analysisId);
+            MaterialAnalysisIssuePreviewOverlay preOverlay=MaterialAnalysisIssuePreviewOverlay.create();
+            analysis.projectIssuePreviewBase(analysisId,preOverlay);
+            preReviewed=previews.resolve(analysisId,request.previewRequest(),analysis.issuePreviewView(analysisId,preOverlay,Map.of()));
+        } catch(ApiException rejectedByOpenState) { preReviewed=null; }
         var guard=commands.lockAnalysisWithClaimableShared(analysisId);
         var header=analysis.headerAfterPrelock(analysisId);
         access.requireWritable(header.makerId(),"只能下达本人负责的物料分析",analysis.scopeForAnalysis());
@@ -118,10 +131,18 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
             catch(java.io.IOException failure){throw new IllegalStateException("汇总下单回执损坏",failure);}
         }
         guard.verifyUnchanged();analysis.requireCurrent(header,request.version(),request.fingerprint());
-        // Admission preview is recomputed against the same live stock snapshot under the complete footprint.
-        MaterialAnalysisIssuePreviewOverlay overlay=MaterialAnalysisIssuePreviewOverlay.create();
-        analysis.projectIssuePreviewBase(analysisId,overlay);
-        Preview reviewed=previews.resolve(analysisId,request.previewRequest(),analysis.issuePreviewView(analysisId,overlay,Map.of()));
+        // Admission preview must reflect the locked tree; reuse the pre-lock pass only
+        // when every input it read is provably unchanged since.
+        boolean admissionCurrent=preReviewed!=null&&admissionHeader.version()==header.version()
+                &&header.fingerprint().equalsIgnoreCase(admissionHeader.fingerprint())
+                &&Objects.equals(commands.sharedClaimableFingerprint(analysisId),admissionClaimable);
+        Preview reviewed;
+        if(admissionCurrent) reviewed=preReviewed;
+        else {
+            MaterialAnalysisIssuePreviewOverlay overlay=MaterialAnalysisIssuePreviewOverlay.create();
+            analysis.projectIssuePreviewBase(analysisId,overlay);
+            reviewed=previews.resolve(analysisId,request.previewRequest(),analysis.issuePreviewView(analysisId,overlay,Map.of()));
+        }
         if(!Objects.equals(reviewed.previewFingerprint(),request.previewFingerprint()))throw conflict("汇总来源、已下达或可用供给已变化，请重新核对");
         // ADR-143 §二.3：缺 BOM 的委外件先转研发(独立事务立即提交，随后的 409 不撤销)，再拒绝本次汇总下达。
         Map<UUID,MaterialView> reviewedRows=reviewed.analysis().flatMaterials().stream()
@@ -179,7 +200,7 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
             List<GroupPreview> cohort=new ArrayList<>();int end=cursor;
             while(end<ordered.size()) {
                 List<GroupPreview> candidate=new ArrayList<>(cohort);candidate.add(ordered.get(end));
-                if(!independentManufacturing(candidate,inputs,current))break;
+                if(!independentManufacturing(candidate,inputs,current,request.skipClaims()))break;
                 cohort.add(ordered.get(end++));
             }
             if(cohort.size()>1) {
@@ -196,10 +217,7 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
             boolean manufacturing=requireExecutableGroup(group,request,onlyAvailable);
             if(group.safetyQty().signum()>0&&!safetyDimensions.add(group.goodsId()+":"+Objects.toString(group.colorId(),"")))throw invalid("同一物料公共安全库存补库只能提交一次");
             Set<UUID> selectedIds=group.sources().stream().map(SourcePreview::materialLineId).collect(Collectors.toSet());
-            Map<UUID,MaterialAnalysisContracts.ProductView> currentProducts=current.products().stream().collect(Collectors.toMap(MaterialAnalysisContracts.ProductView::analysisLineId,value->value));
-            boolean retainedMakeResponsibility=current.flatMaterials().stream().filter(row->selectedIds.contains(row.materialLineId()))
-                    .anyMatch(row->{var anchor=currentProducts.get(row.planAnchorAnalysisLineId());return row.priorityMakeSupplementQty().signum()>0||row.requiredQty().signum()==0
-                        &&anchor!=null&&!"AGGREGATE_MAKE".equals(anchor.sourceType())&&anchor.remainingQty().signum()>0;});
+            boolean retainedMakeResponsibility=retainedMakeResponsibility(group,current);
             List<AdoptedClaim> adoptedClaims=new ArrayList<>();
             // One material split into several orders (ADR-120 §8) commits group by group. A sibling's new
             // public share was not part of the reviewed preview, so it is never adopted here.
@@ -385,12 +403,12 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
      */
     private List<BatchResult> submitIndependentManufacturing(UUID analysisId,SubmitRequest request,List<GroupPreview> ordered,
             Map<String,GroupInput> inputs,AnalysisView current,String hash) {
-        if(ordered.size()<2||!independentManufacturing(ordered,inputs,current))return null;
+        if(ordered.size()<2||!independentManufacturing(ordered,inputs,current,request.skipClaims()))return null;
         PreviewRequest step=new PreviewRequest(current.version(),current.fingerprint(),request.idempotencyKey(),request.warehouseId(),
                 request.billDate(),request.deliveryDate(),request.approveNow(),ordered.stream().map(group->inputs.get(group.clientGroupKey())).toList());
         Map<String,GroupPreview> resolved=previews.resolve(analysisId,step,current).groups().stream()
                 .collect(Collectors.toMap(GroupPreview::clientGroupKey,value->value));
-        if(!independentManufacturing(ordered.stream().map(group->resolved.get(group.clientGroupKey())).toList(),inputs,current))return null;
+        if(!independentManufacturing(ordered.stream().map(group->resolved.get(group.clientGroupKey())).toList(),inputs,current,request.skipClaims()))return null;
         record Prepared(Batch batch,GroupPreview group,Map<UUID,CapacitySnapshot> capacities) { }
         List<Prepared> prepared=new ArrayList<>();
         Map<String,Batch> batches=new HashMap<>();List<BatchInput> newBatches=new ArrayList<>();
@@ -439,7 +457,8 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
         return results;
     }
 
-    static boolean independentManufacturing(List<GroupPreview> groups,Map<String,GroupInput> inputs,AnalysisView view) {
+    static boolean independentManufacturing(List<GroupPreview> groups,Map<String,GroupInput> inputs,AnalysisView view,
+            boolean requestSkipClaims) {
         if(groups.isEmpty()||groups.stream().anyMatch(group->!"MAKE".equals(group.route())||group.safetyQty().signum()>0||MaterialOrderQuantity.availableOnly(inputs.get(group.clientGroupKey()).orderMethod())))return false;
         Map<UUID,MaterialView> rows=view.flatMaterials().stream().collect(Collectors.toMap(MaterialView::materialLineId,value->value));
         Map<UUID,MaterialAnalysisContracts.ProductView> products=view.products().stream()
@@ -449,12 +468,18 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
         for(GroupPreview group:groups) {
             // Different output dimensions cannot consume each other's newly created public output.
             if(!dimensions.add(group.goodsId()+"|"+group.colorId()+"|"+group.unitId()))return false;
+            // R1 (2026-11-08): the batched kernel has no auto-claim step, so claimable
+            // supply only blocks independence for groups that would actually claim.
+            // The sequential path's decision (skipClaims && retained responsibility)
+            // decides; subtree, borrow and safety-state guards below are unchanged.
+            boolean claims=!inputs.get(group.clientGroupKey()).skipClaims(requestSkipClaims)
+                    &&!retainedMakeResponsibility(group,view);
             for(UUID original:inputs.get(group.clientGroupKey()).materialLineIds()) {
                 MaterialView row=rows.get(original);if(row==null)return false;
                 var owner=products.get(row.analysisLineId());
                 if(owner!=null&&"AGGREGATE_MAKE".equals(owner.sourceType()))return false;
-                if(row.makePublicSupplyRefs()!=null&&row.makePublicSupplyRefs().stream().anyMatch(candidate->candidate.adoptable()&&candidate.availableQty().signum()>0))return false;
-                if(row.sharedFutureSupplyRefs()!=null&&row.sharedFutureSupplyRefs().stream().anyMatch(candidate->candidate.availableToClaimQty().signum()>0))return false;
+                if(claims&&row.makePublicSupplyRefs()!=null&&row.makePublicSupplyRefs().stream().anyMatch(candidate->candidate.adoptable()&&candidate.availableQty().signum()>0))return false;
+                if(claims&&row.sharedFutureSupplyRefs()!=null&&row.sharedFutureSupplyRefs().stream().anyMatch(candidate->candidate.availableToClaimQty().signum()>0))return false;
                 selected.add(original);
             }
             for(SourcePreview source:group.sources()) {
@@ -462,8 +487,8 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
                 var anchor=products.get(row.planAnchorAnalysisLineId());
                 if(anchor!=null&&!"AGGREGATE_MAKE".equals(anchor.sourceType()))return false;
                 if(decimal(row.priorityMakeSupplementQty()).signum()>0||decimal(row.borrowedInQty()).signum()>0||decimal(row.borrowedOutQty()).signum()>0)return false;
-                if(row.makePublicSupplyRefs()!=null&&row.makePublicSupplyRefs().stream().anyMatch(candidate->candidate.adoptable()&&candidate.availableQty().signum()>0))return false;
-                if(row.sharedFutureSupplyRefs()!=null&&row.sharedFutureSupplyRefs().stream().anyMatch(candidate->candidate.availableToClaimQty().signum()>0))return false;
+                if(claims&&row.makePublicSupplyRefs()!=null&&row.makePublicSupplyRefs().stream().anyMatch(candidate->candidate.adoptable()&&candidate.availableQty().signum()>0))return false;
+                if(claims&&row.sharedFutureSupplyRefs()!=null&&row.sharedFutureSupplyRefs().stream().anyMatch(candidate->candidate.availableToClaimQty().signum()>0))return false;
                 selected.add(row.materialLineId());
             }
         }
@@ -476,6 +501,16 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
             }
         }
         return true;
+    }
+
+    /** The submit path's exact retained-responsibility decision for one group. */
+    static boolean retainedMakeResponsibility(GroupPreview group,AnalysisView view) {
+        Map<UUID,MaterialAnalysisContracts.ProductView> products=view.products().stream()
+                .collect(Collectors.toMap(MaterialAnalysisContracts.ProductView::analysisLineId,value->value));
+        Set<UUID> selected=group.sources().stream().map(SourcePreview::materialLineId).collect(Collectors.toSet());
+        return view.flatMaterials().stream().filter(row->selected.contains(row.materialLineId()))
+                .anyMatch(row->{var anchor=products.get(row.planAnchorAnalysisLineId());return row.priorityMakeSupplementQty().signum()>0||row.requiredQty().signum()==0
+                        &&anchor!=null&&!"AGGREGATE_MAKE".equals(anchor.sourceType())&&anchor.remainingQty().signum()>0;});
     }
 
     private static GroupInput subtractPhysicalClaim(GroupInput input,Map<UUID,BigDecimal> claims) {

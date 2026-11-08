@@ -2191,6 +2191,13 @@ public class MaterialAnalysisCommandService {
         });
     }
 
+    /** Read-only fingerprint of the claimable shared-supply footprint. The aggregate
+     *  submit computes its admission preview before locking and accepts that pass only
+     *  when this fingerprint is unchanged after the lock. */
+    String sharedClaimableFingerprint(UUID analysisId) {
+        return mutationFootprints.forSharedFutureClaim(analysisId).fingerprint();
+    }
+
     /**
      * A V414 FQC replenishment analysis is a recovery-only BOM workspace.
      * V415 is the sole authority that turns it into exact recovery demands;

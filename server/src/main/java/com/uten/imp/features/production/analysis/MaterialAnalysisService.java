@@ -1399,6 +1399,11 @@ public class MaterialAnalysisService {
         return readHeader(analysisId,true);
     }
 
+    /** Lock-free header snapshot for pure-read pre-lock work (aggregate submit's admission preview). */
+    AnalysisHeader headerSnapshot(UUID analysisId) {
+        return readHeader(analysisId,false);
+    }
+
     private AnalysisHeader readHeader(UUID analysisId,boolean forUpdate) {
         Object[] row = oneRow(em.createNativeQuery("""
                 SELECT id, warehouse_id, status, version, fingerprint,

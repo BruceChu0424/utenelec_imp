@@ -36,9 +36,12 @@ import 'package:uten_imp/shared/auth/permission_action_type.dart';
 import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/models/user.dart';
+import 'package:uten_imp/shared/paging/complete_paged_snapshot.dart'
+    show CompleteReadBatchPlan;
 import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import '../../support/audit_screenshot_support.dart';
+import '../../support/complete_read_plan_batches.dart';
 import 'package:uten_imp/components/layout/uten_content_container.dart';
 import 'package:uten_imp/components/cards/uten_card.dart';
 import 'package:uten_imp/components/layout/uten_page_layout.dart';
@@ -1425,9 +1428,9 @@ void main() {
   );
 
   testWidgets(
-    'page two account keeps its credential dialog through list refresh',
+    'an account in a later read batch keeps its credential dialog through list refresh',
     (tester) async {
-      final repository = _Repository(paged: true);
+      final repository = _Repository(targetInLaterBatch: true);
       await _mount(
         tester,
         repository,
@@ -1436,7 +1439,27 @@ void main() {
         initialEmployeeId: null,
       );
       expect(find.text('加载更多'), findsNothing);
-      await tester.tap(find.textContaining('第二页员工').last);
+      // One continuous directory: (1,50) holds other accounts and the target
+      // arrives with the continuation batch (2,50).
+      final complete = completeReadPlanBatches(
+        CompleteReadBatchPlan.progressive.firstBatchSize + 1,
+      );
+      expect(complete, hasLength(2));
+      expect(repository.directoryBatches, complete);
+      final account = find.textContaining('后续批次员工');
+      await tester.scrollUntilVisible(
+        account,
+        200,
+        scrollable: find
+            .descendant(
+              of: find.byKey(const ValueKey('admin-account-list-scroll')),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
+      // Reaching it is local scrolling of the accepted list, not a read.
+      expect(repository.directoryBatches, complete);
+      await tester.tap(account.last);
       await tester.pumpAndSettle();
       await tester.tap(find.text('账号安全'));
       await tester.pumpAndSettle();
@@ -1457,8 +1480,12 @@ void main() {
         repository.directoryReads,
         greaterThan(readsBeforeAcknowledgement),
       );
+      // The refresh re-reads the complete directory including the later
+      // batch, so the account refreshes from the list without a lookup.
+      expect(repository.directoryBatches, [...complete, ...complete]);
+      expect(repository.refreshedTargets, 0);
       expect(find.text('Temp-Demo!12345'), findsNothing);
-      expect(find.text('第二页员工'), findsWidgets);
+      expect(find.text('后续批次员工'), findsWidgets);
       expect(tester.takeException(), isNull);
     },
   );
@@ -1636,14 +1663,17 @@ class _AiRepository implements PagePermissionDelegationRepository {
 class _Repository implements AdminRepository, AdminUserLookupRepository {
   _Repository({
     this.protected = false,
-    this.paged = false,
+    this.targetInLaterBatch = false,
     this.editablePermission = false,
     this.aiPermission = false,
     this.superAdmin = false,
     this.resetSupportAllowed,
   });
   final bool protected;
-  final bool paged;
+  // The directory holds one full first read batch of other accounts before
+  // the target, so the target arrives with the continuation batch of the one
+  // continuous list.
+  final bool targetInLaterBatch;
   final bool editablePermission;
   final bool aiPermission;
   final bool superAdmin;
@@ -1654,6 +1684,7 @@ class _Repository implements AdminRepository, AdminUserLookupRepository {
   Object? resetError;
   int refreshedTargets = 0;
   int directoryReads = 0;
+  final directoryBatches = <({int page, int size})>[];
   @override
   Future<AdminUserSummary> userById(String userId) async {
     expect(userId, user.id);
@@ -1665,7 +1696,7 @@ class _Repository implements AdminRepository, AdminUserLookupRepository {
   AdminUserSummary get user => AdminUserSummary(
     id: 'user-target',
     employeeId: 'employee-target',
-    employeeName: paged ? '第二页员工' : '测试员工',
+    employeeName: targetInLaterBatch ? '后续批次员工' : '测试员工',
     employeeCode: 'UT0099',
     employeeStatus: 'active',
     currentEmployee: true,
@@ -1678,6 +1709,25 @@ class _Repository implements AdminRepository, AdminUserLookupRepository {
     accountSupportAllowed: !protected,
     passwordResetSupportAllowed: resetSupportAllowed,
   );
+  late final _firstBatchAccounts = [
+    for (
+      var index = 0;
+      index < CompleteReadBatchPlan.progressive.firstBatchSize;
+      index++
+    )
+      AdminUserSummary(
+        id: 'user-first-$index',
+        loginAccount: '1380000${index.toString().padLeft(4, '0')}',
+        employeeName: '首批员工$index',
+        employeeCode: 'UT1${index.toString().padLeft(3, '0')}',
+        employeeStatus: 'active',
+        currentEmployee: true,
+        status: 'active',
+        mustChangePassword: false,
+        remoteAccess: false,
+        accountSupportAllowed: true,
+      ),
+  ];
   @override
   Future<PagedResult<AdminUserSummary>> listUsers({
     int page = 1,
@@ -1686,26 +1736,29 @@ class _Repository implements AdminRepository, AdminUserLookupRepository {
     String? status,
   }) async {
     directoryReads++;
-    if (paged && search == user.loginAccount) refreshedTargets++;
-    const first = AdminUserSummary(
-      id: 'user-first',
-      loginAccount: '13900000001',
-      employeeName: '第一页员工',
-      employeeCode: 'UT0001',
-      employeeStatus: 'active',
-      currentEmployee: true,
-      status: 'active',
-      mustChangePassword: false,
-      remoteAccess: false,
-      accountSupportAllowed: true,
-    );
-    final items = paged && page == 1 && search == null ? [first] : [user];
+    if (targetInLaterBatch && search == user.loginAccount) refreshedTargets++;
+    if (!targetInLaterBatch || search != null) {
+      return PagedResult(
+        items: [user],
+        page: page,
+        size: size,
+        total: 1,
+        totalPages: 1,
+      );
+    }
+    // The server's exact slice of the whole directory.
+    directoryBatches.add((page: page, size: size));
+    final directory = [..._firstBatchAccounts, user];
+    final start = ((page - 1) * size).clamp(0, directory.length);
     return PagedResult(
-      items: items,
+      items: directory.sublist(
+        start,
+        (start + size).clamp(0, directory.length),
+      ),
       page: page,
       size: size,
-      total: paged && search == null ? 2 : 1,
-      totalPages: paged && search == null ? 2 : 1,
+      total: directory.length,
+      totalPages: (directory.length + size - 1) ~/ size,
     );
   }
 

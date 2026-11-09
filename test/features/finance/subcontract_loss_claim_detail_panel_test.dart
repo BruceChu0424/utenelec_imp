@@ -14,6 +14,7 @@ import 'package:uten_imp/components/data_display/uten_detail_summary_card.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 
 import '../../attachments/attachment_test_actions.dart';
+import '../../support/complete_read_plan_batches.dart';
 
 void main() {
   testWidgets(
@@ -45,9 +46,11 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('选择同供应商正应付'));
       await tester.pumpAndSettle();
+      // (1,50) (2,50) (2,100) (2,200): PI-204 arrives in the last batch.
+      final complete = completeReadPlanBatches(205);
       expect(api.payableReads, [
-        {'page': 1, 'size': 200, 'supplierId': 'supplier-1'},
-        {'page': 2, 'size': 200, 'supplierId': 'supplier-1'},
+        for (final batch in complete)
+          {'page': batch.page, 'size': batch.size, 'supplierId': 'supplier-1'},
       ]);
       final list = find.byType(ListView).last;
       expect(tester.widget<ListView>(list).semanticChildCount, 205);
@@ -69,7 +72,7 @@ void main() {
       );
       expect(tester.widget<TextField>(amount).controller!.text, '100.0001');
       await tester.enterText(amount, '0.0001');
-      expect(api.payableReads, hasLength(2));
+      expect(api.payableReads, hasLength(complete.length));
       expect(find.text('加载更多'), findsNothing);
       expect(tester.takeException(), isNull);
     },

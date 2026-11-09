@@ -17,9 +17,18 @@ import 'package:uten_imp/features/sales/providers/master_name_provider.dart';
 import 'package:uten_imp/features/sales/repositories/sales_repository.dart';
 import 'package:uten_imp/features/sales/widgets/sales_batch_ship_panel.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/paging/complete_paged_snapshot.dart'
+    show CompleteReadBatchPlan;
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 
 import '../../../helpers/badge_summary_fixture.dart';
+import '../../../support/complete_read_plan_batches.dart';
+
+Iterable<({int page, int size})> _batchesOf(
+  List<Map<String, dynamic>> queries,
+) => queries.map(
+  (query) => (page: query['page'] as int, size: query['size'] as int),
+);
 
 final _permissions = StateProvider<Set<String>>(
   (ref) => {Perm.salesShipmentCreate},
@@ -248,14 +257,9 @@ void main() {
     (tester) async {
       final api = _Api(total: 500);
       await _open(tester, api);
-      expect(
-        api.queries.where((query) => query['page'] == 1).single['size'],
-        100,
-      );
       expect(_picker(tester).items, hasLength(500));
       expect(_picker(tester).totalPages, 1);
-      expect(api.queries.map((query) => query['page']), [1, 2, 3, 4, 5]);
-      expect(api.queries.every((query) => query['size'] == 100), isTrue);
+      expect(_batchesOf(api.queries), completeReadPlanBatches(500));
       await tester.tap(find.byKey(const ValueKey('sales-batch-select-line-1')));
       await tester.pumpAndSettle();
       await tester.enterText(_input('qty', 1), '0002.5000');
@@ -317,7 +321,8 @@ void main() {
       await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pumpAndSettle();
       expect(_picker(tester).items, hasLength(701));
-      expect(api.queries, hasLength(8));
+      final complete = completeReadPlanBatches(701);
+      expect(_batchesOf(api.queries), complete);
       final list = find.byKey(const Key('sales-batch-lines'));
       final body = find.descendant(of: list, matching: find.byType(ListView));
       expect(body, findsOneWidget);
@@ -349,7 +354,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(
         api.queries,
-        hasLength(8),
+        hasLength(complete.length),
         reason: 'Local scrolling cannot perform another read',
       );
       expect(_field(tester, 'qty', 1).controller!.text, '0003.2500');
@@ -549,7 +554,12 @@ void main() {
     await tester.pump(const Duration(milliseconds: 350));
     await tester.pumpAndSettle();
     expect(api.queries.last, containsPair('keyword', 'none'));
-    expect(api.queries.last, containsPair('size', 100));
+    // The search restarts the same bounded complete read at its first batch.
+    expect(api.queries.last, containsPair('page', 1));
+    expect(
+      api.queries.last,
+      containsPair('size', CompleteReadBatchPlan.progressive.firstBatchSize),
+    );
     expect(_picker(tester).items, isEmpty);
     expect(api.commands, isEmpty);
   });

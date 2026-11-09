@@ -132,7 +132,13 @@ void main() {
         isCurrent: () => true,
       );
       final rejected = expectLater(old, throwsA(isA<UiWorkCancelled>()));
-      await Future<void>.delayed(Duration.zero);
+      // The continuation batch is scheduled after a yield once the first
+      // batch publishes, so page 2 arrives one event-loop hop later.
+      var waitTurns = 0;
+      while (oldPages.length < 2 && waitTurns < 200) {
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+        waitTurns++;
+      }
       expect(oldPages, [1, 2]);
       reader.refresh();
       reader.refresh();

@@ -372,6 +372,43 @@ void main() {
       expect(client.adapter.calls, hasLength(1));
     },
   );
+
+  test(
+    'fixed 100-row frames answering a progressive request fail closed',
+    () async {
+      // The original fixed frame plan, sent for a request that asked for the
+      // progressive one: its first frame is (1,100) where (1,50) is expected.
+      final client = _client(
+        (request) => _body(
+          Stream.fromIterable(
+            _frames(
+              _rows(101),
+              request.copyWith(
+                data: {...request.data as Map<String, dynamic>, 'size': 100},
+              ),
+            ).map(_bytes),
+          ),
+        ),
+      );
+      await expectLater(
+        DioGoodsRepository(client.api).completeList(null),
+        throwsA(
+          isA<ApiException>().having(
+            (e) => e.code,
+            'code',
+            'INCOMPLETE_READ_PROTOCOL',
+          ),
+        ),
+      );
+      expect(client.adapter.calls, hasLength(1));
+      expect(
+        (client.adapter.calls.single.data as Map)['size'],
+        kProgressiveSummaryStreamSize,
+      );
+      expect(client.safety.pendingReadCount, 0);
+      expect(client.safety.hasUncertainCommit, isFalse);
+    },
+  );
 }
 
 const _filters = <String, String?>{

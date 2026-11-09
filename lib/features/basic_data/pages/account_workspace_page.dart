@@ -1,4 +1,6 @@
 import '../repositories/flat_master_summary_gateway.dart';
+import '../../../shared/paging/complete_paged_snapshot.dart';
+import '../../../shared/paging/paged_read_intent.dart';
 import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
 import 'package:uten_imp/components/layout/uten_page_layout.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
@@ -262,14 +264,39 @@ class _AccountPageState extends ConsumerState<AccountPage>
       _disabledError = null;
     });
     try {
-      final result = await ref
-          .read(accountRepositoryProvider)
-          .list(
-            size: 100,
-            filters: _disabledListFilters,
-            sort: _sortKey,
-            order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
-          );
+      final repository = ref.read(accountRepositoryProvider);
+      final filters = Map<String, String?>.unmodifiable(_disabledListFilters);
+      final sort = _sortKey;
+      final order = sort == null ? null : (_sortAsc ? 'asc' : 'desc');
+      bool current() =>
+          mounted &&
+          inlineAcceptsRead(inlineReadBoundary) &&
+          _disabledListRequests.isCurrent(generation);
+      // The group is the complete disabled set through the unified complete
+      // read (one summary HTTP where the repository offers it), never the
+      // first page; a superseded group read retires its transport.
+      final complete = completeFlatMasterList<AccountListItem>(
+        repository,
+        filters: filters,
+        sort: sort,
+        order: order,
+      );
+      final result = await PagedReadIntent.scopedRead(
+        current,
+        () =>
+            complete?.call() ??
+            loadCompletePagedResult<AccountListItem>(
+              isCurrent: current,
+              idOf: (row) => row.id,
+              loadPage: (page, size) => repository.list(
+                page: page,
+                size: size,
+                filters: filters,
+                sort: sort,
+                order: order,
+              ),
+            ),
+      );
       if (!mounted ||
           !inlineAcceptsRead(inlineReadBoundary) ||
           !_disabledListRequests.isCurrent(generation)) {

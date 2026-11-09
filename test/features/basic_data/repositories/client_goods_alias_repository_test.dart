@@ -5,6 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/basic_data/models/client_goods_alias.dart';
 import 'package:uten_imp/features/basic_data/repositories/client_goods_alias_repository.dart';
+import 'package:uten_imp/shared/paging/complete_paged_snapshot.dart'
+    show CompleteReadBatchPlan;
 
 void main() {
   late List<RequestOptions> requests;
@@ -105,6 +107,25 @@ void main() {
         'page': 1,
         'size': kClientGoodsAliasMaxPageSize,
       });
+    },
+  );
+
+  test(
+    'the complete read plan reaches the server page maximum unclamped',
+    () async {
+      final repo = repository();
+      // The server caps alias pages at Pageables.MAX_PAGE_SIZE, the shared
+      // plan's largest batch; a lower client cap would turn every (page, 200)
+      // batch into a smaller page at another offset and waste a request.
+      const plan = CompleteReadBatchPlan.progressive;
+
+      await repo.list('client-1', page: 2, size: plan.maxBatchSize);
+
+      expect(requests.single.queryParameters, {
+        'page': 2,
+        'size': plan.maxBatchSize,
+      });
+      expect(kClientGoodsAliasMaxPageSize, plan.maxBatchSize);
     },
   );
 

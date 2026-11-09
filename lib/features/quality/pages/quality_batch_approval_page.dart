@@ -4,6 +4,9 @@ import 'package:uten_imp/core/ui/human_error_message.dart';
 //
 // 用户口径：多选的内容都汇总到一个页面，可多选/单选，填合格/不合格数量后
 // 「提交报告」一次办结：
+//   - 2026-11-09 行粒度：队列按物料行勾选，本页只显示、只默认勾选、只提交
+//     勾中的行（IQC 明细行 / FQC 实物批），同一单据的未选兄弟行不带入——
+//     勾一行就办一行，不再默认整单；
 //   - IQC 收货单区：按单分组，逐行勾选 + 行内编辑合格数量/不合格数量
 //     （默认合格 = 剩余待检、不合格 = 0），提交走 decide-report 整份报告一次
 //     请求（2026-10-10）：服务端单事务联合预锁全部收货单后按报告顺序逐单执行，
@@ -63,16 +66,33 @@ import '../../../shared/formatters/quantity_display.dart';
 import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
 /// 列表页多选结果（extra 传入）：IQC 收货单 + FQC 检查单 + 无检查单 FQC 任务。
+///
+/// 2026-11-09 行粒度：队列按物料行勾选，这里同时携带勾选范围——
+/// [iqcItemIds]（键 `类型:收货单UUID` → 勾中的检验明细 UUID）与
+/// [sheetLotIds]（键检查单 UUID → 勾中的实物批 UUID）。办理页只显示、
+/// 只默认勾选、只提交勾中的行，同一单据的未选兄弟行不带入。
 class QualityBatchApprovalSelection {
   const QualityBatchApprovalSelection({
     this.receipts = const [],
+    this.iqcItemIds = const {},
     this.inspections = const [],
     this.sheets = const [],
+    this.sheetLotIds = const {},
   });
 
   final List<PendingInspectionReceipt> receipts;
+  final Map<String, List<String>> iqcItemIds;
   final List<ProductionFqcInspection> inspections;
   final List<ProductionFqcInspectionSheet> sheets;
+  final Map<String, List<String>> sheetLotIds;
+
+  /// 该收货单勾中的明细范围；空 = 历史草稿无行范围，回落整单打开（旧行为）。
+  List<String> iqcScopeOf(PendingInspectionReceipt receipt) =>
+      iqcItemIds['${receipt.receiptType}:${receipt.receiptId}'] ?? const [];
+
+  /// 该检查单勾中的批范围；空 = 历史草稿无行范围，回落整单打开（旧行为）。
+  List<String> lotScopeOf(ProductionFqcInspectionSheet sheet) =>
+      sheetLotIds[sheet.id] ?? const [];
 }
 
 /// 一张 FQC 品质检查单的分组（V547）：组头三态复选，行 = 仍待检的 inspection。
@@ -278,10 +298,15 @@ class _QualityBatchApprovalPageState
             'supplierId': receipt.supplierId,
             'supplierName': receipt.supplierName,
             'warehouseId': receipt.warehouseId,
+            'itemIds': _selection.iqcScopeOf(receipt),
           },
       ],
       'sheetIds': _selection.sheets.map((item) => item.id).toList(),
       'inspectionIds': _selection.inspections.map((item) => item.id).toList(),
+      'sheetLotIds': [
+        for (final sheet in _selection.sheets)
+          {'sheetId': sheet.id, 'lotIds': _selection.lotScopeOf(sheet)},
+      ],
     },
     'rows': [
       for (final row in _flatRows ?? <_EditableIqcRow>[])
@@ -343,14 +368,27 @@ class _QualityBatchApprovalPageState
           inspections.add(await fqc.detail(id));
         }
         if (!mounted) return;
+        final receiptDrafts = draftMaps(selected['receipts']);
+        final restoredSheets = [
+          for (final id in draftStrings(selected['sheetIds']))
+            ProductionFqcInspectionSheet.fromJson({'id': id}),
+        ];
         _selection = QualityBatchApprovalSelection(
-          receipts: draftMaps(
-            selected['receipts'],
-          ).map(PendingInspectionReceipt.fromJson).toList(),
-          sheets: [
-            for (final id in draftStrings(selected['sheetIds']))
-              ProductionFqcInspectionSheet.fromJson({'id': id}),
+          receipts: [
+            for (final draft in receiptDrafts)
+              PendingInspectionReceipt.fromJson(draft),
           ],
+          iqcItemIds: {
+            for (final draft in receiptDrafts)
+              '${draft['receiptType']}:${draft['receiptId']}': draftStrings(
+                draft['itemIds'],
+              ),
+          },
+          sheets: restoredSheets,
+          sheetLotIds: {
+            for (final entry in draftMaps(selected['sheetLotIds']))
+              entry['sheetId'] as String: draftStrings(entry['lotIds']),
+          },
           inspections: inspections,
         );
       }
@@ -440,11 +478,16 @@ class _QualityBatchApprovalPageState
               receipt.receiptType,
               receipt.receiptId,
             );
+            // 2026-11-09 勾选范围收口（用户口径「只勾一个就只显示这一个」）：
+            // 只装载队列里勾中的明细行，未选兄弟行不显示、不默认勾选、不提交；
+            // 历史草稿无行范围时回落整单打开（旧行为）。
+            final scope = _selection.iqcScopeOf(receipt).toSet();
             return _IqcReceiptGroup(receipt, [
               for (final item in rows)
                 if ((item.remainingBaseQty ?? 0) > 0 &&
                     item.status != 'RESOLVED' &&
-                    item.status != 'REVERSED')
+                    item.status != 'REVERSED' &&
+                    (scope.isEmpty || scope.contains(item.id)))
                   _EditableIqcRow(item),
             ], null);
           } on ApiException catch (error) {
@@ -462,9 +505,15 @@ class _QualityBatchApprovalPageState
           try {
             final detail = await fqc.sheetDetail(sheet.id);
             // ADR-148: 品质按实物批判定, 一批一行(与检查单办理页同一口径)。
+            // 2026-11-09 勾选范围收口：只装载勾中的批；历史草稿无批范围时整单打开。
+            final scope = _selection.lotScopeOf(sheet).toSet();
             return _FqcSheetGroup(
               detail.sheet,
-              detail.activeLotInspections,
+              scope.isEmpty
+                  ? detail.activeLotInspections
+                  : detail.activeLotInspections
+                        .where((lot) => scope.contains(lot.id))
+                        .toList(growable: false),
               null,
             );
           } on ApiException catch (error) {

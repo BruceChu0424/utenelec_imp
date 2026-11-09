@@ -94,36 +94,46 @@ class ProductionFqcReportBatchPostgresTest {
             assertEquals(2, expected.activeCount());
             assertNotNull(expected.pendingQtyText());
             assertFalse(expected.pendingQtyText().isBlank());
+            // 2026-11-09 行粒度：检查单按实物批拆行（一料一批一行）；期望批数与批内待检量
+            // 直接按库事实算，与队列投影对照。
+            var lotRows = db.queryForList("""
+                    SELECT COALESCE(item.output_lot_id,i.id)::text AS lot_id,
+                           trim_scale(SUM(i.reported_qty-i.passed_qty-i.failed_qty))||' '||MAX(unit.name) AS pending_qty
+                    FROM production_fqc_inspections i
+                    JOIN production_daily_report_items item ON item.id=i.source_report_item_id
+                    JOIN units unit ON unit.id=i.unit_id
+                    WHERE i.source_report_id=? AND i.status IN ('PENDING','PARTIAL')
+                    GROUP BY 1 ORDER BY 1
+                    """, source.report());
             var request = new com.uten.imp.features.quality.pending.QualityPendingQueueService.Request(
                     1, 1, inspection.reportNo() + "\t10%_", "FQC", null,
-                    Map.of("billNo", expected.sheetNo(), "goods", "10%_", "itemCount", "2",
-                            "pendingQty", expected.pendingQtyText()), "enteredAt", "asc", Map.of());
+                    Map.of("billNo", expected.sheetNo(), "goods", "10%_"), "enteredAt", "asc", Map.of());
             var page = pendingQueue.query(request);
-            assertEquals(1, page.total());
-            assertEquals(1, page.totalPages());
+            assertEquals(lotRows.size(), page.total());
+            // 请求页容量 1：页数 = 批数（两批即两页），本页只回第一行。
+            assertEquals(lotRows.size(), page.totalPages());
             assertEquals(1, page.items().size());
             var row = page.items().getFirst();
             assertEquals("FQC_SHEET", row.source());
-            assertEquals("sheet:" + expected.id(), row.identity());
+            assertEquals("sheet:" + expected.id() + ":" + lotRows.get(0).get("lot_id"), row.identity());
             assertEquals("FQC", row.kind());
             assertEquals(expected.sheetNo(), row.values().get("billNo"));
-            assertEquals(2, ((Number) row.values().get("itemCount")).intValue());
-            assertEquals(expected.pendingQtyText(), row.values().get("pendingQty"),
-                    "The mixed queue must retain the owning sheet's unit-grouped text, not add unlike units");
+            assertEquals(lotRows.get(0).get("pending_qty"), row.values().get("pendingQty"),
+                    "The per-lot queue row keeps its own exact remaining text, never merging unlike units");
             assertInstanceOf(InspectionSheetView.class, row.payload());
             var payload = (InspectionSheetView) row.payload();
             assertEquals(expected.id(), payload.id());
             assertEquals(expected.activeCount(), payload.activeCount());
             assertEquals(expected.pendingQtyText(), payload.pendingQtyText());
             assertTrue(payload.goodsSummary().contains("10%_"));
-            assertEquals(1, page.facets().get("docType").stream()
+            assertEquals(lotRows.size(), page.facets().get("docType").stream()
                     .filter(facet -> "FQC".equals(facet.value())).findFirst().orElseThrow().count());
             assertEquals(0, pendingQueue.query(new com.uten.imp.features.quality.pending.QualityPendingQueueService.Request(
                     1, 10, inspection.reportNo() + " 10__", "FQC", null, Map.of(), null, null, Map.of())).total());
 
             // Execute the owning IQC adapter without mocking its SQL or its current migrated tables.
             // The source can be empty in this FQC scenario, but PostgreSQL must still resolve all
-            // joins, aggregate expressions and the exact 15-column common source contract.
+            // joins, aggregate expressions and the exact 16-column common source contract.
             var iqc = procurementQuality.pendingPlans().getFirst();
             assertEquals("IQC", iqc.key());
             assertTrue(iqc.bindings().isEmpty());
@@ -133,7 +143,7 @@ class ProductionFqcReportBatchPostgresTest {
             assertNotNull(count);
             assertTrue(count >= 0);
             db.query("SELECT * FROM (" + iqc.sql() + ") iqc_shape LIMIT 0", result -> {
-                assertEquals(15, result.getMetaData().getColumnCount());
+                assertEquals(16, result.getMetaData().getColumnCount());
                 return null;
             });
         } finally {

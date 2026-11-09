@@ -95,7 +95,7 @@ public class ProductionFqcInspectionService
     @Override
     public String readAuthority() { return VIEW_AUTHORITY; }
 
-    /** The common quality queue pages document-grain projections, never a capped materialized client list. */
+    /** The common quality queue pages material-grain projections, never a capped materialized client list. */
     @Override
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('production_quality_inspection:view')")
@@ -103,28 +103,83 @@ public class ProductionFqcInspectionService
         boolean pool=taskAccess.canAccessQualityPool();
         NativeReadScope sheets=pool?null:productionAccess.nativeReadScope("owner_report.maker_id","fqcSheetOwners");
         NativeReadScope loose=pool?null:productionAccess.nativeReadScope("report.maker_id","fqcOwners");
-        String sheetSource=sheetSql(sheetOwnerPredicate(sheets))+" WHERE sheet_row.active_count>0";
+        String sheetSource=sheetLotSql(sheetOwnerPredicate(sheets));
         String looseSource=viewSql((loose==null?"1=1":loose.predicate())
                 +" AND inspection.status IN ('PENDING','PARTIAL') AND sheet_item.sheet_id IS NULL");
+        // 2026-11-09 用户口径：待检队列「一个物料一行」——检查单行按实物批拆开（批是判定单位，
+        // ADR-148 一批一行），无检查单历史任务本就单份一行；草稿仍挂单据粒度
+        // （sheet:检查单UUID / fqc:任务UUID）。
         String sheetPlan="""
-                SELECT 'sheet:'||q.id::text AS identity,'FQC'::text AS kind,q.sheet_no AS bill_no,
+                SELECT 'sheet:'||q.sheet_id::text||':'||q.lot_id::text AS identity,'FQC'::text AS kind,q.sheet_no AS bill_no,
                        concat_ws(' · ',q.warehouse_name,CASE WHEN nullif(q.receiver_name,'') IS NOT NULL THEN '收货 '||q.receiver_name END,
                            CASE WHEN nullif(q.report_nos,'') IS NOT NULL THEN '报工 '||q.report_nos END) AS party,
-                       coalesce(q.goods_summary,'—') AS goods,coalesce(q.goods_code_summary,'—') AS goods_code,coalesce(q.color_name_summary,'—') AS color_name,
-                       coalesce(q.warehouse_name,'—') AS warehouse,coalesce(q.place_summary,'—') AS place,
-                       q.active_count AS item_count,coalesce(q.pending_qty_text,'—') AS pending_qty,q.created_at AS entered_at,
-                       CASE WHEN q.active_count<q.item_count THEN 'PARTIAL' ELSE 'PENDING' END AS status_code,
-                       q.created_at AS sequence_at,q.goods_names::text[] AS goods_names FROM (
+                       coalesce(q.goods_name,'—') AS goods,coalesce(q.goods_code,'—') AS goods_code,coalesce(q.color_name,'—') AS color_name,
+                       coalesce(q.warehouse_name,'—') AS warehouse,coalesce(q.place,'—') AS place,
+                       concat_ws(' ',q.pending_qty::text,nullif(q.unit_name,'')) AS pending_qty,q.created_at AS entered_at,
+                       q.status_code,q.created_at AS sequence_at,ARRAY[q.goods_name]::text[] AS goods_names,
+                       'sheet:'||q.sheet_id::text AS draft_identity,q.pre_stocked FROM (
                 """+sheetSource+") q";
         String loosePlan="""
                 SELECT 'fqc:'||q.id::text AS identity,'FQC'::text AS kind,coalesce(q.report_no,q.id::text) AS bill_no,
                        '无检查单 · 计划 '||coalesce(q.plan_no,'—') AS party,coalesce(q.goods_name,'—') AS goods,coalesce(q.goods_code,'—') AS goods_code,
-                       coalesce(q.color_name,'—') AS color_name,coalesce(q.warehouse_name,'—') AS warehouse,coalesce(q.place,'—') AS place,1 AS item_count,
+                       coalesce(q.color_name,'—') AS color_name,coalesce(q.warehouse_name,'—') AS warehouse,coalesce(q.place,'—') AS place,
                        concat_ws(' ',trim_scale(q.reported_qty-q.passed_qty-q.failed_qty)::text,nullif(q.unit_name,'')) AS pending_qty,
-                       q.created_at AS entered_at,q.status AS status_code,q.created_at AS sequence_at,ARRAY[q.goods_name]::text[] AS goods_names FROM (
+                       q.created_at AS entered_at,q.status AS status_code,q.created_at AS sequence_at,ARRAY[q.goods_name]::text[] AS goods_names,
+                       'fqc:'||q.id::text AS draft_identity,
+                       (COALESCE(q.stock_in_before_inspection,false) AND q.warehouse_id IS NOT NULL) AS pre_stocked FROM (
                 """+looseSource+") q";
         return List.of(new com.uten.imp.application.port.QualityPendingSourcePort.Plan("FQC_SHEET",sheetPlan,pendingBindings(sheets)),
                 new com.uten.imp.application.port.QualityPendingSourcePort.Plan("FQC",loosePlan,pendingBindings(loose)));
+    }
+
+    /**
+     * 2026-11-09 待检队列检查单行级投影：一行 = 检查单 × 实物批（COALESCE(output_lot_id,任务id)，
+     * 与 lotsOf 同一批号口径）。批的货品身份取首行（登记行序），待检量为批内未决合计，
+     * 状态与 lotsOf 一致（已判定过=PARTIAL）。
+     */
+    private static String sheetLotSql(String ownerPredicate) {
+        return """
+                SELECT sheet.id AS sheet_id,
+                       COALESCE(source_item.output_lot_id,inspection.id) AS lot_id,
+                       sheet.sheet_no,
+                       sheet.warehouse_name_snapshot AS warehouse_name,
+                       sheet.receiver_name_snapshot AS receiver_name,
+                       sheet.created_at,
+                       string_agg(DISTINCT report.bill_no, '、') AS report_nos,
+                       (array_agg(COALESCE(NULLIF(goods.name,''),NULLIF(goods.code,''),'未命名货品')
+                           ORDER BY sheet_item.line_no NULLS LAST,inspection.id))[1] AS goods_name,
+                       (array_agg(NULLIF(goods.code,'') ORDER BY sheet_item.line_no NULLS LAST,inspection.id))[1] AS goods_code,
+                       (array_agg(NULLIF(line_color.name,'') ORDER BY sheet_item.line_no NULLS LAST,inspection.id))[1] AS color_name,
+                       (array_agg(NULLIF(unit.name,'') ORDER BY sheet_item.line_no NULLS LAST,inspection.id))[1] AS unit_name,
+                       (array_agg(NULLIF(reg_place.place_snapshot,'') ORDER BY sheet_item.line_no NULLS LAST,inspection.id))[1] AS place,
+                       trim_scale(SUM(inspection.reported_qty-inspection.passed_qty-inspection.failed_qty)) AS pending_qty,
+                       CASE WHEN SUM(inspection.passed_qty+inspection.failed_qty)>0 THEN 'PARTIAL' ELSE 'PENDING' END AS status_code,
+                       BOOL_OR(COALESCE(sheet_registration.stock_in_before_inspection,false)) AS pre_stocked
+                FROM production_fqc_inspection_sheets sheet
+                JOIN production_fqc_inspection_sheet_items sheet_item
+                  ON sheet_item.sheet_id = sheet.id
+                JOIN production_fqc_inspections inspection
+                  ON inspection.id = sheet_item.inspection_id
+                JOIN production_daily_reports report
+                  ON report.id = inspection.source_report_id
+                JOIN production_daily_report_items source_item
+                  ON source_item.id = inspection.source_report_item_id
+                JOIN goods goods ON goods.id = inspection.goods_id
+                LEFT JOIN colors line_color
+                  ON line_color.id = COALESCE(inspection.color_id, goods.color_id)
+                 AND line_color.is_deleted = FALSE
+                LEFT JOIN units unit ON unit.id = inspection.unit_id
+                LEFT JOIN production_finished_arrival_registration_items reg_place
+                  ON reg_place.id = sheet_item.registration_item_id
+                LEFT JOIN production_finished_arrival_registrations sheet_registration
+                  ON sheet_registration.id = (
+                      SELECT registration_item.registration_id
+                      FROM production_finished_arrival_registration_items registration_item
+                      WHERE registration_item.id = sheet_item.registration_item_id)
+                WHERE %s AND inspection.status IN ('PENDING','PARTIAL')
+                GROUP BY sheet.id,COALESCE(source_item.output_lot_id,inspection.id),sheet.sheet_no,
+                         sheet.warehouse_name_snapshot,sheet.receiver_name_snapshot,sheet.created_at
+                """.formatted(ownerPredicate);
     }
 
     private static Map<String,Object> pendingBindings(NativeReadScope scope) {
@@ -138,11 +193,17 @@ public class ProductionFqcInspectionService
         if(planKey==null||!Set.of("FQC_SHEET","FQC").contains(planKey)) throw validation("质检来源不正确");
         if(identities.isEmpty()) return Map.of();
         boolean sheet="FQC_SHEET".equals(planKey),pool=taskAccess.canAccessQualityPool();
-        String prefix=sheet?"sheet:":"fqc:";
-        Set<UUID> ids=new LinkedHashSet<>();
+        // 检查单行级身份 = sheet:检查单UUID:批UUID（2026-11-09 按批拆行）；载荷仍是检查单摘要，
+        // 按单去重装载一次再回填到该单每一行。无检查单任务身份不变（fqc:任务UUID）。
+        Map<String,UUID> sourceIdByIdentity=new LinkedHashMap<>();
         for(String identity:identities) {
-            if(identity==null||!identity.startsWith(prefix)) throw validation("质检来源身份不正确");
-            try { ids.add(UUID.fromString(identity.substring(prefix.length()))); }
+            if(identity==null) throw validation("质检来源身份不正确");
+            String[] segments=identity.split(":");
+            boolean wellFormed=sheet
+                    ? segments.length==3&&"sheet".equals(segments[0])
+                    : segments.length==2&&"fqc".equals(segments[0]);
+            if(!wellFormed) throw validation("质检来源身份不正确");
+            try { sourceIdByIdentity.put(identity,UUID.fromString(segments[1])); }
             catch(IllegalArgumentException malformed) { throw validation("质检来源身份不正确"); }
         }
         NativeReadScope scope=pool?null:productionAccess.nativeReadScope(
@@ -150,10 +211,16 @@ public class ProductionFqcInspectionService
         String sql=sheet?sheetSql(sheetOwnerPredicate(scope))+" WHERE sheet_row.active_count>0 AND sheet_row.id IN (:pendingSourceIds)"
                 :viewSql((scope==null?"1=1":scope.predicate())
                         +" AND inspection.status IN ('PENDING','PARTIAL') AND sheet_item.sheet_id IS NULL AND inspection.id IN (:pendingSourceIds)");
-        Query query=em.createNativeQuery(sql).setParameter("pendingSourceIds",ids);
+        Query query=em.createNativeQuery(sql).setParameter("pendingSourceIds",new LinkedHashSet<>(sourceIdByIdentity.values()));
         if(scope!=null) scope.bind(query);
+        Map<UUID,Object> payloadBySource=new LinkedHashMap<>();
+        for(Object[] row:NativeQueryResults.objectArrayRows(query))
+            payloadBySource.put((UUID) row[0],sheet?toSheetView(row):toView(row));
         Map<String,Object> result=new LinkedHashMap<>();
-        for(Object[] row:NativeQueryResults.objectArrayRows(query)) result.put(prefix+row[0],sheet?toSheetView(row):toView(row));
+        sourceIdByIdentity.forEach((identity,sourceId)->{
+            Object payload=payloadBySource.get(sourceId);
+            if(payload!=null) result.put(identity,payload);
+        });
         return result;
     }
 

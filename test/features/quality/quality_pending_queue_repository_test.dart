@@ -16,7 +16,7 @@ void main() {
         docType: 'SUBCONTRACT',
         status: '委外提交待核对',
         columns: const {
-          'search.itemCount': ' >=9007199254740993.0001 ',
+          'search.warehouse': ' 五金仓% ',
           'search.enteredAt': '2026-10-01..2026-10-28',
           'search.party': ' 同名_供应商% ',
           'search.goods': '  ',
@@ -35,7 +35,7 @@ void main() {
         'docType': 'SUBCONTRACT',
         'status': '委外提交待核对',
         'columns': {
-          'itemCount': '>=9007199254740993.0001',
+          'warehouse': '五金仓%',
           'enteredAt': '2026-10-01..2026-10-28',
           'party': '同名_供应商%',
         },
@@ -46,7 +46,10 @@ void main() {
       expect(result.page, 61);
       expect(result.total, 1953);
       expect(result.totalPages, 196);
-      expect(result.items.single.identity, 'iqc:SUBCONTRACT:receipt-601');
+      expect(
+        result.items.single.identity,
+        'iqc:SUBCONTRACT:receipt-601:item-601-1',
+      );
       expect(result.items.single.values['pendingQty'], '2 件 · 3 米');
       expect(result.items.single.payload['receiptId'], 'receipt-601');
       expect(result.facets['status']!.single.count, 1953);
@@ -126,10 +129,14 @@ class _QueueApi extends ApiClient {
       'items': [
         {
           'source': 'IQC',
-          'identity': 'iqc:SUBCONTRACT:receipt-601',
+          'identity': 'iqc:SUBCONTRACT:receipt-601:item-601-1',
           'kind': 'SUBCONTRACT',
           'status': '委外提交待核对',
-          'values': {'pendingQty': '2 件 · 3 米', 'itemCount': 2},
+          'values': {
+            'pendingQty': '2 件 · 3 米',
+            'preStocked': true,
+            'statusCode': 'PENDING',
+          },
           'payload': receipt,
         },
       ],

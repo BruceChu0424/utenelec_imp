@@ -24,46 +24,57 @@ class ReceiptQualityQueueFixture extends QualityPendingQueueRepository {
       throw UnsupportedError('Add explicit typed-column fixture coverage');
     }
     final all = <QualityPendingEntry>[
+      // 2026-11-09 行粒度：一行 = 一条检验明细（一料一行）。fixture 从收货单摘要
+      // 合成明细行（itemCount 条），身份 iqc:类型:收货单UUID:明细UUID；草稿状态
+      // 仍按收货单粒度身份标记。
       for (final value in await repository.pendingReceipts())
-        QualityPendingEntry(
-          source: 'IQC',
-          identity: 'iqc:${value.receiptType}:${value.receiptId}',
-          kind: value.receiptType,
-          status:
-              '${value.receiptType == 'SUBCONTRACT' ? '委外' : '采购'}'
-              '${draftStatuses['iqc:${value.receiptType}:${value.receiptId}'] ?? '待检'}',
-          values: {
-            'billNo': value.billNo ?? value.receiptId,
-            'party': value.supplierName ?? '—',
-            'goods': value.goodsSummary ?? '—',
-            'goodsCode': value.goodsCodeSummary ?? '—',
-            'colorName': value.colorNameSummary ?? '—',
-            'warehouse': value.preStockedWarehouseNames ?? '待检区',
-            'place': value.preStockedPlaces ?? '—',
-            'pendingQty': value.pendingQtyText ?? '—',
-            'itemCount': value.itemCount,
-            'enteredAt': value.lastReceivedAt,
-          },
-          payload: {
-            'receiptType': value.receiptType,
-            'receiptId': value.receiptId,
-            'billNo': value.billNo,
-            'supplierId': value.supplierId,
-            'supplierName': value.supplierName,
-            'warehouseId': value.warehouseId,
-            'itemCount': value.itemCount,
-            'pendingBaseQty': value.pendingBaseQty,
-            'firstReceivedAt': value.firstReceivedAt,
-            'lastReceivedAt': value.lastReceivedAt,
-            'preStockedItemCount': value.preStockedItemCount,
-            'preStockedWarehouseNames': value.preStockedWarehouseNames,
-            'preStockedPlaces': value.preStockedPlaces,
-            'goodsSummary': value.goodsSummary,
-            'goodsCodeSummary': value.goodsCodeSummary,
-            'colorNameSummary': value.colorNameSummary,
-            'pendingQtyText': value.pendingQtyText,
-          },
-        ),
+        for (
+          var line = 1;
+          line <= (value.itemCount < 1 ? 1 : value.itemCount);
+          line++
+        )
+          QualityPendingEntry(
+            source: 'IQC',
+            identity:
+                'iqc:${value.receiptType}:${value.receiptId}:'
+                'item-of-${value.receiptId}-$line',
+            kind: value.receiptType,
+            status:
+                '${value.receiptType == 'SUBCONTRACT' ? '委外' : '采购'}'
+                '${draftStatuses['iqc:${value.receiptType}:${value.receiptId}'] ?? '待检'}',
+            values: {
+              'billNo': value.billNo ?? value.receiptId,
+              'party': value.supplierName ?? '—',
+              'goods': value.goodsSummary ?? '—',
+              'goodsCode': value.goodsCodeSummary ?? '—',
+              'colorName': value.colorNameSummary ?? '—',
+              'warehouse': value.preStockedWarehouseNames ?? '待检区',
+              'place': value.preStockedPlaces ?? '—',
+              'pendingQty': value.pendingQtyText ?? '—',
+              'enteredAt': value.lastReceivedAt,
+              'preStocked': value.hasPreStockedItems,
+              'statusCode': 'PENDING',
+            },
+            payload: {
+              'receiptType': value.receiptType,
+              'receiptId': value.receiptId,
+              'billNo': value.billNo,
+              'supplierId': value.supplierId,
+              'supplierName': value.supplierName,
+              'warehouseId': value.warehouseId,
+              'itemCount': value.itemCount,
+              'pendingBaseQty': value.pendingBaseQty,
+              'firstReceivedAt': value.firstReceivedAt,
+              'lastReceivedAt': value.lastReceivedAt,
+              'preStockedItemCount': value.preStockedItemCount,
+              'preStockedWarehouseNames': value.preStockedWarehouseNames,
+              'preStockedPlaces': value.preStockedPlaces,
+              'goodsSummary': value.goodsSummary,
+              'goodsCodeSummary': value.goodsCodeSummary,
+              'colorNameSummary': value.colorNameSummary,
+              'pendingQtyText': value.pendingQtyText,
+            },
+          ),
     ];
     final matching = all.where(
       (entry) => entry.values.values.any(

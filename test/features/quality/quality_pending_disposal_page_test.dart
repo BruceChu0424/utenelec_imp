@@ -22,7 +22,6 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/features/quality/repositories/quality_pending_queue_repository.dart';
 import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 import 'package:uten_imp/shared/search/keyword_search.dart';
-import 'package:uten_imp/shared/search/numeric_column_query.dart';
 
 import '../../support/detail_summary_tap.dart';
 import '../../support/page_resume_test_bridge.dart';
@@ -486,9 +485,12 @@ void main() {
       onBatchSelection: (selection) => submittedSelection = selection,
     );
     final dynamic table = _queueTable(tester);
-    const purchaseId = 'iqc:PURCHASE:$_inspectionId';
-    const subcontractId = 'iqc:SUBCONTRACT:$_inspectionId';
-    const sheetId = 'sheet:$_inspectionId';
+    // 2026-11-09 行粒度：IQC 行身份带明细 UUID、检查单行身份带批 UUID。
+    const purchaseItemId = 'item-of-$_inspectionId-1';
+    const purchaseId = 'iqc:PURCHASE:$_inspectionId:$purchaseItemId';
+    const subcontractId = 'iqc:SUBCONTRACT:$_inspectionId:$purchaseItemId';
+    const sheetLotId = 'lot-of-$_inspectionId';
+    const sheetId = 'sheet:$_inspectionId:$sheetLotId';
     const fqcId = 'fqc:$_inspectionId';
     final rows = _queueTable(tester).items;
     final rowKeys = rows.map((row) {
@@ -530,8 +532,82 @@ void main() {
       ),
       ['PURCHASE:$_inspectionId', 'SUBCONTRACT:$_inspectionId'],
     );
+    // 勾选范围按行收口：批量审批只带勾中的明细/批，不默认整单。
+    expect(submittedSelection?.iqcItemIds, {
+      'PURCHASE:$_inspectionId': [purchaseItemId],
+      'SUBCONTRACT:$_inspectionId': [purchaseItemId],
+    });
     expect(submittedSelection?.sheets.single.id, _inspectionId);
+    expect(submittedSelection?.sheetLotIds, {
+      _inspectionId: [sheetLotId],
+    });
     expect(submittedSelection?.inspections.single.id, _inspectionId);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('一单多物料逐行显示，勾一行批量审批只带这一行（不整单带入）', (tester) async {
+    QualityBatchApprovalSelection? submittedSelection;
+    await _pumpPage(
+      tester,
+      api: _FqcApi(),
+      iqc: _FakeIqcRepository(
+        receiptsOverride: const [
+          PendingInspectionReceipt(
+            receiptType: 'PURCHASE',
+            receiptId: 'receipt-multi',
+            billNo: 'CJ-MULTI',
+            itemCount: 2,
+            goodsSummary: '铁耳 (80NW001R)',
+            goodsCodeSummary: '80NW001R',
+          ),
+        ],
+        itemsByReceipt: const {
+          'receipt-multi': [
+            ProcurementInspectionItem(
+              id: 'inspection-item-1',
+              goodsCode: '80NW001R',
+              goodsName: '铁耳',
+              baseUnitName: '个',
+              receivedBaseQty: 100,
+              remainingBaseQty: 100,
+              status: 'PENDING',
+            ),
+            ProcurementInspectionItem(
+              id: 'inspection-item-2',
+              goodsCode: 'Q71007',
+              goodsName: '开关铁板',
+              baseUnitName: '个',
+              receivedBaseQty: 50,
+              remainingBaseQty: 50,
+              status: 'PENDING',
+            ),
+          ],
+        },
+      ),
+      permissions: {
+        Perm.procurementInspectionView,
+        Perm.procurementInspectionHandle,
+      },
+      onBatchSelection: (selection) => submittedSelection = selection,
+    );
+
+    // 队列一行一个物料：同单两张料各占一行，不再合并成一格「名称A、名称B」。
+    expect(find.text('CJ-MULTI'), findsNWidgets(2));
+    expect(find.textContaining('、'), findsNothing);
+    final table = _queueTable(tester);
+    expect(table.items, hasLength(2));
+    const firstRowId = 'iqc:PURCHASE:receipt-multi:item-of-receipt-multi-1';
+
+    // 2026-11-09 用户硬性口径：只勾一行，批量审批只带这一行——同单未选兄弟行
+    // 不显示、不默认勾选、不提交。
+    table.onSelectedIdsChanged!({firstRowId});
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('quality-batch-approval')));
+    await tester.pumpAndSettle();
+    expect(submittedSelection?.receipts.single.receiptId, 'receipt-multi');
+    expect(submittedSelection?.iqcItemIds, {
+      'PURCHASE:receipt-multi': ['item-of-receipt-multi-1'],
+    });
     expect(tester.takeException(), isNull);
   });
 
@@ -823,10 +899,14 @@ class _FakeIqcRepository implements ProcurementInspectionRepository {
   _FakeIqcRepository({
     this.additionalReceipts = const [],
     this.receiptsOverride,
+    this.itemsByReceipt = const {},
   });
 
   final List<PendingInspectionReceipt> additionalReceipts;
   final List<PendingInspectionReceipt>? receiptsOverride;
+
+  /// 按收货单给出的待检明细（行粒度勾选范围/批量审批装载用）。
+  final Map<String, List<ProcurementInspectionItem>> itemsByReceipt;
   final List<PendingInspectionReceipt> receipts = const [
     PendingInspectionReceipt(
       receiptType: 'PURCHASE',
@@ -865,7 +945,7 @@ class _FakeIqcRepository implements ProcurementInspectionRepository {
   Future<List<ProcurementInspectionItem>> items(
     String receiptType,
     String receiptId,
-  ) async => const [];
+  ) async => itemsByReceipt[receiptId] ?? const [];
 
   @override
   Future<void> dispose({

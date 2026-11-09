@@ -18,9 +18,15 @@ const _sheetId = '20000000-0000-0000-0000-000000000001';
 const _lotId = '20000000-0000-0000-0000-000000000009';
 const _demand = '20000000-0000-0000-0000-000000000011';
 const _surplus = '20000000-0000-0000-0000-000000000012';
+// 第二批（scope 测试用）：另一种货品，验证勾选范围外不显示不提交。
+const _lot2Id = '20000000-0000-0000-0000-000000000023';
+const _lot2Member = '20000000-0000-0000-0000-000000000024';
 
 class _Api extends ApiClient {
-  _Api() : super(Dio());
+  _Api({this.withSecondLot = false}) : super(Dio());
+
+  /// true = 检查单里还有第二批「UK旋钮」（批范围测试的未选兄弟行）。
+  final bool withSecondLot;
 
   Map<String, dynamic>? passAllBody;
 
@@ -59,14 +65,21 @@ class _Api extends ApiClient {
       'sheet': {
         'id': _sheetId,
         'sheetNo': 'PZ20261005001',
-        'itemCount': 2,
-        'activeCount': 2,
+        'itemCount': withSecondLot ? 3 : 2,
+        'activeCount': withSecondLot ? 3 : 2,
         'status': 'ACTIVE',
         'createdAt': '2026-10-05T01:00:00Z',
       },
       'inspections': [
         _slice(_demand, 0, 'DEMAND', 1000),
         _slice(_surplus, 2, 'ACTUAL_SURPLUS', 100),
+        if (withSecondLot)
+          {
+            ..._slice(_lot2Member, 0, 'DEMAND', 50),
+            'goodsCode': 'UK02',
+            'goodsName': 'UK旋钮',
+            'lotId': _lot2Id,
+          },
       ],
       'lots': [
         {
@@ -107,6 +120,32 @@ class _Api extends ApiClient {
             },
           ],
         },
+        if (withSecondLot)
+          {
+            'lotId': _lot2Id,
+            'sourceReportId': 'report-1',
+            'reportNo': 'RB20261005001',
+            'planNo': 'SJ20261005001',
+            'goodsCode': 'UK02',
+            'goodsName': 'UK旋钮',
+            'unitName': '个',
+            'reportedQty': 50,
+            'passedQty': 0,
+            'failedQty': 0,
+            'remainingQty': 50,
+            'status': 'PENDING',
+            'members': [
+              {
+                'inspectionId': _lot2Member,
+                'sourceReportItemId': 'item-knob',
+                'sliceRank': 0,
+                'kind': 'DEMAND',
+                'reportedQty': 50,
+                'remainingQty': 50,
+                'status': 'PENDING',
+              },
+            ],
+          },
       ],
     };
   }
@@ -223,5 +262,86 @@ void main() {
       ).read(appNotificationProvider).map((n) => n.message),
       contains(contains('自制产成品全部合格 1 批')),
     );
+  });
+
+  testWidgets('lot scope keeps unselected lots out of the page and report', (
+    tester,
+  ) async {
+    // 2026-11-09 用户硬性口径：队列只勾一个物料（批），办理页只显示、只默认勾选、
+    // 只提交这一个批——同检查单的未选批不带入。
+    await tester.binding.setSurfaceSize(const Size(1600, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    final api = _Api(withSecondLot: true);
+    final router = GoRouter(
+      routes: [
+        GoRoute(
+          path: '/',
+          builder: (context, state) => Scaffold(
+            body: TextButton(
+              key: const Key('open-approval'),
+              onPressed: () => context.push('/approve'),
+              child: const Text('打开审批'),
+            ),
+          ),
+        ),
+        GoRoute(
+          path: '/approve',
+          builder: (context, state) => QualityBatchApprovalPage(
+            selection: QualityBatchApprovalSelection(
+              sheets: [
+                ProductionFqcInspectionSheet(
+                  id: _sheetId,
+                  sheetNo: 'PZ20261005001',
+                  itemCount: 3,
+                  activeCount: 3,
+                  status: 'ACTIVE',
+                  createdAt: DateTime.utc(2026, 10, 5),
+                ),
+              ],
+              sheetLotIds: const {
+                _sheetId: [_lotId],
+              },
+            ),
+          ),
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          apiClientProvider.overrideWithValue(api),
+          sharedPreferencesProvider.overrideWithValue(preferences),
+        ],
+        child: MaterialApp.router(
+          locale: const Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          routerConfig: router,
+        ),
+      ),
+    );
+    await tester.tap(find.byKey(const Key('open-approval')));
+    await tester.pumpAndSettle();
+
+    // 只装载勾中的批：UK开关滑杆在场，UK旋钮（未选批）不显示。
+    expect(find.text('UK开关滑杆'), findsOneWidget);
+    expect(find.text('UK旋钮'), findsNothing);
+
+    await tester.tap(find.byKey(const Key('batch-approval-submit-report')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('inspection-report-confirm-submit')));
+    await tester.pump();
+    for (var i = 0; i < 12; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    // 提交也只带勾中的批内各份，不带未选批。
+    expect((api.passAllBody?['inspectionIds'] as List?)?.toSet(), {
+      _demand,
+      _surplus,
+    });
   });
 }

@@ -617,7 +617,7 @@ def source_spool_root(config, base):
     # The export directory is an existing reviewed backup-volume path. Never
     # fall back to /tmp or StateDirectory on the system partition.
     parent = base.private_path(config['source_export_directory'], directory=True)
-    mount = Path(config.get('snapshot_spool_mountpoint', '/srv/uten-backup'))
+    mount = Path(config.get('snapshot_spool_mountpoint', '/data'))
     if (not mount.is_absolute() or mount == Path('/') or '..' in mount.parts
             or not parent.is_relative_to(mount) or not os.path.ismount(mount)
             or parent.stat().st_dev != mount.stat().st_dev):

@@ -69,6 +69,28 @@ def _now(context):
     return context.get('now', lambda: dt.datetime.now(dt.timezone.utc))()
 
 
+def _mount_point(root):
+    """Nearest mount point at or above root, found by walking up until the
+    device id changes. Lets the client name a volume by where it is mounted
+    (for example /data versus /var/lib/uten-imp-media) instead of a generic
+    "存储卷 N". Returns None when the path cannot be probed."""
+    probe = root
+    try:
+        dev = probe.stat().st_dev
+    except OSError:
+        return None
+    while True:
+        parent = probe.parent
+        if parent == probe:
+            return str(probe)
+        try:
+            if parent.stat().st_dev != dev:
+                return str(probe)
+        except OSError:
+            return str(probe)
+        probe = parent
+
+
 def _at(value):
     parsed = dt.datetime.fromisoformat(value.replace('Z', '+00:00'))
     if parsed.tzinfo is None:
@@ -360,6 +382,7 @@ def _inventory(context):
             if volume:
                 total, free = volume.f_blocks * volume.f_frsize, volume.f_bavail * volume.f_frsize
                 volumes.setdefault(volume_id, {'id': volume_id, 'label': '存储卷 ' + str(len(volumes) + 1),
+                                               'mount': _mount_point(root),
                                                'totalBytes': total, 'usedBytes': total - free, 'freeBytes': free})
             # SYSTEM is an overview root and can overlap releases: never add category sizes.
             candidates = []

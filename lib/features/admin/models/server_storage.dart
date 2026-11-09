@@ -74,11 +74,15 @@ class ServerStorageVolume {
   ServerStorageVolume.fromJson(Map<String, dynamic> json)
     : id = _text(json['id']),
       label = _text(json['label']),
+      mount = _optionalText(json['mount']),
       totalBytes = _size(json['totalBytes']),
       usedBytes = _size(json['usedBytes']),
       freeBytes = _size(json['freeBytes']);
 
   final String id, label;
+
+  /// Linux 挂载点（如 /data）；主机助手旧版本未提供时为 null。
+  final String? mount;
   final int? totalBytes, usedBytes, freeBytes;
 }
 

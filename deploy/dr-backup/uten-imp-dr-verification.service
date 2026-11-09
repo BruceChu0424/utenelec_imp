@@ -2,7 +2,7 @@
 Description=Weekly real isolated Uten IMP recovery and bound commissioning renewal
 Wants=network-online.target
 After=network-online.target
-RequiresMountsFor=/srv/uten-backup
+RequiresMountsFor=/data
 StartLimitIntervalSec=1h
 StartLimitBurst=2
 
@@ -44,5 +44,5 @@ Nice=15
 IOSchedulingClass=best-effort
 IOSchedulingPriority=7
 # All paths MUST be pre-created after the verified backup volume mounts.
-ReadWritePaths=/srv/uten-backup/dr-verification /run/uten-imp-dr-recovery
+ReadWritePaths=/data/uten-backup/dr-verification /run/uten-imp-dr-recovery
 ReadWritePaths=/var/lib/containers /run/containers /run/libpod /sys/fs/cgroup

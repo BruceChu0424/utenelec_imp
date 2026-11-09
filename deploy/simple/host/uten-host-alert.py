@@ -45,8 +45,10 @@ def category(event):
             key_event = prefix + dimension if prefix == "disk-" else event
             key = prefix.rstrip("-") + "-" + hashlib.sha256(key_event.encode()).hexdigest()[:16]
             if prefix in ("disk-", "diskwarn-"):
-                label = {"/": "系统盘", "/data": "数据盘", "/var/lib/uten-imp-media": "附件盘",
-                         "/srv/uten-backup": "本机备份盘"}.get(dimension, "磁盘")
+                # 2026-11-10 存储迁移: 独立备份卷 /srv/uten-backup 并入 /data,
+                # 备份内容随数据盘告警, 旧映射键退役。
+                label = {"/": "系统盘", "/data": "数据盘",
+                         "/var/lib/uten-imp-media": "附件盘"}.get(dimension, "磁盘")
                 if prefix == "diskwarn-":
                     title = label + "使用率超过八成"
                 else:

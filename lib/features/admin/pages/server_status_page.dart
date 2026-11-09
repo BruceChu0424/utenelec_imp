@@ -34,9 +34,11 @@ import '../../../shared/badges/badge_registry.dart';
 import '../../../shared/badges/effective_badge_summary_provider.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/server_status.dart';
+import '../models/server_storage.dart';
 import '../providers/server_status_snapshot_cache.dart';
 import '../providers/server_operations_access.dart';
 import '../repositories/server_status_repository.dart';
+import '../repositories/server_storage_repository.dart';
 
 class ServerStatusPage extends ConsumerWidget {
   const ServerStatusPage({super.key});
@@ -74,6 +76,12 @@ class _ServerStatusPageState extends ConsumerState<_ServerStatusSession>
   bool _foreground = true;
   bool? _routeVisible;
   int _generation = 0;
+
+  /// 存储分区视图（按内容保存在哪分区）来自 server-storage 接口，与 15 秒
+  /// 状态轮询分开拉：成功后至少隔 60 秒才再拉，拉不到就退回逐盘圆环卡。
+  ServerStorageSummary? _storage;
+  DateTime? _storageLoadedAt;
+  bool _storageLoading = false;
 
   /// 采样成功次数；只驱动总览的脉冲点，不参与任何数据判断。
   int _pulse = 0;
@@ -154,6 +162,7 @@ class _ServerStatusPageState extends ConsumerState<_ServerStatusSession>
         _pulse++;
       });
       _scheduleStaleState();
+      unawaited(_loadStorage());
     } catch (error) {
       if (!_current || generation != _generation) return;
       setState(() {
@@ -201,6 +210,31 @@ class _ServerStatusPageState extends ConsumerState<_ServerStatusSession>
       _staleTimer = Timer(Duration(milliseconds: delay), () {
         if (_active) setState(() {});
       });
+    }
+  }
+
+  Future<void> _loadStorage() async {
+    if (!_active || _storageLoading) return;
+    final now = clock.now();
+    final loadedAt = _storageLoadedAt;
+    if (loadedAt != null &&
+        now.difference(loadedAt) < const Duration(seconds: 60)) {
+      return;
+    }
+    _storageLoading = true;
+    try {
+      final summary = await ref.read(serverStorageRepositoryProvider).summary();
+      if (!_current) return;
+      setState(() {
+        _storage = summary.available && summary.volumes.isNotEmpty
+            ? summary
+            : null;
+        _storageLoadedAt = now;
+      });
+    } catch (_) {
+      // 存储清单暂时拉不到时保留上一次结果或退回逐盘卡，不影响状态轮询。
+    } finally {
+      _storageLoading = false;
     }
   }
 
@@ -329,12 +363,7 @@ class _ServerStatusPageState extends ConsumerState<_ServerStatusSession>
                           const SizedBox(height: UtenSpacing.s24),
                           _sectionTitle(l10n.serverStatusStorage),
                           const SizedBox(height: UtenSpacing.s12),
-                          _grid([
-                            if (_snapshot?.disks.isNotEmpty == true)
-                              for (final disk in _snapshot!.disks) _disk(disk)
-                            else
-                              _disk(null),
-                          ]),
+                          _storageSection(),
                           const SizedBox(height: UtenSpacing.s24),
                           _sectionTitle(l10n.serverStatusDataProtection),
                           const SizedBox(height: UtenSpacing.s12),
@@ -686,6 +715,106 @@ class _ServerStatusPageState extends ConsumerState<_ServerStatusSession>
       ],
     );
   }
+
+  /// 2026-11-10 用户要求：存储余量按「内容保存在哪」分区展示——每块存储
+  /// 区域一张卡（数据库与备份区 / 上传文件区 / 系统与程序区），区里显示
+  /// 占用条、剩余量和该区内容的明细，说明收进标题旁的提示弹层；存储清单
+  /// 接口不可用时退回逐盘圆环卡。
+  Widget _storageSection() {
+    final storage = _storage;
+    if (storage == null || storage.volumes.isEmpty) {
+      return _grid([
+        if (_snapshot?.disks.isNotEmpty == true)
+          for (final disk in _snapshot!.disks) _disk(disk)
+        else
+          _disk(null),
+      ]);
+    }
+    final zones = _storageZones(storage);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (var index = 0; index < zones.length; index++) ...[
+          if (index > 0) const SizedBox(height: UtenSpacing.s12),
+          zones[index],
+        ],
+      ],
+    );
+  }
+
+  List<Widget> _storageZones(ServerStorageSummary storage) {
+    final rowsByVolume = <String, List<ServerStorageCategory>>{};
+    for (final category in storage.categories) {
+      final volumeId = category.volumeId;
+      if (volumeId == null) continue;
+      rowsByVolume.putIfAbsent(volumeId, () => []).add(category);
+    }
+    final entries = <({int rank, _StorageZoneCard card})>[];
+    for (final volume in storage.volumes) {
+      // SYSTEM 类是覆盖整个系统根的概览，与「已安装的程序版本」等明细重叠，
+      // 分区明细里不重复列出。
+      final rows = (rowsByVolume[volume.id] ?? const <ServerStorageCategory>[])
+          .where((row) => row.kind != 'SYSTEM')
+          .toList();
+      final spec = _zoneSpec(volume.mount, volume.label);
+      entries.add((
+        rank: _zoneRank(volume.mount),
+        card: _StorageZoneCard(
+          key: ValueKey('server-storage-zone-${volume.id}'),
+          name: spec.name,
+          icon: spec.icon,
+          hint: spec.hint,
+          mount: volume.mount,
+          totalBytes: volume.totalBytes,
+          usedBytes: volume.usedBytes,
+          freeBytes: volume.freeBytes,
+          rows: rows,
+        ),
+      ));
+    }
+    entries.sort((a, b) => a.rank.compareTo(b.rank));
+    return [for (final entry in entries) entry.card];
+  }
+
+  ({String name, IconData icon, String hint}) _zoneSpec(
+    String? mount,
+    String fallbackLabel,
+  ) => switch (mount) {
+    '/data' => (
+      name: '数据库与备份区',
+      icon: Icons.dns_outlined,
+      hint:
+          '公司最核心的数据都保存在这块大容量硬盘上：数据库本体、每天凌晨自动生成的全量备份，'
+          '以及数据库和附件一起打包的配套备份。\n\n这块盘由两块硬盘做了镜像冗余，任何一块坏掉数据仍然完整；'
+          '超龄的旧备份每天自动删除，不需要人工清理。',
+    ),
+    final String path when path.startsWith('/var/lib/uten-imp-media') => (
+      name: '上传文件区',
+      icon: Icons.cloud_upload_outlined,
+      hint:
+          '大家平时上传的附件（比如公司文件库里的文件）和客户端安装包保存在这块独立的固态硬盘上，'
+          '上传、下载、预览速度快。\n\n这块盘与数据库、备份互相独立，谁也不会挤占谁的空间。',
+    ),
+    '/' => (
+      name: '系统与程序区',
+      icon: Icons.settings_suggest_outlined,
+      hint:
+          '操作系统、ERP 程序本体和运行日志在这里。\n\n每次版本更新会保留旧版本以便回退；'
+          '超龄的旧版本和日志会被自动清理。',
+    ),
+    _ => (
+      name: fallbackLabel.isEmpty ? '存储区域' : fallbackLabel,
+      icon: Icons.storage_outlined,
+      hint: '服务器上的一块存储区域，用于保存运行所需的数据。',
+    ),
+  };
+
+  int _zoneRank(String? mount) => switch (mount) {
+    '/data' => 0,
+    final String path when path.startsWith('/var/lib/uten-imp-media') => 1,
+    '/' => 2,
+    _ => 3,
+  };
 
   Widget _database() {
     final database = _snapshot?.database;
@@ -1085,6 +1214,161 @@ class _BigNumber extends StatelessWidget {
     );
   }
 }
+
+/// 存储分区卡：一块「内容保存在哪」的存储区域一张卡。剩余量最突出，
+/// 占用条按状态着色，区内各类内容逐行列出；挂载路径等技术说明收进
+/// 标题旁的提示弹层，不给不熟悉的用户添堵。
+class _StorageZoneCard extends StatelessWidget {
+  const _StorageZoneCard({
+    super.key,
+    required this.name,
+    required this.icon,
+    required this.hint,
+    required this.mount,
+    required this.totalBytes,
+    required this.usedBytes,
+    required this.freeBytes,
+    required this.rows,
+  });
+
+  final String name;
+  final IconData icon;
+  final String hint;
+  final String? mount;
+  final int? totalBytes, usedBytes, freeBytes;
+  final List<ServerStorageCategory> rows;
+
+  static String _plainBytes(int? value) {
+    if (value == null) return '—';
+    const g = 1024 * 1024 * 1024;
+    if (value >= 1024 * g) {
+      return '${(value / (1024 * g)).toStringAsFixed(1)}T';
+    }
+    if (value >= g) return '${(value / g).toStringAsFixed(1)}G';
+    if (value >= 1024 * 1024) return '${(value / (1024 * 1024)).round()}M';
+    return '$value';
+  }
+
+  ServerHealthStatus get _status {
+    final total = totalBytes, used = usedBytes;
+    if (total == null || total <= 0 || used == null) {
+      return ServerHealthStatus.unknown;
+    }
+    final ratio = used / total;
+    if (ratio >= 0.9) return ServerHealthStatus.critical;
+    if (ratio >= 0.8) return ServerHealthStatus.warning;
+    return ServerHealthStatus.normal;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final status = _status;
+    final color = _statusColor(context, status);
+    final total = totalBytes, used = usedBytes;
+    final double? ratio = total != null && total > 0 && used != null
+        ? used / total
+        : null;
+    final mountText = mount;
+    return UtenCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 20, color: theme.colorScheme.primary),
+              const SizedBox(width: UtenSpacing.s8),
+              Flexible(
+                child: Text(
+                  name,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              UtenFieldHintIcon(
+                info: mountText == null ? hint : '$hint\n\n挂载位置：$mountText',
+                dense: true,
+              ),
+              const Spacer(),
+              Text(
+                '剩余 ${_plainBytes(freeBytes)}',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: color,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: UtenSpacing.s12),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(UtenRadius.xs),
+            child: LinearProgressIndicator(
+              value: ratio,
+              minHeight: 8,
+              color: color,
+              backgroundColor: theme.colorScheme.onSurface.withValues(
+                alpha: 0.08,
+              ),
+            ),
+          ),
+          const SizedBox(height: UtenSpacing.s8),
+          Text(
+            ratio == null
+                ? '已用 ${_plainBytes(usedBytes)} / 共 ${_plainBytes(totalBytes)}'
+                : '已用 ${_plainBytes(usedBytes)} / 共 ${_plainBytes(totalBytes)}'
+                      '（已用 ${(ratio * 100).toStringAsFixed(0)}%）',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
+          ),
+          if (rows.isNotEmpty) ...[
+            const Divider(height: UtenSpacing.s20),
+            for (final row in rows)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s4),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        _categoryDisplayName(row),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: UtenSpacing.s12),
+                    Text(
+                      _plainBytes(row.logicalBytes),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        fontFeatures: const [FontFeature.tabularFigures()],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+String _categoryDisplayName(ServerStorageCategory row) => switch (row.kind) {
+  'RELEASES' => '已安装的程序版本',
+  'RELEASE_STAGING' => '更新下载暂存',
+  'PREACTIVATION_BACKUPS' => '升级前数据库备份',
+  'PAIRED_BACKUPS' => '配套备份（数据库＋附件）',
+  'DATABASE' => '数据库',
+  'UPLOADS' => '上传的附件',
+  'LEGACY_UPLOADS' => '旧版上传的附件',
+  'LOGS' => '运行日志',
+  'CACHE' => '运行缓存',
+  _ => row.displayLabel,
+};
 
 class _StatusBadge extends StatelessWidget {
   const _StatusBadge({super.key, required this.status});

@@ -2,7 +2,7 @@
 Description=Five-minute consistent encrypted deduplicated Uten IMP recovery point
 Wants=network-online.target
 After=network-online.target postgresql.service
-RequiresMountsFor=/data /srv/uten-backup /srv/uten-backup/dr-continuous-exports
+RequiresMountsFor=/data
 StartLimitIntervalSec=300
 StartLimitBurst=3
 
@@ -38,4 +38,4 @@ StateDirectory=uten-imp-dr-backup
 StateDirectoryMode=0700
 ReadWritePaths=/data/uten-imp-backups/dr-continuous /var/lib/uten-imp-dr-backup
 # Completed uploads also run the shared, receipt-bound source export GC.
-ReadWritePaths=/srv/uten-backup/dr-continuous-exports
+ReadWritePaths=/data/uten-backup/dr-continuous-exports

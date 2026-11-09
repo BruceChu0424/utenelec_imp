@@ -25,9 +25,11 @@ import 'package:uten_imp/core/router/permission_by_path.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/core/theme/uten_colors.dart';
 import 'package:uten_imp/features/admin/models/server_status.dart';
+import 'package:uten_imp/features/admin/models/server_storage.dart';
 import 'package:uten_imp/features/admin/pages/server_status_page.dart';
 import 'package:uten_imp/features/admin/providers/server_status_snapshot_cache.dart';
 import 'package:uten_imp/features/admin/repositories/server_status_repository.dart';
+import 'package:uten_imp/features/admin/repositories/server_storage_repository.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/dashboard/providers/workbench_layout_provider.dart';
 import 'package:uten_imp/features/dashboard/widgets/workbench_module_area.dart';
@@ -196,6 +198,90 @@ void main() {
       await tester.pump(const Duration(seconds: 45));
       expect(repository.calls, 0);
       await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+
+  testWidgets(
+    'storage section groups volumes by where content is stored',
+    (tester) async {
+      await withClock(Clock.fixed(sampledAt), () async {
+        final repository = _Repository(() async => _sample(sampledAt));
+        // 2026-11-10 迁移后的实际布局：备份并入 /data；上传附件在独立媒体卷。
+        final storage = _StorageRepository(
+          () async => ServerStorageSummary.fromJson({
+            'revision': 'r1',
+            'status': 'NORMAL',
+            'capabilities': {'available': true, 'canCleanup': false},
+            'volumes': [
+              {
+                'id': 'v-data',
+                'label': '存储卷 1',
+                'mount': '/data',
+                'totalBytes': 1800000000000,
+                'usedBytes': 208000000000,
+                'freeBytes': 1592000000000,
+              },
+              {
+                'id': 'v-media',
+                'label': '存储卷 2',
+                'mount': '/var/lib/uten-imp-media',
+                'totalBytes': 200000000000,
+                'usedBytes': 389000000,
+                'freeBytes': 199611000000,
+              },
+            ],
+            'categories': [
+              {
+                'kind': 'DATABASE',
+                'label': '数据库目录',
+                'status': 'NORMAL',
+                'logicalBytes': 19000000000,
+                'volumeId': 'v-data',
+              },
+              {
+                'kind': 'PAIRED_BACKUPS',
+                'label': '数据库与上传文件配套备份',
+                'status': 'NORMAL',
+                'logicalBytes': 165000000000,
+                'volumeId': 'v-data',
+              },
+              {
+                // 覆盖整个系统根的概览类不进分区明细。
+                'kind': 'SYSTEM',
+                'label': '系统目录',
+                'status': 'NORMAL',
+                'logicalBytes': 33000000000,
+                'volumeId': 'v-data',
+              },
+              {
+                'kind': 'UPLOADS',
+                'label': '当前上传目录',
+                'status': 'NORMAL',
+                'logicalBytes': 389000000,
+                'volumeId': 'v-media',
+              },
+            ],
+          }),
+        );
+        await _pump(tester, repository, storage: storage);
+        await tester.pumpAndSettle();
+        // 分区名按挂载点落位，不露「存储卷 1」这类泛称。
+        expect(find.text('数据库与备份区'), findsOneWidget);
+        expect(find.text('上传文件区'), findsOneWidget);
+        expect(find.text('存储卷 1'), findsNothing);
+        // 剩余量与占用明细按通俗单位展示。
+        expect(find.text('剩余 1.4T'), findsOneWidget);
+        expect(find.text('剩余 185.9G'), findsOneWidget);
+        expect(find.text('配套备份（数据库＋附件）'), findsOneWidget);
+        expect(find.text('153.7G'), findsOneWidget);
+        expect(find.text('上传的附件'), findsOneWidget);
+        expect(find.text('371M'), findsOneWidget);
+        // SYSTEM 概览类与数据库卷里的重叠，不单独占一行。
+        expect(find.text('系统目录'), findsNothing);
+        expect(tester.takeException(), isNull);
+        await _capture(tester, 'storage-zones-fixture.png');
+        await tester.pumpWidget(const SizedBox.shrink());
+      });
     },
   );
 
@@ -655,6 +741,7 @@ Future<ProviderContainer> _pump(
   Set<String> permissions = const {Perm.serverStatusView},
   ServerStatusSnapshot? cached,
   BadgeSummary? badgeSummary,
+  ServerStorageRepository? storage,
 }) async {
   tester.view.physicalSize = compact
       ? const Size(390, 1000)
@@ -670,6 +757,19 @@ Future<ProviderContainer> _pump(
         currentPermissionsProvider.overrideWithValue(permissions),
         sharedPreferencesProvider.overrideWithValue(preferences),
         serverStatusRepositoryProvider.overrideWithValue(repository),
+        // 存储分区视图默认模拟「主机清单不可用」，页面退回逐盘圆环卡。
+        serverStorageRepositoryProvider.overrideWithValue(
+          storage ??
+              _StorageRepository(
+                () async => ServerStorageSummary.fromJson(const {
+                  'revision': 'r0',
+                  'status': 'UNKNOWN',
+                  'capabilities': {'available': false},
+                  'volumes': [],
+                  'categories': [],
+                }),
+              ),
+        ),
         if (badgeSummary != null) fixedBadgeSummaryOverride(badgeSummary),
         // 模拟「工作台那张卡的告警徽章刚刚拉过一次」——共享缓存里已有读数。
         if (cached != null)
@@ -742,6 +842,29 @@ class _Repository extends ServerStatusRepository {
       active--;
     }
   }
+}
+
+/// 状态页存储分区视图用的最小桩：只有 summary 会被调用。
+class _StorageRepository implements ServerStorageRepository {
+  _StorageRepository(this.summaryHandler);
+  final Future<ServerStorageSummary> Function() summaryHandler;
+
+  @override
+  Future<ServerStorageSummary> summary() => summaryHandler();
+  @override
+  Future<ServerStorageResources> resources(String kind, {String? cursor}) =>
+      throw UnimplementedError();
+  @override
+  Future<ServerStoragePreview> preview(List<String> resourceIds) =>
+      throw UnimplementedError();
+  @override
+  Future<ServerStorageCleanupReceipt> cleanup({
+    required String previewId,
+    required String requestId,
+  }) => throw UnimplementedError();
+  @override
+  Future<ServerStorageCleanupReceipt> receipt(String requestId) =>
+      throw UnimplementedError();
 }
 
 class _Layout extends WorkbenchLayoutNotifier {

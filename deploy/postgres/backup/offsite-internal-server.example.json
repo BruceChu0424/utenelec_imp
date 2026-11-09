@@ -10,7 +10,7 @@
     "timeline": null,
     "postgresMajorVersion": 16,
     "repositoryNumber": 2,
-    "repositoryRoot": "/srv/uten-backup/pgbackrest",
+    "repositoryRoot": "/data/uten-backup/pgbackrest",
     "pairedBackupRoot": "/data/uten-imp-backups/paired",
     "attachmentRoot": "/var/lib/uten-imp-media/attachments",
     "privateOriginalRoot": null

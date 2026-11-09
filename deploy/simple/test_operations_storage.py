@@ -149,6 +149,11 @@ class StorageTest(unittest.TestCase):
         self.assertIn('永不提供文件级清理', legacy['detail'])
         self.assertEqual(current['volumeId'], legacy['volumeId'])
         self.assertEqual(len(result['volumes']), 1 if hasattr(os, 'statvfs') else 0)
+        if hasattr(os, 'statvfs'):
+            mount = result['volumes'][0]['mount']
+            self.assertIsInstance(mount, str)
+            # The mount point is a real ancestor of every inventoried root.
+            self.assertTrue(str(self.root).startswith(mount.rstrip('/') or '/'))
         resource = self.rows('LEGACY_UPLOADS')[0]
         self.assertEqual(resource['label'], 'legacy-original')
         self.assertFalse(resource['canDelete'])

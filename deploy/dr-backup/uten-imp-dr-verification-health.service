@@ -2,7 +2,7 @@
 Description=Check Uten IMP restore-proof expiry, failures and missed weekly verification
 Wants=network-online.target
 After=network-online.target
-RequiresMountsFor=/srv/uten-backup
+RequiresMountsFor=/data
 
 [Service]
 Type=oneshot

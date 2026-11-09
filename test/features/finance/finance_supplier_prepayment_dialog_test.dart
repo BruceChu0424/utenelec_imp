@@ -13,7 +13,31 @@ import 'package:uten_imp/features/finance/widgets/finance_supplier_prepayment_di
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/paging/complete_paged_snapshot.dart'
+    show CompleteReadBatchPlan;
 import 'finance_requirement_test_ui.dart';
+
+/// The exact (page, size) batches the shared progressive plan reads for a
+/// complete source of [total] rows: 50, 50, 100 … at aligned offsets.
+List<({int page, int size})> _progressiveBatches(int total) {
+  const plan = CompleteReadBatchPlan.progressive;
+  final batches = <({int page, int size})>[];
+  for (var offset = 0; offset < total;) {
+    final size = plan.sizeAt(offset);
+    batches.add((page: offset ~/ size + 1, size: size));
+    offset += size;
+  }
+  return batches;
+}
+
+/// The last complete read's (page, size) requests, in order.
+List<({Object? page, Object? size})> _lastRead(
+  List<Map<String, dynamic>> reads,
+  int batches,
+) => [
+  for (final query in reads.sublist(reads.length - batches))
+    (page: query['page'], size: query['size']),
+];
 
 void main() {
   testWidgets(
@@ -121,7 +145,6 @@ void main() {
       expect(table.items.last['paymentId'], 'advance-100');
       expect(table.totalPages, 1);
       expect(table.onPageChange, isNull);
-      expect(api.reads.map((r) => r['size']), everyElement(100));
       expect(
         api.reads.map((r) => r['supplierId']),
         everyElement('supplier-filter'),
@@ -130,10 +153,9 @@ void main() {
         api.reads.map((r) => r['currencyId']),
         everyElement('currency-filter'),
       );
-      expect(
-        api.reads.map((r) => r['page']).toList().sublist(api.reads.length - 2),
-        [1, 2],
-      );
+      // 101 rows: (1,50) (2,50) (2,100) — every row read exactly once.
+      final batches = _progressiveBatches(101);
+      expect(_lastRead(api.reads, batches.length), batches);
       final reads = api.reads.length;
       await tester.drag(finder, const Offset(0, -6000));
       await tester.pumpAndSettle();
@@ -169,11 +191,8 @@ void main() {
       expect(table.onPageChange, isNull);
       for (final kind in ['APPLICATION', 'REFUND']) {
         final reads = api.reads.where((r) => r['kind'] == kind).toList();
-        expect(reads.map((r) => r['size']), everyElement(100));
-        expect(reads.map((r) => r['page']).toList().sublist(reads.length - 2), [
-          1,
-          2,
-        ]);
+        final batches = _progressiveBatches(101);
+        expect(_lastRead(reads, batches.length), batches);
       }
       final reads = api.reads.length;
       await tester.drag(finder, const Offset(0, -6000));

@@ -19,6 +19,7 @@ import 'package:uten_imp/features/warehouse/materialbin/widgets/workshop_materia
 import 'package:uten_imp/features/warehouse/materialbin/widgets/workshop_request_material_picker.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/paging/paged_read_window_binding.dart';
 
 import 'workshop_material_test_support.dart';
 
@@ -192,7 +193,18 @@ void main() {
               (widget) => widget is MasterDataTableView<dynamic>,
             ),
           );
-          expect(table().items, isEmpty);
+          // The single picker reads progressively: its first batch [_raw] is
+          // published as a pending prefix before the second batch fails, and
+          // the failure retires it. The shared multi picker publishes nothing
+          // before the complete result. Either way the failed read never
+          // becomes the accepted result: confirm stays disabled and nothing
+          // is selected from it.
+          if (multi) {
+            expect(table().items, isEmpty);
+          } else {
+            expect(table().items, [_raw]);
+            expect(readWindowBindingOf(table().items)!.isCurrent, isFalse);
+          }
           expect(table().error, isNotNull);
           final confirm = find.byKey(
             Key(

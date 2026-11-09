@@ -49,8 +49,9 @@ void main() {
           );
       expect(table.items, hasLength(101));
       expect(table.items.last.employeeId, 'bulk-100');
-      expect(repository.pages, [1, 2]);
-      expect(repository.sizes, [100, 100]);
+      // Progressive ladder: rows 0-49, 50-99, then row 100 from (2,100).
+      expect(repository.pages, [1, 2, 2]);
+      expect(repository.sizes, [50, 50, 100]);
       expect(find.text('加载更多'), findsNothing);
       expect(repository.detailCalls, 0);
       expect(tester.takeException(), isNull);

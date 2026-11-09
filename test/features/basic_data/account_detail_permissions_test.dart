@@ -29,6 +29,7 @@ import 'package:uten_imp/features/basic_data/repositories/payment_style_reposito
 import 'package:uten_imp/features/basic_data/widgets/master_edit_dialog.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_read_only_fields.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/paging/complete_paged_snapshot.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 
@@ -59,7 +60,12 @@ void main() {
         find.byKey(const ValueKey('master-table-page-next')),
         findsNothing,
       );
-      expect(repository.statementSizes.every((size) => size == 100), true);
+      // The complete reader's first progressive batch: one (1,50) request
+      // completes the empty statement.
+      expect(repository.statementPages, [1]);
+      expect(repository.statementSizes, [
+        CompleteReadBatchPlan.progressive.firstBatchSize,
+      ]);
       await tester.pumpAndSettle();
       expect(repository.statementFacetCalls, 0);
       expect(api.bodies, isEmpty);

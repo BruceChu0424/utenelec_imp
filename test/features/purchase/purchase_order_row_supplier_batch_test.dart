@@ -222,7 +222,10 @@ class _OrderApi extends MasterSummaryStreamTestApi {
       '${ApiEndpoints.businessReferenceSuppliers}/summaries',
     );
     final parameters = masterSummaryTestParameters(request);
-    expectSync(parameters['size'], lessThanOrEqualTo(100));
+    expectSync(
+      parameters['size'],
+      lessThanOrEqualTo(kProgressiveSummaryStreamSize),
+    );
     expectSync(parameters['selectableOnly'], isTrue);
     return _pickerSuppliers;
   }

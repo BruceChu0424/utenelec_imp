@@ -999,41 +999,52 @@ class _OverviewApi extends ApiClient {
       }
       if (keyword == 'NO-SUCH-PARTY') return _reportRows(const []);
       if (keyword == 'C-002' && !delayFirstSearch) {
+        // One fixed four-row source in the server's exact-before-near order;
+        // every batch is the exact page of the requested size.
+        const source = <Map<String, dynamic>>[
+          {
+            'id': 'client-exact',
+            'partyName': 'EXACT-C-002',
+            'categoryId': 'southeast-asia',
+            'arAmount': 100,
+          },
+          {
+            'id': 'supplier-prefix',
+            'partyName': 'PREFIX-C-002',
+            'categoryId': 'domestic-supplier',
+            'arAmount': 25,
+          },
+          {
+            'id': 'client-near',
+            'partyName': 'NEAR-C-002',
+            'categoryId': 'overseas',
+            'arAmount': 75,
+          },
+          {
+            'id': 'supplier-page2',
+            'partyName': 'PAGE2-C-002',
+            'categoryId': 'domestic-supplier',
+            'arAmount': 50,
+          },
+        ];
         final page = (q['page'] as num?)?.toInt() ?? 1;
-        return _reportRows(
-          page == 1
-              ? [
-                  {
-                    'id': 'client-exact',
-                    'partyName': 'EXACT-C-002',
-                    'categoryId': 'southeast-asia',
-                    'arAmount': 100,
-                  },
-                  {
-                    'id': 'supplier-prefix',
-                    'partyName': 'PREFIX-C-002',
-                    'categoryId': 'domestic-supplier',
-                    'arAmount': 25,
-                  },
-                  {
-                    'id': 'client-near',
-                    'partyName': 'NEAR-C-002',
-                    'categoryId': 'overseas',
-                    'arAmount': 75,
-                  },
-                ]
-              : [
-                  {
-                    'id': 'supplier-page2',
-                    'partyName': 'PAGE2-C-002',
-                    'categoryId': 'domestic-supplier',
-                    'arAmount': 50,
-                  },
-                ],
-          page: page,
-          total: 4,
-          totalPages: 2,
-        );
+        final size = (q['size'] as num?)?.toInt() ?? 50;
+        return {
+          ..._reportRows(
+            [
+              for (
+                var i = (page - 1) * size;
+                i < page * size && i < source.length;
+                i++
+              )
+                source[i],
+            ],
+            page: page,
+            total: source.length,
+            totalPages: (source.length + size - 1) ~/ size,
+          ),
+          'size': size,
+        };
       }
       final label = keyword == null
           ? 'initial'

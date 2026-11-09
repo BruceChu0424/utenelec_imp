@@ -1141,6 +1141,31 @@ Future<_HeaderApi> _pump(
   return api;
 }
 
+/// The fixture server's fixed source: every transport batch is the exact page
+/// of the requested size (offset == (page - 1) * size) of [total] rows, so the
+/// complete reader's progressive batches neither skip nor repeat a row.
+List<Map<String, dynamic>> _sourcePage(
+  Map<String, dynamic> query,
+  int total,
+  Map<String, dynamic> Function(int index) row,
+) {
+  final page = (query['page'] as num?)?.toInt() ?? 1;
+  final size = (query['size'] as num?)?.toInt() ?? 50;
+  return [
+    for (var i = (page - 1) * size; i < page * size && i < total; i++) row(i),
+  ];
+}
+
+Map<String, dynamic> _sourcePaging(Map<String, dynamic> query, int total) {
+  final size = (query['size'] as num?)?.toInt() ?? 50;
+  return {
+    'page': (query['page'] as num?)?.toInt() ?? 1,
+    'size': size,
+    'total': total,
+    'totalPages': (total + size - 1) ~/ size,
+  };
+}
+
 Map<String, dynamic> _clientStatementData(Map<String, dynamic> query) => {
   'readScopeVersion': 'scope-1',
   'columns': [
@@ -1165,8 +1190,11 @@ Map<String, dynamic> _clientStatementData(Map<String, dynamic> query) => {
     {'key': 'currencyCode', 'label': '币别', 'type': 'text'},
   ],
   'columnSearchKeys': ['billDate', 'clientName', 'goodsName', 'qty', 'remark'],
-  'rows': [
-    {
+  // One complete two-row source; page/count/size describe the requested batch.
+  'rows': _sourcePage(
+    query,
+    2,
+    (_) => {
       'billDate': '2026-11-03',
       'clientName': query['f.search.clientName'] ?? '甲客户',
       'goodsName': '优腾三联双控开关',
@@ -1177,14 +1205,9 @@ Map<String, dynamic> _clientStatementData(Map<String, dynamic> query) => {
       'remark': 'XC202611030001',
       'currencyCode': '人民币',
     },
-  ],
+  ),
   'facets': <String, dynamic>{},
-  'page': query['page'] ?? 1,
-  // This fixture's server deliberately clamps every transport batch to one
-  // row; page/count/size describe the same complete two-row source.
-  'size': 1,
-  'total': 2,
-  'totalPages': 2,
+  ..._sourcePaging(query, 2),
 };
 
 class _DetailPrefs extends FinanceDetailReportPrefsNotifier {
@@ -1370,7 +1393,6 @@ class _HeaderApi extends ApiClient {
       throw ApiException(rejectionCode, '暂时无法检索', httpStatus: rejectionStatus);
     }
     if (serverTotals && path.endsWith('/ar-ap/detail')) {
-      final page = parameters['page'] ?? 1;
       return {
         'readScopeVersion': 'scope-1',
         'columns': [
@@ -1380,19 +1402,18 @@ class _HeaderApi extends ApiClient {
           {'key': 'credit', 'label': '本期贷方', 'type': 'money', 'unitLabel': '元'},
         ],
         'columnSearchKeys': ['code', 'name', 'debit', 'credit'],
-        'rows': [
-          {
-            'code': 'ACCOUNT-$page',
+        'rows': _sourcePage(
+          parameters,
+          2,
+          (i) => {
+            'code': 'ACCOUNT-${i + 1}',
             'name': '科目',
-            'debit': page == 1 ? 10 : 1224.56,
-            'credit': page == 1 ? 0 : 345.67,
+            'debit': i == 0 ? 10 : 1224.56,
+            'credit': i == 0 ? 0 : 345.67,
           },
-        ],
+        ),
         'facets': <String, dynamic>{},
-        'page': page,
-        'size': 1,
-        'total': 2,
-        'totalPages': 2,
+        ..._sourcePaging(parameters, 2),
         'totals': [
           {
             'key': 'debit',
@@ -1561,26 +1582,29 @@ class _HeaderApi extends ApiClient {
       'columnSearchKeys': balance
           ? ['billNo', 'billDate', 'balance']
           : ['orderNo', 'orderDate', 'currencyCode', 'expectedOriginal'],
-      'rows': [
-        balance
-            ? {'billNo': 'C2-1', 'billDate': '2026-10-02', 'balance': 4.95}
+      'rows': _sourcePage(
+        parameters,
+        2,
+        (i) => balance
+            ? {
+                'billNo': 'C2-${i + 1}',
+                'billDate': '2026-10-02',
+                'balance': 4.95,
+              }
             : {
-                'orderNo': 'SO-1',
+                'orderNo': 'SO-${i + 1}',
                 'orderDate': '2026-10-01',
                 'currencyCode': '美金',
                 'expectedOriginal': 90071992547409.12,
                 'expectedOriginalExact': '90071992547409.1234',
               },
-      ],
+      ),
       'facets': {
         'currencyCode': [
           {'value': 'currency-id', 'label': '美金', 'count': 2},
         ],
       },
-      'page': parameters['page'] ?? 1,
-      'size': 1,
-      'total': 2,
-      'totalPages': 2,
+      ..._sourcePaging(parameters, 2),
     };
   }
 

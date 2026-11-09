@@ -860,7 +860,9 @@ class _FakePagePermissionRepository
       departmentName: departmentId == null ? null : '销售一组',
       items: items,
       page: page,
-      size: size,
+      // A multi-page directory keeps its own one-row server page (row offset
+      // == page - 1) so page/size/total/totalPages stay exact.
+      size: totalPages == 1 ? size : 1,
       total: totalPages == 1 ? 1 : 2,
       totalPages: totalPages,
     );

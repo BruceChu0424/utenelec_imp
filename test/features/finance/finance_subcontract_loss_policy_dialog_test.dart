@@ -22,6 +22,8 @@ import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart
 import 'package:uten_imp/features/finance/widgets/finance_subcontract_loss_policy_dialog.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/drafts/form_draft_store.dart';
+import 'package:uten_imp/shared/paging/complete_paged_snapshot.dart'
+    show CompleteReadBatchPlan;
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
@@ -36,6 +38,29 @@ const _seed = <String, dynamic>{
   'color': '实际颜色',
 };
 const _exact = '5.000000000000000000000001';
+
+/// The exact (page, size) batches the shared progressive plan reads for a
+/// complete source of [total] rows: 50, 50, 100 … at aligned offsets.
+List<({int page, int size})> _progressiveBatches(int total) {
+  const plan = CompleteReadBatchPlan.progressive;
+  final batches = <({int page, int size})>[];
+  for (var offset = 0; offset < total;) {
+    final size = plan.sizeAt(offset);
+    batches.add((page: offset ~/ size + 1, size: size));
+    offset += size;
+  }
+  return batches;
+}
+
+/// The last complete read's (page, size) requests, in order.
+List<({Object? page, Object? size})> _lastRead(
+  List<Map<String, dynamic>> reads,
+  int batches,
+) => [
+  for (final query in reads.sublist(reads.length - batches))
+    (page: query['page'], size: query['size']),
+];
+
 Finder _field(String label) =>
     find.byWidgetPredicate((w) => w is UtenInput && w.label == label);
 Future<void> _fill(WidgetTester tester) async {
@@ -116,14 +141,9 @@ void main() {
     expect(table.items.last['id'], 'policy-100');
     expect(table.totalPages, 1);
     expect(table.onPageChange, isNull);
-    expect(api.directoryReads.map((q) => q['size']), everyElement(100));
-    expect(
-      api.directoryReads
-          .map((q) => q['page'])
-          .toList()
-          .sublist(api.directoryReads.length - 2),
-      [1, 2],
-    );
+    // 101 rows: (1,50) (2,50) (2,100) — every row read exactly once.
+    final batches = _progressiveBatches(101);
+    expect(_lastRead(api.directoryReads, batches.length), batches);
     final reads = api.directoryReads.length;
     await tester.drag(finder, const Offset(0, -6000));
     await tester.pumpAndSettle();
@@ -187,8 +207,12 @@ void main() {
       );
       expect(table.items, isEmpty);
       expect(table.error, '后批无权限');
+      // The read stopped at the rejected second batch of the progressive plan.
       expect(api.sourceReads.any((query) => query['page'] == 2), isTrue);
-      expect(api.sourceReads.map((q) => q['size']), everyElement(100));
+      expect(
+        _lastRead(api.sourceReads, 2),
+        _progressiveBatches(101).take(2).toList(),
+      );
       expect(api.commands, isEmpty);
       Navigator.of(tester.element(finder)).pop();
       await tester.pumpAndSettle();
@@ -368,14 +392,8 @@ void main() {
       expect(table.totalPages, 1);
       expect(table.onPageChange, isNull);
       expect(table.items.last['goodsId'], 'goods-100');
-      expect(api.sourceReads.map((q) => q['size']), everyElement(100));
-      expect(
-        api.sourceReads
-            .map((q) => q['page'])
-            .toList()
-            .sublist(api.sourceReads.length - 2),
-        [1, 2],
-      );
+      final batches = _progressiveBatches(101);
+      expect(_lastRead(api.sourceReads, batches.length), batches);
       final reads = api.sourceReads.length;
       await tester.drag(
         find.byType(MasterDataTableView<Map<String, dynamic>>).last,

@@ -24,6 +24,7 @@ import 'package:uten_imp/features/warehouse/pages/warehouse_task_center_page.dar
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/badges/badge_registry.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
+import 'package:uten_imp/shared/paging/paged_read_window_binding.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/warehouse/warehouse_task_badges.dart';
 import 'package:uten_imp/shared/warehouse/warehouse_task_scope.dart';
@@ -287,12 +288,25 @@ void main() {
     await _openReviewSection(tester);
     MasterDataTableView<StockCountRequest> queue() =>
         tester.widget(find.byType(MasterDataTableView<StockCountRequest>));
-    expect(queue().items, isEmpty);
+    // 渐进完整读取：第一批 50 行先发布为待定前缀，第二批出现重复身份即
+    // 整体作废。失败读取绝不变成本次已接受结果：它既不完整也不被写操作
+    // 消费——只有前 50 个唯一身份，重复行从未进入，也没有任何审核发生。
+    expect(queue().items, hasLength(50));
+    expect(queue().items.map((row) => row.id).toSet(), hasLength(50));
+    expect(
+      queue().items.map((row) => row.id),
+      isNot(contains('r-101')),
+      reason: '失败读取的后半批绝不能成为已接受结果',
+    );
     expect(find.byType(UtenInlineNotice), findsOneWidget);
     expect(
       tester.widget<UtenInlineNotice>(find.byType(UtenInlineNotice)).message,
       contains('身份'),
     );
+    // 被撤回的前缀不冒充空结果：表格层面保留读取失败提示与重试入口。
+    expect(find.text('数据加载失败'), findsOneWidget);
+    expect(find.text('暂无数据'), findsNothing);
+    expect(readWindowBindingOf(queue().items)!.isCurrent, isFalse);
     expect(repo.approvals, 0);
     repo.duplicateSecondBatch = false;
     queue().onRetry!();

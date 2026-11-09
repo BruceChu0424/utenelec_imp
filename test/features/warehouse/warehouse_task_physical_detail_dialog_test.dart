@@ -12,6 +12,8 @@ import 'package:uten_imp/features/warehouse/models/warehouse_task_center_record.
 import 'package:uten_imp/features/warehouse/widgets/warehouse_task_physical_detail_dialog.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/paging/complete_paged_snapshot.dart'
+    show CompleteReadBatchPlan;
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/warehouse/warehouse_task_scope.dart';
 
@@ -160,11 +162,15 @@ void main() {
     expect(api.calls.map((call) => call.query['linePage']), [1, 2]);
     expect(find.byType(UtenPagination), findsNothing);
     expect(find.text('PHYSICAL-2'), findsOneWidget);
+    // 完整读取按共享渐进计划发起首批 lineSize 50；本假数据源坚持自己的
+    // 1 行一页，读取器沿用该页大小续读第 2 页。每一批都保留精确仓库范围。
+    expect(api.calls.map((call) => call.query['lineSize']), [
+      CompleteReadBatchPlan.progressive.firstBatchSize,
+      1,
+    ]);
     expect(
       api.calls.every(
-        (call) =>
-            call.query['scopeWarehouseId'] == 'warehouse-a' &&
-            call.query['lineSize'] == 100,
+        (call) => call.query['scopeWarehouseId'] == 'warehouse-a',
       ),
       true,
     );

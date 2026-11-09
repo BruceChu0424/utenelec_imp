@@ -1070,11 +1070,13 @@ class _FakeGoodsRepository extends Fake implements GoodsRepository {
     _delayedSearch.complete(_page(items, page: 1, size: 100));
   }
 
+  // The split server keeps its own one-row page size (row offset == page - 1),
+  // so the complete reader continues exactly on that size.
   void completeDelayedPage() => _delayedPage.complete(
     const PagedResult(
       items: [_goodsB],
       page: 2,
-      size: 100,
+      size: 1,
       total: 2,
       totalPages: 2,
     ),
@@ -1121,10 +1123,11 @@ class _FakeGoodsRepository extends Fake implements GoodsRepository {
       );
     }
     if (splitAcrossPages) {
+      // One row per server page: page/size/total/totalPages stay exact.
       return PagedResult(
         items: page == 1 ? const [_goodsA] : const [_goodsB],
         page: page,
-        size: size,
+        size: 1,
         total: 2,
         totalPages: 2,
       );

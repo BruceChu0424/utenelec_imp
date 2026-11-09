@@ -25,7 +25,7 @@ from typing import Any, NoReturn
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST_BUILDER = ROOT / "setup/build-internal-test-reviewed-host-manifest.py"
 REVIEWED_BACKUP_INSTALLER_LAUNCHER_SHA256 = (
-    "2e73475040eb8f9dd225e0ccb56c03e04d850688ebe13e7c92f83974b84b73ad"
+    "afaa7c3b5d6aa32789bdf4d6cf2426d2b074252cb3d93c22bc17b242fdb5cae8"
 )
 BACKUP_INSTALLER_LAUNCHER_SOURCE_KEY = "backupInstallerLauncherSha256"
 BACKUP_INSTALLER_BUNDLE_INVENTORY_PREIMAGE_KEY = (

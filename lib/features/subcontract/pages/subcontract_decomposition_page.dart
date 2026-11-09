@@ -2962,13 +2962,14 @@ class _SubcontractDecompositionPageState
     final segments = _materialSegments(row);
     if (segments != null) return materialKindSummaryText(segments);
     return switch (row) {
-      SubcontractApplicationRow(:final task) => task.isBomMissing
-          ? '缺BOM'
-          : task.allocatedQty <= 0
-          ? '下单后领料'
-          : _drawVisible
-          ? '见领料任务'
-          : '受限',
+      SubcontractApplicationRow(:final task) =>
+        task.isBomMissing
+            ? '缺BOM'
+            : task.allocatedQty <= 0
+            ? '下单后领料'
+            : _drawVisible
+            ? '见领料任务'
+            : '受限',
       SubcontractPendingDrawRow(:final row) => materialKindSummaryText(
         subcontractMaterialKindSegments(row),
       ),

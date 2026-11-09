@@ -13,7 +13,7 @@
     },
     {
       "path": "lib/core/theme/uten_colors.dart",
-      "sha256": "32e4f983df834988cd8754caf87982d03a21b3795ff5c3f8c8458faa85d97d11"
+      "sha256": "a4444ec0f6e172e5813db268c203cbbc52041a6081a6bd849a714fa3ffc98b0d"
     },
     {
       "path": "lib/core/theme/light_theme.dart",
@@ -37,7 +37,7 @@
     },
     {
       "path": "lib/components/buttons/uten_close_button.dart",
-      "sha256": "9c15ac5e78dadfbb09bb08c4e6a8f660786863e3532431b53cefa395e8d5cdb6"
+      "sha256": "8335bb078cb3c85a50d0bf6797f9c91e02577873ee1a0c06653c431f40aa34c3"
     }
   ],
   "roleMappings": [
@@ -933,7 +933,7 @@
         {
           "symbol": "Caption.minimize.backgroundColor",
           "source": "lib/components/buttons/uten_close_button.dart",
-          "line": 134,
+          "line": 135,
           "expression": "UtenColors.warning"
         },
         {
@@ -953,7 +953,7 @@
         {
           "symbol": "Caption.close.backgroundColor",
           "source": "lib/components/buttons/uten_close_button.dart",
-          "line": 133,
+          "line": 134,
           "expression": "UtenColors.error"
         },
         {
@@ -1449,13 +1449,13 @@
         {
           "symbol": "Caption.hit.width",
           "source": "lib/components/buttons/uten_close_button.dart",
-          "line": 151,
+          "line": 152,
           "expression": "UtenWindowControlButton.nativeWidth"
         },
         {
           "symbol": "UtenWindowControlButton.nativeWidth",
           "source": "lib/components/buttons/uten_close_button.dart",
-          "line": 53,
+          "line": 54,
           "expression": "30"
         }
       ]
@@ -1469,13 +1469,13 @@
         {
           "symbol": "Caption.circle.width",
           "source": "lib/components/buttons/uten_close_button.dart",
-          "line": 197,
+          "line": 202,
           "expression": "UtenWindowControlButton.nativeCircleExtent"
         },
         {
           "symbol": "UtenWindowControlButton.nativeCircleExtent",
           "source": "lib/components/buttons/uten_close_button.dart",
-          "line": 52,
+          "line": 53,
           "expression": "22"
         }
       ]
@@ -1489,7 +1489,7 @@
         {
           "symbol": "Caption.icon.size",
           "source": "lib/components/buttons/uten_close_button.dart",
-          "line": 210,
+          "line": 215,
           "expression": "14"
         }
       ]

@@ -430,25 +430,25 @@ class SubcontractStepDrawEndToEndTest extends SubcontractFullChainTestContext {
         otherIn(w, w.warehouseId(), material, null, "10000", "1");
 
         var task = taskRow(order);
-        var physical = task.singleMaterial();
-        assertNotNull(physical, "单种物料在列表提供实物摘要");
-        assertEquals("11000", physical.getRequiredQtyExact());
-        assertEquals("10000", physical.getBaseRequiredQtyExact());
-        assertEquals("1000", physical.getLossRequiredQtyExact());
-        assertEquals("10000", physical.getDrawableQtyExact());
-        assertEquals("1000", physical.getShortQtyExact());
+        // 2026-11-09: 列表不再给单种物料的实物合计(多物料时一个数说不清), 改为逐种分桶;
+        // 实物数量看任务详情物料表(每行一种物料)。
+        assertEquals(1, task.materialKindCount(), "物料种数");
+        assertEquals(1, task.drawableKindCount(), "唯一物料仓库有货 → 可领 1 种");
+        assertEquals(0, task.shortKindCount(), "可领优先于缺口: 仅差损耗额度的物料仍落「可领」桶");
+        assertEquals(0, task.sentFullKindCount() + task.pendingKindCount() + task.closedKindCount());
 
         var detail = drawQueries.materials(item);
         qty("10000", detail.task().orderQty(), "订货目标");
         qty("9090.909", detail.task().drawableQty(), "按含损耗备料上限折算的可领套数");
         qty("10000", detail.baseMaterialCoverageQty(), "冻结基础单耗覆盖原成品目标");
+        assertTrue(detail.allowedActions().contains("DRAW"), "有可领物料且在写范围内 → 可按物料领料");
         var line = detail.materials().getFirst();
         qty("11000", line.requiredQty(), "损耗备料上限");
         assertEquals("10000", line.getBaseRequiredQtyExact());
         assertEquals("1000", line.getLossRequiredQtyExact());
         qty("1000", line.shortQty(), "仅差损耗备料额度");
         qty("10000", line.drawableQty(), "本次可领恰好是实际库存");
-        assertEquals(line.unitName(), physical.unitName(), "列表沿用物料自身单位");
+        assertEquals("DRAWABLE", line.state(), "本次可领 > 0 → 可领(下一步动作优先于缺口)");
         var progress = orderProgress.progress(order).items().getFirst();
         qty("10000", progress.materials().getFirst().drawableQty(),
                 "委外订货进度与任务详情的实物领料量一致");
@@ -703,12 +703,14 @@ class SubcontractStepDrawEndToEndTest extends SubcontractFullChainTestContext {
         DrawTaskRow row = taskRow(orderId);
         assertRow(row, "0", "0", "0", "100", "WAITING_PLANNING");
         assertEquals(2, row.materialKindCount(), "物料种数");
-        assertNull(row.singleMaterial(), "多种物料不合计实物数量");
         assertEquals(0, row.readyKindCount(), "已备种数");
-        assertEquals(2, row.shortKindCount(), "还缺种数");
+        assertEquals(2, row.shortKindCount(), "两种都无货可领 → 缺 2 种");
+        assertEquals(0, row.drawableKindCount() + row.pendingKindCount() + row.sentFullKindCount(),
+                "无货、无待发、无已发");
         assertEquals(1, row.unplannedShortKindCount(), "只有 A 没有在途供应");
         assertFalse(row.canDraw(), "没有可领就不能勾选领料");
         DrawTaskMaterials detail = drawQueries.materials(item);
+        assertFalse(detail.allowedActions().contains("DRAW"), "没有任何物料可领 → 不能按物料领料");
         DrawTaskMaterial ma = material(detail, a);
         DrawTaskMaterial mb = material(detail, b);
         assertEquals("SHORT", ma.state());
@@ -733,23 +735,34 @@ class SubcontractStepDrawEndToEndTest extends SubcontractFullChainTestContext {
         assertRow(row, "0", "0", "0", "100", "WAITING_MATERIAL");
         assertEquals(1, row.readyKindCount(), "A 已备");
         assertEquals(0, row.unplannedShortKindCount(), "B 有在途, 不再等计划安排");
+        // 2026-11-09 按物料领料: 整套还配不出(状态仍按整套「等待物料」), 但 A 已到可以先领。
+        assertEquals(1, row.drawableKindCount(), "A 可领 1 种");
+        assertEquals(1, row.shortKindCount(), "B 缺 1 种");
+        assertFalse(row.canDraw(), "批量领料仍按整套: 配不出一套不能勾选");
+        detail = drawQueries.materials(item);
+        assertTrue(detail.allowedActions().contains("DRAW"), "A 可领 → 可从「物料」弹窗按物料领料");
+        qty("100", material(detail, a).drawableQty(), "A 逐种可领上限 = MIN(可用 100, 需求 100)");
+        assertEquals("DRAWABLE", material(detail, a).state());
+        assertEquals("SHORT", material(detail, b).state());
 
         // ④ B 到货一半 80(仓 2): 来料质检合格 → 仓库确认入库 → 按短板可领 40 套(部分可领)。
         receivePurchase(w, w2, b, purchase.orderItemId(), "80", tag + "-b1");
         row = taskRow(orderId);
         assertRow(row, "0", "0", "40", "60", "DRAWABLE_PARTIAL");
         assertTrue(row.canDraw(), "有可领且有领料权限才能勾选");
+        assertEquals(2, row.drawableKindCount(), "两种物料都有货可领");
+        assertEquals(0, row.shortKindCount(), "可领优先于缺口: B 还差 120 但先落「可领」");
         detail = drawQueries.materials(item);
         ma = material(detail, a);
         qty("100", ma.availableQty(), "A 仓库可用");
-        qty("40", ma.drawableQty(), "A 本次可领 = f(40,1)");
+        qty("100", ma.drawableQty(), "A 逐种可领上限 = MIN(可用 100, 需求 100), 不按整套折成 40");
         qty("0", ma.shortQty(), "A 还缺");
         assertEquals("DRAWABLE", ma.state());
         mb = material(detail, b);
         qty("80", mb.availableQty(), "B 仓库可用");
-        qty("80", mb.drawableQty(), "B 本次可领 = f(40,2)");
+        qty("80", mb.drawableQty(), "B 逐种可领上限 = MIN(可用 80, 需求 200)");
         qty("120", mb.shortQty(), "B 还缺");
-        assertEquals("SHORT", mb.state());
+        assertEquals("DRAWABLE", mb.state(), "B 有货可领, 下一步动作优先于缺口");
         assertTrue(drawQueries.countDrawable() >= 1, "「领料」红数含本任务");
         drainOutboxFor(mine);
         assertDrawAvailableCard(item, w.superAdminUserId());
@@ -1002,6 +1015,91 @@ class SubcontractStepDrawEndToEndTest extends SubcontractFullChainTestContext {
         assertEquals("DRAW", itemProgress.materialMode());
         qty("100", itemProgress.drawnQty(), "进度: 已领");
         qty("100", itemProgress.receivedQty(), "进度: 已回厂");
+    }
+
+    // =====================================================================================
+    // 2026-11-09 任务中心「物料」列 → 弹窗按物料领料(整套没齐也能先领已到的物料, 分批)
+    // =====================================================================================
+
+    @Test
+    void materialDialogDrawsArrivedMaterialInBatchesBeforeTheKitIsComplete() {
+        String tag = "scstep-material-path";
+        var w = fixture.seedWorld(tag);
+        grantAuthorities(w.superAdminUserId(),
+                "subcontract_order:view", "subcontract_order:draw", "subcontract:view:all");
+        fixture.loginAs(w.superAdminUserId());
+        UUID p = goods(w, tag, "P", "委外");
+        UUID a = goods(w, tag, "A", "采购");
+        UUID b = goods(w, tag, "B", "采购");
+        fixture.insertBom(p, a, "1");
+        fixture.insertBom(p, b, "2");
+        UUID w1 = w.warehouseId();
+        UUID orderId = subcontractOrder(w, p, "100", BusinessTime.today().plusDays(10), null);
+        approveSubcontract(w, orderId);
+        UUID item = itemOf(orderId);
+        // A 到货 60, B 一件没到: 一套也配不出。
+        otherIn(w, w1, a, null, "60", "10");
+
+        // 列表逐种分桶: 可领 1 种(A)、缺 1 种(B); 批量领料仍按整套, 不能勾选。
+        DrawTaskRow row = taskRow(orderId);
+        assertEquals(2, row.materialKindCount());
+        assertEquals(1, row.drawableKindCount(), "A 可领");
+        assertEquals(1, row.shortKindCount(), "B 缺");
+        assertEquals(0, row.sentFullKindCount() + row.pendingKindCount() + row.closedKindCount());
+        assertFalse(row.canDraw(), "整套配不出, 批量领料不可勾选");
+
+        // 任务详情: A 逐种可领上限 60, 给出 DRAW 动作(物料弹窗的勾选门)。
+        DrawTaskMaterials detail = drawQueries.materials(item);
+        assertTrue(detail.allowedActions().contains("DRAW"), "有物料可领 → 可按物料领料");
+        DrawTaskMaterial ma = material(detail, a);
+        qty("60", ma.drawableQty(), "A 逐种可领 = MIN(可用 60, 需求 100)");
+        assertEquals("DRAWABLE", ma.state());
+        assertEquals("SHORT", material(detail, b).state());
+
+        // 按物料预览: 只选 A, 默认量 = A 的可领上限 60; 没选中的 B 不分配, 套数进度仍 0。
+        DrawPreview preview = drawQueries.preview(new DrawPreviewRequest(List.of(
+                new DrawItemRequest(item, null, null, null, null, List.of(ma.planItemId())))));
+        DrawPreviewLine aLine = preview.lines().stream()
+                .filter(line -> a.equals(line.goodsId())).findFirst().orElseThrow();
+        assertEquals(w1, aLine.warehouseId());
+        qty("60", aLine.qty(), "A 默认 = 逐种可领上限");
+        assertTrue(preview.lines().stream().filter(line -> b.equals(line.goodsId()))
+                .allMatch(line -> line.qty().signum() == 0), "未选中的 B 不分配, 现状 " + preview.lines());
+        qty("0", preview.tasks().getFirst().qty(), "B 一件没领, 套数进度仍为 0");
+        ApiException stale = assertThrows(ApiException.class, () -> drawQueries.preview(new DrawPreviewRequest(
+                List.of(new DrawItemRequest(item, null, null, null, null, List.of(UUID.randomUUID()))))));
+        assertEquals(ErrorCode.CONFLICT, stale.getCode(), "选中的物料已不属于本任务 → 回任务中心重选");
+        ApiException direct = assertThrows(ApiException.class, () -> drawCommands.submit(new DrawSubmitRequest(
+                List.of(new DrawItemRequest(item, null, null, null, null, List.of(ma.planItemId()))),
+                "scstep-material-direct-" + item)));
+        assertEquals(ErrorCode.VALIDATION_FAILED, direct.getCode(), "提交必须逐行填写数量");
+
+        // 分批第一批: 只领 A 40(少于默认 60)。A 还剩 20 可领(可领优先于待发), B 仍缺。
+        DrawSubmitResult first = drawCommands.submit(new DrawSubmitRequest(List.of(new DrawItemRequest(item, null,
+                null, null, List.of(new DrawLineRequest(ma.planItemId(), w1, new BigDecimal("40"))))),
+                "scstep-material-1-" + item));
+        assertEquals(1, first.documentCount());
+        assertDraftLine(first.issueIds().getFirst(), a, "40", "40");
+        row = taskRow(orderId);
+        assertEquals("DRAW_SUBMITTED", row.status());
+        assertEquals(1, row.drawableKindCount(), "A 还剩 20 可领");
+        assertEquals(1, row.shortKindCount(), "B 缺");
+        detail = drawQueries.materials(item);
+        qty("20", material(detail, a).drawableQty(), "A 剩余可领 = MIN(可用 20, 需求 100 − 待发 40)");
+        qty("40", material(detail, a).pendingQty(), "A 待仓库发 40");
+
+        // 分批第二批: 领完 A 剩下的 20 → A 只剩待仓库发, 落「待发」桶。
+        DrawSubmitResult second = drawCommands.submit(new DrawSubmitRequest(List.of(new DrawItemRequest(item, null,
+                null, null, List.of(new DrawLineRequest(ma.planItemId(), w1, new BigDecimal("20"))))),
+                "scstep-material-2-" + item));
+        assertEquals(1, second.documentCount());
+        row = taskRow(orderId);
+        assertEquals(0, row.drawableKindCount(), "A 已没有可领");
+        assertEquals(1, row.pendingKindCount(), "A 待仓库发");
+        assertEquals(1, row.shortKindCount(), "B 缺");
+        detail = drawQueries.materials(item);
+        assertEquals("PENDING", material(detail, a).state());
+        assertFalse(detail.allowedActions().contains("DRAW"), "没有物料可领 → 物料弹窗不能再勾选");
     }
 
     // =====================================================================================

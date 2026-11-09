@@ -99,6 +99,10 @@ public class SubcontractDrawCommandService {
             throw validation("领料提交的操作编号缺失或不正确，请重新打开领料页后再提交");
         }
         List<DrawItemRequest> items = SubcontractDrawQueryService.normalizeItems(request.items());
+        if (items.stream().anyMatch(item -> item.planItemIds() != null)) {
+            // 按物料领料只决定预览默认量; 提交必须由领料页逐行给出实际数量(lines)。
+            throw validation("提交领料请在领料页逐行填写领料数量后再提交");
+        }
         requireDrawAuthority();
         tx.bind();
         UUID actor = currentUser.requireId();

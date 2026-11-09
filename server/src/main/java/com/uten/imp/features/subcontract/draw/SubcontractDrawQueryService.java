@@ -16,7 +16,6 @@ import com.uten.imp.features.subcontract.draw.SubcontractDrawContracts.DrawPrevi
 import com.uten.imp.features.subcontract.draw.SubcontractDrawContracts.DrawPreviewLine;
 import com.uten.imp.features.subcontract.draw.SubcontractDrawContracts.DrawPreviewRequest;
 import com.uten.imp.features.subcontract.draw.SubcontractDrawContracts.DrawPreviewTask;
-import com.uten.imp.features.subcontract.draw.SubcontractDrawContracts.DrawSingleMaterial;
 import com.uten.imp.features.subcontract.draw.SubcontractDrawContracts.DrawSupplySource;
 import com.uten.imp.features.subcontract.draw.SubcontractDrawContracts.DrawTaskMaterial;
 import com.uten.imp.features.subcontract.draw.SubcontractDrawContracts.DrawTaskMaterials;
@@ -139,15 +138,8 @@ public class SubcontractDrawQueryService {
                 )
                 SELECT counts.drawable_rows, counts.submitted_rows, counts.planning_rows,
                        counts.material_rows, counts.all_rows, counts.filtered_rows,
-                       {ROW_SELECT}, facet_values.buckets, material.plan_item_id, material_unit.name,
-                       material.needed_qty, material.sent_qty, material.pending_qty,
-                       material.available_qty, material.line_open, physical_plan.base_bom_unit_qty
+                       {ROW_SELECT}, facet_values.buckets
                 FROM counts CROSS JOIN facet_values LEFT JOIN page ON TRUE
-                LEFT JOIN LATERAL fn_subcontract_draw_facts(
-                    CASE WHEN page.material_kind_count = 1 THEN page.order_item_id END
-                ) material ON TRUE
-                LEFT JOIN units material_unit ON material_unit.id = material.unit_id
-                LEFT JOIN subcontract_material_plan_items physical_plan ON physical_plan.id = material.plan_item_id
                 ORDER BY page.search_rank, {OUTER_HEADER_ORDER}
                 """.formatted(facetValues))
                 .replace("{SEARCH_RANK}", rank).replace("{STATUS_FILTER}", statusFilter)
@@ -162,12 +154,13 @@ public class SubcontractDrawQueryService {
         List<Object[]> rows = NativeQueryResults.objectArrayRows(query);
         Object[] head = rows.isEmpty() ? new Object[7] : rows.getFirst();
         int rowOffset = 6;
-        int bucketsIndex = rowOffset + TASK_ROW_LENGTH;
+        List<Object[]> pageRows = rows.stream().filter(row -> row[rowOffset] != null).toList();
+        // 「物料」列的逐种分桶只算本页行(一次批量读事实), 与任务详情同一个判定函数。
+        Map<UUID, MaterialKinds> kinds = materialKinds(pageRows.stream().map(row -> uuid(row[rowOffset])).toList());
         List<DrawTaskRow> items = new ArrayList<>();
-        for (Object[] row : rows) {
-            if (row[rowOffset] != null) {
-                items.add(row(row, rowOffset, canSubmit, singleMaterial(row, bucketsIndex + 1, rowOffset)));
-            }
+        for (Object[] row : pageRows) {
+            items.add(row(row, rowOffset, canSubmit,
+                    kinds.getOrDefault(uuid(row[rowOffset]), MaterialKinds.NONE)));
         }
         long filtered = number(head[5]);
         Map<String, Long> counts = new LinkedHashMap<>();
@@ -179,6 +172,7 @@ public class SubcontractDrawQueryService {
         int totalPages = (int) Math.ceil((double) filtered / pageSize);
         Map<String, List<FacetBucket>> facets = new LinkedHashMap<>();
         Map<String, Long> nullCounts = new LinkedHashMap<>();
+        int bucketsIndex = rowOffset + TASK_ROW_LENGTH;
         if (head.length > bucketsIndex && head[bucketsIndex] != null) {
             try {
                 for (var bucket : FACET_JSON.readTree(head[bucketsIndex].toString())) {
@@ -282,57 +276,47 @@ public class SubcontractDrawQueryService {
         UUID makerId = uuid(taskRow[ROW_MAKER]);
         boolean open = isOpen(orderItemId);
         boolean canOperate = canOperate(makerId);
-        DrawTaskRow task = row(taskRow, 0, access.hasAuthority(DRAW_AUTHORITY), null);
-        if (!open) {
-            // 已结清/已结束领料/计划已关闭: 不再有「可领」, 余量全部计入还缺, 恒等式不变。
-            task = withoutDrawable(task);
-        }
-        BigDecimal complete = task.drawnQty().add(task.pendingQty());
-        BigDecimal targetSets = complete.add(task.drawableQty());
+        BigDecimal materialShare = decimal(taskRow[ROW_MATERIAL_QTY]);
 
         List<DrawTaskMaterial> materials = new ArrayList<>();
         BigDecimal baseCoverage = null;
         boolean anyOpenUnsent = false;
+        List<String> states = new ArrayList<>();
         for (FactLine fact : facts(List.of(orderItemId)).getOrDefault(orderItemId, List.of())) {
             BigDecimal covered = fact.sentQty().add(fact.pendingQty());
             BigDecimal supported = open ? fact.baseReachableQty() : fact.baseSuppliedQty();
-            baseCoverage = baseCoverage == null ? task.materialQty().min(supported) : baseCoverage.min(supported);
+            baseCoverage = baseCoverage == null ? materialShare.min(supported) : baseCoverage.min(supported);
             // 需求 = 我方需发量 LEAST(计划量, f(Qm))(§三.4a): 财务批准的委外商自带料那部分不用我方物料。
-            BigDecimal shortQty = fact.neededQty().subtract(covered).subtract(fact.availableQty())
-                    .max(BigDecimal.ZERO);
-            BigDecimal drawable = BigDecimal.ZERO;
-            if (open && fact.lineOpen() && task.drawableQty().signum() > 0) {
-                drawable = task.materialKindCount() == 1
-                        ? SubcontractDrawAllocator.materialMaximum(fact.neededQty(), covered, fact.availableQty())
-                        : SubcontractDrawAllocator.drawMaterialQty(targetSets, fact.perUnitQty(), covered,
-                                fact.availableQty(), fact.neededQty(), true);
-            }
-            String state;
-            if (!fact.lineOpen()) {
-                state = "CLOSED";
-            } else if (fact.sentQty().compareTo(fact.neededQty()) >= 0) {
-                state = "SENT_FULL";
-            } else if (fact.pendingQty().signum() > 0) {
-                state = "PENDING";
-            } else if (shortQty.signum() > 0) {
-                state = "SHORT";
-            } else {
-                state = "DRAWABLE";
-            }
+            BigDecimal shortQty = shortQty(fact.neededQty(), covered, fact.availableQty());
+            BigDecimal drawable = materialDrawableQty(open && fact.lineOpen(), fact.neededQty(), covered,
+                    fact.availableQty());
+            String state = materialState(fact.lineOpen(), fact.neededQty(), fact.sentQty(), fact.pendingQty(),
+                    drawable, shortQty);
+            states.add(state);
             if (open && fact.lineOpen() && fact.sentQty().compareTo(fact.neededQty()) < 0) {
                 anyOpenUnsent = true;
             }
             materials.add(new DrawTaskMaterial(fact.planItemId(), fact.lineNo(), fact.goodsId(),
                     fact.goodsCode(), fact.goodsName(), fact.colorId(), fact.colorName(), fact.unitId(),
                     fact.unitName(), fact.perUnitQty(), fact.neededQty(),
-                    SubcontractDrawAllocator.materialBaseQuantity(fact.neededQty(), task.materialQty(), fact.basePerUnitQty()),
+                    SubcontractDrawAllocator.materialBaseQuantity(fact.neededQty(), materialShare, fact.basePerUnitQty()),
                     fact.sentQty(), fact.pendingQty(),
                     fact.availableQty(), drawable, shortQty, state,
                     shortQty.signum() > 0 && fact.lineOpen()
                             ? supplySources(fact.goodsId(), fact.colorId()) : List.of()));
         }
+        MaterialKinds kinds = MaterialKinds.of(states);
+        DrawTaskRow task = row(taskRow, 0, access.hasAuthority(DRAW_AUTHORITY), kinds);
+        if (!open) {
+            // 已结清/已结束领料/计划已关闭: 不再有「可领」, 余量全部计入还缺, 恒等式不变。
+            task = withoutDrawable(task);
+        }
         List<DrawPendingDraft> drafts = pendingDrafts(orderItemId);
         List<String> actions = new ArrayList<>();
+        // 按物料领料(任务中心「物料」弹窗→去领料): 任务开放、至少一种物料本次可领、账号在写范围内。
+        if (canOperate && open && kinds.drawable() > 0) {
+            actions.add("DRAW");
+        }
         // 撤回只对仓库还没改过的草稿有效(改过的要请仓库在拣货页退回); 全部改过就不给, 免得点了必然 409。
         if (canOperate && drafts.stream().anyMatch(draft -> !draft.edited())) {
             actions.add("WITHDRAW");
@@ -447,6 +431,18 @@ public class SubcontractDrawQueryService {
                 throw new ApiException(ErrorCode.CONFLICT,
                         "委外订货单 " + row.orderBillNo() + " 第 " + row.lineNo() + " 行的领料物料已变化，请返回任务中心重新选择");
             }
+            if (item.planItemIds() != null) {
+                // 按物料领料(2026-11-09): 选中的物料必须仍是本任务自己的开放计划行。
+                Set<UUID> openPlanItems = new java.util.HashSet<>();
+                lines.forEach(line -> openPlanItems.add(line.planItemId()));
+                if (!openPlanItems.containsAll(item.planItemIds())) {
+                    throw new ApiException(ErrorCode.CONFLICT, "委外订货单 " + row.orderBillNo() + " 第 "
+                            + row.lineNo() + " 行所选物料已领满或已结束领料，请返回任务中心重新选择");
+                }
+                tasks.add(new SubcontractDrawAllocator.Task(row.orderItemId(), row.orderId(), row.materialQty(),
+                        null, null, lines, null, Set.copyOf(item.planItemIds())));
+                continue;
+            }
             if (item.lines() != null) {
                 // 按行领料(2026-11-09): 行必须落在本任务自己的开放计划行与其有量的仓上。
                 List<SubcontractDrawAllocator.DirectedTake> directed = new ArrayList<>();
@@ -547,7 +543,19 @@ public class SubcontractDrawQueryService {
             if (item == null || item.orderItemId() == null) {
                 throw new ApiException(ErrorCode.VALIDATION_FAILED, "领料任务信息不正确，请刷新后重新选择");
             }
-            if (item.lines() != null) {
+            if (item.planItemIds() != null) {
+                // 按物料领料(2026-11-09, 只用于预览默认量): 至少一种、不重复, 与其它数量形态互斥。
+                if (item.qty() != null || item.materialQty() != null || item.materialPlanItemId() != null
+                        || item.lines() != null) {
+                    throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                            "按物料领料时不能同时指定领料数量，请刷新后重新选择");
+                }
+                if (item.planItemIds().isEmpty() || item.planItemIds().size() > MAX_PAGE_SIZE
+                        || item.planItemIds().stream().anyMatch(Objects::isNull)
+                        || Set.copyOf(item.planItemIds()).size() != item.planItemIds().size()) {
+                    throw new ApiException(ErrorCode.VALIDATION_FAILED, "请选择要领的物料，同一物料只能选一次");
+                }
+            } else if (item.lines() != null) {
                 // 按行领料(2026-11-09): 行内 qty 大于 0 且最多 4 位小数, (计划行, 仓) 不重复;
                 // 行集合可为空(该任务本次不领, 仍参与预览出候选行)。
                 if (item.qty() != null || item.materialQty() != null || item.materialPlanItemId() != null) {
@@ -616,9 +624,10 @@ public class SubcontractDrawQueryService {
                 task.colorId(), task.colorName(), task.unitId(), task.unitName(), task.orderQty(),
                 task.drawnQty(), task.pendingQty(), BigDecimal.ZERO, shortQty, task.materialKindCount(),
                 task.readyKindCount(), task.shortKindCount(), task.unplannedShortKindCount(),
+                task.closedKindCount(), task.sentFullKindCount(), task.drawableKindCount(), task.pendingKindCount(),
                 task.pendingQty().signum() > 0 ? "DRAW_SUBMITTED" : "WAITING_MATERIAL",
                 task.deliverDate(), false, task.materialQty(), task.planNo(), task.applicationItemIds(),
-                task.differenceQty(), null);
+                task.differenceQty());
     }
 
     /** 选中的开放任务(范围内), 带行级可领/已领/已覆盖套数。 */
@@ -812,39 +821,113 @@ public class SubcontractDrawQueryService {
     }
 
     private static final int ROW_MAKER = 23;
+    private static final int ROW_MATERIAL_QTY = 24;
     private static final int TASK_ROW_LENGTH = 28;
 
-    private static DrawSingleMaterial singleMaterial(Object[] row, int index, int taskIndex) {
-        if (row[index] == null) return null;
-        BigDecimal needed = decimal(row[index + 2]);
-        BigDecimal pending = decimal(row[index + 4]);
-        BigDecimal covered = decimal(row[index + 3]).add(pending);
-        BigDecimal available = decimal(row[index + 5]);
-        BigDecimal drawable = Boolean.TRUE.equals(row[index + 6]) && decimal(row[taskIndex + 16]).signum() > 0
-                ? SubcontractDrawAllocator.materialMaximum(needed, covered, available)
-                : BigDecimal.ZERO;
-        BigDecimal shortQty = needed.subtract(covered).subtract(available).max(BigDecimal.ZERO);
-        BigDecimal baseRequired = SubcontractDrawAllocator.materialBaseQuantity(needed, decimal(row[taskIndex + 24]),
-                row[index + 7] == null ? null : decimal(row[index + 7]));
-        return new DrawSingleMaterial(str(row[index + 1]), needed, baseRequired, pending, drawable, shortQty);
+    /**
+     * 一种物料(冻结计划行)本次可领的上限(物料基本单位), 2026-11-09 按物料领料:
+     * MIN(仓库可用, 需求 − 已发 − 待发), 逐种独立, 不按整套折算——其它物料还缺不影响本物料先领;
+     * 任务不再开放或本行已结束领料时为 0。与按行领料提交的单行上限是同一个函数。
+     */
+    public static BigDecimal materialDrawableQty(boolean open, BigDecimal needed, BigDecimal covered,
+                                                 BigDecimal available) {
+        return open ? SubcontractDrawAllocator.materialMaximum(needed, covered, available) : BigDecimal.ZERO;
     }
 
-    private DrawTaskRow row(Object[] r, int o, boolean canSubmit, DrawSingleMaterial singleMaterial) {
+    /** 还缺 = MAX(0, 需求 − 已发 − 待发 − 仓库可用)(ADR-143 §三.4)。 */
+    public static BigDecimal shortQty(BigDecimal needed, BigDecimal covered, BigDecimal available) {
+        return needed.subtract(covered).subtract(available).max(BigDecimal.ZERO);
+    }
+
+    /**
+     * 物料状态的唯一判定(任务详情物料表、任务中心「物料」列分桶、委外订货单进度共用), 只取一个,
+     * 「下一步动作优先于缺口」与车间逐种物料同口径: 已结束领料 &gt; 已发齐 &gt; 本次可领 &gt;
+     * 待仓库发 &gt; 还缺 &gt; 已备(不缺但本任务此刻不能领, 如已结清)。
+     */
+    public static String materialState(boolean lineOpen, BigDecimal needed, BigDecimal sent,
+                                       BigDecimal pending, BigDecimal drawable, BigDecimal shortQty) {
+        if (!lineOpen) return "CLOSED";
+        if (sent.compareTo(needed) >= 0) return "SENT_FULL";
+        if (drawable.signum() > 0) return "DRAWABLE";
+        if (pending.signum() > 0) return "PENDING";
+        if (shortQty.signum() > 0) return "SHORT";
+        return "READY";
+    }
+
+    /** 一条委外任务的逐种分桶(每种物料只落一个桶, 由 {@link #materialState} 判定)。 */
+    record MaterialKinds(int closed, int sentFull, int drawable, int pending, int shortage) {
+        static final MaterialKinds NONE = new MaterialKinds(0, 0, 0, 0, 0);
+
+        static MaterialKinds of(List<String> states) {
+            int closed = 0;
+            int sentFull = 0;
+            int drawable = 0;
+            int pending = 0;
+            int shortage = 0;
+            for (String state : states) {
+                switch (state) {
+                    case "CLOSED" -> closed++;
+                    case "SENT_FULL" -> sentFull++;
+                    case "DRAWABLE" -> drawable++;
+                    case "PENDING" -> pending++;
+                    case "SHORT" -> shortage++;
+                    default -> { }
+                }
+            }
+            return new MaterialKinds(closed, sentFull, drawable, pending, shortage);
+        }
+    }
+
+    /**
+     * 列表行的逐种分桶: 一次读出本页所有开放任务的物料事实(列表行都满足 {@code OPEN_ITEM_PREDICATE},
+     * 任务开放), 逐行套 {@link #materialState}。只读、不加锁, 与任务详情同一组事实与同一判定。
+     */
+    private Map<UUID, MaterialKinds> materialKinds(List<UUID> ids) {
+        if (ids.isEmpty()) {
+            return Map.of();
+        }
+        Query query = em.createNativeQuery("""
+                SELECT oi.id, facts.line_open, facts.needed_qty, facts.sent_qty, facts.pending_qty,
+                       facts.available_qty
+                FROM subcontract_order_items oi
+                CROSS JOIN LATERAL fn_subcontract_draw_facts(oi.id) facts
+                WHERE oi.id IN (:kindItemIds)
+                """);
+        query.setParameter("kindItemIds", ids);
+        Map<UUID, List<String>> states = new HashMap<>();
+        for (Object[] row : NativeQueryResults.objectArrayRows(query)) {
+            boolean lineOpen = Boolean.TRUE.equals(row[1]);
+            BigDecimal needed = decimal(row[2]);
+            BigDecimal sent = decimal(row[3]);
+            BigDecimal pending = decimal(row[4]);
+            BigDecimal available = decimal(row[5]);
+            BigDecimal covered = sent.add(pending);
+            states.computeIfAbsent(uuid(row[0]), ignored -> new ArrayList<>()).add(materialState(lineOpen, needed,
+                    sent, pending, materialDrawableQty(lineOpen, needed, covered, available),
+                    shortQty(needed, covered, available)));
+        }
+        Map<UUID, MaterialKinds> kinds = new HashMap<>();
+        states.forEach((id, lineStates) -> kinds.put(id, MaterialKinds.of(lineStates)));
+        return kinds;
+    }
+
+    private DrawTaskRow row(Object[] r, int o, boolean canSubmit, MaterialKinds kinds) {
         BigDecimal drawable = decimal(r[o + 16]);
-        int kinds = (int) number(r[o + 18]);
+        int kindCount = (int) number(r[o + 18]);
         int ready = (int) number(r[o + 19]);
         UUID makerId = uuid(r[o + 23]);
         return new DrawTaskRow(uuid(r[o]), uuid(r[o + 1]), str(r[o + 2]), integer(r[o + 3]), uuid(r[o + 4]),
                 str(r[o + 5]), uuid(r[o + 6]), str(r[o + 7]), str(r[o + 8]), uuid(r[o + 9]), str(r[o + 10]),
                 uuid(r[o + 11]), str(r[o + 12]), decimal(r[o + 13]), decimal(r[o + 14]), decimal(r[o + 15]),
-                drawable, decimal(r[o + 17]), kinds, ready, Math.max(kinds - ready, 0),
-                (int) number(r[o + 20]), str(r[o + 21]), localDate(r[o + 22]),
+                drawable, decimal(r[o + 17]), kindCount, ready, kinds.shortage(),
+                (int) number(r[o + 20]), kinds.closed(), kinds.sentFull(), kinds.drawable(), kinds.pending(),
+                str(r[o + 21]), localDate(r[o + 22]),
                 canSubmit && makerId != null && drawable.signum() > 0, decimal(r[o + 24]), str(r[o + 25]),
                 access.hasAuthority("subcontract_application:view")
                         ? sourceIds(r[o + 26])
                         : List.of(),
                 access.hasAuthority("subcontract_order:view") && r[o + 27] != null
-                        ? decimal(r[o + 27]) : null, singleMaterial);
+                        ? decimal(r[o + 27]) : null);
     }
 
     private static List<UUID> sourceIds(Object value) {

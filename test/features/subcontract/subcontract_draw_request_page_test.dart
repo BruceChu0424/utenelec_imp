@@ -137,6 +137,7 @@ Future<List<Object?>> _pump(
   WidgetTester tester,
   FakeSubcontractDrawGateway gateway, {
   List<String> ids = const ['item-1', 'item-2'],
+  List<String>? planItemIds,
   Size size = const Size(1600, 1000),
 }) async {
   tester.view.physicalSize = size;
@@ -156,7 +157,10 @@ Future<List<Object?>> _pump(
             builder: (context) => TextButton(
               onPressed: () async => results.add(
                 await context.push<bool>(
-                  RouteName.operationsSubcontractDrawRequestFor(ids),
+                  RouteName.operationsSubcontractDrawRequestFor(
+                    ids,
+                    planItemIds: planItemIds,
+                  ),
                 ),
               ),
               child: const Text('打开领料页'),
@@ -168,6 +172,8 @@ Future<List<Object?>> _pump(
         path: RouteName.operationsSubcontractDrawRequest,
         builder: (_, state) => SubcontractDrawRequestPage(
           orderItemIds: state.uri.queryParameters['orderItemIds']!.split(','),
+          planItemIds:
+              state.uri.queryParameters['planItemIds']?.split(',') ?? const [],
           repository: gateway,
         ),
       ),
@@ -520,5 +526,87 @@ void main() {
     );
     expect(find.text('返回委外任务中心'), findsOneWidget);
     expect(find.text('重新加载'), findsNothing);
+  });
+
+  // 2026-11-09 任务中心「物料」列 → 物料弹窗选中物料 → 领料页只带所选物料。
+  testWidgets(
+    'material dialog selection previews per material and lists only chosen rows',
+    (tester) async {
+      final gateway = FakeSubcontractDrawGateway();
+      gateway.onPreview = (items) async {
+        final item = items.single;
+        final lines = item.lines;
+        // 按物料预览默认量 = 物料B 自己的可领上限 30；物料A 不在所选里，服务端仍回候选行(0)。
+        final bQty = lines == null
+            ? (item.planItemIds?.contains('plan-b') == true ? 30 : 0)
+            : lines
+                  .where((line) => line.planItemId == 'plan-b')
+                  .fold<num>(0, (sum, line) => sum + num.parse('${line.qty}'));
+        return SubcontractDrawPreview.fromJson(<String, dynamic>{
+          'tasks': [previewTaskJson('item-1', batchDrawableQty: 0, qty: 0)],
+          'lines': [
+            previewLineJson('item-1', 'plan-a', qty: 0),
+            previewLineJson(
+              'item-1',
+              'plan-b',
+              goodsId: 'material-b',
+              goodsName: '物料B',
+              qty: bQty,
+              warehouseAvailableQty: 30,
+            ),
+          ],
+          'documentCount': bQty > 0 ? 1 : 0,
+        });
+      };
+      await _pump(tester, gateway, ids: const ['item-1'], planItemIds: ['plan-b']);
+
+      final first = gateway.previews.first.single;
+      expect(first.planItemIds, ['plan-b'], reason: '首次预览按所选物料取默认量');
+      expect(first.lines, isNull);
+      expect(_quantity(_rowB1), findsOneWidget);
+      expect(_quantity(_rowA1), findsNothing, reason: '没选中的物料A 不显示');
+      expect(tester.widget<UtenInput>(_quantity(_rowB1)).controller!.text, '30');
+
+      // 分批：本次只领 10，核对库存后提交——只提交物料B 这一行。
+      await tester.enterText(_quantity(_rowB1), '10');
+      await tester.pump();
+      await tester.tap(find.byKey(_checkKey));
+      await tester.pumpAndSettle();
+      expect(gateway.previews.last.single.planItemIds, isNull);
+      expect(
+        [
+          for (final line in gateway.previews.last.single.lines!)
+            '${line.planItemId}@${line.warehouseId}=${line.qty}',
+        ],
+        ['plan-b@wh-1=10'],
+      );
+      expect(_quantity(_rowA1), findsNothing, reason: '核对后仍只显示所选物料');
+      await _tapSubmitAndConfirm(tester);
+      expect(gateway.submits, hasLength(1));
+      final submitted = gateway.submits.single.$1.single;
+      expect(submitted.planItemIds, isNull, reason: '提交只用按行契约');
+      expect(
+        [
+          for (final line in submitted.lines!)
+            '${line.planItemId}@${line.warehouseId}=${line.qty}',
+        ],
+        ['plan-b@wh-1=10'],
+      );
+    },
+  );
+
+  testWidgets('material selection is ignored for a multi-task batch', (
+    tester,
+  ) async {
+    final (gateway, _) = _gateway();
+    await _pump(tester, gateway, planItemIds: ['plan-b']);
+
+    expect(
+      gateway.previews.first.every((item) => item.planItemIds == null),
+      isTrue,
+      reason: '批量领料按任务整套，不带单任务的物料选择',
+    );
+    expect(_quantity(_rowA1), findsOneWidget);
+    expect(_quantity(_rowB1), findsOneWidget);
   });
 }

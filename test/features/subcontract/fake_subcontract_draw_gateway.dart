@@ -175,10 +175,14 @@ SubcontractDrawTaskRow drawRow(
   int materialKindCount = 2,
   int readyKindCount = 1,
   int unplannedShortKindCount = 0,
+  int? shortKindCount,
+  int sentFullKindCount = 0,
+  int drawableKindCount = 0,
+  int pendingKindCount = 0,
+  int closedKindCount = 0,
   bool canDraw = true,
   String? planNo,
   List<String> applicationItemIds = const [],
-  Map<String, dynamic>? singleMaterial,
 }) => SubcontractDrawTaskRow.fromJson(<String, dynamic>{
   'orderItemId': orderItemId,
   'orderId': orderId,
@@ -200,14 +204,17 @@ SubcontractDrawTaskRow drawRow(
   'shortQty': shortQty,
   'materialKindCount': materialKindCount,
   'readyKindCount': readyKindCount,
-  'shortKindCount': materialKindCount - readyKindCount,
+  'shortKindCount': shortKindCount ?? materialKindCount - readyKindCount,
   'unplannedShortKindCount': unplannedShortKindCount,
+  'sentFullKindCount': sentFullKindCount,
+  'drawableKindCount': drawableKindCount,
+  'pendingKindCount': pendingKindCount,
+  'closedKindCount': closedKindCount,
   'status': status,
   'deliverDate': '2026-10-20',
   'canDraw': canDraw,
   'planNo': ?planNo,
   'applicationItemIds': applicationItemIds,
-  'singleMaterial': ?singleMaterial,
 });
 
 Map<String, dynamic> drawRowJson(SubcontractDrawTaskRow row) =>
@@ -235,21 +242,15 @@ Map<String, dynamic> drawRowJson(SubcontractDrawTaskRow row) =>
       'readyKindCount': row.readyKindCount,
       'shortKindCount': row.shortKindCount,
       'unplannedShortKindCount': row.unplannedShortKindCount,
+      'sentFullKindCount': row.sentFullKindCount,
+      'drawableKindCount': row.drawableKindCount,
+      'pendingKindCount': row.pendingKindCount,
+      'closedKindCount': row.closedKindCount,
       'status': row.status.wireName,
       'deliverDate': row.deliverDate,
       'canDraw': row.canDraw,
       'planNo': ?row.planNo,
       'applicationItemIds': row.applicationItemIds,
-      if (row.singleMaterial case final material?)
-        'singleMaterial': {
-          'unitName': material.unitName,
-          'requiredQtyExact': material.requiredQtyText,
-          'baseRequiredQtyExact': material.baseRequiredQtyText,
-          'lossRequiredQtyExact': material.lossRequiredQtyText,
-          'pendingQtyExact': material.pendingQtyText,
-          'drawableQtyExact': material.drawableQtyText,
-          'shortQtyExact': material.shortQtyText,
-        },
     };
 
 /// 预览任务行。

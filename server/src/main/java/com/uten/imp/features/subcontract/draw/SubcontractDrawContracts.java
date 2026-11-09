@@ -30,6 +30,12 @@ public final class SubcontractDrawContracts {
      * 一个委外任务(一条已批准、未领满的委外订货明细)。materialQty = 我方供料套数 Qm
      * (订货数量扣掉财务批准的委外商自带料, 不低于已领套数; 没有自带料时等于 orderQty)。
      * planNo = 来源计划(WL 分析编号, 为空时是订货单号), 与申请行显示同一口径。
+     *
+     * <p>逐种物料分桶(2026-11-09, 与任务中心「物料」列同口径): 每种计划行只落一个桶, 判定与任务详情
+     * {@link DrawTaskMaterial} 的 state 是同一个函数(SubcontractDrawQueryService#materialState)——
+     * sentFull = 已发齐、drawable = 本次可领 &gt; 0、pending = 有待仓库发、short = 还缺 &gt; 0(无货可领也
+     * 没有待发)、closed = 已结束领料; readyKindCount 仍是「还缺为 0」的已备种数(状态列「已备 a/n 种」),
+     * unplannedShortKindCount = 还缺且没有任何在途供应(计划未下单)。
      */
     public record DrawTaskRow(
             UUID orderItemId,
@@ -54,14 +60,17 @@ public final class SubcontractDrawContracts {
             int readyKindCount,
             int shortKindCount,
             int unplannedShortKindCount,
+            int closedKindCount,
+            int sentFullKindCount,
+            int drawableKindCount,
+            int pendingKindCount,
             String status,
             LocalDate deliverDate,
             boolean canDraw,
             BigDecimal materialQty,
             String planNo,
             List<UUID> applicationItemIds,
-            BigDecimal differenceQty,
-            DrawSingleMaterial singleMaterial) {
+            BigDecimal differenceQty) {
         public String getOrderQtyExact(){return com.uten.imp.common.util.DecimalText.of(orderQty);}
         public String getDrawnQtyExact(){return com.uten.imp.common.util.DecimalText.of(drawnQty);}
         public String getPendingQtyExact(){return com.uten.imp.common.util.DecimalText.of(pendingQty);}
@@ -75,17 +84,7 @@ public final class SubcontractDrawContracts {
         }
     }
 
-    /** Physical quantities when the task has exactly one frozen material line. */
-    public record DrawSingleMaterial(String unitName, BigDecimal requiredQty, BigDecimal baseRequiredQty, BigDecimal pendingQty,
-                                     BigDecimal drawableQty, BigDecimal shortQty) {
-        public String getRequiredQtyExact() { return com.uten.imp.common.util.DecimalText.of(requiredQty); }
-        public String getBaseRequiredQtyExact() { return com.uten.imp.common.util.DecimalText.of(baseRequiredQty); }
-        public String getLossRequiredQtyExact() { return lossRequiredQtyExact(requiredQty, baseRequiredQty); }
-        public String getPendingQtyExact() { return com.uten.imp.common.util.DecimalText.of(pendingQty); }
-        public String getDrawableQtyExact() { return com.uten.imp.common.util.DecimalText.of(drawableQty); }
-        public String getShortQtyExact() { return com.uten.imp.common.util.DecimalText.of(shortQty); }
-    }
-
+    /** 含正常损耗的计划量减基础用量(= 损耗加成), 基础为空(历史快照)时不下发。 */
     public static String lossRequiredQtyExact(BigDecimal required, BigDecimal base) {
         return base == null ? null : com.uten.imp.common.util.DecimalText.of(required.subtract(base));
     }
@@ -124,9 +123,11 @@ public final class SubcontractDrawContracts {
 
     /**
      * 任务详情的物料行(物料基本单位)。requiredQty = 我方需发量 LEAST(计划量, f(Qm)), 没有委外商自带料时
-     * 就是冻结计划量。state ∈ SENT_FULL / PENDING / DRAWABLE / SHORT / CLOSED:
-     * CLOSED = 已结束领料; SENT_FULL = 已发外 ≥ 需求; PENDING = 有待仓库发的领料; SHORT = 还缺 &gt; 0;
-     * DRAWABLE = 本物料仓库可用已够(drawableQty 为本批可领, 其它物料还缺时可能为 0)。
+     * 就是冻结计划量。state ∈ CLOSED / SENT_FULL / DRAWABLE / PENDING / SHORT / READY, 按此优先级只取一个
+     * (2026-11-09 与车间逐种物料同口径「下一步动作优先于缺口」): CLOSED = 已结束领料; SENT_FULL = 已发外 ≥ 需求;
+     * DRAWABLE = 本次可领 &gt; 0(按行领料契约逐种计: MIN(仓库可用, 需求 − 已发 − 待发), 不再按整套折算,
+     * 其它物料还缺不影响本物料); PENDING = 有待仓库发的领料; SHORT = 还缺 &gt; 0; READY = 不缺但本任务此刻
+     * 不能领(已结清/已关单)。drawableQty 即该物料单独可领的上限。
      */
     public record DrawTaskMaterial(
             UUID planItemId,
@@ -180,7 +181,8 @@ public final class SubcontractDrawContracts {
     }
 
     /**
-     * 任务详情。allowedActions ⊆ {WITHDRAW, CLOSE}, 由服务端按权限与事实给出: 至少有一张待发领料
+     * 任务详情。allowedActions ⊆ {DRAW, WITHDRAW, CLOSE}, 由服务端按权限与事实给出: DRAW = 本账号能为这条
+     * 明细按物料领料(持有领料权限且在写范围内、任务开放、至少一种物料本次可领); 至少有一张待发领料
      * 仓库还没改过才给 WITHDRAW; CLOSE 会连仓库改过的待发领料一起撤回。
      * baseMaterialCoverageQty 按冻结基础单耗折算可用、待发和在库可领取材料，封顶本方应供套数。
      */
@@ -201,15 +203,25 @@ public final class SubcontractDrawContracts {
         }
     }
 
-    /** qty is the order-unit budget equivalent. A single frozen material also accepts its exact physical quantity. */
+    /**
+     * qty is the order-unit budget equivalent. A single frozen material also accepts its exact physical quantity.
+     * planItemIds 非空 = 2026-11-09 按物料领料(任务中心「物料」弹窗选中的物料, 只用于预览): 只为这些
+     * 开放计划行出候选行, 默认量 = 每种物料自己的可领上限(逐仓专属先于公共, 任务间公共竞争仍按序);
+     * 与 qty / materialQty / lines 互斥, 提交必须改用 lines 逐行给出数量。
+     */
     public record DrawItemRequest(UUID orderItemId, BigDecimal qty, BigDecimal materialQty, UUID materialPlanItemId,
-                                  List<DrawLineRequest> lines) {
+                                  List<DrawLineRequest> lines, List<UUID> planItemIds) {
         public DrawItemRequest(UUID orderItemId, BigDecimal qty) {
-            this(orderItemId, qty, null, null, null);
+            this(orderItemId, qty, null, null, null, null);
         }
 
         public DrawItemRequest(UUID orderItemId, BigDecimal qty, BigDecimal materialQty, UUID materialPlanItemId) {
-            this(orderItemId, qty, materialQty, materialPlanItemId, null);
+            this(orderItemId, qty, materialQty, materialPlanItemId, null, null);
+        }
+
+        public DrawItemRequest(UUID orderItemId, BigDecimal qty, BigDecimal materialQty, UUID materialPlanItemId,
+                               List<DrawLineRequest> lines) {
+            this(orderItemId, qty, materialQty, materialPlanItemId, lines, null);
         }
 
         public String getQtyExact(){return com.uten.imp.common.util.DecimalText.of(qty);}

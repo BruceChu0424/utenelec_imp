@@ -6,14 +6,86 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/data_display/uten_status_badge.dart';
-import '../../../components/data_display/uten_status_cell_color.dart';
-import '../../../components/inputs/uten_field_hint_icon.dart';
-import '../../../components/layout/uten_collapsible_content.dart';
-import '../../../components/layout/uten_table_column_kit.dart'
-    show utenTableSelectedRowColor;
 import '../../../core/theme/uten_tokens.dart';
+import '../../../shared/widgets/task_material_cards.dart';
 import '../models/production_execution_workbench.dart';
 import '../repositories/production_execution_workbench_repository.dart';
+
+const _warehouseAvailableLabel = '本任务仓库可用';
+const _warehouseAvailableHint =
+    '含本任务专属来源和扣除其他占用及安全库存后可用的公共数量。齐套生产在到齐前不预留。';
+
+/// 逐种物料状态 → 档位（ADR-169 锚定，与流程词表/物料摘要同口径）：
+/// 已领到车间=绿（就绪）；已备好可领=蓝（去领料动作）；已申请待仓库发料=
+/// 青绿（仓库处理中·他方执行）；备料中=灰（无动作无异常的中性等待）；
+/// 缺（等到货/等委外回厂/等自制子件）=红——料没到齐，本任务不能齐套开工
+/// （用户口径「不能往下=红」）；等计划下单另行盖品红（分类强调）。
+UtenStatusBadgeType workshopMaterialBadgeType(
+  ProductionWorkshopTaskMaterial row,
+) => row.waitingForPlanning
+    ? UtenStatusBadgeType.fuchsia
+    : switch (row.state) {
+        'ISSUED' => UtenStatusBadgeType.success,
+        'DRAWABLE' => UtenStatusBadgeType.info,
+        'AWAITING_WAREHOUSE' => UtenStatusBadgeType.accent,
+        'PREPARING' => UtenStatusBadgeType.neutral,
+        'SHORT' || 'SHORT_MAKE' => UtenStatusBadgeType.danger,
+        _ => UtenStatusBadgeType.neutral,
+      };
+
+String _qty(double value, String? unit, String? unitFallback) {
+  final text = value
+      .toExactString(minimumFractionDigits: 4)
+      .replaceFirst(RegExp(r'\.?0+$'), '');
+  final suffix = unit ?? unitFallback ?? '';
+  return suffix.isEmpty ? text : '$text $suffix';
+}
+
+/// 车间一种物料 → 公共物料卡片（[TaskMaterialCards]，与委外任务中心物料弹窗同一组件）。
+TaskMaterialEntry workshopTaskMaterialEntry(
+  ProductionWorkshopTaskMaterial row, {
+  String? unitFallback,
+}) {
+  String qty(double value) => _qty(value, row.unitName, unitFallback);
+  return TaskMaterialEntry(
+    id: row.demandId,
+    goodsName: row.goodsName,
+    goodsCode: row.goodsCode,
+    colorName: row.colorName,
+    stateLabel: row.stateLabel,
+    stateType: workshopMaterialBadgeType(row),
+    stateIcon: row.waitingForPlanning ? Icons.campaign_rounded : null,
+    sourceLabel: row.sourceLabel,
+    headline: [
+      TaskMaterialFact('需求', qty(row.requiredQty)),
+      TaskMaterialFact('已领', qty(row.issuedQty)),
+      TaskMaterialFact('可领', qty(row.requestableQty), selectionOnly: true),
+      TaskMaterialFact('缺口', qty(row.shortageQty), error: row.shortageQty > 0),
+    ],
+    details: [
+      TaskMaterialFact(
+        _warehouseAvailableLabel,
+        qty(row.warehouseAvailableQty),
+        hint: _warehouseAvailableHint,
+      ),
+      TaskMaterialFact('已预留', qty(row.reservedQty)),
+      TaskMaterialFact('待仓库发料', qty(row.requestedUnissuedQty)),
+      TaskMaterialFact('可申请领料', qty(row.requestableQty)),
+      if (row.supplyRoute == 'MAKE') ...[
+        TaskMaterialFact('直送已交接', qty(row.directReceivedQty)),
+        TaskMaterialFact('直送可分配', qty(row.directAvailableQty)),
+        TaskMaterialFact('直送料待投入', qty(row.lineSidePendingQty)),
+      ],
+      if (row.planningGapQty > 0)
+        TaskMaterialFact('计划未下单', qty(row.planningGapQty)),
+    ],
+    footnotes: [
+      ('来源 ${row.sourceLabel}', true),
+      if (row.producingSegmentsLabel?.isNotEmpty == true)
+        ('子件工单 ${row.producingSegmentsLabel}', false),
+    ],
+  );
+}
 
 /// 车间任务详情里的「每种物料」表（ADR-095，2026-09-20 用户口径「车间内流转的
 /// 货品数量怎么统计、显示在哪里」）：需求 / 本任务仓库可用 / 直送已交接 / 已领 / 缺口 /
@@ -55,29 +127,19 @@ class WorkshopTaskMaterialTable extends ConsumerStatefulWidget {
 
 class _WorkshopTaskMaterialTableState
     extends ConsumerState<WorkshopTaskMaterialTable> {
-  static const _warehouseAvailableLabel = '本任务仓库可用';
-  static const _warehouseAvailableHint =
-      '含本任务专属来源和扣除其他占用及安全库存后可用的公共数量。齐套生产在到齐前不预留。';
-
   late Future<List<ProductionWorkshopTaskMaterial>> _future;
-  final Set<String> _expandedDemandIds = {};
-  bool _showAllMaterials = false;
 
   @override
   void initState() {
     super.initState();
-    _showAllMaterials = widget.showAllInitially;
     _future = _load();
   }
 
   @override
   void didUpdateWidget(covariant WorkshopTaskMaterialTable oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.segmentId != widget.segmentId) {
-      _expandedDemandIds.clear();
-      _showAllMaterials = widget.showAllInitially;
-      _future = _load();
-    } else if (!listEquals(oldWidget.materialRows, widget.materialRows)) {
+    if (oldWidget.segmentId != widget.segmentId ||
+        !listEquals(oldWidget.materialRows, widget.materialRows)) {
       _future = _load();
     }
   }
@@ -141,51 +203,28 @@ class _WorkshopTaskMaterialTableState
           );
         }
         if (widget.compact) {
-          final visibleRows = _showAllMaterials ? rows : rows.take(1).toList();
-          if (widget.compactScrollable) {
-            return ListView.separated(
-              key: const Key('workshop-task-material-table'),
-              padding: EdgeInsets.zero,
-              itemCount: visibleRows.length,
-              separatorBuilder: (_, _) =>
-                  const SizedBox(height: UtenSpacing.s8),
-              itemBuilder: (context, index) =>
-                  _compactRow(context, visibleRows[index]),
-            );
-          }
-          return Column(
-            key: const Key('workshop-task-material-table'),
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              for (var index = 0; index < visibleRows.length; index++) ...[
-                if (index > 0) const SizedBox(height: UtenSpacing.s8),
-                _compactRow(context, visibleRows[index]),
-              ],
-              if (rows.length > 1 && !widget.showAllInitially) ...[
-                const SizedBox(height: UtenSpacing.s12),
-                FilledButton.tonalIcon(
-                  key: const Key('workshop-task-material-toggle-all'),
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size(0, UtenSpacing.s48),
-                  ),
-                  onPressed: () => setState(() {
-                    _showAllMaterials = !_showAllMaterials;
-                    if (!_showAllMaterials) _expandedDemandIds.clear();
-                  }),
-                  icon: Icon(
-                    _showAllMaterials
-                        ? Icons.expand_less_rounded
-                        : Icons.expand_more_rounded,
-                  ),
-                  label: Text(
-                    _showAllMaterials ? '收起物料' : '展开查看全部物料（共 ${rows.length} 项）',
-                  ),
+          // 换任务时展开状态随卡片列表一起重置。
+          return TaskMaterialCards(
+            key: ValueKey('workshop-task-material-cards-${widget.segmentId}'),
+            entries: [
+              for (final row in rows)
+                workshopTaskMaterialEntry(
+                  row,
+                  unitFallback: widget.unitFallback,
                 ),
-              ],
             ],
+            keyPrefix: 'workshop-task-material',
+            selectKeyPrefix: 'workshop-material-select',
+            scrollable: widget.compactScrollable,
+            showAllInitially: widget.showAllInitially,
+            selectableIds: widget.selectableDemandIds,
+            selectedIds: widget.selectedDemandIds,
+            onSelectedIdsChanged: widget.onSelectedDemandIdsChanged,
           );
         }
         final small = theme.textTheme.bodySmall;
+        String qty(ProductionWorkshopTaskMaterial row, double value) =>
+            _qty(value, row.unitName, widget.unitFallback);
         return MasterDataTableView<ProductionWorkshopTaskMaterial>(
           expensiveRowMounts: false,
           key: const Key('workshop-task-material-table'),
@@ -223,16 +262,14 @@ class _WorkshopTaskMaterialTableState
               cellBuilder: (_, row) => Tooltip(
                 message: row.waitingForPlanning
                     ? (row.planningRouteConfirmed
-                          ? '计划还差 ${_qty(row.planningGapQty, row.unitName)} 没下单，可以在任务详情里点「催计划」提醒计划员'
-                          : '计划还没定这种料怎么供（采购 / 委外 / 自制），还差 ${_qty(row.planningGapQty, row.unitName)}')
+                          ? '计划还差 ${qty(row, row.planningGapQty)} 没下单，可以在任务详情里点「催计划」提醒计划员'
+                          : '计划还没定这种料怎么供（采购 / 委外 / 自制），还差 ${qty(row, row.planningGapQty)}')
                     : row.stateLabel,
-                child: WorkshopMaterialStateCell(
+                child: TaskMaterialStateCell(
                   key: ValueKey('workshop-task-material-state-${row.demandId}'),
                   label: row.stateLabel,
                   icon: row.waitingForPlanning ? Icons.campaign_rounded : null,
-                  type: row.waitingForPlanning
-                      ? UtenStatusBadgeType.fuchsia
-                      : _badgeType(row.state),
+                  type: workshopMaterialBadgeType(row),
                 ),
               ),
             ),
@@ -272,7 +309,7 @@ class _WorkshopTaskMaterialTableState
               filterFromRows: true,
               facetSearchEnabled: true,
               exactValueOf: (row) => row.requiredQty.toString(),
-              value: (row) => _qty(row.requiredQty, row.unitName),
+              value: (row) => qty(row, row.requiredQty),
             ),
             MasterColumnDef(
               key: 'warehouseAvailableQty',
@@ -284,10 +321,10 @@ class _WorkshopTaskMaterialTableState
               filterFromRows: true,
               facetSearchEnabled: true,
               exactValueOf: (row) => row.warehouseAvailableQty.toString(),
-              value: (row) => _qty(row.warehouseAvailableQty, row.unitName),
+              value: (row) => qty(row, row.warehouseAvailableQty),
               cellBuilder: (_, row) => Tooltip(
-                message: '本任务已预留 ${_qty(row.reservedQty, row.unitName)}',
-                child: Text(_qty(row.warehouseAvailableQty, row.unitName)),
+                message: '本任务已预留 ${qty(row, row.reservedQty)}',
+                child: Text(qty(row, row.warehouseAvailableQty)),
               ),
             ),
             MasterColumnDef(
@@ -302,15 +339,15 @@ class _WorkshopTaskMaterialTableState
                   ? row.directReceivedQty.toString()
                   : null,
               value: (row) => row.supplyRoute == 'MAKE'
-                  ? _qty(row.directReceivedQty, row.unitName)
+                  ? qty(row, row.directReceivedQty)
                   : null,
               cellBuilder: (_, row) => Tooltip(
                 message: row.supplyRoute == 'MAKE'
-                    ? '自制子件工单已直送到本车间的数量；其中尚未分配给本任务 ${_qty(row.directAvailableQty, row.unitName)}'
+                    ? '自制子件工单已直送到本车间的数量；其中尚未分配给本任务 ${qty(row, row.directAvailableQty)}'
                     : '采购/委外物料一律经仓库领料，不走车间直送',
                 child: Text(
                   row.supplyRoute == 'MAKE'
-                      ? _qty(row.directReceivedQty, row.unitName)
+                      ? qty(row, row.directReceivedQty)
                       : '—',
                 ),
               ),
@@ -324,11 +361,11 @@ class _WorkshopTaskMaterialTableState
               filterFromRows: true,
               facetSearchEnabled: true,
               exactValueOf: (row) => row.issuedQty.toString(),
-              value: (row) => _qty(row.issuedQty, row.unitName),
+              value: (row) => qty(row, row.issuedQty),
               cellBuilder: (_, row) => Tooltip(
                 message:
-                    '净实领（实领减退回、损耗与待退冻结）；待仓库发 ${_qty(row.requestedUnissuedQty, row.unitName)}，可提交领料 ${_qty(row.requestableQty, row.unitName)}${row.lineSidePendingQty > 0 ? '，直送料待开工投入 ${_qty(row.lineSidePendingQty, row.unitName)}' : ''}',
-                child: Text(_qty(row.issuedQty, row.unitName)),
+                    '净实领（实领减退回、损耗与待退冻结）；待仓库发 ${qty(row, row.requestedUnissuedQty)}，可提交领料 ${qty(row, row.requestableQty)}${row.lineSidePendingQty > 0 ? '，直送料待开工投入 ${qty(row, row.lineSidePendingQty)}' : ''}',
+                child: Text(qty(row, row.issuedQty)),
               ),
             ),
             MasterColumnDef(
@@ -341,11 +378,10 @@ class _WorkshopTaskMaterialTableState
               facetSearchEnabled: true,
               exactValueOf: (row) =>
                   row.shortageQty > 0 ? row.shortageQty.toString() : null,
-              value: (row) => row.shortageQty > 0
-                  ? _qty(row.shortageQty, row.unitName)
-                  : null,
+              value: (row) =>
+                  row.shortageQty > 0 ? qty(row, row.shortageQty) : null,
               cellBuilder: (_, row) => Text(
-                row.shortageQty > 0 ? _qty(row.shortageQty, row.unitName) : '—',
+                row.shortageQty > 0 ? qty(row, row.shortageQty) : '—',
                 style: row.shortageQty > 0
                     ? small?.copyWith(
                         color: theme.colorScheme.error,
@@ -368,359 +404,6 @@ class _WorkshopTaskMaterialTableState
           onFilterChanged: (_, _) {},
         );
       },
-    );
-  }
-
-  Widget _compactRow(BuildContext context, ProductionWorkshopTaskMaterial row) {
-    final theme = Theme.of(context);
-    final expanded = _expandedDemandIds.contains(row.demandId);
-    final identity = [
-      row.goodsCode,
-      if (row.colorName?.trim().isNotEmpty == true) row.colorName!,
-    ].where((value) => value.isNotEmpty).join(' · ');
-    final selectionEnabled = widget.onSelectedDemandIdsChanged != null;
-    final selectable = widget.selectableDemandIds.contains(row.demandId);
-    final selected = widget.selectedDemandIds.contains(row.demandId);
-    void toggleSelection(bool? value) {
-      if (!selectable) return;
-      final next = Set<String>.of(widget.selectedDemandIds);
-      if (value == true) {
-        next.add(row.demandId);
-      } else {
-        next.remove(row.demandId);
-      }
-      widget.onSelectedDemandIdsChanged?.call(next);
-    }
-
-    return Container(
-      key: ValueKey('workshop-task-material-row-${row.demandId}'),
-      padding: const EdgeInsets.all(UtenSpacing.s12),
-      decoration: BoxDecoration(
-        color: selected ? utenTableSelectedRowColor(theme) : null,
-        border: Border.all(
-          color: selected
-              ? theme.colorScheme.primary
-              : theme.colorScheme.outlineVariant,
-        ),
-        borderRadius: UtenRadius.mdAll,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final identityContent = Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    row.goodsName,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: UtenSpacing.s4),
-                  Wrap(
-                    spacing: UtenSpacing.s8,
-                    runSpacing: UtenSpacing.s4,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      if (identity.isNotEmpty)
-                        Text(
-                          identity,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      WorkshopMaterialStateCell(
-                        key: ValueKey(
-                          'workshop-task-material-state-${row.demandId}',
-                        ),
-                        label: row.stateLabel,
-                        icon: row.waitingForPlanning
-                            ? Icons.campaign_rounded
-                            : null,
-                        type: row.waitingForPlanning
-                            ? UtenStatusBadgeType.fuchsia
-                            : _badgeType(row.state),
-                      ),
-                    ],
-                  ),
-                  if (selectionEnabled) ...[
-                    const SizedBox(height: UtenSpacing.s4),
-                    Text(row.sourceLabel, style: theme.textTheme.bodySmall),
-                  ],
-                ],
-              );
-              final identityBlock = selectionEnabled
-                  ? Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Checkbox(
-                          key: ValueKey(
-                            'workshop-material-select-${row.demandId}',
-                          ),
-                          value: selected,
-                          semanticLabel: '选择${row.goodsName}',
-                          onChanged: selectable ? toggleSelection : null,
-                        ),
-                        const SizedBox(width: UtenSpacing.s4),
-                        Expanded(child: identityContent),
-                      ],
-                    )
-                  : identityContent;
-              final quantities = Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: _compactFact(context, '需求', row.requiredQty, row),
-                  ),
-                  const SizedBox(width: UtenSpacing.s8),
-                  Expanded(
-                    child: _compactFact(context, '已领', row.issuedQty, row),
-                  ),
-                  if (selectionEnabled) ...[
-                    const SizedBox(width: UtenSpacing.s8),
-                    Expanded(
-                      child: _compactFact(
-                        context,
-                        '可领',
-                        row.requestableQty,
-                        row,
-                      ),
-                    ),
-                  ],
-                  const SizedBox(width: UtenSpacing.s8),
-                  Expanded(
-                    child: _compactFact(
-                      context,
-                      '缺口',
-                      row.shortageQty,
-                      row,
-                      error: row.shortageQty > 0,
-                    ),
-                  ),
-                ],
-              );
-              final detailsButton = TextButton.icon(
-                key: ValueKey('workshop-task-material-details-${row.demandId}'),
-                style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: UtenSpacing.s4,
-                    vertical: UtenSpacing.s4,
-                  ),
-                ),
-                onPressed: () => setState(() {
-                  if (expanded) {
-                    _expandedDemandIds.remove(row.demandId);
-                  } else {
-                    _expandedDemandIds.add(row.demandId);
-                  }
-                }),
-                icon: Icon(
-                  expanded
-                      ? Icons.expand_less_rounded
-                      : Icons.expand_more_rounded,
-                ),
-                label: const Text('到料明细'),
-              );
-              if (constraints.maxWidth >= 600) {
-                return Row(
-                  children: [
-                    Expanded(flex: 4, child: identityBlock),
-                    const SizedBox(width: UtenSpacing.s16),
-                    Expanded(flex: 3, child: quantities),
-                    const SizedBox(width: UtenSpacing.s8),
-                    detailsButton,
-                  ],
-                );
-              }
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  identityBlock,
-                  const SizedBox(height: UtenSpacing.s8),
-                  quantities,
-                  Align(
-                    alignment: AlignmentDirectional.centerStart,
-                    child: detailsButton,
-                  ),
-                ],
-              );
-            },
-          ),
-          UtenCollapsibleContent(
-            expanded: expanded,
-            maintainState: false,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Divider(height: UtenSpacing.s12),
-                _arrivalDetails(context, row),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _compactFact(
-    BuildContext context,
-    String label,
-    double value,
-    ProductionWorkshopTaskMaterial row, {
-    bool error = false,
-  }) {
-    final theme = Theme.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: error
-                ? theme.colorScheme.error
-                : theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
-        const SizedBox(height: UtenSpacing.s2),
-        Text(
-          _qty(value, row.unitName),
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: error ? theme.colorScheme.error : null,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _arrivalDetails(
-    BuildContext context,
-    ProductionWorkshopTaskMaterial row,
-  ) {
-    final theme = Theme.of(context);
-    final facts = <(String, String)>[
-      ('已预留', _qty(row.reservedQty, row.unitName)),
-      ('待仓库发料', _qty(row.requestedUnissuedQty, row.unitName)),
-      ('可申请领料', _qty(row.requestableQty, row.unitName)),
-      if (row.supplyRoute == 'MAKE') ...[
-        ('直送已交接', _qty(row.directReceivedQty, row.unitName)),
-        ('直送可分配', _qty(row.directAvailableQty, row.unitName)),
-        ('直送料待投入', _qty(row.lineSidePendingQty, row.unitName)),
-      ],
-      if (row.planningGapQty > 0)
-        ('计划未下单', _qty(row.planningGapQty, row.unitName)),
-    ];
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Wrap(
-          spacing: UtenSpacing.s16,
-          runSpacing: UtenSpacing.s6,
-          children: [
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Flexible(
-                  child: Text(
-                    '$_warehouseAvailableLabel ${_qty(row.warehouseAvailableQty, row.unitName)}',
-                    style: theme.textTheme.bodySmall,
-                  ),
-                ),
-                const UtenFieldHintIcon(
-                  info: _warehouseAvailableHint,
-                  dense: true,
-                ),
-              ],
-            ),
-            for (final (label, value) in facts)
-              Text('$label $value', style: theme.textTheme.bodySmall),
-          ],
-        ),
-        const SizedBox(height: UtenSpacing.s8),
-        Text(
-          '来源 ${row.sourceLabel}',
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
-        if (row.producingSegmentsLabel?.isNotEmpty == true) ...[
-          const SizedBox(height: UtenSpacing.s4),
-          Text(
-            '子件工单 ${row.producingSegmentsLabel}',
-            style: theme.textTheme.bodySmall,
-          ),
-        ],
-      ],
-    );
-  }
-
-  /// 逐种物料状态 → 档位（ADR-169 锚定，与流程词表/物料摘要同口径）：
-  /// 已领到车间=绿（就绪）；已备好可领=蓝（去领料动作）；已申请待仓库发料=
-  /// 青绿（仓库处理中·他方执行）；备料中=灰（无动作无异常的中性等待）；
-  /// 缺（等到货/等委外回厂/等自制子件）=红——料没到齐，本任务不能齐套开工
-  /// （用户口径「不能往下=红」）；等计划下单由调用方另行盖品红（分类强调）。
-  static UtenStatusBadgeType _badgeType(String state) => switch (state) {
-    'ISSUED' => UtenStatusBadgeType.success,
-    'DRAWABLE' => UtenStatusBadgeType.info,
-    'AWAITING_WAREHOUSE' => UtenStatusBadgeType.accent,
-    'PREPARING' => UtenStatusBadgeType.neutral,
-    'SHORT' || 'SHORT_MAKE' => UtenStatusBadgeType.danger,
-    _ => UtenStatusBadgeType.neutral,
-  };
-
-  String _qty(double value, String? unit) {
-    final text = value
-        .toExactString(minimumFractionDigits: 4)
-        .replaceFirst(RegExp(r'\.?0+$'), '');
-    final suffix = unit ?? widget.unitFallback ?? '';
-    return suffix.isEmpty ? text : '$text $suffix';
-  }
-}
-
-/// 状态格：徽章同源底色铺满格内容区（2026-09-27 用户口径「格内胶囊改单元格
-/// 背景色」；旧原生表没有 cellColor 通道，用带 0.5 描边的实色块等价实现，
-/// 描边即用户口径「背景变色但边框要还在」）。文字用徽章深档色保证对比度，
-/// 无圆角——读作整格着色而非胶囊。
-class WorkshopMaterialStateCell extends StatelessWidget {
-  const WorkshopMaterialStateCell({
-    super.key,
-    required this.label,
-    required this.type,
-    this.icon,
-  });
-
-  final String label;
-  final UtenStatusBadgeType type;
-  final IconData? icon;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final (bg, fg) = resolveStatusBadgeColors(type);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: bg,
-        border: Border.all(color: theme.colorScheme.outline, width: 0.5),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (icon != null) ...[
-            Icon(icon, size: 14, color: fg),
-            const SizedBox(width: 2),
-          ],
-          Text(
-            label,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: fg,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

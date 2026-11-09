@@ -8,30 +8,16 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/inputs/uten_search_bar.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/production/pages/production_board_page.dart';
 import 'package:uten_imp/features/production/repositories/production_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
-import 'package:uten_imp/shared/paging/complete_paged_snapshot.dart'
-    show CompleteReadBatchPlan;
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 import '../../../helpers/badge_summary_fixture.dart';
-
-/// The (page, size) requests of one complete read under the shared
-/// progressive plan: 50 → 50 → 100 → 200 …, each batch at its exact offset.
-List<(int, int)> _progressiveBatches(int total) {
-  const plan = CompleteReadBatchPlan.progressive;
-  final batches = <(int, int)>[];
-  var offset = 0;
-  do {
-    final size = plan.sizeAt(offset);
-    batches.add((offset ~/ size + 1, size));
-    offset += size;
-  } while (offset < total);
-  return batches;
-}
+import '../../../support/complete_read_plan_batches.dart';
 
 const _emptyPage = <String, dynamic>{
   'items': <Object?>[],
@@ -50,6 +36,8 @@ class _Api extends ApiClient {
   final requests = <String>[];
   final progressQueries = <Map<String, dynamic>>[];
   bool completeProgress = false;
+  // A later progress batch waits here, then fails (null: every batch answers).
+  Completer<void>? failLaterProgress;
 
   @override
   Future<Map<String, dynamic>> get(
@@ -73,6 +61,10 @@ class _Api extends ApiClient {
       // 251-row dataset, with total and totalPages echoed for that size.
       final page = query!['page'] as int;
       final size = query['size'] as int;
+      if (progressQueries.length > 1 && failLaterProgress != null) {
+        await failLaterProgress!.future;
+        throw ApiException('SERVER_ERROR', '生产进度后续批读取失败');
+      }
       return {
         'items': [
           for (var i = (page - 1) * size; i < page * size && i < 251; i++)
@@ -138,7 +130,7 @@ void main() {
       await _mount(tester, api);
       // One complete read of 251 summaries in the shared progressive ladder:
       // (1,50) (2,50) (2,100) (2,200), each batch at its exact offset.
-      final batches = _progressiveBatches(251);
+      final batches = completeReadPlanBatches(251);
       await tester.tap(find.text('历史记录'));
       for (
         var frame = 0;
@@ -150,7 +142,7 @@ void main() {
       await tester.pumpAndSettle();
       expect([
         for (final query in api.progressQueries)
-          (query['page'] as int, query['size'] as int),
+          (page: query['page'] as int, size: query['size'] as int),
       ], batches);
       expect(find.text('20 条/页'), findsNothing);
       expect(find.text('50 条/页'), findsNothing);
@@ -172,6 +164,49 @@ void main() {
       position.jumpTo(0);
       await tester.pumpAndSettle();
       expect(api.progressQueries, hasLength(batches.length));
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'history progress takes its progressive plan cards down when a later batch fails',
+    (tester) async {
+      final api = _Api()
+        ..completeProgress = true
+        ..failLaterProgress = Completer<void>();
+      await _mount(tester, api);
+      await tester.tap(find.text('历史记录'));
+      for (
+        var frame = 0;
+        frame < 200 && api.progressQueries.length < 2;
+        frame++
+      ) {
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      // The first validated batch is already on screen while the read goes on.
+      final first = find.byKey(
+        const ValueKey('production-progress-plan-progress-0'),
+      );
+      expect(first, findsOneWidget);
+      api.failLaterProgress!.complete();
+      await tester.pumpAndSettle();
+      // The failed read withdraws every progressive card: only the failure
+      // with its retry remains, never half of the plans as if complete.
+      expect(first, findsNothing);
+      expect(
+        find.byType(Card).evaluate().where((card) {
+          final key = card.widget.key;
+          return key is ValueKey<String> &&
+              key.value.startsWith('production-progress-plan-');
+        }),
+        isEmpty,
+      );
+      expect(find.text('生产进度后续批读取失败'), findsOneWidget);
+      expect(find.text('重试'), findsOneWidget);
+      expect([
+        for (final query in api.progressQueries)
+          (page: query['page'] as int, size: query['size'] as int),
+      ], completeReadPlanBatches(251).take(2));
       expect(tester.takeException(), isNull);
     },
   );

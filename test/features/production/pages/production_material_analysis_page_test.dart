@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../../../support/complete_read_plan_batches.dart';
 import '../../../support/material_analysis_tree.dart';
 import '../../../support/material_order_method.dart';
 import '../../../support/table_cell_geometry.dart';
@@ -2159,6 +2160,99 @@ void main() {
         findsNothing,
       );
       expect(find.byKey(const Key('material-analysis-start')), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'compact sales candidates withdraw their progressive cards when a later batch fails',
+    (tester) async {
+      // 60 approved orders: the first ladder batch is published
+      // progressively, the second one fails.
+      final orders = [
+        for (var index = 0; index < 60; index++)
+          {
+            'orderId': 'progressive-order-$index',
+            'billNo': 'SO-PROGRESSIVE-$index',
+            'billDate': '2026-08-11',
+            'clientName': '逐批客户',
+            'lines': [
+              {
+                'salesOrderItemId': 'progressive-line-$index',
+                'lineNo': 1,
+                'goodsId': 'progressive-goods-$index',
+                'goodsCode': 'PROGRESSIVE-$index',
+                'goodsName': '逐批候选产品 $index',
+                'unitId': 'unit-1',
+                'unitName': '个',
+                'orderedQty': 10,
+                'alreadyPlannedQty': 2,
+                'remainingQty': 8,
+                'deliveryDate': '2026-08-20',
+              },
+            ],
+          },
+      ];
+      final batches = <({int page, int size})>[];
+      ({int page, int size})? candidateBatch(RequestOptions request) {
+        if (!request.path.endsWith('/sales-candidates')) return null;
+        return (
+          page: (request.queryParameters['page'] as num).toInt(),
+          size: (request.queryParameters['size'] as num).toInt(),
+        );
+      }
+
+      await _pumpPage(
+        tester,
+        size: const Size(375, 900),
+        permissions: const {
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
+        },
+        seeded: false,
+        errorOverride: (request) {
+          final batch = candidateBatch(request);
+          if (batch == null) return null;
+          batches.add(batch);
+          return batches.length > 1
+              ? DioException(
+                  requestOptions: request,
+                  type: DioExceptionType.connectionError,
+                )
+              : null;
+        },
+        responseOverride: (request) {
+          final batch = candidateBatch(request);
+          if (batch == null) return null;
+          final start = (batch.page - 1) * batch.size;
+          return {
+            'items': orders.skip(start).take(batch.size).toList(),
+            'page': batch.page,
+            'size': batch.size,
+            'total': orders.length,
+            'totalPages': (orders.length + batch.size - 1) ~/ batch.size,
+          };
+        },
+      );
+      expect(batches, completeReadPlanBatches(orders.length));
+      final mobileList = find.byKey(
+        const Key('material-analysis-candidate-mobile-list'),
+      );
+      expect(mobileList, findsOneWidget);
+      // The failed read keeps only its failure and retry: none of the first
+      // batch's cards (selectable for an analysis) remain as a half list.
+      expect(
+        find.byKey(
+          const ValueKey('material-candidate-card-progressive-line-0'),
+        ),
+        findsNothing,
+      );
+      expect(find.textContaining('逐批候选产品'), findsNothing);
+      expect(find.textContaining('共 60'), findsNothing);
+      expect(
+        find.descendant(of: mobileList, matching: find.byType(Checkbox)),
+        findsNothing,
+      );
+      expect(tester.takeException(), isNull);
     },
   );
 

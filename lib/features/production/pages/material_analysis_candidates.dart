@@ -944,6 +944,10 @@ abstract class _MaterialAnalysisCandidatesState
   ) {
     const gap = SliverToBoxAdapter(child: SizedBox(height: UtenSpacing.s8));
     final salesTab = _candidateTab == _CandidateTab.sales;
+    // A failed or retired complete read withdraws its progressive lines as a
+    // whole. The wide table hides them itself; these cards must not keep a
+    // half list (or its count) beside the read failure.
+    final withdrawn = readWindowBindingOf(lines)?.isCurrent == false;
     return CustomScrollView(
       key: const Key('material-analysis-candidate-mobile-list'),
       slivers: [
@@ -973,7 +977,9 @@ abstract class _MaterialAnalysisCandidatesState
               ),
             ),
           gap,
-          if (lines.isEmpty)
+          if (withdrawn)
+            const SliverToBoxAdapter(child: SizedBox.shrink())
+          else if (lines.isEmpty)
             const SliverToBoxAdapter(
               child: UtenEmpty(message: '暂无可分析的已审销售订单产品'),
             )
@@ -986,7 +992,7 @@ abstract class _MaterialAnalysisCandidatesState
                 return _candidateMobileCard(theme, lines[index ~/ 2]);
               }, childCount: lines.length * 2 - 1),
             ),
-          if (page != null)
+          if (page != null && !withdrawn)
             SliverToBoxAdapter(child: _compactCandidateSummary(theme, page)),
           if (_sourceQtyControllers.isNotEmpty) ...[
             gap,

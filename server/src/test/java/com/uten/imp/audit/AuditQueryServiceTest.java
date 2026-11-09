@@ -170,7 +170,7 @@ class AuditQueryServiceTest {
 
         assertEquals(61L, response.getSnapshotId());
         assertEquals(1, response.getPage());
-        assertEquals(100, response.getSize());
+        assertEquals(com.uten.imp.common.web.Pageables.MAX_PAGE_SIZE, response.getSize());
         ArgumentCaptor<Specification<AuditLog>> specificationCaptor =
                 ArgumentCaptor.captor();
         ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);

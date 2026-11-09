@@ -44,7 +44,7 @@ import java.util.UUID;
  *   <li>dateFrom / dateTo：闭区间，按 created_at 过滤；业务日期边界使用 Asia/Shanghai，
  *       数据库存储仍为 TIMESTAMPTZ。</li>
  * </ul>
- * 默认按 created_at DESC（最新在前），单页最多 100 条（由 Pageables 收敛）。
+ * 默认按 created_at DESC（最新在前），单页最多 Pageables.MAX_PAGE_SIZE 条（由 Pageables 收敛）。
  */
 @Service
 @RequiredArgsConstructor(onConstructor_ = @org.springframework.beans.factory.annotation.Autowired)

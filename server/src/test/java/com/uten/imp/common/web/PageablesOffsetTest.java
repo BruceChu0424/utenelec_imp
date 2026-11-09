@@ -40,7 +40,7 @@ class PageablesOffsetTest {
     @Test void regularPageConstructionKeepsItsOriginalNormalizationAndSqlLongOffsetContract() {
         var first = Pageables.of(Integer.MIN_VALUE, Integer.MAX_VALUE);
         assertThat(first.getPageNumber()).isZero();
-        assertThat(first.getPageSize()).isEqualTo(100);
+        assertThat(first.getPageSize()).isEqualTo(Pageables.MAX_PAGE_SIZE);
         var deepSqlPage = Pageables.of(Integer.MAX_VALUE, 100, Sort.by("id"));
         assertThat(deepSqlPage.getOffset()).isEqualTo(214748364600L);
         assertThat(deepSqlPage.getSort()).isEqualTo(Sort.by("id"));

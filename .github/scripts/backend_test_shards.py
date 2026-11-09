@@ -73,6 +73,12 @@ METHOD_OPTIONAL_GATES = {
     FINANCE_SOURCE_REVIEW: FINANCE_SOURCE_ENV,
     "com.uten.imp.features.finance.report.FinanceTemplateSourceReaderTest"
     "#privateSeptemberWorkbookIncludesAllThreeOriginalSheetsAndHiddenColumns": "FINANCE_REAL_ASSET_FILE",
+    # 2026-11-08 progressive-read measurement probe: read-only comparison of the
+    # old 20-row instant-inventory pages versus the 50/50/100/200 batches against
+    # an operator-supplied database (UTEN_DB_URL/USER/PASSWORD). Opt-in only;
+    # ordinary shard runs must not set the gate.
+    "com.uten.imp.features.stock.InstantInventoryProgressiveReadProbeTest"
+    "#oldTwentyRowPagesVersusProgressiveBatches": "UTEN_PROGRESSIVE_PROBE",
 }
 # Keep the preparation workflow contract named explicitly for its dedicated
 # mandatory CI step and the existing stricter negative regressions.

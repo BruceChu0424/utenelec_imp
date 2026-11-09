@@ -1,5 +1,6 @@
 package com.uten.imp.features.finance.asset;
 
+import com.uten.imp.common.web.Pageables;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
@@ -53,11 +54,12 @@ class FixedAssetPaginationTest {
         var response = service.listAssets(Integer.MIN_VALUE, Integer.MAX_VALUE);
 
         assertEquals(1, response.getPage());
-        assertEquals(100, response.getSize());
+        // 2026-11-08 上限 200：501 行（超旧 500 临界）夹到 Pageables.MAX_PAGE_SIZE 后分 3 页。
+        assertEquals(Pageables.MAX_PAGE_SIZE, response.getSize());
         assertEquals(501, response.getTotal());
-        assertEquals(6, response.getTotalPages());
+        assertEquals(3, response.getTotalPages());
         assertEquals("FA-001", response.getItems().getFirst().get("code"));
-        verify(dataQuery).setParameter("__limit", 100);
+        verify(dataQuery).setParameter("__limit", Pageables.MAX_PAGE_SIZE);
         verify(dataQuery).setParameter("__offset", 0L);
         assertStablePagedSql();
     }

@@ -1,6 +1,7 @@
 package com.uten.imp.features.warehouse.inbound;
 
 import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.web.Pageables;
 import com.uten.imp.features.warehouse.inbound.ProcurementInspectionRecordContracts.InspectionDecisionRecord;
 import com.uten.imp.features.warehouse.inbound.ProcurementInspectionRecordContracts.InspectionDecisionRecordPage;
 import org.junit.jupiter.api.Test;
@@ -72,7 +73,8 @@ class ProcurementInspectionRecordContractTest {
         assertThat(filter.decision()).isEqualTo("PASS");
         assertThat(filter.keyword()).isEqualTo("abc");
         assertThat(filter.page()).isEqualTo(1);
-        assertThat(filter.size()).isEqualTo(100);
+        // 500 超上限：按 2026-11-08 合同夹到 Pageables.MAX_PAGE_SIZE。
+        assertThat(filter.size()).isEqualTo(Pageables.MAX_PAGE_SIZE);
 
         assertThatThrownBy(() ->
                 ProcurementInspectionRecordQueryService.normalizeFilter(

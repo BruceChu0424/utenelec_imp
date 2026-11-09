@@ -123,6 +123,8 @@ class _CustomerPrepaymentApplyPanelState
       _loading = true;
       _error = null;
     });
+    // 逐批追加期间已发布的部分前缀随失败一并撤下：预收来源必须完整后才可选。
+    var partialRows = false;
     try {
       final repository = ref.read(customerPrepaymentRepositoryProvider);
       final response = await readScopedPage<CustomerPrepaymentItem>(
@@ -175,15 +177,16 @@ class _CustomerPrepaymentApplyPanelState
         },
         onProgressiveBatch: (partial) {
           if (!mounted || version != _readVersion || _readRetired) return;
-          setState(
-            () => _page =
+          setState(() {
+            _page =
                 (partial
                         as PagedReadSnapshot<
                           CustomerPrepaymentItem,
                           CustomerPrepaymentPage
                         >)
-                    .snapshot,
-          );
+                    .snapshot;
+            partialRows = true;
+          });
         },
       );
       if (!mounted || version != _readVersion || _readRetired) return;
@@ -199,9 +202,12 @@ class _CustomerPrepaymentApplyPanelState
     } catch (error) {
       if (isRetiredViewRead(error)) return;
       if (!mounted || version != _readVersion || _readRetired) return;
-      setState(
-        () => _error = error is ApiException ? error.message : '客户预收加载失败',
-      );
+      setState(() {
+        // 半份来源不是完整结果：失败时整体撤下，回到错误卡片+重试；
+        // 已接受完整结果的重读不发布逐批行，普通失败仍保留上次完整结果。
+        if (partialRows) _page = null;
+        _error = error is ApiException ? error.message : '客户预收加载失败';
+      });
     } finally {
       if (mounted && version == _readVersion && !_readRetired) {
         setState(() => _loading = false);

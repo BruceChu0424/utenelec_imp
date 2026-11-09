@@ -42,11 +42,14 @@ public class QualityPendingQueueService {
             Map.entry("goods",SqlColumnSearch.Field.text("goods")),Map.entry("goodsCode",SqlColumnSearch.Field.text("goods_code")),
             Map.entry("colorName",SqlColumnSearch.Field.text("color_name")),Map.entry("warehouse",SqlColumnSearch.Field.text("warehouse")),
             Map.entry("place",SqlColumnSearch.Field.text("place")),Map.entry("pendingQty",SqlColumnSearch.Field.text("pending_qty")),
-            Map.entry("itemCount",SqlColumnSearch.Field.decimal("item_count")),Map.entry("enteredAt",SqlColumnSearch.Field.instant("entered_at")));
+            Map.entry("enteredAt",SqlColumnSearch.Field.instant("entered_at")));
+    // 2026-11-09 行粒度（一料一行）：IQC 行 = 检验明细、检查单行 = 实物批；item_count 检索字段随「待检行数」
+    // 列退役，新增 pre_stocked（本行先入库标红）与 status_code（行级状态色）两个非检索行值。
     private static final Map<String,String> VALUE_KEYS=Map.ofEntries(Map.entry("billNo","bill_no"),Map.entry("party","party"),
             Map.entry("goods","goods"),Map.entry("goodsCode","goods_code"),Map.entry("colorName","color_name"),
-            Map.entry("warehouse","warehouse"),Map.entry("place","place"),Map.entry("itemCount","item_count"),
-            Map.entry("pendingQty","pending_qty"),Map.entry("enteredAt","entered_at"));
+            Map.entry("warehouse","warehouse"),Map.entry("place","place"),
+            Map.entry("pendingQty","pending_qty"),Map.entry("enteredAt","entered_at"),
+            Map.entry("preStocked","pre_stocked"),Map.entry("statusCode","status_code"));
 
     @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
     public Page query(Request request) {
@@ -89,7 +92,7 @@ public class QualityPendingQueueService {
                 (CASE kind WHEN 'SUBCONTRACT' THEN '委外' WHEN 'FQC' THEN '成品' ELSE '采购' END)
                 || COALESCE(draft.label,CASE status_code WHEN 'PARTIAL' THEN '部分已决定' ELSE '待检' END) AS status
               FROM candidates LEFT JOIN jsonb_each_text(CAST(:queue_drafts AS jsonb)) draft(identity,label)
-                ON draft.identity=candidates.identity
+              ON draft.identity=candidates.draft_identity
             ), eligible AS MATERIALIZED (SELECT * FROM labeled WHERE %s AND (%s))
             """.formatted(String.join(" UNION ALL ",union),TaskKeywordSearch.conditionParameter("queue_keyword",
                     "bill_no","party","goods","goods_code","color_name","warehouse","place"),headers.predicate());

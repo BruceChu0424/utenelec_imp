@@ -2,6 +2,10 @@ part of 'quality_pending_disposal_page_test.dart';
 
 /// Test-server fixture: the widget receives only the requested page. Production
 /// uses its SQL source ports; no source-list joining or cap lives in the widget.
+///
+/// 2026-11-09 行粒度镜像：IQC 一行 = 一条检验明细（fixture 按收货单摘要合成
+/// itemCount 行）、检查单一行 = 一条实物批（fixture 合成单批）；草稿状态仍按
+/// 单据粒度身份（iqc:类型:收货单 / sheet:检查单 / fqc:任务）标记。
 class _FakeQueueRepository extends QualityPendingQueueRepository {
   _FakeQueueRepository(this.fqc, this.iqc, this.permissions) : super(fqc);
   final _FqcApi fqc;
@@ -43,47 +47,53 @@ class _FakeQueueRepository extends QualityPendingQueueRepository {
     final perms = permissions();
     if (perms.contains(Perm.procurementInspectionView)) {
       for (final value in await iqc.pendingReceipts()) {
-        final payload = <String, dynamic>{
-          'receiptType': value.receiptType,
-          'receiptId': value.receiptId,
-          'billNo': value.billNo,
-          'supplierId': value.supplierId,
-          'supplierName': value.supplierName,
-          'warehouseId': value.warehouseId,
-          'itemCount': value.itemCount,
-          'pendingBaseQty': value.pendingBaseQty,
-          'firstReceivedAt': value.firstReceivedAt,
-          'lastReceivedAt': value.lastReceivedAt,
-          'preStockedItemCount': value.preStockedItemCount,
-          'preStockedWarehouseNames': value.preStockedWarehouseNames,
-          'preStockedPlaces': value.preStockedPlaces,
-          'goodsSummary': value.goodsSummary,
-          'goodsCodeSummary': value.goodsCodeSummary,
-          'colorNameSummary': value.colorNameSummary,
-          'pendingQtyText': value.pendingQtyText,
-        };
-        all.add(
-          _entry(
-            'IQC',
-            'iqc:${value.receiptType}:${value.receiptId}',
-            value.receiptType,
-            payload,
-            {
-              'billNo': value.billNo ?? value.receiptId,
-              'party': value.supplierName ?? '—',
-              'goods': value.goodsSummary ?? '—',
-              'goodsCode': value.goodsCodeSummary ?? '—',
-              'colorName': value.colorNameSummary ?? '—',
-              'warehouse': value.preStockedWarehouseNames ?? '待检区',
-              'place': value.preStockedPlaces ?? '—',
-              'pendingQty': value.pendingQtyText ?? '—',
-              'itemCount': value.itemCount,
-              'enteredAt': value.lastReceivedAt,
-            },
-            'PENDING',
-            draftStatuses,
-          ),
-        );
+        final lines = value.itemCount < 1 ? 1 : value.itemCount;
+        for (var line = 1; line <= lines; line++) {
+          final payload = <String, dynamic>{
+            'receiptType': value.receiptType,
+            'receiptId': value.receiptId,
+            'billNo': value.billNo,
+            'supplierId': value.supplierId,
+            'supplierName': value.supplierName,
+            'warehouseId': value.warehouseId,
+            'itemCount': value.itemCount,
+            'pendingBaseQty': value.pendingBaseQty,
+            'firstReceivedAt': value.firstReceivedAt,
+            'lastReceivedAt': value.lastReceivedAt,
+            'preStockedItemCount': value.preStockedItemCount,
+            'preStockedWarehouseNames': value.preStockedWarehouseNames,
+            'preStockedPlaces': value.preStockedPlaces,
+            'goodsSummary': value.goodsSummary,
+            'goodsCodeSummary': value.goodsCodeSummary,
+            'colorNameSummary': value.colorNameSummary,
+            'pendingQtyText': value.pendingQtyText,
+          };
+          all.add(
+            _entry(
+              'IQC',
+              'iqc:${value.receiptType}:${value.receiptId}:'
+                  'item-of-${value.receiptId}-$line',
+              'iqc:${value.receiptType}:${value.receiptId}',
+              value.receiptType,
+              payload,
+              {
+                'billNo': value.billNo ?? value.receiptId,
+                'party': value.supplierName ?? '—',
+                'goods': value.goodsSummary ?? '—',
+                'goodsCode': value.goodsCodeSummary ?? '—',
+                'colorName': value.colorNameSummary ?? '—',
+                'warehouse': value.preStockedWarehouseNames ?? '待检区',
+                'place': value.preStockedPlaces ?? '—',
+                'pendingQty': value.pendingQtyText ?? '—',
+                'enteredAt': value.lastReceivedAt,
+                'preStocked': value.hasPreStockedItems,
+                'statusCode': 'PENDING',
+              },
+              'PENDING',
+              draftStatuses,
+            ),
+          );
+        }
       }
     }
     if (perms.contains(Perm.productionQualityInspectionView)) {
@@ -93,6 +103,7 @@ class _FakeQueueRepository extends QualityPendingQueueRepository {
         all.add(
           _entry(
             'FQC_SHEET',
+            'sheet:${payload['id']}:lot-of-${payload['id']}',
             'sheet:${payload['id']}',
             'FQC',
             payload,
@@ -110,8 +121,13 @@ class _FakeQueueRepository extends QualityPendingQueueRepository {
               'warehouse': payload['warehouseName'] ?? '—',
               'place': payload['placeSummary'] ?? '—',
               'pendingQty': payload['pendingQtyText'] ?? '—',
-              'itemCount': payload['activeCount'],
               'enteredAt': payload['createdAt'],
+              'preStocked': (payload['preStockedItemCount'] as num? ?? 0) > 0,
+              'statusCode':
+                  (payload['activeCount'] as num) <
+                      (payload['itemCount'] as num)
+                  ? 'PARTIAL'
+                  : 'PENDING',
             },
             (payload['activeCount'] as num) < (payload['itemCount'] as num)
                 ? 'PARTIAL'
@@ -129,6 +145,7 @@ class _FakeQueueRepository extends QualityPendingQueueRepository {
           _entry(
             'FQC',
             'fqc:${payload['id']}',
+            'fqc:${payload['id']}',
             'FQC',
             payload,
             {
@@ -141,8 +158,9 @@ class _FakeQueueRepository extends QualityPendingQueueRepository {
               'place': payload['place'] ?? '—',
               'pendingQty':
                   '${remaining.toString().replaceFirst(RegExp(r'\.0$'), '')} ${payload['unitName'] ?? ''}',
-              'itemCount': 1,
               'enteredAt': payload['createdAt'],
+              'preStocked': payload['preStocked'] != null,
+              'statusCode': payload['status'] as String,
             },
             payload['status'] as String,
             draftStatuses,
@@ -165,10 +183,6 @@ class _FakeQueueRepository extends QualityPendingQueueRepository {
       }
       final key = filter.key.substring(7),
           value = entry.values[key]?.toString();
-      if (key == 'itemCount') {
-        return NumericColumnQuery.tryParse(filter.value!)?.matches(value) ??
-            false;
-      }
       if (key == 'enteredAt') return value?.startsWith(filter.value!) ?? false;
       return matchesKeywordSearch([value], filter.value!);
     });
@@ -238,6 +252,7 @@ class _FakeQueueRepository extends QualityPendingQueueRepository {
   QualityPendingEntry _entry(
     String source,
     String id,
+    String draftId,
     String kind,
     Map<String, dynamic> payload,
     Map<String, dynamic> values,
@@ -253,7 +268,8 @@ class _FakeQueueRepository extends QualityPendingQueueRepository {
       source: source,
       identity: id,
       kind: kind,
-      status: '$prefix${drafts[id] ?? (code == 'PARTIAL' ? '部分已决定' : '待检')}',
+      status:
+          '$prefix${drafts[draftId] ?? (code == 'PARTIAL' ? '部分已决定' : '待检')}',
       values: values,
       payload: payload,
     );

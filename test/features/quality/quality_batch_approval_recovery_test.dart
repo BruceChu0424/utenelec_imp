@@ -239,6 +239,46 @@ void main() {
   );
 
   testWidgets(
+    // 2026-11-09 用户硬性口径：勾选范围原样收口——只勾一行，办理页只显示、
+    // 只默认勾选、只提交这一行，同单/同批的未选兄弟行不带入。
+    'selected item scope keeps unselected sibling lines out of the report',
+    (tester) async {
+      final iqc = _Iqc(
+        load: (receiptId) async => [_row('$receiptId-a'), _row('$receiptId-b')],
+      );
+      await _pump(
+        tester,
+        iqc,
+        2,
+        itemIds: const {
+          'PURCHASE:receipt-1': ['receipt-1-a'],
+          'PURCHASE:receipt-2': ['receipt-2-b'],
+        },
+      );
+      // 只装载勾中的行：两张单各 2 条明细，页面上各只剩勾中的那 1 条。
+      expect(find.text('物料receipt-1-a'), findsOneWidget);
+      expect(find.text('物料receipt-1-b'), findsNothing);
+      expect(find.text('物料receipt-2-b'), findsOneWidget);
+      expect(find.text('物料receipt-2-a'), findsNothing);
+      await _confirm(tester);
+      await tester.pump();
+      expect(iqc.sent, hasLength(1));
+      final sentReceipts = (iqc.sent.single.$2['receipts'] as List)
+          .cast<Map<String, dynamic>>();
+      expect(
+        [
+          for (final receipt in sentReceipts)
+            (receipt['items'] as List)
+                .cast<Map<String, dynamic>>()
+                .single['inspectionItemId'],
+        ],
+        ['receipt-1-a', 'receipt-2-b'],
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
     'canceling report confirmation leaves an editable draft and sends nothing',
     (tester) async {
       final iqc = _Iqc();
@@ -498,6 +538,7 @@ Future<void> _pump(
   bool settle = true,
   Size size = const Size(1400, 1000),
   _IntentSession? session,
+  Map<String, List<String>>? itemIds,
 }) async {
   await tester.binding.setSurfaceSize(size);
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -527,6 +568,7 @@ Future<void> _pump(
                   billNo: 'R$i',
                 ),
             ],
+            iqcItemIds: itemIds ?? const {},
           ),
         ),
       ),

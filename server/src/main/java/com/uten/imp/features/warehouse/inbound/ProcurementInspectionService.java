@@ -1145,15 +1145,41 @@ public class ProcurementInspectionService implements ProcurementInspectionPort, 
     @Override @Transactional(readOnly=true)
     @PreAuthorize("hasAuthority('procurement_inspection:view')")
     public List<com.uten.imp.application.port.QualityPendingSourcePort.Plan> pendingPlans(){
-        String relation="("+pendingReceiptSql()+") q";
+        // 2026-11-09 用户口径：待检队列「一个物料一行」，不再按收货单聚合 —— 一行 = 一条
+        // 仍待检的检验明细（PENDING/PARTIAL），货品/颜色/库位/待检量按行单值；本地填写
+        // 草稿仍挂收货单粒度（draft_identity = iqc:类型:收货单UUID）。
         String sql="""
-            SELECT 'iqc:'||q.receipt_type||':'||q.receipt_id::text AS identity,q.receipt_type::text AS kind,
-                COALESCE(q.bill_no,q.receipt_id::text) AS bill_no,COALESCE(q.supplier_name,'—') AS party,
-                COALESCE(q.goods_summary,'—') AS goods,COALESCE(q.goods_code_summary,'—') AS goods_code,COALESCE(q.color_name_summary,'—') AS color_name,
-                COALESCE(q.pre_stocked_warehouse_names,'待检区') AS warehouse,COALESCE(q.pre_stocked_places,'—') AS place,q.item_count::bigint AS item_count,
-                COALESCE(q.pending_qty_text,'—') AS pending_qty,q.last_received_at AS entered_at,'PENDING'::text AS status_code,
-                q.first_received_at AS sequence_at,ARRAY[COALESCE(q.goods_summary,'')]::text[] AS goods_names FROM %s
-            """.formatted(relation);
+            SELECT 'iqc:'||i.receipt_type||':'||i.receipt_id::text||':'||i.id::text AS identity,
+                   i.receipt_type::text AS kind,
+                   COALESCE(x.bill_no,i.receipt_id::text) AS bill_no,
+                   COALESCE(s.name,'—') AS party,
+                   COALESCE(NULLIF(g.name,''),NULLIF(g.code,''),'未命名货品') AS goods,
+                   COALESCE(NULLIF(g.code,''),'—') AS goods_code,
+                   COALESCE(NULLIF(col.name,''),'—') AS color_name,
+                   COALESCE(NULLIF(pre_wh.name,''),'待检区') AS warehouse,
+                   COALESCE(NULLIF(i.pre_stocked_place,''),'—') AS place,
+                   concat_ws(' ',trim_scale(i.received_base_qty-i.passed_base_qty-i.failed_base_qty)::text,NULLIF(base_unit.name,'')) AS pending_qty,
+                   i.received_at AS entered_at,
+                   i.status AS status_code,
+                   i.received_at AS sequence_at,
+                   ARRAY[COALESCE(NULLIF(g.name,''),NULLIF(g.code,''),'未命名货品')]::text[] AS goods_names,
+                   'iqc:'||i.receipt_type||':'||i.receipt_id::text AS draft_identity,
+                   (i.pre_stocked_at IS NOT NULL) AS pre_stocked
+            FROM procurement_inspection_items i
+            JOIN (
+                SELECT 'PURCHASE'::text AS t,id,bill_no,supplier_id
+                FROM purchase_receipts WHERE COALESCE(is_deleted,false)=false AND legacy_id IS NULL
+                UNION ALL
+                SELECT 'SUBCONTRACT'::text,id,bill_no,supplier_id
+                FROM subcontract_receipts WHERE COALESCE(is_deleted,false)=false AND legacy_id IS NULL
+            ) x ON x.t=i.receipt_type AND x.id=i.receipt_id
+            LEFT JOIN suppliers s ON s.id=x.supplier_id
+            LEFT JOIN goods g ON g.id=i.goods_id
+            LEFT JOIN units base_unit ON base_unit.id=g.unit_id
+            LEFT JOIN colors col ON col.id=i.color_id
+            LEFT JOIN warehouses pre_wh ON pre_wh.id=i.pre_stocked_warehouse_id
+            WHERE i.status IN ('PENDING','PARTIAL')
+            """;
         return List.of(new com.uten.imp.application.port.QualityPendingSourcePort.Plan("IQC",sql,Map.of()));
     }
 
@@ -1161,12 +1187,28 @@ public class ProcurementInspectionService implements ProcurementInspectionPort, 
     @PreAuthorize("hasAuthority('procurement_inspection:view')")
     public Map<String,Object> pendingPayloads(String planKey,Set<String> identities){
         if(!"IQC".equals(planKey)||identities.isEmpty())return Map.of();
-        String sql="SELECT q.* FROM ("+pendingReceiptSql()+") q WHERE 'iqc:'||q.receipt_type||':'||q.receipt_id::text IN (:qualityIqcIdentities)";
-        Map<String,Object> result=new java.util.LinkedHashMap<>();
-        for(Object[] row:com.uten.imp.common.util.NativeQueryResults.objectArrayRows(em.createNativeQuery(sql).setParameter("qualityIqcIdentities",identities))){
-            var value=com.uten.imp.features.warehouse.inbound.dto.PendingInspectionReceiptView.from(row);
-            result.put("iqc:"+value.receiptType()+":"+value.receiptId(),value);
+        // 队列行身份 = iqc:类型:收货单UUID:明细UUID；单收货单端点
+        // (GET pending-receipts/{type}/{id}) 仍传收货单身份 iqc:类型:收货单UUID。两者载荷
+        // 都是收货单摘要（处置页导航与批量审批分组用），按收货单去重装载一次，再回填到每个身份。
+        Map<String,String> receiptKeyByIdentity=new java.util.LinkedHashMap<>();
+        for(String identity:identities){
+            if(identity==null)continue;
+            String[] segments=identity.split(":");
+            if((segments.length!=4&&segments.length!=3)||!"iqc".equals(segments[0]))continue;
+            receiptKeyByIdentity.put(identity,segments[1]+':'+segments[2]);
         }
+        if(receiptKeyByIdentity.isEmpty())return Map.of();
+        String sql="SELECT q.* FROM ("+pendingReceiptSql()+") q WHERE q.receipt_type||':'||q.receipt_id::text IN (:qualityIqcReceipts)";
+        Map<String,Object> byReceipt=new java.util.LinkedHashMap<>();
+        for(Object[] row:com.uten.imp.common.util.NativeQueryResults.objectArrayRows(em.createNativeQuery(sql).setParameter("qualityIqcReceipts",new java.util.LinkedHashSet<>(receiptKeyByIdentity.values())))){
+            var value=com.uten.imp.features.warehouse.inbound.dto.PendingInspectionReceiptView.from(row);
+            byReceipt.put(value.receiptType()+':'+value.receiptId(),value);
+        }
+        Map<String,Object> result=new java.util.LinkedHashMap<>();
+        receiptKeyByIdentity.forEach((identity,receiptKey)->{
+            var payload=byReceipt.get(receiptKey);
+            if(payload!=null)result.put(identity,payload);
+        });
         return Map.copyOf(result);
     }
 

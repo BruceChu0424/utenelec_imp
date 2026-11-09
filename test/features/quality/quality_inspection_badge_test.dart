@@ -285,11 +285,15 @@ void main() {
     await _pumpTaskCenter(tester, _twoTypeDispositionRepository());
 
     expect(
-      find.byKey(const ValueKey('row:iqc:PURCHASE:receipt-1')),
+      find.byKey(
+        const ValueKey('row:iqc:PURCHASE:receipt-1:item-of-receipt-1-1'),
+      ),
       findsOneWidget,
     );
     expect(
-      find.byKey(const ValueKey('row:iqc:SUBCONTRACT:receipt-2')),
+      find.byKey(
+        const ValueKey('row:iqc:SUBCONTRACT:receipt-2:item-of-receipt-2-1'),
+      ),
       findsOneWidget,
     );
     expect(find.text('CJ20260822000001'), findsOneWidget);
@@ -374,7 +378,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // 任务中心表格：双击行进入本单处置页。
-    await _doubleTapRow(tester, find.text('CJ20260822000001'));
+    await _doubleTapRow(tester, find.text('CJ20260822000001').first);
     await tester.pumpAndSettle();
 
     // go_router 的 push 在测试环境不同步 routeInformationProvider，
@@ -383,7 +387,9 @@ void main() {
     expect(find.text('测试物料A'), findsOneWidget);
     expect(find.text('CJ20260822000001'), findsOneWidget);
     expect(
-      find.byKey(const ValueKey('row:iqc:PURCHASE:receipt-1')),
+      find.byKey(
+        const ValueKey('row:iqc:PURCHASE:receipt-1:item-of-receipt-1-1'),
+      ),
       findsNothing,
     );
     expect(find.text('正在准备草稿保护…'), findsNothing);
@@ -394,7 +400,9 @@ void main() {
 
     // 返回任务中心后队列重载，表格行重新可见。
     expect(
-      find.byKey(const ValueKey('row:iqc:PURCHASE:receipt-1')),
+      find.byKey(
+        const ValueKey('row:iqc:PURCHASE:receipt-1:item-of-receipt-1-1'),
+      ),
       findsOneWidget,
     );
     expect(find.byKey(const Key('iqc-item-table-receipt-1')), findsNothing);
@@ -657,7 +665,8 @@ void main() {
     await _pumpTaskCenter(tester, _twoItemDispositionRepository());
 
     expect(find.byKey(const Key('iqc-receipt-table')), findsOneWidget);
-    expect(find.text('CJ20260822000001'), findsOneWidget);
+    // 2026-11-09 行粒度：一单两条待检明细 = 两行物料行（单号重复出现是预期）。
+    expect(find.text('CJ20260822000001'), findsNWidgets(2));
     expect(tester.takeException(), isNull);
   });
 }

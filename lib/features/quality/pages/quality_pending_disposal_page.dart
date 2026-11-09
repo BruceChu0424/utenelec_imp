@@ -7,9 +7,11 @@ import '../../../core/formatters/exact_number_text.dart';
 // 页面源码随之从 warehouse feature 移入 quality（2026-08-19 起本页业务归属品质部，
 // 路由 /warehouse/inspections 不变，避免外部深链失效）。
 //
-// 队列表只放单据级概要：IQC 行 = 收货单（双击进处置页，逐行放行/登记不合格），
-// FQC 行 = 品质检查单（V547：同仓一次送检的报工行聚合；双击进检查单办理，逐条
-// PASS/FAIL 或全部合格）；V547 前无检查单的历史待检任务按「无检查单」逐条显示。
+// 队列表按物料行展示（2026-11-09 用户口径，对齐仓库「品质检查结果」页 2026-10-17
+// 逐行范式）：IQC 行 = 一条仍待检的检验明细（一料一行），FQC 检查单行 = 一条实物
+// 批（一料一批一行，批是判定单位；双击进单据办理页逐条 PASS/FAIL 或全部合格）；
+// V547 前无检查单的历史待检任务按「无检查单」逐条显示。不按供应商/单据合并，
+// 不显示供应商列；多选批量审批只带勾选的行，不默认整单带入。
 // 权限分别门控：IQC 读 procurement_inspection:view、写 :handle；
 // FQC 读 production_quality_inspection:view、决定 :approve + 服务端品质组织校验。
 import 'dart:async';
@@ -368,23 +370,15 @@ class _QualityPendingDisposalPageState
 
   String _statusLabel(_DisposalRow row) => row.serverStatus;
 
-  /// 状态列整格底色的分类色源（2026-09-27 口径），分支与 [_statusLabel] 对齐。
+  /// 状态列整格底色的分类色源（2026-09-27 口径；2026-11-09 起统一按行级状态码：
+  /// 待检=琥珀 / 部分已决定=橙 / 已全部决定=绿），分支与 [_statusLabel] 对齐。
   UtenStatusBadgeType _statusBadgeType(_DisposalRow row) {
     if (_taskDrafts(row).isNotEmpty) return UtenStatusBadgeType.neutral;
-    if (row.isSheet) {
-      return row.sheet!.activeCount < row.sheet!.itemCount
-          ? UtenStatusBadgeType.orange
-          : UtenStatusBadgeType.warning;
-    }
-    if (row.isFqc) {
-      return switch (row.inspection!.status) {
-        'PENDING' => UtenStatusBadgeType.warning,
-        'PARTIAL' => UtenStatusBadgeType.orange,
-        'RESOLVED' => UtenStatusBadgeType.success,
-        _ => UtenStatusBadgeType.neutral,
-      };
-    }
-    return UtenStatusBadgeType.warning;
+    return switch (row.statusCode ?? 'PENDING') {
+      'PARTIAL' => UtenStatusBadgeType.orange,
+      'RESOLVED' => UtenStatusBadgeType.success,
+      _ => UtenStatusBadgeType.warning,
+    };
   }
 
   /// 服务端在完整授权结果内构建状态桶，保留其它条件并排除状态自身。
@@ -459,40 +453,35 @@ class _QualityPendingDisposalPageState
     refreshBadges(ref);
   }
 
-  /// 「批量审批」（2026-09-05 用户口径）：多选的 IQC 收货单与 FQC 任务汇总到
-  /// 一个页面——逐行填合格/不合格数量（默认全合格）后一次「提交报告」。
+  /// 「批量审批」（2026-09-05 用户口径；2026-11-09 行粒度修订）：勾选的物料行
+  /// 汇总到一个页面——**只显示、只默认勾选、只提交勾中的行**，同一单据的未选
+  /// 兄弟行不带入（仓库「物料行办理范围」同款口径）；逐行填合格/不合格数量
+  /// （默认全合格）后一次「提交报告」。
   Future<void> _openBatchApproval(Set<String> selectedIds) async {
     if (selectedIds.isEmpty) {
-      context.appWarning('请先选择待检任务（IQC 收货单或自制产成品）');
+      context.appWarning('请先勾选要检验的物料行');
       return;
     }
-    final receipts = [
-      if (_canHandleIqc)
-        for (final receipt
-            in _selectedRows.values
-                .map((row) => row.receipt)
-                .whereType<PendingInspectionReceipt>())
-          if (selectedIds.contains(
-            'iqc:${receipt.receiptType}:${receipt.receiptId}',
-          ))
-            receipt,
-    ];
-    final inspections = [
-      if (_canDecideFqc)
-        for (final inspection
-            in _selectedRows.values
-                .map((row) => row.inspection)
-                .whereType<ProductionFqcInspection>())
-          if (selectedIds.contains('fqc:${inspection.id}')) inspection,
-    ];
-    final sheets = [
-      if (_canDecideFqc)
-        for (final sheet
-            in _selectedRows.values
-                .map((row) => row.sheet)
-                .whereType<ProductionFqcInspectionSheet>())
-          if (selectedIds.contains('sheet:${sheet.id}')) sheet,
-    ];
+    final receipts = <PendingInspectionReceipt>[];
+    final iqcItemIds = <String, List<String>>{};
+    final sheets = <ProductionFqcInspectionSheet>[];
+    final sheetLotIds = <String, List<String>>{};
+    final inspections = <ProductionFqcInspection>[];
+    for (final row in _selectedRows.values) {
+      if (!selectedIds.contains(row.identity)) continue;
+      if (row.receipt != null && _canHandleIqc) {
+        final receipt = row.receipt!;
+        final key = '${receipt.receiptType}:${receipt.receiptId}';
+        if (!iqcItemIds.containsKey(key)) receipts.add(receipt);
+        iqcItemIds.putIfAbsent(key, () => []).add(row.itemId!);
+      } else if (row.sheet != null && _canDecideFqc) {
+        final sheet = row.sheet!;
+        if (!sheetLotIds.containsKey(sheet.id)) sheets.add(sheet);
+        sheetLotIds.putIfAbsent(sheet.id, () => []).add(row.lotId!);
+      } else if (row.inspection != null && _canDecideFqc) {
+        inspections.add(row.inspection!);
+      }
+    }
     if (receipts.isEmpty && inspections.isEmpty && sheets.isEmpty) {
       context.appWarning('所选任务状态已变化，请刷新后重新选择');
       return;
@@ -501,8 +490,10 @@ class _QualityPendingDisposalPageState
       RouteName.warehouseInspectionBatchApproval,
       extra: QualityBatchApprovalSelection(
         receipts: receipts,
-        inspections: inspections,
+        iqcItemIds: iqcItemIds,
         sheets: sheets,
+        sheetLotIds: sheetLotIds,
+        inspections: inspections,
       ),
     );
     if (!mounted) return;
@@ -517,8 +508,8 @@ class _QualityPendingDisposalPageState
     return [
       Tooltip(
         message: count == 0
-            ? '请选择待检任务（IQC 收货单 / 自制产成品）'
-            : '所选任务汇总到一个页面：逐行填合格/不合格数量后一次提交报告',
+            ? '请勾选要检验的物料行'
+            : '勾选的物料行汇总到一个页面：只显示勾中的行，逐行填合格/不合格数量后一次提交报告',
         child: UtenButton(
           key: const Key('quality-batch-approval'),
           type: UtenButtonType.danger,
@@ -526,7 +517,7 @@ class _QualityPendingDisposalPageState
           icon: Icons.fact_check_outlined,
           onPressed: count == 0 ? null : () => _openBatchApproval(selectedIds),
           onDisabledTap: count == 0
-              ? () => context.appWarning('请先选择待检任务（IQC 收货单或自制产成品）')
+              ? () => context.appWarning('请先勾选要检验的物料行')
               : null,
           child: Text(count == 0 ? '批量审批' : '批量审批($count)'),
         ),
@@ -694,9 +685,7 @@ class _QualityPendingDisposalPageState
                   rowMenuBuilder: (row) => row.isSheet
                       ? [
                           UtenMenuItem(
-                            label: _canDecideFqc
-                                ? '办理检查单(${row.sheet!.activeCount} 行待检)'
-                                : '查看检查单',
+                            label: _canDecideFqc ? '办理检查单' : '查看检查单',
                             icon: Icons.fact_check_outlined,
                             onTap: () => _openSheet(row.sheet!),
                           ),
@@ -713,9 +702,7 @@ class _QualityPendingDisposalPageState
                         ]
                       : [
                           UtenMenuItem(
-                            label: _canHandleIqc
-                                ? '检验本单(${row.receipt!.itemCount} 行待检)'
-                                : '查看待检明细',
+                            label: _canHandleIqc ? '检验本单' : '查看待检明细',
                             icon: Icons.fact_check_outlined,
                             onTap: () => _openIqcDetail(row.receipt!),
                           ),
@@ -753,7 +740,7 @@ class _QualityPendingDisposalPageState
       label: '共有 ${_rows.length} 条待检任务',
       child: UtenFilterToolbar<String>(
         searchKey: const Key('iqc-search'),
-        searchHint: '搜索单号 / 供应商 / 货品',
+        searchHint: '搜索单号 / 货品 / 编号',
         initialSearchValue: _keyword,
         onSearchChanged: _applySearch,
         trailing: Row(
@@ -774,34 +761,45 @@ class _QualityPendingDisposalPageState
     );
   }
 
-  /// 已上架待检的行数：IQC 按收货单、检查单按单、无检查单的历史 FQC 任务按行。
-  int _preStockedLineCount(_DisposalRow row) {
-    if (row.isSheet) return row.sheet!.preStockedItemCount;
-    if (row.isFqc) return row.inspection!.preStocked == null ? 0 : 1;
-    return row.receipt!.preStockedItemCount;
-  }
+  /// 本行货品是否已先入库上架（行级，服务端 pre_stocked）：标红「仓库 / 库位号」。
+  TextStyle? _preStockedStyle(BuildContext context, _DisposalRow row) =>
+      row.preStocked
+      ? Theme.of(context).textTheme.bodyMedium?.copyWith(
+          color: UtenColors.error,
+          fontWeight: FontWeight.w700,
+        )
+      : null;
 
-  /// 已上架行的标红样式（2026-09-18 起「仓库 / 库位号」两列共用）。
-  TextStyle? _preStockedStyle(BuildContext context) => Theme.of(context)
-      .textTheme
-      .bodyMedium
-      ?.copyWith(color: UtenColors.error, fontWeight: FontWeight.w700);
-
-  /// 「仓库」列：IQC 取已上架行的去重仓名（未上架=待检区）；FQC 检查单/历史任务
-  /// 取登记成品仓——成品登记时逐行必填仓+库位，位置始终可知。
-  String _warehouseText(_DisposalRow row) => row.isSheet
+  /// 「仓库」列（行级单值）：IQC 行取本行上架仓（未上架=待检区）；FQC 批行取登记
+  /// 成品仓——成品登记时逐行必填仓+库位，位置始终可知。
+  String _warehouseText(_DisposalRow row) =>
+      row.serverValues['warehouse']?.toString().trim().isNotEmpty == true
+      ? row.serverValues['warehouse'].toString()
+      : row.isSheet
       ? (row.sheet!.warehouseName ?? '—')
       : row.isFqc
       ? (row.inspection!.warehouseName ?? '—')
-      : (row.receipt!.preStockedWarehouseNames ?? '待检区');
+      : '待检区';
 
-  /// 「库位号」列：IQC 取已上架行的去重库位清单；FQC 检查单取待检行登记库位
-  /// 去重清单(place_summary)；无检查单的历史任务直接用本行登记库位。
-  String _placeText(_DisposalRow row) => row.isSheet
+  /// 「库位号」列（行级单值）：IQC 行取本行上架库位；FQC 批行取本批登记库位。
+  String _placeText(_DisposalRow row) =>
+      row.serverValues['place']?.toString().trim().isNotEmpty == true
+      ? row.serverValues['place'].toString()
+      : row.isSheet
       ? (row.sheet!.placeSummary ?? '—')
       : row.isFqc
       ? (row.inspection!.place ?? '—')
-      : (row.receipt!.preStockedPlaces ?? '—');
+      : '—';
+
+  /// 行级货品名称（一料一行后的单一名称）。
+  String _goodsName(_DisposalRow row) =>
+      row.serverValues['goods']?.toString().trim().isNotEmpty == true
+      ? row.serverValues['goods'].toString()
+      : row.isSheet
+      ? (row.sheet!.goodsSummary ?? '—')
+      : row.isFqc
+      ? (row.inspection!.goodsName ?? '—')
+      : (row.receipt!.goodsSummary ?? '—');
 
   List<MasterColumnDef<_DisposalRow>> get _columns => [
     MasterColumnDef(
@@ -811,7 +809,7 @@ class _QualityPendingDisposalPageState
       width: 126,
       value: _statusLabel,
       // 状态整格底色沿品质业务语义：待检=琥珀 / 部分已决定=橙 /
-      // 已全部决定=绿 / 已取消=中性灰。
+      // 已全部决定=绿 / 草稿=中性灰（行级状态，随本行判定进度走）。
       cellColor: (context, row) =>
           utenStatusBadgeCellColor(_statusBadgeType(row)),
     ),
@@ -837,49 +835,19 @@ class _QualityPendingDisposalPageState
           ? (row.inspection!.reportNo ?? row.inspection!.id)
           : (row.receipt!.billNo ?? row.receipt!.receiptId),
     ),
-    MasterColumnDef(
-      key: 'party',
-      label: '供应商 / 成品仓 / 报工',
-      sortable: true,
-      width: 230,
-      value: (row) => row.isSheet
-          ? [
-              row.sheet!.warehouseName,
-              if (row.sheet!.receiverName?.isNotEmpty == true)
-                '收货 ${row.sheet!.receiverName}',
-              if (row.sheet!.reportNos?.isNotEmpty == true)
-                '报工 ${row.sheet!.reportNos}',
-            ].whereType<String>().join(' · ')
-          : row.isFqc
-          ? '无检查单 · 计划 ${row.inspection!.planNo ?? '—'}'
-          : (row.receipt!.supplierName ?? '—'),
-    ),
-    // 队列行的货品身份：无检查单 FQC 行是单一货品走身份格；检查单行与 IQC 收货单行
-    // 是服务端拼好的多货品摘要「名称 (编号 · 颜色)、…」（2026-10-08 根治收货单行
-    // 整列「—」：一单常含同名不同色的来料，列表看不到货品只能逐单点进去核对）。
+    // 2026-11-09 用户口径（对齐仓库「品质检查结果」页 2026-10-17 逐行范式）：
+    // 队列一行 = 一个物料——IQC 一行一条检验明细、检查单一行一条实物批；不再按
+    // 单据/供应商合并，也不显示供应商列（单据事实在双击办理页的摘要卡里）。
     MasterColumnDef(
       key: 'goods',
       label: '货品名称',
       sortable: true,
       width: 200,
-      value: (row) => row.isSheet
-          ? (row.sheet!.goodsSummary ?? '—')
-          : row.isFqc
-          ? (row.inspection!.goodsName ?? '—')
-          : (row.receipt!.goodsSummary ?? '—'),
+      value: _goodsName,
       cellBuilderHandlesSemantics: true,
-      cellBuilder: (_, row) => row.isFqc
-          ? UtenGoodsIdentityCell(name: row.inspection!.goodsName)
-          : Text(
-              row.isSheet
-                  ? (row.sheet!.goodsSummary ?? '—')
-                  : (row.receipt!.goodsSummary ?? '—'),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
+      cellBuilder: (_, row) => UtenGoodsIdentityCell(name: _goodsName(row)),
     ),
     // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。
-    // 单据行展示服务端按真实待检明细去重的编号/颜色集合；不从名称摘要反解析身份。
     MasterColumnDef(
       key: 'goodsCode',
       label: '编号',
@@ -887,7 +855,7 @@ class _QualityPendingDisposalPageState
       width: 130,
       value: (row) => UtenGoodsAttributeCell.text(row.goodsCode),
       cellBuilder: (_, row) => Tooltip(
-        message: row.identitySummary ?? '—',
+        message: row.identitySummary,
         child: UtenGoodsAttributeCell(row.goodsCode),
       ),
     ),
@@ -898,12 +866,12 @@ class _QualityPendingDisposalPageState
       width: 96,
       value: (row) => UtenGoodsAttributeCell.text(row.colorName),
       cellBuilder: (_, row) => Tooltip(
-        message: row.identitySummary ?? '—',
+        message: row.identitySummary,
         child: UtenGoodsAttributeCell(row.colorName),
       ),
     ),
-    // 先入库后检(V596 IQC / V597 FQC)：仓库把货先落到库位的单，品质部要到储放区域
-    // 检验（2026-09-18 用户口径：直接给「仓库 / 库位号」两列，不用逐单点进明细找位置）。
+    // 先入库后检(V596 IQC / V597 FQC)：仓库把货先落到库位的行，品质部要到储放区域
+    // 检验（2026-09-18 起「仓库 / 库位号」两列；2026-11-09 起按行标红，不再按单据）。
     MasterColumnDef(
       key: 'warehouse',
       label: '仓库',
@@ -914,7 +882,7 @@ class _QualityPendingDisposalPageState
         _warehouseText(row),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style: _preStockedLineCount(row) > 0 ? _preStockedStyle(context) : null,
+        style: _preStockedStyle(context, row),
       ),
     ),
     MasterColumnDef(
@@ -927,32 +895,14 @@ class _QualityPendingDisposalPageState
         _placeText(row),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style: _preStockedLineCount(row) > 0 ? _preStockedStyle(context) : null,
+        style: _preStockedStyle(context, row),
       ),
-    ),
-    MasterColumnDef(
-      key: 'itemCount',
-      label: '待检行数',
-      sortable: true,
-      columnSearchEnabled: true,
-      width: 95,
-      type: 'number',
-      value: (row) => row.isSheet
-          ? row.sheet!.activeCount.toString()
-          : row.isFqc
-          ? '1'
-          : row.receipt!.itemCount.toString(),
-      exactValueOf: (row) => row.isSheet
-          ? row.sheet!.activeCount.toString()
-          : row.isFqc
-          ? '1'
-          : row.receipt!.itemCount.toString(),
     ),
     MasterColumnDef(
       key: 'pendingQty',
       label: '待检数量',
       columnSearchEnabled: true,
-      info: '本列保留每种单位的原始数量文本，可按数量或单位检索；不把多单位合成一个数值排序或求和。',
+      info: '本行待检量的原始数量文本（跟单位）；可按数量或单位检索，不把多单位合成一个数值排序或求和。',
       width: 150,
       value: (row) =>
           row.serverValues['pendingQty']?.toString() ??
@@ -974,11 +924,13 @@ class _QualityPendingDisposalPageState
       info: '按北京时间输入年份、年月、日期或日期范围，例如 2026-10、2026-10-01..2026-10-28。',
       width: 160,
       type: 'date',
-      value: (row) => row.isSheet
-          ? ChinaDateTime.formatInstant(row.sheet!.createdAt)
-          : row.isFqc
-          ? ChinaDateTime.formatInstant(row.inspection!.createdAt)
-          : (_fmtDateTime(row.receipt!.lastReceivedAt) ?? '—'),
+      value: (row) =>
+          _fmtDateTime(row.serverValues['enteredAt']?.toString()) ??
+          (row.isSheet
+              ? ChinaDateTime.formatInstant(row.sheet!.createdAt)
+              : row.isFqc
+              ? ChinaDateTime.formatInstant(row.inspection!.createdAt)
+              : (_fmtDateTime(row.receipt!.lastReceivedAt) ?? '—')),
     ),
   ];
 
@@ -991,45 +943,63 @@ class _QualityPendingDisposalPageState
   }
 }
 
-/// 统一待检行：IQC 收货单、FQC 品质检查单（V547）或无检查单的历史 FQC 任务。
+/// 统一待检行（2026-11-09 行粒度，对齐仓库「品质检查结果」页逐行范式）：
+/// IQC 行 = 一条仍待检的检验明细（一料一行）、检查单行 = 一条实物批（一料一批
+/// 一行，批是判定单位）、无检查单的历史 FQC 任务本就单份一行。载荷仍携带所属
+/// 单据摘要（双击进单据办理页、批量审批按单分组），行身份带明细/批 UUID。
 class _DisposalRow {
   const _DisposalRow.iqc(
     PendingInspectionReceipt this.receipt, {
+    required String this.itemId,
     required this.serverStatus,
     this.serverValues = const {},
   }) : inspection = null,
-       sheet = null;
+       sheet = null,
+       lotId = null;
   const _DisposalRow.fqc(
     ProductionFqcInspection this.inspection, {
     required this.serverStatus,
     this.serverValues = const {},
   }) : receipt = null,
-       sheet = null;
+       sheet = null,
+       itemId = null,
+       lotId = null;
   const _DisposalRow.sheet(
     ProductionFqcInspectionSheet this.sheet, {
+    required String this.lotId,
     required this.serverStatus,
     this.serverValues = const {},
   }) : receipt = null,
-       inspection = null;
+       inspection = null,
+       itemId = null;
 
   final PendingInspectionReceipt? receipt;
   final ProductionFqcInspection? inspection;
   final ProductionFqcInspectionSheet? sheet;
+
+  /// IQC 检验明细 UUID（批量审批按行收口的行身份）。
+  final String? itemId;
+
+  /// FQC 实物批 UUID（检查单行办理/批量审批的判定单位）。
+  final String? lotId;
   final String serverStatus;
   final Map<String, dynamic> serverValues;
   factory _DisposalRow.fromEntry(QualityPendingEntry entry) {
+    final segments = entry.identity.split(':');
     final row = switch (entry.source) {
-      'IQC' => _DisposalRow.iqc(
+      'IQC' when segments.length == 4 => _DisposalRow.iqc(
         PendingInspectionReceipt.fromJson(entry.payload),
+        itemId: segments[3],
         serverStatus: entry.status,
         serverValues: entry.values,
       ),
-      'FQC_SHEET' => _DisposalRow.sheet(
+      'FQC_SHEET' when segments.length == 3 => _DisposalRow.sheet(
         ProductionFqcInspectionSheet.fromJson(entry.payload),
+        lotId: segments[2],
         serverStatus: entry.status,
         serverValues: entry.values,
       ),
-      'FQC' => _DisposalRow.fqc(
+      'FQC' when segments.length == 2 => _DisposalRow.fqc(
         ProductionFqcInspection.fromJson(entry.payload),
         serverStatus: entry.status,
         serverValues: entry.values,
@@ -1045,22 +1015,43 @@ class _DisposalRow {
   bool get isSheet => sheet != null;
   bool get isFqc => inspection != null;
 
+  /// 本行是否已先入库上架（服务端行级 pre_stocked）。
+  bool get preStocked => serverValues['preStocked'] == true;
+
+  /// 行级状态码：PENDING / PARTIAL（RESOLVED 行不进队列）。
+  String? get statusCode => serverValues['statusCode']?.toString();
+
   String? get goodsCode =>
+      _nonEmpty(serverValues['goodsCode']) ??
       sheet?.goodsCodeSummary ??
       inspection?.goodsCode ??
       receipt?.goodsCodeSummary;
   String? get colorName =>
+      _nonEmpty(serverValues['colorName']) ??
       sheet?.colorNameSummary ??
       inspection?.colorName ??
       receipt?.colorNameSummary;
-  String? get identitySummary =>
-      sheet?.goodsSummary ?? inspection?.goodsName ?? receipt?.goodsSummary;
+  String get identitySummary => [
+    _nonEmpty(serverValues['goods']) ?? _fallbackName(this),
+    if (goodsCode != null) goodsCode,
+    if (colorName != null) colorName,
+  ].join(' · ');
+
+  static String? _nonEmpty(Object? value) =>
+      value == null || value.toString().trim().isEmpty
+      ? null
+      : value.toString();
+  static String _fallbackName(_DisposalRow row) => row.isSheet
+      ? (row.sheet!.goodsSummary ?? '未命名货品')
+      : row.isFqc
+      ? (row.inspection!.goodsName ?? '未命名货品')
+      : (row.receipt!.goodsSummary ?? '未命名货品');
 
   String get identity => isSheet
-      ? 'sheet:${sheet!.id}'
+      ? 'sheet:${sheet!.id}:$lotId'
       : isFqc
       ? 'fqc:${inspection!.id}'
-      : 'iqc:${receipt!.receiptType}:${receipt!.receiptId}';
+      : 'iqc:${receipt!.receiptType}:${receipt!.receiptId}:$itemId';
 
   /// 与分段/表头筛选同一取值域：PURCHASE / SUBCONTRACT / FQC。
   String get kind => isSheet || isFqc

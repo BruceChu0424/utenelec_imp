@@ -5952,6 +5952,34 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
           ),
         ),
       );
+    } else if (_resultOwnerRetired && widget.items.isNotEmpty) {
+      // A complete read that failed after showing progressive rows retires
+      // its owner; the host may still hold that withdrawn prefix. It is not an
+      // empty result: never fall through to the empty state (a forged 0 rows).
+      bodyNotice = Padding(
+        key: widget.errorKey,
+        padding: const EdgeInsets.symmetric(
+          horizontal: UtenSpacing.s16,
+          vertical: UtenSpacing.s12,
+        ),
+        child: Center(
+          child: UtenTableReadStatus(
+            keyPrefix: 'master-table-initial-read',
+            ownerIdentity: (
+              this,
+              widget.paginationScope,
+              widget.paginationRevision,
+              _platform.authorizationRevision,
+              _platform.queryLifecycle,
+            ),
+            title: tableReadStatusText(context, 'loadFailed'),
+            reason: tableReadStatusText(context, 'incompleteRead'),
+            impact: tableReadStatusText(context, 'loadImpact'),
+            guidance: tableReadStatusText(context, 'guidance'),
+            retry: widget.onRetry,
+          ),
+        ),
+      );
     } else if (displayItems.isEmpty && _appendRows.isEmpty) {
       // 空态说明补一行筛选生效数，提示表格为何为空（清除入口在表外分段条/
       // 重新出现行后的列头筛选控件）。

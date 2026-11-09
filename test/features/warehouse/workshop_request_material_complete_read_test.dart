@@ -7,12 +7,19 @@ import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/performance/ui_work_budget.dart';
 import 'package:uten_imp/features/warehouse/materialbin/repositories/workshop_material_repository.dart';
 
+import '../../support/complete_read_plan_batches.dart';
+
 class _MaterialReadApi extends ApiClient {
   _MaterialReadApi() : super(Dio());
   final queries = <Map<String, dynamic>>[];
   String? invalid;
   int rowCount = 101;
   Completer<void>? tail;
+
+  List<({int page, int size})> get batches => [
+    for (final query in queries)
+      (page: query['page'] as int, size: query['size'] as int),
+  ];
 
   @override
   Future<Map<String, dynamic>> get(
@@ -79,7 +86,9 @@ void main() {
       gate.complete();
       final result = await pending;
       expect(result, hasLength(201));
-      expect(api.queries.map((query) => query['page']), [1, 2, 3]);
+      // Every later ladder batch, including those requested after the caller
+      // mutated its list, still carries the frozen source identity.
+      expect(api.batches, completeReadPlanBatches(201));
       expect(
         api.queries.every((query) => query['goodsIds'] == 'material-1'),
         isTrue,
@@ -110,11 +119,10 @@ void main() {
         ),
         isTrue,
       );
-      expect(api.queries.map((query) => query['page']), [1, 2]);
+      expect(api.batches, completeReadPlanBatches(101));
       expect(
         api.queries.every(
           (query) =>
-              query['size'] == 100 &&
               query['workshopId'] == 'workshop-1' &&
               query['goodsIds'] == 'material-1',
         ),

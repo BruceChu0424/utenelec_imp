@@ -12,6 +12,8 @@ import 'package:uten_imp/features/warehouse/repositories/stock_doc_repository.da
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/models/user.dart';
+import 'package:uten_imp/shared/paging/complete_paged_snapshot.dart'
+    show CompleteReadBatchPlan;
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
@@ -247,8 +249,13 @@ void main() {
       );
       expect(visible, hasLength(1));
       expect(visible.single['view'], 'ACTIVE');
+      // One complete read: the single row arrives in the first batch of the
+      // shared progressive plan.
       expect(visible.single['page'], 1);
-      expect(visible.single['size'], 100);
+      expect(
+        visible.single['size'],
+        CompleteReadBatchPlan.progressive.firstBatchSize,
+      );
       expect(
         repository.taskApi.taskQueries.map((query) => query['source']),
         ['RETURN'],

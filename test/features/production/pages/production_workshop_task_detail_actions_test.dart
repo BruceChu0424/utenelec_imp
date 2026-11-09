@@ -19,12 +19,17 @@ import 'package:uten_imp/features/production/repositories/production_execution_w
 import 'package:uten_imp/features/production/repositories/production_repository.dart';
 import 'package:uten_imp/features/production/repositories/production_draw_request_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/paging/complete_paged_snapshot.dart'
+    show CompleteReadBatchPlan;
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 import '../../../helpers/badge_summary_fixture.dart';
 import '../../../support/filter_segment_tap.dart';
 import '../support/production_draw_request_fixture.dart';
 import '../../../support/uten_test_actions.dart';
+
+/// 2026-11-08 完整读取合同：首批请求按共享阶梯计划的首批大小。
+final _firstBatchSize = CompleteReadBatchPlan.progressive.firstBatchSize;
 
 const _permissions = {
   Perm.productionExecutionView,
@@ -347,11 +352,13 @@ Finder _action(String action, String segmentId) =>
     find.byKey(ValueKey('workshop-detail-$action-$segmentId'));
 
 void _expectVisibleTaskRefresh(_DetailServer server, String currentStatus) {
+  // Initial read + one refresh after returning; each complete read of these
+  // few tasks is a single first batch of the shared progressive plan.
   expect(server.taskQueries, hasLength(2));
   for (final query in server.taskQueries) {
     expect(query['status'], currentStatus);
     expect(query['page'], 1);
-    expect(query['size'], 100);
+    expect(query['size'], _firstBatchSize);
   }
 }
 
@@ -548,9 +555,10 @@ class _DetailServer {
               body['executionSegmentIds'],
               tasks.map((task) => task['segmentId']).toList(),
             );
+            // 2026-11-08 完整读取合同：首批即共享阶梯计划的首批大小。
             expect(body['page'], 1);
-            expect(body['size'], 100);
-            data = _page([
+            expect(body['size'], _firstBatchSize);
+            data = _page(page: body['page'], size: body['size'], [
               if (claimedQty > 0)
                 {
                   'id': 'draft-1',
@@ -578,7 +586,11 @@ class _DetailServer {
           } else if (request.path == '/production/workshop-tasks') {
             taskLoads++;
             taskQueries.add({...request.queryParameters});
-            data = _page(tasks);
+            data = _page(
+              tasks,
+              page: request.queryParameters['page'],
+              size: request.queryParameters['size'],
+            );
           } else if (request.path.endsWith('/materials')) {
             data = materials;
           } else if (request.path == '/production/daily-reports') {
@@ -588,6 +600,8 @@ class _DetailServer {
                       {'id': 'draft-1', 'billNo': 'SR-DRAFT-1', 'status': 0},
                     ]
                   : [],
+              page: request.queryParameters['page'],
+              size: request.queryParameters['size'],
             );
           } else if (request.path == '/production/daily-reports/draft-1') {
             data = {
@@ -628,11 +642,21 @@ class _DetailServer {
   double claimedQty = 0;
   Completer<void>? draftGate;
 
-  Map<String, dynamic> _page(List<Map<String, dynamic>> rows) => {
-    'items': rows,
-    'page': 1,
-    'size': 100,
-    'total': rows.length,
-    'totalPages': 1,
-  };
+  // The server echoes the requested batch: exact (page, size) slice with the
+  // authoritative total and its page count in that size.
+  Map<String, dynamic> _page(
+    List<Map<String, dynamic>> rows, {
+    required Object? page,
+    required Object? size,
+  }) {
+    final batch = (size as num?)?.toInt() ?? 20;
+    final number = (page as num?)?.toInt() ?? 1;
+    return {
+      'items': rows.skip((number - 1) * batch).take(batch).toList(),
+      'page': number,
+      'size': batch,
+      'total': rows.length,
+      'totalPages': (rows.length + batch - 1) ~/ batch,
+    };
+  }
 }

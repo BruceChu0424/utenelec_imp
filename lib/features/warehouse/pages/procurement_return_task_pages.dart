@@ -218,7 +218,16 @@ class _ProcurementReturnTasksPageState
       _result?.items.where((t) => _selected.contains(t.id)).toList() ??
       const [];
 
+  /// [_result] is an accepted complete result: neither a growing prefix nor
+  /// withdrawn by a failed read. Counts and conclusions derived from the
+  /// shown rows (the batch return's count, "所选任务都已完成退回") need it.
+  bool get _rowsSettled => _result != null && !_progressiveRows;
+
+  // While [_progressiveRows] the cards are a growing prefix of an unfinished
+  // read: checking, 全选本页 and the batch return wait for the complete result
+  // (an existing selection is kept as it is).
   void _toggle(String id) {
+    if (_progressiveRows) return;
     setState(() {
       if (_selected.contains(id)) {
         _selected.remove(id);
@@ -229,6 +238,7 @@ class _ProcurementReturnTasksPageState
   }
 
   void _selectAll() {
+    if (_progressiveRows) return;
     final items = _result?.items ?? const <ProcurementArrivalException>[];
     setState(() {
       _selected
@@ -241,7 +251,7 @@ class _ProcurementReturnTasksPageState
 
   /// 批量确认退回（物流凭证）：超量未入库，确认即记录实物已退并关闭任务，不冲库存/应付。
   Future<void> _batchConfirmReturn() async {
-    if (!mounted || _batchSaving) return;
+    if (!mounted || _batchSaving || !_rowsSettled) return;
     final epoch = ref.read(exportContextEpochProvider);
     bool current() => mounted && epoch == ref.read(exportContextEpochProvider);
     final tasks = _selectedTasks
@@ -409,6 +419,8 @@ class _ProcurementReturnTasksPageState
                   onPressed:
                       _selectedTasks.length == (_result?.items.length ?? 0)
                       ? _clearSelection
+                      : _progressiveRows
+                      ? null
                       : _selectAll,
                   child: Text(
                     _selectedTasks.length == (_result?.items.length ?? 0)
@@ -420,18 +432,24 @@ class _ProcurementReturnTasksPageState
                   size: UtenButtonSize.large,
                   onPressed:
                       _batchSaving ||
+                          !_rowsSettled ||
                           _selectedTasks
                               .where((t) => t.canCompleteReturn)
                               .isEmpty
                       ? null
                       : _batchConfirmReturn,
                   onDisabledTap:
-                      _selectedTasks.where((t) => t.canCompleteReturn).isEmpty
+                      _rowsSettled &&
+                          _selectedTasks
+                              .where((t) => t.canCompleteReturn)
+                              .isEmpty
                       ? () => context.appInfo('所选任务都已完成退回，无需再办')
                       : null,
                   icon: Icons.assignment_return_outlined,
                   child: Text(
-                    '批量确认退回 ${_selectedTasks.where((t) => t.canCompleteReturn).length}',
+                    _rowsSettled
+                        ? '批量确认退回 ${_selectedTasks.where((t) => t.canCompleteReturn).length}'
+                        : '批量确认退回',
                   ),
                 ),
               ],
@@ -578,6 +596,7 @@ class _ProcurementReturnTasksPageState
                   key: Key('procurement-return-task-${result.items[i].id}'),
                   task: result.items[i],
                   selected: _selected.contains(result.items[i].id),
+                  selectionEnabled: !_progressiveRows,
                   onToggle: () => _toggle(result.items[i].id),
                   onOpen: () => context.push(
                     RoutePath.procurementArrivalException(result.items[i].id),
@@ -609,12 +628,17 @@ class _ReturnTaskListCard extends StatelessWidget {
     required this.task,
     required this.onOpen,
     this.selected = false,
+    this.selectionEnabled = true,
     this.onToggle,
   });
 
   final ProcurementArrivalException task;
   final VoidCallback onOpen;
   final bool selected;
+
+  /// False while the list is a growing prefix of an unfinished read: the
+  /// checkbox stays in place, disabled, until the complete result arrives.
+  final bool selectionEnabled;
   final VoidCallback? onToggle;
 
   @override
@@ -644,7 +668,10 @@ class _ReturnTaskListCard extends StatelessWidget {
               Row(
                 children: [
                   if (onToggle != null)
-                    Checkbox(value: selected, onChanged: (_) => onToggle!()),
+                    Checkbox(
+                      value: selected,
+                      onChanged: selectionEnabled ? (_) => onToggle!() : null,
+                    ),
                   UtenStatusBadge(
                     label: task.orderType.label,
                     type: task.orderType == ProcurementInboundOrderType.purchase

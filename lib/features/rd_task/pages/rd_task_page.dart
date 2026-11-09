@@ -55,6 +55,7 @@ import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/paging/paged_read_window_binding.dart';
 import '../../../shared/paging/scoped_paged_read.dart';
 import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
 import '../../../shared/auth/native_read_view_scope_mixin.dart'
@@ -313,10 +314,17 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel>
       ref.read(isSuperAdminProvider);
 
   /// 当前选中任务的最新行（从本次列表取，任务自动完成离开列表后返回 null → 上下文条自动消失）。
+  ///
+  /// 悬浮办理条与表格行菜单同口径：逐批读取期间（行是未读完的前缀）不开
+  /// 「标记完成 / 核对基本单位」写入口；读取失败或被退休时，宿主仍持有的
+  /// 已撤下前缀不再当作选中行展示。完整结果到达后按原选中任务恢复。
   RdTaskRow? get _selectedRow {
     final id = _selectedTaskId;
-    if (id == null || _data == null) return null;
-    for (final t in _data!.items) {
+    final data = _data;
+    if (id == null || data == null) return null;
+    final read = readWindowBindingOf(data.items);
+    if (read != null && (read.growing || !read.isCurrent)) return null;
+    for (final t in data.items) {
       if (t.id == id) return t;
     }
     return null;

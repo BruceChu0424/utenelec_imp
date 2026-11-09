@@ -24,6 +24,7 @@ import '../../../components/inputs/uten_search_bar.dart';
 import '../../../core/network/authenticated_request_scope.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/paging/paged_read_window_binding.dart';
 import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
 import '../../../shared/providers/export_context_epoch_provider.dart';
 import '../../basic_data/widgets/uten_client_picker.dart';
@@ -103,6 +104,15 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet>
       !_busy &&
       !_selecting &&
       _retainedLines == null;
+
+  /// The rows are a validated prefix of a complete read that is still loading
+  /// (the predicate the table applies to its own checkboxes and row menus).
+  /// Row checks and the batch shipment wait for the complete result; the
+  /// selection, quantities and weights already entered stay as they are.
+  bool get _growing {
+    final rows = _page?.items;
+    return rows != null && readWindowBindingOf(rows)?.growing == true;
+  }
 
   @override
   void initState() {
@@ -302,7 +312,7 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet>
   }
 
   void _toggleLine(ShippableLine line, bool check) {
-    if (!_canEditSelection || !line.writable) return;
+    if (!_canEditSelection || _growing || !line.writable) return;
     if (check &&
         !_selected.contains(line.orderItemId) &&
         _selected.length >= _maxSelection) {
@@ -394,6 +404,7 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet>
         !_hasCreate ||
         _busy ||
         _selecting ||
+        _growing ||
         _selected.isEmpty) {
       return;
     }
@@ -693,7 +704,11 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet>
                 key: const Key('sales-batch-confirm'),
                 icon: Icons.check_circle_outline,
                 onPressed:
-                    _selected.isEmpty || _busy || _selecting || !_hasCreate
+                    _selected.isEmpty ||
+                        _busy ||
+                        _selecting ||
+                        _growing ||
+                        !_hasCreate
                     ? null
                     : _confirm,
                 child: Text(
@@ -721,7 +736,7 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet>
           final checkbox = Checkbox(
             key: ValueKey('sales-batch-select-${l.orderItemId}'),
             value: checked,
-            onChanged: l.writable && _canEditSelection
+            onChanged: l.writable && _canEditSelection && !_growing
                 ? (value) => _toggleLine(l, value ?? false)
                 : null,
           );
@@ -795,7 +810,7 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet>
               Checkbox(
                 key: ValueKey('sales-batch-select-${l.orderItemId}'),
                 value: checked,
-                onChanged: l.writable && _canEditSelection
+                onChanged: l.writable && _canEditSelection && !_growing
                     ? (v) => _toggleLine(l, v ?? false)
                     : null,
               ),

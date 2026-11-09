@@ -219,6 +219,7 @@ class _DirectoryState extends ConsumerState<FinanceStatementDocumentDialog>
       _busy = true;
       _error = null;
     });
+    var partialRows = false;
     try {
       final data = await readScopedPage<Map<String, dynamic>>(
         1,
@@ -229,14 +230,19 @@ class _DirectoryState extends ConsumerState<FinanceStatementDocumentDialog>
         isCurrent: current,
         fetchPage: (page) async => _fetchPage(page, 100, kind),
         fetchPageSized: (page, size) async => _fetchPage(page, size, kind),
-        onProgressiveBatch: (partial) => setState(() => _rows = partial.items),
+        onProgressiveBatch: (partial) => setState(() {
+          partialRows = true;
+          _rows = partial.items;
+        }),
       );
       if (current()) setState(() => _rows = data.items);
     } catch (e) {
       if (!isRetiredViewRead(e) && current()) {
         setState(() {
           _error = _errorText(e);
-          if (pagedReadAccessDenied(e)) _rows = [];
+          // Access loss, or a failed read whose progressive rows were shown:
+          // never leave a half list next to the error.
+          if (pagedReadAccessDenied(e) || partialRows) _rows = [];
         });
       }
     } finally {

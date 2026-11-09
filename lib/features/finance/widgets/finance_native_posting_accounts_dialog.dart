@@ -73,6 +73,7 @@ class _DirectoryState extends ConsumerState<_Directory>
       _busy = true;
       _error = null;
     });
+    var partialRows = false;
     try {
       final result = await readScopedPage<Map<String, dynamic>>(
         1,
@@ -83,7 +84,10 @@ class _DirectoryState extends ConsumerState<_Directory>
         isCurrent: () => _current && generation == _generation,
         fetchPage: (page) async => _fetchPage(page, 100),
         fetchPageSized: _fetchPage,
-        onProgressiveBatch: (partial) => setState(() => _rows = partial.items),
+        onProgressiveBatch: (partial) => setState(() {
+          partialRows = true;
+          _rows = partial.items;
+        }),
       );
       if (!_current || generation != _generation) return;
       setState(() {
@@ -98,7 +102,9 @@ class _DirectoryState extends ConsumerState<_Directory>
       if (isRetiredViewRead(e)) return;
       if (_current && generation == _generation) {
         setState(() {
-          if (pagedReadAccessDenied(e)) _rows = [];
+          // Access loss, or a failed read whose progressive rows were shown:
+          // never leave a half list next to the error.
+          if (pagedReadAccessDenied(e) || partialRows) _rows = [];
           _error = _message(e);
         });
       }

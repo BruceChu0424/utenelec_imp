@@ -38,6 +38,8 @@ class SecurityDefaultsTest {
                         // ADR-133: AI 识别上传的文件名与类型。
                         "X-Uten-File-Name",
                         "X-Uten-File-Type",
+                        // ADR-198: 同步导出生成进度登记的轮询操作号。
+                        "X-Uten-Export-Operation",
                         // Explicit precision selections must pass the same cross-origin preflight.
                         "X-Uten-Precision-Choices",
                         // ADR-110: 敏感操作的一次性再认证凭证随请求头发送。

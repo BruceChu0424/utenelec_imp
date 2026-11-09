@@ -35,6 +35,7 @@ class UtenActionOverflow extends StatefulWidget {
   static bool isAction(Widget source) {
     if (source is KeyedSubtree) return isAction(source.child);
     if (source is UtenTableActionScope) return isAction(source.child);
+    if (source is UtenTableActionGate) return isAction(source.child);
     if (source is Padding && source.child != null) {
       return isAction(source.child!);
     }
@@ -203,6 +204,15 @@ class _UtenActionOverflowState extends State<UtenActionOverflow> {
     if (source is UtenTableActionScope) {
       return UtenTableActionScope(
         key: source.key,
+        child: _present(source.child, menu),
+      );
+    }
+    // A held table action stays held in the menu; its control is presented
+    // like any other menu action.
+    if (source is UtenTableActionGate) {
+      return UtenTableActionGate(
+        key: source.key,
+        enabled: source.enabled,
         child: _present(source.child, menu),
       );
     }

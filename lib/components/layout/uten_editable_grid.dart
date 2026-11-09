@@ -3934,7 +3934,10 @@ class _UtenEditableGridState<T extends EditableGridRow>
                 for (final action
                     in widget.batchActionsBuilder?.call(context, c) ??
                         const <Widget>[])
-                  _selectionActionGate(action),
+                  UtenTableActionGate(
+                    enabled: widget.selectionEnabled,
+                    child: action,
+                  ),
                 if (!editMode &&
                     widget.showRemoveRowsAction &&
                     (widget.showAddRow || widget.onRemoveRows != null))
@@ -3982,18 +3985,6 @@ class _UtenEditableGridState<T extends EditableGridRow>
     }
     return null;
   }
-
-  Widget _selectionActionGate(Widget child) => ExcludeFocus(
-    excluding: !widget.selectionEnabled,
-    child: IgnorePointer(
-      ignoring: !widget.selectionEnabled,
-      child: AnimatedOpacity(
-        opacity: widget.selectionEnabled ? 1 : 0.45,
-        duration: const Duration(milliseconds: 150),
-        child: child,
-      ),
-    ),
-  );
 
   Widget _actBtn(
     ThemeData theme,

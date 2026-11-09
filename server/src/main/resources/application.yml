@@ -259,6 +259,10 @@ uten:
     internal:
       # One dedicated durable filesystem: staging, final and scratch all live below this root.
       root: ${UTEN_INTERNAL_STORAGE_ROOT:}
+      # Cold tier on the large RAID volume: reads fall back to it, new writes stay on the hot root.
+      archive-root: ${UTEN_INTERNAL_ARCHIVE_ROOT:}
+      # Age in days after which the nightly task moves an attachment to the archive root; 0 disables tiering.
+      archive-after-days: ${UTEN_INTERNAL_ARCHIVE_AFTER_DAYS:0}
       max-concurrent-io: ${UTEN_INTERNAL_STORAGE_MAX_CONCURRENT_IO:2}
       max-object-bytes: ${UTEN_INTERNAL_STORAGE_MAX_OBJECT_BYTES:268435456}
       min-free-bytes: ${UTEN_INTERNAL_STORAGE_MIN_FREE_BYTES:1073741824}

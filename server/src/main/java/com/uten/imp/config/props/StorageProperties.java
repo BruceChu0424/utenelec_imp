@@ -91,6 +91,17 @@ public class StorageProperties {
     public static class Internal {
         /** Dedicated existing durable directory; never a static-resource/web root. */
         private String root = "";
+        /**
+         * Cold-tier root on the large RAID volume. Reads fall back to it after the
+         * hot root; new writes always land on the hot root. Blank disables tiering.
+         */
+        private String archiveRoot = "";
+        /**
+         * Age in days after which the nightly tiering task moves an attachment to
+         * the archive root. Company-library attachments are never moved. 0 keeps
+         * tiering off even when an archive root is configured.
+         */
+        private int archiveAfterDays = 0;
         private int maxConcurrentIo = 2;
         /** Hard bound for old downloads too; changing the upload limit does not reinterpret existing objects. */
         private long maxObjectBytes = 268435456L;

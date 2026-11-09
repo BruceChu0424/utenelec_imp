@@ -41,6 +41,7 @@ public class InternalStorageService implements StorageService, BlobStore {
     private final StorageProperties properties;
     private final DirectorySync directorySync;
     private Path root, staging, finals, scratch;
+    private Path archiveFinals;
     private Semaphore permits;
 
     @FunctionalInterface
@@ -74,6 +75,7 @@ public class InternalStorageService implements StorageService, BlobStore {
         staging = privateDirectory(root.resolve("staging"));
         finals = privateDirectory(root.resolve("final"));
         scratch = privateDirectory(root.resolve("scratch"));
+        archiveFinals = initializeArchiveFinals();
         permits = new Semaphore(properties.getInternal().getMaxConcurrentIo(), true);
         Path probe = Files.createTempFile(scratch, "durability-", ".part");
         Path published = staging.resolve(probe.getFileName());
@@ -89,6 +91,21 @@ public class InternalStorageService implements StorageService, BlobStore {
             Files.deleteIfExists(probe);
             Files.deleteIfExists(published);
         }
+    }
+
+    /**
+     * Cold-tier final tree. Only reads and the nightly tiering task touch it;
+     * every new object still lands on the hot root. Blank config keeps null.
+     */
+    private Path initializeArchiveFinals() throws IOException {
+        String configured = properties.getInternal().getArchiveRoot();
+        if (configured == null || configured.isBlank()) return null;
+        Path archiveRoot = Path.of(configured).normalize();
+        if (!Files.isDirectory(archiveRoot, LinkOption.NOFOLLOW_LINKS)
+                || !archiveRoot.equals(archiveRoot.toRealPath()) || !Files.isWritable(archiveRoot)) {
+            throw new IllegalStateException("Internal storage archive root must be an existing writable real directory");
+        }
+        return privateDirectory(archiveRoot.resolve("final"));
     }
 
     public static void validateConfiguration(StorageProperties properties) {
@@ -107,6 +124,16 @@ public class InternalStorageService implements StorageService, BlobStore {
                 || config.getCompressionMinSavingsPercent() < 1 || config.getCompressionMinSavingsPercent() > 90
                 || config.getMaxInventoryObjects() < 1 || config.getMaxInventoryObjects() > 100000)
             throw new IllegalStateException("Internal storage resource limits are invalid");
+        String archiveRoot = config.getArchiveRoot();
+        if (archiveRoot != null && !archiveRoot.isBlank()) {
+            Path archive = Path.of(archiveRoot).normalize();
+            if (!archive.isAbsolute() || archive.getParent() == null)
+                throw new IllegalStateException("Internal storage archive root must be an absolute dedicated directory");
+            if (archive.equals(Path.of(config.getRoot()).normalize()))
+                throw new IllegalStateException("Internal storage archive root must differ from the hot root");
+            if (config.getArchiveAfterDays() < 0)
+                throw new IllegalStateException("Internal storage archive age must not be negative");
+        }
     }
 
     @Override public PresignedUpload presignUpload(UploadRequest request) {
@@ -158,9 +185,25 @@ public class InternalStorageService implements StorageService, BlobStore {
 
     @Override public StoredObject describe(String key) { return inspectObject(ObjectLocation.STAGING, key); }
 
+    /**
+     * Read-side resolution for final objects: the hot root first, then the cold
+     * archive tree when configured. When neither holds the object the hot path is
+     * returned so callers keep the original not-found semantics.
+     */
+    private Path finalPath(String key) {
+        Path hot = resolve(finals, key);
+        if (archiveFinals == null) return hot;
+        if (Files.notExists(hot, LinkOption.NOFOLLOW_LINKS)) {
+            Path cold = resolve(archiveFinals, key);
+            if (Files.exists(cold, LinkOption.NOFOLLOW_LINKS)) return cold;
+        }
+        return hot;
+    }
+
     @Override public StoredObject inspectObject(ObjectLocation location, String key) {
         if (staging == null || finals == null) throw new StorageResourceUnavailableException("内部存储尚未初始化");
         Path path = resolve(location == ObjectLocation.STAGING ? staging : finals, key);
+        if (location != ObjectLocation.STAGING) path = finalPath(key);
         try (Lease lease = lease()) {
             requireObjectNamespaces(path);
             return inspectPath(path);
@@ -222,6 +265,17 @@ public class InternalStorageService implements StorageService, BlobStore {
                     return describe(existing.header);
                 }
             }
+            // The identity may already live in the cold archive after tiering;
+            // reuse it there instead of writing a duplicate onto the hot root.
+            Path archived = finalPath(key);
+            if (!archived.equals(target) && Files.exists(archived, LinkOption.NOFOLLOW_LINKS)) {
+                try (Envelope existing = envelope(archived)) {
+                    requireVersion(existing.header, original.version());
+                    copyExact(existing.payload(), OutputStream.nullOutputStream(), original.originalSize, lease, original.sha);
+                    forceFile(archived);
+                    return describe(existing.header);
+                }
+            }
             requireSpace(original.originalSize * 2 + HEADER_BYTES);
             Path compressed = null, completed = temporary();
             try {
@@ -268,7 +322,7 @@ public class InternalStorageService implements StorageService, BlobStore {
     }
 
     @Override public PresignedDownload presignDownload(String key, String versionId) {
-        try (Lease lease = lease(); Envelope envelope = envelope(resolve(finals, key))) {
+        try (Lease lease = lease(); Envelope envelope = envelope(finalPath(key))) {
             requireVersion(envelope.header, versionId);
             return new PresignedDownload("/attachments/raw/" + key,
                     Instant.now().plusSeconds(properties.getPresignedExpirySeconds()));
@@ -289,7 +343,7 @@ public class InternalStorageService implements StorageService, BlobStore {
         Lease lease = lease();
         Path verified = null;
         try {
-            try (Envelope envelope = envelope(resolve(finals, key))) {
+            try (Envelope envelope = envelope(finalPath(key))) {
                 requireVersion(envelope.header, versionId);
                 if ((originalSize>=0 && originalSize!=envelope.header.originalSize)
                         || (sha256!=null && !sha256.equals(HexFormat.of().formatHex(envelope.header.sha)))
@@ -314,8 +368,46 @@ public class InternalStorageService implements StorageService, BlobStore {
 
     @Override public InputStream openFinal(String key,String versionId) { return read(key,versionId); }
 
-    @Override public void delete(String key, String versionId) { deleteAt(finals, key, versionId); }
+    @Override public void delete(String key, String versionId) {
+        // Tiered objects may sit on the hot root, the cold archive, or briefly on
+        // both during a move; deleteAt is idempotent so sweep both namespaces.
+        deleteAt(finals, key, versionId);
+        if (archiveFinals != null) deleteAt(archiveFinals, key, versionId);
+    }
     @Override public void deleteStaging(String key, String versionId) { deleteAt(staging, key, versionId); }
+
+    /** Whether the cold archive tree is configured and initialized. */
+    public boolean archiveTieringConfigured() { return archiveFinals != null; }
+
+    /** Configured tiering age in days; 0 keeps the nightly tiering task off. */
+    public int archiveAfterDays() { return properties.getInternal().getArchiveAfterDays(); }
+
+    /**
+     * Move one final object onto the cold archive tree. The envelope header is
+     * re-validated before the move so a truncated or foreign file is never
+     * archived. Cross-device moves fall back to copy-then-delete, which stays
+     * safe to re-run if interrupted: a leftover hot copy simply moves again.
+     */
+    public void tierToArchive(String key) throws IOException {
+        Path target = resolve(finals, key);
+        if (archiveFinals == null)
+            throw new IllegalStateException("Internal storage archive tiering is not configured");
+        try (Lease lease = lease()) {
+            requireObjectNamespaces(target);
+            if (Files.notExists(target, LinkOption.NOFOLLOW_LINKS)) return;
+            try (Envelope envelope = envelope(target)) { /* validates the header */ }
+            Path destination = resolve(archiveFinals, key);
+            createPartition(archiveFinals, destination.getParent());
+            try {
+                Files.move(target, destination, StandardCopyOption.ATOMIC_MOVE);
+            } catch (AtomicMoveNotSupportedException crossDevice) {
+                Files.copy(target, destination, StandardCopyOption.REPLACE_EXISTING);
+                forceFile(destination);
+                Files.deleteIfExists(target);
+            }
+            directorySync.force(destination.getParent());
+        }
+    }
     @Override public boolean isEnabled() { return true; }
     @Override public String backend() { return "internal"; }
 
@@ -343,27 +435,34 @@ public class InternalStorageService implements StorageService, BlobStore {
         try (Lease lease = lease()) {
             for (ObjectLocation location : ObjectLocation.values()) {
                 Path namespace = location == ObjectLocation.STAGING ? staging : finals;
-                try (var files = Files.walk(namespace,3)) {
-                    var iterator=files.iterator();int visited=0;
-                    while(iterator.hasNext()) {
-                        Path file=iterator.next();
-                        lease.check();
-                        if(++visited>properties.getInternal().getMaxInventoryObjects()*4+8)
-                            throw new StorageResourceUnavailableException("附件目录超过单批核对上限");
-                        if(Files.isDirectory(file,LinkOption.NOFOLLOW_LINKS))continue;
-                        if (result.size() == properties.getInternal().getMaxInventoryObjects())
-                            throw new StorageResourceUnavailableException("附件清单超出单批上限，请使用受控分批核对");
-                        String key = file.getFileName().toString();
-                        if(!resolve(namespace,key).equals(file))throw new IOException("Object is outside its declared category partition");
-                        try (Envelope envelope = envelope(file)) {
-                            result.add(new StoredObjectRef(location,key,envelope.header.version(),
-                                    envelope.header.originalSize,Files.getLastModifiedTime(file,LinkOption.NOFOLLOW_LINKS).toInstant()));
-                        }
-                    }
-                }
+                collectInventory(namespace, location, result, lease);
             }
+            // Cold-tier objects are still FINAL objects; reconcile both trees.
+            if (archiveFinals != null) collectInventory(archiveFinals, ObjectLocation.FINAL, result, lease);
             return List.copyOf(result);
         } catch (IOException error) { throw storageFailure("Unable to inventory internal attachments", error); }
+    }
+
+    private void collectInventory(Path namespace, ObjectLocation location,
+                                  List<StoredObjectRef> result, Lease lease) throws IOException {
+        try (var files = Files.walk(namespace,3)) {
+            var iterator=files.iterator();int visited=0;
+            while(iterator.hasNext()) {
+                Path file=iterator.next();
+                lease.check();
+                if(++visited>properties.getInternal().getMaxInventoryObjects()*4+8)
+                    throw new StorageResourceUnavailableException("附件目录超过单批核对上限");
+                if(Files.isDirectory(file,LinkOption.NOFOLLOW_LINKS))continue;
+                if (result.size() == properties.getInternal().getMaxInventoryObjects())
+                    throw new StorageResourceUnavailableException("附件清单超出单批上限，请使用受控分批核对");
+                String key = file.getFileName().toString();
+                if(!resolve(namespace,key).equals(file))throw new IOException("Object is outside its declared category partition");
+                try (Envelope envelope = envelope(file)) {
+                    result.add(new StoredObjectRef(location,key,envelope.header.version(),
+                            envelope.header.originalSize,Files.getLastModifiedTime(file,LinkOption.NOFOLLOW_LINKS).toInstant()));
+                }
+            }
+        }
     }
 
     private void deleteAt(Path namespace, String key, String versionId) {
@@ -489,8 +588,12 @@ public class InternalStorageService implements StorageService, BlobStore {
     private void requireObjectNamespaces(Path object) {
         if(root==null || staging==null || finals==null || scratch==null)
             throw new StorageResourceUnavailableException("内部存储尚未初始化");
-        for(Path directory:List.of(root,staging,finals,scratch))requireRealDirectory(directory);
-        Path namespace=object.startsWith(staging)?staging:object.startsWith(finals)?finals:null;
+        for(Path directory:archiveFinals==null?List.of(root,staging,finals,scratch)
+                :List.of(root,staging,finals,scratch,archiveFinals))requireRealDirectory(directory);
+        Path namespace=object.startsWith(staging)?staging
+                :object.startsWith(finals)?finals
+                :archiveFinals!=null&&object.startsWith(archiveFinals)?archiveFinals
+                :null;
         if(namespace==null)throw new StorageResourceUnavailableException("原件不在初始化存储目录内");
         Path parent=namespace;
         for(Path segment:namespace.relativize(object.getParent())) {

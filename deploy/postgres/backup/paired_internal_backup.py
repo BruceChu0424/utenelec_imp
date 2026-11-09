@@ -69,6 +69,9 @@ class Config:
     postgres_user: str = "postgres"
     media_root: str = "/var/lib/uten-imp-media/attachments"
     local_media_root: str | None = None
+    # Cold tier of the internal provider on the large RAID volume; objects moved
+    # there by the nightly tiering task are picked up from this root.
+    media_archive_root: str | None = None
     backup_root: str = "/data/uten-imp-backups/paired"
     pg_dump: str = "/usr/lib/postgresql/16/bin/pg_dump"
     min_free_bytes: int = 10 * 1024**3
@@ -691,11 +694,19 @@ def validate_config(config: Config):
         real_directory(local / "final")
         if local == source or local in source.parents or source in local.parents:
             raise ValueError("Local and internal roots must be physically separate")
+    archive = None
+    if config.media_archive_root is not None:
+        archive = real_directory(Path(config.media_archive_root))
+        real_directory(archive / "final")
+        if archive == source or archive in source.parents or source in archive.parents:
+            raise ValueError("Archive and internal roots must be physically separate")
     destination = real_directory(Path(config.backup_root))
     real_directory(Path(config.socket_directory))
     if (source == destination or source in destination.parents or destination in source.parents
             or destination.stat().st_uid != 0 or destination.stat().st_mode & 0o077):
         raise ValueError("Backup root must be separate and root-only (0700)")
+    if archive is not None and (archive == destination or archive in destination.parents or destination in archive.parents):
+        raise ValueError("Archive media and backup roots must be separate")
     if config.local_media_root and (local == destination or local in destination.parents or destination in local.parents):
         raise ValueError("Local media and backup roots must be separate")
     executable = Path(config.pg_dump)
@@ -742,9 +753,16 @@ def _backup_locked(config: Config) -> Path:
                 source = config.media_root if provider == "internal" else config.local_media_root
                 if source is None:
                     raise ValueError("Referenced local files require an explicit local_media_root")
+                namespace = Path(source) / "final"
+                if provider == "internal" and config.media_archive_root:
+                    # Tiered objects live on the cold root; keep the hot root first
+                    # so a half-moved object still resolves to its surviving copy.
+                    relative = relative_key(row["storage_key"])
+                    if not (namespace / relative).exists():
+                        namespace = Path(config.media_archive_root) / "final"
                 target = media_final(work / "media", provider)
                 target.mkdir(parents=True, mode=0o700, exist_ok=True)
-                record = copy_object(Path(source) / "final", target, row, budget, reusable.get(object_identity(row)))
+                record = copy_object(namespace, target, row, budget, reusable.get(object_identity(row)))
                 manifest.write(json.dumps(record, ensure_ascii=False) + "\n")
                 stored_bytes += record["stored_size_bytes"]
                 original_bytes += record["size_bytes"]

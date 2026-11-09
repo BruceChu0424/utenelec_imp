@@ -239,6 +239,75 @@ class InternalStorageServiceTest {
         var props=new StorageProperties();props.setProvider("internal");props.getInternal().setRoot(directory.toString());
         props.getInternal().setMinFreeBytes(0);return props;
     }
+
+    // ---- Cold-tier archive (2026-11-10 layout: hot NVMe root + large RAID archive) ----
+
+    private StorageProperties archiveProperties() throws IOException {
+        Path archiveRoot=directory.resolve("archive-volume");Files.createDirectory(archiveRoot);
+        var props=properties();props.getInternal().setArchiveRoot(archiveRoot.toString());
+        props.getInternal().setArchiveAfterDays(365);return props;
+    }
+
+    @Test void tierToArchiveMovesObjectAndReadsResolveThroughTheArchive() throws Exception {
+        var store=store(archiveProperties());
+        byte[] bytes="cold tier bytes".getBytes(StandardCharsets.UTF_8);
+        var object=upload(store,KEY,bytes);
+        store.tierToArchive(KEY);
+        assertFalse(Files.exists(directory.resolve("final").resolve(KEY)),"hot copy must be gone");
+        assertTrue(Files.exists(directory.resolve("archive-volume").resolve("final").resolve(KEY)));
+        var inspected=store.inspectObject(StorageService.ObjectLocation.FINAL,KEY);
+        assertTrue(inspected.exists());assertEquals(object.versionId(),inspected.versionId());
+        var presigned=store.presignDownload(KEY,object.versionId());
+        assertEquals("/attachments/raw/"+KEY,presigned.url());
+        try(var input=store.readVerified(KEY,object.versionId(),object.size(),object.contentSha256(),object.storedSize(),object.encoding())) {
+            assertArrayEquals(bytes,input.readAllBytes());
+        }
+    }
+
+    @Test void tieringIsIdempotentAndASecondPromoteReusesTheArchivedIdentity() throws Exception {
+        var store=store(archiveProperties());
+        byte[] bytes="reuse identity".getBytes(StandardCharsets.UTF_8);
+        var object=upload(store,KEY,bytes);
+        store.tierToArchive(KEY);
+        store.tierToArchive(KEY); // interrupted pass left nothing behind; second move is a no-op
+        // A re-upload of the same identity must not duplicate onto the hot root:
+        // the caller clears staging first, exactly like the upload flow does.
+        store.deleteStaging(KEY,store.describe(KEY).versionId());
+        store.store(KEY,new ByteArrayInputStream(bytes),bytes.length);
+        var reused=store.promoteToFinal(KEY,store.describe(KEY));
+        assertEquals(object.versionId(),reused.versionId());
+        assertFalse(Files.exists(directory.resolve("final").resolve(KEY)),"no hot duplicate appears");
+    }
+
+    @Test void deleteSweepsBothTiers() throws Exception {
+        var store=store(archiveProperties());
+        var object=upload(store,KEY,"sweep both".getBytes(StandardCharsets.UTF_8));
+        store.tierToArchive(KEY);
+        store.delete(KEY,object.versionId());
+        assertFalse(store.inspectObject(StorageService.ObjectLocation.FINAL,KEY).exists());
+        assertFalse(Files.exists(directory.resolve("archive-volume").resolve("final").resolve(KEY)));
+    }
+
+    @Test void archiveRootMustBeAbsoluteDistinctAndReal() throws Exception {
+        var props=properties();props.getInternal().setArchiveRoot(directory.toString());
+        assertThrows(IllegalStateException.class,()->InternalStorageService.validateConfiguration(props),
+                "archive root equal to the hot root is rejected");
+        var relative=properties();relative.getInternal().setArchiveRoot("relative-archive");
+        assertThrows(IllegalStateException.class,()->InternalStorageService.validateConfiguration(relative),
+                "a relative archive root is rejected");
+        var missing=archiveProperties();missing.getInternal().setArchiveRoot(
+                directory.resolve("not-created-yet").toString());
+        assertThrows(IllegalStateException.class,()->store(missing),
+                "the archive root must exist before startup");
+    }
+
+    @Test void tieringWithoutAnArchiveRootIsNotConfigured() throws Exception {
+        var store=store();
+        assertFalse(store.archiveTieringConfigured());
+        assertEquals(0,store.archiveAfterDays(),"default keeps tiering off");
+        assertThrows(IllegalStateException.class,()->store.tierToArchive(KEY));
+    }
+
     @Test void inspectObjectReadsOnlyTheHeaderAndClassifiesEveryLocationState() throws Exception {
         var store=store();byte[] bytes="header only inspection".getBytes(StandardCharsets.UTF_8);
         var object=upload(store,KEY,bytes);

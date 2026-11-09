@@ -17,11 +17,18 @@ import 'package:uten_imp/features/basic_data/repositories/goods_repository.dart'
 import 'package:uten_imp/features/basic_data/repositories/product_category_repository.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/paging/complete_paged_snapshot.dart'
+    show CompleteReadBatchPlan;
+import 'package:uten_imp/shared/paging/complete_summary_stream.dart'
+    show kProgressiveSummaryStreamSize;
 import 'package:uten_imp/shared/paging/paged_read_intent.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import '../../../support/complete_read_plan_batches.dart';
 import '../../../support/pump_until.dart';
 import '../../../support/uten_test_actions.dart';
+
+typedef _Batch = ({int page, int size});
 
 typedef _Call = ({
   String category,
@@ -33,6 +40,8 @@ typedef _Call = ({
   bool Function()? current,
 });
 
+_Batch _batchOf(_Call call) => (page: call.page, size: call.size);
+
 class _GoodsApi extends ApiClient {
   _GoodsApi({this.normalCount = 10001})
     : super(Dio(BaseOptions(baseUrl: 'https://goods.fixture/api')));
@@ -42,9 +51,10 @@ class _GoodsApi extends ApiClient {
   final summaryRequests = <String, int>{};
   final attempts = <String, int>{};
   final active = <String, int>{}, peak = <String, int>{};
-  final gates = <(String, int, int), Completer<void>>{};
-  final hold = <(String, int, int)>{};
+  final gates = <(String, int, _Batch), Completer<void>>{};
+  final hold = <(String, int, _Batch)>{};
   int generation = 0, businessWrites = 0;
+  // The first disabled read fails on its third internal batch (a tail).
   bool failDisabledThird = false;
   static const exactQty = '90071992547409.123456789012345678901234';
   @override
@@ -63,19 +73,33 @@ class _GoodsApi extends ApiClient {
         : 'normal';
     final key = '$category/$kind';
     summaryRequests[key] = (summaryRequests[key] ?? 0) + 1;
+    // The request size selects the server's frame plan exactly as
+    // MasterSummaryReadSupport does: kProgressiveSummaryStreamSize serves the
+    // progressive ladder, 100 the original fixed frames, nothing else.
+    final requested = input['size'];
+    if (input['page'] != 1 ||
+        (requested != 100 && requested != kProgressiveSummaryStreamSize)) {
+      throw StateError('Expected one complete summary from its first batch');
+    }
+    final plan = requested == kProgressiveSummaryStreamSize
+        ? CompleteReadBatchPlan.progressive
+        : const CompleteReadBatchPlan.fixed(100);
     Stream<Map<String, dynamic>> frames() async* {
-      final first = await post(path, body: input);
-      yield {'type': 'page', 'value': first};
-      for (var page = 2; page <= (first['totalPages'] as int); page++) {
-        yield {
-          'type': 'page',
-          'value': await post(
-            path,
-            body: {...input, 'page': page},
-            query: {'readSnapshotRevision': first['readSnapshotRevision']},
-          ),
-        };
-      }
+      Map<String, dynamic>? first;
+      var offset = 0;
+      do {
+        final size = plan.sizeAt(offset);
+        final value = await post(
+          path,
+          body: {...input, 'page': offset ~/ size + 1, 'size': size},
+          query: first == null
+              ? null
+              : {'readSnapshotRevision': first['readSnapshotRevision']},
+        );
+        first ??= value;
+        yield {'type': 'page', 'value': value};
+        offset += size;
+      } while (offset < (first['total'] as int));
       yield {
         'type': 'complete',
         for (final key in [
@@ -151,7 +175,8 @@ class _GoodsApi extends ApiClient {
     ));
     active[key] = (active[key] ?? 0) + 1;
     if (active[key]! > (peak[key] ?? 0)) peak[key] = active[key]!;
-    final gateKey = (kind, attempt, page);
+    final batch = (page: page, size: size);
+    final gateKey = (kind, attempt, batch);
     try {
       if (hold.contains(gateKey)) {
         await gates.putIfAbsent(gateKey, Completer<void>.new).future;
@@ -159,7 +184,7 @@ class _GoodsApi extends ApiClient {
       await Future<void>.delayed(Duration.zero);
       if (kind == 'disabled' &&
           attempt == 1 &&
-          page == 3 &&
+          batch == completeReadPlanBatches(disabledCount)[2] &&
           failDisabledThird) {
         throw ApiException('NETWORK', '禁用货品尾批未完整读取', httpStatus: 503);
       }
@@ -209,8 +234,8 @@ class _GoodsApi extends ApiClient {
     }
   }
 
-  void release(String kind, int attempt, int page) {
-    final gate = gates[(kind, attempt, page)];
+  void release(String kind, int attempt, _Batch batch) {
+    final gate = gates[(kind, attempt, batch)];
     if (gate != null && !gate.isCompleted) gate.complete();
   }
 }
@@ -315,9 +340,16 @@ void registerGoodsCompleteFirstOpenTests() {
       expect(disabled.total, 2414);
       expect(disabled.items.last.id, 'g0-goods-root-disabled-2413');
       expect(disabled.items.last.stockQtyDisplayText, _GoodsApi.exactQty);
-      expect(api.calls.where((c) => c.kind == 'normal'), hasLength(101));
-      expect(api.calls.where((c) => c.kind == 'disabled'), hasLength(25));
-      expect(api.calls.every((c) => c.size == 100), isTrue);
+      // One HTTP stream per kind; the server reads it internally in the
+      // shared plan's bounded batches, exactly once and one at a time.
+      expect(
+        api.calls.where((c) => c.kind == 'normal').map(_batchOf),
+        completeReadPlanBatches(10001),
+      );
+      expect(
+        api.calls.where((c) => c.kind == 'disabled').map(_batchOf),
+        completeReadPlanBatches(_GoodsApi.disabledCount),
+      );
       expect(api.peak.values.every((v) => v == 1), isTrue);
       expect(api.summaryRequests['goods-root/normal'], 1);
       expect(api.summaryRequests['goods-root/disabled'], 1);
@@ -346,7 +378,9 @@ void registerGoodsCompleteFirstOpenTests() {
     'Goods disabled tail failure is local error with real retry and no prefix while normal remains usable',
     (tester) async {
       final api = _GoodsApi(normalCount: 201)..failDisabledThird = true;
-      api.hold.add(('disabled', 2, 25));
+      // The retry's last internal batch (the disabled tail) is held.
+      final tail = completeReadPlanBatches(_GoodsApi.disabledCount).last;
+      api.hold.add(('disabled', 2, tail));
       await _mount(tester, api);
       await pumpUntil(
         tester,
@@ -371,7 +405,7 @@ void registerGoodsCompleteFirstOpenTests() {
       await pumpUntil(
         tester,
         () => api.calls.any(
-          (c) => c.kind == 'disabled' && c.attempt == 2 && c.page == 25,
+          (c) => c.kind == 'disabled' && c.attempt == 2 && _batchOf(c) == tail,
         ),
         reason: 'Explicit retry did not reach full disabled tail',
       );
@@ -385,7 +419,7 @@ void registerGoodsCompleteFirstOpenTests() {
         _view(tester).leadingGroups!.any((g) => g.id == 'disabled'),
         isFalse,
       );
-      api.release('disabled', 2, 25);
+      api.release('disabled', 2, tail);
       await pumpUntil(
         tester,
         () => _view(tester).leadingGroups!.any(
@@ -393,7 +427,11 @@ void registerGoodsCompleteFirstOpenTests() {
         ),
         reason: 'Retry did not publish a complete disabled group',
       );
-      api.release('disabled', 1, 2);
+      api.release(
+        'disabled',
+        1,
+        completeReadPlanBatches(_GoodsApi.disabledCount)[1],
+      );
       await tester.pumpAndSettle();
       expect(
         _view(
@@ -415,9 +453,9 @@ void registerGoodsCompleteFirstOpenTests() {
       'Goods group held tail retires on $transition and cannot publish or keep reading',
       (tester) async {
         final api = _GoodsApi(normalCount: 201);
-        for (final page in [2]) {
-          api.hold.add(('disabled', 1, page));
-        }
+        // The disabled group's second internal batch (its tail) is held.
+        final held = completeReadPlanBatches(_GoodsApi.disabledCount)[1];
+        api.hold.add(('disabled', 1, held));
         final container = await _mount(tester, api);
         await pumpUntil(
           tester,
@@ -444,9 +482,7 @@ void registerGoodsCompleteFirstOpenTests() {
           reason: 'New owner did not replace the old table',
         );
         expect(old.every((c) => c.current!() == false), isTrue);
-        for (final page in [2]) {
-          api.release('disabled', 1, page);
-        }
+        api.release('disabled', 1, held);
         await tester.pumpAndSettle();
         expect(_view(tester).items, hasLength(1));
         expect(_view(tester).leadingGroups, isEmpty);

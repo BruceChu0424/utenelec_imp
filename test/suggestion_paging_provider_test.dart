@@ -7,6 +7,12 @@ import 'package:uten_imp/features/suggestion/providers/suggestion_providers.dart
 import 'package:uten_imp/features/suggestion/repositories/suggestion_repository.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 
+import 'support/complete_read_plan_batches.dart';
+
+/// More rows than one first batch: the complete scope spans several server
+/// batches of the shared plan and its tail row comes from the last batch.
+const _total = 145;
+
 void main() {
   test(
     'repository sends 1-based page, scope and category to the server',
@@ -70,16 +76,17 @@ void main() {
 
       final first = await container.read(suggestionListProvider.future);
       expect(first.page, 1);
-      expect(first.items, hasLength(45));
-      expect(first.total, 45);
+      expect(first.items, hasLength(_total));
+      expect(first.total, _total);
       expect(first.totalPages, 1);
       expect(first.items.map((item) => item.id), [
-        for (var i = 1; i <= 45; i++) 'suggestion-$i',
+        for (var i = 1; i <= _total; i++) 'suggestion-$i',
       ]);
       final completeRead = [
-        for (var page = 1; page <= 3; page++)
-          (mine: false, page: page, size: 20),
+        for (final batch in completeReadPlanBatches(_total))
+          (mine: false, page: batch.page, size: batch.size),
       ];
+      expect(completeRead, hasLength(greaterThan(1)));
       expect(repository.calls, completeRead);
 
       await container.read(suggestionListProvider.notifier).nextPage();
@@ -94,7 +101,7 @@ void main() {
       expect(container.read(suggestionListProvider).requireValue.page, 1);
       expect(
         container.read(suggestionListProvider).requireValue.items,
-        hasLength(45),
+        hasLength(_total),
       );
       expect(repository.calls, [...completeRead, ...completeRead]);
 
@@ -115,7 +122,7 @@ void main() {
       expect(container.read(suggestionListProvider).requireValue.page, 1);
       expect(
         container.read(suggestionListProvider).requireValue.items,
-        hasLength(45),
+        hasLength(_total),
       );
       expect(repository.calls, [...completeRead, ...completeRead]);
 
@@ -145,17 +152,17 @@ void main() {
       expect(container.read(suggestionListProvider).requireValue.page, 1);
       expect(
         container.read(suggestionListProvider).requireValue.items,
-        hasLength(45),
+        hasLength(_total),
       );
 
       container.read(suggestionScopeProvider.notifier).state =
           SuggestionScope.mine;
       final mine = await container.read(suggestionListProvider.future);
       expect(mine.page, 1);
-      expect(mine.items, hasLength(45));
-      expect(repository.calls.skip(6), [
-        for (var page = 1; page <= 3; page++)
-          (mine: true, page: page, size: 20),
+      expect(mine.items, hasLength(_total));
+      expect(repository.calls.skip(2 * completeRead.length), [
+        for (final batch in completeReadPlanBatches(_total))
+          (mine: true, page: batch.page, size: batch.size),
       ]);
     },
   );
@@ -217,7 +224,7 @@ class _FakeSuggestionRepository implements SuggestionRepository {
     final rows = [
       for (
         var index = (page - 1) * size;
-        index < 45 && index < page * size;
+        index < _total && index < page * size;
         index++
       )
         Suggestion(
@@ -238,8 +245,8 @@ class _FakeSuggestionRepository implements SuggestionRepository {
       items: rows,
       page: page,
       size: size,
-      total: 45,
-      totalPages: (45 / size).ceil(),
+      total: _total,
+      totalPages: (_total / size).ceil(),
     );
   }
 

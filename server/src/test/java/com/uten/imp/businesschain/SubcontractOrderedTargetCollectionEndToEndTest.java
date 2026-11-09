@@ -63,7 +63,7 @@ class SubcontractOrderedTargetCollectionEndToEndTest extends SubcontractFullChai
         assertEquals(0, new BigDecimal("1000").compareTo(before.getItems().getFirst().remainingQty()),
                 "催收目标 = 订量, 不是订量×(1+损耗)");
 
-        UUID receipt = receive(c, "1000", "close");
+        receive(c, "1000", "close");
         assertEquals("CLOSED", status(c.order()), "订量收齐 → expectation CLOSED(行动卡按既有流程撤回)");
         assertEquals(0, arrivalControl.expectations(1, 20, "SUBCONTRACT", null, c.world().supplierId()).getTotal(),
                 "订量收齐 → 不再有「委外待登记到货」任务");

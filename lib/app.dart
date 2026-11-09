@@ -42,6 +42,7 @@ import 'shared/providers/session_window_lifecycle_host.dart';
 import 'shared/providers/session_rehydrate_gate.dart';
 import 'shared/providers/theme_provider.dart';
 import 'shared/platform_branding/platform_branding_provider.dart';
+import 'shared/warehouse/warehouse_scope_recovery_host.dart';
 import 'shared/widgets/reauth_dialog.dart';
 import 'shared/widgets/business_precision_dialog.dart';
 import 'shared/widgets/desktop_window_host.dart';
@@ -280,7 +281,7 @@ class UtenApp extends ConsumerWidget {
                     : DesktopWindowMode.login,
                 child: SessionWindowLifecycleHost(
                   router: router,
-                  child: child!,
+                  child: WarehouseScopeRecoveryHost(child: child!),
                 ),
               );
             },

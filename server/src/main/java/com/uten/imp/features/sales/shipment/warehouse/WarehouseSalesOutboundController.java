@@ -58,12 +58,12 @@ public class WarehouseSalesOutboundController {
                 warehouseScopes.currentForRead(scopeWarehouseId), sort, order, billNo);
     }
 
-    /** 待出库任务计数（出库任务中心/工作台角标：未交接出库的放行单）, 与列表同一仓库范围。 */
+    /** 待出库任务计数（出库任务中心/工作台角标：未交接出库的放行单）, 与列表同一浏览范围(currentForRead);
+     *  2026-11-08 起按会话主体浏览、不挂任务改写, 只读查看仍被方法权限挡在外面。 */
     @GetMapping("/count")
-    @com.uten.imp.security.BusinessTaskRead
     @PreAuthorize("hasAuthority('warehouse_sales_outbound:view') and hasAuthority('warehouse_sales_outbound:execute')")
     public Map<String, Long> pendingCount(@RequestParam(required = false) UUID scopeWarehouseId) {
-        return Map.of("count", taskRowCounts.salesOutbound(warehouseScopes.current(scopeWarehouseId)).getOrDefault("PENDING_PICK", 0L));
+        return Map.of("count", taskRowCounts.salesOutbound(warehouseScopes.currentForRead(scopeWarehouseId)).getOrDefault("PENDING_PICK", 0L));
     }
 
     /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一过滤口径分组计数。 */
@@ -79,12 +79,11 @@ public class WarehouseSalesOutboundController {
     }
 
     /** 仓库作业状态分组计数(出库任务中心「销售出库」小类行: 待出库红徽章 / 已出库中性计数), 键为 warehouse_work_status;
-     *  徽章来源 warehouseSalesOutbound, 与列表同一仓库范围(ADR-149)。 */
+     *  徽章来源 warehouseSalesOutbound, 与列表同一浏览范围(ADR-149, currentForRead)。 */
     @GetMapping("/counts")
-    @com.uten.imp.security.BusinessTaskRead
     @PreAuthorize("hasAuthority('warehouse_sales_outbound:view') and hasAuthority('warehouse_sales_outbound:execute')")
     public Map<String, Long> counts(@RequestParam(required = false) UUID scopeWarehouseId) {
-        return taskRowCounts.salesOutbound(warehouseScopes.current(scopeWarehouseId));
+        return taskRowCounts.salesOutbound(warehouseScopes.currentForRead(scopeWarehouseId));
     }
 
     @GetMapping("/{id}")

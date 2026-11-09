@@ -12,6 +12,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/network/api_endpoints.dart';
+import '../../core/network/read_scope_revision.dart';
 import '../providers/sensitive_read_boundary_provider.dart';
 import '../providers/uten_page_prefs_notifier.dart';
 
@@ -204,9 +205,12 @@ final warehouseTaskScopePrefProvider =
       WarehouseTaskScopePrefNotifier.new,
     );
 
-/// 当前账号的仓库数据范围。随身份重建；读取失败由选择器显示重试入口。
+/// 当前账号的仓库数据范围。随身份重建；读取范围版本退役(READ_SCOPE_CHANGED 后
+/// readScopeRevision +1)时用新版本自动重拉一次，不停在「仓库筛选加载失败」等手动重试；
+/// 只有版本号真的变化才重算(与徽章汇总同一依赖)。其余读取失败由选择器显示重试入口。
 final myWarehouseScopeProvider = FutureProvider<MyWarehouseScope>((ref) async {
   final boundary = ref.watch(sensitiveReadBoundaryProvider);
+  ref.watch(readScopeRevisionProvider);
   if (boundary.identity == null) return MyWarehouseScope.empty;
   final json = await boundary.api.get(
     ApiEndpoints.myWarehouseScope,

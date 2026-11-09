@@ -275,6 +275,28 @@ class WarehouseInboundTaskCenterQueryPostgresTest {
                 });
     }
 
+    @Test void unassignedWarehouseGoodsStayVisibleWhenGlobalReaderNarrowsToAWarehouse() {
+        UUID report=UUID.randomUUID(),warehouse=UUID.randomUUID(),goods=UUID.randomUUID(),item=UUID.randomUUID();
+        execute("INSERT INTO goods(id,code,name) VALUES(:id,'NO-OWNING-WH','未配所属仓成品')","id",goods);
+        report(report,"UNASSIGNED-REPORT");
+        reportItem(item,report,goods,1000);
+
+        // 办理维度(无全局读取权者同此语义): 选定仓子树不含未定仓, 维持既有行为。
+        var precise=service(Set.of("stock_doc:view"),new WarehouseTaskScope(true,List.of(warehouse),false),true);
+        assertThat(precise.list(new Filter("FINISHED","","",null,null,null,warehouse,1,20)).total()).isZero();
+
+        // 浏览维度(2026-11-09): 全局读取者按所选仓浏览纳入未定仓, 列表与徽章计数同口径。
+        var browsing=new WarehouseTaskScope(true,List.of(warehouse),true);
+        var page=service(Set.of("stock_doc:view"),browsing,true)
+                .list(new Filter("FINISHED","","",null,null,null,warehouse,1,20));
+        assertThat(page.total()).isEqualTo(1);
+        assertThat(page.items()).singleElement().satisfies(row->{
+            assertThat(row.line().itemId()).isEqualTo(item);
+            assertThat(row.warehouseName()).as("未定仓任务不带仓名(前端显示「未确定」)").isNull();
+        });
+        assertThat(taskRowCounts().finishedInbound(browsing)).isEqualTo(page.total());
+    }
+
     @Test void receiptItemLifecycleAndInspectionWarehouseDoNotMergeAcrossSiblingGoods() {
         for(String type:List.of("PURCHASE","SUBCONTRACT")) {
             String table=type.equals("PURCHASE")?"purchase_receipts":"subcontract_receipts";

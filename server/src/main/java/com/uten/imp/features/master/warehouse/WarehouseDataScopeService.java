@@ -96,13 +96,19 @@ public class WarehouseDataScopeService implements WarehouseTaskScopePort {
     @Override
     public WarehouseTaskScope currentForRead(UUID requestedWarehouseId) {
         if (!readAllWarehouses()) return current(requestedWarehouseId);
-        if (requestedWarehouseId == null) return WarehouseTaskScope.ALL;
-        String key="read-scope:"+currentUser.id().map(UUID::toString).orElse("-")+":"+requestedWarehouseId;
+        // 徽章按任务中心所选仓汇总(withRequestedWarehouse*)时, 计数来源传 null 也取那个所选仓:
+        // 与带同一 scopeWarehouseId 的列表同一浏览范围, 不能退回「全部仓库」(2026-11-08)。
+        UUID requested = requestedWarehouseId != null ? requestedWarehouseId : REQUESTED.get();
+        if (requested == null) return WarehouseTaskScope.ALL;
+        String key="read-scope:"+currentUser.id().map(UUID::toString).orElse("-")+":"+requested;
         return reuse(key,WarehouseTaskScope.class,()->{
-            if (!existingWarehouse(requestedWarehouseId)) {
+            if (!existingWarehouse(requested)) {
                 throw new ApiException(ErrorCode.FORBIDDEN,OUT_OF_SCOPE_MESSAGE);
             }
-            return new WarehouseTaskScope(true,subtree(requestedWarehouseId),false);
+            // 未配所属仓库的货品(如完工报工落「未定仓」的产成品任务)不属于任何仓子树;
+            // 全局读取者按所选仓浏览时把它们一并纳入(仓库列仍显示「未确定」), 与全局徽章
+            // 同口径, 不再静默消失(2026-11-09)。办理/命令维度 current() 仍精确到所选仓。
+            return new WarehouseTaskScope(true,subtree(requested),true);
         });
     }
 

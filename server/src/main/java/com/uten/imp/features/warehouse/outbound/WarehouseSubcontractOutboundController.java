@@ -52,12 +52,15 @@ public class WarehouseSubcontractOutboundController {
         return planService.tasks(page, size, keyword, warehouseScopes.currentForRead(scopeWarehouseId));
     }
 
-    /** 委外出库红数: 待仓库发出的领料实物行数(与合并任务中心列表同一仓库数据范围及明细关系)。 */
+    /**
+     * 委外出库红数: 待仓库发出的领料实物行数。与 {@link #tasks} 及合并任务中心列表同一浏览范围
+     * ({@code currentForRead})——列表看得到的待发料行必须进红数(2026-11-08「明明有数据没有徽章」)。
+     * 按会话主体浏览、不挂任务改写(同 ADR-184 修订二的分段计数); 只读查看的人仍被方法权限挡在外面(恒 0)。
+     */
     @GetMapping("/tasks/count")
-    @com.uten.imp.security.BusinessTaskRead
     @PreAuthorize("hasAuthority('subcontract_outbound:view') and hasAuthority('subcontract_outbound:execute')")
     public Map<String, Long> taskCount(@RequestParam(required = false) UUID scopeWarehouseId) {
-        return Map.of("count", taskRowCounts.subcontractOutbound(warehouseScopes.current(scopeWarehouseId)));
+        return Map.of("count", taskRowCounts.subcontractOutbound(warehouseScopes.currentForRead(scopeWarehouseId)));
     }
 
     /** 拣货页: 草稿头 + 每行提交的领料数量/当前拣货量/该仓可拣量/库位。 */

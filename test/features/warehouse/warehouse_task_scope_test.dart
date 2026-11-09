@@ -9,10 +9,15 @@ import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/api_endpoints.dart';
+import 'package:uten_imp/core/network/api_exception.dart';
+import 'package:uten_imp/core/network/api_provider_retry.dart';
+import 'package:uten_imp/core/network/read_scope_revision.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/core/theme/dark_theme.dart';
 import 'package:uten_imp/core/theme/uten_tokens.dart';
@@ -20,9 +25,12 @@ import 'package:uten_imp/components/layout/uten_filter_toolbar.dart';
 import 'package:uten_imp/components/layout/uten_segment_row.dart';
 import 'package:uten_imp/features/warehouse/widgets/warehouse_task_center_scaffold.dart';
 import 'package:uten_imp/features/warehouse/widgets/warehouse_scope_selector.dart';
+import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/warehouse/warehouse_task_scope.dart';
 import 'package:uten_imp/shared/warehouse/warehouse_task_badges.dart';
+import 'package:uten_imp/shared/warehouse/warehouse_scope_recovery_host.dart';
 
 // Riverpod 3 将 copyWithPrevious 标记为 @internal；跨 family 实例手动保页/保旧值是既有架构，等上游公开等价 API 后再迁移。
 // ignore_for_file: invalid_use_of_internal_member
@@ -43,6 +51,77 @@ class _SilentApi extends ApiClient {
   Future<Map<String, dynamic>> put(String path, {Object? body}) async =>
       const {};
 }
+
+/// 真实 my-scope provider 的替身网络：记录每次范围读取；[failFirst] 决定第一次读取怎样失败。
+/// READ_SCOPE_CHANGED 时与拦截器同序：先退役读取范围版本号，再拒掉这次读取。
+class _ScopeApi extends ApiClient {
+  _ScopeApi({required this.failFirst}) : super(Dio());
+
+  final ApiException Function() failFirst;
+  final scopeQueries = <Map<String, dynamic>?>[];
+
+  int get scopeReads => scopeQueries.length;
+
+  @override
+  Future<Map<String, dynamic>> get(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async {
+    if (path != ApiEndpoints.myWarehouseScope) return const {};
+    scopeQueries.add(query);
+    final attempt = scopeQueries.length;
+    // 响应在网络往返之后才到(拦截器的退役与拒绝都发生在这之后), 不在 provider 构建期间同步发生。
+    await Future<void>.delayed(Duration.zero);
+    if (attempt == 1) throw failFirst();
+    return const {
+      'role': 'OTHER',
+      'warehouseParticipant': true,
+      'selectable': [
+        {'id': 'hw', 'name': '五金仓'},
+      ],
+    };
+  }
+
+  @override
+  Future<Map<String, dynamic>> put(String path, {Object? body}) async =>
+      const {};
+}
+
+List<Override> _scopeOverrides(ApiClient api) => [
+  sharedPreferencesProvider.overrideWithValue(_preferences),
+  apiClientProvider.overrideWithValue(api),
+  authenticatedScopeProvider.overrideWithValue(
+    const AuthenticatedScope(userId: 'warehouse-reader'),
+  ),
+  currentPermissionsProvider.overrideWithValue(const {
+    'subcontract_outbound:view',
+  }),
+  isSuperAdminProvider.overrideWithValue(false),
+];
+
+/// 与正式应用同一重试策略(main.dart: ApiException 不自动重试)，否则 Riverpod 默认重试会掩盖
+/// 「错误态一直停着等手动重试」的真实现象。
+ProviderContainer _scopeContainer(ApiClient api) =>
+    ProviderContainer(overrides: _scopeOverrides(api), retry: apiProviderRetry);
+
+/// 等 my-scope 落定(不再加载中)；读取本身会刷新已失效的 provider。
+Future<AsyncValue<MyWarehouseScope>> _settledScope(
+  ProviderContainer container,
+) async {
+  for (var turn = 0; turn < 50; turn++) {
+    final state = container.read(myWarehouseScopeProvider);
+    if (!state.isLoading) return state;
+    await Future<void>.delayed(Duration.zero);
+  }
+  return container.read(myWarehouseScopeProvider);
+}
+
+ApiException _scopeChanged() => ApiException(
+  'READ_SCOPE_CHANGED',
+  '数据访问范围已变化，请重新打开页面后核对',
+  httpStatus: 403,
+  hasResponseCode: true,
+);
 
 /// 分段内容替身：记录每次(重)建时拿到的范围与 refreshTick。
 class _ScopeProbe extends StatelessWidget {
@@ -499,6 +578,76 @@ void main() {
   });
 
   test(
+    'READ_SCOPE_CHANGED retires the version and the scope refetches once by itself',
+    () async {
+      late final ProviderContainer container;
+      final api = _ScopeApi(
+        failFirst: () {
+          // 拦截器发现同一读取面的版本漂移：先退役版本号，再把这次读取拒掉。
+          container.read(readScopeRevisionProvider.notifier).state++;
+          return _scopeChanged();
+        },
+      );
+      container = _scopeContainer(api);
+      addTearDown(container.dispose);
+      final subscription = container.listen(
+        myWarehouseScopeProvider,
+        (_, _) {},
+      );
+      addTearDown(subscription.close);
+
+      final recovered = await _settledScope(container);
+      expect(recovered.hasError, isFalse);
+      expect(recovered.requireValue.selectable.single.id, 'hw');
+      expect(api.scopeReads, 2);
+      expect(api.scopeQueries, everyElement(equals(const {'forRead': 'true'})));
+
+      // 版本号不再变化就不再读：一次退役只换来一次重拉，不形成请求风暴。
+      for (var turn = 0; turn < 10; turn++) {
+        await Future<void>.delayed(Duration.zero);
+      }
+      expect(api.scopeReads, 2);
+
+      // 别的读取退役了版本号(范围真的变了)时同样只重拉一次。
+      container.read(readScopeRevisionProvider.notifier).state++;
+      expect((await _settledScope(container)).hasValue, isTrue);
+      expect(api.scopeReads, 3);
+    },
+  );
+
+  testWidgets(
+    'the scope selector leaves its retry state once the read version is retired',
+    (tester) async {
+      final api = _ScopeApi(failFirst: () => NetworkException());
+      await tester.pumpWidget(
+        ProviderScope(
+          retry: apiProviderRetry,
+          overrides: _scopeOverrides(api),
+          child: const MaterialApp(
+            locale: Locale('zh'),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: Scaffold(body: Center(child: WarehouseScopeSelector())),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('warehouse-scope-retry')), findsOneWidget);
+      expect(api.scopeReads, 1);
+
+      // 同一读取面的版本被退役后不用点重试：选择器用新版本自己恢复。
+      ProviderScope.containerOf(
+        tester.element(find.byType(WarehouseScopeSelector)),
+      ).read(readScopeRevisionProvider.notifier).state++;
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('warehouse-scope-retry')), findsNothing);
+      expect(find.byKey(const Key('warehouse-scope-selector')), findsOneWidget);
+      expect(find.text('全部可见仓库'), findsOneWidget);
+      expect(api.scopeReads, 2);
+    },
+  );
+
+  test(
     'refreshing a selected scope never briefly expands to the default',
     () async {
       var response = Future.value(_supervisor);
@@ -592,5 +741,54 @@ void main() {
     );
     expect(outside, const WarehouseTaskScope.all());
     expect(outside.queryParameters, isEmpty);
+  });
+
+  // 2026-11-09: 服务重启/断网窗口里 my-scope 失败后 provider 停在错误态,
+  // 用户被卡在「仓库筛选加载失败」切不了「全部仓库」。恢复前台自动重拉一次。
+  testWidgets('window resume retries a failed warehouse scope only', (
+    tester,
+  ) async {
+    var reads = 0;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          myWarehouseScopeProvider.overrideWith((ref) async {
+            reads++;
+            if (reads == 1) {
+              throw DioException(
+                requestOptions: RequestOptions(
+                  path: ApiEndpoints.myWarehouseScope,
+                ),
+              );
+            }
+            return MyWarehouseScope.empty;
+          }),
+        ],
+        child: WarehouseScopeRecoveryHost(
+          child: MaterialApp(
+            home: Scaffold(
+              body: Consumer(
+                builder: (context, ref, _) {
+                  ref.watch(myWarehouseScopeProvider);
+                  return const SizedBox();
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(reads, 1, reason: '首次取数失败进入错误态');
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    expect(reads, 2, reason: '恢复前台重拉错误态的范围');
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    expect(reads, 2, reason: '成功后不再重复请求');
   });
 }

@@ -480,8 +480,13 @@ public class WarehouseQualityResultService {
         return counts;
     }
 
-    /** Personal work has a separate projection from the ordinary browsable distribution. */
-    @com.uten.imp.security.BusinessTaskRead
+    /**
+     * Personal work has a separate projection from the ordinary browsable distribution: the TASK_*
+     * buckets keep their action eligibility (stock-in / return / follow-inspection), but share the
+     * list's browsing range and the session principal with {@link #typeCounts} (2026-11-08), so the
+     * second-level segment badges add up to the parent badge instead of shrinking to the
+     * responsibility range or to zero for a catalogue super-administrator.
+     */
     @Transactional(readOnly = true)
     public Map<String, Long> taskStatusCounts(String receiptType, String keyword, UUID selectedWarehouseId) {
         Map<String, Long> counts = new LinkedHashMap<>();
@@ -491,7 +496,7 @@ public class WarehouseQualityResultService {
         boolean canReturn = hasWarehouseWriteAuthority(WarehouseQualityResultPermissions.RETURN_VIEW,
                 WarehouseQualityResultPermissions.RECORD_RETURN);
         if (!canStockIn && !canReturn && !canFollowInspection()) return counts;
-        WarehouseTaskScope warehouseScope = warehouseScopes.current(selectedWarehouseId);
+        WarehouseTaskScope warehouseScope = warehouseScopes.currentForRead(selectedWarehouseId);
         String taskStatus = STATUS_CASE
                 .replace("pending_release.pending_slice_count", "CASE WHEN :taskCanStockIn THEN pending_release.pending_slice_count ELSE 0 END")
                 .replace("pending_return.pending_return_count", "CASE WHEN :taskCanReturn THEN pending_return.pending_return_count ELSE 0 END");

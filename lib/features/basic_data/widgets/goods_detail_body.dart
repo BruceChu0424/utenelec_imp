@@ -33,6 +33,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../components/inputs/uten_field_suffix_icons.dart';
 import '../../../components/inputs/uten_picker_icon_button.dart';
 import '../../../components/layout/uten_section_header.dart';
@@ -2078,6 +2079,10 @@ class _OwningWarehousePickerFieldState
           labelText: '所属仓库',
           suffixIcon: UtenFieldSuffixIcons(
             children: [
+              const UtenFieldHintIcon(
+                info: '货品日常归哪个仓管理。不填时，完工报工产生的入库任务会归到未定仓（仓库列显示「未确定」）。',
+                dense: true,
+              ),
               if (hasValue)
                 IconButton(
                   icon: const Icon(Icons.close_rounded, size: 18),

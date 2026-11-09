@@ -76,12 +76,12 @@ public class WarehouseInboundController {
      * 预计到货待办数(徽章来源 warehouseInboundExpectation): count = 合计, PURCHASE / SUBCONTRACT = 分来源
      * (入库任务中心「采购入库 / 委外入库」分段都读这两个事实数)。直接复用任务中心实物行关系，
      * 同一订货单的多条明细分别计数；范围包含逐行入库仓，合计 = 两类之和。
+     * 与列表同一浏览范围({@code currentForRead}, 2026-11-08), 按会话主体浏览、不挂任务改写(ADR-184 修订二)。
      */
     @GetMapping("/expectations/count")
-    @com.uten.imp.security.BusinessTaskRead
     @PreAuthorize("hasAuthority('warehouse_inbound:view') and hasAuthority('warehouse_inbound:stock_in')")
     public Map<String, Long> expectationCount(@RequestParam(required = false) UUID scopeWarehouseId) {
-        Map<String, Long> byType = taskRowCounts.inboundExpectations(warehouseScopes.current(scopeWarehouseId));
+        Map<String, Long> byType = taskRowCounts.inboundExpectations(warehouseScopes.currentForRead(scopeWarehouseId));
         long purchase = byType.getOrDefault(ProcurementArrivalControlPort.PURCHASE, 0L);
         long subcontract = byType.getOrDefault(ProcurementArrivalControlPort.SUBCONTRACT, 0L);
         Map<String, Long> counts = new java.util.LinkedHashMap<>();
@@ -129,12 +129,11 @@ public class WarehouseInboundController {
                 warehouseScopes.currentForRead(scopeWarehouseId),receiptBillNo,orderBillNo);
     }
 
-    /** 到货异常待办数(徽章来源 warehouseArrivalException): 与列表同一仓库范围(ADR-149)。 */
+    /** 到货异常待办数(徽章来源 warehouseArrivalException): 与列表同一浏览范围(ADR-149, currentForRead)。 */
     @GetMapping("/arrival-exceptions/count")
-    @com.uten.imp.security.BusinessTaskRead
     @PreAuthorize("hasAuthority('warehouse_inbound:view') and hasAuthority('warehouse_inbound:stock_in')")
     public Map<String, Long> arrivalExceptionCount(@RequestParam(required = false) UUID scopeWarehouseId) {
-        Map<String,Long> byType=service.countWarehouseExceptionsByType(warehouseScopes.current(scopeWarehouseId));
+        Map<String,Long> byType=service.countWarehouseExceptionsByType(warehouseScopes.currentForRead(scopeWarehouseId));
         long purchase=byType.getOrDefault(ProcurementArrivalControlPort.PURCHASE,0L);
         long subcontract=byType.getOrDefault(ProcurementArrivalControlPort.SUBCONTRACT,0L);
         return Map.of("count",purchase+subcontract,

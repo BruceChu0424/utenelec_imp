@@ -54,4 +54,32 @@ class WarehouseQualityPreStockBadgeTest {
         verify(query).setParameter("taskCanStockIn",false);
         verify(query).setParameter("taskCanReturn",false);
     }
+
+    /**
+     * 品质检查结果页的二级分段(status-counts 的 TASK_* 桶)与一级大类(type-counts)、列表同一浏览范围:
+     * 一级按浏览范围有数、二级却按职责范围少算(或被任务改写剥成 0)时, 父有红徽章、子分段却没有。
+     * 桶内动作资格(入库/退回)照旧按会话权限判定。
+     */
+    @Test void segmentTaskBucketsShareTheParentBrowsingRangeAndKeepTheirActionEligibility() {
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken("keeper","unused",
+                List.of(new SimpleGrantedAuthority(ProcurementIqcStockInPermissions.VIEW),
+                        new SimpleGrantedAuthority(ProcurementIqcStockInPermissions.CONFIRM))));
+        var selected=java.util.UUID.randomUUID();
+        var browse=new WarehouseTaskScope(true,List.of(selected,java.util.UUID.randomUUID()),false);
+        var scopes=mock(com.uten.imp.application.port.WarehouseTaskScopePort.class);
+        when(scopes.currentForRead(selected)).thenReturn(browse);
+        when(scopes.current(selected)).thenReturn(new WarehouseTaskScope(true,List.of(selected),false));
+        EntityManager em=mock(EntityManager.class); Query query=mock(Query.class,RETURNS_SELF);
+        when(em.createNativeQuery(anyString())).thenReturn(query);
+        when(query.getResultList()).thenReturn(List.<Object[]>of(new Object[]{"ALL_PASSED",2L}));
+        var service=new WarehouseQualityResultService(em,mock(SecurityContextCurrentUser.class)); service.setWarehouseScopes(scopes);
+
+        var counts=service.taskStatusCounts("ALL","",selected);
+
+        assertThat(counts).containsEntry("ALL_PASSED",2L).containsEntry("RETURN_REQUIRED",0L);
+        verify(query).setParameter("warehouse_scope",browse.idsCsv());
+        verify(query).setParameter("taskCanStockIn",true);
+        verify(query).setParameter("taskCanReturn",false);
+        verify(scopes,never()).current(any());
+    }
 }

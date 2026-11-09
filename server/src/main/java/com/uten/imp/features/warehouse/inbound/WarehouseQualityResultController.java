@@ -87,11 +87,12 @@ public class WarehouseQualityResultController {
     /**
      * 父分类(来源类型)分段的红黄两枚计数：红 actionable = 轮到仓库动手(待入库 + 需退回),
      * 黄 inProgress = 等待检查结果。页内三个数字只有这一个服务端来源, 两支不会各算各的。
+     * 与列表、facets、status-counts 同一浏览范围({@code currentForRead}, 2026-11-08); 按会话主体浏览,
+     * 不挂任务改写(ADR-184 修订二), 桶内动作资格仍按会话权限判定(只读查看恒 0)。
      */
     @GetMapping("/type-counts")
-    @com.uten.imp.security.BusinessTaskRead
     public TypeCounts typeCounts(@RequestParam(required = false) UUID scopeWarehouseId) {
-        return service.typeCounts(warehouseScopes.current(scopeWarehouseId));
+        return service.typeCounts(warehouseScopes.currentForRead(scopeWarehouseId));
     }
 
     @GetMapping("/{receiptType}/{receiptId}")

@@ -293,6 +293,59 @@ class WarehouseDataScopeResolutionTest {
         assertThat(service.access().warehouseParticipant()).isFalse();
     }
 
+    /**
+     * 持「全部仓库只读」(warehouse_task:view:all)的子仓负责人: 计数与列表同一浏览范围(2026-11-08)。
+     * 不选仓 = 全部仓库; 任务中心按所选仓汇总徽章时, 计数来源传 null 也必须取所选仓的浏览范围,
+     * 与带同一 scopeWarehouseId 的列表逐条相等——不能放大成全部仓库, 职责范围本身也不因此变化。
+     */
+    @Test
+    void allWarehouseReadersCountTheSummarySelectedWarehouseWithTheirListRange() {
+        database.set(keeper(warehouse));
+        when(currentUser.get()).thenReturn(Optional.of(new com.uten.imp.security.AuthUser(userA, UUID.randomUUID(),
+                "reader", java.util.Set.of("warehouse_task:view:all"), false, true, false)));
+        JdbcClient.StatementSpec subtree = jdbc.sql("SELECT unnest(" + SUBTREE_SQL + "(ARRAY[CAST(:id AS uuid)]))");
+        JdbcClient.MappedQuerySpec<UUID> ids = subtree.query(UUID.class);
+        // 所选仓下挂着一个别人负责的子仓: 浏览范围含它, 职责范围不含。
+        when(ids.list()).thenReturn(List.of(warehouse, other));
+
+        assertThat(service.currentForRead(null)).isEqualTo(WarehouseTaskScope.ALL);
+        WarehouseTaskScope list = service.currentForRead(warehouse);
+        assertThat(list.warehouseIds()).containsExactly(warehouse, other);
+
+        WarehouseTaskScope[] seen = new WarehouseTaskScope[2];
+        service.withRequestedWarehouseQuery(warehouse, () -> {
+            seen[0] = service.currentForRead(null);
+            seen[1] = service.current(null);
+            return null;
+        });
+        assertThat(seen[0]).as("汇总里的计数来源 = 带同一所选仓的列表").isEqualTo(list);
+        assertThat(seen[1].warehouseIds()).as("职责范围不变: 选父仓不授予别人负责的子仓").containsExactly(warehouse);
+        assertThat(service.warehousePicked()).isFalse();
+        assertThat(service.currentForRead(null)).isEqualTo(WarehouseTaskScope.ALL);
+    }
+
+    /**
+     * 未配所属仓库的货品(完工报工的产成品任务落「未定仓」)不属于任何仓子树。
+     * 全局读取者按所选仓浏览时纳入未定仓(仓库列显示「未确定」, 与全局徽章同口径, 不静默消失);
+     * 办理维度与无全局读取权者仍精确到所选仓(2026-11-09)。
+     */
+    @Test
+    void unassignedWarehouseTasksStayVisibleWhenGlobalReadersNarrowToAWarehouse() {
+        when(currentUser.get()).thenReturn(Optional.of(new com.uten.imp.security.AuthUser(userA, UUID.randomUUID(),
+                "reader", java.util.Set.of("warehouse_task:view:all"), false, true, false)));
+
+        database.set(keeper(warehouse));
+        WarehouseTaskScope browsing = service.currentForRead(warehouse);
+        assertThat(browsing.warehouseIds()).containsExactly(warehouse);
+        assertThat(browsing.includeUnassigned()).as("浏览维度纳入未定仓").isTrue();
+        assertThat(service.current(warehouse).includeUnassigned()).as("办理维度仍精确到所选仓").isFalse();
+
+        // 无全局读取权: 维持既有语义, 选仓即精确到该仓子树。
+        when(currentUser.get()).thenReturn(Optional.of(new com.uten.imp.security.AuthUser(userA, UUID.randomUUID(),
+                "keeper", java.util.Set.of(), false, true, false)));
+        assertThat(service.currentForRead(warehouse).includeUnassigned()).isFalse();
+    }
+
     private WarehouseAccess member() {
         return new WarehouseAccess(Role.OTHER, List.of(), new WarehouseTaskScope(true, List.of(other), true), true);
     }

@@ -70,12 +70,12 @@ public class ProductionFinishedInboundTaskController {
                 :service.facets(keyword,taskStage,warehouseId,scope,taskNo,planNo,columns);
     }
 
-    /** 产成品待点收待办数(徽章来源 finishedInbound): 与列表同一仓库范围(ADR-149)。 */
+    /** 产成品待点收待办数(徽章来源 finishedInbound): 与列表同一浏览范围(ADR-149, currentForRead; 2026-11-08 起
+     *  按会话主体浏览、不挂任务改写, 动作资格仍由方法权限把关)。 */
     @GetMapping("/tasks/count")
-    @com.uten.imp.security.BusinessTaskRead
     @PreAuthorize("hasAuthority('stock_doc:view') and hasAuthority('stock_doc:approve')")
     public Map<String, Long> count(@RequestParam(required = false) UUID scopeWarehouseId) {
-        return Map.of("count", taskRowCounts.finishedInbound(warehouseScopes.current(scopeWarehouseId)));
+        return Map.of("count", taskRowCounts.finishedInbound(warehouseScopes.currentForRead(scopeWarehouseId)));
     }
 
     // 产成品入库登记只有这一组端点(ADR-151 §5)：单张 = 1 个来源、多选 = N 个来源，

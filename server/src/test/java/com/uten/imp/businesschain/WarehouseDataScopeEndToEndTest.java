@@ -380,7 +380,7 @@ class WarehouseDataScopeEndToEndTest {
         assertBadgeEqualsLists(member, null);
     }
 
-    @Test void explicitAllWarehouseReadsKeepRealRolesPhysicalRowActionsAndTaskCountsIndependent() throws Exception {
+    @Test void explicitAllWarehouseReadsKeepRealRolesAndPhysicalRowActionsWhileCountsFollowTheList() throws Exception {
         var source=mixedWarehousePurchase();
         fixture.loginAs(admin);
         UUID reader=fixture.createUserWithPerms(world,"warehouse-read-only-"+UUID.randomUUID(),
@@ -422,6 +422,15 @@ class WarehouseDataScopeEndToEndTest {
                 inboundCenter.detail(foreign.rowKey(),warehouseB,1,100).get("row")).canHandle()).isFalse();
         assertForbidden(()->badges.badges(warehouseB));
         assertThat(inboundCenter.list("PURCHASE","ACTIVE","","",source.billNo(),null,null,warehouseB,null,null,1,100).total()).isEqualTo(1);
+        // 2026-11-08「明明有数据 为什么没有通知数量徽章」: 计数与列表同一浏览范围。外仓行在列表里仍只读
+        // (HISTORY_DETAIL), 但看得到就进红数; 按所选仓汇总时计数来源取所选仓, 不放大成全部仓库。
+        assertThat(foreign.status()).isIn("PURCHASE_READY_REGISTER","PURCHASE_BLOCKED");
+        assertThat(badges.badges(null).facts().get("warehouseInboundExpectation.PURCHASE"))
+                .isEqualTo(inboundTaskTotal(null,"PURCHASE","PURCHASE_READY_REGISTER","PURCHASE_BLOCKED",
+                        "PURCHASE_CONTINUE_INSPECTION","PURCHASE_EXCESS_PENDING_FINANCE"));
+        assertThat(badges.badges(warehouseA).facts().get("warehouseInboundExpectation.PURCHASE"))
+                .isEqualTo(inboundTaskTotal(warehouseA,"PURCHASE","PURCHASE_READY_REGISTER","PURCHASE_BLOCKED",
+                        "PURCHASE_CONTINUE_INSPECTION","PURCHASE_EXCESS_PENDING_FINANCE"));
         fixture.loginAs(admin);
         db.update("DELETE FROM user_permission_overrides WHERE user_id=? AND permission_id=(SELECT id FROM permissions WHERE code='warehouse_task:view:all')",keeperA);
         fixture.loginAs(keeperA);

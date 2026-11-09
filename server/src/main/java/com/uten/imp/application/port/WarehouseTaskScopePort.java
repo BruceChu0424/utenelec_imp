@@ -46,8 +46,9 @@ public interface WarehouseTaskScopePort {
     }
 
     /**
-     * 原职责范围，供办理、可办计数、徽章及旧办理页使用。
-     * 新的浏览投影应明确调用 {@link #currentForRead}，不能反过来用于命令。
+     * 原职责范围，供办理、命令选仓、通知、成员资格、审批队列(盘点审核)及旧办理页使用。
+     * 仓库任务的列表、facets、各级计数与徽章来源统一调用 {@link #currentForRead}(计数与列表同一浏览范围,
+     * 2026-11-08)；浏览范围不能反过来用于命令。
      *
      * @param requestedWarehouseId 页面选的仓(含下级); null = 本人默认范围
      *                             (工作台徽章按任务中心所选仓汇总时, null 取汇总请求所选的仓)
@@ -55,14 +56,19 @@ public interface WarehouseTaskScopePort {
      */
     WarehouseTaskScope current(UUID requestedWarehouseId);
 
-    /** Explicit browsing dimension. Commands, membership, notifications and badges keep {@link #current}. */
+    /**
+     * Explicit browsing dimension shared by warehouse task lists, facets, counts and badge sources, so a
+     * count always equals the list it labels (2026-11-08). Inside {@link #withRequestedWarehouse} a null
+     * argument resolves to that summary's selected warehouse. Commands, membership, notifications and
+     * approval queues keep {@link #current}.
+     */
     default WarehouseTaskScope currentForRead(UUID requestedWarehouseId) {
         return current(requestedWarehouseId);
     }
 
     /**
-     * 在「本次汇总按某仓计」的上下文里执行: 先校验所选仓(越界 403), 执行期间 {@code current(null)}
-     * 取该仓范围。只给 /workbench/badges 的分段计数用, 各计数来源与列表因此同一谓词。
+     * 在「本次汇总按某仓计」的上下文里执行: 先校验所选仓(越界 403), 执行期间 {@code current(null)} 与
+     * {@code currentForRead(null)} 都取该仓范围。只给 /workbench/badges 的分段计数用, 各计数来源与列表因此同一谓词。
      * 执行期间同时是一个 {@link #withScopeCache} 窗口。
      */
     <T> T withRequestedWarehouse(UUID requestedWarehouseId, Supplier<T> work);

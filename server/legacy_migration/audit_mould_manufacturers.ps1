@@ -45,7 +45,7 @@ SELECT json_build_object(
   'moulds',(SELECT json_agg(row_to_json(m)) FROM
     (SELECT id,legacy_id,code,name,manufacturer,keeper,keeper_id FROM moulds WHERE NOT is_deleted ORDER BY legacy_id,id) m),
   'supplierCount',(SELECT count(*) FROM suppliers WHERE NOT is_deleted),
-  'latestMigration',(SELECT version FROM flyway_schema_history WHERE success ORDER BY installed_rank DESC LIMIT 1));
+  'latestMigration',(SELECT version FROM flyway_schema_history WHERE success AND version IS NOT NULL ORDER BY string_to_array(version, '.')::numeric[] DESC LIMIT 1));
 ROLLBACK;
 '@
 $raw = $sql | & ssh -o BatchMode=yes -o ConnectTimeout=12 $CompanySshHost "sudo -n -u postgres psql -X -qAt -v ON_ERROR_STOP=1 -d $CompanyDatabase"

@@ -59,6 +59,29 @@ class FlywayVersionContractTest(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     CONTRACT._flyway_head_key(value)
 
+    def test_history_head_is_the_semantic_maximum_never_the_row_applied_last(self):
+        # Company shape: dotted backfills rank after the larger integer 999, and a
+        # late dotted backfill is the row applied last, after the integer head.
+        history = [("998", "V998__base.sql"), ("999", "V999__whole.sql"), ("990.1", "V990_1__backfill.sql"),
+                   ("999.1", "V999_1__first.sql"), ("1000", "V1000__head.sql"), ("999.13", "V999_13__late.sql")]
+        for rows in (history, [list(row) for row in history]):
+            head = CONTRACT._flyway_history_head(rows)
+            self.assertEqual(1000, head)
+            self.assertIs(type(head), int)
+        self.assertEqual("999.10", CONTRACT._flyway_history_head(
+            [("999", "V999__whole.sql"), ("999.10", "V999_10__ten.sql"), ("999.9", "V999_9__nine.sql")]))
+        self.assertEqual(1, CONTRACT._flyway_history_head([("01", "V01__enable_pgcrypto.sql")]))
+        for broken in (
+            [("999", "V999__whole.sql"), ("998", "V998__base.sql")],
+            [("999", "V999__whole.sql"), ("999", "V999__whole.sql")],
+            history + [("990.1", "V990_1__backfill.sql")],
+            [("999.1", "V999_2__forged.sql")],
+            [("999.01", "V999_1__first.sql")],
+            [], None, "999", [("999",)], [("999", "V999__whole.sql", 1)],
+        ):
+            with self.subTest(history=broken), self.assertRaises(ValueError):
+                CONTRACT._flyway_history_head(broken)
+
     def test_only_the_nine_exact_published_scripts_accept_their_original_history_spelling(self):
         self.assertEqual(9,len(FIXTURES["legacyHistory"]))
         self.assertEqual({item["file"] for item in FIXTURES["legacyHistory"]},set(CONTRACT._FLYWAY_LEGACY_INTEGER_SCRIPTS))

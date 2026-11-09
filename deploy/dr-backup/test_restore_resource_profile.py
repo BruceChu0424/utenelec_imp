@@ -109,5 +109,22 @@ class RecoveryResourceProfileTest(unittest.TestCase):
         result = drill.configuration_audit({**env, 'UNREVIEWED_EXTERNAL_API_KEY': ''})
         self.assertEqual('BLOCKED', result['state'])
 
+    def test_flyway_head_is_the_shared_semantic_maximum_not_the_last_applied_row(self):
+        query = drill.RESTORED_FLYWAY_HISTORY_SQL
+        self.assertIn('ORDER BY installed_rank)', query); self.assertNotIn('DESC', query)
+        self.assertIn('WHERE success AND version IS NOT NULL', query)
+        source = Path(drill.__file__).read_text(encoding='utf-8')
+        self.assertNotIn('installed_rank DESC', source)
+        self.assertIn('stats["flywayVersion"] = restored_flyway_head(stats["flywayVersion"])', source)
+        # Company shape: 990.1 is backfilled after 999 and the late backfill 999.13 is applied last.
+        history = [['998', 'V998__base.sql'], ['999', 'V999__whole.sql'], ['990.1', 'V990_1__backfill.sql'],
+                   ['1000', 'V1000__head.sql'], ['999.13', 'V999_13__late_backfill.sql']]
+        self.assertEqual('1000', drill.restored_flyway_head(history))
+        self.assertEqual('999.10', drill.restored_flyway_head(
+            [['999', 'V999__whole.sql'], ['999.10', 'V999_10__ten.sql'], ['999.9', 'V999_9__nine.sql']]))
+        for broken in ([['998', 'V998__base.sql'], ['1000', 'V1000__head.sql'], ['999', 'V999__whole.sql']],
+                       history + [['999.13', 'V999_13__late_backfill.sql']], [['999.1', 'V999_2__forged.sql']], [], None):
+            with self.subTest(history=broken), self.assertRaises(ValueError):drill.restored_flyway_head(broken)
+
 
 if __name__ == '__main__':unittest.main()

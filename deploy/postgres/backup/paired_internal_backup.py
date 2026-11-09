@@ -1295,7 +1295,7 @@ def main():
 
 # BEGIN GENERATED FLYWAY VERSION CONTRACT
 # Source: deploy/contracts/flyway_version_contract.py
-# SHA-256: 2d0596a62641b5b3d9e747ebc9a3e87f367d131f399352787438f9b0d29ad27c
+# SHA-256: 80935ca03a076b46e8c41e1ced27f75baaf89c4c99365294cb3d0d5e398e7c00
 _FLYWAY_CONTRACT_ERROR = ValueError
 
 # These immutable, already-applied basenames predate canonical wire versions.
@@ -1368,6 +1368,20 @@ def _flyway_history_version_key(value: object, script: object) -> tuple[int, ...
     return key
 
 
+def _flyway_history_order_frontier(
+    version_key: tuple[int, ...], seen: set, prior_integer: tuple[int, ...]
+) -> tuple[int, ...]:
+    if version_key in seen:
+        raise _FLYWAY_CONTRACT_ERROR("Flyway history versions are duplicated")
+    if len(version_key) == 1:
+        if version_key <= prior_integer:
+            raise _FLYWAY_CONTRACT_ERROR(
+                "Flyway integer history versions are not strictly increasing"
+            )
+        return version_key
+    return prior_integer
+
+
 def _flyway_wire_version(value: object, script: object) -> str:
     return ".".join(str(part) for part in _flyway_history_version_key(value, script))
 
@@ -1375,6 +1389,20 @@ def _flyway_wire_version(value: object, script: object) -> str:
 def _flyway_head_identity(version: object) -> int | str:
     key = _flyway_version_key(version)
     return key[0] if len(key) == 1 else str(version)
+
+
+def _flyway_history_head(history: object) -> int | str:
+    if type(history) not in (list, tuple) or not history:
+        raise _FLYWAY_CONTRACT_ERROR("Flyway history must be a non-empty row sequence")
+    seen: set = set()
+    prior_integer = (0,)
+    for row in history:
+        if type(row) not in (list, tuple) or len(row) != 2:
+            raise _FLYWAY_CONTRACT_ERROR("Flyway history row must be an exact version/script pair")
+        version_key = _flyway_history_version_key(row[0], row[1])
+        prior_integer = _flyway_history_order_frontier(version_key, seen, prior_integer)
+        seen.add(version_key)
+    return _flyway_head_identity(".".join(str(part) for part in max(seen)))
 
 
 def _flyway_head_key(value: object) -> tuple[int, ...]:

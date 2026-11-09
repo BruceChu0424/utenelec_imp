@@ -23,6 +23,7 @@ TARGETS = {
     "deploy/postgres/backup/pgbackrest_health.py": "ContractError",
     "deploy/postgres/backup/backup_acceptance.py": "ContractError",
     "deploy/postgres/backup/paired_internal_backup.py": "ValueError",
+    "deploy/dr-backup/restore_drill.py": "ValueError",
     "server/legacy_migration/verify_candidate.py": "ValueError",
     "server/legacy_migration/migrate.sh": "ValueError",
     "deploy/setup/harden-existing-postgres-roles.sh": "ValueError",

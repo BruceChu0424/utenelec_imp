@@ -50,7 +50,7 @@ SOURCE_BUNDLE_RELATIVE_FILES = (
     "deploy/systemd/uten-pgbackup-alert-drain.timer.example",
 )
 REVIEWED_INSTALLER_SHA256 = (
-    "f55552e1fd199a468db3fb163e2e2a0f3ed623da0b5a806899a927eea0c2ddda"
+    "3ccf214cc203af8649f5a46e6db1aed92766f18a05dec03157dfec22a3a15024"
 )
 INSTALLER_MODE = 0o400
 SOURCE_DIRECTORY_MODE = 0o500

@@ -408,40 +408,6 @@ public class InternalStorageService implements StorageService, BlobStore {
             directorySync.force(destination.getParent());
         }
     }
-
-    /** True when the key currently resolves onto the cold archive tree. */
-    public boolean archived(String key) {
-        if (archiveFinals == null) return false;
-        Path hot = resolve(finals, key);
-        if (Files.exists(hot, LinkOption.NOFOLLOW_LINKS)) return false;
-        return Files.exists(resolve(archiveFinals, key), LinkOption.NOFOLLOW_LINKS);
-    }
-
-    /**
-     * Reverse of {@link #tierToArchive}: an archived object that became actively
-     * used again moves back onto the hot root. Same copy-then-delete fallback
-     * keeps an interrupted revival safe to re-run.
-     */
-    public void reviveFromArchive(String key) throws IOException {
-        Path source = resolve(archiveFinals, key);
-        if (archiveFinals == null)
-            throw new IllegalStateException("Internal storage archive tiering is not configured");
-        try (Lease lease = lease()) {
-            requireObjectNamespaces(source);
-            if (Files.notExists(source, LinkOption.NOFOLLOW_LINKS)) return;
-            try (Envelope envelope = envelope(source)) { /* validates the header */ }
-            Path destination = resolve(finals, key);
-            createPartition(finals, destination.getParent());
-            try {
-                Files.move(source, destination, StandardCopyOption.ATOMIC_MOVE);
-            } catch (AtomicMoveNotSupportedException crossDevice) {
-                Files.copy(source, destination, StandardCopyOption.REPLACE_EXISTING);
-                forceFile(destination);
-                Files.deleteIfExists(source);
-            }
-            directorySync.force(destination.getParent());
-        }
-    }
     @Override public boolean isEnabled() { return true; }
     @Override public String backend() { return "internal"; }
 

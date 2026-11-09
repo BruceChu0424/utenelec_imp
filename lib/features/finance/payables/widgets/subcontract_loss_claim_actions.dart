@@ -648,18 +648,8 @@ class _OffsetTargetPickerState extends ConsumerState<_OffsetTargetPicker>
             totalPages: value.totalPages,
           );
         },
-        onProgressiveBatch: (partial) {
-          if (!mounted || version != _readVersion || _readRetired) return;
-          setState(() {
-            _items = partial.items
-                .where(
-                  (item) =>
-                      item.openItemKind == 'PAYABLE' &&
-                      item.status != 'SETTLED',
-                )
-                .toList(growable: false);
-          });
-        },
+        // 无逐批回调：本选择器在完整结果前一直显示读取遮罩（_loading 分支），
+        // 逐批前缀从不显示，确认入口也被 _loading/_error 挡住。
       );
       if (!mounted || version != _readVersion || _readRetired) return;
       setState(() {

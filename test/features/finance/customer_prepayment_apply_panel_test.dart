@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/features/finance/models/customer_prepayment.dart';
 import 'package:uten_imp/features/finance/widgets/customer_prepayment_apply_panel.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
@@ -122,6 +123,68 @@ void main() {
       // Scrolling the loaded rows never reads again.
       expect(api.reads, hasLength(completeReads));
       expect(find.text('100.1234'), findsOneWidget);
+      expect(api.posts, isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'a failed progressive read withdraws the partial prepayment rows with the error and retry shown',
+    (tester) async {
+      tester.view.physicalSize = const Size(1400, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final api = _ApplyPanelApi(count: 120, failSecondBatch: true);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            apiClientProvider.overrideWithValue(api),
+            currentPermissionsProvider.overrideWithValue(const {
+              Perm.financeViewAll,
+              Perm.customerPrepaymentView,
+              Perm.customerPrepaymentApply,
+            }),
+          ],
+          child: MaterialApp(
+            home: Builder(
+              builder: (context) => Scaffold(
+                body: TextButton(
+                  onPressed: () => showCustomerPrepaymentApplyPanel(
+                    context,
+                    clientId: 'client-1',
+                  ),
+                  child: const Text('打开预收'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('打开预收'));
+      // The first 50-row batch publishes at once; the continuation fails.
+      for (var frame = 0; frame < 150 && api.reads.length < 2; frame++) {
+        await tester.pump(const Duration(milliseconds: 20));
+      }
+      expect(api.reads, [
+        {'page': 1, 'size': 50, 'clientId': 'client-1'},
+        {'page': 2, 'size': 50, 'clientId': 'client-1'},
+      ]);
+      await tester.pumpAndSettle();
+      // The withdrawn prefix never renders as if it were the complete result:
+      // no half row list, no summary from the partial snapshot.
+      expect(
+        find.byType(UtenAncestorRowWindow<CustomerPrepaymentItem>),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('customer-prepayment-many-0')),
+        findsNothing,
+      );
+      expect(find.text('累计预收(本币)'), findsNothing);
+      // The ordinary failure card with its retry replaces the list.
+      expect(find.text('服务暂不可用'), findsOneWidget);
+      expect(find.text('重试'), findsOneWidget);
       expect(api.posts, isEmpty);
       expect(tester.takeException(), isNull);
     },
@@ -300,8 +363,16 @@ class _PostCall {
 }
 
 class _ApplyPanelApi extends ApiClient {
-  _ApplyPanelApi({this.legacy = false, this.count}) : super(Dio());
+  _ApplyPanelApi({
+    this.legacy = false,
+    this.count,
+    this.failSecondBatch = false,
+  }) : super(Dio());
   final int? count;
+
+  /// The second complete-read batch answers 503: the first batch's progressive
+  /// rows are already on screen when the continuation fails.
+  final bool failSecondBatch;
   final reads = <Map<String, dynamic>>[];
 
   final posts = <_PostCall>[];
@@ -314,6 +385,9 @@ class _ApplyPanelApi extends ApiClient {
   }) async {
     if (path == '/finance/customer-prepayments') {
       reads.add({...?query});
+      if (failSecondBatch && reads.length == 2) {
+        throw ApiException('SERVER_ERROR', '服务暂不可用', httpStatus: 503);
+      }
       if (count case final length?) {
         final page = query!['page'] as int;
         final size = query['size'] as int;

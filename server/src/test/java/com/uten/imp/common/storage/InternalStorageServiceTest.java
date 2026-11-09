@@ -301,6 +301,20 @@ class InternalStorageServiceTest {
                 "the archive root must exist before startup");
     }
 
+    @Test void revivalMovesAnArchivedObjectBackToTheHotRoot() throws Exception {
+        var store=store(archiveProperties());
+        byte[] bytes="back to hot".getBytes(StandardCharsets.UTF_8);
+        var object=upload(store,KEY,bytes);
+        store.tierToArchive(KEY);
+        assertTrue(store.archived(KEY),"object sits on the archive tree");
+        store.reviveFromArchive(KEY);
+        assertFalse(store.archived(KEY));
+        assertTrue(Files.exists(directory.resolve("final").resolve(KEY)),"hot copy is back");
+        try(var input=store.readVerified(KEY,object.versionId(),object.size(),object.contentSha256(),object.storedSize(),object.encoding())) {
+            assertArrayEquals(bytes,input.readAllBytes());
+        }
+    }
+
     @Test void tieringWithoutAnArchiveRootIsNotConfigured() throws Exception {
         var store=store();
         assertFalse(store.archiveTieringConfigured());

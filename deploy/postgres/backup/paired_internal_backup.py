@@ -1270,6 +1270,42 @@ def verify_set(directory: Path) -> dict:
     return summary
 
 
+def heal_config(path: Path) -> dict:
+    """One-time config migration for the cold-tier root (2026-11-10 layout).
+
+    When the reviewed archive volume exists but the root-only JSON predates the
+    media_archive_root field, add the field once and write the file back with
+    its original ownership, mode and key order. The write only happens when the
+    conventional root is really present, runs at most once per deployment, and
+    any failure leaves the explicit configuration untouched so the backup still
+    runs exactly as before.
+    """
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if "media_archive_root" in data or not isinstance(data, dict):
+        return data
+    candidate = Path("/data/uten-imp-media")
+    try:
+        if not (candidate / "final").is_dir():
+            return data
+        data["media_archive_root"] = str(candidate)
+        stat_result = path.stat()
+        temporary = path.with_name(path.name + ".heal-tmp")
+        temporary.write_text(json.dumps(data, indent=2, ensure_ascii=False, sort_keys=True) + "\n",
+                             encoding="utf-8")
+        try:
+            os.chmod(temporary, 0o600)
+            os.chown(temporary, stat_result.st_uid, stat_result.st_gid)
+            os.replace(temporary, path)
+        except OSError:
+            temporary.unlink(missing_ok=True)
+            raise
+    except OSError:
+        # An unreadable or unwritable config is reported by the strict checks
+        # below; a failed one-time heal must never block tonight's backup.
+        pass
+    return data
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path)
@@ -1303,7 +1339,7 @@ def main():
     if (not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != 0 or metadata.st_mode & 0o077
             or metadata.st_size > 16384 or args.config != args.config.resolve()):
         raise PermissionError("Configuration must be a real root-only file")
-    config = Config(**json.loads(args.config.read_text(encoding="utf-8")))
+    config = Config(**heal_config(args.config))
     def interrupted(signum, frame):
         raise InterruptedError("Backup interrupted by signal " + str(signum))
     signal.signal(signal.SIGTERM, interrupted)

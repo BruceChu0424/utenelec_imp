@@ -117,6 +117,9 @@ class _WarehouseInboundExpectationsViewState
   }
 
   PagedResult<InboundExpectation>? _result;
+
+  /// 当前 [_result] 是否为逐批渐进行（失败即整体下撤，不留半截列表）。
+  bool _progressiveRows = false;
   Object? _acceptedQuery;
   bool _loading = false;
   String? _error;
@@ -526,6 +529,24 @@ class _WarehouseInboundExpectationsViewState
           order: pageOrder,
           billNo: pageBillNo,
         ),
+        fetchPageSized: (target, size) => pageRepository.expectations(
+          page: target,
+          size: size,
+          orderType: pageOrderType,
+          keyword: pageKeyword,
+          supplierId: pageSupplierId,
+          scope: pageScope,
+          sort: pageSort,
+          order: pageOrder,
+          billNo: pageBillNo,
+        ),
+        onProgressiveBatch: (partial) {
+          if (!current()) return;
+          setState(() {
+            _result = partial;
+            _progressiveRows = true;
+          });
+        },
       );
       if (!current()) return;
       // Rows already carry their supplier snapshots. Only the selected filter
@@ -541,6 +562,7 @@ class _WarehouseInboundExpectationsViewState
       if (!current()) return;
       setState(() {
         _result = result;
+        _progressiveRows = false;
         _acceptedQuery = query;
         _loading = false;
       });
@@ -566,6 +588,10 @@ class _WarehouseInboundExpectationsViewState
           _acceptedQuery = null;
           _selectedIds = const {};
         }
+        if (_progressiveRows) {
+          _result = null;
+          _progressiveRows = false;
+        }
         _error = error.message;
         _loading = false;
       });
@@ -574,6 +600,10 @@ class _WarehouseInboundExpectationsViewState
       debugPrint('预计到货加载异常: $error\n$stackTrace');
       if (!current()) return;
       setState(() {
+        if (_progressiveRows) {
+          _result = null;
+          _progressiveRows = false;
+        }
         _error =
             (Localizations.of<AppLocalizations>(context, AppLocalizations) ??
                     AppLocalizationsZh())

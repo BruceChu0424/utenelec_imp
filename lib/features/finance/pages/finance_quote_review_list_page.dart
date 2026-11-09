@@ -201,6 +201,18 @@ class _FinanceQuoteReviewListPageState
           );
           return fetch();
         },
+        fetchPageSized: (target, size) => repo.list(
+          state: state,
+          page: target,
+          size: size,
+          keyword: keyword,
+        ),
+        onProgressiveBatch: (partial) {
+          if (!mounted || version != _requestVersion) return;
+          setState(() {
+            _result = partial;
+          });
+        },
       );
       if (!mounted || version != _requestVersion) return;
       setState(() {

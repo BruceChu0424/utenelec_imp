@@ -97,7 +97,9 @@ class StockLedgerQuery {
     'direction': ?direction,
     if (includeWeightAdjustments) 'includeWeightAdjustments': true,
     'page': page,
-    'size': size > 100 ? 100 : size,
+    // 服务端按 Pageables 上限钳制并回显实际页大小；客户端原样透传，
+    // 完整读取阶梯 (最大 200) 才能被服务端精确满足。
+    'size': size,
     ...tableColumnParameters(columns, sort, ascending),
   };
 }

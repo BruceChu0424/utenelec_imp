@@ -502,6 +502,19 @@ class _DeptEmployeePickerSheetState
               ? null
               : (headers.ascending ? 'asc' : 'desc'),
         ),
+        fetchPageSized: (target, size) => repository.listWithColumnQuery(
+          page: target,
+          size: size,
+          departmentId: departmentId,
+          search: keyword,
+          statuses: statuses,
+          includeSubtree: true,
+          columnQuery: headers.searches,
+          sort: headers.sort,
+          order: headers.sort == null
+              ? null
+              : (headers.ascending ? 'asc' : 'desc'),
+        ),
       ),
     );
   }

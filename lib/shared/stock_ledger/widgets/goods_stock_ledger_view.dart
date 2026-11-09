@@ -235,6 +235,45 @@ class _GoodsStockLedgerViewState extends ConsumerState<GoodsStockLedgerView>
             rebuildSnapshot: data.withPage,
           );
         },
+        fetchPageSized: (target, size) async {
+          final data = await repository.ledger(
+            goodsId,
+            StockLedgerQuery(
+              warehouseId: frozen.warehouseId,
+              colorId: frozen.colorId,
+              colorNull: frozen.colorNull,
+              scope: frozen.scope,
+              dateFrom: frozen.dateFrom,
+              dateTo: frozen.dateTo,
+              movementTypes: frozen.movementTypes,
+              includeWeightAdjustments: frozen.includeWeightAdjustments,
+              page: target,
+              size: size,
+              columns: frozen.columns,
+              sort: frozen.sort,
+              ascending: frozen.ascending,
+            ),
+          );
+          return PagedReadSnapshot<StockLedgerRow, StockLedgerPage>(
+            page: PagedResult(
+              items: data.items,
+              page: data.page,
+              size: data.size,
+              total: data.total,
+              totalPages: data.totalPages,
+            ),
+            snapshot: data,
+            rebuildSnapshot: data.withPage,
+          );
+        },
+        onProgressiveBatch: (partial) {
+          if (!mounted || version != _version) return;
+          setState(() {
+            _data =
+                (partial as PagedReadSnapshot<StockLedgerRow, StockLedgerPage>)
+                    .snapshot;
+          });
+        },
       );
       final data =
           (cached as PagedReadSnapshot<StockLedgerRow, StockLedgerPage>)
@@ -425,7 +464,7 @@ class _GoodsStockLedgerViewState extends ConsumerState<GoodsStockLedgerView>
           error: _error,
           onRetry: () => _load(_visibleReadPage),
           emptyMessage: '所选范围内没有出入库流水',
-          summaryBar: data == null
+          summaryBar: data == null || _loading
               ? null
               : UtenTotalsSummaryBar(
                   key: const ValueKey('stock-ledger-summary'),

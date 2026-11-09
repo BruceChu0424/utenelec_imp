@@ -312,6 +312,32 @@ class _FinanceSalesOrderConfirmationPageState
 
           return fetch();
         },
+        fetchPageSized: (target, size) async {
+          final response = await repo.pending(
+            page: target,
+            size: size,
+            rejected: rejected,
+            keyword: keyword,
+            changesOnly: changesOnly,
+            confirmed: confirmed,
+            sort: sort,
+            order: order,
+            billNo: billNo,
+          );
+          return financeConfirmationSnapshot(response);
+        },
+        onProgressiveBatch: (partial) {
+          if (!mounted || requestVersion != _requestVersion) return;
+          setState(() {
+            _result =
+                (partial
+                        as PagedReadSnapshot<
+                          SalesOrderFinancePendingItem,
+                          SalesOrderFinancePendingPage
+                        >)
+                    .snapshot;
+          });
+        },
       );
       final result =
           (cachedPage

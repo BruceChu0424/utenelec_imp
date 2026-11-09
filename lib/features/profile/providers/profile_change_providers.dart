@@ -81,6 +81,9 @@ final myProfileChangesProvider = FutureProvider.autoDispose
               fetchPage: (page) => _profilePageSnapshot(
                 repository.myList(page: page, status: key.status),
               ),
+              fetchPageSized: (page, size) => _profilePageSnapshot(
+                repository.myList(page: page, size: size, status: key.status),
+              ),
             );
         return (result
                 as PagedReadSnapshot<
@@ -128,17 +131,27 @@ final myProfileChangeTableProvider = FutureProvider.autoDispose
         final result = await ref
             .watch(myProfileChangeTableReadProvider(key.status))
             .read(
-              key.page,
-              fetchPage: (page) => _profilePageSnapshot(
-                repository.myList(
-                  page: page,
-                  status: key.status,
-                  columns: columns.searches,
-                  sort: columns.sort,
-                  ascending: columns.ascending,
-                ),
-              ),
-            );
+                  key.page,
+                  fetchPage: (page) => _profilePageSnapshot(
+                    repository.myList(
+                      page: page,
+                      status: key.status,
+                      columns: columns.searches,
+                      sort: columns.sort,
+                      ascending: columns.ascending,
+                    ),
+                  ),
+                  fetchPageSized: (page, size) => _profilePageSnapshot(
+                    repository.myList(
+                      page: page,
+                      size: size,
+                      status: key.status,
+                      columns: columns.searches,
+                      sort: columns.sort,
+                      ascending: columns.ascending,
+                    ),
+                  ),
+                );
         return (result
                 as PagedReadSnapshot<
                   MyProfileChangeListItem,
@@ -238,6 +251,17 @@ final hrProfileChangeQueueProvider = FutureProvider.autoDispose
               fetchPage: (page) => _profilePageSnapshot(
                 repository.hrList(
                   page: page,
+                  status: key.status,
+                  departmentId: key.departmentId,
+                  columns: columns.searches,
+                  sort: columns.sort,
+                  ascending: columns.ascending,
+                ),
+              ),
+              fetchPageSized: (page, size) => _profilePageSnapshot(
+                repository.hrList(
+                  page: page,
+                  size: size,
                   status: key.status,
                   departmentId: key.departmentId,
                   columns: columns.searches,

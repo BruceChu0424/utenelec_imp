@@ -246,6 +246,46 @@ class _TraceState extends ConsumerState<GoodsProductionTraceView>
             rebuildSnapshot: result.withPage,
           );
         },
+        fetchPageSized: (target, size) async {
+          if (subject == null) {
+            return ledgerRepository.productionTrace(
+              goodsId!,
+              direction: direction,
+              page: target,
+              size: size,
+              columns: headers.searches,
+              sort: headers.sort,
+              ascending: headers.ascending,
+            );
+          }
+          final result = await traceRepository.trace(
+            subject: subject,
+            direction: direction,
+            dateFrom: from,
+            dateTo: to,
+            page: target,
+            size: size,
+            columns: headers.searches,
+            sort: headers.sort,
+            ascending: headers.ascending,
+          );
+          if (result.subject?.identity != subject.identity) {
+            throw ApiException('INVALID_TRACE_RESPONSE', '追溯结果与当前对象不一致，请重新查询');
+          }
+          return PagedReadSnapshot<
+            GoodsProductionTraceRow,
+            MaterialTraceResult
+          >(
+            page: result.page,
+            snapshot: result,
+            rebuildSnapshot: result.withPage,
+          );
+        },
+        onProgressiveBatch: (partial) {
+          // 只发布行列表; 依据/覆盖说明 (_result) 等完整结果。
+          if (!mounted || request != _request) return;
+          setState(() => _data = partial);
+        },
       );
       final data = cached;
       final result =

@@ -1728,6 +1728,8 @@ class _DraftPickerState extends ConsumerState<_DraftPicker>
   Future<void> onReadViewResumed() => _load();
   final _search = TextEditingController();
   List<Map<String, dynamic>> _rows = [];
+  // _rows 是否只是逐批前缀（未到完整结果）；失败时整体下撤。
+  bool _partialRows = false;
   int _total = 0, _generation = 0;
   int? _activeGeneration;
   String? _activeQuery;
@@ -1791,6 +1793,15 @@ class _DraftPickerState extends ConsumerState<_DraftPicker>
               );
               return PagedResult.fromJson(value, (row) => row);
             },
+            onProgressiveBatch: (partial) {
+              if (!_current || generation != _generation || !scope.isCurrent) {
+                return;
+              }
+              setState(() {
+                _rows = partial.items;
+                _partialRows = true;
+              });
+            },
           ),
         ),
       );
@@ -1798,12 +1809,20 @@ class _DraftPickerState extends ConsumerState<_DraftPicker>
       setState(() {
         _rows = complete.items;
         _total = complete.total;
+        _partialRows = false;
         _error = null;
       });
     } catch (e) {
       if (isRetiredViewRead(e)) return;
       if (_current && generation == _generation) {
-        setState(() => _error = humanErrorMessage(e) ?? '草稿未读取');
+        setState(() {
+          // 逐批前缀不是完整结果：读取失败时整体下撤，不能留半张清单。
+          if (_partialRows) {
+            _rows = [];
+            _partialRows = false;
+          }
+          _error = humanErrorMessage(e) ?? '草稿未读取';
+        });
       }
     } finally {
       if (_activeGeneration == generation) {
@@ -1840,6 +1859,7 @@ class _DraftPickerState extends ConsumerState<_DraftPicker>
                     _generation++;
                     setState(() {
                       _rows = [];
+                      _partialRows = false;
                       _loading = true;
                     });
                   },

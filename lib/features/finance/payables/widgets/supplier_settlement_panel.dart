@@ -146,6 +146,43 @@ class _SupplierSettlementPanelState
             rebuildSnapshot: response.withPage,
           );
         },
+        fetchPageSized: (target, size) async {
+          final response = await repo.list(
+            status: status,
+            keyword: keyword,
+            columnSearch: columnSearch,
+            sort: sort,
+            sortAscending: sortAscending,
+            page: target,
+            size: size,
+          );
+          return PagedReadSnapshot<
+            SupplierSettlementSummary,
+            SupplierSettlementPageResult
+          >(
+            page: PagedResult(
+              items: response.items,
+              page: response.page,
+              size: response.size,
+              total: response.total,
+              totalPages: response.totalPages,
+            ),
+            snapshot: response,
+            rebuildSnapshot: response.withPage,
+          );
+        },
+        onProgressiveBatch: (partial) {
+          if (!mounted || !_requests.isCurrent(generation)) return;
+          setState(() {
+            _result =
+                (partial
+                        as PagedReadSnapshot<
+                          SupplierSettlementSummary,
+                          SupplierSettlementPageResult
+                        >)
+                  .snapshot;
+          });
+        },
       );
       final result =
           (cachedPage

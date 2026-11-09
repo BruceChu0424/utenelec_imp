@@ -91,6 +91,9 @@ class _WarehouseDocumentHistoryViewState
   }
 
   PagedResult<WarehouseDocumentHistorySummary>? _result;
+
+  /// 当前 [_result] 是否为逐批渐进行（失败即整体下撤，不留半截列表）。
+  bool _progressiveRows = false;
   bool _loading = false;
   String? _error;
   String _keyword = '';
@@ -246,23 +249,53 @@ class _WarehouseDocumentHistoryViewState
           billNo: pageArg6,
           sourceDocNo: pageArg7,
         ),
+        fetchPageSized: (target, size) => pageRepository.list(
+          page: target,
+          size: size,
+          keyword: pageArg0,
+          status: pageArg1,
+          dateFrom: pageArg2,
+          dateTo: pageArg3,
+          sort: pageArg4,
+          order: pageArg5,
+          billNo: pageArg6,
+          sourceDocNo: pageArg7,
+        ),
+        onProgressiveBatch: (partial) {
+          if (!mounted || version != _requestVersion || widget.type != type) {
+            return;
+          }
+          setState(() {
+            _result = partial;
+            _progressiveRows = true;
+          });
+        },
       );
       if (!mounted || version != _requestVersion || widget.type != type) return;
       // 单号 facets 与列表同口径（2026-09-25 单号列统一）；失败静默（下拉降级为空）。
 
       setState(() {
         _result = result;
+        _progressiveRows = false;
         _loading = false;
       });
     } on ApiException catch (error) {
       if (!mounted || version != _requestVersion || widget.type != type) return;
       setState(() {
+        if (_progressiveRows) {
+          _result = null;
+          _progressiveRows = false;
+        }
         _error = error.message;
         _loading = false;
       });
     } catch (_) {
       if (!mounted || version != _requestVersion || widget.type != type) return;
       setState(() {
+        if (_progressiveRows) {
+          _result = null;
+          _progressiveRows = false;
+        }
         _error = '${widget.type.title}加载失败，请检查网络后重试';
         _loading = false;
       });

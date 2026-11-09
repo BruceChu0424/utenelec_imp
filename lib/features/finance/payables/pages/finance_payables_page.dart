@@ -285,6 +285,35 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage>
             rebuildSnapshot: response.withPage,
           );
         },
+        fetchPageSized: (target, size) async {
+          final response = await repo.list(
+            page: target,
+            size: size,
+            filter: filter,
+            sort: sort,
+            order: order,
+          );
+          return PagedReadSnapshot<FinancePayableItem, FinancePayablesResult>(
+            page: PagedResult(
+              items: response.items,
+              page: response.page,
+              size: response.size,
+              total: response.total,
+              totalPages: response.totalPages,
+            ),
+            snapshot: response,
+            rebuildSnapshot: response.withPage,
+          );
+        },
+        onProgressiveBatch: (partial) {
+          if (!mounted || !_requests.isCurrent(generation)) return;
+          setState(() {
+            _result =
+                (partial
+                        as PagedReadSnapshot<FinancePayableItem, FinancePayablesResult>)
+                    .snapshot;
+          });
+        },
       );
       final result =
           (cachedPage
@@ -868,7 +897,9 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage>
                             UtenFilterSegment(
                               value: _PayablesWorkspaceView.lossClaims,
                               label: '委外超耗责任',
-                              count: _result?.summary.pendingLossCases,
+                              count: _loading
+                                  ? null
+                                  : _result?.summary.pendingLossCases,
                               // 未判定的超耗案件在等财务定责，是待办不是浏览数。
                               countForm: UtenSegmentCountForm.actionable,
                             ),
@@ -909,7 +940,9 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage>
                                   children: [
                                     FinancePayablesKpiStrip(
                                       summary: _result?.summary,
-                                      loading: _loading && _result == null,
+                                      // 逐批追加期间 _result 已是部分前缀：
+                                      // KPI 只在完整结果到达后显示。
+                                      loading: _loading,
                                       compact: constraints.maxHeight < 420,
                                     ),
                                     const SizedBox(height: UtenSpacing.s12),

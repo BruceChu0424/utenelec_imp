@@ -17,6 +17,7 @@ abstract interface class GoodsQuoteHistoryRepository {
   Future<PagedResult<GoodsQuoteHistoryRow>> list(
     String goodsId, {
     int page = 1,
+    int size = 20,
     Map<String, String?> columns = const {},
     String? sort,
     bool ascending = true,
@@ -31,6 +32,7 @@ class ApiGoodsQuoteHistoryRepository implements GoodsQuoteHistoryRepository {
   Future<PagedResult<GoodsQuoteHistoryRow>> list(
     String goodsId, {
     int page = 1,
+    int size = 20,
     Map<String, String?> columns = const {},
     String? sort,
     bool ascending = true,
@@ -39,7 +41,7 @@ class ApiGoodsQuoteHistoryRepository implements GoodsQuoteHistoryRepository {
       '/sales/quotes/goods/${Uri.encodeComponent(goodsId)}/history',
       query: {
         'page': page,
-        'size': 20,
+        'size': size,
         ...tableColumnParameters(columns, sort, ascending),
       },
     );

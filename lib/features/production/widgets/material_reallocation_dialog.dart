@@ -388,6 +388,45 @@ class _MaterialReallocationDialogBodyState
               keyword: keyword,
             );
           },
+          fetchPageSized: (page, size) async {
+            if (future) {
+              final all = rankedKeywordMatches(
+                await repository.materialFutureTransferSourceSnapshot(
+                  targetAnalysisId: analysisId,
+                  targetMaterialId: materialId,
+                  isCurrent: () =>
+                      readCurrent() &&
+                      (PagedReadIntent.currentActivity?.call() ?? true),
+                ),
+                keyword,
+                primaryFields: (source) => [source.goodsName],
+                fields: (source) => [source.sourceLabel, source.goodsCode],
+              );
+              return PagedResult<MaterialReallocationEndpointCandidate>(
+                items: all,
+                page: 1,
+                size: all.length,
+                total: all.length,
+                totalPages: all.isEmpty ? 0 : 1,
+              );
+            }
+            if (receive) {
+              return repository.materialCrossReallocationSources(
+                targetAnalysisId: analysisId,
+                targetMaterialLineId: materialId,
+                page: page,
+                size: size,
+                keyword: keyword,
+              );
+            }
+            return repository.materialCrossReallocationCandidates(
+              sourceAnalysisId: analysisId,
+              sourceMaterialLineId: materialId,
+              page: page,
+              size: size,
+              keyword: keyword,
+            );
+          },
         ),
         slot: 'candidates',
       );

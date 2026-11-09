@@ -278,6 +278,32 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet>
             keyword: keyword,
           );
         },
+        fetchPageSized: (target, size) async {
+          if (widget.receiptBatches) {
+            final json = await ref
+                .read(apiClientProvider)
+                .get(
+                  '/finance/receipts/shipment-sources',
+                  query: {
+                    'clientId': ?partyId,
+                    'page': target,
+                    'size': size,
+                    if (keyword.isNotEmpty) 'keyword': keyword,
+                  },
+                );
+            return PagedResult.fromJsonResponsive(
+              json,
+              ArApLedgerItem.fromJson,
+            );
+          }
+          return repository.openItemsForParty(
+            direction: direction,
+            partyId: partyId!,
+            page: target,
+            size: size,
+            keyword: keyword,
+          );
+        },
       );
       if (!mounted || version != _requestVersion) return;
       if (!widget.receiptBatches) {

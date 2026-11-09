@@ -225,10 +225,20 @@ Future<SubcontractLinkPickResult?> showSubcontractLinkPicker(
         },
         serverColumnSearchKeys: const {'billNo', 'supplier'},
         listDocsWithFilters:
-            (ref, page, keyword, supplierId, sort, order, filters) => ref
+            (
+              ref,
+              page,
+              keyword,
+              supplierId,
+              sort,
+              order,
+              filters, {
+              int size = 20,
+            }) => ref
                 .read(subcontractRepositoryProvider(upstream))
                 .list(
                   page: page,
+                  size: size,
                   // 拉已审单据（草稿单据的明细不该被引入）。
                   filter: SubcontractDocFilter(
                     keyword: keyword,

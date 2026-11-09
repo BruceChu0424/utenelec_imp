@@ -115,6 +115,9 @@ class _WarehouseDrawTaskSegmentState
   }
 
   PagedResult<WarehouseDrawTask>? _result;
+
+  /// 当前 [_result] 是否为逐批渐进行（失败即整体下撤，不留半截列表）。
+  bool _progressiveRows = false;
   bool _loading = false;
   String? _error;
   int _requestVersion = 0;
@@ -258,11 +261,31 @@ class _WarehouseDrawTaskSegmentState
           drawBillNo: pageDrawBillNo,
           scope: pageScope,
         ),
+        fetchPageSized: (target, size) => pageRepository.tasks(
+          page: target,
+          size: size,
+          keyword: pageKeyword,
+          status: pageStatus,
+          sort: pageSort,
+          ascending: pageAscending,
+          drawBillNo: pageDrawBillNo,
+          scope: pageScope,
+        ),
+        // 视图行（批次 × 货品）在 build 里按同一纯投影生成；已知行登记、
+        // 勾选修剪与子分类计数等完整结果。
+        onProgressiveBatch: (partial) {
+          if (!mounted || version != _requestVersion) return;
+          setState(() {
+            _result = partial;
+            _progressiveRows = true;
+          });
+        },
       );
       if (!mounted || version != _requestVersion) return;
       final viewItems = _viewItemsOf(result);
       setState(() {
         _result = result;
+        _progressiveRows = false;
         _loading = false;
         // 底层单据行（勾选展开/出库跳转用）与视图行（表格勾选 id）都登记。
         for (final task in result.items) {
@@ -277,12 +300,20 @@ class _WarehouseDrawTaskSegmentState
     } on ApiException catch (error) {
       if (!mounted || version != _requestVersion) return;
       setState(() {
+        if (_progressiveRows) {
+          _result = null;
+          _progressiveRows = false;
+        }
         _error = error.message;
         _loading = false;
       });
     } catch (_) {
       if (!mounted || version != _requestVersion) return;
       setState(() {
+        if (_progressiveRows) {
+          _result = null;
+          _progressiveRows = false;
+        }
         _error = '待领任务加载失败，请检查网络后重试';
         _loading = false;
       });

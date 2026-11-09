@@ -94,6 +94,9 @@ class _WarehouseSubcontractOutboundWorkbenchState
   }
 
   PagedResult<OutboundTask>? _result;
+
+  /// 当前 [_result] 是否为逐批渐进行（失败即整体下撤，不留半截列表）。
+  bool _progressiveRows = false;
   bool _loading = false;
   String? _error;
   int _requestVersion = 0;
@@ -175,10 +178,24 @@ class _WarehouseSubcontractOutboundWorkbenchState
           keyword: pageKeyword,
           scope: pageScope,
         ),
+        fetchPageSized: (target, size) => pageRepository.tasks(
+          page: target,
+          size: size,
+          keyword: pageKeyword,
+          scope: pageScope,
+        ),
+        onProgressiveBatch: (partial) {
+          if (!mounted || version != _requestVersion) return;
+          setState(() {
+            _result = partial;
+            _progressiveRows = true;
+          });
+        },
       );
       if (!mounted || version != _requestVersion) return;
       setState(() {
         _result = result;
+        _progressiveRows = false;
         _loading = false;
       });
       // Reconcile after the table has combined any appended pages.
@@ -193,12 +210,20 @@ class _WarehouseSubcontractOutboundWorkbenchState
     } on ApiException catch (error) {
       if (!mounted || version != _requestVersion) return;
       setState(() {
+        if (_progressiveRows) {
+          _result = null;
+          _progressiveRows = false;
+        }
         _error = error.message;
         _loading = false;
       });
     } catch (_) {
       if (!mounted || version != _requestVersion) return;
       setState(() {
+        if (_progressiveRows) {
+          _result = null;
+          _progressiveRows = false;
+        }
         _error = '委外领料单加载失败，请检查网络后重试';
         _loading = false;
       });

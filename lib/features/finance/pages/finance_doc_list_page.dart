@@ -284,7 +284,10 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
   );
 
   /// 用当前筛选组装本页拉取（fetch 执行时读取控制器快照，pageNum 已更新）。
-  Future<PagedResult<FinanceDocListItem>> _fetch([int? requestedPage]) async {
+  Future<PagedResult<FinanceDocListItem>> _fetch([
+    int? requestedPage,
+    int size = 100,
+  ]) async {
     final names = ref.read(financeNameServiceProvider);
     final isClient = _cfg.isClient;
     final selectedParty = _partyIdFilter;
@@ -293,7 +296,7 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
         .read(financeRepositoryProvider(widget.docType))
         .list(
           page: requestedPage ?? _list.pageNum,
-          size: 100,
+          size: size,
           filter: _docFilter(),
           sort: _list.sortKey,
           order: _list.sortOrder,
@@ -391,6 +394,7 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
       silent: silent,
       fetch: _fetch,
       fetchPage: _fetch,
+      fetchPageSized: (target, size) => _fetch(target, size),
       useCachedPage: useCachedPage,
       canPrefetch: () =>
           mounted &&

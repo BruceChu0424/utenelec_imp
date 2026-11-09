@@ -199,6 +199,39 @@ class _FinanceApplicationsState extends ConsumerState<FinanceApplicationsPage>
                 (size > 0 ? (total / size).ceil() : 0),
           );
         },
+        fetchPageSized: (target, size) async {
+          final json = await api.get(
+            financeApplicationsApi,
+            query: {
+              'queue': queue,
+              'search': search,
+              'page': target,
+              'size': size,
+            },
+          );
+          final total = (json['total'] as num?)?.toInt() ?? 0;
+          final reportedSize = (json['size'] as num?)?.toInt() ?? size;
+          return PagedResult(
+            items: financeApplicationRows(json['rows']),
+            page: (json['page'] as num?)?.toInt() ?? target,
+            size: reportedSize,
+            total: total,
+            totalPages:
+                (json['totalPages'] as num?)?.toInt() ??
+                (reportedSize > 0 ? (total / reportedSize).ceil() : 0),
+          );
+        },
+        onProgressiveBatch: (partial) {
+          if (!mounted ||
+              !_reads.isCurrent(token) ||
+              epoch != ref.read(exportContextEpochProvider)) {
+            return;
+          }
+          setState(() {
+            _rows = partial.items;
+            _total = partial.total;
+          });
+        },
       );
       if (!mounted ||
           !_reads.isCurrent(token) ||
@@ -570,6 +603,12 @@ class _ApplicationSourcePickerState
             page: page,
             size: size,
           ),
+          onProgressiveBatch: (partial) {
+            if (!current()) return;
+            setState(() {
+              _rows = partial.items;
+            });
+          },
         ),
       );
       if (mounted &&
@@ -587,6 +626,8 @@ class _ApplicationSourcePickerState
           _reads.isCurrent(token) &&
           epoch == ref.read(exportContextEpochProvider)) {
         setState(() {
+          // 逐批追加期间已发布的部分前缀随失败一并撤下：目录必须完整后才可选。
+          _rows = const [];
           _error = humanErrorMessage(e) ?? '原始来源未读完';
           _loading = false;
         });

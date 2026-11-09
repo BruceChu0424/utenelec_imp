@@ -67,6 +67,14 @@ final _historyProvider = FutureProvider.autoDispose
                 sort: query.headers.sort,
                 ascending: query.headers.ascending,
               ),
+              fetchPageSized: (page, size) => repository.celebrationHistory(
+                type: query.headers.type,
+                page: page,
+                size: size,
+                columnSearch: _headerSearch(query.headers),
+                sort: query.headers.sort,
+                ascending: query.headers.ascending,
+              ),
             );
       },
       retry: pagedReadProviderRetry,

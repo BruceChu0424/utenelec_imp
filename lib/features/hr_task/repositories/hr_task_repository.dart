@@ -15,6 +15,7 @@ class HrTaskRepository {
   Future<PagedResult<HrCelebrationPublication>> celebrationHistory({
     required String type,
     int page = 1,
+    int size = 20,
     Map<String, String?> columnSearch = const {},
     String? sort,
     bool ascending = true,
@@ -24,7 +25,7 @@ class HrTaskRepository {
       query: {
         'type': type,
         'page': page,
-        'size': 20,
+        'size': size,
         for (final entry in columnSearch.entries)
           if (entry.key.startsWith('search.') &&
               entry.value?.trim().isNotEmpty == true)

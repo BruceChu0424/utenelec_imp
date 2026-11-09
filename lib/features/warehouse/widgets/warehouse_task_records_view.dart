@@ -109,6 +109,9 @@ class _WarehouseTaskRecordsViewState
   }
 
   WarehouseTaskCenterPageResult? _result;
+
+  /// 当前 [_result] 是否为逐批渐进行（失败即整体下撤，不留半截列表）。
+  bool _progressiveRows = false;
   String? _status;
   String? _billNo;
   final _headerColumns = <String, String?>{};
@@ -335,6 +338,41 @@ class _WarehouseTaskRecordsViewState
             WarehouseTaskCenterPageResult
           >(page: snapshot, snapshot: snapshot);
         },
+        fetchPageSized: (target, size) async {
+          final snapshot = await WarehouseTaskPageQuery(
+            direction: pageDirection,
+            source: pageSource,
+            view: pageView,
+            status: pageStatus,
+            keyword: pageKeyword,
+            billNo: pageBillNo,
+            columns: pageColumns,
+            dateFrom: pageDateFrom,
+            dateTo: pageDateTo,
+            scope: pageWarehouseScope,
+            page: target,
+            size: size,
+            sort: pageSort,
+            order: pageOrder,
+          ).read(ref, pageRepository);
+          return PagedReadSnapshot<
+            WarehouseTaskCenterRecord,
+            WarehouseTaskCenterPageResult
+          >(page: snapshot, snapshot: snapshot);
+        },
+        onProgressiveBatch: (partial) {
+          if (!mounted || version != _requestVersion) return;
+          setState(() {
+            _result =
+                (partial
+                        as PagedReadSnapshot<
+                          WarehouseTaskCenterRecord,
+                          WarehouseTaskCenterPageResult
+                        >)
+                    .snapshot;
+            _progressiveRows = true;
+          });
+        },
       );
       final result =
           (cached
@@ -346,6 +384,7 @@ class _WarehouseTaskRecordsViewState
       if (!mounted || version != _requestVersion) return;
       setState(() {
         _result = result;
+        _progressiveRows = false;
         _loading = false;
         for (final row in result.items) {
           if (_selected.contains(row.rowKey)) _selectedRows[row.rowKey] = row;
@@ -358,6 +397,10 @@ class _WarehouseTaskRecordsViewState
         return;
       }
       setState(() {
+        if (_progressiveRows) {
+          _result = null;
+          _progressiveRows = false;
+        }
         _loading = false;
         _error = error is ApiException ? error.message : '仓库单据加载失败，请重试';
       });

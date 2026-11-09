@@ -251,17 +251,20 @@ class UtenDocLinkPickerConfig<D, I, N> {
   loadGoodsNames;
 
   /// Step1 分页拉单（异步上下文，实现内部用 ref.read）。已审状态等业务过滤由实现方负责。
+  /// [size] 透传服务端页大小（实现方默认 20 = 旧固定页大小）。
   final Future<PagedResult<D>> Function(
     WidgetRef ref,
     int page,
     String? keyword,
     String? partyId,
     String? sort,
-    String? order,
-  )?
+    String? order, {
+    int size,
+  })?
   listDocs;
 
   /// Explicit opt-in to an existing full-range per-column server query.
+  /// [size] 透传服务端页大小（实现方默认 20 = 旧固定页大小）。
   final Future<PagedResult<D>> Function(
     WidgetRef ref,
     int page,
@@ -269,8 +272,9 @@ class UtenDocLinkPickerConfig<D, I, N> {
     String? partyId,
     String? sort,
     String? order,
-    Map<String, String?> filters,
-  )?
+    Map<String, String?> filters, {
+    int size,
+  })?
   listDocsWithFilters;
   final Set<String> serverColumnSearchKeys;
 
@@ -487,6 +491,31 @@ class _UtenDocLinkPickerSheetState<D, I, N>
                 columnFilters,
               )
             : config.listDocs!(ref, target, keyword, partyId, sort, order),
+        fetchPageSized: (target, size) => config.listDocsWithFilters != null
+            ? config.listDocsWithFilters!(
+                ref,
+                target,
+                keyword,
+                partyId,
+                sort,
+                order,
+                columnFilters,
+                size: size,
+              )
+            : config.listDocs!(
+                ref,
+                target,
+                keyword,
+                partyId,
+                sort,
+                order,
+                size: size,
+              ),
+        onProgressiveBatch: (partial) {
+          // 只发行; 往来方名称预取等完整结果。
+          if (!mounted || !_docsRequests.isCurrent(requestVersion)) return;
+          setState(() => _docPage = partial);
+        },
       );
       if (!mounted || !_docsRequests.isCurrent(requestVersion)) return;
       await _cfg.loadPartyNames(

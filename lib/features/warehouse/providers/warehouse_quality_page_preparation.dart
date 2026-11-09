@@ -9,6 +9,7 @@ import '../repositories/warehouse_quality_result_repository.dart';
 class WarehouseQualityPageQuery {
   const WarehouseQualityPageQuery({
     this.page = 1,
+    this.size = 40,
     this.view = WarehouseTaskView.active,
     this.receiptType,
     this.workStatus,
@@ -21,6 +22,9 @@ class WarehouseQualityPageQuery {
     this.scopeWarehouseId,
   });
   final int page;
+
+  /// 读取批大小（完整读取逐批 50→200 透传；默认保持原 40）。
+  final int size;
   final WarehouseTaskView view;
   final WarehouseIqcStockInReceiptType? receiptType;
   final WarehouseQualityWorkStatus? workStatus;
@@ -36,7 +40,7 @@ class WarehouseQualityPageQuery {
     WarehouseQualityResultGateway repository,
   ) => repository.list(
     page: page,
-    size: 40,
+    size: size,
     view: view,
     receiptType: receiptType,
     workStatus: workStatus,

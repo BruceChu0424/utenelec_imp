@@ -46,6 +46,14 @@ final visitorApplicationsProvider = FutureProvider.autoDispose
                 sort: columns.sort,
                 ascending: columns.ascending,
               ),
+              fetchPageSized: (page, size) => repository.myApplications(
+                status: q.status,
+                page: page,
+                size: size,
+                columns: columns.searches,
+                sort: columns.sort,
+                ascending: columns.ascending,
+              ),
             );
       },
       retry: pagedReadProviderRetry,

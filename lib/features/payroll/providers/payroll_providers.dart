@@ -160,6 +160,14 @@ class PayrollListNotifier extends AsyncNotifier<PagedResult<PayrollSlip>> {
         sort: headers.sort,
         order: headers.ascending ? 'asc' : 'desc',
       ),
+      fetchPageSized: (page, size) => repository.listSlips(
+        status: filter.apiStatus,
+        page: page,
+        size: size,
+        columnSearch: headers.searches,
+        sort: headers.sort,
+        order: headers.ascending ? 'asc' : 'desc',
+      ),
     );
   }
 

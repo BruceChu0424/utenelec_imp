@@ -58,9 +58,24 @@ class _MaterialReferencePickerState
     super.dispose();
   }
 
+  /// 完整结果与逐批前缀同一投影：解码后仅保留可选的已审核分组。
+  List<Map<String, dynamic>> _referenceRows(Object? items) {
+    final rows = _ml(items);
+    if (widget.kind != 'contexts') return rows;
+    return rows
+        .where(
+          (r) =>
+              r['state'] == 'APPROVED' &&
+              (widget.scope?['account_code'] == null ||
+                  r['accountCode'] == widget.scope!['account_code']),
+        )
+        .toList();
+  }
+
   Future<void> _load() async {
     if (!_current) return;
     final generation = ++_read;
+    var partialRows = false;
     setState(() => _busy = true);
     try {
       final api = ref.read(apiClientProvider),
@@ -83,22 +98,20 @@ class _MaterialReferencePickerState
                 'size': size,
               },
             ),
+            onRows: (items) {
+              if (!_current || !scope.isCurrent || generation != _read) return;
+              setState(() {
+                _rows = _referenceRows(items);
+                partialRows = true;
+              });
+            },
           ),
         ),
       );
       if (!_current || !scope.isCurrent || generation != _read) return;
       setState(() {
-        _rows = _ml(result['items']);
-        if (widget.kind == 'contexts') {
-          _rows = _rows
-              .where(
-                (r) =>
-                    r['state'] == 'APPROVED' &&
-                    (widget.scope?['account_code'] == null ||
-                        r['accountCode'] == widget.scope!['account_code']),
-              )
-              .toList();
-        }
+        _rows = _referenceRows(result['items']);
+        partialRows = false;
         _error = null;
       });
     } catch (e) {
@@ -106,7 +119,7 @@ class _MaterialReferencePickerState
       if (_current && generation == _read) {
         setState(() {
           _error = _problem(e);
-          if (pagedReadAccessDenied(e)) _rows = [];
+          if (partialRows || pagedReadAccessDenied(e)) _rows = [];
         });
       }
     } finally {
@@ -283,6 +296,31 @@ class _MaterialMovementPickerState
     }
   }
 
+  /// 完整结果与逐批前缀同一投影：来源事实逐条展开为实物影响行。
+  List<Map<String, dynamic>> _movementRows(Object? items) {
+    final rows = <Map<String, dynamic>>[];
+    for (final fact in _ml(items)) {
+      for (final effect in _ml(fact['effects'])) {
+        if (widget.finishedOnly && effect['reversal'] == true) continue;
+        rows.add({
+          ...effect,
+          'billNo': fact['billNo'],
+          'originalSummary': [
+            _mm(fact['sourceSnapshot'])['document_remark'],
+            _mm(fact['sourceSnapshot'])['item_remark'],
+          ].whereType<String>().where((value) => value.isNotEmpty).join('；'),
+          'goodsCode': fact['goodsCode'],
+          'goodsName': fact['goodsName'],
+          'source': fact['key'],
+          'sourceIdentityFingerprint': fact['identityFingerprint'],
+          'approved': fact['approved'],
+          'identityComplete': fact['identityComplete'],
+        });
+      }
+    }
+    return rows;
+  }
+
   Future<void> _load() async {
     if (!_current) return;
     if (_rule == null) {
@@ -293,6 +331,7 @@ class _MaterialMovementPickerState
       return;
     }
     final generation = ++_read;
+    var partialRows = false;
     setState(() => _busy = true);
     try {
       final api = ref.read(apiClientProvider),
@@ -319,32 +358,21 @@ class _MaterialMovementPickerState
                 'size': size,
               },
             ),
+            onRows: (items) {
+              if (!_current || !scope.isCurrent || generation != _read) return;
+              setState(() {
+                _rows = _movementRows(items);
+                partialRows = true;
+              });
+            },
           ),
         ),
       );
       if (!_current || !scope.isCurrent || generation != _read) return;
-      final rows = <Map<String, dynamic>>[];
-      for (final fact in _ml(result['items'])) {
-        for (final effect in _ml(fact['effects'])) {
-          if (widget.finishedOnly && effect['reversal'] == true) continue;
-          rows.add({
-            ...effect,
-            'billNo': fact['billNo'],
-            'originalSummary': [
-              _mm(fact['sourceSnapshot'])['document_remark'],
-              _mm(fact['sourceSnapshot'])['item_remark'],
-            ].whereType<String>().where((value) => value.isNotEmpty).join('；'),
-            'goodsCode': fact['goodsCode'],
-            'goodsName': fact['goodsName'],
-            'source': fact['key'],
-            'sourceIdentityFingerprint': fact['identityFingerprint'],
-            'approved': fact['approved'],
-            'identityComplete': fact['identityComplete'],
-          });
-        }
-      }
+      final rows = _movementRows(result['items']);
       setState(() {
         _rows = rows;
+        partialRows = false;
         _error = null;
       });
     } catch (e) {
@@ -352,7 +380,7 @@ class _MaterialMovementPickerState
       if (_current && generation == _read) {
         setState(() {
           _error = _problem(e);
-          if (pagedReadAccessDenied(e)) _rows = [];
+          if (partialRows || pagedReadAccessDenied(e)) _rows = [];
         });
       }
     } finally {
@@ -531,6 +559,7 @@ class _MaterialGlPickerState extends ConsumerState<_MaterialGlPicker>
   Future<void> _load() async {
     if (!_current) return;
     final generation = ++_read;
+    var partialRows = false;
     setState(() => _busy = true);
     try {
       final api = ref.read(apiClientProvider),
@@ -564,12 +593,20 @@ class _MaterialGlPickerState extends ConsumerState<_MaterialGlPicker>
                 'size': size,
               },
             ),
+            onRows: (items) {
+              if (!_current || !scope.isCurrent || generation != _read) return;
+              setState(() {
+                _rows = _ml(items);
+                partialRows = true;
+              });
+            },
           ),
         ),
       );
       if (!_current || !scope.isCurrent || generation != _read) return;
       setState(() {
         _rows = _ml(value['items']);
+        partialRows = false;
         _error = null;
       });
     } catch (e) {
@@ -577,7 +614,7 @@ class _MaterialGlPickerState extends ConsumerState<_MaterialGlPicker>
       if (_current && generation == _read) {
         setState(() {
           _error = _problem(e);
-          if (pagedReadAccessDenied(e)) _rows = [];
+          if (partialRows || pagedReadAccessDenied(e)) _rows = [];
         });
       }
     } finally {

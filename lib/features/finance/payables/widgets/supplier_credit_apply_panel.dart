@@ -190,6 +190,34 @@ class _SupplierCreditApplyPanelState
             rebuildSnapshot: result.withPage,
           );
         },
+        fetchPageSized: (target, size) async {
+          final result = await repository.list(
+            page: target,
+            size: size,
+            filter: filter,
+          );
+          return PagedReadSnapshot<FinancePayableItem, FinancePayablesResult>(
+            page: PagedResult(
+              items: result.items,
+              page: result.page,
+              size: result.size,
+              total: result.total,
+              totalPages: result.totalPages,
+            ),
+            snapshot: result,
+            rebuildSnapshot: result.withPage,
+          );
+        },
+        onProgressiveBatch: (partial) {
+          if (!mounted || version != _requestVersion) return;
+          setState(() {
+            _targets = {
+              for (final target in partial.items)
+                if (supplierOffsetTargetCompatible(widget.source, target))
+                  target.id: target,
+            }.values.toList(growable: false);
+          });
+        },
       );
       final result =
           (cached

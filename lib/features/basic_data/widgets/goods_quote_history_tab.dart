@@ -160,6 +160,19 @@ class _GoodsQuoteHistoryTabState extends ConsumerState<GoodsQuoteHistoryTab>
           sort: columns.sort,
           ascending: columns.ascending,
         ),
+        fetchPageSized: (target, size) => repository.list(
+          goodsId,
+          page: target,
+          size: size,
+          columns: {...columns.searches, 'search.action': ?action},
+          sort: columns.sort,
+          ascending: columns.ascending,
+        ),
+        onProgressiveBatch: (partial) {
+          // 只发行; 选中行对账与原生读确认等完整结果。
+          if (!acceptsRead() || !_canRead) return;
+          setState(() => _result = partial);
+        },
       );
       if (!acceptsRead() || !_canRead) return;
       acceptNativeRead();

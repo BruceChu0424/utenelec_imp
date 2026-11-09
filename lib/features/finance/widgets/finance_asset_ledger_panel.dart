@@ -182,6 +182,14 @@ class _FinanceAssetLedgerPanelState
           ledger,
           query: query.copyWith(page: target, size: 100),
         ),
+        fetchPageSized: (target, size) => repository.list(
+          ledger,
+          query: query.copyWith(page: target, size: size),
+        ),
+        onProgressiveBatch: (partial) {
+          if (!mounted || !_requestGuard.isCurrent(generation)) return;
+          setState(() => _result = partial);
+        },
       );
       if (result.items.isEmpty &&
           query.page > 1 &&
@@ -196,6 +204,14 @@ class _FinanceAssetLedgerPanelState
             ledger,
             query: query.copyWith(page: target, size: 100),
           ),
+          fetchPageSized: (target, size) => repository.list(
+            ledger,
+            query: query.copyWith(page: target, size: size),
+          ),
+          onProgressiveBatch: (partial) {
+            if (!mounted || !_requestGuard.isCurrent(generation)) return;
+            setState(() => _result = partial);
+          },
         );
       }
       if (!mounted || !_requestGuard.isCurrent(generation)) return;

@@ -20,6 +20,7 @@ class GoodsStockLedgerRepository {
     String goodsId, {
     required String direction,
     int page = 1,
+    int size = 50,
     Map<String, String?> columns = const {},
     String? sort,
     bool ascending = true,
@@ -29,7 +30,7 @@ class GoodsStockLedgerRepository {
       query: {
         'direction': direction,
         'page': page,
-        'size': 50,
+        'size': size,
         ...tableColumnParameters(columns, sort, ascending),
       },
     ),

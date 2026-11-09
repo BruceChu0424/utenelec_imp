@@ -107,6 +107,9 @@ class _ProductionFinishedInboundTasksViewState
   }
 
   PagedResult<ProductionFinishedInboundTask>? _result;
+
+  /// 当前 [_result] 是否为逐批渐进行（失败即整体下撤，不留半截列表）。
+  bool _progressiveRows = false;
   bool _loading = false;
   String? _error;
   String _keyword = '';
@@ -235,12 +238,33 @@ class _ProductionFinishedInboundTasksViewState
           planNo: pagePlanNo,
           columns: pageColumns,
         ),
+        fetchPageSized: (target, size) => pageRepository.tasks(
+          page: target,
+          size: size,
+          keyword: pageKeyword,
+          taskStage: pageTaskStage,
+          warehouseId: pageWarehouseId,
+          scope: pageScope,
+          sort: pageSort,
+          order: pageOrder,
+          taskNo: pageTaskNo,
+          planNo: pagePlanNo,
+          columns: pageColumns,
+        ),
+        onProgressiveBatch: (partial) {
+          if (!mounted || requestVersion != _requestVersion) return;
+          setState(() {
+            _result = partial;
+            _progressiveRows = true;
+          });
+        },
       );
       if (!mounted || requestVersion != _requestVersion) return;
       // 单号 facets 与列表同口径（2026-09-25 单号列统一）；失败静默（下拉降级为空）。
 
       setState(() {
         _result = result;
+        _progressiveRows = false;
         _loading = false;
       });
       // Reconcile after the table has combined any appended pages.
@@ -262,6 +286,10 @@ class _ProductionFinishedInboundTasksViewState
     } on ApiException catch (error) {
       if (!mounted || requestVersion != _requestVersion) return;
       setState(() {
+        if (_progressiveRows) {
+          _result = null;
+          _progressiveRows = false;
+        }
         _error = error.message;
         _loading = false;
       });
@@ -269,6 +297,10 @@ class _ProductionFinishedInboundTasksViewState
     } catch (_) {
       if (!mounted || requestVersion != _requestVersion) return;
       setState(() {
+        if (_progressiveRows) {
+          _result = null;
+          _progressiveRows = false;
+        }
         _error = '产成品入库任务加载失败，请检查网络后重试';
         _loading = false;
       });

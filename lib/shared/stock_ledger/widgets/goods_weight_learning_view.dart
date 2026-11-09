@@ -218,6 +218,20 @@ class _GoodsWeightLearningViewState
           sort: columns.sort,
           ascending: columns.ascending,
         ),
+        fetchPageSized: (target, size) => repository.observations(
+          goodsId,
+          page: target,
+          size: size,
+          kind: kind,
+          stage: stage,
+          columns: columns.searches,
+          sort: columns.sort,
+          ascending: columns.ascending,
+        ),
+        onProgressiveBatch: (partial) {
+          if (!mounted || version != _recordsVersion) return;
+          setState(() => _records = partial);
+        },
       );
       if (!mounted || version != _recordsVersion) return;
       setState(() {

@@ -223,6 +223,16 @@ class SuggestionListNotifier extends AsyncNotifier<PagedResult<Suggestion>> {
         sort: columns.sort,
         ascending: columns.ascending,
       ),
+      fetchPageSized: (page, size) => repository.list(
+        mine: scope == SuggestionScope.mine,
+        category: category,
+        status: status,
+        page: page,
+        size: size,
+        columns: columns.searches,
+        sort: columns.sort,
+        ascending: columns.ascending,
+      ),
     );
   }
 }

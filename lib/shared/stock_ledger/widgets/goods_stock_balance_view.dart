@@ -180,6 +180,19 @@ class _GoodsStockBalanceViewState extends ConsumerState<GoodsStockBalanceView>
           order: sort == null ? null : (ascending ? 'asc' : 'desc'),
           columns: columns.searches,
         ),
+        fetchPageSized: (target, size) => repository.balances(
+          page: target,
+          size: size,
+          goodsId: goodsId,
+          scope: scope,
+          sort: sort,
+          order: sort == null ? null : (ascending ? 'asc' : 'desc'),
+          columns: columns.searches,
+        ),
+        onProgressiveBatch: (partial) {
+          if (!mounted || version != _version) return;
+          setState(() => _balances = partial);
+        },
       );
       if (!mounted || version != _version) return;
       setState(() {

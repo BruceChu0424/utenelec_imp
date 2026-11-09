@@ -385,6 +385,31 @@ class _FinanceProcurementApprovalTasksPageState
 
           return fetch();
         },
+        fetchPageSized: (target, size) async {
+          final response = await repo.approvalTasks(
+            page: target,
+            size: size,
+            orderType: orderType,
+            keyword: keyword,
+            sort: sort,
+            order: order,
+            billNo: billNo,
+            status: status,
+          );
+          return financeProcurementSnapshot(response);
+        },
+        onProgressiveBatch: (partial) {
+          if (!mounted || requestVersion != _requestVersion) return;
+          setState(() {
+            _result =
+                (partial
+                        as PagedReadSnapshot<
+                          FinanceProcurementApprovalTask,
+                          FinanceProcurementApprovalPage
+                        >)
+                    .snapshot;
+          });
+        },
       );
       final result =
           (cachedPage

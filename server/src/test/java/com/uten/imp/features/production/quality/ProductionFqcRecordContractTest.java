@@ -1,6 +1,7 @@
 package com.uten.imp.features.production.quality;
 
 import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.web.Pageables;
 import com.uten.imp.features.production.quality.ProductionFqcRecordContracts.InspectionDecisionRecord;
 import com.uten.imp.features.production.quality.ProductionFqcRecordContracts.InspectionDecisionRecordPage;
 import org.junit.jupiter.api.Test;
@@ -76,7 +77,8 @@ class ProductionFqcRecordContractTest {
         assertThat(filter.decision()).isEqualTo("CANCELLED");
         assertThat(filter.keyword()).isEqualTo("scrb");
         assertThat(filter.page()).isEqualTo(1);
-        assertThat(filter.size()).isEqualTo(100);
+        // 500 超上限：按 2026-11-08 合同夹到 Pageables.MAX_PAGE_SIZE。
+        assertThat(filter.size()).isEqualTo(Pageables.MAX_PAGE_SIZE);
 
         assertThatThrownBy(() ->
                 ProductionFqcRecordQueryService.normalizeFilter(

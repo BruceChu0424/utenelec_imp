@@ -10,14 +10,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 class PageResponseTest {
     @Test
     void reportsTheBoundedPageActuallyQueried() {
+        // 2026-11-08 上限随 CompleteReadBatchPlan 到 200：两整页再多一行，页数语义不变。
+        long total = 2L * Pageables.MAX_PAGE_SIZE + 1;
         var pageable = Pageables.of(0, 100_000);
-        var result = new PageImpl<>(List.of("record"), pageable, 201);
+        var result = new PageImpl<>(List.of("record"), pageable, total);
         var response = new PageResponse<>(List.of("mapped record"), result);
 
         assertThat(response.getItems()).containsExactly("mapped record");
         assertThat(response.getPage()).isEqualTo(1);
-        assertThat(response.getSize()).isEqualTo(100);
-        assertThat(response.getTotal()).isEqualTo(201);
+        assertThat(response.getSize()).isEqualTo(Pageables.MAX_PAGE_SIZE);
+        assertThat(response.getTotal()).isEqualTo(total);
         assertThat(response.getTotalPages()).isEqualTo(3);
     }
 

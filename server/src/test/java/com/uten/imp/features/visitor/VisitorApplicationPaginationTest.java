@@ -3,6 +3,7 @@ package com.uten.imp.features.visitor;
 import com.uten.imp.features.notice.HrNoticeService;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.web.Pageables;
 import com.uten.imp.features.visitor.dto.VisitorApplyDto.VisitorListItem;
 import com.uten.imp.features.org.employee.EmployeeRepository;
 import com.uten.imp.security.AuthUser;
@@ -72,12 +73,13 @@ class VisitorApplicationPaginationTest {
 
         Pageable pageable = capturedPageable();
         assertEquals(0, pageable.getPageNumber());
-        assertEquals(100, pageable.getPageSize());
+        // 999 超上限：按 2026-11-08 合同夹到 Pageables.MAX_PAGE_SIZE。
+        assertEquals(Pageables.MAX_PAGE_SIZE, pageable.getPageSize());
         assertEquals(List.of("createdAt", "id"),
                 pageable.getSort().stream().map(Sort.Order::getProperty).toList());
         assertFalse(pageable.getSort().stream().anyMatch(Sort.Order::isAscending));
         assertEquals(1, response.getPage());
-        assertEquals(100, response.getSize());
+        assertEquals(Pageables.MAX_PAGE_SIZE, response.getSize());
         assertEquals(501, response.getTotal());
     }
 
@@ -262,7 +264,7 @@ class VisitorApplicationPaginationTest {
         VisitorApplication application = new VisitorApplication();
         Page<VisitorApplication> page = new PageImpl<>(
                 total == 0 ? List.of() : List.of(application),
-                PageRequest.of(0, 100),
+                PageRequest.of(0, Pageables.MAX_PAGE_SIZE),
                 total);
         when(repository.findAll(
                 any(Specification.class),

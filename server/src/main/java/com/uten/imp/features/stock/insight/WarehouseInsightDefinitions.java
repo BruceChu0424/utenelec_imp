@@ -117,7 +117,7 @@ final class WarehouseInsightDefinitions {
         return rest.signum() > 0 ? rest : BigDecimal.ZERO;
     }
 
-    /** 内存分页 (页码从 1 起, 每页最多 100 行)。 */
+    /** 内存分页 (页码从 1 起, 每页最多 Pageables.MAX_PAGE_SIZE 行)。 */
     static <T> PageResponse<T> page(List<T> all, int page, int size) {
         PageRequest paging = Pageables.of(page, size);
         int from = (int) Math.min(all.size(), paging.getOffset());

@@ -6,6 +6,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uten.imp.common.web.Pageables;
 import java.util.stream.Stream;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -40,6 +41,8 @@ class BusinessArchiveEligibilityPageTest {
                 Arguments.of(2, 100, 100, 100L),
                 Arguments.of(Integer.MAX_VALUE, 100, 100, 214748364600L),
                 Arguments.of(2, Integer.MIN_VALUE, 1, 1L),
-                Arguments.of(2, Integer.MAX_VALUE, 100, 100L));
+                // 2026-11-08 上限 200：超大页夹到 Pageables.MAX_PAGE_SIZE，offset=(页码-1)×夹住值。
+                Arguments.of(2, Integer.MAX_VALUE, Pageables.MAX_PAGE_SIZE,
+                        (long) Pageables.MAX_PAGE_SIZE));
     }
 }

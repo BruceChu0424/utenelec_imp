@@ -2114,9 +2114,20 @@ void main() {
     await _mount(tester, repository);
     expect(find.text('服务器容量检查失败'), findsOneWidget);
     repository.failure = null;
+    final callsBeforeRetry = repository.calls;
     await tester.tap(find.text('重试'));
-    await tester.pump();
+    // The listing projection checkpoints through UiWorkBudget, which yields
+    // a timer turn once its real-time slice is spent; a single zero-duration
+    // pump only drains microtasks, so wait for the recovered folder instead.
+    await pumpUntil(
+      tester,
+      () => find.text('表格模板').evaluate().isNotEmpty,
+      reason: 'retry must publish the recovered listing',
+    );
+    expect(repository.calls, callsBeforeRetry + 1);
     expect(find.text('表格模板'), findsOneWidget);
+    expect(find.text('服务器容量检查失败'), findsNothing);
+    expect(find.text('重试'), findsNothing);
   });
 
   testWidgets(

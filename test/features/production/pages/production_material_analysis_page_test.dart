@@ -2168,38 +2168,8 @@ void main() {
     (tester) async {
       // 60 approved orders: the first ladder batch is published
       // progressively, the second one fails.
-      final orders = [
-        for (var index = 0; index < 60; index++)
-          {
-            'orderId': 'progressive-order-$index',
-            'billNo': 'SO-PROGRESSIVE-$index',
-            'billDate': '2026-08-11',
-            'clientName': '逐批客户',
-            'lines': [
-              {
-                'salesOrderItemId': 'progressive-line-$index',
-                'lineNo': 1,
-                'goodsId': 'progressive-goods-$index',
-                'goodsCode': 'PROGRESSIVE-$index',
-                'goodsName': '逐批候选产品 $index',
-                'unitId': 'unit-1',
-                'unitName': '个',
-                'orderedQty': 10,
-                'alreadyPlannedQty': 2,
-                'remainingQty': 8,
-                'deliveryDate': '2026-08-20',
-              },
-            ],
-          },
-      ];
+      final orders = _progressiveCandidateOrders(60);
       final batches = <({int page, int size})>[];
-      ({int page, int size})? candidateBatch(RequestOptions request) {
-        if (!request.path.endsWith('/sales-candidates')) return null;
-        return (
-          page: (request.queryParameters['page'] as num).toInt(),
-          size: (request.queryParameters['size'] as num).toInt(),
-        );
-      }
 
       await _pumpPage(
         tester,
@@ -2210,7 +2180,7 @@ void main() {
         },
         seeded: false,
         errorOverride: (request) {
-          final batch = candidateBatch(request);
+          final batch = _candidateBatchOf(request);
           if (batch == null) return null;
           batches.add(batch);
           return batches.length > 1
@@ -2221,16 +2191,8 @@ void main() {
               : null;
         },
         responseOverride: (request) {
-          final batch = candidateBatch(request);
-          if (batch == null) return null;
-          final start = (batch.page - 1) * batch.size;
-          return {
-            'items': orders.skip(start).take(batch.size).toList(),
-            'page': batch.page,
-            'size': batch.size,
-            'total': orders.length,
-            'totalPages': (orders.length + batch.size - 1) ~/ batch.size,
-          };
+          final batch = _candidateBatchOf(request);
+          return batch == null ? null : _candidateSlice(orders, batch);
         },
       );
       expect(batches, completeReadPlanBatches(orders.length));
@@ -2252,6 +2214,71 @@ void main() {
         find.descendant(of: mobileList, matching: find.byType(Checkbox)),
         findsNothing,
       );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'compact sales candidates stay unselectable while progressive cards grow',
+    (tester) async {
+      final orders = _progressiveCandidateOrders(60);
+      final batches = <({int page, int size})>[];
+      Completer<void>? holdLater;
+      await _pumpPage(
+        tester,
+        size: const Size(375, 900),
+        permissions: const {
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
+        },
+        seeded: false,
+        responseOverride: (request) async {
+          final batch = _candidateBatchOf(request);
+          if (batch == null) return null;
+          batches.add(batch);
+          if (batch.page > 1) await holdLater?.future;
+          return _candidateSlice(orders, batch);
+        },
+      );
+      final ladder = completeReadPlanBatches(orders.length);
+      expect(batches, ladder);
+      // A new keyword starts a new complete read whose later batch waits.
+      final hold = holdLater = Completer<void>();
+      await tester.enterText(
+        find.descendant(
+          of: find.byType(UtenSearchBar),
+          matching: find.byType(TextField),
+        ),
+        '逐批',
+      );
+      for (
+        var frame = 0;
+        frame < 200 && batches.length < ladder.length * 2;
+        frame++
+      ) {
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      expect(batches, [...ladder, ...ladder]);
+      final card = find.byKey(
+        const ValueKey('material-candidate-card-progressive-line-0'),
+      );
+      final checkbox = find.descendant(
+        of: card,
+        matching: find.byType(Checkbox),
+      );
+      // Growing: the first batch is shown, but its cards cannot be picked.
+      expect(card, findsOneWidget);
+      expect(tester.widget<Checkbox>(checkbox).onChanged, isNull);
+      await tester.tap(card, warnIfMissed: false);
+      await tester.pump();
+      expect(tester.widget<Checkbox>(checkbox).value, isFalse);
+      hold.complete();
+      await tester.pumpAndSettle();
+      // Complete: the same card is selectable again.
+      expect(tester.widget<Checkbox>(checkbox).onChanged, isNotNull);
+      await tester.tap(checkbox);
+      await tester.pump();
+      expect(tester.widget<Checkbox>(checkbox).value, isTrue);
       expect(tester.takeException(), isNull);
     },
   );
@@ -10549,6 +10576,54 @@ Map<String, dynamic> _confirmRoutesInJson(
   }
   return result;
 }
+
+/// [count] approved orders with one pending line each, for complete reads
+/// that span more than the first progressive batch.
+List<Map<String, dynamic>> _progressiveCandidateOrders(int count) => [
+  for (var index = 0; index < count; index++)
+    {
+      'orderId': 'progressive-order-$index',
+      'billNo': 'SO-PROGRESSIVE-$index',
+      'billDate': '2026-08-11',
+      'clientName': '逐批客户',
+      'lines': [
+        {
+          'salesOrderItemId': 'progressive-line-$index',
+          'lineNo': 1,
+          'goodsId': 'progressive-goods-$index',
+          'goodsCode': 'PROGRESSIVE-$index',
+          'goodsName': '逐批候选产品 $index',
+          'unitId': 'unit-1',
+          'unitName': '个',
+          'orderedQty': 10,
+          'alreadyPlannedQty': 2,
+          'remainingQty': 8,
+          'deliveryDate': '2026-08-20',
+        },
+      ],
+    },
+];
+
+/// The (page, size) of a sales-candidate request; null for other requests.
+({int page, int size})? _candidateBatchOf(RequestOptions request) {
+  if (!request.path.endsWith('/sales-candidates')) return null;
+  return (
+    page: (request.queryParameters['page'] as num).toInt(),
+    size: (request.queryParameters['size'] as num).toInt(),
+  );
+}
+
+/// An offset-exact server page of [orders] for [batch].
+Map<String, dynamic> _candidateSlice(
+  List<Map<String, dynamic>> orders,
+  ({int page, int size}) batch,
+) => {
+  'items': orders.skip((batch.page - 1) * batch.size).take(batch.size).toList(),
+  'page': batch.page,
+  'size': batch.size,
+  'total': orders.length,
+  'totalPages': (orders.length + batch.size - 1) ~/ batch.size,
+};
 
 Map<String, dynamic> _salesCandidatesJson() => {
   'items': [

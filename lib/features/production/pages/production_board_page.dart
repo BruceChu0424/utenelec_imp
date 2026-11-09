@@ -75,6 +75,8 @@ import '../../../shared/formatters/quantity_display.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
 import '../../../shared/paging/paged_query_identity.dart';
+import '../../../shared/paging/paged_read_window_binding.dart'
+    show readWindowBindingOf;
 import '../models/production_material_analysis.dart';
 import '../providers/production_pending_provider.dart';
 import '../providers/production_board_sort_provider.dart';
@@ -1428,6 +1430,9 @@ class _PlanPanelState extends ConsumerState<_PlanPanel>
 
   List<PlanProgressRow> get _rows => _page?.items ?? const [];
 
+  /// The cards are the validated prefix of a complete read still in progress.
+  bool get _rowsGrowing => readWindowBindingOf(_rows)?.growing == true;
+
   /// 排序方式（按账号持久化偏好：默认开单远→近；置顶始终最前）。仅 build 路径可用（watch）。
   _PlanSort get _sort =>
       _PlanSort.values.asNameMap()[ref.watch(productionBoardSortProvider)] ??
@@ -2119,6 +2124,10 @@ class _PlanPanelState extends ConsumerState<_PlanPanel>
                       child: PopupMenuButton<String>(
                         icon: const Icon(Icons.more_vert_rounded, size: 18),
                         tooltip: '标记',
+                        // Cards of a still-growing complete read are a
+                        // validated prefix: flag writes wait for the complete
+                        // result, like the table's growing state.
+                        enabled: !_rowsGrowing,
                         onSelected: (v) {
                           if (v == 'pin') {
                             _toggleFlag(r, pinned: !r.pinned);

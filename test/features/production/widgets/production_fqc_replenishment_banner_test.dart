@@ -1,6 +1,7 @@
 import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
 import 'dart:async';
 import 'package:dio/dio.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/layout/uten_paged_picker_list.dart';
 import 'package:uten_imp/features/production/models/production_fqc_replenishment_task.dart';
 import 'package:flutter/material.dart';
@@ -297,6 +298,49 @@ void main() {
         await tester.pumpWidget(const SizedBox.shrink());
         router.dispose();
       }
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'task commands wait for the complete result while the sheet rows grow',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(720, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final api = _ReplenishmentApi(
+        status: 'AWAITING_CONFIRMATION',
+        totalRows: 251,
+        pageTwoGate: Completer<void>(),
+      );
+      final router = _router();
+      addTearDown(router.dispose);
+      await _pump(
+        tester,
+        api: api,
+        router: router,
+        permissions: const {
+          Perm.productionFqcReplenishmentView,
+          Perm.productionFqcReplenishmentConfirm,
+        },
+      );
+      for (var i = 0; i < 80 && api.requestedPages.length < 2; i++) {
+        await tester.pump(const Duration(milliseconds: 5));
+      }
+      await tester.tap(find.text('处理待办'));
+      for (var i = 0; i < 20; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      UtenButton confirm() => tester.widget<UtenButton>(
+        find.widgetWithText(UtenButton, '确认用料并生成领料').first,
+      );
+      // Growing: the first batch's task cards keep their command closed.
+      expect(confirm().onPressed, isNull);
+      api.pageTwoGate!.complete();
+      await tester.pump();
+      await tester.pumpAndSettle();
+      // Complete: the same command opens; nothing was submitted meanwhile.
+      expect(confirm().onPressed, isNotNull);
+      expect(api.confirmationKeys, isEmpty);
       expect(tester.takeException(), isNull);
     },
   );

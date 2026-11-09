@@ -4,7 +4,8 @@ import '../../../components/inputs/uten_field_hint_icon.dart';
 // 批量发货面板（SOP §一9，订单列表「批量发货」用）。
 //
 // 右滑入大面板（840，与 showSalesDocLinkPicker 统一；手机降级底部弹层）：
-// 每次有界浏览100行，选择和原始数量/重量独立保留；全选由同谓词服务端快照确认≤500完整候选
+// 可发订单行按共享完整读取计划有界分批读取、单页连续展示（首批即显、逐批追加），
+// 选择和原始数量/重量独立保留；全选由同谓词服务端快照确认≤500完整候选
 // → POST /sales/shipments/batch 同客户合并一张出货草稿。
 // 返回生成的出货单张数（null=取消）。
 import 'package:flutter/material.dart';

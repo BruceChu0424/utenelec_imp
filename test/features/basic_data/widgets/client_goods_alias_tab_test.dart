@@ -18,6 +18,8 @@ import 'package:uten_imp/features/basic_data/widgets/client_goods_alias_tab.dart
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
+import '../../../support/complete_read_plan_batches.dart';
+
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
@@ -221,7 +223,9 @@ void main() {
         ],
       );
       await _pump(tester, repo);
-      expect(repo.listCalls.map((call) => call.page), [1, 2]);
+      // One complete read in the shared plan's bounded batches.
+      final batches = completeReadPlanBatches(145);
+      expect(repo.listBatches, batches);
       expect(find.byType(UtenPagination), findsNothing);
       final list = find
           .descendant(
@@ -242,7 +246,8 @@ void main() {
         scrollable: list,
         maxScrolls: 60,
       );
-      expect(repo.listCalls.map((call) => call.page), [1, 2]);
+      // Scrolling the accepted rows never reads again.
+      expect(repo.listBatches, batches);
       expect(find.text('PART-1'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
@@ -315,6 +320,7 @@ class _FakeAliasRepository implements ClientGoodsAliasRepository {
   final Completer<void>? deleteGate;
   final List<ApiException> _listFailures;
   final listCalls = <({String clientId, int page, String keyword})>[];
+  final listBatches = <({int page, int size})>[];
   final deleted = <({String clientId, String aliasId})>[];
 
   @override
@@ -326,6 +332,7 @@ class _FakeAliasRepository implements ClientGoodsAliasRepository {
   }) async {
     final kw = keyword?.trim() ?? '';
     listCalls.add((clientId: clientId, page: page, keyword: kw));
+    listBatches.add((page: page, size: size));
     if (_listFailures.isNotEmpty) throw _listFailures.removeAt(0);
     final matched = [
       for (final row in _rows)

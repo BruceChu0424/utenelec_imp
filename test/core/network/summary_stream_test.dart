@@ -25,6 +25,10 @@ import 'package:uten_imp/features/basic_data/models/settlement_method_admin.dart
 import 'package:uten_imp/features/basic_data/models/unit_node.dart';
 import 'package:uten_imp/shared/paging/paged_read_intent.dart';
 
+import '../../support/master_summary_stream_fixture.dart';
+import '../../support/versioned_summary_test_response.dart'
+    show versionedSummaryTestResponse;
+
 class _Adapter implements HttpClientAdapter {
   _Adapter(this.respond);
   final ResponseBody Function(RequestOptions) respond;
@@ -43,35 +47,22 @@ class _Adapter implements HttpClientAdapter {
   void close({bool force = false}) {}
 }
 
-Map<String, dynamic> _page(int page, int total) => {
-  'page': page,
-  'size': 100,
-  'total': total,
-  'totalPages': (total + 99) ~/ 100,
-  'readScopeVersion': 'a' * 64,
-  'readSnapshotRevision': 'b' * 64,
-  'readDataVersion': 'c' * 64,
-  'items': [
-    for (var i = (page - 1) * 100; i < page * 100 && i < total; i++)
-      {
-        'id': 'goods-$i',
-        'name': '原文货品$i',
-        'priceDisplayText': '123.456789012345',
-      },
-  ],
-};
-
-List<Map<String, dynamic>> _frames(int total) => [
-  for (var page = 1; page <= ((total + 99) ~/ 100).clamp(1, total + 1); page++)
-    {'type': 'page', 'value': _page(page, total)},
-  {
-    'type': 'complete',
-    'total': total,
-    'readScopeVersion': 'a' * 64,
-    'readSnapshotRevision': 'b' * 64,
-    'readDataVersion': 'c' * 64,
-  },
+List<Map<String, dynamic>> _rows(int total) => [
+  for (var i = 0; i < total; i++)
+    {
+      'id': 'goods-$i',
+      'name': '原文货品$i',
+      'priceDisplayText': '123.456789012345',
+    },
 ];
+
+/// The server's frames for this exact request: its `size` selects the frame
+/// plan as MasterSummaryReadSupport does (kProgressiveSummaryStreamSize serves
+/// the 50 → 50 → 100 → 200 … ladder), each frame the exact page at its offset.
+List<Map<String, dynamic>> _frames(
+  List<Map<String, dynamic>> rows,
+  RequestOptions request,
+) => masterSummaryStreamTestFrames(rows, request);
 
 Uint8List _bytes(Map<String, dynamic> frame) =>
     Uint8List.fromList(utf8.encode('${jsonEncode(frame)}\n'));
@@ -164,18 +155,18 @@ void main() {
     test(
       'flat ${entry.key} retains query and typed tail through one HTTP',
       () async {
-        final frames = _frames(101);
-        for (final frame in frames.where((f) => f['type'] == 'page')) {
-          for (final row in (frame['value'] as Map)['items'] as List) {
-            (row as Map).addAll(<String, String>{
+        final rows = [
+          for (final row in _rows(101))
+            {
+              ...row,
               'exchangeRateText': '1.234567890123456789',
               'balanceCurrentText': '90071992547409.1234567890123456789',
               'remark': '原始备注',
-            });
-          }
-        }
+            },
+        ];
         final client = _client(
-          (_) => _body(Stream.fromIterable(frames.map(_bytes))),
+          (request) =>
+              _body(Stream.fromIterable(_frames(rows, request).map(_bytes))),
         );
         final result = await entry.value(client.api);
         expect(result.items, hasLength(101));
@@ -200,7 +191,18 @@ void main() {
         });
         expect(body['sort'], 'name');
         expect(body['order'], 'desc');
-        expect(body['size'], 100);
+        // The request opts into the progressive frame plan; the tail row
+        // arrives in the third ladder frame (page 2 of size 100).
+        expect(body['page'], 1);
+        expect(body['size'], kProgressiveSummaryStreamSize);
+        expect(
+          _frames(rows, request)
+              .where((frame) => frame['type'] == 'page')
+              .map(
+                (frame) => ((frame['value'] as Map)['items'] as List).length,
+              ),
+          [50, 50, 1],
+        );
       },
     );
   }
@@ -208,7 +210,9 @@ void main() {
     '10001 complete goods use one HTTP and no hidden per-page requests',
     () async {
       final client = _client(
-        (_) => _body(Stream.fromIterable(_frames(10001).map(_bytes))),
+        (request) => _body(
+          Stream.fromIterable(_frames(_rows(10001), request).map(_bytes)),
+        ),
       );
       final result = await DioGoodsRepository(client.api).completeList(
         'category-original',
@@ -230,7 +234,8 @@ void main() {
       final filter = body['filter'] as Map<String, dynamic>;
       expect(filter['categoryId'], 'category-original');
       expect(filter['keyword'], '原查询');
-      expect(body['size'], 100);
+      expect(body['page'], 1);
+      expect(body['size'], kProgressiveSummaryStreamSize);
       expect(body['order'], 'desc');
       expect(client.safety.pendingReadCount, 0);
       expect(client.safety.pendingCount, 0);
@@ -245,7 +250,7 @@ void main() {
       final client = _client((_) => _body(source.stream));
       final pending = DioGoodsRepository(client.api).completeList(null);
       await _until(() => client.adapter.calls.isNotEmpty);
-      final frames = _frames(1);
+      final frames = _frames(_rows(1), client.adapter.calls.single);
       source.add(_bytes(frames.first));
       await Future<void>.delayed(Duration.zero);
       expect(client.safety.pendingReadCount, 1);
@@ -276,7 +281,10 @@ void main() {
         ),
       );
       await _until(() => client.adapter.calls.isNotEmpty);
-      source.add(_bytes(_frames(101).first));
+      // A valid first frame; the body then stalls before the remaining rows.
+      source.add(
+        _bytes(_frames(_rows(101), client.adapter.calls.single).first),
+      );
       current = false;
       await _until(() => client.adapter.calls.single.cancelToken!.isCancelled);
       // The adapter cancellation must finish even if the server never sends a tail.
@@ -336,7 +344,15 @@ void main() {
     () async {
       final client = _client(
         (_) => ResponseBody.fromString(
-          jsonEncode(_page(1, 201)),
+          jsonEncode(
+            versionedSummaryTestResponse(
+              _rows(201),
+              const {'page': 1, 'size': 100},
+              scopeVersion: 'a' * 64,
+              revision: 'b' * 64,
+              dataVersion: 'c' * 64,
+            ),
+          ),
           200,
           headers: {
             Headers.contentTypeHeader: ['application/json'],
@@ -354,6 +370,43 @@ void main() {
         ),
       );
       expect(client.adapter.calls, hasLength(1));
+    },
+  );
+
+  test(
+    'fixed 100-row frames answering a progressive request fail closed',
+    () async {
+      // The original fixed frame plan, sent for a request that asked for the
+      // progressive one: its first frame is (1,100) where (1,50) is expected.
+      final client = _client(
+        (request) => _body(
+          Stream.fromIterable(
+            _frames(
+              _rows(101),
+              request.copyWith(
+                data: {...request.data as Map<String, dynamic>, 'size': 100},
+              ),
+            ).map(_bytes),
+          ),
+        ),
+      );
+      await expectLater(
+        DioGoodsRepository(client.api).completeList(null),
+        throwsA(
+          isA<ApiException>().having(
+            (e) => e.code,
+            'code',
+            'INCOMPLETE_READ_PROTOCOL',
+          ),
+        ),
+      );
+      expect(client.adapter.calls, hasLength(1));
+      expect(
+        (client.adapter.calls.single.data as Map)['size'],
+        kProgressiveSummaryStreamSize,
+      );
+      expect(client.safety.pendingReadCount, 0);
+      expect(client.safety.hasUncertainCommit, isFalse);
     },
   );
 }

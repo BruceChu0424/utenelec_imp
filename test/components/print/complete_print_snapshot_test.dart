@@ -5,14 +5,20 @@ import 'package:uten_imp/components/print/complete_print_snapshot.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/performance/ui_work_budget.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
+import 'package:uten_imp/shared/paging/complete_paged_snapshot.dart'
+    show CompleteReadBatchPlan;
 
 void main() {
+  // A real server honors the requested page size up to its own ceiling (by
+  // default the bounded maximum of the shared complete-read plan).
   Future<PagedResult<int>> page(
     int number,
     int requested, {
     int total = 601,
-    int actualSize = 100,
+    int? ceiling,
   }) async {
+    final maximum = ceiling ?? CompleteReadBatchPlan.progressive.maxBatchSize;
+    final actualSize = requested < maximum ? requested : maximum;
     final start = (number - 1) * actualSize;
     return PagedResult(
       items: List.generate(
@@ -29,12 +35,11 @@ void main() {
   test(
     'complete printing follows all actual server pages rather than trusting an oversized requested page',
     () async {
-      final calls = <int>[];
+      final calls = <(int, int)>[];
       final table = await loadCompletePrintSnapshot<int>(
         loadPage: (number, size) {
-          calls.add(number);
-          expect(size, 100);
-          return page(number, size, actualSize: 50);
+          calls.add((number, size));
+          return page(number, size, ceiling: 50);
         },
         idOf: (row) => 'id-$row',
         headers: ['原始姓名', '精确金额'],
@@ -43,9 +48,18 @@ void main() {
         factsOf: (row) => {'amount': '1.000000000000000001'},
         isCurrent: () => true,
       );
-      expect(calls, hasLength(13));
+      // The shared plan asks (1,50),(2,50),(2,100). The server's 50-row
+      // ceiling answers the oversized (2,100) with rows already read, so that
+      // one batch is discarded and the same offset is read again on the
+      // server's size; every later page follows the server, never the request.
+      expect(calls, [
+        (1, 50),
+        (2, 50),
+        (2, 100),
+        for (var number = 3; number <= 13; number++) (number, 50),
+      ]);
       expect(table.rows, hasLength(601));
-      expect(table.rowIds!.last, 'id-600');
+      expect(table.rowIds, [for (var i = 0; i < 601; i++) 'id-$i']);
       expect(table.rows.last, ['姓名龘600', '000000000000001.000000000000000001']);
       expect(table.factValues!.last['amount'], '1.000000000000000001');
     },
@@ -92,7 +106,7 @@ void main() {
               page: p,
               size: s,
               total: 601,
-              totalPages: 7,
+              totalPages: (601 + s - 1) ~/ s,
             );
           },
           idOf: (row) => '$row',

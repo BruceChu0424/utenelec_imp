@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../../support/complete_read_plan_batches.dart';
+import '../../../support/pump_until.dart';
 import '../../../support/uten_test_actions.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
@@ -23,6 +25,8 @@ import 'package:uten_imp/features/basic_data/pages/settlement_method_page.dart';
 import 'package:uten_imp/shared/drafts/form_draft_store.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/user.dart';
+import 'package:uten_imp/shared/paging/complete_paged_snapshot.dart'
+    show CompleteReadBatchPlan;
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
@@ -82,11 +86,14 @@ class _Fixture {
           if (path == root || path == '$root/search' || path == '$root/page') {
             final page =
                 (request.queryParameters['page'] as num?)?.toInt() ?? 1;
+            // The server's own page maximum (Pageables.MAX_PAGE_SIZE) is the
+            // shared complete-read plan's bounded batch.
             final size =
                 ((request.queryParameters['size'] as num?)?.toInt() ?? 20)
-                    .clamp(1, 100);
+                    .clamp(1, CompleteReadBatchPlan.progressive.maxBatchSize);
             calls.add((page: page, size: size));
-            if (page == 2 && size == 100) await holdSecond?.future;
+            // Late pages: every continuation batch waits for the test.
+            if (page > 1) await holdSecond?.future;
             value = {
               'items': rows.skip((page - 1) * size).take(size).toList(),
               'page': page,
@@ -230,12 +237,9 @@ void main() {
         await tester.tap(find.byKey(const ValueKey('table-output-all')));
         await tester.pumpAndSettle();
         expect(find.textContaining('共 601 行'), findsWidgets);
-        expect(
-          fixture.calls
-              .where((call) => call.size == 100)
-              .map((call) => call.page),
-          orderedEquals([1, 2, 3, 4, 5, 6, 7]),
-        );
+        // Every server page of the shared plan beyond the old 500 cap: the
+        // first 50 rows, then aligned batches up to the server maximum.
+        expect(fixture.calls, completeReadPlanBatches(601));
         expect(tester.takeException(), isNull);
       },
     );
@@ -249,13 +253,21 @@ void main() {
       await tester.tap(find.text('预览打印').first);
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('table-output-all')));
-      await tester.pump(const Duration(milliseconds: 100));
+      // The print is in flight: its first continuation page is held.
+      await pumpUntil(
+        tester,
+        () => fixture.calls.length == 2,
+        reason: 'the print should request its first continuation page',
+      );
+      expect(fixture.calls, completeReadPlanBatches(601).take(2));
       container.read(readScopeRevisionProvider.notifier).state++;
       await tester.pump();
       fixture.holdSecond!.complete();
       await tester.pumpAndSettle();
       expect(find.textContaining('共 601 行'), findsNothing);
       expect(find.text('账号、服务器或权限已变化，请关闭后重新预览'), findsOneWidget);
+      // The retired read stops at the late page instead of reading on.
+      expect(fixture.calls, completeReadPlanBatches(601).take(2));
     },
   );
 }

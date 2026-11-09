@@ -12,10 +12,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/paging/complete_paged_snapshot.dart';
 import '../models/client_goods_alias.dart';
 
-/// Page size cap shared with the server's master list limit.
-const kClientGoodsAliasMaxPageSize = 100;
+/// Page size cap shared with the server's master list limit
+/// (`Pageables.MAX_PAGE_SIZE`, the shared complete-read plan's largest batch):
+/// complete reads ask for 50 rows first, then aligned batches up to this cap.
+final kClientGoodsAliasMaxPageSize =
+    CompleteReadBatchPlan.progressive.maxBatchSize;
 
 abstract interface class ClientGoodsAliasRepository {
   /// One page (1-based) of this customer's learned aliases, newest first.

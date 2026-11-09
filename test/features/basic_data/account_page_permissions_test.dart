@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../support/complete_read_plan_batches.dart';
 import '../../support/uten_test_actions.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -31,6 +32,8 @@ import 'package:uten_imp/components/inputs/uten_inline_edit_cell.dart';
 import 'package:uten_imp/components/feedback/uten_context_menu.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
+import 'package:uten_imp/shared/paging/complete_paged_snapshot.dart'
+    show CompleteReadBatchPlan;
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
@@ -525,6 +528,51 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets(
+    'expanding the disabled group shows every disabled account, not one page',
+    (tester) async {
+      await setUtenTestSurfaceSize(tester, const Size(1280, 900));
+      addTearDown(() => setUtenTestSurfaceSize(tester, null));
+      // More disabled accounts than one server page of the old fixed read.
+      const total = 150;
+      final repository = _AccountRepositoryFake()
+        ..disabledRows = [
+          for (var i = 0; i < total; i++)
+            AccountListItem(
+              id: 'account-disabled-$i',
+              code: 'ZH9${i.toString().padLeft(5, '0')}',
+              name: '停用账户$i',
+              bankAccountNo: '6333',
+              accountType: 'BANK',
+              currencyId: 'currency-cny',
+              balanceCurrent: 0,
+              balanceCurrentText: '0',
+              status: '禁用',
+            ),
+        ];
+
+      await _pumpPage(tester, repository, {Perm.accountView});
+      await tester.tap(find.text('禁用账户($total)'));
+      await tester.pumpAndSettle();
+
+      final table = tester.widget<MasterDataTableView<AccountListItem>>(
+        find.byWidgetPredicate(
+          (widget) => widget is MasterDataTableView<AccountListItem>,
+        ),
+      );
+      final group = table.leadingGroups!.single;
+      expect(group.id, 'disabled');
+      expect(group.total, total);
+      expect(group.error, isNull);
+      // The group is one complete result: every row, in order, no prefix.
+      expect(group.items.map((account) => account.id), [
+        for (var i = 0; i < total; i++) 'account-disabled-$i',
+      ]);
+      expect(repository.disabledBatches, completeReadPlanBatches(total));
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('create loads currency and account styles only when requested', (
     tester,
   ) async {
@@ -865,6 +913,11 @@ class _AccountRepositoryFake implements AccountRepository {
   Completer<PagedResult<AccountListItem>>? disabledCompleter;
   final listFilters = <Map<String, String?>>[];
 
+  /// When set, the disabled accounts are a real paged server set: each page
+  /// honors the requested size up to the server maximum.
+  List<AccountListItem>? disabledRows;
+  final disabledBatches = <({int page, int size})>[];
+
   AccountListItem item = const AccountListItem(
     id: 'account-1',
     code: 'ZH000001',
@@ -911,6 +964,21 @@ class _AccountRepositoryFake implements AccountRepository {
         disabledCompleter = null;
         return pending.future;
       }
+      final rows = disabledRows;
+      if (rows != null) {
+        disabledBatches.add((page: page, size: size));
+        final effective = size.clamp(
+          1,
+          CompleteReadBatchPlan.progressive.maxBatchSize,
+        );
+        return PagedResult(
+          items: rows.skip((page - 1) * effective).take(effective).toList(),
+          page: page,
+          size: effective,
+          total: rows.length,
+          totalPages: (rows.length + effective - 1) ~/ effective,
+        );
+      }
     }
     final items = switch (filters['status']) {
       '使用' => [item],
@@ -935,18 +1003,18 @@ class _AccountRepositoryFake implements AccountRepository {
   );
 
   @override
-  Future<AccountFacets> facets() async => const AccountFacets(
+  Future<AccountFacets> facets() async => AccountFacets(
     fields: {
-      'accountType': [MasterFacetBucket(value: 'BANK', count: 2)],
-      'currencyId': [
+      'accountType': const [MasterFacetBucket(value: 'BANK', count: 2)],
+      'currencyId': const [
         MasterFacetBucket(value: 'currency-cny', count: 2, label: 'CNY · 人民币'),
       ],
       'status': [
-        MasterFacetBucket(value: '使用', count: 1),
-        MasterFacetBucket(value: '禁用', count: 1),
+        const MasterFacetBucket(value: '使用', count: 1),
+        MasterFacetBucket(value: '禁用', count: disabledRows?.length ?? 1),
       ],
     },
-    nullCounts: {},
+    nullCounts: const {},
   );
 
   @override

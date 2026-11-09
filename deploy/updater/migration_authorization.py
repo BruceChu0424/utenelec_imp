@@ -37,7 +37,7 @@ STABLE_ALLOWED_SIGNERS = Path(
 UPDATER_SCRIPT = Path("/opt/uten-imp/updater/release_updater.py")
 UPDATER_GROUP = "uten-imp-updater"
 RELEASE_GUARD_SHA256 = (
-    "0e4f30803aac8234cb8df52337eec7f4a04e55ed4bc7c11044fa79abdbba7144"
+    "a38b71aec9ed540541e4e3752793077d95f9ef2cf75930e91b75860ddf546266"
 )
 MAX_JSON_BYTES = 4 * 1024 * 1024
 AUTHORIZATION_TTL_SECONDS = 120
@@ -693,7 +693,7 @@ def main(argv: list[str] | None = None) -> int:
 
 # BEGIN GENERATED FLYWAY VERSION CONTRACT
 # Source: deploy/contracts/flyway_version_contract.py
-# SHA-256: 2d0596a62641b5b3d9e747ebc9a3e87f367d131f399352787438f9b0d29ad27c
+# SHA-256: 39d4279fdc1e117f18456bfcf230d45c3e2c27d75dd6f4a92947123084063d5f
 _FLYWAY_CONTRACT_ERROR = ValueError
 
 # These immutable, already-applied basenames predate canonical wire versions.
@@ -764,6 +764,20 @@ def _flyway_history_version_key(value: object, script: object) -> tuple[int, ...
     if key != script_key:
         raise _FLYWAY_CONTRACT_ERROR("Flyway history version differs from its exact script")
     return key
+
+
+def _flyway_history_order_frontier(
+    version_key: tuple[int, ...], seen: set, prior_integer: tuple[int, ...]
+) -> tuple[int, ...]:
+    if version_key in seen:
+        raise _FLYWAY_CONTRACT_ERROR("Flyway history versions are duplicated")
+    if len(version_key) == 1:
+        if version_key <= prior_integer:
+            raise _FLYWAY_CONTRACT_ERROR(
+                "Flyway integer history versions are not strictly increasing"
+            )
+        return version_key
+    return prior_integer
 
 
 def _flyway_wire_version(value: object, script: object) -> str:

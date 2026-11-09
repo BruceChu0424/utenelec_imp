@@ -366,15 +366,11 @@ def _flyway_identity(value: Any) -> dict[str, Any]:
         if rank <= prior_rank:
             raise ContractError("Flyway history installedRank is not strictly increasing")
         version_key = _flyway_history_version_key(version,row["script"])
-        if version_key in versions:
-            raise ContractError("Flyway history versions are duplicated")
-        # 后补点分版本(如 990.1 应用在 999 之后, 见迁移 README「点分版本」)按 installedRank
-        # 晚于更大整数是合法形态: 全局语义排序只约束整数版本, 与 ForwardMigrationSequence-
-        # ContractTest「点分不参与整版连续性检查」同口径; 点分行仍受唯一性+脚本绑定约束。
-        if len(version_key) == 1:
-            if version_key <= prior_integer_version:
-                raise ContractError("Flyway integer history versions are not strictly increasing")
-            prior_integer_version = version_key
+        # 后补点分版本按 installedRank 晚于更大整数/相邻点分是合法形态, 排序合同只约束
+        # 整数子序列; 规则唯一维护在 flyway_version_contract 生成块, 各 owner 同源同判。
+        prior_integer_version = _flyway_history_order_frontier(
+            version_key, versions, prior_integer_version
+        )
         if row["type"] != "SQL" or row["success"] is not True:
             raise ContractError("Flyway history contains a non-SQL or unsuccessful row")
         if type(checksum) is not int or not -(2**31) <= checksum <= 2**31 - 1:
@@ -392,9 +388,15 @@ def _flyway_identity(value: Any) -> dict[str, Any]:
     payload = json.dumps(
         canonical_rows, sort_keys=True, separators=(",", ":"), ensure_ascii=False
     ).encode("utf-8")
+    # 签名投影按语义序输出: 后补点分让 live rank 顺序偏离语义序, 而签名清单/验收合同
+    # (backup_acceptance.validate_signed_flyway_rows) 固定按语义严格递增绑定同一份文件。
+    ordered_rows = sorted(
+        canonical_rows,
+        key=lambda row: _flyway_history_version_key(row["version"], row["script"]),
+    )
     signed_projection = "".join(
         f"{_flyway_wire_version(row['version'],row['script'])}\t{row['script']}\t{row['checksum']}\n"
-        for row in canonical_rows
+        for row in ordered_rows
     ).encode("utf-8")
     return {
         "successfulMigrationCount": len(canonical_rows),
@@ -647,7 +649,7 @@ def main() -> int:
 
 # BEGIN GENERATED FLYWAY VERSION CONTRACT
 # Source: deploy/contracts/flyway_version_contract.py
-# SHA-256: 2d0596a62641b5b3d9e747ebc9a3e87f367d131f399352787438f9b0d29ad27c
+# SHA-256: 39d4279fdc1e117f18456bfcf230d45c3e2c27d75dd6f4a92947123084063d5f
 _FLYWAY_CONTRACT_ERROR = ValueError
 
 # These immutable, already-applied basenames predate canonical wire versions.
@@ -718,6 +720,20 @@ def _flyway_history_version_key(value: object, script: object) -> tuple[int, ...
     if key != script_key:
         raise _FLYWAY_CONTRACT_ERROR("Flyway history version differs from its exact script")
     return key
+
+
+def _flyway_history_order_frontier(
+    version_key: tuple[int, ...], seen: set, prior_integer: tuple[int, ...]
+) -> tuple[int, ...]:
+    if version_key in seen:
+        raise _FLYWAY_CONTRACT_ERROR("Flyway history versions are duplicated")
+    if len(version_key) == 1:
+        if version_key <= prior_integer:
+            raise _FLYWAY_CONTRACT_ERROR(
+                "Flyway integer history versions are not strictly increasing"
+            )
+        return version_key
+    return prior_integer
 
 
 def _flyway_wire_version(value: object, script: object) -> str:

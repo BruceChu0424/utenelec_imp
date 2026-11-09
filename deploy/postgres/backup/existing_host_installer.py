@@ -129,7 +129,7 @@ class Asset:
 FLYWAY_VERSION_AUTHORITY = Path("/usr/local/libexec/uten-imp-release/release_guard.py")
 FLYWAY_VERSION_SOURCE = HERE.parents[1] / "updater" / "release_guard.py"
 FLYWAY_VERSION_AUTHORITY_SHA256 = (
-    "0e4f30803aac8234cb8df52337eec7f4a04e55ed4bc7c11044fa79abdbba7144"
+    "a38b71aec9ed540541e4e3752793077d95f9ef2cf75930e91b75860ddf546266"
 )
 
 ASSETS = (

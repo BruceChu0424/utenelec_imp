@@ -150,13 +150,13 @@ class FlywayEndToEndTest(unittest.TestCase):
         with self.assertRaises(self.updater.UpdaterError):
             self.updater.require_append_only_flyway_transition(current, changed)
 
-    def test_alias_duplicate_disordered_and_forged_live_rows_fail_in_every_owner(self):
+    def test_alias_duplicate_integer_regression_and_forged_live_rows_fail_in_every_owner(self):
         _, _, _, _, info, rows = self.fixture()
         changed = []
         for version in ("999.01", "999.1.0", "999_1", "1e3", "١", "", True):
             value = copy.deepcopy(rows);value[2]["version"] = version;changed.append(value)
         value = copy.deepcopy(rows);value[2]["version"] = "999";changed.append(value)
-        value = copy.deepcopy(rows);value[2],value[3] = value[3],value[2]
+        value = copy.deepcopy(rows);value[0],value[1] = value[1],value[0]
         for index, row in enumerate(value, 1): row["installedRank"] = index
         changed.append(value)
         for field, forged in (("script", "V999_2__first_decimal.sql"), ("description", "first  decimal"), ("checksum", True), ("checksum", 1.0), ("checksum", 2**31), ("success", False), ("type", "BASELINE")):
@@ -169,6 +169,37 @@ class FlywayEndToEndTest(unittest.TestCase):
         for index, value in enumerate(changed):
             for engine, error in engines:
                 with self.subTest(case=index, owner=error.__name__), self.assertRaises(error): engine(value)
+
+    def test_backfilled_and_disordered_dotted_live_rows_pass_identically_in_every_owner(self):
+        # 公司生产形态(2026-11-07 起): 后补点分 998.5 应用在更大整数 999 之后, 点分之间
+        # 也可晚应用(999.2 晚于 999.1); 点分不参与排序合同, 整数子序列 998,999,1000 仍
+        # 严格递增。三个 owner 必须同判接受, 且签名投影仍逐字绑定同一份语义序签名清单。
+        cases = (
+            ("998", "V998__base_schema.sql", "base schema", -(2**31)),
+            ("998.5", "V998_5__backfilled_precision.sql", "backfilled precision", 7),
+            ("999", "V999__integer_head.sql", "integer head", 0),
+            ("999.1", "V999_1__first_decimal.sql", "first decimal", 2**31 - 1),
+            ("999.2", "V999_2__second_decimal.sql", "second decimal", -17),
+            ("999.10", "V999_10__tenth_decimal.sql", "tenth decimal", 18),
+            ("1000", "V1000__after_decimal.sql", "after decimal", -19),
+        )
+        _, _, _, _, info, rows = self.fixture(cases)
+        rows = [rows[index] for index in (0, 2, 1, 4, 3, 5, 6)]
+        for index, row in enumerate(rows, 1): row["installedRank"] = index
+        original = copy.deepcopy(rows)
+        identities = self.identities(rows, info)
+        signed = self.updater.canonical_signed_flyway_projection(info)
+        for identity in identities:
+            self.assertEqual(identities[0], identity)
+            self.assertEqual(1000, identity["headVersion"])
+            self.assertIs(type(identity["headVersion"]), int)
+            self.assertEqual(7, identity["successfulMigrationCount"])
+            self.assertEqual(hashlib.sha256(signed).hexdigest(), identity["signedProjectionSha256"])
+        self.assertEqual(
+            hashlib.sha256(signed).hexdigest(),
+            self.acceptance.validate_signed_flyway_rows(signed, {"databaseIdentity": {"flyway": identities[0]}}, "1000", 7),
+        )
+        self.assertEqual(original, rows)
 
     def test_signed_crc_and_description_cannot_be_changed_under_the_same_script(self):
         _, _, _, _, info, rows = self.fixture()

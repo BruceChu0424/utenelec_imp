@@ -33,7 +33,7 @@ _GUARD_PATH = Path(__file__).resolve().with_name("release_guard.py")
 _GUARD_MODULE_NAME = "uten_imp_release_guard"
 _PREVERIFIED_GUARD_GLOBAL = "_UTEN_PREVERIFIED_RELEASE_GUARD"
 _GUARD_MAXIMUM_BYTES = 4 * 1024 * 1024
-_GUARD_SHA256 = "0e4f30803aac8234cb8df52337eec7f4a04e55ed4bc7c11044fa79abdbba7144"
+_GUARD_SHA256 = "a38b71aec9ed540541e4e3752793077d95f9ef2cf75930e91b75860ddf546266"
 OSS_IO_SHA256 = "a3d8a8d4044617e500293ae2dad036b9fd0f1f890d07b2bf87fc6a4e3535f77b"
 WHEELHOUSE_SUPPLY_CHAIN_SHA256 = (
     "b46bee01c173d4cd56d21a80bb40983dba535199d011f5ecc18625e2405c3bea"
@@ -366,7 +366,7 @@ DATABASE_RECOVERY_VERIFIER_SHA256 = (
 # Updated after the runtime boot verifier and its focused fault tests are
 # reviewed byte-for-byte. Phase 4 refuses to install any other source.
 RUNTIME_BOOT_VERIFIER_SHA256 = (
-    "e8f0333e7f330f87ecd5c39c66edfde735b547598e3c459a0998d3d2fc3cab8c"
+    "4e0ae05f182e28e443f9f4c3132b915d46ce18986a73b990f3af425a361ec46e"
 )
 STORAGE_BOOT_VERIFIER_SHA256 = (
     "0880678bcff0ad03149c0e0d90fccb9f6b274788b3c4e9e6add0d487d64dd83f"
@@ -375,7 +375,7 @@ STORAGE_MOUNT_OBSERVER_SHA256 = (
     "b96476e50edad6178e3ab55516659b9b3b656653a6c0e376d173566d2cd88ddb"
 )
 MIGRATION_AUTHORIZATION_HELPER_SHA256 = (
-    "8c5e3bc2189ad101788a96e5f5d2e82c1faddd85505b9beef86fa85003e4ccde"
+    "d133de1777cb023d50eade015779aa872ec65b23dc4bdcf298d46e86aed85bd0"
 )
 ENTRY_WATCHDOG_UNIT_SHA256 = (
     "e018a0f67a268e81066350f9d0ae2c923825a3cc907c49c4e4854ce1c807f16a"
@@ -9740,7 +9740,7 @@ def canonical_live_flyway_identity(
     # pgbackrest_health._flyway_identity.  The signed-manifest comparison below
     # deliberately adds stricter version/file/checksum constraints.
     prior_rank = -1
-    prior_version = (0,)
+    prior_integer_version = (0,)
     versions: set[tuple[int, ...]] = set()
     for row in rows:
         if not isinstance(row, dict) or set(row) != expected_keys:
@@ -9760,8 +9760,12 @@ def canonical_live_flyway_identity(
         if rank <= prior_rank:
             fail("live Flyway installed ranks are not strictly increasing")
         version_key = _flyway_history_version_key(version, script)
-        if version_key in versions or version_key <= prior_version:
-            fail("live Flyway versions are duplicated or not in semantic order")
+        # 后补点分按 installedRank 晚于更大整数/相邻点分是合法形态; 排序规则与 health/
+        # boot 同源(flyway_version_contract 生成块): 整数子序列严格递增, 点分只受唯一
+        # 性与脚本绑定约束。
+        prior_integer_version = _flyway_history_order_frontier(
+            version_key, versions, prior_integer_version
+        )
         if (
             row.get("type") != "SQL"
             or row.get("success") is not True
@@ -9785,13 +9789,18 @@ def canonical_live_flyway_identity(
             }
         )
         prior_rank = rank
-        prior_version = version_key
         versions.add(version_key)
 
+    # 签名清单按语义序维护, live rank 顺序可因后补点分偏离语义序: 绑定与投影都按语义序
+    # 对齐, 同一签名清单在后补形态下保持完全相同的绑定强度(逐行 version/script/checksum)。
+    ordered_rows = sorted(
+        canonical_rows,
+        key=lambda row: _flyway_history_version_key(row["version"], row["script"]),
+    )
     migrations = target_manifest.get("flywayMigrations")
-    if not isinstance(migrations, list) or len(canonical_rows) != len(migrations):
+    if not isinstance(migrations, list) or len(ordered_rows) != len(migrations):
         fail("live Flyway count differs from the signed target")
-    for row, migration in zip(canonical_rows, migrations, strict=True):
+    for row, migration in zip(ordered_rows, migrations, strict=True):
         _, raw_description, live_description = _flyway_script_parts(migration.get("file"))
         if (
             _flyway_history_version_key(row["version"], row["script"]) != _flyway_version_key(migration.get("version"))
@@ -9807,7 +9816,7 @@ def canonical_live_flyway_identity(
     ).encode("utf-8")
     projection = "".join(
         f"{_flyway_wire_version(row['version'],row['script'])}\t{row['script']}\t{row['checksum']}\n"
-        for row in canonical_rows
+        for row in ordered_rows
     ).encode("utf-8")
     return {
         "canonicalHistorySha256": hashlib.sha256(canonical_payload).hexdigest(),
@@ -13051,7 +13060,7 @@ def main() -> int:
 
 # BEGIN GENERATED FLYWAY VERSION CONTRACT
 # Source: deploy/contracts/flyway_version_contract.py
-# SHA-256: 2d0596a62641b5b3d9e747ebc9a3e87f367d131f399352787438f9b0d29ad27c
+# SHA-256: 39d4279fdc1e117f18456bfcf230d45c3e2c27d75dd6f4a92947123084063d5f
 _FLYWAY_CONTRACT_ERROR = ValueError
 
 # These immutable, already-applied basenames predate canonical wire versions.
@@ -13122,6 +13131,20 @@ def _flyway_history_version_key(value: object, script: object) -> tuple[int, ...
     if key != script_key:
         raise _FLYWAY_CONTRACT_ERROR("Flyway history version differs from its exact script")
     return key
+
+
+def _flyway_history_order_frontier(
+    version_key: tuple[int, ...], seen: set, prior_integer: tuple[int, ...]
+) -> tuple[int, ...]:
+    if version_key in seen:
+        raise _FLYWAY_CONTRACT_ERROR("Flyway history versions are duplicated")
+    if len(version_key) == 1:
+        if version_key <= prior_integer:
+            raise _FLYWAY_CONTRACT_ERROR(
+                "Flyway integer history versions are not strictly increasing"
+            )
+        return version_key
+    return prior_integer
 
 
 def _flyway_wire_version(value: object, script: object) -> str:

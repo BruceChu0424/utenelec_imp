@@ -75,7 +75,7 @@ STORAGE_AUTHORITY = Path("/etc/uten-imp/storage-authority.json")
 BOOT_ID_PATH = Path("/proc/sys/kernel/random/boot_id")
 UPDATER_GROUP = "uten-imp-updater"
 RELEASE_GUARD_SHA256 = (
-    "0e4f30803aac8234cb8df52337eec7f4a04e55ed4bc7c11044fa79abdbba7144"
+    "a38b71aec9ed540541e4e3752793077d95f9ef2cf75930e91b75860ddf546266"
 )
 DATABASE_VERIFIER_SHA256 = (
     "3aed5823241988ac2271c1378b6c1a8ca1223e37b8d14a8b0e50a5be746429dc"
@@ -955,7 +955,7 @@ def _canonical_live_flyway(
     }
     canonical: list[dict[str, Any]] = []
     prior_rank = -1
-    prior_version = (0,)
+    prior_integer_version = (0,)
     versions: set[tuple[int, ...]] = set()
     for row in rows:
         if not isinstance(row, dict) or set(row) != expected_keys:
@@ -973,8 +973,12 @@ def _canonical_live_flyway(
         if rank <= prior_rank:
             fail("live Flyway ranks are not strictly increasing")
         version_key = _flyway_history_version_key(version, script)
-        if version_key in versions or version_key <= prior_version:
-            fail("live Flyway versions are duplicated or not in semantic order")
+        # 后补点分按 installedRank 晚于更大整数/相邻点分是合法形态; 排序规则与 health/
+        # updater 同源(flyway_version_contract 生成块): 整数子序列严格递增, 点分只受
+        # 唯一性与脚本绑定约束。
+        prior_integer_version = _flyway_history_order_frontier(
+            version_key, versions, prior_integer_version
+        )
         if (
             row.get("type") != "SQL"
             or row.get("success") is not True
@@ -998,12 +1002,17 @@ def _canonical_live_flyway(
             }
         )
         prior_rank = rank
-        prior_version = version_key
         versions.add(version_key)
+    # 签名清单按语义序维护, live rank 顺序可因后补点分偏离语义序: 绑定与投影都按语义序
+    # 对齐, 同一签名清单在后补形态下保持完全相同的绑定强度(逐行 version/script/checksum)。
+    ordered = sorted(
+        canonical,
+        key=lambda row: _flyway_history_version_key(row["version"], row["script"]),
+    )
     migrations = manifest.get("flywayMigrations")
-    if not isinstance(migrations, list) or len(migrations) != len(canonical):
+    if not isinstance(migrations, list) or len(migrations) != len(ordered):
         fail("live Flyway count differs from the signed release")
-    for row, migration in zip(canonical, migrations, strict=True):
+    for row, migration in zip(ordered, migrations, strict=True):
         _, raw_description, live_description = _flyway_script_parts(migration.get("file"))
         if (
             _flyway_history_version_key(row["version"], row["script"]) != _flyway_version_key(migration.get("version"))
@@ -1018,7 +1027,7 @@ def _canonical_live_flyway(
         canonical, sort_keys=True, separators=(",", ":"), ensure_ascii=False
     ).encode("utf-8")
     projection = "".join(
-        f"{_flyway_wire_version(row['version'],row['script'])}\t{row['script']}\t{row['checksum']}\n" for row in canonical
+        f"{_flyway_wire_version(row['version'],row['script'])}\t{row['script']}\t{row['checksum']}\n" for row in ordered
     ).encode("utf-8")
     return {
         "canonicalHistorySha256": hashlib.sha256(canonical_bytes).hexdigest(),
@@ -1635,7 +1644,7 @@ def main() -> int:
 
 # BEGIN GENERATED FLYWAY VERSION CONTRACT
 # Source: deploy/contracts/flyway_version_contract.py
-# SHA-256: 2d0596a62641b5b3d9e747ebc9a3e87f367d131f399352787438f9b0d29ad27c
+# SHA-256: 39d4279fdc1e117f18456bfcf230d45c3e2c27d75dd6f4a92947123084063d5f
 _FLYWAY_CONTRACT_ERROR = ValueError
 
 # These immutable, already-applied basenames predate canonical wire versions.
@@ -1706,6 +1715,20 @@ def _flyway_history_version_key(value: object, script: object) -> tuple[int, ...
     if key != script_key:
         raise _FLYWAY_CONTRACT_ERROR("Flyway history version differs from its exact script")
     return key
+
+
+def _flyway_history_order_frontier(
+    version_key: tuple[int, ...], seen: set, prior_integer: tuple[int, ...]
+) -> tuple[int, ...]:
+    if version_key in seen:
+        raise _FLYWAY_CONTRACT_ERROR("Flyway history versions are duplicated")
+    if len(version_key) == 1:
+        if version_key <= prior_integer:
+            raise _FLYWAY_CONTRACT_ERROR(
+                "Flyway integer history versions are not strictly increasing"
+            )
+        return version_key
+    return prior_integer
 
 
 def _flyway_wire_version(value: object, script: object) -> str:

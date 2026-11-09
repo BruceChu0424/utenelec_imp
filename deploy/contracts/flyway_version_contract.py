@@ -81,6 +81,29 @@ def _flyway_history_version_key(value: object, script: object) -> tuple[int, ...
     return key
 
 
+def _flyway_history_order_frontier(
+    version_key: tuple[int, ...], seen: set, prior_integer: tuple[int, ...]
+) -> tuple[int, ...]:
+    """Enforce the one live-history rank-order rule shared by every owner.
+
+    Integer history must strictly increase by installed rank. Backfilled dotted
+    versions (for example 990.1 applied after 999; see the migration README
+    dotted-version note) legally rank after larger integers and around sibling
+    dotted rows, so they join uniqueness and exact script binding but not the
+    order check - the same scope ForwardMigrationSequenceContractTest gives
+    dotted versions. Returns the integer frontier for the next row.
+    """
+    if version_key in seen:
+        raise _FLYWAY_CONTRACT_ERROR("Flyway history versions are duplicated")
+    if len(version_key) == 1:
+        if version_key <= prior_integer:
+            raise _FLYWAY_CONTRACT_ERROR(
+                "Flyway integer history versions are not strictly increasing"
+            )
+        return version_key
+    return prior_integer
+
+
 def _flyway_wire_version(value: object, script: object) -> str:
     """Project a checked history row to the canonical signed TSV identity."""
     return ".".join(str(part) for part in _flyway_history_version_key(value, script))

@@ -393,6 +393,7 @@ class _ProductionFinishedInboundTasksViewState
   /// 多选「批量全量点收入库」（2026-09-12 弹窗改页，与入库中心统一口径）：
   /// 进批量点收页（所选任务一张表 + 底部确认批量入库，小结确认后整批同事务提交）。
   Future<void> _confirmSelected(Set<String> selectedIds) async {
+    if (_progressiveRows) return;
     final documentIds = selectedIds
         .where((id) => id.startsWith('doc:'))
         .map((id) => id.substring(4))
@@ -448,6 +449,7 @@ class _ProductionFinishedInboundTasksViewState
     Set<String> selectedIds,
     InboundRoute route,
   ) async {
+    if (_progressiveRows) return;
     if (route.isStockInFirst && !_canStockInFirst) return;
     final currentItems = _tableRows.items;
     final reportIds = <String>{
@@ -498,6 +500,11 @@ class _ProductionFinishedInboundTasksViewState
         registerCount > 0 ||
         (count == 0 &&
             _tableRows.items.any((task) => task.isArrivalRegistration));
+    // While [_progressiveRows] the table shows a growing prefix: a selection
+    // kept from the previous result stays, but both batch entries check or
+    // take their targets from the shown rows, so they wait for the complete
+    // result instead of acting on (or judging by) half of it.
+    final growing = _progressiveRows;
     return [
       // 待登记任务：与预计到货同款两颗路线按钮(同名同义、同一组件)。
       if (registrationStage)
@@ -506,6 +513,7 @@ class _ProductionFinishedInboundTasksViewState
           count: registerCount,
           canStockInFirst: _canStockInFirst,
           emptyWarning: '请先选择“待登记入库”的任务',
+          busy: growing,
           onSelected: (route) => _openBatchRegistration(selectedIds, route),
         ),
       if (!registrationStage)
@@ -518,7 +526,9 @@ class _ProductionFinishedInboundTasksViewState
             size: UtenButtonSize.large,
             type: UtenButtonType.danger,
             icon: Icons.inventory_rounded,
-            onPressed: count == 0 ? null : () => _confirmSelected(selectedIds),
+            onPressed: count == 0 || growing
+                ? null
+                : () => _confirmSelected(selectedIds),
             onDisabledTap: count == 0
                 ? () => context.appWarning('请先选择待最终点收任务')
                 : null,

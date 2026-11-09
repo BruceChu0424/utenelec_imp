@@ -158,6 +158,8 @@ class _SupplierCreditApplyPanelState
       _loading = true;
       _error = null;
     });
+    // 逐批追加期间已发布的部分前缀随失败一并撤下：抵销目标必须完整后才可确认。
+    var partialRows = false;
     try {
       final repository = ref.read(financePayablesRepositoryProvider);
       final filter = FinancePayablesFilter(
@@ -216,6 +218,7 @@ class _SupplierCreditApplyPanelState
                 if (supplierOffsetTargetCompatible(widget.source, target))
                   target.id: target,
             }.values.toList(growable: false);
+            partialRows = true;
           });
         },
       );
@@ -239,6 +242,12 @@ class _SupplierCreditApplyPanelState
       if (isRetiredViewRead(error)) return;
       if (!mounted || version != _requestVersion) return;
       setState(() {
+        // 半份目标不是完整结果：失败时整体撤下（勾选一并清空），
+        // 只留错误与重试；已接受完整结果的重读不发布逐批行。
+        if (partialRows) {
+          _targets = const [];
+          _selected.clear();
+        }
         _loading = false;
         _error = error.message;
       });
@@ -246,6 +255,10 @@ class _SupplierCreditApplyPanelState
       if (isRetiredViewRead(retiredReadError)) return;
       if (!mounted || version != _requestVersion) return;
       setState(() {
+        if (partialRows) {
+          _targets = const [];
+          _selected.clear();
+        }
         _loading = false;
         _error = '加载可抵销正应付失败';
       });
@@ -263,7 +276,8 @@ class _SupplierCreditApplyPanelState
   }
 
   void _confirm() {
-    if (_readRetired) return;
+    // 读取失败后的清单已整体撤下，不允许据半份或失败状态确认抵销。
+    if (_readRetired || _error != null) return;
     if (!widget.source.canApplyCredit) {
       context.appError('历史资金不能作为贷项来源');
       return;
@@ -399,7 +413,9 @@ class _SupplierCreditApplyPanelState
             type: UtenButtonType.danger,
             size: UtenButtonSize.large,
             icon: Icons.link_rounded,
-            onPressed: _loading || _readRetired ? null : _confirm,
+            onPressed: _loading || _readRetired || _error != null
+                ? null
+                : _confirm,
             child: Text('确认应用 (${_selected.length})'),
           ),
         ],

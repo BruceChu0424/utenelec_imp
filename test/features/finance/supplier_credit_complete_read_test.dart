@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
@@ -144,10 +146,85 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets(
+    'a failed progressive read withdraws the partial offset targets and keeps confirm closed',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final preferences = await SharedPreferences.getInstance();
+      tester.view.devicePixelRatio = 1;
+      await setUtenTestSurfaceSize(tester, const Size(1400, 1000));
+      addTearDown(() => setUtenTestSurfaceSize(tester, null));
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final api = _Api(failSecondBatch: true);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            apiClientProvider.overrideWithValue(api),
+            authenticatedScopeProvider.overrideWithValue(
+              const AuthenticatedScope(userId: 'finance-credit-fixture'),
+            ),
+            currentPermissionsProvider.overrideWithValue(const {}),
+            isSuperAdminProvider.overrideWithValue(false),
+            apiBaseUrlProvider.overrideWithValue('http://127.0.0.1:9'),
+            sharedPreferencesProvider.overrideWithValue(preferences),
+            financePayablesRepositoryProvider.overrideWithValue(
+              FinancePayablesRepository(api),
+            ),
+          ],
+          child: MaterialApp(
+            home: Scaffold(
+              body: Builder(
+                builder: (context) => TextButton(
+                  onPressed: () => showSupplierCreditApplyPanel(
+                    context: context,
+                    source: const FinancePayableItem(
+                      id: 'credit',
+                      openItemKind: 'CREDIT',
+                      supplierId: 'supplier',
+                      currencyId: 'usd',
+                      bookingRate: '7.123456',
+                      outstandingOriginal: '-1.0001',
+                    ),
+                  ),
+                  child: const Text('打开贷项'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('打开贷项'));
+      // First 50-row batch published progressively, continuation answers 503.
+      for (var frame = 0; frame < 150 && api.queries.length < 2; frame++) {
+        await tester.pump(const Duration(milliseconds: 20));
+      }
+      expect(api.queries, hasLength(2));
+      await tester.pumpAndSettle();
+      // The withdrawn prefix is not left beside the error as a complete list.
+      expect(
+        find.byKey(const ValueKey('supplier-offset-target-target-0')),
+        findsNothing,
+      );
+      expect(find.text('服务暂不可用'), findsOneWidget);
+      expect(find.text('重试'), findsOneWidget);
+      // No confirmation may build on a half or failed read.
+      final confirm = tester.widget<UtenButton>(
+        find.widgetWithText(UtenButton, '确认应用 (0)'),
+      );
+      expect(confirm.onPressed, isNull);
+      expect(tester.takeException(), isNull);
+    },
+  );
 }
 
 class _Api extends ApiClient {
-  _Api() : super(Dio());
+  _Api({this.failSecondBatch = false}) : super(Dio());
+
+  /// The second complete-read batch answers 503 after the first batch's
+  /// progressive rows are on screen.
+  final bool failSecondBatch;
   final queries = <Map<String, dynamic>>[];
 
   @override
@@ -157,6 +234,9 @@ class _Api extends ApiClient {
   }) async {
     expectSync(path, '/finance/payables');
     queries.add({...?query});
+    if (failSecondBatch && queries.length == 2) {
+      throw ApiException('SERVER_ERROR', '服务暂不可用', httpStatus: 503);
+    }
     final page = query!['page'] as int;
     final size = query['size'] as int;
     final all = [

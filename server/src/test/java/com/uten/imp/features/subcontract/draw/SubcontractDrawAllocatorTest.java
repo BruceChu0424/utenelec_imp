@@ -206,6 +206,134 @@ class SubcontractDrawAllocatorTest {
         assertThat(result.slices().getFirst().warehouseAvailableQty()).isEqualByComparingTo("8");
     }
 
+    // ---- 按行领料(2026-11-09 第三轮改版) ----------------------------------------
+
+    private static SubcontractDrawAllocator.Task directed(String orderQty,
+                                                          List<SubcontractDrawAllocator.Line> lines,
+                                                          SubcontractDrawAllocator.DirectedTake... takes) {
+        return new SubcontractDrawAllocator.Task(UUID.randomUUID(), UUID.randomUUID(), new BigDecimal(orderQty),
+                null, null, lines, List.of(takes));
+    }
+
+    @Test
+    void directedTakesGoToTheChosenWarehouseAndConsumePublicStockInTaskOrder() {
+        UUID a = UUID.randomUUID();
+        UUID b = UUID.randomUUID();
+        UUID goods = UUID.randomUUID();
+        // 前一个任务定向从 WAREHOUSE 领 3(全走公共), 后一个任务同仓同物料只能再领 2。
+        var stocks = List.of(stock(WAREHOUSE, "0", "5"));
+        var t1 = directed("10", List.of(new SubcontractDrawAllocator.Line(a, goods, null, BigDecimal.ONE,
+                new BigDecimal("10"), BigDecimal.ZERO, stocks)),
+                new SubcontractDrawAllocator.DirectedTake(a, WAREHOUSE, new BigDecimal("3")));
+        var t2 = directed("10", List.of(new SubcontractDrawAllocator.Line(b, goods, null, BigDecimal.ONE,
+                new BigDecimal("10"), BigDecimal.ZERO, stocks)),
+                new SubcontractDrawAllocator.DirectedTake(b, WAREHOUSE, new BigDecimal("3")));
+
+        var result = SubcontractDrawAllocator.allocate(List.of(t1, t2));
+
+        assertThat(qty(result, a)).as("前面的任务按行足额领到").isEqualByComparingTo("3");
+        assertThat(result.anyExceeded()).as("公共库存被前面任务占走后, 后面任务按行超限").isTrue();
+        var second = result.tasks().getLast();
+        assertThat(second.exceeded()).isTrue();
+        assertThat(second.rowExcesses()).singleElement().satisfies(excess -> {
+            // 行上限已把被占公共算进去: 这里报行级(不带仓), 本批该行只剩 2。
+            assertThat(excess.planItemId()).isEqualTo(b);
+            assertThat(excess.warehouseId()).isNull();
+            assertThat(excess.maximum()).isEqualByComparingTo("2");
+            assertThat(excess.requested()).isEqualByComparingTo("3");
+        });
+    }
+
+    @Test
+    void directedTakeAboveASingleWarehouseCapReportsThatRowAndKeepsOtherWarehouses() {
+        UUID plan = UUID.randomUUID();
+        // 行总量没超(6 ≤ 7), 但 WAREHOUSE 单仓只剩 2: 报该仓行超限, OTHER_WAREHOUSE 的 3 正常发。
+        var task = directed("10", List.of(line(plan, "1", "10", "0",
+                        stock(WAREHOUSE, "0", "2"), stock(OTHER_WAREHOUSE, "0", "5"))),
+                new SubcontractDrawAllocator.DirectedTake(plan, WAREHOUSE, new BigDecimal("3")),
+                new SubcontractDrawAllocator.DirectedTake(plan, OTHER_WAREHOUSE, new BigDecimal("3")));
+
+        var result = SubcontractDrawAllocator.allocate(List.of(task));
+
+        assertThat(result.anyExceeded()).isTrue();
+        assertThat(result.slices()).singleElement().satisfies(slice -> {
+            assertThat(slice.warehouseId()).isEqualTo(OTHER_WAREHOUSE);
+            assertThat(slice.qty()).isEqualByComparingTo("3");
+        });
+        assertThat(result.tasks().getFirst().rowExcesses()).singleElement().satisfies(excess -> {
+            assertThat(excess.warehouseId()).isEqualTo(WAREHOUSE);
+            assertThat(excess.maximum()).isEqualByComparingTo("2");
+            assertThat(excess.requested()).isEqualByComparingTo("3");
+        });
+    }
+
+    @Test
+    void directedTakePrefersTheWarehouseEntitlementBeforePublicStock() {
+        UUID plan = UUID.randomUUID();
+        var task = directed("10", List.of(line(plan, "1", "10", "0", stock(WAREHOUSE, "3", "5"))),
+                new SubcontractDrawAllocator.DirectedTake(plan, WAREHOUSE, new BigDecimal("4")));
+
+        var result = SubcontractDrawAllocator.allocate(List.of(task));
+
+        assertThat(result.anyExceeded()).isFalse();
+        assertThat(result.slices()).singleElement().satisfies(slice -> {
+            assertThat(slice.warehouseId()).isEqualTo(WAREHOUSE);
+            assertThat(slice.qty()).isEqualByComparingTo("4");
+            assertThat(slice.warehouseAvailableQty()).isEqualByComparingTo("8");
+        });
+    }
+
+    @Test
+    void directedLineTotalAboveTheLineMaximumReportsLineExcess() {
+        UUID plan = UUID.randomUUID();
+        // 本批该行最多 6(needed 6), 两个仓各填 3+4=7 → 整行超限, 单仓都没超。
+        var task = directed("10", List.of(line(plan, "1", "6", "0",
+                        stock(WAREHOUSE, "0", "5"), stock(OTHER_WAREHOUSE, "0", "5"))),
+                new SubcontractDrawAllocator.DirectedTake(plan, WAREHOUSE, new BigDecimal("3")),
+                new SubcontractDrawAllocator.DirectedTake(plan, OTHER_WAREHOUSE, new BigDecimal("4")));
+
+        var result = SubcontractDrawAllocator.allocate(List.of(task));
+
+        assertThat(result.anyExceeded()).isTrue();
+        assertThat(result.slices()).isEmpty();
+        assertThat(result.tasks().getFirst().rowExcesses()).singleElement().satisfies(excess -> {
+            assertThat(excess.warehouseId()).as("整行超限不带仓").isNull();
+            assertThat(excess.maximum()).isEqualByComparingTo("6");
+            assertThat(excess.requested()).isEqualByComparingTo("7");
+        });
+    }
+
+    @Test
+    void unbalancedDirectedDrawsKeepSlicesPerMaterialWithSetProgressCappedByUntouchedLines() {
+        UUID a = UUID.randomUUID();
+        UUID b = UUID.randomUUID();
+        // 只领 B(每套 2)20 个; A 不领。套数进度被 A 的已覆盖(0)钉住 → 套数 0, 但 B 的切片存在。
+        var task = directed("100", List.of(
+                line(a, "1", "100", "0", stock(WAREHOUSE, "0", "50")),
+                line(b, "2", "200", "0", stock(WAREHOUSE, "0", "50"))),
+                new SubcontractDrawAllocator.DirectedTake(b, WAREHOUSE, new BigDecimal("20")));
+
+        var result = SubcontractDrawAllocator.allocate(List.of(task));
+
+        assertThat(result.anyExceeded()).isFalse();
+        assertThat(qty(result, b)).isEqualByComparingTo("20");
+        assertThat(qty(result, a)).isEqualByComparingTo("0");
+        assertThat(result.tasks().getFirst().qty()).as("套数进度被未领的 A 钉住").isEqualByComparingTo("0");
+        assertThat(result.tasks().getFirst().hasQuantity()).isFalse();
+    }
+
+    @Test
+    void emptyDirectedListSkipsTheTaskWithoutSlices() {
+        UUID a = UUID.randomUUID();
+        var task = directed("10", List.of(line(a, "1", "10", "0", stock(WAREHOUSE, "0", "5"))));
+
+        var result = SubcontractDrawAllocator.allocate(List.of(task));
+
+        assertThat(result.anyExceeded()).isFalse();
+        assertThat(result.slices()).isEmpty();
+        assertThat(result.tasks().getFirst().qty()).isEqualByComparingTo("0");
+    }
+
     private static SubcontractDrawAllocator.Task task(String orderQty, String requested,
                                                       SubcontractDrawAllocator.Line... lines) {
         return new SubcontractDrawAllocator.Task(UUID.randomUUID(), UUID.randomUUID(), new BigDecimal(orderQty),

@@ -366,12 +366,38 @@ public class SubcontractDrawQueryService {
         }
         List<DrawPreviewLine> lines = new ArrayList<>();
         Set<String> documents = new LinkedHashSet<>();
+        Map<String, BigDecimal> proposed = new LinkedHashMap<>();
         for (SubcontractDrawAllocator.Slice slice : batch.allocation().slices()) {
-            FactLine fact = batch.factLine(slice.planItemId());
-            lines.add(new DrawPreviewLine(slice.orderItemId(), slice.planItemId(), slice.warehouseId(),
-                    slice.warehouseName(), fact.goodsId(), fact.goodsCode(), fact.goodsName(), fact.colorId(),
-                    fact.colorName(), fact.unitId(), fact.unitName(), slice.qty(), slice.warehouseAvailableQty()));
+            proposed.merge(slice.orderItemId() + "|" + slice.planItemId() + "|" + slice.warehouseId(),
+                    slice.qty(), BigDecimal::add);
             documents.add(slice.orderId() + ":" + slice.warehouseId());
+        }
+        // 2026-11-09 第三轮改版: 领料数量直接填在「计划行 × 仓库」行上。候选行 = 每任务
+        // 每条开放计划行 × 此刻有量的仓, 预填服务端联合分配的默认量(未分到的仓为 0);
+        // 整行没有任何可用仓时仍出一条未定仓行, 该任务不会从页面上静默消失。
+        for (SubcontractDrawAllocator.TaskResult result : batch.allocation().tasks()) {
+            for (FactLine fact : batch.factsByTask().getOrDefault(result.orderItemId(), List.of())) {
+                if (!fact.lineOpen()) {
+                    continue;
+                }
+                List<SubcontractDrawAllocator.Stock> stocks =
+                        batch.stocks().getOrDefault(fact.planItemId(), List.of());
+                if (stocks.isEmpty()) {
+                    lines.add(new DrawPreviewLine(result.orderItemId(), fact.planItemId(), null, null,
+                            fact.goodsId(), fact.goodsCode(), fact.goodsName(), fact.colorId(), fact.colorName(),
+                            fact.unitId(), fact.unitName(), BigDecimal.ZERO, BigDecimal.ZERO));
+                    continue;
+                }
+                for (SubcontractDrawAllocator.Stock stock : stocks) {
+                    lines.add(new DrawPreviewLine(result.orderItemId(), fact.planItemId(), stock.warehouseId(),
+                            stock.warehouseName(), fact.goodsId(), fact.goodsCode(), fact.goodsName(),
+                            fact.colorId(), fact.colorName(), fact.unitId(), fact.unitName(),
+                            proposed.getOrDefault(
+                                    result.orderItemId() + "|" + fact.planItemId() + "|" + stock.warehouseId(),
+                                    BigDecimal.ZERO),
+                            stock.exactQty().add(stock.publicQty())));
+                }
+            }
         }
         return new DrawPreview(tasks, lines, documents.size());
     }
@@ -421,13 +447,38 @@ public class SubcontractDrawQueryService {
                 throw new ApiException(ErrorCode.CONFLICT,
                         "委外订货单 " + row.orderBillNo() + " 第 " + row.lineNo() + " 行的领料物料已变化，请返回任务中心重新选择");
             }
+            if (item.lines() != null) {
+                // 按行领料(2026-11-09): 行必须落在本任务自己的开放计划行与其有量的仓上。
+                List<SubcontractDrawAllocator.DirectedTake> directed = new ArrayList<>();
+                Map<UUID, SubcontractDrawAllocator.Line> openLines = new LinkedHashMap<>();
+                for (SubcontractDrawAllocator.Line line : lines) {
+                    openLines.putIfAbsent(line.planItemId(), line);
+                }
+                for (SubcontractDrawContracts.DrawLineRequest lineRequest : item.lines()) {
+                    SubcontractDrawAllocator.Line line = openLines.get(lineRequest.planItemId());
+                    if (line == null) {
+                        throw new ApiException(ErrorCode.CONFLICT, "委外订货单 " + row.orderBillNo() + " 第 "
+                                + row.lineNo() + " 行的领料物料已变化，请返回任务中心重新选择");
+                    }
+                    if (line.stocks().stream().noneMatch(stock -> stock.warehouseId().equals(lineRequest.warehouseId()))) {
+                        throw new ApiException(ErrorCode.CONFLICT, "委外订货单 " + row.orderBillNo() + " 第 "
+                                + row.lineNo() + " 行所选领料仓库当前没有可领库存，请刷新后重新选择");
+                    }
+                    directed.add(new SubcontractDrawAllocator.DirectedTake(lineRequest.planItemId(),
+                            lineRequest.warehouseId(), lineRequest.qty()));
+                }
+                tasks.add(new SubcontractDrawAllocator.Task(row.orderItemId(), row.orderId(), row.materialQty(),
+                        null, null, lines, directed));
+                continue;
+            }
             tasks.add(new SubcontractDrawAllocator.Task(row.orderItemId(), row.orderId(), row.materialQty(),
                     item.qty(), item.materialQty(), lines));
         }
-        return new DrawBatch(rows, factByPlanItem, SubcontractDrawAllocator.allocate(tasks, physicalDefaults));
+        return new DrawBatch(rows, factByPlanItem, facts, stocks,
+                SubcontractDrawAllocator.allocate(tasks, physicalDefaults));
     }
 
-    /** 「委外订货单 X 第 n 行 Y: 本批可领 a 个(填写 b)」逐项列出超出的任务。 */
+    /** 「委外订货单 X 第 n 行 Y: 本批可领 a 个(填写 b)」逐项列出超出的任务; 按行领料逐行给出明细。 */
     ApiException quantityExceeded(DrawBatch batch, String prefix, String suffix) {
         List<String> parts = new ArrayList<>();
         List<Map<String, Object>> quantities = new ArrayList<>();
@@ -438,6 +489,28 @@ public class SubcontractDrawQueryService {
             TaskRow row = batch.rows().get(result.orderItemId());
             var material = result.material();
             boolean physical = material != null && material.requested();
+            if (!result.rowExcesses().isEmpty()) {
+                // 按行领料(2026-11-09): 逐(计划行, 仓)回报行级上限, 前端标红对应输入格。
+                for (SubcontractDrawAllocator.RowExcess excess : result.rowExcesses()) {
+                    FactLine fact = batch.factLine(excess.planItemId());
+                    String where = excess.warehouseId() == null ? ""
+                            : "（" + warehouseName(batch, excess) + "）";
+                    parts.add("委外订货单 " + row.orderBillNo() + " 第 " + row.lineNo() + " 行 "
+                            + Objects.toString(fact.goodsName(), "") + where
+                            + "，本批可领 " + plain(excess.maximum()) + " "
+                            + Objects.toString(fact.unitName(), "")
+                            + "（填写 " + plain(excess.requested()) + "）");
+                    Map<String, Object> entry = new LinkedHashMap<>();
+                    entry.put("orderItemId", result.orderItemId());
+                    entry.put("planItemId", excess.planItemId());
+                    if (excess.warehouseId() != null) {
+                        entry.put("warehouseId", excess.warehouseId());
+                    }
+                    entry.put("maximumQtyExact", plain(excess.maximum()));
+                    quantities.add(entry);
+                }
+                continue;
+            }
             BigDecimal maximum = physical ? material.maximum() : result.batchDrawableQty();
             BigDecimal quantity = physical ? material.qty() : result.qty();
             String unit = physical ? batch.factLine(material.planItemId()).unitName() : row.unitName();
@@ -456,6 +529,14 @@ public class SubcontractDrawQueryService {
         };
     }
 
+    /** 行级超限的仓名回显(从该计划行的库存事实里找)。 */
+    private static String warehouseName(DrawBatch batch, SubcontractDrawAllocator.RowExcess excess) {
+        return batch.stocks().getOrDefault(excess.planItemId(), List.of()).stream()
+                .filter(stock -> stock.warehouseId().equals(excess.warehouseId()))
+                .map(SubcontractDrawAllocator.Stock::warehouseName)
+                .findFirst().orElse("");
+    }
+
     /** 1-50 个、不重复; qty 为 null(取本批可领)或大于 0 且最多 4 位小数。 */
     static List<DrawItemRequest> normalizeItems(List<DrawItemRequest> items) {
         if (items == null || items.isEmpty() || items.size() > MAX_BATCH_ITEMS) {
@@ -466,13 +547,35 @@ public class SubcontractDrawQueryService {
             if (item == null || item.orderItemId() == null) {
                 throw new ApiException(ErrorCode.VALIDATION_FAILED, "领料任务信息不正确，请刷新后重新选择");
             }
-            if ((item.materialQty() == null) != (item.materialPlanItemId() == null)
-                    || (item.qty() != null && item.materialQty() != null)) {
-                throw new ApiException(ErrorCode.VALIDATION_FAILED, "请指定单种领料物料及其实物数量，或按备料套数领料");
-            }
-            BigDecimal quantity = item.materialQty() != null ? item.materialQty() : item.qty();
-            if (quantity != null && (quantity.signum() <= 0 || quantity.stripTrailingZeros().scale() > 4)) {
-                throw new ApiException(ErrorCode.VALIDATION_FAILED, "本次领料数量必须大于 0，最多 4 位小数");
+            if (item.lines() != null) {
+                // 按行领料(2026-11-09): 行内 qty 大于 0 且最多 4 位小数, (计划行, 仓) 不重复;
+                // 行集合可为空(该任务本次不领, 仍参与预览出候选行)。
+                if (item.qty() != null || item.materialQty() != null || item.materialPlanItemId() != null) {
+                    throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                            "按行领料时不能再按套数或单种物料数量领料，请刷新后重新填写");
+                }
+                Set<String> seenRows = new java.util.HashSet<>();
+                for (SubcontractDrawContracts.DrawLineRequest line : item.lines()) {
+                    if (line == null || line.planItemId() == null || line.warehouseId() == null
+                            || line.qty() == null || line.qty().signum() <= 0
+                            || line.qty().stripTrailingZeros().scale() > 4) {
+                        throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                                "每行领料数量必须大于 0，最多 4 位小数");
+                    }
+                    if (!seenRows.add(line.planItemId() + "|" + line.warehouseId())) {
+                        throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                                "同一物料的同一仓库只能填一行领料数量，请合并后重新填写");
+                    }
+                }
+            } else {
+                if ((item.materialQty() == null) != (item.materialPlanItemId() == null)
+                        || (item.qty() != null && item.materialQty() != null)) {
+                    throw new ApiException(ErrorCode.VALIDATION_FAILED, "请指定单种领料物料及其实物数量，或按备料套数领料");
+                }
+                BigDecimal quantity = item.materialQty() != null ? item.materialQty() : item.qty();
+                if (quantity != null && (quantity.signum() <= 0 || quantity.stripTrailingZeros().scale() > 4)) {
+                    throw new ApiException(ErrorCode.VALIDATION_FAILED, "本次领料数量必须大于 0，最多 4 位小数");
+                }
             }
             if (distinct.putIfAbsent(item.orderItemId(), item) != null) {
                 throw new ApiException(ErrorCode.VALIDATION_FAILED, "同一委外任务不能重复选择");
@@ -872,7 +975,13 @@ public class SubcontractDrawQueryService {
 
     /** 一次批量领料的读取结果与联合分配。 */
     record DrawBatch(Map<UUID, TaskRow> rows, Map<UUID, FactLine> facts,
+                     Map<UUID, List<FactLine>> factsByTask, Map<UUID, List<SubcontractDrawAllocator.Stock>> stocks,
                      SubcontractDrawAllocator.Result allocation) {
+        DrawBatch(Map<UUID, TaskRow> rows, Map<UUID, FactLine> facts,
+                  SubcontractDrawAllocator.Result allocation) {
+            this(rows, facts, Map.of(), Map.of(), allocation);
+        }
+
         FactLine factLine(UUID planItemId) {
             FactLine fact = facts.get(planItemId);
             if (fact == null) {

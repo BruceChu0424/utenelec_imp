@@ -489,25 +489,50 @@ class SubcontractDrawTaskDetail {
 }
 
 /// 领料页提交/预览的一项：委外订货明细 + 本次领料数量(null = 服务端默认本批可领)。
+/// [lines] 非空 = 2026-11-09 按行领料：数量逐(计划行, 仓)给出，qty/materialQty 必须为空；
+/// 空行集合表示该任务本次不领(仍参与预览，服务端回候选行)。
 class SubcontractDrawRequestItem {
   const SubcontractDrawRequestItem({
     required this.orderItemId,
     this.qty,
     this.materialQty,
     this.materialPlanItemId,
+    this.lines,
   }) : assert(qty == null || materialQty == null),
-       assert((materialQty == null) == (materialPlanItemId == null));
+       assert((materialQty == null) == (materialPlanItemId == null)),
+       assert(lines == null || (qty == null && materialQty == null));
 
   final String orderItemId;
   final Object? qty;
   final String? materialQty;
   final String? materialPlanItemId;
+  final List<SubcontractDrawRequestLine>? lines;
 
   Map<String, dynamic> toJson() => {
     'orderItemId': orderItemId,
     'qty': qty,
     'materialQty': ?materialQty,
     'materialPlanItemId': ?materialPlanItemId,
+    'lines': ?lines?.map((line) => line.toJson()).toList(),
+  };
+}
+
+/// 按行领料的一条输入：该仓本次要领出的实物量。
+class SubcontractDrawRequestLine {
+  const SubcontractDrawRequestLine({
+    required this.planItemId,
+    required this.warehouseId,
+    required this.qty,
+  });
+
+  final String planItemId;
+  final String warehouseId;
+  final Object? qty;
+
+  Map<String, dynamic> toJson() => {
+    'planItemId': planItemId,
+    'warehouseId': warehouseId,
+    'qty': qty,
   };
 }
 

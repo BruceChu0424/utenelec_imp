@@ -1,9 +1,13 @@
-import '../../../components/inputs/uten_field_hint_icon.dart';
 // ADR-143 §4.2 委外领料页(/operations/workbench/subcontract/draw-request?orderItemIds=...)。
 //
 // 2026-11-07 用户要求恢复逐任务输入：单种物料用实物数量，多种物料按套备料。
-// 默认联合分配本批可领；修改后由服务端重新核对共享库存并预览各仓实发。
-// 提交在锁内按相同规则重验。手填量遇到库存变化时保留；未知结果只重试原提交。
+// 2026-11-08 用户要求数量直接在表格里填写：主表一行一个任务，可分批领料；
+// 服务端按仓分配的结果退为只读的出仓分配表，改数量时只清它，不动主表。
+// 2026-11-09 第三轮改版：用户要求合并成一张表——删除上方的任务主表与「出仓分配」
+// 标题，行 = 计划行 × 领料仓库(服务端候选行，含各仓可用量与联合分配的默认量)，
+// 「领料数量」直接填在行内(逐仓实物量，支持分批)，委外单号与委外件名称拆成两列。
+// 提交/核对走按行契约(lines)；未填的行与整任务跳过，整行无库存的任务保留一行
+// 「未确定」仓位的 0 行，不静默消失。幂等、断网续传、409 行级标红语义不变。
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -17,11 +21,12 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input.dart';
 import '../../../components/layout/uten_app_bar.dart';
-import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
+import '../../../components/layout/uten_grid_page_scrollbar.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/api_mutation_reload_safety.dart';
 import '../../../core/network/server_config.dart';
@@ -61,13 +66,26 @@ class _SubcontractDrawRequestPageState
   /// 任务顺序(首次预览的服务端顺序 = 联合分配顺序)。
   final _order = <String>[];
 
-  /// 每个任务最近一次服务端核对的事实。
+  /// 每个任务最近一次服务端核对的事实(委外单号、委外件名称、数量口径)。
   final _tasks = <String, SubcontractDrawPreviewTask>{};
 
-  /// 输入留在原控制器；重新核对不会覆盖手工输入。
-  final _quantities = <String, TextEditingController>{};
-  final _liveMaxima = <String, String>{};
+  /// 候选行(计划行 × 仓)：唯一的输入面。只在服务端核对后换新；输入时行实例不变。
+  List<SubcontractDrawPreviewLine> _rows = const [];
+
+  /// 行输入留在原控制器；重新核对不覆盖手工输入。
+  final _inputs = <String, TextEditingController>{};
+
+  /// 每行服务端默认量(联合分配的预填值)，用于识别「未改动的合法默认」。
+  final _rowDefaults = <String, String>{};
+
+  /// 409 行级上限：单仓超限按行身份，整行超限按 任务|计划行。
+  final _liveRowMaxima = <String, String>{};
+  final _liveLineMaxima = <String, String>{};
+
   SubcontractDrawPreview? _preview;
+
+  final _pageScroll = ScrollController();
+  final _tablePinned = ValueNotifier<bool>(false);
 
   bool _loading = true;
   bool _saving = false;
@@ -119,9 +137,11 @@ class _SubcontractDrawRequestPageState
 
   @override
   void dispose() {
-    for (final controller in _quantities.values) {
+    for (final controller in _inputs.values) {
       controller.dispose();
     }
+    _pageScroll.dispose();
+    _tablePinned.dispose();
     super.dispose();
   }
 
@@ -133,7 +153,7 @@ class _SubcontractDrawRequestPageState
   bool _acceptPreview(int request) =>
       _scopeCurrent && request == _previewRequest;
 
-  /// 首次进入或刷新未编辑的任务时，以实时可领量回填。
+  /// 首次进入或刷新未编辑的任务时，以实时可领量回填各仓默认量。
   Future<void> _load({String? notice, bool fillMaximum = false}) async {
     if (!_scopeCurrent ||
         _saving ||
@@ -155,7 +175,8 @@ class _SubcontractDrawRequestPageState
       _submitError = null;
       _pendingKey = null;
       _pendingItems = null;
-      _liveMaxima.clear();
+      _liveRowMaxima.clear();
+      _liveLineMaxima.clear();
       _attemptNonce = _newNonce();
       _notice = notice;
     });
@@ -171,35 +192,9 @@ class _SubcontractDrawRequestPageState
         for (final id in ids) SubcontractDrawRequestItem(orderItemId: id),
       ]);
       if (!_acceptPreview(request)) return;
-      // 旧输入框可能还挂在本帧的树上：换上新控制器后，下一帧再释放旧的。
-      final stale = _quantities.values.toList(growable: false);
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        for (final controller in stale) {
-          controller.dispose();
-        }
-      });
+      // 旧控制器的延迟释放在 _rememberPreview(resetInputs) 里统一做，这里不再重复。
       setState(() {
-        _preview = preview;
-        _edited = false;
-        _previewDirty = false;
-        _order
-          ..clear()
-          ..addAll(preview.tasks.map((task) => task.orderItemId));
-        _tasks
-          ..clear()
-          ..addEntries(
-            preview.tasks.map((task) => MapEntry(task.orderItemId, task)),
-          );
-        _quantities
-          ..clear()
-          ..addEntries(
-            preview.tasks.map(
-              (task) => MapEntry(
-                task.orderItemId,
-                TextEditingController(text: task.defaultInputQtyText ?? ''),
-              ),
-            ),
-          );
+        _rememberPreview(preview, resetInputs: true);
         _loading = false;
       });
     } catch (error) {
@@ -222,37 +217,89 @@ class _SubcontractDrawRequestPageState
     }
   }
 
-  String _rawInput(String id) => _quantities[id]?.text.trim() ?? '';
+  /// 记住一次核对结果。默认量(服务端预填)只在重建输入框时写入控制器；
+  /// 重新核对不覆盖手工输入——行的默认值与用户输入一致时本就是同一个数。
+  void _rememberPreview(SubcontractDrawPreview preview,
+      {bool resetInputs = false}) {
+    _preview = preview;
+    _edited = false;
+    _previewDirty = false;
+    _order
+      ..clear()
+      ..addAll(preview.tasks.map((task) => task.orderItemId));
+    _tasks
+      ..clear()
+      ..addEntries(
+        preview.tasks.map((task) => MapEntry(task.orderItemId, task)),
+      );
+    _rows = preview.lines;
+    _rowDefaults
+      ..clear()
+      ..addEntries([
+        for (final line in preview.lines)
+          MapEntry(
+            line.identity,
+            positiveDocumentQuantityText(
+                  line.quantityText('qty') ?? '',
+                ) ??
+                '',
+          ),
+      ]);
+    if (resetInputs) {
+      final stale = _inputs.values.toList(growable: false);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        for (final controller in stale) {
+          controller.dispose();
+        }
+      });
+      _inputs
+        ..clear()
+        ..addEntries([
+          for (final line in preview.lines)
+            MapEntry(line.identity, TextEditingController(text: _rowDefaults[line.identity])),
+        ]);
+    }
+  }
 
-  String? _quantityError(String id) {
-    final raw = _rawInput(id);
+  String _rawInput(String identity) => _inputs[identity]?.text.trim() ?? '';
+
+  String? _quantityError(SubcontractDrawPreviewLine line) {
+    if (line.warehouseId == null) return null; // 未定仓行不可输入
+    final raw = _rawInput(line.identity);
     return raw.isNotEmpty &&
-            raw != _tasks[id]?.defaultInputQtyText &&
+            raw != _rowDefaults[line.identity] &&
             nonNegativeDocumentQuantityText(raw, fractionDigits: 4) == null
         ? '请输入非负数，最多 4 位小数'
         : null;
   }
 
-  String? _inputOf(String id) => _quantityError(id) == null
-      ? positiveDocumentQuantityText(_rawInput(id))
-      : null;
-
-  SubcontractDrawRequestItem _requestItem(String id, String qty) {
-    final planItemId = _tasks[id]?.materialPlanItemId;
-    return planItemId == null
-        ? SubcontractDrawRequestItem(orderItemId: id, qty: qty)
-        : SubcontractDrawRequestItem(
-            orderItemId: id,
-            materialQty: qty,
-            materialPlanItemId: planItemId,
-          );
+  /// 行输入 > 0 的规范文本；空/0/非法返回 null(= 本次不从该行领)。
+  String? _rowInput(SubcontractDrawPreviewLine line) {
+    if (line.warehouseId == null) return null;
+    if (_quantityError(line) != null) return null;
+    return positiveDocumentQuantityText(_rawInput(line.identity));
   }
 
-  /// 本次真正提交的任务(数量 > 0)。
-  List<SubcontractDrawRequestItem> get _submitItems => [
-    for (final id in _order)
-      if (_inputOf(id) case final qty?) _requestItem(id, qty),
-  ];
+  /// 本次真正提交的任务(至少有一行 > 0)；行按任务分组，未填的任务不进提交。
+  List<SubcontractDrawRequestItem> get _submitItems {
+    final byTask = <String, List<SubcontractDrawRequestLine>>{};
+    for (final line in _rows) {
+      final qty = _rowInput(line);
+      if (qty == null) continue;
+      (byTask[line.orderItemId] ??= []).add(
+        SubcontractDrawRequestLine(
+          planItemId: line.planItemId,
+          warehouseId: line.warehouseId!,
+          qty: qty,
+        ),
+      );
+    }
+    return [
+      for (final id in _order)
+        if (byTask[id] case final lines?)
+          SubcontractDrawRequestItem(orderItemId: id, lines: lines),
+    ];
+  }
 
   void _quantityChanged(String _) {
     if (_uncertain || _saving || _confirming) return;
@@ -261,7 +308,8 @@ class _SubcontractDrawRequestPageState
       _previewDirty = true;
       _notice = null;
       _submitError = null;
-      _liveMaxima.clear();
+      _liveRowMaxima.clear();
+      _liveLineMaxima.clear();
     });
   }
 
@@ -269,13 +317,13 @@ class _SubcontractDrawRequestPageState
     if (!_scopeCurrent || _loading || _saving || _confirming || _uncertain) {
       return;
     }
-    if (_order.any((id) => _quantityError(id) != null)) {
-      context.appWarning('请修正本次领料数量');
+    if (_rows.any((line) => _quantityError(line) != null)) {
+      context.appWarning('请修正领料数量');
       return;
     }
     final items = _submitItems;
     if (items.isEmpty) {
-      context.appWarning('请填写至少一个任务的本次领料数量');
+      context.appWarning('请填写至少一行的领料数量');
       return;
     }
     FocusManager.instance.primaryFocus?.unfocus();
@@ -289,21 +337,11 @@ class _SubcontractDrawRequestPageState
     try {
       final preview = await _gateway.preview(items);
       if (!_acceptPreview(request)) return;
-      final tasks = {for (final task in preview.tasks) task.orderItemId: task};
-      for (final item in items) {
-        final task = tasks[item.orderItemId];
-        if (task == null ||
-            positiveDocumentQuantityText(task.defaultInputQtyText ?? '') !=
-                (item.materialQty ?? item.qty) ||
-            task.materialPlanItemId != item.materialPlanItemId) {
-          throw const FormatException('领料核对结果有变化，请返回任务中心重新选择');
-        }
-      }
+      _verifyEcho(preview, items);
       setState(() {
-        _preview = preview;
-        _tasks.addAll(tasks);
-        _previewDirty = false;
-        _liveMaxima.clear();
+        _rememberPreview(preview);
+        _liveRowMaxima.clear();
+        _liveLineMaxima.clear();
       });
     } on ApiException catch (error) {
       if (!_acceptPreview(request)) return;
@@ -321,9 +359,35 @@ class _SubcontractDrawRequestPageState
     }
   }
 
+  /// 服务端必须把提交的每一行按原数量回显(定向分配的默认量 = 用户填写量)，
+  /// 否则视为核对结果有变化，要求回任务中心重新选择。
+  void _verifyEcho(
+    SubcontractDrawPreview preview,
+    List<SubcontractDrawRequestItem> items,
+  ) {
+    final rows = {
+      for (final line in preview.lines) line.identity: line,
+    };
+    for (final item in items) {
+      for (final requested in item.lines ?? const <SubcontractDrawRequestLine>[]) {
+        final identity =
+            '${item.orderItemId}|${requested.planItemId}|${requested.warehouseId}';
+        final echoed = rows[identity];
+        if (echoed == null ||
+            positiveDocumentQuantityText(
+                  echoed.quantityText('qty') ?? '',
+                ) !=
+                requested.qty) {
+          throw const FormatException('领料核对结果有变化，请返回任务中心重新选择');
+        }
+      }
+    }
+  }
+
   void _recordStockError(ApiException error) {
     _submitError = _message(error);
-    _liveMaxima.clear();
+    _liveRowMaxima.clear();
+    _liveLineMaxima.clear();
     final details = error.details;
     if (details?['kind'] != 'SUBCONTRACT_DRAW_QUANTITY_EXCEEDED') return;
     final rows = details?['quantities'];
@@ -331,8 +395,18 @@ class _SubcontractDrawRequestPageState
     for (final row in rows.whereType<Map<String, dynamic>>()) {
       final id = row['orderItemId'];
       final maximum = recordedDocumentDecimal(row, 'maximumQty');
-      if (id is String && maximum != null && _tasks.containsKey(id)) {
-        _liveMaxima[id] = maximum;
+      if (id is! String || maximum == null || !_tasks.containsKey(id)) continue;
+      final planItemId = row['planItemId'];
+      final warehouseId = row['warehouseId'];
+      if (planItemId is String && warehouseId is String) {
+        _liveRowMaxima['$id|$planItemId|$warehouseId'] = maximum;
+      } else if (planItemId is String) {
+        _liveLineMaxima['$id|$planItemId'] = maximum;
+      } else {
+        // 兼容旧任务级明细：该任务所有行按同一上限标红。
+        for (final line in _rows.where((line) => line.orderItemId == id)) {
+          _liveRowMaxima[line.identity] = maximum;
+        }
       }
     }
   }
@@ -343,16 +417,12 @@ class _SubcontractDrawRequestPageState
     if (_confirming) return '请确认本次领料';
     if (_uncertain) return _pendingItems == null ? '领料提交状态需要核对' : null;
     if (_order.isEmpty) return '没有可领料的委外任务，请返回委外任务中心重新选择';
-    if (_order.any((id) => _quantityError(id) != null)) {
-      return '请修正本次领料数量';
+    if (_rows.any((line) => _quantityError(line) != null)) {
+      return '请修正领料数量';
     }
     if (_previewDirty) return '请先核对本次领料的库存';
-    if (!_edited &&
-        _order.any((id) => _tasks[id]?.defaultInputQtyText == null)) {
-      return '服务端未返回领料原数量，请刷新核对后提交';
-    }
-    if (_submitItems.isEmpty) return '本次没有可领料数量的委外任务，请返回委外任务中心重新选择';
-    if (_preview?.lines.isEmpty ?? true) return '本次没有可发出的物料';
+    if (_submitItems.isEmpty) return '本次没有填写领料数量，请返回委外任务中心重新选择';
+    if (_rows.isEmpty) return '本次没有可发出的物料';
     return null;
   }
 
@@ -361,14 +431,27 @@ class _SubcontractDrawRequestPageState
       for (final item in [
         ...items,
       ]..sort((a, b) => a.orderItemId.compareTo(b.orderItemId)))
-        '${item.orderItemId}:${item.qty}:${item.materialQty}:${item.materialPlanItemId}:'
-            '${_tasks[item.orderItemId]?.quantityText('drawnQty')}:'
-            '${_tasks[item.orderItemId]?.quantityText('drawableQty')}',
+        '${item.orderItemId}:'
+        '${_canonicalLines(item.lines)}:'
+        '${_tasks[item.orderItemId]?.quantityText('drawnQty')}:'
+        '${_tasks[item.orderItemId]?.quantityText('drawableQty')}',
     ].join('|');
     return businessIdempotencyKey(
       'subcontract-draw',
       '$_attemptNonce|$canonical',
     );
+  }
+
+  /// 行按(计划行, 仓)排序后拼接，同一批领料只有一种规范表示。
+  static String _canonicalLines(List<SubcontractDrawRequestLine>? lines) {
+    final ordered = [...?lines]..sort(
+      (a, b) => '${a.planItemId}|${a.warehouseId}'.compareTo(
+        '${b.planItemId}|${b.warehouseId}',
+      ),
+    );
+    return [
+      for (final line in ordered) '${line.planItemId}|${line.warehouseId}|${line.qty}',
+    ].join(',');
   }
 
   Future<void> _submit() async {
@@ -554,13 +637,32 @@ class _SubcontractDrawRequestPageState
                     onAction: _back,
                   )
                 else
-                  AbsorbPointer(
-                    absorbing: _saving || _loading,
-                    child: UtenCollapsingHeaderScrollView(
-                      collapsingHeader: _header(),
-                      body: UtenPageEdgePadding(
-                        padding: const EdgeInsets.all(UtenSpacing.s12),
-                        child: _linesTable(),
+                  SizedBox.expand(
+                    child: AbsorbPointer(
+                      absorbing: _saving || _loading,
+                      child: UtenGridPageScrollbar(
+                        pinned: _tablePinned,
+                        controller: _pageScroll,
+                        child: UtenPageEdgePadding.scroll(
+                          padding: const EdgeInsets.fromLTRB(
+                            UtenSpacing.s12,
+                            UtenSpacing.s12,
+                            UtenSpacing.s12,
+                            UtenFloatingActionGroup.scrollClearance,
+                          ),
+                          // 不用懒加载列表：表格滚出视口时输入行和焦点都要留着。
+                          builder: (context, padding) => SingleChildScrollView(
+                            controller: _pageScroll,
+                            padding: padding,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                ..._feedback(),
+                                _table(),
+                              ],
+                            ),
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -630,157 +732,51 @@ class _SubcontractDrawRequestPageState
 
   static const _submitKey = Key('subcontract-draw-request-submit');
 
-  Widget _header() {
+  static const _quantityHelp =
+      '每行填本次要从该仓领出的实物量，可只领一部分(分批)；留空或 0 表示本次不从该行领。'
+      '共用物料按交期、订货单号和行号联合分配，超限以服务端核对为准。';
+
+  bool get _inputEnabled =>
+      !_saving && !_loading && !_uncertain && !_confirming;
+
+  List<Widget> _feedback() {
     final theme = Theme.of(context);
-    final preview = _previewDirty ? null : _preview;
-    return UtenPageEdgePadding(
-      padding: const EdgeInsets.all(UtenSpacing.s12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Flexible(
-                child: Text(
-                  '${_order.length} 个委外任务'
-                  '${preview == null ? '' : ' · ${preview.materialKindCount} 种物料 · 预计 ${preview.documentCount} 张出仓单'}',
-                  key: const Key('subcontract-draw-request-summary'),
-                  style: theme.textTheme.titleMedium,
-                ),
-              ),
-              const UtenFieldHintIcon(
-                info:
-                    '单种物料填写实物量，多种物料按套备料。填 0 或留空可跳过这次领料。共用物料按交期、订货单号和行号分配。下表列出各仓的实际物料数量。',
-                dense: true,
-              ),
-              if (!_uncertain &&
-                  (_submitError == null || _liveMaxima.isNotEmpty))
-                Padding(
-                  padding: const EdgeInsetsDirectional.only(
-                    start: UtenSpacing.s8,
-                  ),
-                  child: Semantics(
-                    liveRegion: true,
-                    child: Text(
-                      _liveMaxima.isNotEmpty
-                          ? '库存不足'
-                          : _previewDirty
-                          ? '待核对库存'
-                          : preview?.lines.isNotEmpty == true
-                          ? '库存满足'
-                          : '暂无可领',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: _liveMaxima.isEmpty
-                            ? null
-                            : theme.colorScheme.error,
-                      ),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-          if (_notice != null) ...[
-            const SizedBox(height: UtenSpacing.s8),
-            Semantics(
-              liveRegion: true,
-              child: Text(
-                _notice!,
-                key: const Key('subcontract-draw-request-notice'),
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.tertiary,
-                ),
-              ),
-            ),
-          ],
-          if (_submitError != null) ...[
-            const SizedBox(height: UtenSpacing.s8),
-            Semantics(
-              liveRegion: true,
-              child: Text(
-                _submitError!,
-                key: const Key('subcontract-draw-request-error'),
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.error,
-                ),
-              ),
-            ),
-          ],
-          const SizedBox(height: UtenSpacing.s12),
-          _quantityInputs(),
-        ],
+    Widget line(String text, Key key, Color color) => Padding(
+      padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
+      child: Semantics(
+        liveRegion: true,
+        child: Text(
+          text,
+          key: key,
+          style: theme.textTheme.bodyMedium?.copyWith(color: color),
+        ),
       ),
     );
+    return [
+      if (_notice case final notice?)
+        line(
+          notice,
+          const Key('subcontract-draw-request-notice'),
+          theme.colorScheme.tertiary,
+        ),
+      if (_submitError case final error?)
+        line(
+          error,
+          const Key('subcontract-draw-request-error'),
+          theme.colorScheme.error,
+        ),
+    ];
   }
 
-  Widget _quantityInputs() => LayoutBuilder(
-    builder: (context, constraints) {
-      final theme = Theme.of(context);
-      final cardWidth = constraints.maxWidth.clamp(0.0, 340.0);
-      return Wrap(
-        key: const Key('subcontract-draw-request-tasks'),
-        spacing: UtenSpacing.s12,
-        runSpacing: UtenSpacing.s12,
-        children: [
-          for (final id in _order)
-            if (_tasks[id] case final task?)
-              SizedBox(
-                width: cardWidth.toDouble(),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '${_label(task.orderBillNo)} · ${_label(task.goodsName)}',
-                      style: theme.textTheme.bodyMedium,
-                    ),
-                    Text(
-                      _maximumLabel(task),
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                    const SizedBox(height: UtenSpacing.s4),
-                    UtenInput(
-                      key: ValueKey('subcontract-draw-request-qty-$id'),
-                      label: task.usesMaterialQuantity
-                          ? '本次领料${task.materialUnitName.isEmpty ? '' : '（${task.materialUnitName}）'}'
-                          : '按套备料（套）',
-                      controller: _quantities[id],
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                      enabled:
-                          !_saving && !_loading && !_uncertain && !_confirming,
-                      onChanged: _quantityChanged,
-                      errorMessage: _quantityError(id),
-                    ),
-                  ],
-                ),
-              ),
-        ],
-      );
-    },
-  );
-
-  String _maximumLabel(SubcontractDrawPreviewTask task) {
-    final live = _liveMaxima[task.orderItemId];
-    final qty = formatExactQtyWithUnit(
-      live ?? task.batchInputMaxText,
-      task.usesMaterialQuantity ? task.materialUnitName : '套',
-    );
-    if (qty.isEmpty) return '本批可领 —';
-    final checked =
-        !_previewDirty &&
-        (_preview?.tasks.any((row) => row.orderItemId == task.orderItemId) ??
-            false);
-    return '${live != null || checked ? '本批可领' : '上次核对可领'} $qty';
-  }
-
-  Widget _linesTable() => MasterDataTableView<SubcontractDrawPreviewLine>(
+  Widget _table() => MasterDataTableView<SubcontractDrawPreviewLine>(
+    // 第三轮改版合成一张表：新表位，旧任务表/分配表的存量布局自然作废。
     tableKey:
-        'features.subcontract.pages.subcontract_draw_request_page.SubcontractDrawRequestPageState._linesTable.1',
+        'features.subcontract.pages.subcontract_draw_request_page.SubcontractDrawRequestPageState._table.1',
     key: const Key('subcontract-draw-request-lines'),
-    primary: true,
-    bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
+    embedded: true,
+    stickyHeaderPinned: _tablePinned,
+    // 不开放「表头设置」：隐藏输入列后仍能按默认量提交，看不到自己领了多少。
+    showColumnChooser: false,
     facets: const {},
     nullCounts: const {},
     filters: const {},
@@ -793,7 +789,8 @@ class _SubcontractDrawRequestPageState
         sortable: true,
         filterFromRows: true,
         width: 160,
-        value: (line) => _label(line.warehouseName),
+        value: (line) =>
+            line.warehouseId == null ? '未确定' : _label(line.warehouseName),
       ),
       MasterColumnDef(
         key: 'goodsName',
@@ -817,46 +814,118 @@ class _SubcontractDrawRequestPageState
         width: 90,
         value: (line) => _label(line.colorName),
       ),
-      // 2026-10-10 数量+单位口径：单位内联在数量后(如 `12 PCS`)，独立单位列删除；
-      // 原数量文本与单位同列显示，不对已记值取位。
       MasterColumnDef(
         key: 'qty',
-        label: '本次领料数量',
-        sortable: true,
-        exactValueOf: (line) => line.quantityText('qty'),
-        width: 130,
+        label: '领料数量',
+        info: _quantityHelp,
+        width: 230,
         type: 'number',
-        value: (line) =>
-            formatExactQtyWithUnit(line.quantityText('qty'), line.unitName),
+        value: (line) => _rawInput(line.identity),
+        exactValueOf: (line) => _rawInput(line.identity),
+        exactListenableOf: (line) => _inputs[line.identity],
+        cellBuilder: (context, line) => _quantityCell(line),
       ),
+      // 可用量只作提示：以最近一次核对为准，改动后标「上次核对」。
       MasterColumnDef(
         key: 'warehouseAvailableQty',
         label: '仓库可用',
         sortable: true,
         exactValueOf: (line) => line.quantityText('warehouseAvailableQty'),
-        width: 120,
+        width: 150,
         type: 'number',
         value: (line) => formatExactQtyWithUnit(
           line.quantityText('warehouseAvailableQty'),
           line.unitName,
         ),
+        cellBuilder: _availableCell,
       ),
       MasterColumnDef(
-        key: 'task',
-        label: '委外任务',
+        key: 'orderBillNo',
+        label: '委外单号',
         sortable: true,
         filterFromRows: true,
-        width: 200,
-        value: (line) {
-          final task = _tasks[line.orderItemId];
-          if (task == null) return '—';
-          return '${_label(task.orderBillNo)} · ${_label(task.goodsName)}';
-        },
+        width: 160,
+        value: (line) => _label(_tasks[line.orderItemId]?.orderBillNo),
+      ),
+      MasterColumnDef(
+        key: 'orderGoodsName',
+        label: '委外件名称',
+        sortable: true,
+        width: 180,
+        value: (line) => _label(_tasks[line.orderItemId]?.goodsName),
       ),
     ],
-    items: _previewDirty ? const [] : _preview?.lines ?? const [],
-    emptyMessage: _previewDirty ? '核对库存后显示出仓物料' : '本次没有可发出的物料',
+    items: _rows,
+    emptyMessage: '本次没有可发出的物料',
   );
+
+  Widget _quantityCell(SubcontractDrawPreviewLine line) {
+    final error = _quantityError(line);
+    final unavailable = line.warehouseId == null;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: UtenInput(
+                key: ValueKey('subcontract-draw-request-qty-${line.identity}'),
+                controller: _inputs[line.identity],
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                enabled: _inputEnabled && !unavailable,
+                onChanged: _quantityChanged,
+                errorMessage: error,
+              ),
+            ),
+            if (line.unitName.isNotEmpty) ...[
+              const SizedBox(width: UtenSpacing.s8),
+              Text(line.unitName),
+            ],
+          ],
+        ),
+        // 输入框自身的错误已由单元格语义播报，这里只补可见文字。
+        if (error != null)
+          ExcludeSemantics(child: UtenFieldMessage.error(error, maxLines: 2)),
+        if (unavailable)
+          const ExcludeSemantics(
+            child: UtenFieldMessage.autofill('该物料暂无可用库存'),
+          ),
+      ],
+    );
+  }
+
+  bool get _availabilityCurrent => !_previewDirty;
+
+  Widget _availableCell(
+    BuildContext context,
+    SubcontractDrawPreviewLine line,
+  ) {
+    final text = formatExactQtyWithUnit(
+      line.quantityText('warehouseAvailableQty'),
+      line.unitName,
+    );
+    if (text.isEmpty) return const Text('—');
+    final colors = Theme.of(context).colorScheme;
+    final exceeded = _liveRowMaxima.containsKey(line.identity) ||
+        _liveLineMaxima.containsKey(
+          '${line.orderItemId}|${line.planItemId}',
+        );
+    return Text(
+      _availabilityCurrent ? text : '上次核对 $text',
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(
+        color: exceeded
+            ? colors.error
+            : _availabilityCurrent
+            ? null
+            : colors.onSurfaceVariant,
+      ),
+    );
+  }
 
   static String _message(ApiException error) =>
       error.fieldErrors?.firstOrNull?.message.trim().isNotEmpty == true

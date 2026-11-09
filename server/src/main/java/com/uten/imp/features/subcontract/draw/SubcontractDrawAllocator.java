@@ -50,12 +50,23 @@ public final class SubcontractDrawAllocator {
                 BigDecimal neededQty, BigDecimal coveredQty, List<Stock> stocks) {
     }
 
-    /** 一个委外任务(订货明细); materialShareQty = Qm(套数封顶); requestedQty 为 null 时取本批可领。 */
+    /** 一个委外任务(订货明细); materialShareQty = Qm(套数封顶); requestedQty 为 null 时取本批可领。
+     *  directed 非空 = 2026-11-09 按行领料: 数量逐(计划行,仓)给出, qty/materialQty 必须为 null。 */
     record Task(UUID orderItemId, UUID orderId, BigDecimal materialShareQty,
-                BigDecimal requestedQty, BigDecimal requestedMaterialQty, List<Line> lines) {
+                BigDecimal requestedQty, BigDecimal requestedMaterialQty, List<Line> lines,
+                List<DirectedTake> directed) {
         Task(UUID orderItemId, UUID orderId, BigDecimal materialShareQty, BigDecimal requestedQty, List<Line> lines) {
-            this(orderItemId, orderId, materialShareQty, requestedQty, null, lines);
+            this(orderItemId, orderId, materialShareQty, requestedQty, null, lines, null);
         }
+
+        Task(UUID orderItemId, UUID orderId, BigDecimal materialShareQty, BigDecimal requestedQty,
+                BigDecimal requestedMaterialQty, List<Line> lines) {
+            this(orderItemId, orderId, materialShareQty, requestedQty, requestedMaterialQty, lines, null);
+        }
+    }
+
+    /** 2026-11-09 按行领料的一条输入: 该仓本次要领的实物量(基本单位)。 */
+    record DirectedTake(UUID planItemId, UUID warehouseId, BigDecimal qty) {
     }
 
     /** 一个仓里本次要领的一段(基本单位), warehouseAvailableQty 为分配前该仓本行可动用量。 */
@@ -65,10 +76,25 @@ public final class SubcontractDrawAllocator {
     }
 
     record TaskResult(UUID orderItemId, BigDecimal completeQty, BigDecimal batchDrawableQty,
-                      BigDecimal qty, boolean exceeded, MaterialResult material) {
+                      BigDecimal qty, boolean exceeded, MaterialResult material,
+                      List<RowExcess> rowExcesses) {
+        TaskResult(UUID orderItemId, BigDecimal completeQty, BigDecimal batchDrawableQty,
+                   BigDecimal qty, boolean exceeded, MaterialResult material) {
+            this(orderItemId, completeQty, batchDrawableQty, qty, exceeded, material, List.of());
+        }
+
+        TaskResult {
+            rowExcesses = rowExcesses == null ? List.of() : List.copyOf(rowExcesses);
+        }
+
         boolean hasQuantity() {
             return (material == null ? qty : material.qty()).signum() > 0;
         }
+    }
+
+    /** 按行领料的超限事实(2026-11-09): warehouseId 为 null = 整条计划行超限, 否则该仓超限;
+     *  requested 为该行实际填写量(超限行不进切片, 回显只能随身带)。 */
+    record RowExcess(UUID planItemId, UUID warehouseId, BigDecimal maximum, BigDecimal requested) {
     }
 
     record MaterialResult(UUID planItemId, BigDecimal maximum, BigDecimal qty, boolean requested) {
@@ -127,6 +153,11 @@ public final class SubcontractDrawAllocator {
             BigDecimal batch = task.lines().isEmpty()
                     ? BigDecimal.ZERO
                     : reach.subtract(complete).max(BigDecimal.ZERO);
+            if (task.directed() != null) {
+                TaskResult directed = directedResult(task, complete, batch, publicUsed, slices);
+                results.add(directed);
+                continue;
+            }
             BigDecimal qty = task.requestedQty() == null ? batch : task.requestedQty();
             MaterialResult material = null;
             boolean exceeded = qty.compareTo(batch) > 0;
@@ -222,6 +253,83 @@ public final class SubcontractDrawAllocator {
 
     public static BigDecimal materialMaximum(BigDecimal required, BigDecimal covered, BigDecimal available) {
         return available.min(required.subtract(covered).max(BigDecimal.ZERO)).setScale(SCALE, RoundingMode.DOWN);
+    }
+
+    /**
+     * 按行领料(2026-11-09): 数量逐(计划行, 仓)给出, 每行先吃该仓专属批次、余量占该仓公共,
+     * 与自动分配同一口径; 任务间的公共库存竞争仍按任务顺序(交期、单号、行号)扣减。
+     * 行内允许不成套(各物料独立取量); 套数进度 = LEAST(Qm, MIN_i sets(covered_i+physical_i)) − complete。
+     * 超限逐行回报: 整行超限(合计 &gt; 本批该行可领)给 warehouseId=null, 单仓超限给具体仓。
+     */
+    private static TaskResult directedResult(Task task, BigDecimal complete, BigDecimal batch,
+                                             Map<PublicKey, BigDecimal> publicUsed, List<Slice> slices) {
+        Map<UUID, List<DirectedTake>> byLine = new LinkedHashMap<>();
+        for (DirectedTake take : task.directed()) {
+            if (take.qty() == null || take.qty().signum() <= 0) {
+                continue;
+            }
+            byLine.computeIfAbsent(take.planItemId(), ignored -> new ArrayList<>()).add(take);
+        }
+        BigDecimal reach = task.materialShareQty();
+        List<RowExcess> excesses = new ArrayList<>();
+        List<Slice> taskSlices = new ArrayList<>();
+        boolean exceeded = false;
+        BigDecimal singleMaximum = null;
+        BigDecimal singlePhysical = BigDecimal.ZERO;
+        for (Line line : task.lines()) {
+            List<DirectedTake> takes = byLine.get(line.planItemId());
+            BigDecimal physical = BigDecimal.ZERO;
+            BigDecimal maximum = null;
+            if (takes != null) {
+                maximum = materialMaximum(line.neededQty(), line.coveredQty(), available(publicUsed, line));
+                BigDecimal total = takes.stream().map(DirectedTake::qty)
+                        .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(SCALE, RoundingMode.DOWN);
+                if (total.compareTo(maximum) > 0) {
+                    // 整行超限: 本行一张不发、不占公共库存, 只回报行级上限。
+                    exceeded = true;
+                    excesses.add(new RowExcess(line.planItemId(), null, maximum, total));
+                    takes = null;
+                }
+            }
+            if (takes != null) {
+                Map<UUID, Stock> stockByWarehouse = new LinkedHashMap<>();
+                for (Stock stock : line.stocks()) {
+                    stockByWarehouse.putIfAbsent(stock.warehouseId(), stock);
+                }
+                for (DirectedTake take : takes) {
+                    Stock stock = stockByWarehouse.get(take.warehouseId());
+                    if (stock == null) {
+                        continue;
+                    }
+                    BigDecimal cap = positive(stock.exactQty()).add(publicLeft(publicUsed, line, stock));
+                    if (take.qty().compareTo(cap) > 0) {
+                        exceeded = true;
+                        excesses.add(new RowExcess(line.planItemId(), stock.warehouseId(), cap, take.qty()));
+                        continue;
+                    }
+                    physical = physical.add(take.qty());
+                    BigDecimal publicTake = take.qty().subtract(positive(stock.exactQty())).max(BigDecimal.ZERO);
+                    if (publicTake.signum() > 0) {
+                        publicUsed.merge(new PublicKey(stock.warehouseId(), line.goodsId(), line.colorId()),
+                                publicTake, BigDecimal::add);
+                    }
+                    taskSlices.add(new Slice(task.orderItemId(), task.orderId(), line.planItemId(),
+                            line.goodsId(), line.colorId(), stock.warehouseId(), stock.warehouseCode(),
+                            stock.warehouseName(), take.qty(), cap));
+                }
+                if (task.lines().size() == 1) {
+                    singleMaximum = maximum;
+                    singlePhysical = physical;
+                }
+            }
+            reach = reach.min(sets(line.coveredQty().add(physical), line.perUnitQty()));
+        }
+        slices.addAll(taskSlices);
+        BigDecimal qty = task.lines().isEmpty() ? BigDecimal.ZERO : reach.subtract(complete).max(BigDecimal.ZERO);
+        MaterialResult material = task.lines().size() == 1
+                ? new MaterialResult(task.lines().getFirst().planItemId(), singleMaximum, singlePhysical, true)
+                : null;
+        return new TaskResult(task.orderItemId(), complete, batch, qty, exceeded, material, excesses);
     }
 
     public static BigDecimal materialBaseQuantity(BigDecimal required, BigDecimal orderUnits, BigDecimal basePerUnit) {

@@ -202,12 +202,27 @@ public final class SubcontractDrawContracts {
     }
 
     /** qty is the order-unit budget equivalent. A single frozen material also accepts its exact physical quantity. */
-    public record DrawItemRequest(UUID orderItemId, BigDecimal qty, BigDecimal materialQty, UUID materialPlanItemId) {
+    public record DrawItemRequest(UUID orderItemId, BigDecimal qty, BigDecimal materialQty, UUID materialPlanItemId,
+                                  List<DrawLineRequest> lines) {
         public DrawItemRequest(UUID orderItemId, BigDecimal qty) {
-            this(orderItemId, qty, null, null);
+            this(orderItemId, qty, null, null, null);
         }
+
+        public DrawItemRequest(UUID orderItemId, BigDecimal qty, BigDecimal materialQty, UUID materialPlanItemId) {
+            this(orderItemId, qty, materialQty, materialPlanItemId, null);
+        }
+
         public String getQtyExact(){return com.uten.imp.common.util.DecimalText.of(qty);}
 
+    }
+
+    /**
+     * 2026-11-09 第三轮改版: 领料数量直接落在「计划行 × 仓库」行上。每行是本次要从
+     * 该仓领出的实物量; 行集合为空表示该任务本次不领。行只指向该任务自己的开放
+     * 计划行与其有量的仓, 越界在 computeBatch 拒绝; 与 qty/materialQty 互斥。
+     */
+    public record DrawLineRequest(UUID planItemId, UUID warehouseId, BigDecimal qty) {
+        public String getQtyExact(){return com.uten.imp.common.util.DecimalText.of(qty);}
     }
 
     public record DrawPreviewRequest(List<DrawItemRequest> items, boolean physicalDefaults) {

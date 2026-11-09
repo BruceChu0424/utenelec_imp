@@ -1,4 +1,5 @@
-// 委外领料页：联合分配、实物或套数输入、库存校验和幂等提交。
+// 委外领料页(2026-11-09 第三轮单表改版)：行内按(计划行×仓库)填写领料数量、
+// 分批领料、联合分配默认量、库存核对(按行契约)、行级 409 标红与幂等提交。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -19,15 +20,28 @@ import 'fake_subcontract_draw_gateway.dart';
 
 const _submitKey = Key('subcontract-draw-request-submit');
 const _checkKey = Key('subcontract-draw-request-stock-check');
+const _linesKey = Key('subcontract-draw-request-lines');
+const _errorKey = Key('subcontract-draw-request-error');
+const _fillKey = Key('subcontract-draw-request-fill-maximum');
 
-/// 仓库里物料A 的实时库存(kg)，409 场景用来模拟别人先领走一部分。
+Finder _inLines(Finder matching) =>
+    find.descendant(of: find.byKey(_linesKey), matching: matching);
+
+Finder _quantity(String identity) =>
+    find.byKey(ValueKey('subcontract-draw-request-qty-$identity'));
+
+const _rowA1 = 'item-1|plan-a|wh-1';
+const _rowB1 = 'item-1|plan-b|wh-1';
+const _rowA2 = 'item-2|plan-a|wh-1';
+
+/// 仓库 wh-1 里物料A 的实时库存(kg)，409 场景用来模拟别人先领走一部分。
 class _Stock {
   _Stock(this.kg);
   int kg;
 }
 
-/// 两个任务共用物料A(仓库共 [capacity] kg，每个委外件 2 kg)：按顺序联合分配，
-/// item-1 自身最多可领 40，item-2 自身最多可领 80。item-1 另需物料B(每件 1 个)。
+/// 两个任务共用物料A(仓库共 [capacity] kg，每个委外件 2 kg)：item-1 另需物料B(每件 1 个)。
+/// 候选行 = 计划行 × 仓；默认量来自联合分配，按行提交(lines)时原样回显并扣减共享库存。
 (FakeSubcontractDrawGateway, _Stock) _gateway({int capacity = 200}) {
   final gateway = FakeSubcontractDrawGateway();
   final stock = _Stock(capacity);
@@ -35,18 +49,48 @@ class _Stock {
     var left = stock.kg / 2;
     final tasks = <Map<String, dynamic>>[];
     final lines = <Map<String, dynamic>>[];
+    var documents = 0;
     for (final item in items) {
       final own = item.orderItemId == 'item-1' ? 40 : 80;
       final batch = own < left ? own : left;
-      final qty = item.qty == null ? batch : num.parse(item.qty.toString());
-      if (qty > batch + 0.0001) {
-        throw ApiException(
-          'CONFLICT',
-          '${item.orderItemId} 本批最多可领 $batch',
-          httpStatus: 409,
-        );
+      double aQty;
+      double bQty = 0;
+      if (item.lines == null) {
+        aQty = batch * 2;
+        if (item.orderItemId == 'item-1') bQty = batch.toDouble();
+      } else {
+        double requested(
+          String planItemId, {
+          String warehouseId = 'wh-1',
+        }) => item.lines!
+            .where((line) =>
+                line.planItemId == planItemId && line.warehouseId == warehouseId)
+            .fold(0, (sum, line) => sum + num.parse(line.qty.toString()));
+        aQty = requested('plan-a');
+        bQty = requested('plan-b');
+        if (aQty > stock.kg + 0.0001) {
+          throw ApiException(
+            'CONFLICT',
+            '物料A 本批最多可领 ${stock.kg}',
+            httpStatus: 409,
+            details: <String, dynamic>{
+              'kind': 'SUBCONTRACT_DRAW_QUANTITY_EXCEEDED',
+              'quantities': <Map<String, dynamic>>[
+                <String, dynamic>{
+                  'orderItemId': item.orderItemId,
+                  'planItemId': 'plan-a',
+                  'warehouseId': 'wh-1',
+                  'maximumQtyExact': stock.kg.toString(),
+                },
+              ],
+            },
+          );
+        }
       }
-      left -= qty;
+      // 套数以约束物料(A, 每件2kg)折算；物料B 每件1个同套。
+      final qty = aQty / 2;
+      num plain(double value) =>
+          value == value.roundToDouble() ? value.toInt() : value;
       tasks.add(
         previewTaskJson(
           item.orderItemId,
@@ -57,25 +101,33 @@ class _Stock {
           goodsName: item.orderItemId == 'item-1' ? '委外件A' : '委外件B',
         ),
       );
-      if (qty > 0) {
-        lines.add(previewLineJson(item.orderItemId, 'plan-a', qty: qty * 2));
-        if (item.orderItemId == 'item-1') {
-          lines.add(
-            previewLineJson(
-              item.orderItemId,
-              'plan-b',
-              goodsId: 'material-b',
-              goodsName: '物料B',
-              qty: qty,
-            ),
-          );
-        }
+      lines.add(
+        previewLineJson(
+          item.orderItemId,
+          'plan-a',
+          qty: plain(aQty),
+          warehouseAvailableQty: stock.kg,
+        ),
+      );
+      if (item.orderItemId == 'item-1') {
+        lines.add(
+          previewLineJson(
+            item.orderItemId,
+            'plan-b',
+            goodsId: 'material-b',
+            goodsName: '物料B',
+            qty: plain(bQty),
+            warehouseAvailableQty: 999,
+          ),
+        );
       }
+      if (aQty + bQty > 0) documents++;
+      left -= qty;
     }
     return SubcontractDrawPreview.fromJson(<String, dynamic>{
       'tasks': tasks,
       'lines': lines,
-      'documentCount': tasks.where((task) => (task['qty'] as num) > 0).length,
+      'documentCount': documents,
     });
   };
   return (gateway, stock);
@@ -160,267 +212,252 @@ Future<void> _tapSubmitAndConfirm(WidgetTester tester) async {
 }
 
 void main() {
-  testWidgets(
-    'first preview allocates shared material and defaults to batch drawable',
-    (tester) async {
-      final (gateway, _) = _gateway();
-      await _pump(tester, gateway);
-      expect(gateway.previews, hasLength(1));
-      expect(
-        gateway.previews.single.map((item) => (item.orderItemId, item.qty)),
-        [('item-1', null), ('item-2', null)],
-      );
-      // 共 100 套物料A：item-1 先占 40，item-2 只剩 60。
-      expect(
-        find.byKey(const Key('subcontract-draw-request-tasks')),
-        findsOneWidget,
-      );
-      expect(
-        find.byWidgetPredicate(
-          (widget) => widget is UtenInput && widget.label == '按套备料（套）',
-        ),
-        findsNWidgets(2),
-      );
-      expect(find.text('库存满足'), findsOneWidget);
-      expect(find.text('2 个委外任务 · 2 种物料 · 预计 2 张出仓单'), findsOneWidget);
-      expect(find.text('领料仓库'), findsOneWidget);
-      expect(find.text('本次领料数量'), findsOneWidget);
-      expect(find.text('80 kg'), findsOneWidget, reason: 'item-1 的物料A按数量+单位内联');
-      expect(find.text('单位'), findsNothing);
-      expect(find.text('本次出仓物料'), findsNothing);
-      expect(_submit(tester).onPressed, isNotNull);
-      expect(find.text('提交领料(2)'), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    },
-  );
-
-  testWidgets(
-    'physical stock check preserves edited quantity and freezes a partial retry',
-    (tester) async {
-      final gateway = FakeSubcontractDrawGateway();
-      var available = 10500;
-      ApiException exceed() => ApiException(
-        'CONFLICT',
-        '库存不足，本批可领 $available 个',
-        httpStatus: 409,
-        details: {
-          'kind': 'SUBCONTRACT_DRAW_QUANTITY_EXCEEDED',
-          'quantities': [
-            {'orderItemId': 'item-1', 'maximumQtyExact': '$available'},
-          ],
-        },
-      );
-      gateway.onPreview = (items) async {
-        final item = items.single;
-        final quantity = int.parse(item.materialQty ?? '$available');
-        expect(item.qty, isNull);
-        if (item.materialQty != null) expect(item.materialPlanItemId, 'plan-a');
-        if (quantity > available) throw exceed();
-        return SubcontractDrawPreview.fromJson({
-          'tasks': [
-            {
-              ...previewTaskJson('item-1', qty: 9090.909),
-              'materialPlanItemId': 'plan-a',
-              'materialUnitName': '个',
-              'materialQtyExact': '$quantity',
-              'materialBatchDrawableQtyExact': '$available',
-            },
-          ],
-          'lines': [previewLineJson('item-1', 'plan-a', qty: quantity)],
-          'documentCount': 1,
-        });
-      };
-      String? committedKey;
-      gateway.onSubmit = (items, key) async {
-        final replayed = key == committedKey;
-        if (!replayed) {
-          available -= int.parse(items.single.materialQty!);
-          committedKey = key;
-          if (available > 0) throw NetworkException();
-        }
-        return SubcontractDrawSubmitResult(
-          issueIds: ['issue'],
-          issueBillNos: ['WF-1'],
-          documentCount: 1,
-          replayed: replayed,
-        );
-      };
-      final results = await _pump(tester, gateway, ids: ['item-1']);
-      final quantity = find.byKey(
-        const ValueKey('subcontract-draw-request-qty-item-1'),
-      );
-      String input() => tester.widget<UtenInput>(quantity).controller!.text;
-      expect(input(), '10500');
-      expect(find.text('本批可领 10500 个'), findsOneWidget);
-      expect(find.textContaining('9090.909'), findsNothing);
-
-      await tester.enterText(quantity, '11000');
-      await tester.pumpAndSettle();
-      expect(_submit(tester).onPressed, isNull);
-      await tester.tap(find.byKey(_checkKey));
-      await tester.pumpAndSettle();
-      expect(input(), '11000');
-      expect(find.text('库存不足'), findsOneWidget);
-      expect(find.text('库存不足，本批可领 10500 个'), findsOneWidget);
-      expect(gateway.submits, isEmpty);
-
-      await tester.tap(find.text('按本批可领量填写'));
-      await tester.pumpAndSettle();
-      expect(input(), '10500');
-      expect(find.text('库存满足'), findsOneWidget);
-
-      await tester.enterText(quantity, '4000');
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(_checkKey));
-      await tester.pumpAndSettle();
-      expect(find.text('库存满足'), findsOneWidget);
-      await _tapSubmitAndConfirm(tester);
-      expect(input(), '4000');
-      expect(tester.widget<UtenInput>(quantity).enabled, isFalse);
-      await tester.tap(find.byKey(_submitKey));
-      await tester.pumpAndSettle();
-      expect(results, [true]);
-      expect(gateway.submits[1].$2, gateway.submits[0].$2);
-      expect(gateway.submits[1].$1.single.toJson(), {
-        'orderItemId': 'item-1',
-        'qty': null,
-        'materialQty': '4000',
-        'materialPlanItemId': 'plan-a',
-      });
-
-      await tester.tap(find.text('打开领料页'));
-      await tester.pumpAndSettle();
-      expect(input(), '6500');
-      await _tapSubmitAndConfirm(tester);
-      expect(gateway.submits.last.$1.single.materialQty, '6500');
-      expect(available, 0);
-      expect(results, [true, true]);
-      expect(tester.takeException(), isNull);
-    },
-  );
-
-  testWidgets(
-    'submit sends quantities with an idempotency key and returns to the task center',
-    (tester) async {
-      final (gateway, _) = _gateway();
-      final results = await _pump(tester, gateway);
-      await _tapSubmitAndConfirm(tester);
-      final (items, key) = gateway.submits.single;
-      expect(items.map((item) => (item.orderItemId, item.qty)), [
-        ('item-1', '40'),
-        ('item-2', '60'),
-      ]);
-      expect(key, startsWith('subcontract-draw-'));
-      expect(results, [true]);
-      expect(find.text('打开领料页'), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    },
-  );
-
-  testWidgets('edited quantities survive a stock change at submit', (
+  testWidgets('single table renders candidate rows with defaults', (
     tester,
   ) async {
     final (gateway, _) = _gateway();
-    gateway.onSubmit = (items, key) async {
-      throw ApiException(
-        'CONFLICT',
-        '委外件B 本批可领 30 套',
-        httpStatus: 409,
-        details: {
-          'kind': 'SUBCONTRACT_DRAW_QUANTITY_EXCEEDED',
-          'quantities': [
-            {'orderItemId': 'item-2', 'maximumQtyExact': '30'},
-          ],
-        },
-      );
-    };
     await _pump(tester, gateway);
-    final first = find.byKey(
-      const ValueKey('subcontract-draw-request-qty-item-1'),
-    );
-    final second = find.byKey(
-      const ValueKey('subcontract-draw-request-qty-item-2'),
-    );
-    final originalSecond = tester.widget<UtenInput>(second).controller!.text;
-    await tester.enterText(first, '20');
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(_checkKey));
-    await tester.pumpAndSettle();
-    await _tapSubmitAndConfirm(tester);
 
-    expect(tester.widget<UtenInput>(first).controller!.text, '20');
-    expect(tester.widget<UtenInput>(second).controller!.text, originalSecond);
-    expect(gateway.previews, hasLength(2));
-    expect(find.text('本批可领 30 套'), findsOneWidget);
-    expect(find.text('库存不足'), findsOneWidget);
-    expect(_submit(tester).onPressed, isNull);
-    expect(tester.takeException(), isNull);
+    // 第三轮改版：一张表，列序 = 领料仓库|物料名称|编号|颜色|领料数量|仓库可用|委外单号|委外件名称。
+    expect(find.text('出仓分配（按仓库）'), findsNothing);
+    expect(find.byKey(const Key('subcontract-draw-request-tasks')), findsNothing);
+    for (final label in [
+      '领料仓库',
+      '物料名称',
+      '编号',
+      '颜色',
+      '领料数量',
+      '仓库可用',
+      '委外单号',
+      '委外件名称',
+    ]) {
+      expect(_inLines(find.text(label)), findsOneWidget, reason: '缺列 $label');
+    }
+    // 默认量 = 联合分配：item-1 领 40(物料A 80kg、物料B 40 个)，item-2 领 60(物料A 120kg)。
+    expect(
+      tester.widget<UtenInput>(_quantity(_rowA1)).controller!.text,
+      '80',
+    );
+    expect(
+      tester.widget<UtenInput>(_quantity(_rowB1)).controller!.text,
+      '40',
+    );
+    expect(
+      tester.widget<UtenInput>(_quantity(_rowA2)).controller!.text,
+      '120',
+    );
+    // 委外单号与委外件名称已拆列，不再拼成「EO · 名称」。
+    expect(_inLines(find.text('WD-001')), findsWidgets);
+    expect(_inLines(find.text('委外件A')), findsWidgets);
+    expect(find.textContaining('·'), findsNothing);
+    expect(_submit(tester).onPressed, isNotNull);
   });
 
-  testWidgets('narrow draw page keeps stock check reachable after editing', (
+  testWidgets('editing a row keeps the table and marks availability stale', (
     tester,
   ) async {
     final (gateway, _) = _gateway();
-    await _pump(tester, gateway, ids: ['item-1'], size: const Size(375, 800));
-    await tester.enterText(
-      find.byKey(const ValueKey('subcontract-draw-request-qty-item-1')),
-      '25',
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(_checkKey));
-    await tester.pumpAndSettle();
-    expect(gateway.previews.last.single.qty, '25');
-    expect(find.text('库存满足'), findsOneWidget);
-    expect(tester.takeException(), isNull);
+    await _pump(tester, gateway);
+
+    await tester.enterText(_quantity(_rowA1), '30');
+    await tester.pump();
+
+    // 行不消失(输入面)，可用量提示为上次核对，提交让位给核对。
+    expect(_quantity(_rowA1), findsOneWidget);
+    expect(_inLines(find.text('上次核对 200 kg')), findsWidgets);
+    expect(_submit(tester).onPressed, isNull);
+    expect(find.byKey(_checkKey), findsOneWidget);
+    expect(find.byKey(_fillKey), findsOneWidget);
   });
 
-  testWidgets('409 re-previews and refills with the live batch drawable', (
+  testWidgets('typing keeps the focused row and controller state', (
+    tester,
+  ) async {
+    final (gateway, _) = _gateway();
+    await _pump(tester, gateway);
+
+    await tester.showKeyboard(_quantity(_rowB1));
+    final editable = find.descendant(
+      of: _quantity(_rowB1),
+      matching: find.byType(EditableText),
+    );
+    final before = tester.state<EditableTextState>(editable);
+    await tester.enterText(_quantity(_rowB1), '25');
+    await tester.pump();
+
+    expect(
+      tester.state<EditableTextState>(editable),
+      same(before),
+      reason: '输入时不能重建输入框',
+    );
+    expect(tester.widget<EditableText>(editable).controller.text, '25');
+  });
+
+  testWidgets('check stock sends directed lines and refreshes availability', (
     tester,
   ) async {
     final (gateway, stock) = _gateway();
-    gateway.onSubmit = (items, key) async {
-      // 别人先领走了一部分物料A：实时只剩 180 kg。
-      stock.kg = 180;
-      throw ApiException('CONFLICT', '委外件B 实时本批可领 50', httpStatus: 409);
-    };
-    final results = await _pump(tester, gateway);
-    await _tapSubmitAndConfirm(tester);
-    expect(gateway.submits, hasLength(1));
-    expect(gateway.previews, hasLength(2));
-    expect(gateway.previews.last.map((item) => item.qty), everyElement(isNull));
+    await _pump(tester, gateway);
+
+    // 分批：item-1 的物料A 只领 30kg(15 套)，物料B 领 15 个。
+    await tester.enterText(_quantity(_rowA1), '30');
+    await tester.enterText(_quantity(_rowB1), '15');
+    // item-2 本次不领。
+    await tester.enterText(_quantity(_rowA2), '');
+    await tester.tap(find.byKey(_checkKey));
+    await tester.pumpAndSettle();
+
+    expect(gateway.previews.last, hasLength(1));
+    final item = gateway.previews.last.single;
+    expect(item.orderItemId, 'item-1');
+    expect(item.lines, hasLength(2));
     expect(
-      find.byKey(const Key('subcontract-draw-request-notice')),
-      findsOneWidget,
+      item.lines,
+      contains(
+        predicate<SubcontractDrawRequestLine>(
+          (line) =>
+              line.planItemId == 'plan-a' &&
+              line.warehouseId == 'wh-1' &&
+              line.qty == '30',
+        ),
+      ),
     );
-    expect(find.textContaining('已按实时本批可领重新填写'), findsOneWidget);
-    expect(results, isEmpty);
+
+    // 核对通过后可提交；可用量回到当前口径(不带「上次核对」)。
     expect(_submit(tester).onPressed, isNotNull);
-    expect(tester.takeException(), isNull);
+    expect(_inLines(find.text('上次核对 200 kg')), findsNothing);
+    expect(stock.kg, 200, reason: '核对是只读的，不扣库存');
   });
 
-  testWidgets(
-    'reopening the page with the same quantities submits with a new key',
-    (tester) async {
-      // 撤回 / 退料后已领、可领回到原值：同样的数量再领也是一次新的领料。
-      final (gateway, _) = _gateway();
-      final results = await _pump(tester, gateway);
-      await _tapSubmitAndConfirm(tester);
-      expect(results, [true]);
-      await tester.tap(find.text('打开领料页'));
-      await tester.pumpAndSettle();
-      await _tapSubmitAndConfirm(tester);
-      expect(gateway.submits, hasLength(2));
-      expect(
-        gateway.submits.first.$1.map((item) => (item.orderItemId, item.qty)),
-        gateway.submits.last.$1.map((item) => (item.orderItemId, item.qty)),
-      );
-      expect(gateway.submits.first.$2, isNot(gateway.submits.last.$2));
-      expect(gateway.submits.last.$2, startsWith('subcontract-draw-'));
-      expect(tester.takeException(), isNull);
-    },
-  );
+  testWidgets('submit sends grouped directed items per task', (tester) async {
+    final (gateway, _) = _gateway();
+    await _pump(tester, gateway);
 
-  testWidgets('a definitive rejection rotates the key for the next attempt', (
+    expect(find.textContaining('提交领料(2)'), findsOneWidget);
+    await _tapSubmitAndConfirm(tester);
+
+    expect(gateway.submits, hasLength(1));
+    final (items, key) = gateway.submits.single;
+    expect(items, hasLength(2));
+    final first = items.singleWhere((item) => item.orderItemId == 'item-1');
+    expect(
+      first.lines!.map((line) => '${line.planItemId}:${line.qty}'),
+      containsAll(['plan-a:80', 'plan-b:40']),
+    );
+    final second = items.singleWhere((item) => item.orderItemId == 'item-2');
+    expect(
+      second.lines!.map((line) => '${line.planItemId}:${line.qty}'),
+      ['plan-a:120'],
+    );
+    expect(key, isNotEmpty);
+  });
+
+  testWidgets('row level stock error marks the row and keeps typed value', (
+    tester,
+  ) async {
+    final (gateway, stock) = _gateway();
+    await _pump(tester, gateway);
+
+    // 别人先把共享的物料A 领到只剩 50：行级 409 带回 (计划行, 仓) 的上限。
+    stock.kg = 50;
+    await tester.enterText(_quantity(_rowA1), '70');
+    await tester.pump();
+    await tester.tap(find.byKey(_checkKey));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(_errorKey), findsOneWidget);
+    expect(_inLines(find.text('上次核对 200 kg')), findsWidgets);
+    expect(
+      tester.widget<UtenInput>(_quantity(_rowA1)).controller!.text,
+      '70',
+      reason: '手填量保留，等用户改小',
+    );
+    expect(_submit(tester).onPressed, isNull, reason: '超限后必须重新核对');
+  });
+
+  testWidgets('blank rows skip their task in the submission', (tester) async {
+    final (gateway, _) = _gateway();
+    await _pump(tester, gateway);
+
+    await tester.enterText(_quantity(_rowA1), '');
+    await tester.enterText(_quantity(_rowB1), '');
+    await tester.tap(find.byKey(_checkKey));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('提交领料(1)'), findsOneWidget);
+    await _tapSubmitAndConfirm(tester);
+    final (items, _) = gateway.submits.single;
+    expect(items, hasLength(1));
+    expect(items.single.orderItemId, 'item-2');
+  });
+
+  testWidgets('invalid input shows an error and blocks submit', (tester) async {
+    final (gateway, _) = _gateway();
+    await _pump(tester, gateway);
+
+    await tester.enterText(_quantity(_rowA1), '12.34567');
+    await tester.pump();
+
+    expect(_inLines(find.text('请输入非负数，最多 4 位小数')), findsOneWidget);
+    expect(_submit(tester).onPressed, isNull);
+  });
+
+  testWidgets('unassigned warehouse row stays visible but not editable', (
+    tester,
+  ) async {
+    final (gateway, _) = _gateway();
+    // item-2 的物料A 四处无库存：服务端出一条未定仓 0 行，任务不消失。
+    gateway.onPreview = (items) async {
+      final tasks = <Map<String, dynamic>>[];
+      const lines = <Map<String, dynamic>>[
+        {
+          'orderItemId': 'item-2',
+          'planItemId': 'plan-a',
+          'warehouseId': null,
+          'warehouseName': null,
+          'goodsId': 'material-a',
+          'goodsCode': 'M-material-a',
+          'goodsName': '物料A',
+          'colorId': 'color-1',
+          'colorName': '本色',
+          'unitId': 'unit-kg',
+          'unitName': 'kg',
+          'qty': 0,
+          'qtyExact': '0',
+          'warehouseAvailableQty': 0,
+        },
+      ];
+      tasks.add(previewTaskJson('item-2', batchDrawableQty: 0, qty: 0));
+      return SubcontractDrawPreview.fromJson(<String, dynamic>{
+        'tasks': tasks,
+        'lines': lines,
+        'documentCount': 0,
+      });
+    };
+    await _pump(tester, gateway, ids: const ['item-2']);
+
+    expect(_inLines(find.text('未确定')), findsOneWidget);
+    expect(_inLines(find.text('该物料暂无可用库存')), findsOneWidget);
+    expect(tester.widget<UtenInput>(_quantity('item-2|plan-a|')).enabled, isFalse);
+    expect(find.textContaining('提交领料(0)'), findsOneWidget);
+    expect(_submit(tester).onPressed, isNull);
+  });
+
+  testWidgets('fill maximum restores the server defaults', (tester) async {
+    final (gateway, _) = _gateway();
+    await _pump(tester, gateway);
+
+    await tester.enterText(_quantity(_rowA1), '7');
+    await tester.pump();
+    await tester.tap(find.byKey(_fillKey));
+    await tester.pumpAndSettle();
+
+    expect(tester.widget<UtenInput>(_quantity(_rowA1)).controller!.text, '80');
+    expect(find.byKey(_checkKey), findsNothing);
+    expect(_submit(tester).onPressed, isNotNull);
+  });
+
+  testWidgets('uncertain submit retries the same directed items', (
     tester,
   ) async {
     final (gateway, _) = _gateway();
@@ -428,216 +465,60 @@ void main() {
     gateway.onSubmit = (items, key) async {
       attempts++;
       if (attempts == 1) {
-        throw ApiException('VALIDATION', '委外商已停用', httpStatus: 400);
+        throw NetworkException();
       }
-      return const SubcontractDrawSubmitResult(
-        issueIds: ['issue-1'],
-        issueBillNos: ['WF-1'],
-        documentCount: 2,
-        replayed: false,
-      );
-    };
-    final results = await _pump(tester, gateway);
-    await _tapSubmitAndConfirm(tester);
-    expect(find.text('委外商已停用'), findsOneWidget);
-    expect(results, isEmpty);
-    await _tapSubmitAndConfirm(tester);
-    expect(gateway.submits, hasLength(2));
-    expect(gateway.submits.first.$2, isNot(gateway.submits.last.$2));
-    expect(results, [true]);
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets(
-    'a 409 preview offers only the way back to the task center and refreshes it',
-    (tester) async {
-      final gateway = FakeSubcontractDrawGateway();
-      gateway.onPreview = (items) async => throw ApiException(
-        'CONFLICT',
-        '所选委外任务已领满、已结束领料或已不在您的可见范围内，请刷新后重新选择',
-        httpStatus: 409,
-      );
-      final results = await _pump(tester, gateway);
-      expect(
-        find.byKey(const Key('subcontract-draw-request-load-error')),
-        findsOneWidget,
-      );
-      expect(find.text('重新加载'), findsNothing);
-      expect(gateway.previews, hasLength(1));
-      await tester.tap(find.text('返回委外任务中心'));
-      await tester.pumpAndSettle();
-      expect(gateway.previews, hasLength(1), reason: '不再重试同一批');
-      expect(results, [true]);
-      expect(find.text('打开领料页'), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    },
-  );
-
-  testWidgets('a non-conflict preview failure still offers reload', (
-    tester,
-  ) async {
-    final gateway = FakeSubcontractDrawGateway();
-    var calls = 0;
-    gateway.onPreview = (items) async {
-      calls++;
-      throw ApiException('INTERNAL', '服务暂时不可用', httpStatus: 500);
+      return SubcontractDrawSubmitResult.fromJson(const <String, dynamic>{
+        'issueIds': ['issue-1'],
+        'issueBillNos': ['SL-001'],
+        'documentCount': 1,
+        'replayed': false,
+      });
     };
     await _pump(tester, gateway);
-    expect(find.text('重新加载'), findsOneWidget);
-    expect(find.text('返回委外任务中心'), findsNothing);
-    await tester.tap(find.text('重新加载'));
-    await tester.pumpAndSettle();
-    expect(calls, 2);
-    expect(tester.takeException(), isNull);
-  });
 
-  testWidgets(
-    'unconfirmed result keeps the same batch and key through a refused retry',
-    (tester) async {
-      final (gateway, _) = _gateway();
-      var attempts = 0;
-      gateway.onSubmit = (items, key) async {
-        attempts++;
-        if (attempts == 1) throw NetworkException();
-        if (attempts == 2) {
-          throw ApiException('FORBIDDEN', '暂时无权核对领料', httpStatus: 403);
-        }
-        return const SubcontractDrawSubmitResult(
-          issueIds: ['issue-1'],
-          issueBillNos: ['WF-1'],
-          documentCount: 2,
-          replayed: true,
-        );
-      };
-      final results = await _pump(tester, gateway);
-      await _tapSubmitAndConfirm(tester);
-      expect(find.text('重试领料'), findsOneWidget);
-      await tester.tap(find.byKey(_submitKey));
-      await tester.pumpAndSettle();
-      expect(find.text('重试领料'), findsOneWidget);
-      expect(results, isEmpty);
-      await tester.tap(find.byKey(_submitKey));
-      await tester.pumpAndSettle();
-      expect(gateway.submits, hasLength(3));
-      expect(
-        gateway.submits.map((attempt) => attempt.$2),
-        everyElement(gateway.submits.first.$2),
-      );
-      expect(results, [true]);
-      expect(tester.takeException(), isNull);
-    },
-  );
+    await _tapSubmitAndConfirm(tester);
+    expect(find.text('重试领料'), findsOneWidget);
 
-  testWidgets('submit asks for confirmation first; cancel keeps the batch', (
-    tester,
-  ) async {
-    final (gateway, _) = _gateway();
-    await _pump(tester, gateway);
     await tester.tap(find.byKey(_submitKey));
     await tester.pumpAndSettle();
-    expect(find.text('提交领料'), findsOneWidget);
-    expect(find.textContaining('将提交 2 个委外任务的领料'), findsOneWidget);
-    expect(find.textContaining('预计生成 2 张出仓单'), findsOneWidget);
-    expect(gateway.submits, isEmpty);
-    await tester.tap(find.text('取消'));
-    await tester.pumpAndSettle();
-    expect(gateway.submits, isEmpty);
-    expect(find.text('提交领料(2)'), findsOneWidget);
-    expect(tester.takeException(), isNull);
+
+    expect(attempts, 2);
+    expect(gateway.submits, hasLength(2));
+    final first = gateway.submits.first.$1;
+    final second = gateway.submits.last.$1;
+    expect(
+      [
+        for (final item in second)
+          '${item.orderItemId}:${[
+                for (final line in item.lines ?? const <SubcontractDrawRequestLine>[])
+                '${line.planItemId}=${line.qty}',
+              ].join(',')}',
+      ],
+      equals([
+        for (final item in first)
+          '${item.orderItemId}:${[
+                for (final line in item.lines ?? const <SubcontractDrawRequestLine>[])
+                '${line.planItemId}=${line.qty}',
+              ].join(',')}',
+      ]),
+      reason: '续传保持原提交内容',
+    );
   });
 
-  testWidgets(
-    'native quantity text survives display and an unknown same-key retry',
-    (tester) async {
-      const native = '0.123456789012345678901234';
-      final gateway = FakeSubcontractDrawGateway();
-      gateway.onPreview = (items) async => SubcontractDrawPreview.fromJson({
-        'tasks': [
-          {...previewTaskJson('item-1'), 'qtyExact': native},
-        ],
-        'lines': [
-          {...previewLineJson('item-1', 'plan-a'), 'qtyExact': native},
-        ],
-        'documentCount': 1,
-      });
-      var attempts = 0;
-      gateway.onSubmit = (items, key) async {
-        expect(items.single.toJson()['qty'], native);
-        if (attempts++ == 0) throw NetworkException();
-        return const SubcontractDrawSubmitResult(
-          issueIds: ['issue-native'],
-          issueBillNos: ['WF-native'],
-          documentCount: 1,
-          replayed: true,
-        );
-      };
-      await _pump(tester, gateway);
-      expect(find.text('$native kg'), findsOneWidget);
-      await _tapSubmitAndConfirm(tester);
-      await tester.tap(find.byKey(_submitKey));
-      await tester.pumpAndSettle();
-      expect(gateway.submits, hasLength(2));
-      expect(gateway.submits.first.$2, gateway.submits.last.$2);
-      expect(
-        gateway.submits.first.$1.single.toJson(),
-        gateway.submits.last.$1.single.toJson(),
-      );
-      expect(tester.takeException(), isNull);
-    },
-  );
-
-  testWidgets(
-    'legacy binary preview alone cannot authorize a new native write',
-    (tester) async {
-      final gateway = FakeSubcontractDrawGateway();
-      final task = previewTaskJson('item-1')..remove('qtyExact');
-      gateway.onPreview = (items) async => SubcontractDrawPreview.fromJson({
-        'tasks': [task],
-        'lines': [previewLineJson('item-1', 'plan-a')],
-        'documentCount': 1,
-      });
-      await _pump(tester, gateway);
-      expect(_submit(tester).onPressed, isNull);
-      expect(gateway.submits, isEmpty);
-      expect(tester.takeException(), isNull);
-    },
-  );
-
-  for (final notWritten in [false, null]) {
-    testWidgets(
-      'precision 422 notWritten=$notWritten retains the original command and key',
-      (tester) async {
-        final (gateway, _) = _gateway();
-        var attempts = 0;
-        gateway.onSubmit = (items, key) async {
-          if (attempts++ == 0) {
-            throw ApiException(
-              'PRECISION_CHOICE_REQUIRED',
-              '原提交结果待核',
-              httpStatus: 422,
-              details: {'notWritten': notWritten},
-            );
-          }
-          return const SubcontractDrawSubmitResult(
-            issueIds: ['issue'],
-            issueBillNos: ['WF'],
-            documentCount: 1,
-            replayed: true,
-          );
-        };
-        await _pump(tester, gateway);
-        await _tapSubmitAndConfirm(tester);
-        expect(find.text('重试领料'), findsOneWidget);
-        await tester.tap(find.byKey(_submitKey));
-        await tester.pumpAndSettle();
-        expect(gateway.submits, hasLength(2));
-        expect(gateway.submits.first.$2, gateway.submits.last.$2);
-        expect(
-          gateway.submits.first.$1.map((i) => i.toJson()),
-          gateway.submits.last.$1.map((i) => i.toJson()),
-        );
-        expect(tester.takeException(), isNull);
-      },
+  testWidgets('whole batch conflict offers only going back', (tester) async {
+    final gateway = FakeSubcontractDrawGateway();
+    gateway.onPreview = (items) async => throw ApiException(
+      'CONFLICT',
+      '所选委外任务已领满、已结束领料或已不在您的可见范围内',
+      httpStatus: 409,
     );
-  }
+    await _pump(tester, gateway);
+
+    expect(
+      find.byKey(const Key('subcontract-draw-request-load-error')),
+      findsOneWidget,
+    );
+    expect(find.text('返回委外任务中心'), findsOneWidget);
+    expect(find.text('重新加载'), findsNothing);
+  });
 }

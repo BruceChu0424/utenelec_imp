@@ -121,8 +121,13 @@ public class SubcontractDrawCommandService {
             throw queries.quantityExceeded(batch, "本批可领已变化", "请按实时可领重新核对后再提交");
         }
         List<String> empty = new ArrayList<>();
+        // 按行领料允许多物料不成套: 套数进度可能为 0 但确有实物切片, 不能误报「没有可领数量」。
+        Set<UUID> withSlices = new java.util.HashSet<>();
+        for (SubcontractDrawAllocator.Slice slice : batch.allocation().slices()) {
+            withSlices.add(slice.orderItemId());
+        }
         for (SubcontractDrawAllocator.TaskResult result : batch.allocation().tasks()) {
-            if (!result.hasQuantity()) {
+            if (!result.hasQuantity() && !withSlices.contains(result.orderItemId())) {
                 SubcontractDrawQueryService.TaskRow row = batch.rows().get(result.orderItemId());
                 empty.add("委外订货单 " + row.orderBillNo() + " 第 " + row.lineNo() + " 行 "
                         + Objects.toString(row.goodsName(), ""));

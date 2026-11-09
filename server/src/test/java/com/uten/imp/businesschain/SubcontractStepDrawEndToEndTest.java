@@ -27,6 +27,7 @@ import com.uten.imp.features.stock.valuation.InventoryValueWorkService;
 import com.uten.imp.features.subcontract.draw.SubcontractDrawCommandService;
 import com.uten.imp.features.subcontract.draw.SubcontractDrawContracts.DrawCloseRequest;
 import com.uten.imp.features.subcontract.draw.SubcontractDrawContracts.DrawItemRequest;
+import com.uten.imp.features.subcontract.draw.SubcontractDrawContracts.DrawLineRequest;
 import com.uten.imp.features.subcontract.draw.SubcontractDrawContracts.DrawPendingDraft;
 import com.uten.imp.features.subcontract.draw.SubcontractDrawContracts.DrawPreview;
 import com.uten.imp.features.subcontract.draw.SubcontractDrawContracts.DrawPreviewLine;
@@ -879,15 +880,34 @@ class SubcontractStepDrawEndToEndTest extends SubcontractFullChainTestContext {
         qty("70", markOf(item), "可领提醒水位抬到 70");
 
         // ⑩ 第二次只领 10 套: 领先的 A 已够 40 套不多发, 只补齐落后的 B(再发 20)。
+        // 2026-11-09 契约: 候选行含所有开放计划行 × 有量的仓, 有分配量的只有 B。
         DrawPreview topUp = drawQueries.preview(new DrawPreviewRequest(
                 List.of(new DrawItemRequest(item, new BigDecimal("10")))));
-        assertEquals(1, topUp.lines().size(), "只补 B 一种物料, 现状 " + topUp.lines());
-        DrawPreviewLine topUpLine = topUp.lines().getFirst();
+        DrawPreviewLine topUpLine = topUp.lines().stream()
+                .filter(line -> line.qty().signum() > 0).findFirst().orElseThrow();
         assertEquals(b, topUpLine.goodsId());
         assertEquals(w2, topUpLine.warehouseId());
         qty("20", topUpLine.qty(), "B 补 f(40,2) − 60 = 20");
+        assertTrue(topUp.lines().stream().anyMatch(line -> line.goodsId().equals(a)
+                        && line.qty().signum() == 0), "A 保留 0 候选行, 现状 " + topUp.lines());
+        // 2026-11-09 按行领料: 同一批量改用「B@w2 = 20」定向提交, 结果与套数 10 完全一致。
+        // 先试单仓超限: 409 明细必须带 (计划行, 仓), 前端据此标红对应输入格。
+        UUID bPlan = db.queryForObject(
+                "SELECT id FROM subcontract_material_plan_items WHERE order_item_id=? AND goods_id=? AND NOT is_deleted",
+                UUID.class, item, b);
+        ApiException overDraw = assertThrows(ApiException.class, () -> drawQueries.preview(new DrawPreviewRequest(
+                List.of(new DrawItemRequest(item, null, null, null,
+                        List.of(new DrawLineRequest(bPlan, w2, new BigDecimal("999"))))))));
+        assertEquals("SUBCONTRACT_DRAW_QUANTITY_EXCEEDED", overDraw.details().get("kind"));
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> overRows = (List<Map<String, Object>>) overDraw.details().get("quantities");
+        assertEquals(1, overRows.size());
+        assertEquals(bPlan, overRows.getFirst().get("planItemId"));
+        assertNull(overRows.getFirst().get("warehouseId"), "B 库存全在 w2, 999 超的是整行上限 → 行级明细不带仓");
+        assertEquals("140", overRows.getFirst().get("maximumQtyExact"));
         DrawSubmitResult second = drawCommands.submit(new DrawSubmitRequest(
-                List.of(new DrawItemRequest(item, new BigDecimal("10"))), "scstep-main-draw-2-" + item));
+                List.of(new DrawItemRequest(item, null, null, null,
+                        List.of(new DrawLineRequest(bPlan, w2, new BigDecimal("20"))))), "scstep-main-draw-2-" + item));
         assertEquals(1, second.documentCount());
         mine.addAll(second.issueIds());
         assertDraftLine(second.issueIds().getFirst(), b, "20", "20");
@@ -1627,11 +1647,17 @@ class SubcontractStepDrawEndToEndTest extends SubcontractFullChainTestContext {
                         && text.contains("20") && text.contains("下次领料自动补齐")),
                 "整行不发的 B 也要列进少发, 现状 " + completions);
 
-        // 第二次领料只补落后的 B 20, 不多发 A。
+        // 第二次领料只补落后的 B 20, 不多发 A。2026-11-09 契约: 候选行含所有开放计划行
+        // (A 已发满、四处无库存 → 一条未定仓 0 行), 有分配量的只有 B。
         DrawPreview topUp = drawQueries.preview(new DrawPreviewRequest(List.of(new DrawItemRequest(item, null))));
-        assertEquals(1, topUp.lines().size(), "只补 B, 现状 " + topUp.lines());
-        assertEquals(b, topUp.lines().getFirst().goodsId());
-        qty("20", topUp.lines().getFirst().qty(), "B 补 20");
+        assertEquals(2, topUp.lines().size(), "A 保留 0 行 + B 一行, 现状 " + topUp.lines());
+        DrawPreviewLine topUpLine = topUp.lines().stream()
+                .filter(line -> line.goodsId().equals(b)).findFirst().orElseThrow();
+        qty("20", topUpLine.qty(), "B 补 20");
+        DrawPreviewLine zeroA = topUp.lines().stream()
+                .filter(line -> line.goodsId().equals(a)).findFirst().orElseThrow();
+        qty("0", zeroA.qty(), "A 不多发");
+        assertNull(zeroA.warehouseId(), "A 无任何可用仓, 行落在未定仓");
         DrawSubmitResult second = drawCommands.submit(new DrawSubmitRequest(
                 List.of(new DrawItemRequest(item, null)), "scstep-drop-draw-2-" + item));
         assertDraftLine(second.issueIds().getFirst(), b, "20", "20");

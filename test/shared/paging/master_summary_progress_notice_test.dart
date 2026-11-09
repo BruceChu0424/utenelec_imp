@@ -2,12 +2,9 @@ import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/basic_data/repositories/master_summary_read.dart';
-import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/paging/complete_read_progress.dart';
 import 'package:uten_imp/shared/paging/complete_paged_snapshot.dart'
     show CompleteReadBatchPlan;
-import 'package:uten_imp/shared/paging/complete_summary_stream.dart'
-    show kProgressiveSummaryStreamSize;
 import 'package:uten_imp/shared/paging/scoped_paged_read.dart';
 
 /// 决定性链路实证：货品资料等 flat 主档页的真实生产读取链
@@ -26,7 +23,6 @@ class _Api extends ApiClient {
     required Object body,
     required Future<T> Function(Stream<Map<String, dynamic>>) consume,
   }) async {
-    final size = (body as Map)['size'] as int;
     final plan = CompleteReadBatchPlan.progressive;
     Stream<Map<String, dynamic>> frames() async* {
       var offset = 0;

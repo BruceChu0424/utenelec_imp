@@ -177,6 +177,7 @@ class _ChildShortageFillPageState extends State<_ChildShortageFillPage> {
                   builder: (context, _) {
                     final segment = _host.bucketActionBusyMessage.value;
                     if (!_submitting ||
+                        _host._orderProgress != null ||
                         (segment == null &&
                             !_host.planSubmissionProgress.value)) {
                       return const SizedBox.shrink();

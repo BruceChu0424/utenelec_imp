@@ -45,13 +45,19 @@ public class ReportExportService {
     }
     public record View(UUID id,String domain,String report,String format,String status,boolean cancelRequested,int rows,long bytes,OffsetDateTime snapshotAt,
             String error,OffsetDateTime createdAt,OffsetDateTime finishedAt,ReportExportRequest request,
-            int attempt,Map<String,Object> precisionRequirement,Map<String,BusinessPrecisionContext.Choice> precisionChoices) {
+            int attempt,Map<String,Object> precisionRequirement,Map<String,BusinessPrecisionContext.Choice> precisionChoices,
+            Long totalRows) {
         public View(UUID id,String domain,String report,String format,String status,boolean cancelRequested,int rows,long bytes,OffsetDateTime snapshotAt,
-                String error,OffsetDateTime createdAt,OffsetDateTime finishedAt,ReportExportRequest request){this(id,domain,report,format,status,cancelRequested,rows,bytes,snapshotAt,error,createdAt,finishedAt,request,0,null,null);}
+                String error,OffsetDateTime createdAt,OffsetDateTime finishedAt,ReportExportRequest request,
+                int attempt,Map<String,Object> precisionRequirement,Map<String,BusinessPrecisionContext.Choice> precisionChoices){
+            this(id,domain,report,format,status,cancelRequested,rows,bytes,snapshotAt,error,createdAt,finishedAt,request,attempt,precisionRequirement,precisionChoices,null);
+        }
+        public View(UUID id,String domain,String report,String format,String status,boolean cancelRequested,int rows,long bytes,OffsetDateTime snapshotAt,
+                String error,OffsetDateTime createdAt,OffsetDateTime finishedAt,ReportExportRequest request){this(id,domain,report,format,status,cancelRequested,rows,bytes,snapshotAt,error,createdAt,finishedAt,request,0,null,null,null);}
         /** Preserve source compatibility for existing producers/fixtures and old JSON consumers. */
         public View(UUID id,String domain,String report,String format,String status,boolean cancelRequested,int rows,long bytes,OffsetDateTime snapshotAt,
                 String error,OffsetDateTime createdAt,OffsetDateTime finishedAt) {
-            this(id,domain,report,format,status,cancelRequested,rows,bytes,snapshotAt,error,createdAt,finishedAt,null,0,null,null);
+            this(id,domain,report,format,status,cancelRequested,rows,bytes,snapshotAt,error,createdAt,finishedAt,null,0,null,null,null);
         }
     }
 
@@ -266,6 +272,6 @@ public class ReportExportService {
         }
         Map<String,Object> precisionRequirement=null;Map<String,BusinessPrecisionContext.Choice> precisionChoices=null;
         if("WAITING_PRECISION".equals(state)){try{requireCompatibleReader(job);requireCurrentAccess(job);precisionRequirement=precisionRequirement(job);precisionChoices=precision(job);}catch(ApiException retired){/* Never disclose a retired request's policy/labels as current. */}}
-        return new View(job.id(),request.domain(),request.report(),request.format(),state,job.cancelRequested(),job.rows(),job.bytes(),job.snapshotAt(),job.error(),job.createdAt(),job.finishedAt(),proof,job.attempt(),precisionRequirement,precisionChoices);
+        return new View(job.id(),request.domain(),request.report(),request.format(),state,job.cancelRequested(),job.rows(),job.bytes(),job.snapshotAt(),job.error(),job.createdAt(),job.finishedAt(),proof,job.attempt(),precisionRequirement,precisionChoices,job.totalRows());
     }
 }

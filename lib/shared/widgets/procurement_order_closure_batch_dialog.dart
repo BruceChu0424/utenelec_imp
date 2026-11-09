@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../components/buttons/uten_button.dart';
 import '../../components/feedback/uten_dialog.dart';
 import '../../components/feedback/uten_dialog_modules.dart';
+import '../../components/feedback/uten_progress_dialog.dart';
 import '../../components/inputs/uten_input_decoration.dart';
 import '../../components/inputs/uten_field_message.dart';
 import '../../core/l10n/gen/app_localizations.dart';
@@ -202,26 +203,35 @@ class _BatchDialogState extends ConsumerState<_BatchDialog> {
     }
     setState(() => _busy = true);
     try {
-      final result = await _scope!.run(
-        () => ref
-            .read(apiClientProvider)
-            .post(
-              '$_path/batch-requests',
-              body: {
-                'mode': _mode,
-                'reason': _reason.text.trim(),
-                'items': [
-                  for (final order in _eligibleOrders)
-                    {
-                      ...order.toJson(),
-                      'expectedFingerprint':
-                          _previews[order.identity]!.fingerprint,
-                    },
-                ],
-              },
-            ),
+      // 一次请求提交整批取消/结束，发出后无法撤回：不提供「取消」。
+      final result = await showUtenProgress<Map<String, dynamic>>(
+        context,
+        title: widget.orders.length == 1 ? '取消/结束订货' : '批量取消/结束订货',
+        icon: Icons.block_outlined,
+        initialStatus: '正在提交批量请求',
+        initialDetail: '${_eligibleOrders.length} 张订货单',
+        cancellable: false,
+        action: (_) => _scope!.run(
+          () => ref
+              .read(apiClientProvider)
+              .post(
+                '$_path/batch-requests',
+                body: {
+                  'mode': _mode,
+                  'reason': _reason.text.trim(),
+                  'items': [
+                    for (final order in _eligibleOrders)
+                      {
+                        ...order.toJson(),
+                        'expectedFingerprint':
+                            _previews[order.identity]!.fingerprint,
+                      },
+                  ],
+                },
+              ),
+        ),
       );
-      if (!mounted || !_current) return;
+      if (!mounted || !_current || result == null) return;
       refreshBadges(ref);
       final approvals = result['approvals'];
       if (result['submittedCount'] != _eligibleOrders.length ||
@@ -386,7 +396,6 @@ class _BatchDialogState extends ConsumerState<_BatchDialog> {
           UtenButton(
             key: const Key('procurement-order-closure-batch-submit'),
             type: UtenButtonType.danger,
-            isLoading: _busy,
             onPressed:
                 !_loading &&
                     _error == null &&

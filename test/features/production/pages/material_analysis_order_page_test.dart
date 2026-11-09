@@ -302,7 +302,7 @@ void main() {
     await tester.tap(find.text('确认下单'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
-    const progress = Key('material-analysis-plan-submission-progress');
+    const progress = ValueKey('uten-progress-cancel');
     expect(find.byKey(progress), findsOneWidget);
     expect(find.byType(AlertDialog), findsNothing);
     rootReceipt.complete();
@@ -311,6 +311,36 @@ void main() {
     expect(_writes(harness).map((r) => r.path.split('/').last), [
       'issue-plans',
     ]);
+  });
+
+  testWidgets('整批下单点取消：办完进行中的一段就停，后面的段不提交，未完成的行保留', (tester) async {
+    final rootReceipt = Completer<void>();
+    final harness = await _pump(tester, rootReceipt: rootReceipt.future);
+    await _openOrder(tester);
+    await _type(tester, 'root-1', '20');
+    await tester.tap(
+      find.byKey(const Key('material-preparation-order-submit')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('确认下单'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    await tester.tap(find.byKey(const ValueKey('uten-progress-cancel')));
+    await tester.pump();
+    expect(
+      find.byKey(const ValueKey('uten-progress-stopping')),
+      findsOneWidget,
+      reason: '进行中的一段不中断',
+    );
+
+    rootReceipt.complete();
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('uten-progress-cancel')), findsNothing);
+    expect(_writes(harness).map((r) => r.path.split('/').last), [
+      'issue-plans',
+    ], reason: '后面的段不再提交');
+    expect(_table(tester).selectedIds, contains('PREPARATION|m-b'));
   });
 
   testWidgets('父件与下层统一按依赖顺序提交，相同比例逐行保留', (tester) async {

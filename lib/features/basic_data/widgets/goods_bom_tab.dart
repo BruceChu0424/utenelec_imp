@@ -56,6 +56,7 @@ import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_table_row_drag.dart';
 import '../../../components/data_display/uten_table_output_scope.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
+import '../../../components/feedback/uten_progress_dialog.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_inline_notice.dart';
 import '../../../components/inputs/required_field_decoration.dart';
@@ -2696,10 +2697,19 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
     setState(() => _deleting = true);
     int? deleted;
     try {
-      deleted = await context.guardAction(
-        () => repository.deleteMany(widget.goodsId, [
-          for (final t in targets) t.itemId,
-        ]),
+      // 一个事务整批删除，要么全删要么一条不删，发出后无法撤回：不提供「取消」。
+      deleted = await context.guardAction<int?>(
+        () => showUtenProgress<int?>(
+          context,
+          title: targets.length == 1 ? '删除组件' : '批量删除组件',
+          icon: Icons.delete_outline_rounded,
+          initialStatus: '正在删除组件',
+          initialDetail: '${targets.length} 个',
+          cancellable: false,
+          action: (_) => repository.deleteMany(widget.goodsId, [
+            for (final t in targets) t.itemId,
+          ]),
+        ),
         errorFallback: '删除失败，请稍后重试', // TODO(l10n): 补 arb
       );
     } finally {
@@ -4245,14 +4255,7 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
             ],
           ),
         ),
-        // 批量删除网络段的全屏加载遮罩(root Overlay 传送门，不占布局)。
-        // 确认框已经关掉才会挂上来，否则它会盖住确认框(见 _deleteSelected)。
-        if (_deleting)
-          const UtenBusyOverlay(
-            showDoNotLeaveHint: false,
-            title: '正在删除组件',
-            description: '正在把所选组件从组装清单中移除，请勿重复提交或关闭页面。',
-          ),
+        // 批量删除网络段由进度弹窗呈现（_deleting 只防连点），不再叠遮罩。
         // 拖拽移动网络段的全屏加载遮罩(落点已定，无确认框，直接包网络段)。
         if (_pasting || _switchingMode)
           UtenBusyOverlay(

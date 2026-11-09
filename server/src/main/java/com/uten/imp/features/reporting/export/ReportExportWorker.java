@@ -161,7 +161,8 @@ public class ReportExportWorker {
             long deadline=System.nanoTime()+TimeUnit.MINUTES.toNanos(10);
             checkpoint(job,0,deadline);
             MessageDigest digest=MessageDigest.getInstance("SHA-256");
-            try(var precision=BusinessPrecisionContext.use(service.precision(job))) {
+            try(var precision=BusinessPrecisionContext.use(service.precision(job));
+                var progress=ExportProgress.open()) {
             try(var writer=openWriter(request,job,deadline)) {
                 try(var operation=ExportOperationCheckpoint.open(()->checkpoint(job,writer.rowCount(),deadline))) {
                 readTx.executeWithoutResult(tx -> {
@@ -301,8 +302,10 @@ public class ReportExportWorker {
     private void checkpoint(ReportExportRepository.Job job,int rows,long deadline) {
         if(Thread.currentThread().isInterrupted() || System.nanoTime()>deadline) throw new CancellationException();
         service.requireCurrentAccess(job);
+        // 读取入口已算出的权威总行数随心跳记下(只写一次), 客户端据此显示百分比。
+        Long total=ExportProgress.currentTotal();
         metadataWrite(s -> {
-            if(!repository.heartbeat(job,rows)) throw new CancellationException();
+            if(!repository.heartbeat(job,rows,total)) throw new CancellationException();
         });
         try {
             if(Files.getFileStore(service.requireStorage()).getUsableSpace()<MIN_FREE)

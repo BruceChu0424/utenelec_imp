@@ -36,6 +36,7 @@ import '../../../components/buttons/uten_export_button.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
+import '../../../components/feedback/uten_progress_dialog.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_page_layout.dart';
 import '../../../components/print/uten_print_preview.dart';
@@ -431,6 +432,9 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
   bool _busy = false;
   final _detailReadChanges = ValueNotifier<int>(0);
   bool _lifecycleWriting = false;
+
+  /// 批量提交段进入进度弹窗时为 true：页面遮罩只盖确认段，避免双重遮罩。
+  bool _batchProgressOpen = false;
   int _writeEpoch = 0;
   final Set<PopupRoute<dynamic>> _writeDialogs = {};
   late final _writeLifecycle = PageSearchLifecycle(
@@ -895,6 +899,9 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
       write: () => ref
           .read(masterBatchRepositoryProvider)
           .changeStatus(entityPath: path, status: status, items: items),
+      progressTitle: '批量${status == '禁用' ? '禁用' : '启用'}$noun',
+      progressStatus: '正在${status == '禁用' ? '禁用' : '启用'}',
+      progressDetail: '${targets.length} 项',
     );
     if (result == null || !mounted || !result.isCurrent()) return;
     await _afterBatch(result, status == '禁用' ? '禁用' : '启用', noun, labels);
@@ -953,6 +960,9 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
       write: () => ref
           .read(masterBatchRepositoryProvider)
           .delete(entityPath: path, items: items),
+      progressTitle: single != null ? '删除$noun' : '批量删除$noun',
+      progressStatus: '正在删除',
+      progressDetail: '${targets.length} 项',
       resolve: _c.supportsReferencedHide
           ? (initial, current, scope) async {
               resolution = await resolveReferencedMasterDelete(
@@ -1060,6 +1070,9 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
       Widget Function(BuildContext, Widget),
     )?
     resolve,
+    String? progressTitle,
+    String? progressStatus,
+    String? progressDetail,
   }) async {
     if (_busy ||
         _queryPending ||
@@ -1104,10 +1117,33 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
           ref,
           isCurrent: current,
           write: () async {
-            if (!await confirm(scope) || !current()) return null;
+            if (!await confirm(scope) || !current() || !mounted) return null;
             setState(() => _lifecycleWriting = true);
-            final initial = await write();
-            return resolve != null && current()
+            final R? initial;
+            if (progressTitle == null) {
+              initial = await write();
+            } else {
+              // 批量一次请求提交，发出后无法撤回：不提供「取消」。弹窗路由
+              // 登记进 _writeDialogs：写纪元失效时统一关闭并丢弃旧结果。
+              _batchProgressOpen = true;
+              try {
+                initial = await showUtenProgress<R?>(
+                  context,
+                  title: progressTitle,
+                  icon: Icons.task_alt_outlined,
+                  initialStatus: progressStatus ?? '正在处理',
+                  initialDetail: progressDetail,
+                  cancellable: false,
+                  onRouteOpened: (ModalRoute<dynamic> route) {
+                    if (route is PopupRoute<dynamic>) _writeDialogs.add(route);
+                  },
+                  action: (_) async => write(),
+                );
+              } finally {
+                _batchProgressOpen = false;
+              }
+            }
+            return resolve != null && current() && initial != null
                 ? await resolve(initial, current, scope)
                 : initial;
           },
@@ -2086,7 +2122,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
                 ),
               ),
             ),
-          if (_lifecycleWriting)
+          if (_lifecycleWriting && !_batchProgressOpen)
             const UtenBusyOverlay(
               showDoNotLeaveHint: false,
               title: '正在处理资料',

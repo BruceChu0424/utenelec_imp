@@ -98,7 +98,7 @@ enum BadgeEntry {
   rdTaskCenter(BadgeModule.rd),
 
   // —— 仓库(一张任务中心卡一个入口; 卡内分段读 [BadgeFact]) ——
-  /// 出库任务中心: 销售待出库 + 委外领料待发料。
+  /// 出库任务中心: 销售待出库 + 委外出库待发料 + 生产领料 + 车间内料仓待发料。
   warehouseOutboundCenter(BadgeModule.warehouse),
 
   /// 入库任务中心: 预计到货 + 到货异常(仓库侧) + 产成品待点收。

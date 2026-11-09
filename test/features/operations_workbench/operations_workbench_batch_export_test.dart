@@ -6,6 +6,7 @@ import 'dart:async';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/feedback/uten_progress_dialog.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
@@ -281,12 +282,15 @@ void main() {
     expect(calls, hasLength(1));
     expect(calls.single.map((doc) => doc.id), ['order-1', 'order-2']);
 
-    // 导出进行中：进度把按钮文案切到 n/N；结束后回到已选计数。
+    // 2026-11-09 起导出全程在统一进度弹窗内: 逐份计数走弹窗详情行,
+    // 按钮文案保持已选计数; 弹窗随导出结束收尾。
     progressSink?.call(1, 2);
     await tester.pump();
-    expect(find.text('导出单据(1/2)'), findsOneWidget);
+    expect(find.byType(UtenProgressBar), findsOneWidget);
+    expect(find.text('1 / 2'), findsOneWidget);
     gate.complete();
-    await tester.pump();
+    await tester.pumpAndSettle();
+    expect(find.byType(UtenProgressBar), findsNothing);
     expect(find.text('导出单据(2)'), findsOneWidget);
   });
 

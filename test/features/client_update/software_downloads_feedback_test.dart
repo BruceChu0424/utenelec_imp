@@ -177,7 +177,14 @@ StreamController<Uint8List> _hold(SoftwareDownloadsTransport transport) {
 Finder get _progress =>
     find.byKey(const ValueKey('software-download-progress'));
 
-void _expectMotion(WidgetTester tester, Duration expected) {
+/// [expected] 是反馈区外壳(AnimatedSize/AnimatedSwitcher)的时长;
+/// [bar] 是进度条动画时长——2026-11-09 起进度条换成全项目唯一组件
+/// UtenProgressBar, 动画时长统一为 UtenAnim.slow, 不再跟外壳同速。
+void _expectMotion(
+  WidgetTester tester,
+  Duration expected, {
+  Duration? bar,
+}) {
   final tween = find.descendant(
     of: _progress,
     matching: find.byWidgetPredicate(
@@ -192,14 +199,15 @@ void _expectMotion(WidgetTester tester, Duration expected) {
     of: _progress,
     matching: find.byType(AnimatedSwitcher),
   );
-  if (expected == Duration.zero) {
+  final barExpected = bar ?? expected;
+  if (expected == Duration.zero && barExpected == Duration.zero) {
     expect(tween, findsNothing);
     expect(size, findsNothing);
     expect(switcher, findsNothing);
   } else {
     expect(
       tester.widget<TweenAnimationBuilder<double>>(tween).duration,
-      expected,
+      barExpected,
     );
     expect(tester.widget<AnimatedSize>(size.first).duration, expected);
     expect(tester.widget<AnimatedSwitcher>(switcher.first).duration, expected);
@@ -419,18 +427,18 @@ void main() {
         () => harness.controller.progress == 0.5,
         step: Duration.zero,
       );
-      _expectMotion(tester, UtenAnim.fast);
+      _expectMotion(tester, UtenAnim.fast, bar: UtenAnim.slow);
       final indicator = find.descendant(
         of: _progress,
         matching: find.byType(LinearProgressIndicator),
       );
       await tester.pump(
-        Duration(microseconds: UtenAnim.fast.inMicroseconds ~/ 2),
+        Duration(microseconds: UtenAnim.slow.inMicroseconds ~/ 2),
       );
       final painted = tester.widget<LinearProgressIndicator>(indicator).value!;
       expect(painted, greaterThan(0));
       expect(painted, lessThan(0.5));
-      await tester.pump(UtenAnim.fast);
+      await tester.pump(UtenAnim.slow);
       expect(tester.widget<LinearProgressIndicator>(indicator).value, 0.5);
       harness.controller.cancelDownload();
       unawaited(chunks.close());
@@ -492,7 +500,7 @@ void main() {
         () => harness.controller.progress == 0.5,
         step: Duration.zero,
       );
-      _expectMotion(tester, UtenAnim.fast);
+      _expectMotion(tester, UtenAnim.fast, bar: UtenAnim.slow);
       (harness.container.read(performanceProvider.notifier) as _Tier).change(
         PerformanceTier.lite,
       );

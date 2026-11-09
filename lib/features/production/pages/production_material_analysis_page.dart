@@ -36,6 +36,7 @@ import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_motion.dart';
+import '../../../components/feedback/uten_progress_dialog.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_search_bar.dart';
@@ -682,6 +683,37 @@ abstract class _MaterialAnalysisPageBase
   final ValueNotifier<bool> planSubmissionProgress = ValueNotifier<bool>(false);
   final ValueNotifier<int> materialDetailRevision = ValueNotifier<int>(0);
 
+  /// 批量下单的进度弹窗(2026-11-08): 确认之后到结果回报之前只开这一个弹窗,
+  /// 各段(车间 / 委外 / 采购 / 同料合并)都汇报到这里; 非 null 时页面级遮罩让位,
+  /// 同一动作不叠第二个等待件。
+  _MaterialOrderProgress? _orderProgress;
+
+  /// 在批量下单进度弹窗里执行 [body]; 已在弹窗内(下单编排调汇总下达)时沿用
+  /// 同一个。取消只在段与段之间生效: 进行中的写入不中断、不重放。
+  Future<void> _withOrderProgress({
+    required int rows,
+    required Future<void> Function(_MaterialOrderProgress progress) body,
+  }) async {
+    final active = _orderProgress;
+    if (active != null) return body(active);
+    await showUtenProgress<void>(
+      context,
+      title: '批量下单',
+      icon: Icons.shopping_cart_checkout_rounded,
+      initialStatus: '正在下单',
+      cancelMode: UtenProgressCancel.afterCurrent,
+      action: (session) async {
+        final progress = _MaterialOrderProgress(session, rows);
+        _orderProgress = progress;
+        try {
+          await body(progress);
+        } finally {
+          _orderProgress = null;
+        }
+      },
+    );
+  }
+
   void _setGenerating(bool value) {
     _generating = value;
     planSubmissionProgress.value = value;
@@ -855,9 +887,6 @@ abstract class _MaterialAnalysisPageBase
   /// BOM 表是否处于全屏（表格全屏路由打开时顶部卡片不可见，搜索框
   /// 借 [MasterDataTableView.onFullscreenChanged] 回到表格工具条）。
   bool _bomTableFullscreen = false;
-  String? _bulkOperationLabel;
-  int _bulkOperationCompleted = 0;
-  int _bulkOperationTotal = 0;
   ProductionMaterialAnalysisView? _indexCacheAnalysis;
   _MaterialAnalysisIndexes? _indexCache;
   ProductionMaterialAnalysisView? _bomProjectionAnalysis;
@@ -1450,9 +1479,6 @@ abstract class _MaterialAnalysisPageBase
         _planSubmissionApproveNow = false;
         _notifyingRoute = null;
         bucketActionBusyMessage.value = null;
-        _bulkOperationLabel = null;
-        _bulkOperationCompleted = 0;
-        _bulkOperationTotal = 0;
         if (pendingCommand) {
           _serverRefreshNotice = '登录身份或查看范围已变化，原操作可能已完成；请重新打开核对，勿重复提交。';
         }
@@ -2662,7 +2688,7 @@ class _ProductionMaterialAnalysisPageState
                     : _analysisBody(theme),
               ),
             ),
-            if (_planSubmissionInProgress)
+            if (_planSubmissionInProgress && _orderProgress == null)
               Positioned.fill(child: _planSubmissionOverlay(theme)),
             if (_retryingSeededPreview)
               const Positioned.fill(
@@ -2674,7 +2700,8 @@ class _ProductionMaterialAnalysisPageState
               ),
             ValueListenableBuilder<String?>(
               valueListenable: bucketActionBusyMessage,
-              builder: (context, message, _) => message != null
+              builder: (context, message, _) =>
+                  message != null && _orderProgress == null
                   ? Positioned.fill(
                       child: UtenBusyOverlay(
                         // 2026-09-15 起确认路线也走这条通道，key 泛化为「页面
@@ -3117,44 +3144,6 @@ class _ProductionMaterialAnalysisPageState
           ..._linkedSalesOrdersSection(theme, analysis),
           ..._manualDemandsSection(theme, analysis),
           const SizedBox(height: UtenSpacing.s8),
-          if (_bulkOperationLabel != null && _bulkOperationTotal > 0) ...[
-            const SizedBox(height: UtenSpacing.s8),
-            Semantics(
-              liveRegion: true,
-              label:
-                  '$_bulkOperationLabel，已完成 $_bulkOperationCompleted / $_bulkOperationTotal',
-              child: Container(
-                key: const Key('material-analysis-bulk-progress'),
-                padding: const EdgeInsets.all(UtenSpacing.s12),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.tertiaryContainer.withValues(
-                    alpha: 0.45,
-                  ),
-                  borderRadius: UtenRadius.mdAll,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(
-                      '$_bulkOperationLabel · $_bulkOperationCompleted / $_bulkOperationTotal',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: UtenSpacing.s8),
-                    LinearProgressIndicator(
-                      value: _bulkOperationCompleted / _bulkOperationTotal,
-                    ),
-                    const SizedBox(height: UtenSpacing.s4),
-                    Text(
-                      '数量较多时系统会自动分批提交，请勿重复点击。已完成的批次不会重复创建。',
-                      style: theme.textTheme.bodyMedium,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
         ],
       ),
     );

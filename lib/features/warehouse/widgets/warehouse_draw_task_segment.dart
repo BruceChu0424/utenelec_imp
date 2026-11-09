@@ -727,7 +727,8 @@ class _WarehouseDrawTaskSegmentState
       ),
     ),
     // 2026-09-27 用户口径「同一次批量领料仓库能看出是一批」：车间批量领料提交的
-    // 多张单在服务端写同一批次号，这里可按批次筛选/识别同批。
+    // 多张单在服务端写同一批次号，这里按批次号识别同批。本表服务端分页，
+    // 当页行就地筛选不成立，因此不声明 filterFromRows（表头保持纯标签）。
     MasterColumnDef(
       key: 'drawBatchNo',
       // 2026-09-27 用户口径「申请号和批次一样就留一个」：本列是唯一的批标识——
@@ -735,7 +736,6 @@ class _WarehouseDrawTaskSegmentState
       // 申请行自身的申请号在「领料单号」列（带「申请」前缀），这里不重复。
       label: '领料批次',
       width: 190,
-      filterFromRows: true,
       value: (task) => task.isBatchMerged
           ? task.drawBatchNo
           : task.drawBatchNo.isNotEmpty

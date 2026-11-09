@@ -271,6 +271,9 @@ class _PreparationOrderPageState extends State<_PreparationOrderPage> {
                   _host.planSubmissionProgress,
                 ]),
                 builder: (context, _) {
+                  if (_host._orderProgress != null) {
+                    return const SizedBox.shrink();
+                  }
                   if (_host.planSubmissionProgress.value) {
                     return Positioned.fill(
                       child: _host._planSubmissionOverlay(theme),

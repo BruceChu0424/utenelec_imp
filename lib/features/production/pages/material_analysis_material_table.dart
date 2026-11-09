@@ -7261,142 +7261,192 @@ abstract class _MaterialAnalysisMaterialTableState
     _tableCascadePreviewing = false;
     // 默认段(按产品通道)有没有中途停住——停住就不走后面的同料合并段。
     var halted = false;
-    try {
-      // 提交顺序 = **父先子后，跨路线**。一行的需求由它上面每一层的计划产出量决定，
-      // 含父件超出需求的公共备货产出(V577/V589「顶层做 5000，委外件就要加工 5000」)。
-      // 父件的计划 / 委外申请还没落地时，子件按父件新数量填的量会被服务端当成超出
-      // 当时需求的部分、记成公共备货；随后父件的超量把子件需求抬上去，子件行就留下
-      // 一截「已经下了却还缺」的幽灵缺口，而且认不回来(公共在途认领不含本分析自己的)。
-      // 2026-09-23 实机：委外件「E极插套(酸洗)」的我方供料子件先按采购 5000 提交，
-      // 记成需求 2000 + 公共 3000；委外 5000 随后下达把子件需求抬到 5000，子件行
-      // 留下 3000 缺口——原来「采购 → 委外」的顺序正好反了。
-      // 于是：逐层自上而下，同一层先下达车间(自制)、再下达委外；采购件没有下层，
-      // 等全部父件落地后最后一次提交。
-      final levels = {
-        for (final group in split.separate) group.representative.level,
-      }.toList()..sort();
-      for (final level in levels) {
-        if (!mounted || !_preparationSubmissionStillCurrent) return false;
-        final atLevel = split.separate
-            .where((group) => group.representative.level == level)
-            .toList(growable: false);
-        final workshop = atLevel
-            .where((group) => _tableIssueTarget(group).viaWorkshop)
-            .toList(growable: false);
-        if (workshop.isNotEmpty) {
-          _lastIssuedPlans = const [];
-          final ok = await _issueMaterialTableWorkshopBatch(workshop, pending);
-          if (!mounted || !_preparationSubmissionStillCurrent) return false;
-          // ADR-104：追加并入了还没开工的原计划(同一单号)时如实说出来，免得用户去
-          // 生产计划列表找一张不存在的新单。
-          final merged = _lastIssuedPlans
-              .where((plan) => plan.mergedIntoExisting)
-              .length;
+    // 页面或身份在提交途中失效：不再汇报结果，已落库的由刷新和回执说明。
+    var abandoned = false;
+    // 整批只开一个进度弹窗(2026-11-08)，按行数累计；取消只在段与段之间生效，
+    // 进行中的段不中断、不重放，等同于「在这一步停下」。
+    await _withOrderProgress(
+      rows: pending.length,
+      body: (progress) async {
+        bool stopRequested() {
+          if (!progress.stopRequested) return false;
+          halted = true;
+          steps.add((label: '其余段已按要求停止', ok: false, note: null));
+          return true;
+        }
+
+        try {
+          // 提交顺序 = **父先子后，跨路线**。一行的需求由它上面每一层的计划产出量决定，
+          // 含父件超出需求的公共备货产出(V577/V589「顶层做 5000，委外件就要加工 5000」)。
+          // 父件的计划 / 委外申请还没落地时，子件按父件新数量填的量会被服务端当成超出
+          // 当时需求的部分、记成公共备货；随后父件的超量把子件需求抬上去，子件行就留下
+          // 一截「已经下了却还缺」的幽灵缺口，而且认不回来(公共在途认领不含本分析自己的)。
+          // 2026-09-23 实机：委外件「E极插套(酸洗)」的我方供料子件先按采购 5000 提交，
+          // 记成需求 2000 + 公共 3000；委外 5000 随后下达把子件需求抬到 5000，子件行
+          // 留下 3000 缺口——原来「采购 → 委外」的顺序正好反了。
+          // 于是：逐层自上而下，同一层先下达车间(自制)、再下达委外；采购件没有下层，
+          // 等全部父件落地后最后一次提交。
+          final levels = {
+            for (final group in split.separate) group.representative.level,
+          }.toList()..sort();
+          for (final level in levels) {
+            if (!mounted || !_preparationSubmissionStillCurrent) {
+              abandoned = true;
+              return;
+            }
+            if (stopRequested()) break;
+            final atLevel = split.separate
+                .where((group) => group.representative.level == level)
+                .toList(growable: false);
+            final workshop = atLevel
+                .where((group) => _tableIssueTarget(group).viaWorkshop)
+                .toList(growable: false);
+            if (workshop.isNotEmpty) {
+              progress.startSegment(
+                _preparationApproveNow ? '正在生成并审核下达' : '正在生成生产计划',
+                workshop.length,
+              );
+              _lastIssuedPlans = const [];
+              final ok = await _issueMaterialTableWorkshopBatch(
+                workshop,
+                pending,
+              );
+              if (!mounted || !_preparationSubmissionStillCurrent) {
+                abandoned = true;
+                return;
+              }
+              // ADR-104：追加并入了还没开工的原计划(同一单号)时如实说出来，免得用户去
+              // 生产计划列表找一张不存在的新单。
+              final merged = _lastIssuedPlans
+                  .where((plan) => plan.mergedIntoExisting)
+                  .length;
+              steps.add((
+                label:
+                    '下达车间(第 $level 层，${workshop.length} 行'
+                    '${merged > 0 ? '，其中 $merged 张并入原计划' : ''})',
+                ok: ok,
+                note: ok ? null : haltNote,
+              ));
+              if (!ok) {
+                halted = true;
+                break;
+              }
+              settle(workshop);
+              progress.finishSegment();
+            }
+            final subcontract = atLevel
+                .where(
+                  (group) =>
+                      !_tableIssueTarget(group).viaWorkshop &&
+                      _draftRoute(group) == MaterialSupplyRoute.subcontract,
+                )
+                .toList(growable: false);
+            if (subcontract.isNotEmpty) {
+              if (stopRequested()) break;
+              progress.startSegment('正在下达委外任务', subcontract.length);
+              final ok = await _notifyMaterialTableBatch(
+                MaterialSupplyRoute.subcontract,
+                subcontract,
+                pending,
+              );
+              if (!mounted || !_preparationSubmissionStillCurrent) {
+                abandoned = true;
+                return;
+              }
+              steps.add((
+                label: '下达委外(第 $level 层，${subcontract.length} 行)',
+                ok: ok,
+                note: ok ? null : haltNote,
+              ));
+              if (!ok) {
+                halted = true;
+                break;
+              }
+              settle(subcontract);
+              progress.finishSegment();
+            }
+          }
+          if (!halted) {
+            final buy = split.separate
+                .where(
+                  (group) =>
+                      !_tableIssueTarget(group).viaWorkshop &&
+                      _draftRoute(group) == MaterialSupplyRoute.buy,
+                )
+                .toList(growable: false);
+            if (buy.isNotEmpty && !stopRequested()) {
+              progress.startSegment('正在下达采购任务', buy.length);
+              final ok = await _notifyMaterialTableBatch(
+                MaterialSupplyRoute.buy,
+                buy,
+                pending,
+              );
+              if (!mounted || !_preparationSubmissionStillCurrent) {
+                abandoned = true;
+                return;
+              }
+              steps.add((
+                label: '下达采购(${buy.length} 行)',
+                ok: ok,
+                note: ok ? null : haltNote,
+              ));
+              if (ok) {
+                settle(buy);
+                progress.finishSegment();
+              } else {
+                halted = true;
+              }
+            }
+          }
+        } finally {
+          _tableSubmitting = false;
+        }
+
+        // 汇总段：默认段(根产品计划 + 不合并的行)全部落地后再走。父子顺序由
+        // 「根产品先出计划」保证，汇总预览/提交也按每段结束后的最新快照核对。
+        if (!mounted || !_preparationSubmissionStillCurrent) {
+          abandoned = true;
+          return;
+        }
+        if (!halted &&
+            split.merged.isNotEmpty &&
+            mounted &&
+            !stopRequested()) {
+          progress.startSegment('正在下达物料', split.merged.length);
+          // The root receipt has expanded its actual BOM requirement. Look up the
+          // same selected line identities in that snapshot before seeding drafts.
+          // A pre-command row still carries the old baseline even if the editor
+          // already showed the reviewed cascade. Never guess a replacement source.
+          final currentByLine = _analysisIndexes(_analysis!).groupsByLine;
+          final currentGroups = [
+            for (final group in split.merged)
+              if (currentByLine[group.representative.materialLineId]
+                  case final current? when current.key == group.key)
+                current,
+          ];
+          final sameSources = currentGroups.length == split.merged.length;
+          final aggregateOk =
+              sameSources &&
+              await _aggregateTable.submit(
+                currentGroups,
+                confirmed: true,
+                receiptAllocationMode: confirmation.mode,
+              );
           steps.add((
             label:
-                '下达车间(第 $level 层，${workshop.length} 行'
-                '${merged > 0 ? '，其中 $merged 张并入原计划' : ''})',
-            ok: ok,
-            note: ok ? null : haltNote,
+                '同料合并下达(${split.merged.length} 行 → '
+                '${split.merged.map((group) => _aggregateKeyOf(group.representative)).toSet().length} 种物料)',
+            ok: aggregateOk,
+            note: aggregateOk
+                ? null
+                : sameSources
+                ? '未完成的行保留本次数量，可在当前页面继续下单'
+                : '部分物料的来源已变化，请核对原输入和当前来源后再下单',
           ));
-          if (!ok) {
-            halted = true;
-            break;
-          }
-          settle(workshop);
         }
-        final subcontract = atLevel
-            .where(
-              (group) =>
-                  !_tableIssueTarget(group).viaWorkshop &&
-                  _draftRoute(group) == MaterialSupplyRoute.subcontract,
-            )
-            .toList(growable: false);
-        if (subcontract.isNotEmpty) {
-          final ok = await _notifyMaterialTableBatch(
-            MaterialSupplyRoute.subcontract,
-            subcontract,
-            pending,
-          );
-          if (!mounted || !_preparationSubmissionStillCurrent) return false;
-          steps.add((
-            label: '下达委外(第 $level 层，${subcontract.length} 行)',
-            ok: ok,
-            note: ok ? null : haltNote,
-          ));
-          if (!ok) {
-            halted = true;
-            break;
-          }
-          settle(subcontract);
-        }
-      }
-      if (!halted) {
-        final buy = split.separate
-            .where(
-              (group) =>
-                  !_tableIssueTarget(group).viaWorkshop &&
-                  _draftRoute(group) == MaterialSupplyRoute.buy,
-            )
-            .toList(growable: false);
-        if (buy.isNotEmpty) {
-          final ok = await _notifyMaterialTableBatch(
-            MaterialSupplyRoute.buy,
-            buy,
-            pending,
-          );
-          if (!mounted || !_preparationSubmissionStillCurrent) return false;
-          steps.add((
-            label: '下达采购(${buy.length} 行)',
-            ok: ok,
-            note: ok ? null : haltNote,
-          ));
-          if (ok) {
-            settle(buy);
-          } else {
-            halted = true;
-          }
-        }
-      }
-    } finally {
-      _tableSubmitting = false;
-    }
-
-    // 汇总段：默认段(根产品计划 + 不合并的行)全部落地后再走。父子顺序由
-    // 「根产品先出计划」保证，汇总预览/提交也按每段结束后的最新快照核对。
-    if (!mounted || !_preparationSubmissionStillCurrent) return false;
-    if (!halted && split.merged.isNotEmpty && mounted) {
-      // The root receipt has expanded its actual BOM requirement. Look up the
-      // same selected line identities in that snapshot before seeding drafts.
-      // A pre-command row still carries the old baseline even if the editor
-      // already showed the reviewed cascade. Never guess a replacement source.
-      final currentByLine = _analysisIndexes(_analysis!).groupsByLine;
-      final currentGroups = [
-        for (final group in split.merged)
-          if (currentByLine[group.representative.materialLineId]
-              case final current? when current.key == group.key)
-            current,
-      ];
-      final sameSources = currentGroups.length == split.merged.length;
-      final aggregateOk =
-          sameSources &&
-          await _aggregateTable.submit(
-            currentGroups,
-            confirmed: true,
-            receiptAllocationMode: confirmation.mode,
-          );
-      steps.add((
-        label:
-            '同料合并下达(${split.merged.length} 行 → '
-            '${split.merged.map((group) => _aggregateKeyOf(group.representative)).toSet().length} 种物料)',
-        ok: aggregateOk,
-        note: aggregateOk
-            ? null
-            : sameSources
-            ? '未完成的行保留本次数量，可在当前页面继续下单'
-            : '部分物料的来源已变化，请核对原输入和当前来源后再下单',
-      ));
-    }
+      },
+    );
+    if (abandoned) return false;
 
     if (!mounted || !_preparationSubmissionStillCurrent) return false;
     // 成功下达的行：追加格回 0、勾选撤掉；失败的保留，让人原地重试。
@@ -9040,46 +9090,62 @@ abstract class _MaterialAnalysisMaterialTableState
     final chunks = _chunked(chosen);
     var current = analysis;
     var completed = 0;
-    setState(() {
-      _claimingSharedFuture = true;
-      _bulkOperationLabel = '正在采用公共在途';
-      _bulkOperationCompleted = 0;
-      _bulkOperationTotal = chosen.length;
-    });
+    var stopped = false;
+    Object? failure;
+    setState(() => _claimingSharedFuture = true);
     try {
-      for (final chunk in chunks) {
-        if (!operationCurrent()) return;
-        final idempotencyKey = businessIdempotencyKey(
-          'material-analysis-claim-shared-future',
-          '${current.analysisId}|${current.version}|${current.fingerprint}|'
-              '${draft.allowLateSupply}|${chunk.map((key) => byKey[key]!.toJson()).join('|')}',
-        );
-        current = await ref
-            .read(productionPlanRepositoryProvider)
-            .claimSharedFutureSupply(
-              analysis: current,
-              idempotencyKey: idempotencyKey,
-              actionGroupKeys: chunk,
-              quantities: [for (final key in chunk) byKey[key]!],
-              allowLateSupply: draft.allowLateSupply,
+      await showUtenProgress<void>(
+        context,
+        title: '采用公共在途',
+        icon: Icons.inventory_2_outlined,
+        initialStatus: '正在采用公共在途',
+        cancelMode: UtenProgressCancel.afterCurrent,
+        action: (progress) async {
+          progress.count(0, chosen.length);
+          for (final chunk in chunks) {
+            if (!operationCurrent()) return;
+            if (progress.isCancelled) {
+              stopped = true;
+              return;
+            }
+            final idempotencyKey = businessIdempotencyKey(
+              'material-analysis-claim-shared-future',
+              '${current.analysisId}|${current.version}|${current.fingerprint}|'
+                  '${draft.allowLateSupply}|${chunk.map((key) => byKey[key]!.toJson()).join('|')}',
             );
-        completed += chunk.length;
-        if (mounted && operationCurrent()) {
-          setState(() => _bulkOperationCompleted = completed);
-        }
-      }
+            current = await ref
+                .read(productionPlanRepositoryProvider)
+                .claimSharedFutureSupply(
+                  analysis: current,
+                  idempotencyKey: idempotencyKey,
+                  actionGroupKeys: chunk,
+                  quantities: [for (final key in chunk) byKey[key]!],
+                  allowLateSupply: draft.allowLateSupply,
+                );
+            completed += chunk.length;
+            progress.count(completed, chosen.length);
+          }
+        },
+      );
+    } catch (error) {
+      failure = error;
+    }
+    if (failure == null) {
       if (!mounted || !operationCurrent()) return;
       setState(() {
         _claimingSharedFuture = false;
-        _clearBulkOperation();
         _applyAnalysis(current);
       });
-      context.appSuccess('已认领公共供给，尚需下达量已更新；实际合格入库前仍不计现货或可开工量');
-    } catch (error) {
+      if (stopped) {
+        context.appWarning('已采用 $completed/${chosen.length} 项；已取消后续采用，余下项目未执行，请按最新结果重新选择。');
+      } else {
+        context.appSuccess('已认领公共供给，尚需下达量已更新；实际合格入库前仍不计现货或可开工量');
+      }
+    } else {
+      final error = failure;
       if (!mounted || !operationCurrent()) return;
       setState(() {
         _claimingSharedFuture = false;
-        _clearBulkOperation();
         if (!identical(current, analysis)) _applyAnalysis(current);
       });
       if (completed == 0) {

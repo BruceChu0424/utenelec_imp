@@ -53,6 +53,7 @@ public class WorkbookDownloadService {
         if (password == null || password.isEmpty()) {
             return xlsx;
         }
+        ExportProgress.phase(ExportProgress.Phase.ENCRYPTING);
         if (password.length() > 128) {
             throw new IllegalArgumentException("导出密码长度不能超过 128 位");
         }

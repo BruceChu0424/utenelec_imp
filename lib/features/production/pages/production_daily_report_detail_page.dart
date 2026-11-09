@@ -52,6 +52,7 @@ import '../../../shared/auth/permissions.dart';
 import '../../../shared/measurement/exact_measurement_totals.dart';
 import '../../../shared/measurement/weight_unit.dart';
 import '../../../shared/measurement/widgets/weight_text.dart';
+import '../../../shared/platform_tables/platform_table_binding.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../../../shared/providers/authenticated_scope_provider.dart';
@@ -1510,114 +1511,141 @@ class _ProductionDailyReportDetailPageState
   }
 
   /// 明细区：统一表格样式（MasterDataTableView，与全站报表/主档同款），
-  /// 不再是卡片式拼凑行；单位内联在数量后（2026-10-10 数量内联口径）。
+  /// 单位内联在数量后（2026-10-10 数量内联口径）。
+  /// 2026-11-08 合并口径：一行 = 服务端产出分组（报工批次 + 去向 + 直送需求），
+  /// 去向相同的拆分份（需求 20000 + 超产 1000 都送仓库）合成一行显示合计，
+  /// 「产出归属」列显示拆分说明（如「需求 20000 · 实际超产 1000」）区分来源(ADR-118)；
+  /// 去向不同的份自动分行。表键/列序与逐份渲染时一致，旧列偏好继续生效。
   /// 2026-09-11 起是折叠容器的 body：表格 primary:true 参与联动内滚；
   /// 2026-09-25 纯计数标题「明细 (N)」随全站退役。
   Widget _itemsCard(ThemeData theme) {
-    final items = _detail!.items;
+    final rows = _detail!.detailGroupRows;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Expanded(
-          child: MasterDataTableView<ProductionDailyReportItem>(
+          child: MasterDataTableView<ProductionDailyReportDetailGroupRow>(
             expensiveRowMounts: false,
             tableKey: 'production.daily.items',
+            // 平台扩展列：表键/scope 与逐份渲染时 platform_table_registry 里
+            // ProductionDailyReportItem 的绑定一致，合并行以源行 id 作为记录 id，
+            // 已保存的列偏好与自定义扩展列不因合并显示而丢。
+            platformBinding: PlatformTableBinding<
+              ProductionDailyReportDetailGroupRow
+            >(
+              tableKey: 'production.daily.items',
+              scope: 'production_daily_report_item',
+              recordIdOf: (row) => row.source.id,
+              columnAliases: const {
+                'goodsName': 'goods',
+                'goodsNameEn': 'nameEn',
+                'colorName': 'color',
+                'unitName': 'unit',
+                'listPrice': 'price',
+                'amountOriginal': 'amount',
+                'mfgMonth': 'mstatus',
+              },
+            ),
             primary: true,
             columns: [
               // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。
               // 同名不同编号的货品（自制/委外两条同名成品）在日报里必须分得开，
               // 否则审核时会认错货。2026-10-10 数量内联口径：独立「单位」列撤销，
-              // 单位跟在完工申报量/不良数的数字后。
+              // 单位跟在完工申报量/不良数的数字后。货品身份取组合并行的源行。
               MasterColumnDef(
                 key: 'goods',
                 label: '货品名称',
                 width: 200,
-                value: (it) => _dictText(it.goodsName) ?? '—',
+                value: (row) => _dictText(row.source.goodsName) ?? '—',
                 cellBuilderHandlesSemantics: true,
-                cellBuilder: (_, it) =>
-                    UtenGoodsIdentityCell(name: _dictText(it.goodsName)),
+                cellBuilder: (_, row) =>
+                    UtenGoodsIdentityCell(name: _dictText(row.source.goodsName)),
               ),
               MasterColumnDef(
                 key: 'goodsCode',
                 label: '编号',
                 width: 130,
-                value: (it) => UtenGoodsAttributeCell.text(it.goodsCode),
-                cellBuilder: (_, it) => UtenGoodsAttributeCell(it.goodsCode),
+                value: (row) =>
+                    UtenGoodsAttributeCell.text(row.source.goodsCode),
+                cellBuilder: (_, row) =>
+                    UtenGoodsAttributeCell(row.source.goodsCode),
               ),
               MasterColumnDef(
                 key: 'colorName',
                 label: '颜色',
                 width: 96,
-                value: (it) =>
-                    UtenGoodsAttributeCell.text(_dictText(it.colorName)),
-                cellBuilder: (_, it) =>
-                    UtenGoodsAttributeCell(_dictText(it.colorName)),
+                value: (row) =>
+                    UtenGoodsAttributeCell.text(_dictText(row.source.colorName)),
+                cellBuilder: (_, row) =>
+                    UtenGoodsAttributeCell(_dictText(row.source.colorName)),
               ),
+              // 完工申报量 = 组合计（20000 + 1000 = 21000），仍是数值列排序/汇总语义。
               MasterColumnDef(
                 key: 'qty',
                 label: '完工申报量',
                 width: 146,
                 type: 'number',
-                value: (it) => it.qty == null && it.qtyExact == null
-                    ? null
-                    : productionQuantityWithUnit(
-                            it.qtyText,
-                            _dictText(it.unitName),
-                          ) ??
-                          '完工量待核对',
+                value: (row) =>
+                    productionQuantityWithUnit(
+                      row.qtyText,
+                      _dictText(row.source.unitName),
+                    ) ??
+                    '完工量待核对',
               ),
-              // ADR-129：一次报工拆成多条明细时不良数只记在第一条，其余留空。
+              // ADR-129：拆分时不良数只记第一份，组合并=求和即原值；0 留空。
               MasterColumnDef(
                 key: 'defectQty',
                 label: '不良数',
                 width: 130,
                 type: 'number',
                 info: productionDailyReportDefectInfo,
-                value: (it) {
+                value: (row) {
                   final quantity = productionExactQuantityUnits(
-                    it.defectQtyText,
+                    row.defectQtyText,
                   );
                   if (quantity == null) return '不良数待核对';
                   return quantity > BigInt.zero
                       ? productionQuantityWithUnit(
-                          it.defectQtyText,
-                          _dictText(it.unitName),
+                          row.defectQtyText,
+                          _dictText(row.source.unitName),
                         )
                       : null;
                 },
               ),
+              // 产出归属 = 服务端拆分说明（「需求 20000 · 实际超产 1000」）；
+              // 组内含超限处置时保留「查看处置」入口。
               MasterColumnDef(
                 key: 'outputKind',
                 label: '产出归属',
-                width: 180,
-                value: (it) => it.outputKindLabel,
-                cellBuilder: (context, it) => it.dispositionId == null
-                    ? Text(it.outputKindLabel)
+                width: 240,
+                value: (row) => row.outputKindLabel,
+                cellBuilder: (context, row) => row.dispositionId == null
+                    ? Text(row.outputKindLabel)
                     : TextButton(
                         onPressed: () => context.push(
                           RoutePath.productionOverLimitDisposition(
-                            it.dispositionId!,
+                            row.dispositionId!,
                           ),
                         ),
-                        child: Text('${it.outputKindLabel} · 查看处置'),
+                        child: Text('${row.outputKindLabel} · 查看处置'),
                       ),
               ),
               MasterColumnDef(
                 key: 'overLimitReason',
                 label: '超限原因',
                 width: 220,
-                value: (it) => it.overLimitReason,
+                value: (row) => row.overLimitReason,
               ),
               MasterColumnDef(
                 key: 'weight',
                 label: '实称总重量',
                 width: 150,
                 type: 'number',
-                info: '实称重量按明细记录，产出拆分时显示该明细分摊值。≈ 为按申报量和单重换算的参考重量。',
-                value: (it) => formatWeightValue(
-                  it.weightText ?? it.referenceWeightKg,
+                info: '实称重量按明细记录，去向相同的拆分份合并显示合计。≈ 为按申报量和单重换算的参考重量。',
+                value: (row) => formatWeightValue(
+                  row.weightText ?? row.source.referenceWeightKg,
                   display: WeightDisplay.kg,
-                  estimated: it.weightText == null,
+                  estimated: row.weightText == null,
                 ),
               ),
               MasterColumnDef(
@@ -1626,9 +1654,9 @@ class _ProductionDailyReportDetailPageState
                 width: 132,
                 type: 'number',
                 info: '本行保存的基本单位单重。来源可为货品资料、手填或按申报量和实称总重量换算。',
-                value: (it) => it.unitWeightKgExact == null
+                value: (row) => row.source.unitWeightKgExact == null
                     ? '未知'
-                    : formatUnitWeight(it.unitWeightKgExact),
+                    : formatUnitWeight(row.source.unitWeightKgExact),
               ),
               MasterColumnDef(
                 // 2026-09-25 单号列统一：明细全量加载，就地排序+按值筛选。
@@ -1637,26 +1665,26 @@ class _ProductionDailyReportDetailPageState
                 filterFromRows: true,
                 label: '计划号',
                 width: 140,
-                value: (it) => it.planNo,
+                value: (row) => row.source.planNo,
               ),
-              // V584/V595/V736：产出去向与说明——一行报工分给几个上层工单就有几条转送明细，
-              // 送入仓库的明细写明为什么没转(服务端给的原因)。
+              // V584/V595/V736：产出去向与说明——组按去向天然分开，一行一个实物交接
+              // 批；送仓行写明为什么没转(服务端给的原因，多来源去重后连接)。
               MasterColumnDef(
                 key: 'destination',
                 label: '产出去向',
                 width: 120,
-                value: (it) => it.isDirectTransfer ? '转下一道工序' : '送入仓库',
+                value: (row) => row.isDirectTransfer ? '转下一道工序' : '送入仓库',
               ),
               MasterColumnDef(
                 key: 'routeNote',
                 label: '去向说明',
                 width: 300,
-                value: (it) => it.isDirectTransfer
-                    ? '转给 ${it.directTransferTargetLabel ?? '上层工单'}'
-                    : (it.outputRouteReasonText ?? '—'),
+                value: (row) => row.isDirectTransfer
+                    ? '转给 ${row.directTransferTargetLabel ?? '上层工单'}'
+                    : (row.routeReasonText ?? '—'),
               ),
             ],
-            items: items,
+            items: rows,
             facets: const {},
             nullCounts: const {},
             filters: const {},

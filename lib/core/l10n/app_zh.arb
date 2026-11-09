@@ -2673,6 +2673,18 @@
   },
   "aiJobQueued": "正在排队, 马上开始",
   "aiJobSlowHint": "内容较多时需要一两分钟, 请耐心等待, 不用重复点",
+  "progressCancel": "取消",
+  "progressElapsed": "已进行 {time}",
+  "@progressElapsed": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "progressSlowHint": "数据量大时需要一两分钟, 请耐心等待, 不用重复点",
+  "progressStopping": "正在停止: 当前这一项办完后结束, 已完成的保留, 不会重复提交",
+  "progressStoppingButton": "正在停止…",
   "aiJobTimeout": "处理时间太长, 已停止等待。请稍后再试, 或把文件拆小一些",
   "aiJobGone": "这次处理的任务已不存在(可能已被清理), 请重新开始",
   "aiJobFailedGeneric": "处理没有成功, 请稍后重试",

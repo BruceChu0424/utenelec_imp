@@ -153,6 +153,38 @@ class DashboardOverviewServiceTest {
                 .containsExactly("/warehouse/tasks/outbound?section=DRAW", "/warehouse/tasks/inbound?section=RETURN");
     }
 
+    /**
+     * 2026-11-09 补齐: 任务中心其余出入库分段也出待办卡(委外出库/销售出库/采购到货/委外到货/
+     * 产成品), 每张卡的事实数与落地页对应分段徽章同源; 事实缺失或为 0 不出卡。
+     */
+    @Test void warehouseTaskCenterSegmentsEachGetTheirOwnTodoCardWithSegmentBadgedRoutes() {
+        grantedEntries.addAll(Set.of("warehouseOutboundCenter", "warehouseInboundCenter"));
+        facts.put("subcontractOutbound.count", 3L);
+        facts.put("warehouseSalesOutbound.PENDING_PICK", 2L);
+        facts.put("warehouseInboundExpectation.PURCHASE", 5L);
+        facts.put("warehouseArrivalException.PURCHASE", 1L);
+        facts.put("warehouseInboundExpectation.SUBCONTRACT", 0L);
+        facts.put("warehouseArrivalException.SUBCONTRACT", 0L);
+        facts.put("finishedInbound.count", 4L);
+        DashboardOverviewDto result = service.overview();
+        assertThat(result.todos()).extracting(DashboardOverviewDto.TodoCard::id, DashboardOverviewDto.TodoCard::count,
+                        DashboardOverviewDto.TodoCard::route)
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple("fulfillment-warehouse-draw", 4L,
+                                "/warehouse/tasks/outbound?section=DRAW"),
+                        org.assertj.core.groups.Tuple.tuple("fulfillment-warehouse-subcontract-outbound", 3L,
+                                "/warehouse/tasks/outbound?section=subcontract"),
+                        org.assertj.core.groups.Tuple.tuple("fulfillment-warehouse-sales-outbound", 2L,
+                                "/warehouse/tasks/outbound?section=sales"),
+                        org.assertj.core.groups.Tuple.tuple("fulfillment-warehouse-purchase-arrival", 6L,
+                                "/warehouse/tasks/inbound?section=purchase"),
+                        // 委外到货两事实均为 0 → 不出卡(0 计数不占位)。
+                        org.assertj.core.groups.Tuple.tuple("fulfillment-warehouse-finished", 4L,
+                                "/warehouse/tasks/inbound?section=finishedIn"),
+                        org.assertj.core.groups.Tuple.tuple("fulfillment-warehouse-return", 1L,
+                                "/warehouse/tasks/inbound?section=RETURN"));
+    }
+
     @ParameterizedTest
     @CsvSource({"4,5,1,7,9,8", "0,5,0,7,5,7", "4,0,1,0,4,1", "0,0,0,0,0,0", "0,0,1,7,0,8", "4,5,0,0,9,0"})
     void warehouseProductionQueuesIncludeWorkshopFactsAndHideZeroWithoutUsingModuleTotals(

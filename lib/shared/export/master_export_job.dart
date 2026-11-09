@@ -55,6 +55,8 @@ Map<String, dynamic> masterExportJobParameters(
     'selectableOnly',
     'accountable',
     'defective',
+    // 货品「组装信息」表头筛选（true/false）：与列表同一 GoodsQueryFilter.hasBom。
+    'hasBom',
   };
   final filter = <String, dynamic>{};
   final searches = <String, dynamic>{};

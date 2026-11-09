@@ -24,7 +24,8 @@ import 'uten_input_decoration.dart';
 import 'uten_table_cell_spec.dart';
 import '../../shared/ai/page_context/ai_page_context.dart';
 
-/// outlined 日期选择字段。点按弹 showDatePicker；空值显示框内字段名。
+/// outlined 日期选择字段。点按弹全站统一的 showUtenDatePicker（自绘日期
+/// 弹窗，选中日期显示在标题行）；空值显示框内字段名。
 class UtenDateField extends StatefulWidget {
   const UtenDateField({
     super.key,

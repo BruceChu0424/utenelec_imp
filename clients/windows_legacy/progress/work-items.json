@@ -13876,6 +13876,49 @@
       "evidence": [],
       "notes": "尚未迁移；先做动作/合同审计。\n源清单已不再发现该页，须人工分类退役/改名；不得自动删除历史任务。\n源清单已不再发现该页，须人工分类退役/改名；不得自动删除历史任务。\n源清单已不再发现该页，须人工分类退役/改名；不得自动删除历史任务。\n源清单已不再发现该页，须人工分类退役/改名；不得自动删除历史任务。",
       "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-FLOW-019",
+      "title": "统一进度弹窗：UtenBusyDialog 确定进度模式与 Flutter 端同步",
+      "group": "FLOW",
+      "groupLabel": "跨模块完整业务闭环",
+      "phase": "E",
+      "status": "implemented",
+      "impactArea": "shared",
+      "owner": "bruce",
+      "sources": [
+        "clients/windows_legacy/Uten.Legacy.Desktop/Controls/UtenBusyDialog.cs",
+        "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitExportWindow.cs",
+        "clients/windows_legacy/Uten.Legacy.Desktop/MainWindow.xaml.cs",
+        "clients/windows_legacy/Uten.Legacy.Desktop/Features/Downloads/SoftwareDownloadsView.cs",
+        "lib/components/feedback/uten_progress_dialog.dart"
+      ],
+      "nativeTargets": [
+        "clients/windows_legacy/Uten.Legacy.Desktop/Controls/UtenBusyDialog.cs",
+        "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitExportWindow.cs",
+        "clients/windows_legacy/Uten.Legacy.Desktop/MainWindow.xaml.cs"
+      ],
+      "dependencies": [
+        "W7-CORE-011",
+        "W7-CORE-012",
+        "W7-CORE-013",
+        "W7-CORE-014"
+      ],
+      "definitionOfDone": [
+        "UtenBusyDialog 新增 ShowProgress 确定进度模式与 Report/Stage 汇报；总量未知走扫动条+详情，不伪造百分比；样式走 Uten.PrimaryBrush/Uten.Space 资源。",
+        "单位导出下载、更新下载两流程接入；安装包下载页既有内联进度（Uten 资源样式+取消）确认合规不改。",
+        "已提交业务请求不提供误导性取消；单请求型与 Flutter 端 cancellable:false 同口径。",
+        "C# 级编译验证（本机 dotnet msbuild 无法生成 XAML codegen，过滤 XAML 名错误后本次改动零错误）；Win7 真机验收未做。",
+        "未迁移项明确记录：WPF 端无同步导出生成进度协议（服务端进度端点）与 UtenProgressRing 圆环组件——按需后续补。"
+      ],
+      "evidence": [
+        "clients/windows_legacy/Uten.Legacy.Desktop/Controls/UtenBusyDialog.cs（ShowProgress/Report/Stage）",
+        "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitExportWindow.cs DownloadAsync（下载全程持弹窗+取消传输令牌）",
+        "clients/windows_legacy/Uten.Legacy.Desktop/MainWindow.xaml.cs OnCheckUpdate（确定进度 received/SizeBytes+幂等 Dispose 收尾）",
+        "本机 dotnet msbuild：85 个错误全为 XAML 生成名缺失（既有环境限制），本次新增符号零错误"
+      ],
+      "notes": "2026-11-09 随 Flutter「导出/下载/批量操作统一进度弹窗」批次实施；Flutter 侧组件 docs/02-组件库/通用进度弹窗.md。状态 implemented：代码就位，Win7 真机 UAT 未完成，不据此开放任何已支持组合。",
+      "lastUpdated": "2026-11-09"
     }
   ]
 }

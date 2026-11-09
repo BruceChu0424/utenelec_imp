@@ -13,7 +13,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../components/buttons/uten_button.dart';
-import '../../../components/feedback/uten_busy_overlay.dart';
+import '../../../components/feedback/uten_progress_dialog.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../components/layout/uten_panel_header.dart';
@@ -428,22 +428,36 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet>
     FocusManager.instance.primaryFocus?.unfocus();
     setState(() => _busy = true);
     try {
-      final repository = ref.read(
-        salesRepositoryProvider(SalesDocType.shipment),
+      // 一次请求开全部出货单, 发出后无法撤回: 不提供「取消」。
+      final created = await showUtenProgress(
+        context,
+        title: '批量发货',
+        icon: Icons.local_shipping_outlined,
+        initialStatus: '正在批量开出货单',
+        initialDetail: '${_retainedLines!.length} 行',
+        cancellable: false,
+        action: (_) async {
+          final repository = ref.read(
+            salesRepositoryProvider(SalesDocType.shipment),
+          );
+          final scope = await repository.api.captureRequestScope(
+            isCurrent: () => _currentReader,
+          );
+          final result = await scope.run(
+            () => repository.batchShip(
+              billDate: _retainedDate!,
+              idempotencyKey: _idempotencyKey,
+              lines: _retainedLines!,
+            ),
+          );
+          await scope.verify();
+          return result;
+        },
       );
-      final scope = await repository.api.captureRequestScope(
-        isCurrent: () => _currentReader,
-      );
-      final created = await scope.run(
-        () => repository.batchShip(
-          billDate: _retainedDate!,
-          idempotencyKey: _idempotencyKey,
-          lines: _retainedLines!,
-        ),
-      );
-      await scope.verify();
       if (!_currentReader) return;
-      if (created.isEmpty) throw const FormatException('没有收到开单结果，请重试确认');
+      if (created == null || created.isEmpty) {
+        throw const FormatException('没有收到开单结果，请重试确认');
+      }
       refreshBadges(ref);
       bumpListRefresh(ref, SalesDocConfig.shipment.refreshKey);
       bumpListRefresh(ref, SalesDocConfig.order.refreshKey);
@@ -500,11 +514,6 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet>
       canPop: !_busy && _retainedLines == null,
       child: Column(
         children: [
-          if (_busy)
-            const UtenBusyOverlay(
-              title: '正在批量开出货单',
-              description: '正在按订单逐张生成出货单，请勿重复提交或关闭面板。',
-            ),
           Padding(
             padding: const EdgeInsets.all(UtenSpacing.s12),
             child: Row(

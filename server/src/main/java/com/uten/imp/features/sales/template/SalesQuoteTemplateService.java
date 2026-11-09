@@ -95,7 +95,8 @@ public class SalesQuoteTemplateService {
         QuoteDetail quote=readable(quoteId);
         return templates.list(quote.getClientId());
     }
-    @Transactional(isolation=Isolation.REPEATABLE_READ)
+    @Transactional(isolation=Isolation.REPEATABLE_READ,
+            timeout=com.uten.imp.common.export.ExportTransactions.TIMEOUT_SECONDS)
     public Download export(UUID quoteId, ExportRequest request) {
         AuthUser actor=currentUser.get().orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED));
         if (actor.isVisitor() || actor.getPermissions()==null || !actor.getPermissions().containsAll(

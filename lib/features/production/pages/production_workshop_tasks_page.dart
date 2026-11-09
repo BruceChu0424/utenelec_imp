@@ -51,8 +51,8 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
-import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_context_menu.dart';
+import '../../../components/feedback/uten_progress_dialog.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_table_cell_action.dart';
@@ -111,12 +111,12 @@ import '../widgets/workshop_task_material_bin_panel.dart';
 import '../../../shared/badges/badge_registry.dart';
 import 'package:uten_imp/core/ui/human_error_message.dart';
 
-/// 一块跑批遮罩的画面: 测试锚点 key + 标题 + 说明。标题在同一次动作里可换
-/// (提交段 -> 刷新段), UtenBusyOverlay 支持帧后热更文案。
-typedef _WorkshopBusy = ({Key semanticsKey, String title, String description});
+/// 一段跑批动作的进度弹窗文案: 弹窗标题 + 阶段句。阶段句在同一次动作里可换
+/// (提交段 -> 刷新段), 由 UtenProgressSession 的汇报驱动。
+typedef _WorkshopBusy = ({String title, String status});
 
-/// 一批路线确认的结果: 成功条数与首个失败原因(部分失败时提示用)。
-typedef _RouteConfirmOutcome = ({int applied, String? error});
+/// 一批路线确认的结果: 成功条数、首个失败原因与是否中途按要求停止。
+typedef _RouteConfirmOutcome = ({int applied, String? error, bool stopped});
 
 class ProductionWorkshopTasksPage extends ConsumerStatefulWidget {
   const ProductionWorkshopTasksPage({super.key});
@@ -149,74 +149,39 @@ class _ProductionWorkshopTasksPageState
   final _taskDetailRevision = ValueNotifier<int>(0);
   final Set<String> _selected = {};
 
-  /// 跑批遮罩的唯一通道(2026-09-21 用户口径「批量开工/批量领料/批量设路线
-  /// 应该和别的页面一样有中间的加载弹窗」): 非空 = 正在跑一段纯网络任务,
-  /// 全屏居中遮罩按这里的文案显示。同一时刻只会有一块。
-  ///
-  /// 纪律(UtenBusyOverlay 组件契约): **只许盖纯网络段**。本页凡是要跳到别的
-  /// 页面或者中途弹窗的动作(批量领料、分批领料、批量报工、看生产计划、看用料
-  /// 记录)一律不进这个通道——遮罩是直接插进 root Overlay 的裸 entry, Navigator
-  /// 每推一次路由都会把它重新抬到最顶, 挂着跳页会把目标页整片盖住且点不动。
-  /// 那几条链路的实际加载反馈由各自目标页持有同款遮罩，返回后的网络刷新再由本页持有。
-  _WorkshopBusy? _busy;
+  /// 跑批进度弹窗的唯一通道(2026-09-21 用户口径「批量开工/批量领料/批量设路线
+  /// 应该和别的页面一样有中间的加载弹窗」, 2026-11-09 起统一用 showUtenProgress):
+  /// 非 null(经 [_runBusy] / [_reloadWithBusy] 设置) = 正在跑一段纯网络任务。
+  /// 同一时刻只会有一段; 各处「跑批期间不许再触发」的守卫读它。
+  bool _batchRunning = false;
 
   /// 路线确认(批量设路线 + 行内「下一步」下拉选中即提交)。
-  static const _busyRoutes = (
-    semanticsKey: Key('workshop-route-confirm-busy'),
-    title: '正在确认生产路线',
-    description: '正在提交所选工单的生产路线，完成后自动刷新。',
-  );
+  static const _busyRoutes = (title: '批量设路线', status: '正在确认生产路线');
 
   /// 批量开工(含行右键菜单、详情弹窗里的单行开工, 都走同一个方法)。
-  static const _busyStart = (
-    semanticsKey: Key('workshop-batch-start-busy'),
-    title: '正在开工',
-    description: '正在按生产计划逐批提交开工，完成后自动刷新。',
-  );
+  static const _busyStart = (title: '批量开工', status: '正在开工');
 
   /// 重新核对备料(与开工同类: 一次纯网络提交, 不跳页不弹窗)。
-  static const _busyRecheck = (
-    semanticsKey: Key('workshop-recheck-busy'),
-    title: '正在重新核对备料',
-    description: '正在按当前生产路线复核物料到位情况，完成后自动刷新。',
-  );
+  static const _busyRecheck = (title: '重新核对备料', status: '正在重新核对备料');
 
   /// 催计划(ADR-117): 一次纯网络提交 + 整页重拉。
-  static const _busyUrge = (
-    semanticsKey: Key('workshop-planning-urge-busy'),
-    title: '正在提醒计划员',
-    description: '正在把缺的料告诉计划员，完成后自动刷新。',
-  );
+  static const _busyUrge = (title: '催计划', status: '正在提醒计划员');
 
   static const _busyDrawReviewRefresh = (
-    semanticsKey: Key('workshop-draw-review-refresh-busy'),
-    title: '正在刷新任务列表',
-    description: '正在核对领料申请后的工单与物料状态。',
+    title: '刷新任务列表',
+    status: '正在核对领料申请后的工单与物料状态',
   );
 
   /// 开工确认表办完回来后的整页重拉(认料、路线、开工都在确认表里提交)。
   static const _busyStartConfirmRefresh = (
-    semanticsKey: Key('workshop-start-confirmation-refresh-busy'),
-    title: '正在刷新任务列表',
-    description: '正在按刚确认的用料、生产路线和开工结果重新拉取任务。',
+    title: '刷新任务列表',
+    status: '正在按确认结果重新拉取任务',
   );
 
   /// 换料对话框办完回来后的整页重拉。
   static const _busyMaterialChangeRefresh = (
-    semanticsKey: Key('workshop-material-change-refresh-busy'),
-    title: '正在刷新任务列表',
-    description: '正在按改用的料重新拉取任务。',
-  );
-
-  /// 网络段之后的整页重拉段: 换文案不撤遮罩, 免得提示已经弹出来、表格还停在
-  /// 旧事实(表格组件在有数据时刷新是零画面的)。
-  ///
-  /// 文案不许说「已提交」「已完成」: 这一段在整批全失败时照样要跑, 到底成了
-  /// 几条要等遮罩撤下后的提示才知道; 重新核对备料也不是一次提交。
-  static _WorkshopBusy _busyRefreshing(_WorkshopBusy action) => (
-    semanticsKey: action.semanticsKey,
-    title: '正在刷新任务列表',
-    description: '正在按服务端最新事实重新拉取任务与物料，完成后给出结果。',
+    title: '刷新任务列表',
+    status: '正在按改用的料重新拉取任务',
   );
 
   bool _navigating = false;
@@ -318,14 +283,15 @@ class _ProductionWorkshopTasksPageState
         return;
       }
       if (!mounted) return;
-      final source = await UtenBusyOverlay.run(
+      final source = await showUtenProgress(
         context,
-        title: '正在核对当前超产比例',
-        action: () => ref
+        title: '核对当前超产比例',
+        initialStatus: '正在核对当前超产比例',
+        action: (_) => ref
             .read(productionOverproductionRateRepositoryProvider)
             .context(task.segmentId),
       );
-      if (!mounted) return;
+      if (!mounted || source == null) return;
       if (source.pendingRequestId != null) {
         await _navigation.push(
           RoutePath.productionOverproductionRateRequest(
@@ -627,7 +593,7 @@ class _ProductionWorkshopTasksPageState
   }
 
   /// 按每行各自的路线记忆逐组确认(同一路线的行一起提交, 每组各自提示)。
-  /// 遮罩由本方法整段持有: 逐组之间不撤不闪, 最后的整页重拉也在遮罩内。
+  /// 进度弹窗由本方法整段持有: 逐组之间不撤不闪, 最后的整页重拉也在弹窗内。
   Future<void> _submitRememberedRoutes(
     List<ProductionExecutionWorkbenchSegment> targets,
   ) async {
@@ -636,14 +602,27 @@ class _ProductionWorkshopTasksPageState
     for (final task in targets) {
       byRoute.putIfAbsent(task.suggestedStartRoute!, () => []).add(task);
     }
-    final outcomes = await _runBusy(_busyRoutes, () async {
+    final total = targets.length;
+    final outcomes = await _runBusy(_busyRoutes, (progress) async {
+      var done = 0;
       final results = <(String, _RouteConfirmOutcome)>[];
       for (final entry in byRoute.entries) {
-        results.add((entry.key, await _confirmRoutes(entry.value, entry.key)));
+        if (progress.isCancelled) break;
+        results.add((
+          entry.key,
+          await _confirmRoutes(
+            entry.value,
+            entry.key,
+            progress: progress,
+            doneBase: done,
+            total: total,
+          ),
+        ));
+        done += entry.value.length;
         if (!mounted) break;
       }
       return results;
-    });
+    }, countTotal: total);
     if (!mounted) return;
     for (final (route, outcome) in outcomes) {
       _reportRouteOutcome(outcome, byRoute[route]!.length, route);
@@ -999,45 +978,73 @@ class _ProductionWorkshopTasksPageState
   /// 中间不撤不闪(表格组件在已有数据时刷新是零画面的, 撤早了就成了「提示已经
   /// 弹出、表格还是旧事实」的裸奔窗口)。
   ///
-  /// 结果提示一律由调用方在本方法返回**之后**再发: 遮罩必须先撤下, 否则提示被
-  /// 盖在遮罩底下, widget test 的 pumpAndSettle 也永远落不定(遮罩里的转圈是无限
-  /// 动画)。[body] 里绝不能跳页或弹窗, 理由见 [_busy]。
-  Future<T> _runBusy<T>(_WorkshopBusy action, Future<T> Function() body) async {
+  /// 结果提示一律由调用方在本方法返回**之后**再发: 弹窗必须先撤下, 否则提示被
+  /// 盖在弹窗底下。[body] 里绝不能跳页或弹窗, 理由见 [_batchRunning]。
+  Future<T> _runBusy<T>(
+    _WorkshopBusy action,
+    Future<T> Function(UtenProgressSession progress) body, {
+    int? countTotal,
+  }) async {
     setState(() {
-      _busy = action;
+      _batchRunning = true;
       _navigating = true;
     });
     try {
-      final result = await body();
-      if (mounted) {
-        // 两个标志一起置: 兜底复位(返回即刷新/刷新按钮)可能在 await 期间把
-        // _navigating 清掉了, 刷新段要把它一并恢复, 免得遮罩在、按钮却可点。
-        setState(() {
-          _busy = _busyRefreshing(action);
-          _navigating = true;
-        });
-        await _reloadAfterChange();
-      }
-      return result;
+      final result = await showUtenProgress<T>(
+        context,
+        title: action.title,
+        initialStatus: action.status,
+        initialDetail: countTotal == null ? null : '$countTotal 项',
+        cancellable: countTotal != null,
+        cancelMode: UtenProgressCancel.afterCurrent,
+        action: (progress) async {
+          if (countTotal != null) {
+            progress.count(0, countTotal, status: action.status);
+          }
+          final value = await body(progress);
+          if (mounted) {
+            // 网络段之后的整页重拉段: 换阶段句不撤弹窗, 免得提示已经弹出来、
+            // 表格还停在旧事实(表格组件在有数据时刷新是零画面的)。
+            // 阶段句不许说「已提交」「已完成」: 这一段在整批全失败时照样要跑。
+            progress.stage('正在刷新任务列表');
+            // 两个标志一起置: 兜底复位(返回即刷新/刷新按钮)可能在 await 期间把
+            // _navigating 清掉了, 刷新段要把它一并恢复, 免得弹窗在、按钮却可点。
+            setState(() => _navigating = true);
+            await _reloadAfterChange();
+          }
+          return value;
+        },
+      );
+      return result as T;
     } finally {
       if (mounted) {
         setState(() {
-          _busy = null;
+          _batchRunning = false;
           _navigating = false;
         });
       }
     }
   }
 
-  /// 逐单提交已确认路线; 版本变化保留失败原因。只跑网络, 遮罩与刷新由
-  /// [_runBusy] 统一持有, 提示由调用方在遮罩撤下后再发。
+  /// 逐单提交已确认路线; 版本变化保留失败原因。只跑网络, 弹窗与刷新由
+  /// [_runBusy] 统一持有, 提示由调用方在弹窗撤下后再发。计数型调用方传
+  /// [progress]/[total] 汇报「已办 / 总数」, 取消＝当前这单办完即停。
   Future<_RouteConfirmOutcome> _confirmRoutes(
     List<ProductionExecutionWorkbenchSegment> targets,
-    String route,
-  ) async {
+    String route, {
+    UtenProgressSession? progress,
+    int doneBase = 0,
+    int total = 0,
+  }) async {
     var applied = 0;
+    var processed = 0;
+    var stopped = false;
     String? firstError;
     for (final task in targets) {
+      if (progress?.isCancelled ?? false) {
+        stopped = true;
+        break;
+      }
       try {
         await ref
             .read(productionPlanRepositoryProvider)
@@ -1054,8 +1061,10 @@ class _ProductionWorkshopTasksPageState
           fallback: '确认生产路线失败，请刷新后重试',
         );
       }
+      processed += 1;
+      progress?.count(doneBase + processed, total, status: '正在确认生产路线');
     }
-    return (applied: applied, error: firstError);
+    return (applied: applied, error: firstError, stopped: stopped);
   }
 
   void _reportRouteOutcome(
@@ -1071,7 +1080,9 @@ class _ProductionWorkshopTasksPageState
             : '已确认 ${outcome.applied} 个工单的生产路线：$label',
       );
     }
-    if (outcome.error != null) {
+    if (outcome.stopped) {
+      context.appInfo('已按要求停止，已改 ${outcome.applied} / $total，其余未办理');
+    } else if (outcome.error != null) {
       context.appError(
         '部分工单路线未改成功(已改 ${outcome.applied} / $total)：${outcome.error}',
         force: true,
@@ -1079,7 +1090,7 @@ class _ProductionWorkshopTasksPageState
     }
   }
 
-  /// 单行下拉选中即提交, 或「批量设路线」菜单按路线提交: 提交与刷新同在遮罩内。
+  /// 单行下拉选中即提交, 或「批量设路线」菜单按路线提交: 提交与刷新同在弹窗内。
   Future<void> _submitRoutes(
     List<ProductionExecutionWorkbenchSegment> targets,
     String route,
@@ -1087,7 +1098,13 @@ class _ProductionWorkshopTasksPageState
     if (targets.isEmpty) return;
     final outcome = await _runBusy(
       _busyRoutes,
-      () => _confirmRoutes(targets, route),
+      (progress) => _confirmRoutes(
+        targets,
+        route,
+        progress: progress,
+        total: targets.length,
+      ),
+      countTotal: targets.length,
     );
     if (!mounted) return;
     _reportRouteOutcome(outcome, targets.length, route);
@@ -1286,15 +1303,7 @@ class _ProductionWorkshopTasksPageState
         !await readViewActivity.waitForForeground(captureReadOwner(ref))) {
       return;
     }
-    setState(() {
-      _busy = _busyDrawReviewRefresh;
-      _navigating = true;
-    });
-    try {
-      await _reloadAfterChange();
-    } finally {
-      if (mounted) setState(() => _busy = null);
-    }
+    await _reloadWithBusy(_busyDrawReviewRefresh);
   }
 
   Future<void> _load({bool useCache = false}) async {
@@ -1877,12 +1886,19 @@ class _ProductionWorkshopTasksPageState
       byPlan.putIfAbsent(task.planId, () => []).add(task);
     }
     // 跨计划是逐计划串行往返(计划内才是单事务原子), 多计划时要等几秒——这段
-    // 全程挂遮罩, 否则屏幕上只有一个变灰的按钮, 用户会对着没变的旧行再点一次。
-    final outcome = await _runBusy(_busyStart, () async {
+    // 全程挂进度弹窗, 否则屏幕上只有一个变灰的按钮, 用户会对着没变的旧行再点一次。
+    final total = targets.length;
+    final outcome = await _runBusy(_busyStart, (progress) async {
       var started = 0;
+      var processed = 0;
       final startedIds = <String>{};
       String? firstError;
+      var stopped = false;
       for (final entry in byPlan.entries) {
+        if (progress.isCancelled) {
+          stopped = true;
+          break;
+        }
         try {
           await ref
               .read(productionPlanRepositoryProvider)
@@ -1901,17 +1917,21 @@ class _ProductionWorkshopTasksPageState
         } catch (error) {
           firstError ??= productionErrorMessage(error, fallback: '开工失败，请刷新后重试');
         }
+        processed += entry.value.length;
+        progress.count(processed, total, status: '正在开工');
       }
       if (mounted && startedIds.isNotEmpty) {
         setState(() => _selected.removeAll(startedIds));
       }
-      return (started: started, error: firstError);
-    });
+      return (started: started, error: firstError, stopped: stopped);
+    }, countTotal: total);
     if (!mounted) return;
     if (outcome.started > 0) {
       context.appSuccess('已开工 ${outcome.started} 个工单，请在「生产中」分类报工');
     }
-    if (outcome.error != null) {
+    if (outcome.stopped) {
+      context.appInfo('已按要求停止，已开工 ${outcome.started} / $total，其余未开工');
+    } else if (outcome.error != null) {
       context.appError(
         '部分工单开工失败(已开工 ${outcome.started} / ${targets.length})：${outcome.error}',
         force: true,
@@ -2004,19 +2024,25 @@ class _ProductionWorkshopTasksPageState
     context.appSuccess('已改用新料：从选定的那天起，这张工单报工的产量按新料算用量');
   }
 
-  /// 子流程(确认表、换料对话框)办完回来的整页重拉：遮罩盖到重拉完成再撤，
-  /// 撤下后调用方再发提示或跳页。
+  /// 子流程(确认表、换料对话框)办完回来的整页重拉：进度弹窗盖到重拉完成再撤，
+  /// 撤下后调用方再发提示或跳页。单请求读取段不给取消。
   Future<void> _reloadWithBusy(_WorkshopBusy busy) async {
     setState(() {
-      _busy = busy;
+      _batchRunning = true;
       _navigating = true;
     });
     try {
-      await _reloadAfterChange();
+      await showUtenProgress<void>(
+        context,
+        title: busy.title,
+        initialStatus: busy.status,
+        cancellable: false,
+        action: (_) => _reloadAfterChange(),
+      );
     } finally {
       if (mounted) {
         setState(() {
-          _busy = null;
+          _batchRunning = false;
           _navigating = false;
         });
       }
@@ -2044,10 +2070,10 @@ class _ProductionWorkshopTasksPageState
   ) async {
     if (!_canStart || !task.canRecheckMaterial || _navigating) return;
     try {
-      // 与开工同类的纯网络段: 一次提交 + 一次整页重拉, 全程挂遮罩。
+      // 与开工同类的纯网络段: 一次提交 + 一次整页重拉, 全程在进度弹窗内。
       final result = await _runBusy(
         _busyRecheck,
-        () => ref
+        (_) => ref
             .read(productionPlanRepositoryProvider)
             .recheckExecutionSegmentMaterials(
               task.planId,
@@ -2076,7 +2102,7 @@ class _ProductionWorkshopTasksPageState
     try {
       final result = await _runBusy(
         _busyUrge,
-        () => ref
+        (_) => ref
             .read(productionExecutionWorkbenchRepositoryProvider)
             .urgePlanning(task.segmentId),
       );
@@ -2879,7 +2905,7 @@ class _ProductionWorkshopTasksPageState
     // 生产执行刷新信号(bumpListRefresh)在本页栈顶时立即重拉, 被盖住时留到返回再拉。
     // 返回时连同顶部分类徽章一起重拉(报工审核、领料提交等都在子页面里办完)。
     Future<void> visibleReadReturn() async {
-      if (_busy != null) return;
+      if (_batchRunning) return;
       if (_navigation.consumeReturnedVisit()) return;
       if (!_navigating) await _reloadAfterChange();
     }
@@ -2887,7 +2913,7 @@ class _ProductionWorkshopTasksPageState
     _activityReturnRead = () async {
       // This callback means an actual read is still unfulfilled. Navigation's
       // dedup flag is proof of a completed visit, not proof of a fresh read.
-      if (_busy == null && !_navigating) await _reloadAfterChange();
+      if (!_batchRunning && !_navigating) await _reloadAfterChange();
     };
     ref.onPageResume(
       RouteName.productionWorkshopTasks,
@@ -2943,7 +2969,7 @@ class _ProductionWorkshopTasksPageState
                 !_loading &&
                 _error == null &&
                 !_navigating &&
-                _busy == null,
+                !_batchRunning,
             queryParams: {
               'status': ?_status,
               if (_keyword.trim().isNotEmpty) 'keyword': _keyword,
@@ -2971,7 +2997,7 @@ class _ProductionWorkshopTasksPageState
             ),
           UtenRefreshButton(
             busy: _loading,
-            enabled: !_navigating && _busy == null,
+            enabled: !_navigating && !_batchRunning,
             onRefresh: () async {
               setState(() => _page = 1);
               await Future.wait([refreshBadges(ref), _load()]);
@@ -3056,15 +3082,6 @@ class _ProductionWorkshopTasksPageState
                       key: const Key('workshop-server-draft-error'),
                       padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
                       child: Text(_serverReportDraftsError!),
-                    ),
-                  // 跑批期间的全屏加载遮罩(组件自己推 root Overlay, 挂载位置随意;
-                  // 物料分析 bucketActionBusyMessage 同款)。批量设路线 / 批量开工 /
-                  // 重新核对备料共用 [_busy] 这一条通道, 同一时刻只会有一块。
-                  if (_busy != null)
-                    UtenBusyOverlay(
-                      semanticsKey: _busy!.semanticsKey,
-                      title: _busy!.title,
-                      description: _busy!.description,
                     ),
                 ],
               ),

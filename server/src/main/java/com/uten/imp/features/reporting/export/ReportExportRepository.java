@@ -14,10 +14,16 @@ public class ReportExportRepository {
     public record Job(UUID id, UUID owner, long authVersion, long authEpoch, String request,
             String status, boolean cancelRequested, int attempt, int rows, OffsetDateTime createdAt, OffsetDateTime finishedAt,
             OffsetDateTime snapshotAt, OffsetDateTime expiresAt, String error, String sha256, long bytes,
-            String contract, String buildIdentity, String accessStamp,String precisionChoices,String precisionRequirement) {
+            String contract, String buildIdentity, String accessStamp,String precisionChoices,String precisionRequirement,
+            Long totalRows) {
+        public Job(UUID id,UUID owner,long authVersion,long authEpoch,String request,String status,boolean cancelRequested,int attempt,int rows,OffsetDateTime createdAt,OffsetDateTime finishedAt,
+                OffsetDateTime snapshotAt,OffsetDateTime expiresAt,String error,String sha256,long bytes,String contract,String buildIdentity,String accessStamp,
+                String precisionChoices,String precisionRequirement){
+            this(id,owner,authVersion,authEpoch,request,status,cancelRequested,attempt,rows,createdAt,finishedAt,snapshotAt,expiresAt,error,sha256,bytes,contract,buildIdentity,accessStamp,precisionChoices,precisionRequirement,null);
+        }
         public Job(UUID id,UUID owner,long authVersion,long authEpoch,String request,String status,boolean cancelRequested,int attempt,int rows,OffsetDateTime createdAt,OffsetDateTime finishedAt,
                 OffsetDateTime snapshotAt,OffsetDateTime expiresAt,String error,String sha256,long bytes,String contract,String buildIdentity,String accessStamp){
-            this(id,owner,authVersion,authEpoch,request,status,cancelRequested,attempt,rows,createdAt,finishedAt,snapshotAt,expiresAt,error,sha256,bytes,contract,buildIdentity,accessStamp,"{\"version\":1,\"choices\":{}}",null);
+            this(id,owner,authVersion,authEpoch,request,status,cancelRequested,attempt,rows,createdAt,finishedAt,snapshotAt,expiresAt,error,sha256,bytes,contract,buildIdentity,accessStamp,"{\"version\":1,\"choices\":{}}",null,null);
         }
     }
     private static final org.springframework.jdbc.core.RowMapper<Job> MAPPER = (r,n) -> new Job(
@@ -25,7 +31,8 @@ public class ReportExportRepository {
             r.getLong("submitted_auth_epoch"),r.getString("request"),r.getString("status"),r.getBoolean("cancel_requested"),r.getInt("attempt"),
             r.getInt("row_count"),r.getObject("created_at",OffsetDateTime.class),r.getObject("finished_at",OffsetDateTime.class),
             r.getObject("snapshot_at",OffsetDateTime.class),r.getObject("expires_at",OffsetDateTime.class),
-            r.getString("error_message"),r.getString("artifact_sha256"),r.getLong("artifact_bytes"),r.getString("read_contract"),r.getString("build_identity"),r.getString("access_stamp"),r.getString("precision_choices"),r.getString("precision_requirement"));
+            r.getString("error_message"),r.getString("artifact_sha256"),r.getLong("artifact_bytes"),r.getString("read_contract"),r.getString("build_identity"),r.getString("access_stamp"),r.getString("precision_choices"),r.getString("precision_requirement"),
+            r.getObject("total_rows",Long.class));
 
     public Optional<Job> find(UUID id) {
         return jdbc.query("SELECT * FROM report_export_jobs WHERE id=:id", Map.of("id",id),MAPPER).stream().findFirst();
@@ -70,10 +77,15 @@ public class ReportExportRepository {
             """,Map.of(),MAPPER).stream().findFirst();
     }
     public boolean heartbeat(Job job, int rows) {
+        return heartbeat(job, rows, null);
+    }
+    /** 心跳顺带记下读取开始时的权威总行数(已知时); 只写一次, 之后保持不变。 */
+    public boolean heartbeat(Job job, int rows, Long total) {
         return jdbc.update("""
-            UPDATE report_export_jobs SET row_count=:rows,lease_until=clock_timestamp()+interval '120 seconds'
+            UPDATE report_export_jobs SET row_count=:rows,lease_until=clock_timestamp()+interval '120 seconds',
+                total_rows=COALESCE(total_rows,CAST(:total AS bigint))
             WHERE id=:id AND status='RUNNING' AND NOT cancel_requested AND attempt=:attempt
-            """,args(job).addValue("rows",rows))==1;
+            """,args(job).addValue("rows",rows).addValue("total",total))==1;
     }
     public void snapshot(Job job, OffsetDateTime time, String identity) {
         jdbc.update("""

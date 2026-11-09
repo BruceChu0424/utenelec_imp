@@ -464,6 +464,7 @@ class _SubcontractOutboundDetailTableState
       double width,
       String Function(SubcontractOutboundTableRow) value, {
       bool numeric = false,
+      bool emphasized = false,
       String? info,
       String? Function(SubcontractOutboundTableRow)? exactValue,
     }) => EditableGridColumn(
@@ -471,6 +472,7 @@ class _SubcontractOutboundDetailTableState
       label: label,
       width: width,
       numeric: numeric,
+      emphasized: emphasized,
       headerInfo: info,
       textOf: value,
       exactValueOf: exactValue,
@@ -481,6 +483,7 @@ class _SubcontractOutboundDetailTableState
       String key,
       String label,
       String? Function(SubcontractOutboundTableRow) value, {
+      bool emphasized = false,
       String? info,
     }) => textColumn(
       key,
@@ -494,6 +497,7 @@ class _SubcontractOutboundDetailTableState
             : formatExactQtyWithUnit(quantity, row.draft.line.unitName);
       },
       numeric: true,
+      emphasized: emphasized,
       info: info,
       exactValue: value,
     );
@@ -654,10 +658,13 @@ class _SubcontractOutboundDetailTableState
             sampleRemark: row.documentNo,
           ),
         ),
+        // 2026-11-08 用户批注「加粗变红」：领料数量是仓库逐行核对的上限，整列
+        // 重点核对红字加粗(单张拣货页与批量出库页同口径)；仓内可动用保持常规。
         quantityColumn(
           'requested',
           '领料数量',
           (row) => row.draft.line.requestedQtyText,
+          emphasized: true,
           info:
               '委外人员提交的领料数量。本次出库只能小于或等于它, 填 0 表示这次不发; '
               '少发、不发的部分, 委外下次领料时系统会自动补齐。',

@@ -350,6 +350,35 @@ void main() {
     // 2026-10-30 用户口径: 订货单要有委外物料与成品对应关系; 收起时只占标题行。
     expect(find.text('委外物料（我方供料）'), findsOneWidget);
     expect(find.text('2 行 · 冻结 1 行 / 预估 1 行'), findsOneWidget);
+    // 2026-11-08 用户口径「移到表格上面」: 折叠卡位于明细表的表头设置/全屏
+    // 工具条之上, 不再落到合计栏之后的页面最底部。
+    final itemsTable = find.byWidgetPredicate(
+      (widget) =>
+          widget is MasterDataTableView<SubcontractDocItem> &&
+          widget.tableKey == 'subcontract.order.items',
+    );
+    final materialsBottom = tester
+        .getBottomLeft(find.byKey(const Key('subcontract-order-materials')))
+        .dy;
+    expect(
+      materialsBottom,
+      lessThanOrEqualTo(tester.getTopLeft(itemsTable).dy),
+    );
+    expect(
+      materialsBottom,
+      lessThan(
+        tester
+            .getTopLeft(
+              find.descendant(
+                of: itemsTable,
+                matching: find.byKey(
+                  const ValueKey('master-table-fullscreen-toggle'),
+                ),
+              ),
+            )
+            .dy,
+      ),
+    );
     // 默认收起, 点标题展开后逐行可见(折叠裁剪不卸载子树, 用交互+内容断言)。
     await tester.ensureVisible(find.text('委外物料（我方供料）'));
     await tester.pumpAndSettle();

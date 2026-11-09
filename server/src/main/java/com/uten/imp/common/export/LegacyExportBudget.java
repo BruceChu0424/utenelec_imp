@@ -62,7 +62,7 @@ public final class LegacyExportBudget {
         if (Thread.currentThread().isInterrupted()) throw new CancellationException();
         Operation current = CURRENT.get();
         if (current != null && current.legacy()
-                && System.nanoTime() - current.startedAt() > TimeUnit.MINUTES.toNanos(2)) {
+                && System.nanoTime() - current.startedAt() > TimeUnit.SECONDS.toNanos(ExportTransactions.TIMEOUT_SECONDS)) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "同步导出处理超时，请使用后台导出任务；本次未生成文件");
         }
     }

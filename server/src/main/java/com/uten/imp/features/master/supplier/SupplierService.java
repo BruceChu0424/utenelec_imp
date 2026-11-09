@@ -275,7 +275,8 @@ public class SupplierService {
      * 「业务员」导解析人名（空显「未分配」，与表格同兜底），不再导旧库 empId 数字串。
      * 主结账方式与详情/列表同源，按 default_settlement_method_id 解析，不使用旧快照猜测。
      */
-    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ,
+            timeout = com.uten.imp.common.export.ExportTransactions.TIMEOUT_SECONDS)
     public ExportPayload export(SupplierQueryFilter f, String sort, String order) {
         List<ExportColumn> cols = List.of(
                 new ExportColumn("name", "供应商简称", ExportColumn.TEXT),

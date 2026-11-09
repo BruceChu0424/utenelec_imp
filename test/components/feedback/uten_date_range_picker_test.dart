@@ -1,14 +1,17 @@
 import 'package:uten_imp/core/utils/date_range_defaults.dart';
 // 全站日期范围选择弹窗的形态与选择契约。
 //
-// 2026-10-24 重设计后的口径：UtenRadius.dialog 圆角、右上角关闭、右下角
-// 「确定」主按钮（无铅笔切换、无「应用」文字钮），起止值归一化为本地
-// date-only。选择语义与 Material 一致：首击定起点、再击定终点或重设起点、
-// 拖拽扩展区间。
+// 2026-10-24 重设计后的口径：UtenRadius.dialog 圆角、右上角关闭、底部
+// 居中的「取消 / 确定」按钮组（无铅笔切换、无「应用」文字钮），起止值
+// 归一化为本地 date-only。选择语义与 Material 一致：首击定起点、再击定
+// 终点或重设起点、拖拽扩展区间。2026-11-08 起选中的日期与标题同排显示
+// 在标题行（uten-date-selection），不再单独占一行；月份模式标题保持纯
+// 文字，单日未选不显示占位。
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/feedback/uten_date_range_picker.dart';
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/theme/uten_tokens.dart';
 
@@ -63,7 +66,7 @@ Future<void> _confirm(WidgetTester tester) async {
 }
 
 void main() {
-  testWidgets('弹窗形态：20 圆角、右上关闭、右下确定、无铅笔无应用', (tester) async {
+  testWidgets('弹窗形态：20 圆角、右上关闭、底部居中确定、无铅笔无应用', (tester) async {
     DateTimeRange? picked;
     await tester.pumpWidget(_harness(onPicked: (value) => picked = value));
     await _openDialog(tester);
@@ -96,6 +99,98 @@ void main() {
     );
     expect(confirmButton.onPressed, isNotNull);
     expect(picked, isNull);
+  });
+
+  testWidgets('选中日期与标题同排显示，不再单独占一行', (tester) async {
+    await tester.pumpWidget(
+      _harness(
+        onPicked: (_) {},
+        initialDateRange: DateTimeRange(
+          start: DateTime(2026, 3, 2),
+          end: DateTime(2026, 3, 18),
+        ),
+      ),
+    );
+    await _openDialog(tester);
+
+    final selection = find.byKey(const Key('uten-date-selection'));
+    expect(selection, findsOneWidget);
+    expect(tester.widget<Text>(selection).data, '2026/3/2 – 2026/3/18');
+    // 2026-11-08 用户口径：日期进入标题行，与 helpText 同一标题区。
+    expect(
+      find.ancestor(of: selection, matching: find.byType(UtenDialogHeading)),
+      findsOneWidget,
+    );
+    // 弹窗中间不再有单独的选择行：日期文字全弹窗只出现一次。
+    expect(find.text('2026/3/2 – 2026/3/18'), findsOneWidget);
+  });
+
+  testWidgets('单日未选时标题不显示日期占位，选中后随标题显示', (tester) async {
+    DateTime? result;
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('zh'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: FilledButton(
+              onPressed: () async {
+                result = await showUtenDatePicker(
+                  context: context,
+                  firstDate: DateTime(2020),
+                  lastDate: DateTime(2030),
+                );
+              },
+              child: const Text('打开'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await _openDialog(tester);
+    // 未选日期不占标题（旧行为的「未选择日期」占位随选择行一并删除）。
+    expect(find.byKey(const Key('uten-date-selection')), findsNothing);
+    expect(find.text('未选择日期'), findsNothing);
+    await _tapDay(tester, 15);
+    final data = tester
+        .widget<Text>(find.byKey(const Key('uten-date-selection')))
+        .data;
+    expect(data, matches(RegExp(r'^\d{4}/\d{1,2}/\d{1,2}$')));
+    await _confirm(tester);
+    expect(result, isNotNull);
+  });
+
+  testWidgets('月份模式标题不显示日期，年月只在导航行出现一次', (tester) async {
+    DateTime? result;
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('zh'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: FilledButton(
+              onPressed: () async {
+                result = await showUtenMonthPicker(
+                  context: context,
+                  firstYear: 2020,
+                  lastYear: 2030,
+                  initialMonth: DateTime(2026, 11),
+                );
+              },
+              child: const Text('打开'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await _openDialog(tester);
+    expect(find.byKey(const Key('uten-date-selection')), findsNothing);
+    expect(find.text('2026年11月'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('uten-calendar-month-3')));
+    await tester.pumpAndSettle();
+    expect(result, DateTime(2026, 3));
   });
 
   testWidgets('点两天再确定：返回本地 date-only 区间', (tester) async {

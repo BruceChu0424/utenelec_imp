@@ -13,6 +13,7 @@ import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_inline_notice.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
+import '../../../components/feedback/uten_progress_dialog.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
@@ -214,6 +215,9 @@ class _SalesManagerReviewPageState extends ConsumerState<SalesManagerReviewPage>
   int _tableRevision = 0;
   bool _loading = false, _busy = false;
   bool _buttonReading = false, _batchWaiting = false;
+
+  /// 批量提交段进入进度弹窗时为 true：页面遮罩只盖认领核对段，避免双重遮罩。
+  bool _batchProgressOpen = false;
   bool get _unknownSubmission => formDraftHasUnknownSubmission;
   String? _error;
   bool _allowed(String kind, String action) =>
@@ -478,16 +482,27 @@ class _SalesManagerReviewPageState extends ConsumerState<SalesManagerReviewPage>
       };
       final ids = tasks.map((row) => row.id).toList();
       final remark = _batchRemark.text.trim();
+      // 整批一次请求提交，发出后无法撤回：不提供「取消」。
+      setState(() => _batchProgressOpen = true);
       await submitReviewCommand(
         'confirmBatch',
-        () => container
-            .read(salesManagerOrderReviewRepositoryProvider)
-            .confirmBatch(
-              ids,
-              expectedRevisions: revisions,
-              expectedClaimIds: leases,
-              remark: remark,
-            ),
+        () => showUtenProgress<void>(
+          context,
+          title: '批量批准订货单',
+          icon: Icons.fact_check_outlined,
+          initialStatus: '正在批准并转交财务',
+          initialDetail: '${tasks.length} 笔',
+          cancellable: false,
+          invalidation: formDraftIdentityInvalidation,
+          action: (_) => container
+              .read(salesManagerOrderReviewRepositoryProvider)
+              .confirmBatch(
+                ids,
+                expectedRevisions: revisions,
+                expectedClaimIds: leases,
+                remark: remark,
+              ),
+        ),
         request: {
           'orderIds': ids,
           'expectedRevisions': revisions,
@@ -528,6 +543,7 @@ class _SalesManagerReviewPageState extends ConsumerState<SalesManagerReviewPage>
         setState(() {
           _busy = false;
           _batchWaiting = false;
+          _batchProgressOpen = false;
         });
       }
     }
@@ -805,7 +821,7 @@ class _SalesManagerReviewPageState extends ConsumerState<SalesManagerReviewPage>
                 ),
               ),
             ),
-            if (_buttonReading || _batchWaiting)
+            if (_buttonReading || (_batchWaiting && !_batchProgressOpen))
               const UtenBusyOverlay(
                 title: '正在处理订单审批',
                 showDoNotLeaveHint: false,

@@ -72,11 +72,11 @@ public class FulfillmentWorkbenchController {
                 metadataRequested());
     }
 
-    /** 生产待领待办数(徽章来源 productionDraw): 与列表同一仓库范围(ADR-149, 发料仓)。 */
+    /** 生产待领待办数(徽章来源 productionDraw): 与列表同一浏览范围(ADR-149, 发料仓; currentForRead)。 */
     @GetMapping("/warehouse/count")
     @PreAuthorize("hasAuthority('stock_doc:view')")
     public Map<String, Long> warehouseCount(@RequestParam(required = false) UUID scopeWarehouseId) {
-        var stages = taskRowCounts.productionDraw(warehouseScopes.current(scopeWarehouseId));
+        var stages = taskRowCounts.productionDraw(warehouseScopes.currentForRead(scopeWarehouseId));
         long pending = stages.getOrDefault("OPEN_ANY", 0L);
         return Map.of("count", pending, "pending", pending, "inProgress", 0L,
                 "READY_TO_PICK", stages.getOrDefault("READY_TO_PICK", 0L),
@@ -84,12 +84,12 @@ public class FulfillmentWorkbenchController {
                 "MATERIALS_TO_DEFINE", stages.getOrDefault("MATERIALS_TO_DEFINE", 0L));
     }
 
-    /** 领料任务分状态计数（任务中心子分类徽章；待完成=READY+PARTIAL）。 */
+    /** 领料任务分状态计数（任务中心子分类徽章；待完成=READY+PARTIAL）, 与列表同一浏览范围(currentForRead)。 */
     @GetMapping("/warehouse/status-breakdown")
     @PreAuthorize("hasAuthority('stock_doc:view')")
     public Map<String, Long> warehouseStatusBreakdown(
             @RequestParam(required = false) UUID scopeWarehouseId) {
-        return taskRowCounts.productionDraw(warehouseScopes.current(scopeWarehouseId));
+        return taskRowCounts.productionDraw(warehouseScopes.currentForRead(scopeWarehouseId));
     }
 
     @GetMapping("/purchase")

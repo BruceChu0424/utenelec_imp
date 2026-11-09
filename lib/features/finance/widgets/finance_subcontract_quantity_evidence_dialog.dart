@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import '../shared/finance_workbench_panel.dart';
 import 'dart:convert';
 import 'package:collection/collection.dart';
@@ -7,6 +8,7 @@ import 'package:uuid/uuid.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_detail_summary_card.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
+import '../../../components/feedback/uten_progress_dialog.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_field_hint_icon.dart';
@@ -878,12 +880,24 @@ class _EvidenceEditorState extends ConsumerState<_EvidenceEditor>
     setState(() => _busy = true);
     try {
       final guard = await captureFormDraftRequestScope();
-      final bytes = await guard.run(
-        () => ref
-            .read(apiClientProvider)
-            .postForBytes('$_base/${_record!['id']}/attachment'),
+      if (!mounted || !_current) return;
+      // 原数量凭据下载进统一进度弹窗: 字节进度、可立即取消; 取消则不落盘。
+      final bytes = await showUtenProgress<Uint8List>(
+        context,
+        title: '下载数量凭据',
+        icon: Icons.download_outlined,
+        initialStatus: '正在下载',
+        initialDetail: _map(_record?['attachment'])['filename']?.toString(),
+        action: (progress) => guard.run(
+          () => ref
+              .read(apiClientProvider)
+              .postForBytes(
+                '$_base/${_record!['id']}/attachment',
+                onReceiveProgress: progress.receiving('正在下载'),
+              ),
+        ),
       );
-      if (_current && guard.isCurrent) {
+      if (bytes != null && _current && guard.isCurrent) {
         await saveBytes(
           bytes,
           _map(_record?['attachment'])['filename']?.toString() ?? '原数量凭据.bin',

@@ -624,8 +624,10 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
         ),
       ),
     ),
-    // 2026-11-07 用户口径：数量右侧加「仓库库存数量」——下单时看该货品当前颜色在仓
-    // 现存量（参与核算仓合计，不含不良品仓/车间内料仓，基本单位），只作参考不限制数量。
+    // 2026-11-07 用户口径：数量右侧加「仓库库存数量」下单参考列（只读，不限制数量）。
+    // 2026-11-08 口径：委外是我方供料、成品自身通常不入库，有 BOM 的委外件按直属物料
+    // 在参与核算仓的现存量折算可委外数量（各物料取短板，与成品颜色无关，基本单位）；
+    // 无 BOM 的货品回退显示自身现存量（按本行颜色桶）。均不含不良品仓/车间内料仓。
     if (cfg.itemHasGoodsStock)
       EditableGridColumn<SubcontractGridRow>(
         key: 'stockQty',
@@ -633,8 +635,9 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
         width: 140,
         numeric: true,
         headerInfo:
-            '该货品本行颜色的即时库存现存量：参与核算仓库合计，不含不良品仓与车间内料仓，'
-            '按货品基本单位显示。供下单参考，不限制订货数量；无颜色行按无色桶匹配。',
+            '按当前 BOM 直属物料在参与核算仓的现存量折算的可委外数量'
+            '（各物料取短板，无 BOM 时显示该货品自身现存量）；'
+            '不含不良品仓与车间内料仓，供下单参考，不限制订货数量。',
         // 服务端算好下发（行集变化后编辑页统一拉取回填），null=尚未取到显示「—」。
         textOf: (r) => r.stockQtyTextNotifier.value ?? '',
         listenableOf: (r) => r.stockQtyTextNotifier,

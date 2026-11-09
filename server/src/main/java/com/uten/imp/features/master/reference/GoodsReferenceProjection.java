@@ -30,10 +30,12 @@ public final class GoodsReferenceProjection {
         source.getNullCounts().forEach((key, value) -> {
             if (QUERY_FIELDS.contains(key)) counts.put(key, value);
         });
+        // 业务选择器不开放「组装信息」表头（QUERY_FIELDS 不含 hasBom，候选接口同样拒绝），桶留空。
         return new com.uten.imp.features.master.goods.dto.GoodsFacets(source.getCode(), source.getSeries(),
                 source.getModel(), source.getName(), source.getSpec(), source.getMaterial(), source.getRearInsertCode(),
                 java.util.List.of(), source.getColorLegacyId(), source.getUnitLegacyId(), source.getSourceType(),
-                source.getOwningWarehouse(), source.getOwningWorkshop(), counts, source.getColorRef(), source.getUnitRef());
+                source.getOwningWarehouse(), source.getOwningWorkshop(), counts, source.getColorRef(), source.getUnitRef(),
+                java.util.List.of());
     }
 
     public static void validateQuery(GoodsQueryFilter filter, String sort) {

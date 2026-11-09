@@ -1,5 +1,6 @@
 package com.uten.imp.config;
 
+import com.uten.imp.common.export.ExportProgress;
 import com.uten.imp.config.props.SecurityProperties;
 import com.uten.imp.security.StepUpInterceptor;
 import org.junit.jupiter.api.Test;
@@ -68,6 +69,20 @@ class CorsPreflightPolicyTest {
             var response=new MockHttpServletResponse();new DefaultCorsProcessor().processRequest(source.getCorsConfiguration(request),request,response);
             assertThat(response.getStatus()).isEqualTo(origin.equals(ORIGIN)?200:403);
             if(origin.equals(ORIGIN))assertThat(response.getHeader(HttpHeaders.ACCESS_CONTROL_ALLOW_HEADERS).toLowerCase(Locale.ROOT)).contains("x-uten-precision-choices");
+        }
+    }
+    /** 网页端同步导出带操作号请求头(服务端登记生成进度), 预检必须放行, 否则导出直接失败。 */
+    @Test void exportOperationHeaderCanPreflightOnlyFromAnApprovedOrigin()throws Exception{
+        var properties=new SecurityProperties();properties.setCorsAllowedOrigins(ORIGIN);
+        var source=new SecurityConfig().corsConfigurationSource(properties);
+        String header=ExportProgress.HEADER.toLowerCase(Locale.ROOT);
+        for(String origin:new String[]{ORIGIN,"https://untrusted.example.test"}){
+            var request=new MockHttpServletRequest("OPTIONS","/api/master/goods/export");
+            request.addHeader(HttpHeaders.ORIGIN,origin);request.addHeader(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD,"GET");
+            request.addHeader(HttpHeaders.ACCESS_CONTROL_REQUEST_HEADERS,"authorization,"+header);
+            var response=new MockHttpServletResponse();new DefaultCorsProcessor().processRequest(source.getCorsConfiguration(request),request,response);
+            assertThat(response.getStatus()).isEqualTo(origin.equals(ORIGIN)?200:403);
+            if(origin.equals(ORIGIN))assertThat(response.getHeader(HttpHeaders.ACCESS_CONTROL_ALLOW_HEADERS).toLowerCase(Locale.ROOT)).contains(header);
         }
     }
 }

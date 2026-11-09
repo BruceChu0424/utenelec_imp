@@ -15,6 +15,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../../components/buttons/uten_button.dart';
 import '../../../../components/feedback/uten_busy_overlay.dart';
+import '../../../../components/feedback/uten_progress_dialog.dart';
 import '../../../../components/feedback/uten_empty.dart';
 import '../../../../components/layout/uten_editable_grid.dart';
 import '../../../../core/l10n/gen/app_localizations.dart';
@@ -113,6 +114,9 @@ class _WmMachinesTabState extends ConsumerState<WmMachinesTab> {
   bool _loading = true;
   String? _error;
   String? _busyTitle;
+
+  /// 批量新增段进入进度弹窗时为 true：页面遮罩让位，避免双重遮罩。
+  bool _batchProgressOpen = false;
 
   WorkshopMaterialRepository get _repo =>
       ref.read(workshopMaterialRepositoryProvider);
@@ -437,25 +441,36 @@ class _WmMachinesTabState extends ConsumerState<WmMachinesTab> {
     );
     if (input == null || !mounted) return;
     setState(() => _busyTitle = '正在新增 ${input.count} 台机台');
+    _batchProgressOpen = true;
     try {
-      await _repo.createMachines(
-        workshopDepartmentId: widget.workshopId,
-        count: input.count,
-        codePrefix: input.codePrefix,
-        startNo: input.startNo,
-        containers: input.containers,
-        idempotencyKey: wmIdempotencyKey('machines-create', _nonce, {
-          'workshop': widget.workshopId,
-          'count': input.count,
-          'prefix': input.codePrefix,
-          'start': input.startNo,
-          'containers': [
-            for (final c in input.containers) [c.name, c.capacityQty],
-          ],
-        }),
+      // 一次请求创建整批机台，发出后无法撤回：不提供「取消」。
+      await showUtenProgress<void>(
+        context,
+        title: '批量新增机台',
+        icon: Icons.precision_manufacturing_outlined,
+        initialStatus: '正在新增机台',
+        initialDetail: '${input.count} 台',
+        cancellable: false,
+        action: (_) => _repo.createMachines(
+          workshopDepartmentId: widget.workshopId,
+          count: input.count,
+          codePrefix: input.codePrefix,
+          startNo: input.startNo,
+          containers: input.containers,
+          idempotencyKey: wmIdempotencyKey('machines-create', _nonce, {
+            'workshop': widget.workshopId,
+            'count': input.count,
+            'prefix': input.codePrefix,
+            'start': input.startNo,
+            'containers': [
+              for (final c in input.containers) [c.name, c.capacityQty],
+            ],
+          }),
+        ),
       );
       if (!mounted) return;
       setState(() => _busyTitle = null);
+      _batchProgressOpen = false;
       await WidgetsBinding.instance.endOfFrame;
       if (!mounted) return;
       context.appSuccess('已新增 ${input.count} 台机台');
@@ -470,6 +485,8 @@ class _WmMachinesTabState extends ConsumerState<WmMachinesTab> {
         setState(() => _busyTitle = null);
         context.appWarning('网络不稳定, 暂时没确认结果, 请刷新看看再决定是否重试');
       }
+    } finally {
+      _batchProgressOpen = false;
     }
   }
 
@@ -572,7 +589,8 @@ class _WmMachinesTabState extends ConsumerState<WmMachinesTab> {
             ],
           ),
         ),
-        if (_busyTitle != null) UtenBusyOverlay(title: _busyTitle!),
+        if (_busyTitle != null && !_batchProgressOpen)
+          UtenBusyOverlay(title: _busyTitle!),
       ],
     );
   }

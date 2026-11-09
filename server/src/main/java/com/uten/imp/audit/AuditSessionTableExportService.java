@@ -25,12 +25,14 @@ public class AuditSessionTableExportService {
         new ExportColumn("operations","人工操作","number"),new ExportColumn("failures","失败操作","number"),
         new ExportColumn("postLogout","退出后操作","number"),new ExportColumn("logout","退出 / 最后活动","text"),
         new ExportColumn("credential","凭证状态","text"));
-    @Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    @Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ,
+            timeout=com.uten.imp.common.export.ExportTransactions.TIMEOUT_SECONDS)
     @PreAuthorize("hasAuthority('audit_log:view') and hasAuthority('audit_log:export')")
     public ExportPayload export(UUID actor,LocalDate from,LocalDate to,Long snapshot) {
         return export(actor,from,to,snapshot,AuditSessionHeaderQuery.EMPTY);
     }
-    @Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    @Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ,
+            timeout=com.uten.imp.common.export.ExportTransactions.TIMEOUT_SECONDS)
     @PreAuthorize("hasAuthority('audit_log:view') and hasAuthority('audit_log:export')")
     public ExportPayload export(UUID actor,LocalDate from,LocalDate to,Long snapshot,AuditSessionHeaderQuery headers) {
         final int size=100;
@@ -40,6 +42,7 @@ public class AuditSessionTableExportService {
         if(first==null||first.total()<0||first.snapshotAuditId()<0)throw incomplete();
         if(snapshot!=null&&first.snapshotAuditId()!=snapshot)throw changed();
         long expected=first.total();
+        com.uten.imp.common.export.ExportProgress.announceTotal(expected);
         long expectedPages=expected/size+(expected%size==0?0:1);
         var sink=ExportPageSink.current();
         List<Map<String,Object>> rows=sink==null?new ArrayList<>():null;
@@ -56,6 +59,7 @@ public class AuditSessionTableExportService {
                     ||next.items().stream().anyMatch(Objects::isNull))throw incomplete();
             List<Map<String,Object>> batch=new ArrayList<>(next.items().size());append(batch,next.items());
             seen=Math.addExact(seen,batch.size());
+            com.uten.imp.common.export.ExportProgress.rows(seen);
             if(sink==null)rows.addAll(batch);else sink.accept(new ExportPayload(COLUMNS,batch,Math.toIntExact(expected)));
             ExportOperationCheckpoint.check();
             if(seen==expected)return new ExportPayload(COLUMNS,sink==null?List.copyOf(rows):List.of(),Math.toIntExact(seen));

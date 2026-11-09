@@ -15,6 +15,7 @@ import '../widgets/master_status_confirmation.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
+import '../../../components/feedback/uten_progress_dialog.dart';
 import '../../../shared/drafts/form_draft_mixin.dart';
 import '../../../shared/drafts/form_draft_dialog_resume.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -1087,17 +1088,26 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage>
     setState(() => _batchBusy = true);
     MasterBatchResult? result;
     try {
-      result = await context.guardAction(
-        () => runSensitiveWrite(
+      result = await context.guardAction<MasterBatchResult?>(
+        () => runSensitiveWrite<MasterBatchResult?>(
           ref,
           isCurrent: () => mounted && _batchBusy && _canStatus,
-          write: () => ref
-              .read(masterBatchRepositoryProvider)
-              .changeStatus(
-                entityPath: '/master/payment-styles',
-                status: status,
-                items: [for (final id in ids) MasterBatchItem(id)],
-              ),
+          // 整批一次请求提交，发出后无法撤回：不提供「取消」。
+          write: () => showUtenProgress<MasterBatchResult?>(
+            context,
+            title: '批量${status == '禁用' ? '禁用' : '启用'}类别',
+            icon: Icons.task_alt_outlined,
+            initialStatus: '正在${status == '禁用' ? '禁用' : '启用'}',
+            initialDetail: '${ids.length} 项',
+            cancellable: false,
+            action: (_) => ref
+                .read(masterBatchRepositoryProvider)
+                .changeStatus(
+                  entityPath: '/master/payment-styles',
+                  status: status,
+                  items: [for (final id in ids) MasterBatchItem(id)],
+                ),
+          ),
         ),
         errorFallback: '批量启停失败，请刷新后重试',
       );
@@ -1390,18 +1400,8 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage>
           floatingActionButton: inlineEdit.active
               ? null
               : inlineFloatingActions(),
-          body: UtenPageEdgePadding(
-            child: Stack(
-              children: [
-                SafeArea(child: body),
-                if (_batchBusy)
-                  const UtenBusyOverlay(
-                    showDoNotLeaveHint: false,
-                    title: '正在批量更新类别',
-                  ),
-              ],
-            ),
-          ),
+          // 批量提交段由进度弹窗呈现（_batchBusy 只防连点），不再叠页面遮罩。
+          body: UtenPageEdgePadding(child: SafeArea(child: body)),
         ),
       ),
     );

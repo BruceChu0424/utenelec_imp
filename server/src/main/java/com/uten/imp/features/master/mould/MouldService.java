@@ -168,11 +168,13 @@ public class MouldService {
      * 列集与前端模具表格一致——模数/套数（老库 QTY/TQTY）随行导出；
      * 模具类型无数据源（表格恒"—"）不带；实际字段及真实系列分类名称同源导出。
      */
-    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ,
+            timeout = com.uten.imp.common.export.ExportTransactions.TIMEOUT_SECONDS)
     public ExportPayload export(MouldQueryFilter f) {
         return export(f,null,null);
     }
-    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ,
+            timeout = com.uten.imp.common.export.ExportTransactions.TIMEOUT_SECONDS)
     public ExportPayload export(MouldQueryFilter f,String sort,String order) {
         List<ExportColumn> cols = List.of(
                 new ExportColumn("code", "模具编号", ExportColumn.TEXT),

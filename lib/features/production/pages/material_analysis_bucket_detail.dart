@@ -567,7 +567,8 @@ class _MaterialAnalysisBucketPageState
           // 2026-09-12：下达采购/委外的通用加载遮罩（车间仍走下方专用遮罩）。
           ValueListenableBuilder<String?>(
             valueListenable: _host.bucketActionBusyMessage,
-            builder: (context, message, _) => message != null
+            builder: (context, message, _) =>
+                message != null && _host._orderProgress == null
                 ? Positioned.fill(
                     child: UtenBusyOverlay(
                       title: message,
@@ -578,7 +579,8 @@ class _MaterialAnalysisBucketPageState
           ),
           ValueListenableBuilder<bool>(
             valueListenable: _host.planSubmissionProgress,
-            builder: (context, submitting, _) => submitting
+            builder: (context, submitting, _) =>
+                submitting && _host._orderProgress == null
                 ? Positioned.fill(child: _host._planSubmissionOverlay(theme))
                 : const SizedBox.shrink(),
           ),

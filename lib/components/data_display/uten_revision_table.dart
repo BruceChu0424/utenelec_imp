@@ -37,13 +37,14 @@ class UtenRevisionRow<T> {
 }
 
 Color? utenRevisionForeground(BuildContext context, UtenRevisionKind kind) {
-  final dark = Theme.of(context).brightness == Brightness.dark;
+  final brightness = Theme.of(context).brightness;
   return switch (kind) {
     UtenRevisionKind.unchanged => null,
-    UtenRevisionKind.removed =>
-      dark ? UtenColors.errorOnDark : UtenColors.errorText,
+    UtenRevisionKind.removed => UtenColors.emphasisText(brightness),
     UtenRevisionKind.added =>
-      dark ? UtenColors.successOnDark : UtenColors.successText,
+      brightness == Brightness.dark
+          ? UtenColors.successOnDark
+          : UtenColors.successText,
   };
 }
 

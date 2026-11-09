@@ -54,6 +54,7 @@ import '../../../components/buttons/uten_export_button.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/feedback/uten_progress_dialog.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -217,7 +218,7 @@ class _SubcontractDecompositionPageState
   final _taskRows = MasterDataTableRowsController<OperationsWorkbenchTask>();
   final _pendingRows = MasterDataTableRowsController<SubcontractPendingRow>();
   bool _closureBusy = false;
-  ({int done, int total})? _docExportProgress;
+  bool _docExporting = false;
   int _docExportQueryRevision = 0;
   Map<String, Object?>? _docExportQuery;
 
@@ -1362,7 +1363,7 @@ class _SubcontractDecompositionPageState
 
   Future<void> _exportSelectedOrderDocs() async {
     final export = widget.orderDocumentsExport;
-    if (_docExportProgress != null || export == null) return;
+    if (_docExporting || export == null) return;
     final selection = _exportSelection;
     if (selection.issue case final issue?) {
       context.appWarning(issue);
@@ -1376,28 +1377,32 @@ class _SubcontractDecompositionPageState
         generation == _readerGeneration &&
         queryRevision == _docExportQueryRevision &&
         mapEquals(query, _queryIdentity);
-    setState(
-      () => _docExportProgress = (done: 0, total: selection.documents.length),
-    );
+    setState(() => _docExporting = true);
     try {
-      await export(
+      // 导出全程一个进度弹窗: 逐份读取计数, afterCurrent 取消＝当前这份读完
+      // 即停, 已读内容不再生成/保存。
+      await showUtenProgress<void>(
         context,
-        apiClient: ref.read(apiClientProvider),
-        documents: selection.documents,
-        onProgress: (done, total) {
-          if (current()) {
-            setState(() => _docExportProgress = (done: done, total: total));
-          }
-        },
-        stillCurrent: current,
+        title: '导出委外单',
+        icon: Icons.print_outlined,
+        initialStatus: '正在导出单据',
+        initialDetail: '${selection.documents.length} 份',
+        cancelMode: UtenProgressCancel.afterCurrent,
+        action: (progress) => export(
+          context,
+          apiClient: ref.read(apiClientProvider),
+          documents: selection.documents,
+          onProgress: (done, total) =>
+              progress.count(done, total, status: '正在导出单据'),
+          stillCurrent: () => current() && !progress.isCancelled,
+        ),
       );
     } finally {
-      if (mounted) setState(() => _docExportProgress = null);
+      if (mounted) setState(() => _docExporting = false);
     }
   }
 
   Widget _exportOrderButton() {
-    final progress = _docExportProgress;
     final selection = _exportSelection;
     final issue = _loading ? '正在刷新委外任务，请稍候' : selection.issue;
     return Tooltip(
@@ -1406,15 +1411,12 @@ class _SubcontractDecompositionPageState
         key: const Key('subcontract-decomposition-export-docs'),
         size: UtenButtonSize.large,
         icon: Icons.print_outlined,
-        isLoading: progress != null,
-        onPressed: issue == null && progress == null
+        onPressed: issue == null && !_docExporting
             ? _exportSelectedOrderDocs
             : null,
         onDisabledTap: issue == null ? null : () => context.appWarning(issue),
         child: Text(
-          progress != null
-              ? '导出单据(${progress.done}/${progress.total})'
-              : selection.documents.isEmpty
+          selection.documents.isEmpty
               ? '导出单据'
               : '导出单据(${selection.documents.length})',
         ),

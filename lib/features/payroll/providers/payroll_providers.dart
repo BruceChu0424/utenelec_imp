@@ -233,8 +233,14 @@ Future<void> markPayrollViewed(WidgetRef ref, String id) async {
   ref.invalidate(payrollListProvider);
 }
 
-Future<Uint8List> downloadPayrollSlip(WidgetRef ref, String id) async {
-  final bytes = await ref.read(payrollRepositoryProvider).downloadSlip(id);
+Future<Uint8List> downloadPayrollSlip(
+  WidgetRef ref,
+  String id, {
+  void Function(int received, int total)? onReceiveProgress,
+}) async {
+  final bytes = await ref
+      .read(payrollRepositoryProvider)
+      .downloadSlip(id, onReceiveProgress: onReceiveProgress);
   ref.invalidate(payrollDetailProvider(id));
   ref.invalidate(payrollListProvider);
   return bytes;

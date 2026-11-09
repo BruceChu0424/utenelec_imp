@@ -34,4 +34,6 @@ public class GoodsFacets {
     /** UUID-first references; unresolved historical references use legacy:<id>. */
     private final List<FacetBucket> colorRef;
     private final List<FacetBucket> unitRef;
+    /** 「组装信息」两桶：value=true/false，label=有组装信息/无组装信息；计数同列表权威谓词，无空值桶。 */
+    private final List<FacetBucket> hasBom;
 }

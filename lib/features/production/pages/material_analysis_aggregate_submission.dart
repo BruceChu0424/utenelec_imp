@@ -206,93 +206,111 @@ final class _MaterialAggregateSubmission {
         table.schedulePreview();
       }
       final dependencies = _dependencies(keys);
-      while (remaining.isNotEmpty) {
-        if (!owner.mounted || !currentSession()) return false;
-        final ready = remaining
-            .where(
-              (key) => (dependencies[key] ?? const <String>{})
-                  .difference(completed)
-                  .isEmpty,
-            )
-            .toSet();
-        if (ready.isEmpty) {
-          owner.context.appWarning('系统没法确定这些物料谁先谁后，请刷新后核对各行的来源');
-          return false;
-        }
-        final positive = ready
-            .where(
-              (key) =>
-                  (double.tryParse(table.drafts[key]?.totalText ?? '') ?? 0) >
-                      0 ||
-                  !table.validText(table.drafts[key]?.totalText ?? ''),
-            )
-            .toSet();
-        final skipped = ready.difference(positive);
-        owner._mutateAggregateTable(() {
-          for (final key in skipped) {
-            _releaseZero(key);
-          }
-        });
-        remaining.removeAll(skipped);
-        completed.addAll(skipped);
-        if (positive.isEmpty) continue;
-        final active = _window(positive);
-        // 逐行的车间 / 负责人 / 比例也在本轮前拍下：下层来源被身份桥换到新
-        // 共享行后，靠它把各自的做法带过去，分单才不会被默认值抹平。
-        final settings = <String, _MaterialAggregateRebindSettings>{};
-        final lineParams = <String, _MaterialAggregateMakeParams>{};
-        final lineChoices = <String, MaterialPreparationOrderMethod>{};
-        final independentBefore = <String>{};
-        for (final key in remaining.difference(active)) {
-          final draft = table.drafts[key];
-          if (draft == null) continue;
-          settings[key] = _settings(draft);
-          for (final source in table.draftSources(draft)) {
-            lineParams[source.line] = table.makeParams(source.group);
-            lineChoices[source.line] = owner._preparationOrderMethod(
-              source.group,
-            );
-            if (owner._independentMaterialPreparation(source.group)) {
-              independentBefore.add(source.line);
+      // 独立入口自开进度弹窗; 从产品视图下单编排进来时沿用整批那一个。
+      final standalone = owner._orderProgress == null;
+      var succeeded = false;
+      await owner._withOrderProgress(
+        rows: keys.length,
+        body: (progress) async {
+          if (standalone) progress.startSegment('正在下达物料', keys.length);
+          while (remaining.isNotEmpty) {
+            if (!owner.mounted || !currentSession()) return;
+            if (progress.stopRequested) {
+              // 取消在轮与轮之间生效: 进行中的一轮已办完, 不中断、不重放。
+              if (standalone && owner.mounted && completed.isNotEmpty) {
+                owner.context.appInfo('已取消后续下达：前面的物料已下达，其余数量和来源仍保留，可继续核对或重试');
+              }
+              return;
             }
-          }
-        }
-        final sources = [
-          for (final key in active) ...table.draftGroups(table.drafts[key]!),
-        ];
-        final success = await table.submitStage(
-          sources,
-          skipAutoClaim: skipAutoClaim,
-        );
-        if (!owner.mounted || !currentSession()) return false;
-        if (!success) {
-          if (completed.isNotEmpty) {
-            owner.context.appInfo('前面的物料已下达，其余数量和来源仍保留，可继续核对或重试');
-          }
-          return false;
-        }
-        completed.addAll(active);
-        remaining.removeAll(active);
-        final result = table.lastStageResult!;
-        owner._mutateAggregateTable(() {
-          for (final key in remaining) {
-            final draft = table.drafts[key];
-            if (draft == null) continue;
-            _rebind(
-              draft,
-              result.materialIdentityBridges,
-              includeNew: (dependencies[key] ?? const <String>{})
-                  .intersection(active)
-                  .isNotEmpty,
-              settings: settings[key]!,
-              lineParams: lineParams,
-              lineChoices: lineChoices,
-              independentBefore: independentBefore,
+            final ready = remaining
+                .where(
+                  (key) => (dependencies[key] ?? const <String>{})
+                      .difference(completed)
+                      .isEmpty,
+                )
+                .toSet();
+            if (ready.isEmpty) {
+              owner.context.appWarning('系统没法确定这些物料谁先谁后，请刷新后核对各行的来源');
+              return;
+            }
+            final positive = ready
+                .where(
+                  (key) =>
+                      (double.tryParse(table.drafts[key]?.totalText ?? '') ?? 0) >
+                          0 ||
+                      !table.validText(table.drafts[key]?.totalText ?? ''),
+                )
+                .toSet();
+            final skipped = ready.difference(positive);
+            owner._mutateAggregateTable(() {
+              for (final key in skipped) {
+                _releaseZero(key);
+              }
+            });
+            remaining.removeAll(skipped);
+            completed.addAll(skipped);
+            if (positive.isEmpty) continue;
+            final active = _window(positive);
+            // 逐行的车间 / 负责人 / 比例也在本轮前拍下：下层来源被身份桥换到新
+            // 共享行后，靠它把各自的做法带过去，分单才不会被默认值抹平。
+            final settings = <String, _MaterialAggregateRebindSettings>{};
+            final lineParams = <String, _MaterialAggregateMakeParams>{};
+            final lineChoices = <String, MaterialPreparationOrderMethod>{};
+            final independentBefore = <String>{};
+            for (final key in remaining.difference(active)) {
+              final draft = table.drafts[key];
+              if (draft == null) continue;
+              settings[key] = _settings(draft);
+              for (final source in table.draftSources(draft)) {
+                lineParams[source.line] = table.makeParams(source.group);
+                lineChoices[source.line] = owner._preparationOrderMethod(
+                  source.group,
+                );
+                if (owner._independentMaterialPreparation(source.group)) {
+                  independentBefore.add(source.line);
+                }
+              }
+            }
+            final sources = [
+              for (final key in active) ...table.draftGroups(table.drafts[key]!),
+            ];
+            final success = await table.submitStage(
+              sources,
+              skipAutoClaim: skipAutoClaim,
             );
+            if (!owner.mounted || !currentSession()) return;
+            if (!success) {
+              if (completed.isNotEmpty) {
+                owner.context.appInfo('前面的物料已下达，其余数量和来源仍保留，可继续核对或重试');
+              }
+              return;
+            }
+            completed.addAll(active);
+            remaining.removeAll(active);
+            progress.segmentProgress(completed.length / keys.length);
+            final result = table.lastStageResult!;
+            owner._mutateAggregateTable(() {
+              for (final key in remaining) {
+                final draft = table.drafts[key];
+                if (draft == null) continue;
+                _rebind(
+                  draft,
+                  result.materialIdentityBridges,
+                  includeNew: (dependencies[key] ?? const <String>{})
+                      .intersection(active)
+                      .isNotEmpty,
+                  settings: settings[key]!,
+                  lineParams: lineParams,
+                  lineChoices: lineChoices,
+                  independentBefore: independentBefore,
+                );
+              }
+            });
           }
-        });
-      }
-      return true;
+          succeeded = true;
+        },
+      );
+      return succeeded;
     } on FormatException catch (failure) {
       if (owner.mounted) owner.context.appWarning(failure.message);
       return false;

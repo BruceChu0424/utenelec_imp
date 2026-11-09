@@ -105,15 +105,19 @@ void materialRowOrderMethodCases() {
     await tester.tap(find.widgetWithText(UtenButton, '确认下单'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
+    // 整批一个进度弹窗走完两段, 不叠页面遮罩。
+    final dialog = find.byKey(const ValueKey('uten-progress-cancel'));
+    expect(dialog, findsOneWidget);
     expect(
       find.byKey(const Key('material-analysis-plan-submission-progress')),
-      findsOneWidget,
+      findsNothing,
     );
     await tester.pump(const Duration(milliseconds: 550));
     await tester.pump(const Duration(milliseconds: 400));
+    expect(dialog, findsOneWidget);
     expect(
       find.byKey(const Key('material-analysis-action-busy')),
-      findsOneWidget,
+      findsNothing,
     );
     await tester.pump(const Duration(seconds: 1));
     await tester.pumpAndSettle();

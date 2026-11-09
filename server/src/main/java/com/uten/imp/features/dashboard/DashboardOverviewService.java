@@ -63,6 +63,19 @@ public class DashboardOverviewService {
     private static final List<DepartmentTodo> DEPARTMENT_TODOS = List.of(
             new DepartmentTodo("warehouseOutboundCenter", List.of("productionDraw.count", "workshopMaterial.pendingIssue"),
                     "fulfillment-warehouse-draw", "生产领料待出库", "/warehouse/tasks/outbound?section=DRAW", "FULFILLMENT"),
+            // 2026-11-09 补齐: 出库/入库任务中心的其余分段此前不进今日概览——仓库在概览看不到
+            // 委外出库、销售出库、到货与产成品待办(明明任务中心有数据)。每张卡的事实数与
+            // 落地页对应分段的徽章同一来源, 数字一致; count=0 不出卡, 无待办时不占位。
+            new DepartmentTodo("warehouseOutboundCenter", List.of("subcontractOutbound.count"),
+                    "fulfillment-warehouse-subcontract-outbound", "委外出库待发料", "/warehouse/tasks/outbound?section=subcontract", "FULFILLMENT"),
+            new DepartmentTodo("warehouseOutboundCenter", List.of("warehouseSalesOutbound.PENDING_PICK"),
+                    "fulfillment-warehouse-sales-outbound", "销售订单待出库", "/warehouse/tasks/outbound?section=sales", "FULFILLMENT"),
+            new DepartmentTodo("warehouseInboundCenter", List.of("warehouseInboundExpectation.PURCHASE", "warehouseArrivalException.PURCHASE"),
+                    "fulfillment-warehouse-purchase-arrival", "采购到货待处理", "/warehouse/tasks/inbound?section=purchase", "FULFILLMENT"),
+            new DepartmentTodo("warehouseInboundCenter", List.of("warehouseInboundExpectation.SUBCONTRACT", "warehouseArrivalException.SUBCONTRACT"),
+                    "fulfillment-warehouse-subcontract-arrival", "委外到货待处理", "/warehouse/tasks/inbound?section=subcontract", "FULFILLMENT"),
+            new DepartmentTodo("warehouseInboundCenter", List.of("finishedInbound.count"),
+                    "fulfillment-warehouse-finished", "产成品待点收", "/warehouse/tasks/inbound?section=finishedIn", "FULFILLMENT"),
             new DepartmentTodo("warehouseInboundCenter", List.of("productionReturn.count", "workshopMaterial.pendingReturn"),
                     "fulfillment-warehouse-return", "生产退料待收仓", "/warehouse/tasks/inbound?section=RETURN", "FULFILLMENT"),
             new DepartmentTodo("purchaseTaskCenter", null,

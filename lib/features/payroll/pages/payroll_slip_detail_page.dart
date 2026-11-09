@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import '../../../core/formatters/exact_number_text.dart';
 // 工资条详情页
 // 文档：docs/03-页面/工资条详情页.md（待写）
@@ -9,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/utils/china_datetime.dart';
 import '../../../components/buttons/click_guard.dart';
+import '../../../components/feedback/uten_progress_dialog.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_detail_summary_card.dart';
 import '../../../components/data_display/uten_info_row.dart';
@@ -55,7 +57,21 @@ class _PayrollSlipDetailPageState extends ConsumerState<PayrollSlipDetailPage> {
   /// mounted 守卫（State.context 与 mounted 同源）。
   Future<void> _download(PayrollSlip slip) async {
     try {
-      final bytes = await downloadPayrollSlip(ref, slip.id);
+      // 下载进统一进度弹窗: 字节进度、可立即取消; 取消则不校验不落盘。
+      final fetched = await showUtenProgress<Uint8List>(
+        context,
+        title: '下载工资条',
+        icon: Icons.download_outlined,
+        initialStatus: '正在下载',
+        initialDetail: slip.periodLabel,
+        action: (progress) => downloadPayrollSlip(
+          ref,
+          slip.id,
+          onReceiveProgress: progress.receiving('正在下载'),
+        ),
+      );
+      if (!mounted || fetched == null) return;
+      final bytes = fetched;
       if (!hasPdfSignature(bytes)) {
         throw const FormatException('下载到的文件不是有效的 PDF，请稍后重试');
       }

@@ -66,7 +66,12 @@ class _Api extends ApiClient {
   }
 
   @override
-  Future<Uint8List> getBytes(String path, {Map<String, dynamic>? query}) async {
+  Future<Uint8List> getBytes(
+    String path, {
+    Map<String, dynamic>? query,
+    CancelToken? cancelToken,
+    ProgressCallback? onReceiveProgress,
+  }) async {
     reads.add(path);
     return Uint8List.fromList([1, 2, 3]);
   }

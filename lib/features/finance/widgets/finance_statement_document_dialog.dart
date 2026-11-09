@@ -10,6 +10,7 @@ import 'package:uuid/uuid.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
 import '../../../components/feedback/uten_dialog.dart';
+import '../../../components/feedback/uten_progress_dialog.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_input.dart';
@@ -621,10 +622,19 @@ class _OriginalState extends ConsumerState<_Original>
     }
     setState(() => _busy = true);
     try {
-      final bytes = await _api.postForBytes(
-        '$_base/reviews/${widget.id}/counterpart-file',
+      // 对账确认件下载进统一进度弹窗: 字节进度、可立即取消; 取消则不落盘。
+      final bytes = await showUtenProgress<Uint8List>(
+        context,
+        title: '下载对账确认件',
+        icon: Icons.download_outlined,
+        initialStatus: '正在下载',
+        initialDetail: _source?['counterpart_file_name']?.toString(),
+        action: (progress) => _api.postForBytes(
+          '$_base/reviews/${widget.id}/counterpart-file',
+          onReceiveProgress: progress.receiving('正在下载'),
+        ),
       );
-      if (_current) {
+      if (bytes != null && _current) {
         await saveBytes(
           bytes,
           _source?['counterpart_file_name']?.toString() ??

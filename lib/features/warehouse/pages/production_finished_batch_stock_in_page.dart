@@ -15,7 +15,7 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_empty.dart';
-import '../../../components/feedback/uten_busy_overlay.dart';
+import '../../../components/feedback/uten_progress_dialog.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
@@ -374,11 +374,30 @@ class _ProductionFinishedBatchStockInPageState
     setState(() => _saving = true);
     try {
       _uncertain = true;
-      final result = await runFormDraftSubmission(
-        () => ref
-            .read(productionFinishedInboundTaskRepositoryProvider)
-            .confirmAll(documentIds: ids, idempotencyKey: key, itemIds: items),
-      );
+      // 整批一次请求点收，发出后无法撤回：不提供「取消」。
+      final result = await showUtenProgress<
+        ({int confirmedCount, bool replay, Set<String> confirmedDocumentIds})?
+      >(
+            context,
+            title: '批量点收入库',
+            icon: Icons.inventory_rounded,
+            initialStatus: '正在批量点收所选任务',
+            initialDetail: '${ids.length} 张',
+            cancellable: false,
+            invalidation: formDraftIdentityInvalidation,
+            action: (_) => runFormDraftSubmission(
+              () => ref
+                  .read(productionFinishedInboundTaskRepositoryProvider)
+                  .confirmAll(
+                    documentIds: ids,
+                    idempotencyKey: key,
+                    itemIds: items,
+                  ),
+            ),
+          );
+      // 弹窗因身份/服务器切换收尾（cancellable:false 下唯一返回 null 的路径）：
+      // 旧页不再发布结果，原提交由待核对状态保留。
+      if (result == null) return;
       requestScope.checkCurrent();
       if (!mounted) return;
       _uncertain = false;
@@ -453,36 +472,24 @@ class _ProductionFinishedBatchStockInPageState
             ),
           ),
           body: SafeArea(
-            child: Stack(
-              children: [
-                AbsorbPointer(
-                  absorbing: _busy,
-                  child: UtenContentContainer.wide(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Expanded(
-                          child: rows.isEmpty
-                              ? const UtenEmpty(
-                                  icon: Icons.inventory_rounded,
-                                  message: '所选任务状态已变化',
-                                  description: '请返回任务中心刷新后重新选择。',
-                                )
-                              : _buildTable(rows),
-                        ),
-                      ],
+            child: AbsorbPointer(
+              absorbing: _busy,
+              child: UtenContentContainer.wide(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(
+                      child: rows.isEmpty
+                          ? const UtenEmpty(
+                              icon: Icons.inventory_rounded,
+                              message: '所选任务状态已变化',
+                              description: '请返回任务中心刷新后重新选择。',
+                            )
+                          : _buildTable(rows),
                     ),
-                  ),
+                  ],
                 ),
-                // 2026-09-12 用户口径：批量全量点收提交期间屏幕中间加载动画。
-                if (_saving)
-                  const Positioned.fill(
-                    child: UtenBusyOverlay(
-                      title: '正在批量全量点收',
-                      description: '正在一次性写入库存和入库记录，请稍候。',
-                    ),
-                  ),
-              ],
+              ),
             ),
           ),
         ),
@@ -544,7 +551,6 @@ class _ProductionFinishedBatchStockInPageState
         type: UtenButtonType.danger,
         size: UtenButtonSize.large,
         icon: Icons.inventory_rounded,
-        isLoading: _saving,
         onPressed: _busy || count == 0 ? null : _submit,
         onDisabledTap: count == 0
             ? () => context.appWarning('请先勾选待点收任务')

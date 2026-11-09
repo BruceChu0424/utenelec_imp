@@ -18,7 +18,7 @@ import '../../../components/buttons/uten_app_bar_action_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_selection_summary_pill.dart';
 import '../../../components/feedback/uten_empty.dart';
-import '../../../components/feedback/uten_busy_overlay.dart';
+import '../../../components/feedback/uten_progress_dialog.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
@@ -397,33 +397,49 @@ class _WarehouseQualityBatchStockInPageState
       _error = null;
     });
     try {
-      final requestScope = await scopeFuture;
-      boundScope = requestScope;
-      _pendingCommand = command;
-      final result = await runFormDraftSubmission(
-        () => requestScope.run(() {
-          if (!_canConfirmStockIn) {
-            locallyRejected = true;
-            _pendingCommand = previousPending;
-            throw ApiException(
-              'FORBIDDEN',
-              '当前账号不能确认批量入库，请重新核对权限',
-              httpStatus: 403,
-            );
-          }
-          return ref
-              .read(warehouseQualityResultRepositoryProvider)
-              .batchConfirm(command);
-        }),
-        isDefiniteRejection: (error) =>
-            previousPending == null &&
-            ApiMutationReloadSafety.isDefiniteRejection(error) &&
-            (locallyRejected ||
-                error.httpStatus == 400 ||
-                error.httpStatus == 403 ||
-                error.httpStatus == 422 ||
-                (error.httpStatus == 409 && error.code == 'CONFLICT')),
+      // 按收货单整批一次请求提交，中途不会只成功一半；发出后无法撤回：不提供「取消」。
+      final result = await showUtenProgress<WarehouseQualityBatchConfirmResult?>(
+        context,
+        title: '批量入库',
+        icon: Icons.inventory_rounded,
+        initialStatus: '正在批量入库',
+        initialDetail: '${command.batches.length} 张收货单',
+        cancellable: false,
+        invalidation: formDraftIdentityInvalidation,
+        action: (_) async {
+          final requestScope = await scopeFuture;
+          boundScope = requestScope;
+          _pendingCommand = command;
+          return runFormDraftSubmission(
+            () => requestScope.run(() {
+              if (!_canConfirmStockIn) {
+                locallyRejected = true;
+                _pendingCommand = previousPending;
+                throw ApiException(
+                  'FORBIDDEN',
+                  '当前账号不能确认批量入库，请重新核对权限',
+                  httpStatus: 403,
+                );
+              }
+              return ref
+                  .read(warehouseQualityResultRepositoryProvider)
+                  .batchConfirm(command);
+            }),
+            isDefiniteRejection: (error) =>
+                previousPending == null &&
+                ApiMutationReloadSafety.isDefiniteRejection(error) &&
+                (locallyRejected ||
+                    error.httpStatus == 400 ||
+                    error.httpStatus == 403 ||
+                    error.httpStatus == 422 ||
+                    (error.httpStatus == 409 && error.code == 'CONFLICT')),
+          );
+        },
       );
+      // 弹窗因身份/服务器切换收尾（cancellable:false 下唯一返回 null 的路径）：
+      // 旧页不再发布结果，原提交由待核对状态保留。
+      if (result == null) return;
+      final requestScope = boundScope!;
       requestScope.checkCurrent();
       if (!mounted || !formDraftIdentityIsCurrent) return;
       // 打源头 type-counts: 红黄两支都是它的派生, 失效派生不会重新发请求。
@@ -460,14 +476,16 @@ class _WarehouseQualityBatchStockInPageState
             ? '${error.message}（本次入库没有生效；你填的数量和库位都还在，刷新后重新核对再提交）'
             : error.message,
       );
+      // 闭包内赋值会丢失外层的空值提升，这里重新钉一次。
+      final retryScope = boundScope;
       if (mounted &&
           previousPending == null &&
           error.code == 'CONFLICT' &&
-          boundScope != null &&
-          boundScope.isCurrent) {
+          retryScope != null &&
+          retryScope.isCurrent) {
         try {
-          await boundScope.run(() => _load(preserveInputs: true));
-          if (mounted && boundScope.isCurrent) {
+          await retryScope.run(() => _load(preserveInputs: true));
+          if (mounted && retryScope.isCurrent) {
             setState(
               () => _error = '${error.message}；已刷新待入量，保留了本次数量、目标叶仓和库位，请重新核对。',
             );
@@ -550,41 +568,29 @@ class _WarehouseQualityBatchStockInPageState
           body: SafeArea(
             child: _loading
                 ? const UtenSkeletonList()
-                : Stack(
-                    children: [
-                      AbsorbPointer(
-                        absorbing: _saving,
-                        child: UtenGridPageScrollbar(
-                          pinned: _gridPinned,
-                          controller: _pageScroll,
-                          child: UtenContentContainer.wide(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                Expanded(
-                                  child: _drafts == null || _grid.rows.isEmpty
-                                      ? UtenEmpty.error(
-                                          message: _error ?? '所选任务没有可入库明细',
-                                          description: '可能已由其他同事处理完毕，请返回刷新。',
-                                          actionLabel: '重新加载',
-                                          onAction: _load,
-                                        )
-                                      : _buildBody(theme),
-                                ),
-                              ],
+                : AbsorbPointer(
+                    absorbing: _saving,
+                    child: UtenGridPageScrollbar(
+                      pinned: _gridPinned,
+                      controller: _pageScroll,
+                      child: UtenContentContainer.wide(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Expanded(
+                              child: _drafts == null || _grid.rows.isEmpty
+                                  ? UtenEmpty.error(
+                                      message: _error ?? '所选任务没有可入库明细',
+                                      description: '可能已由其他同事处理完毕，请返回刷新。',
+                                      actionLabel: '重新加载',
+                                      onAction: _load,
+                                    )
+                                  : _buildBody(theme),
                             ),
-                          ),
+                          ],
                         ),
                       ),
-                      // 2026-09-12 用户口径：批量入库提交期间屏幕中间加载动画。
-                      if (_saving)
-                        const Positioned.fill(
-                          child: UtenBusyOverlay(
-                            title: '正在批量入库',
-                            description: '按收货单整批一起提交，中途不会只成功一半，请稍候。',
-                          ),
-                        ),
-                    ],
+                    ),
                   ),
           ),
         ),
@@ -641,7 +647,6 @@ class _WarehouseQualityBatchStockInPageState
       type: UtenButtonType.danger,
       size: UtenButtonSize.large,
       icon: Icons.move_to_inbox_rounded,
-      isLoading: _saving,
       onPressed:
           _saving ||
               _loading ||

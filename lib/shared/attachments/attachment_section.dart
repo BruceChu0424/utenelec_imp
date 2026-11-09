@@ -18,6 +18,7 @@ import '../../core/l10n/gen/app_localizations.dart';
 import '../../core/network/authenticated_request_scope.dart';
 import '../../core/web_update/web_update_safety.dart';
 import '../../components/cards/uten_card.dart';
+import '../../components/feedback/uten_progress_dialog.dart';
 import '../../components/inputs/uten_drop_target.dart';
 import '../../components/layout/uten_section_header.dart';
 import '../../components/layout/uten_segment_row.dart';
@@ -84,7 +85,6 @@ class AttachmentSection extends ConsumerStatefulWidget {
 
 class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
   bool _busy = false;
-  String? _progressLabel; // 上传进度文案（多文件时显示「正在上传 2/3」）
   String? _filterCategory; // 纯查看筛选（null = 全部），与上传无关
 
   /// 刚改过分类的本地值：服务端已落库，先就地生效，避免为一个标注整块重新加载。
@@ -185,26 +185,6 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
               ],
             ],
           ),
-          if (_busy && _progressLabel != null)
-            Padding(
-              padding: const EdgeInsets.only(top: UtenSpacing.s8),
-              child: Row(
-                children: [
-                  const SizedBox(
-                    width: 12,
-                    height: 12,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                  const SizedBox(width: UtenSpacing.s8),
-                  Text(
-                    _progressLabel!,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
-            ),
           if (canUpload &&
               widget.attachments.isNotEmpty &&
               UtenCompactPresentation.of(context)) ...[
@@ -475,18 +455,13 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
           if (rowCanDownload)
             IconButton(
               tooltip: previewable ? '预览' : '下载',
-              icon: _readingIds.contains(a.id)
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : Icon(
-                      previewable
-                          ? Icons.visibility_outlined
-                          : Icons.download_outlined,
-                      size: 20,
-                    ),
+              // 读取等待走统一进度弹窗(字节进度可取消), 这里只保留防连点禁用。
+              icon: Icon(
+                previewable
+                    ? Icons.visibility_outlined
+                    : Icons.download_outlined,
+                size: 20,
+              ),
               onPressed: _readingIds.contains(a.id) ? null : () => _view(a),
             ),
           if (!readOnly && widget.onSetAvatar != null && a.isImage && !a.avatar)
@@ -595,55 +570,65 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
       return;
     }
     setState(() => _busy = true);
+    var succeeded = 0;
+    String? uploadedFileName;
     try {
-      var attempted = 0;
-      var succeeded = 0;
-      String? uploadedFileName;
-      for (final f in files) {
-        if (!mounted) break;
-        setState(
-          () => _progressLabel = files.length > 1
-              ? '正在上传 ${++attempted}/${files.length}'
-              : null,
-        );
-        final bytes = f.bytes;
-        if (bytes == null) {
-          if (mounted) {
-            context.appError('无法读取「${f.name}」的内容');
+      // 逐个上传: afterCurrent 取消＝当前这个传完即停, 已传结果照常保留。
+      await showUtenProgress<void>(
+        context,
+        title: '上传附件',
+        icon: Icons.upload_file_outlined,
+        initialStatus: '正在上传',
+        initialDetail: '${files.length} 个文件',
+        cancelMode: UtenProgressCancel.afterCurrent,
+        action: (progress) async {
+          var done = 0;
+          for (final f in files) {
+            if (progress.isCancelled || !mounted) break;
+            progress.count(done, files.length, status: '正在上传');
+            final bytes = f.bytes;
+            if (bytes == null) {
+              if (mounted) {
+                context.appError('无法读取「${f.name}」的内容');
+              }
+              continue;
+            }
+            final contentType = guessContentType(f.name);
+            if (contentType == null) {
+              if (mounted) {
+                context.appError(
+                  '「${f.name}」类型不支持（$kAttachmentUploadTypesHint）',
+                );
+              }
+              continue;
+            }
+            // File identity and original bytes are authoritative. Storage may use
+            // lossless compression without changing the uploaded/downloaded file.
+            // 上传不带分类：分类改成传完之后在文件旁边可选设置（2026-09-11）。
+            try {
+              await ref
+                  .read(attachmentServiceProvider)
+                  .upload(
+                    ownerType: widget.ownerType,
+                    ownerId: widget.ownerId,
+                    fileName: f.name,
+                    contentType: contentType,
+                    bytes: bytes,
+                  );
+              succeeded++;
+              uploadedFileName = f.name;
+            } catch (e) {
+              if (mounted) {
+                context.appError(
+                  '「${f.name}」${humanErrorMessage(e) ?? '上传失败，请稍后重试'}',
+                  fieldErrors: e is ApiException ? e.fieldErrors : null,
+                );
+              }
+            }
+            done++;
           }
-          continue;
-        }
-        final contentType = guessContentType(f.name);
-        if (contentType == null) {
-          if (mounted) {
-            context.appError('「${f.name}」类型不支持（$kAttachmentUploadTypesHint）');
-          }
-          continue;
-        }
-        // File identity and original bytes are authoritative. Storage may use
-        // lossless compression without changing the uploaded/downloaded file.
-        // 上传不带分类：分类改成传完之后在文件旁边可选设置（2026-09-11）。
-        try {
-          await ref
-              .read(attachmentServiceProvider)
-              .upload(
-                ownerType: widget.ownerType,
-                ownerId: widget.ownerId,
-                fileName: f.name,
-                contentType: contentType,
-                bytes: bytes,
-              );
-          succeeded++;
-          uploadedFileName = f.name;
-        } catch (e) {
-          if (mounted) {
-            context.appError(
-              '「${f.name}」${humanErrorMessage(e) ?? '上传失败，请稍后重试'}',
-              fieldErrors: e is ApiException ? e.fieldErrors : null,
-            );
-          }
-        }
-      }
+        },
+      );
       if (mounted && succeeded > 0) {
         widget.onChanged();
         final l10n = AppLocalizations.of(context);
@@ -654,12 +639,7 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
         );
       }
     } finally {
-      if (mounted) {
-        setState(() {
-          _busy = false;
-          _progressLabel = null;
-        });
-      }
+      if (mounted) setState(() => _busy = false);
     }
   }
 
@@ -681,8 +661,31 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
     final service = ref.read(attachmentServiceProvider);
     try {
       final scope = await boundary.api.captureRequestScope(isCurrent: current);
+      // 读取/下载进统一进度弹窗: 服务端没给总长时退回附件登记大小,
+      // 两者都没有则显示已收字节; 读取可立即取消。
+      void Function(int received, int total) receive(
+        UtenProgressSession progress,
+      ) {
+        return (received, total) => progress.bytes(
+          received,
+          total > 0 ? total : a.sizeBytes,
+          status: '正在下载',
+        );
+      }
+
       Future<void> downloadOriginal() async {
-        final original = await scope.run(() => service.downloadBytes(a));
+        final original = await showUtenProgress<Uint8List>(
+          context,
+          title: '下载原件',
+          icon: Icons.download_outlined,
+          initialStatus: '正在下载',
+          initialDetail: a.originalName,
+          action: (progress) => scope.run(
+            () =>
+                service.downloadBytes(a, onReceiveProgress: receive(progress)),
+          ),
+        );
+        if (original == null) return;
         scope.checkCurrent();
         await saveBytes(
           original,
@@ -697,7 +700,18 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
           AttachmentPreviewDialog.isOffice(a.originalName, a.contentType)) {
         Uint8List? pdf;
         try {
-          pdf = await scope.run(() => service.previewBytes(a));
+          if (!mounted) return;
+          pdf = await showUtenProgress<Uint8List>(
+            context,
+            title: '准备预览',
+            icon: Icons.visibility_outlined,
+            initialStatus: '正在转换为 PDF',
+            initialDetail: a.originalName,
+            action: (progress) => scope.run(
+              () =>
+                  service.previewBytes(a, onReceiveProgress: receive(progress)),
+            ),
+          );
         } catch (_) {
           pdf = null;
         }
@@ -717,13 +731,26 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
         }
         context.appWarning('该文件暂不支持在线预览，已改为下载原件');
       }
-      final bytes = await scope.run(() => service.downloadBytes(a));
-      scope.checkCurrent();
-      // 图片/PDF/文本点开即看；其余（zip 等）保存落盘。
-      final inline =
+      // 图片/PDF/文本点开即看；其余（zip 等）保存落盘(与原 inline 判定同口径)。
+      final willPreviewInline =
           !AttachmentPreviewDialog.isOffice(a.originalName, a.contentType) &&
           AttachmentPreviewDialog.canPreview(a.originalName, a.contentType);
-      if (inline) {
+      if (!mounted) return;
+      final bytes = await showUtenProgress<Uint8List>(
+        context,
+        title: willPreviewInline ? '预览文件' : '下载附件',
+        icon: willPreviewInline
+            ? Icons.visibility_outlined
+            : Icons.download_outlined,
+        initialStatus: '正在下载',
+        initialDetail: a.originalName,
+        action: (progress) => scope.run(
+          () => service.downloadBytes(a, onReceiveProgress: receive(progress)),
+        ),
+      );
+      if (bytes == null) return;
+      scope.checkCurrent();
+      if (willPreviewInline) {
         setState(() => _readingIds.remove(a.id));
         await _showPreview(
           bytes,

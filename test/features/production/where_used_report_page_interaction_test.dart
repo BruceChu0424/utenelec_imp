@@ -127,6 +127,9 @@ class _WhereUsedApi extends ApiClient {
     String path, {
     Object? body,
     Map<String, dynamic>? query,
+    CancelToken? cancelToken,
+    ProgressCallback? onReceiveProgress,
+    Map<String, String>? headers,
   }) async {
     exportCalls++;
     throw StateError('unexpected export before confirmation');

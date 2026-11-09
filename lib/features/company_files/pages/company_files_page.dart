@@ -19,6 +19,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_close_button.dart';
 import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/feedback/uten_context_menu.dart';
+import '../../../components/feedback/uten_progress_dialog.dart';
 import '../../../components/feedback/uten_context_menu_policy.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
@@ -66,7 +67,9 @@ class _CompanyFileUploadChoice {
 
   final String name;
   final int sizeBytes;
-  final Future<CompanyFileUpload> Function() read;
+
+  /// 读取取消(统一进度弹窗)返回 null, 该文件跳过不传。
+  final Future<CompanyFileUpload?> Function() read;
 }
 
 /// The explorer owns only selection, navigation and upload attempts. Every
@@ -532,11 +535,25 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
           attachmentNeedsServerConversion(file.name, file.contentType);
       Uint8List bytes;
       try {
-        bytes = await scope.run(
-          () => converted
-              ? service.previewBytes(attachment)
-              : service.downloadBytes(attachment),
+        final fetched = await _fetchWithProgress(
+          canPreview ? '读取文件' : '下载文件',
+          converted ? '正在转换为 PDF' : '正在下载',
+          file.name,
+          attachment.sizeBytes,
+          (onProgress) => scope.run(
+            () => converted
+                ? service.previewBytes(
+                    attachment,
+                    onReceiveProgress: onProgress,
+                  )
+                : service.downloadBytes(
+                    attachment,
+                    onReceiveProgress: onProgress,
+                  ),
+          ),
         );
+        if (fetched == null) return false;
+        bytes = fetched;
       } catch (e) {
         if (!converted ||
             !mounted ||
@@ -566,9 +583,19 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
           ),
         );
         if (download != true) return false;
-        final original = await scope.run(
-          () => service.downloadBytes(attachment),
+        final original = await _fetchWithProgress(
+          '下载原件',
+          '正在下载',
+          file.name,
+          attachment.sizeBytes,
+          (onProgress) => scope.run(
+            () => service.downloadBytes(
+              attachment,
+              onReceiveProgress: onProgress,
+            ),
+          ),
         );
+        if (original == null) return false;
         await saveBytes(
           original,
           file.name,
@@ -590,9 +617,19 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
               contentType: converted ? 'application/pdf' : file.contentType,
               onDownload: () async {
                 scope.checkCurrent();
-                final original = await scope.run(
-                  () => service.downloadBytes(attachment),
+                final original = await _fetchWithProgress(
+                  '下载原件',
+                  '正在下载',
+                  file.name,
+                  attachment.sizeBytes,
+                  (onProgress) => scope.run(
+                    () => service.downloadBytes(
+                      attachment,
+                      onReceiveProgress: onProgress,
+                    ),
+                  ),
                 );
+                if (original == null) return;
                 scope.checkCurrent();
                 await saveBytes(
                   original,
@@ -617,6 +654,32 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
     },
     revalidateOnReturn: true,
     feedback: false,
+  );
+
+  /// 附件字节读取的统一进度弹窗: 服务端没给总长时退回登记大小, 两者都没有
+  /// 则只显示已收字节; 读取可立即取消(取消返回 null, 不预览不落盘)。
+  Future<Uint8List?> _fetchWithProgress(
+    String title,
+    String status,
+    String fileName,
+    int sizeBytes,
+    Future<Uint8List> Function(
+      void Function(int received, int total)? onProgress,
+    )
+    run,
+  ) => showUtenProgress<Uint8List>(
+    context,
+    title: title,
+    icon: Icons.download_outlined,
+    initialStatus: status,
+    initialDetail: fileName,
+    action: (progress) => run(
+      (received, total) => progress.bytes(
+        received,
+        total > 0 ? total : sizeBytes,
+        status: status,
+      ),
+    ),
   );
 
   Future<void> _dropOn(CompanyFile source, CompanyFile target) async {
@@ -977,9 +1040,19 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
                 httpStatus: 404,
               );
             }
-            final bytes = await scope.run(
-              () => attachments.downloadBytes(attachment),
+            final bytes = await _fetchWithProgress(
+              '读取文件',
+              '正在下载',
+              named.name,
+              attachment.sizeBytes,
+              (onProgress) => scope.run(
+                () => attachments.downloadBytes(
+                  attachment,
+                  onReceiveProgress: onProgress,
+                ),
+              ),
             );
+            if (bytes == null) return null;
             return CompanyFileUpload(
               name: named.name,
               bytes: bytes,
@@ -1210,6 +1283,7 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
     var total = heldBytes;
     for (final choice in selected) {
       final upload = await scope.run(choice.read);
+      if (upload == null) continue;
       total += upload.bytes.length;
       if (upload.bytes.isEmpty ||
           upload.bytes.length > AttachmentLimits.maxFileBytes ||
@@ -1261,7 +1335,9 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
           heldBytes: held,
         );
       } else {
-        pending = [for (final choice in selected) await scope.run(choice.read)];
+        pending = [
+          for (final choice in selected) ?await scope.run(choice.read),
+        ];
       }
       scope.checkCurrent();
       if (pending == null || pending.isEmpty) return;

@@ -1,5 +1,48 @@
 part of 'production_material_analysis_page.dart';
 
+/// 一次批量下单的进度: 按行累计(已完成的段 + 当前段内部的分块 / 分轮),
+/// 最后一段完成前不到 100%。
+class _MaterialOrderProgress {
+  _MaterialOrderProgress(this.session, this.totalRows);
+
+  final UtenProgressSession session;
+  final int totalRows;
+  int _finishedRows = 0;
+  int _segmentRows = 0;
+  double _segmentFraction = 0;
+
+  bool get stopRequested => session.isCancelled;
+
+  void startSegment(String status, int rows) {
+    _segmentRows = rows;
+    _segmentFraction = 0;
+    _report(status);
+  }
+
+  void setStatus(String status) => _report(status);
+
+  void segmentProgress(double fraction) {
+    _segmentFraction = fraction.clamp(0.0, 1.0).toDouble();
+    _report(null);
+  }
+
+  void finishSegment() {
+    _finishedRows += _segmentRows;
+    _segmentRows = 0;
+    _segmentFraction = 0;
+    _report(null);
+  }
+
+  void _report(String? status) {
+    final done = _finishedRows + _segmentRows * _segmentFraction;
+    session.percent(
+      totalRows == 0 ? 0 : done / totalRows,
+      status: status,
+      detail: '${done.floor()} / $totalRows 行',
+    );
+  }
+}
+
 abstract class _MaterialAnalysisSupplyActionsState
     extends _MaterialAnalysisCandidatesState {
   List<List<T>> _chunked<T>(List<T> values) {
@@ -14,12 +57,6 @@ abstract class _MaterialAnalysisSupplyActionsState
       result.add(values.sublist(start, end));
     }
     return result;
-  }
-
-  void _clearBulkOperation() {
-    _bulkOperationLabel = null;
-    _bulkOperationCompleted = 0;
-    _bulkOperationTotal = 0;
   }
 
   /// 指定路线下「仍在途」的已提交量估算：汇总各路径下游引用中
@@ -543,21 +580,15 @@ abstract class _MaterialAnalysisSupplyActionsState
     // 2026-09-12 用户口径「点了没反应像卡住」：采购/委外分块提交期间屏幕中间
     // 给加载遮罩。挂在这里（数量确认弹窗已收口、纯网络段）——挂早了会把确认
     // 弹窗也盖在背后转圈，pumpAndSettle 永不落定（planSubmissionProgress 同款教训）。
-    bucketActionBusyMessage.value = switch (route) {
+    // 整批下单已开进度弹窗时遮罩让位，状态与分块进度汇报到弹窗。
+    final busyMessage = switch (route) {
       MaterialSupplyRoute.buy => '正在下达采购任务',
       MaterialSupplyRoute.subcontract => '正在下达委外任务',
       MaterialSupplyRoute.make => '正在创建自制备料任务',
     };
-    setState(() {
-      _notifyingRoute = route;
-      _bulkOperationLabel = switch (route) {
-        MaterialSupplyRoute.buy => '正在提交采购需求',
-        MaterialSupplyRoute.subcontract => '正在下达委外任务',
-        MaterialSupplyRoute.make => '正在创建自制备料任务',
-      };
-      _bulkOperationCompleted = 0;
-      _bulkOperationTotal = submitTargets.length;
-    });
+    bucketActionBusyMessage.value = busyMessage;
+    _orderProgress?.setStatus(busyMessage);
+    setState(() => _notifyingRoute = route);
     try {
       for (final batch in batches) {
         if (!mounted || !currentScope()) return null;
@@ -601,7 +632,7 @@ abstract class _MaterialAnalysisSupplyActionsState
             );
         completed += batch.length;
         if (!mounted || !currentScope()) return null;
-        setState(() => _bulkOperationCompleted = completed);
+        _orderProgress?.segmentProgress(completed / submitTargets.length);
       }
       if (!mounted || !currentScope()) return null;
       if (mounted && _sessionScopeKey() == sessionScope) {
@@ -618,7 +649,6 @@ abstract class _MaterialAnalysisSupplyActionsState
           current.fingerprint == analysis.fingerprint;
       setState(() {
         _notifyingRoute = null;
-        _clearBulkOperation();
         _applyAnalysis(current);
       });
       if (producedNothing) {
@@ -665,10 +695,7 @@ abstract class _MaterialAnalysisSupplyActionsState
         if (mounted && _sessionScopeKey() == sessionScope) {
           bucketActionBusyMessage.value = null;
         }
-        setState(() {
-          _notifyingRoute = null;
-          _clearBulkOperation();
-        });
+        setState(() => _notifyingRoute = null);
         return null;
       }
       if (!mounted || !currentScope()) return null;
@@ -677,7 +704,6 @@ abstract class _MaterialAnalysisSupplyActionsState
       }
       setState(() {
         _notifyingRoute = null;
-        _clearBulkOperation();
         _applyAnalysis(current);
       });
       final message = productionErrorMessage(error, fallback: '通知失败，请稍后重试');
@@ -700,10 +726,7 @@ abstract class _MaterialAnalysisSupplyActionsState
       if (mounted &&
           _sessionScopeKey() == sessionScope &&
           _notifyingRoute != null) {
-        setState(() {
-          _notifyingRoute = null;
-          _clearBulkOperation();
-        });
+        setState(() => _notifyingRoute = null);
       }
     }
   }

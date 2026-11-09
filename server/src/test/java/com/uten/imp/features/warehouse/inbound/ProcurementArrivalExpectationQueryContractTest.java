@@ -66,6 +66,31 @@ class ProcurementArrivalExpectationQueryContractTest {
         }
     }
 
+    /**
+     * 2026-11-08 口径修订的契约钉子: 委外催收量(预计到货列表/计数共用)的基准是订货量
+     * (supplied_item.qty), 不再是订量×(1+损耗)(fn_subcontract_normal_receipt_limit);
+     * 已过账超量(arrival_overage_posted_qty)不进催收目标, 只留在物理可回厂分支放宽可收上限。
+     */
+    @Test
+    void subcontractCollectionTargetIsTheOrderedQuantityNotTheLossAllowance() {
+        CapturingJdbcTemplate jdbc = new CapturingJdbcTemplate();
+        service(jdbc).expectations(1, 20, "", "");
+
+        for (String sql : List.of(jdbc.expectationListSql, jdbc.expectationCountSql)) {
+            String flat = sql.replaceAll("\\s+", " ");
+            // 催收基准 = 订量 + 已退货 + IQC 实物退回待补 − 已收 − 已结案损耗
+            assertThat(flat)
+                    .contains("GREATEST(COALESCE(supplied_item.qty,0) + COALESCE(supplied_item.returned_qty,0)")
+                    .contains("- COALESCE(supplied_item.received_qty,0) - fn_subcontract_settled_loss_qty(supplied_item.id),0)")
+                    // 允许损耗上限不再是催收基准
+                    .doesNotContain("fn_subcontract_normal_receipt_limit")
+                    // 物理可回厂分支保持原样: 套数 + 超收过账 + IQC 待补 − 已收, 仍是 LEAST 的第二支
+                    .contains("GREATEST(fn_subcontract_returnable_qty(supplied_item.id)"
+                            + " + COALESCE(supplied_item.arrival_overage_posted_qty,0)")
+                    .contains("LEAST( GREATEST(COALESCE(supplied_item.qty,0)");
+        }
+    }
+
     @ParameterizedTest
     @MethodSource("expectationSortCases")
     void sortingKeepsPaginationSeparateAndBindsFiltersBeforePageArguments(

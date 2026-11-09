@@ -394,7 +394,7 @@ public class ProductionReportService {
      * 列定义映射 ReportColumn→ExportColumn（剥离 width）。report 取值与 GET 路径一致：
      * plan/detail / plan/summary。
      */
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, timeout = com.uten.imp.common.export.ExportTransactions.TIMEOUT_SECONDS)
     public ExportPayload export(String report, Map<String, String> p, String sort, String order) {
         if (com.uten.imp.features.production.execution.ProductionWorkshopTaskExportService.REPORT.equals(report))
             return workshopTaskExports.export(p, sort, order);

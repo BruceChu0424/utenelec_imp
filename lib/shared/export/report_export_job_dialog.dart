@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 import '../../components/buttons/uten_button.dart';
 import '../../components/feedback/uten_dialog.dart';
 import '../../components/feedback/uten_busy_overlay.dart';
+import '../../components/feedback/uten_progress_dialog.dart';
 import '../../components/inputs/uten_field_hint_icon.dart';
 import '../../core/network/api_exception.dart';
 import '../../core/network/authenticated_request_scope.dart';
@@ -32,7 +33,11 @@ class ReportExportJobDialog extends ConsumerStatefulWidget {
   final ReportExportJobRequest request;
   final ReportExportPendingStore store;
   final bool Function() stillCurrent;
-  final Future<void> Function(ReportExportJob job) onDownload;
+
+  /// 下载已生成的文件。在通用进度弹窗里执行: 通过 [progress] 汇报字节进度,
+  /// 用户点取消时 `progress.isCancelled` 为 true, 调用方应停止传输。
+  final Future<void> Function(ReportExportJob job, UtenProgressSession progress)
+  onDownload;
 
   @override
   ConsumerState<ReportExportJobDialog> createState() =>
@@ -337,12 +342,29 @@ class _ReportExportJobDialogState extends ConsumerState<ReportExportJobDialog> {
     await _create(request, currentScope: true);
   }, title: '正在创建导出任务');
 
-  Future<void> _download() => _perform(() async {
-    final job = _job;
-    if (job == null || !job.downloadable) return;
-    await widget.onDownload(job);
-    if (mounted && _current) Navigator.of(context).pop();
-  }, title: '正在下载导出文件');
+  Future<void> _download() => _perform(
+    () async {
+      final job = _job;
+      if (job == null || !job.downloadable) return;
+      // 文件下载用通用进度弹窗显示字节进度(总量=任务文件大小), 可取消;
+      // 取消只是不再接收, 原任务文件仍在, 可以再次下载。
+      final finished = await showUtenProgress<bool>(
+        context,
+        title: '正在下载导出文件',
+        icon: Icons.file_download_outlined,
+        initialStatus: '正在下载文件',
+        initialDetail: job.bytes > 0 ? formatUtenBytes(job.bytes) : null,
+        isCurrent: () => mounted && _current,
+        action: (progress) async {
+          await widget.onDownload(job, progress);
+          return !progress.isCancelled;
+        },
+      );
+      if (finished == true && mounted && _current) Navigator.of(context).pop();
+    },
+    // 进度弹窗自带遮罩与取消, 不再叠加转圈遮罩。
+    showWait: false,
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -382,16 +404,24 @@ class _ReportExportJobDialogState extends ConsumerState<ReportExportJobDialog> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (job?.active == true) ...[
-                const LinearProgressIndicator(),
+                // 全项目统一进度条(样式单点维护); 总数已知显示真实进度, 否则扫动。
+                UtenProgressBar(value: job!.progressFraction),
                 const SizedBox(height: UtenSpacing.s16),
               ],
               if (job != null) ...[
                 Text(
-                  job.statusLabel,
+                  job.progressFraction == null
+                      ? job.statusLabel
+                      : '${job.statusLabel} ${(job.progressFraction! * 100).round()}%',
+                  key: const ValueKey('report-export-job-status'),
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
                 const SizedBox(height: UtenSpacing.s8),
-                Text('已处理 ${job.rows} 行'),
+                Text(
+                  job.totalRows == null
+                      ? '已处理 ${job.rows} 行'
+                      : '已处理 ${job.rows} / ${job.totalRows} 行',
+                ),
                 if (job.snapshotAt != null)
                   Text(
                     '数据快照：${ChinaDateTime.formatIsoInstant(job.snapshotAt!)}',

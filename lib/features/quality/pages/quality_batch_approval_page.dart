@@ -34,7 +34,7 @@ import '../../../components/data_display/uten_selection_summary_pill.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_empty.dart';
-import '../../../components/feedback/uten_busy_overlay.dart';
+import '../../../components/feedback/uten_progress_dialog.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
@@ -709,28 +709,21 @@ class _QualityBatchApprovalPageState
     await _sendSubmission();
   }
 
-  /// 提交期间忙碌浮层的进度文案：整份报告一次请求原子执行。
-  String _submitOverlayDescription() {
+  String _submissionStatus() => _submission?.phase == QualityBatchPhase.fqc
+      ? '正在批量通过自制产成品'
+      : '正在提交检验报告';
+
+  /// 进度弹窗的详情行：本阶段要处理多少。IQC 与 FQC 是两段请求，按当前阶段说。
+  String? _submissionProgressDetail() {
     final submission = _submission;
-    if (submission == null || submission.receipts.isEmpty) {
-      return submission != null && submission.fqcInspectionIds.isNotEmpty
-          ? '自制产成品整批提交中，响应丢失重试不会重复判定。'
-          : '整份报告提交中。';
+    if (submission == null) return null;
+    final lots = submission.fqcInspectionIds.length;
+    if (submission.phase == QualityBatchPhase.fqc ||
+        submission.receipts.isEmpty) {
+      return lots == 0 ? null : '$lots 项自制产成品';
     }
-    // W6-H 分阶段文案：IQC 整份报告与 FQC 批量通过是两段请求，按当前阶段说话。
-    if (submission.phase == QualityBatchPhase.fqc) {
-      return '自制产成品 ${submission.fqcInspectionIds.length} 项批量通过中'
-          '（检验报告已确认）；响应丢失重试会核对原报告，不会重复判定。';
-    }
-    final buffer = StringBuffer(
-      '${submission.receipts.length} 张收货单一次提交'
-      '（服务端单事务原子执行，任一单冲突整批回滚）',
-    );
-    if (submission.fqcInspectionIds.isNotEmpty) {
-      buffer.write('，随后批量通过自制产成品 ${submission.fqcInspectionIds.length} 项');
-    }
-    buffer.write('；响应丢失重试会核对原报告，不会重复判定。');
-    return buffer.toString();
+    final receipts = '${submission.receipts.length} 张收货单';
+    return lots == 0 ? receipts : '$receipts，随后 $lots 项自制产成品';
   }
 
   Future<void> _sendSubmission() async {
@@ -745,30 +738,45 @@ class _QualityBatchApprovalPageState
     setState(() => _submitting = true);
     AuthenticatedRequestScope? requestScope;
     try {
-      requestScope = _submissionRequestScope ??=
-          await captureFormDraftRequestScope();
-      await runFormDraftSubmission(
-        () => submission.send(
-          requestScope: requestScope!,
-          iqc: ref.read(procurementInspectionRepositoryProvider),
-          fqc: ref.read(productionFqcRepositoryProvider),
-          onProgress: () {
-            if (!formDraftIdentityIsCurrent) return;
-            final completed = submission.acknowledgedIqcIds.toSet();
-            setState(() {
-              for (final row in _flatRows ?? const <_EditableIqcRow>[]) {
-                if (completed.contains(row.item.id)) {
-                  row.completed = true;
-                  row.selected = false;
-                }
-              }
-            });
-          },
-        ),
+      // 服务端整批原子执行, 请求发出后无法撤回: 不提供「取消」, 按真实阶段显示。
+      await showUtenProgress<void>(
+        context,
+        title: '提交检验报告',
+        icon: Icons.fact_check_outlined,
+        initialStatus: _submissionStatus(),
+        initialDetail: _submissionProgressDetail(),
+        cancellable: false,
+        action: (progress) async {
+          requestScope = _submissionRequestScope ??=
+              await captureFormDraftRequestScope();
+          await runFormDraftSubmission(
+            () => submission.send(
+              requestScope: requestScope!,
+              iqc: ref.read(procurementInspectionRepositoryProvider),
+              fqc: ref.read(productionFqcRepositoryProvider),
+              onProgress: () {
+                progress.stage(
+                  _submissionStatus(),
+                  detail: _submissionProgressDetail(),
+                );
+                if (!formDraftIdentityIsCurrent) return;
+                final completed = submission.acknowledgedIqcIds.toSet();
+                setState(() {
+                  for (final row in _flatRows ?? const <_EditableIqcRow>[]) {
+                    if (completed.contains(row.item.id)) {
+                      row.completed = true;
+                      row.selected = false;
+                    }
+                  }
+                });
+              },
+            ),
+          );
+          await requestScope!.verify();
+          await completeFormDraft();
+          await requestScope!.verify();
+        },
       );
-      await requestScope.verify();
-      await completeFormDraft();
-      await requestScope.verify();
       if (!mounted || !formDraftIdentityIsCurrent) return;
       invalidateCounts();
       setState(() => _submitting = false);
@@ -865,19 +873,6 @@ class _QualityBatchApprovalPageState
                         ),
                       ),
                     ),
-                    // 2026-09-12 用户口径「点了像卡住」：提交报告执行期间屏幕
-                    // 中间给加载动画（跟随网络调用本身，失败/完成后撤下）。
-                    // 2026-09-18 并行提交 + 实时进度（X/Y 单已确认），长批次不再
-                    // 像卡死：每确认一张单 onProgress 就刷新这里。
-                    if (_submitting)
-                      Positioned.fill(
-                        child: UtenBusyOverlay(
-                          title: _submission?.phase == QualityBatchPhase.fqc
-                              ? '正在批量通过自制产成品'
-                              : '正在提交检验报告',
-                          description: _submitOverlayDescription(),
-                        ),
-                      ),
                   ],
                 ),
         ),
@@ -1230,7 +1225,6 @@ class _QualityBatchApprovalPageState
           key: const Key('batch-approval-submit-report'),
           type: UtenButtonType.danger,
           size: UtenButtonSize.large,
-          isLoading: _submitting,
           icon: Icons.fact_check_outlined,
           onPressed: _submitting || _confirming ? null : _submitReport,
           child: Text(_submission == null ? '提交报告' : '重试原报告'),

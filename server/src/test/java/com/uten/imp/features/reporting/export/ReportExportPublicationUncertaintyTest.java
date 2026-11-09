@@ -50,6 +50,7 @@ class ReportExportPublicationUncertaintyTest {
         when(restorer.restore(owner, 1, 1L)).thenReturn(new AuthUser(owner, UUID.randomUUID(), "reader",
                 Set.of("sales_report:view", "sales_report:export"), false, true, false));
         when(repository.heartbeat(eq(running), anyInt())).thenReturn(true);
+        when(repository.heartbeat(eq(running), anyInt(), any())).thenReturn(true);
         when(source.read(request)).thenReturn(new ExportPayload(List.of(new ExportColumn("n", "原文", ExportColumn.TEXT)),
                 List.of(Map.of("n", "0001. 原文")), 1));
         var writer = mock(XlsxExportService.StreamingWorkbook.class); when(writer.rowCount()).thenReturn(1);

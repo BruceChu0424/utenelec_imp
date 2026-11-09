@@ -110,7 +110,8 @@ public class WarehouseService {
      * 负责人来自 warehouse_keepers（ADR-115，与列表「负责人」列同一 assignments 查询，
      * 仓库量级个位数，一次带回按仓库分组、「、」连接，无负责人显示「—」）。
      */
-    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ,
+            timeout = com.uten.imp.common.export.ExportTransactions.TIMEOUT_SECONDS)
     public ExportPayload export(WarehouseQueryFilter f) {
         Map<UUID, String> keepersByWarehouse = new LinkedHashMap<>();
         for (WarehouseKeeperAssignment a : keeperService.assignments()) {

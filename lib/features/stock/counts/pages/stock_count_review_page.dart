@@ -14,6 +14,7 @@ import '../../../../components/data_display/uten_status_badge.dart';
 import '../../../../components/data_display/uten_selection_summary_pill.dart';
 import '../../../../components/data_display/uten_status_cell_color.dart';
 import '../../../../components/feedback/uten_inline_notice.dart';
+import '../../../../components/feedback/uten_progress_dialog.dart';
 import '../../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../../components/inputs/uten_table_cell_action.dart';
 import '../../../../components/layout/uten_app_bar.dart';
@@ -574,29 +575,40 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage>
     if (requests == null || !mounted || !_authorized || sequence != _sequence) {
       return;
     }
+    // 闭包会丢失上方空值检查的类型提升，这里先钉成非空局部。
+    final selected = requests;
     setState(() {
       _working = true;
       _error = null;
     });
     try {
-      await ref
-          .read(stockCountRequestRepositoryProvider)
-          .approveBatch(
-            reviewRoute: widget.reviewRoute!,
-            items: [
-              for (final request in requests)
-                {
-                  'id': request.id,
-                  'decision': {
-                    'expectedVersion': request.version,
-                    'idempotencyKey': _keys.putIfAbsent(
-                      '${request.id}:${request.version}:approve:',
-                      const Uuid().v4,
-                    ),
+      // 整批一次请求提交，发出后无法撤回：不提供「取消」。
+      await showUtenProgress<void>(
+        context,
+        title: '批量通过盘点',
+        icon: Icons.check_circle_outline_rounded,
+        initialStatus: '正在批量通过所选盘点',
+        initialDetail: '${selected.length} 笔',
+        cancellable: false,
+        action: (_) => ref
+            .read(stockCountRequestRepositoryProvider)
+            .approveBatch(
+              reviewRoute: widget.reviewRoute!,
+              items: [
+                for (final request in selected)
+                  {
+                    'id': request.id,
+                    'decision': {
+                      'expectedVersion': request.version,
+                      'idempotencyKey': _keys.putIfAbsent(
+                        '${request.id}:${request.version}:approve:',
+                        const Uuid().v4,
+                      ),
+                    },
                   },
-                },
-            ],
-          );
+              ],
+            ),
+      );
       if (!mounted) return;
       _selectedRequestIds.clear();
       refreshBadges(ref);
@@ -624,7 +636,6 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage>
         key: const Key('stock-count-batch-approve'),
         type: UtenButtonType.success,
         size: UtenButtonSize.large,
-        isLoading: _working,
         onPressed: _working || _loading || _selectedRequestIds.isEmpty
             ? null
             : _approveSelected,

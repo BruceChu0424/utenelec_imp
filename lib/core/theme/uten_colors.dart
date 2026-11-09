@@ -236,6 +236,12 @@ abstract final class UtenColors {
   static const Color infoText = Color(0xFF1D4ED8);
   static const Color errorText = Color(0xFFB91C1C);
 
+  /// 重点核对列/修订高亮的红字色（浅色 [errorText] / 深色 [errorOnDark]）。
+  /// MasterDataTableView 的 emphasized 列、UtenEditableGrid 的 emphasized 列与
+  /// UtenRevisionTable 的删除行红字共用这一处定色，三处不再各写明暗判定。
+  static Color emphasisText(Brightness brightness) =>
+      brightness == Brightness.dark ? errorOnDark : errorText;
+
   /// 黄色「进行中」数量徽章的**实底色**(亮琥珀)。
   ///
   /// 定色过程(用户三轮反馈):

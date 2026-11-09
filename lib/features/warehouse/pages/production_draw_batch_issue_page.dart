@@ -11,7 +11,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
-import '../../../components/feedback/uten_busy_overlay.dart';
+import '../../../components/feedback/uten_progress_dialog.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -173,11 +173,16 @@ class _ProductionDrawBatchIssuePageState
   bool Function() _captureSubmissionView() {
     final identity = _captureIdentity();
     final route = ModalRoute.of(context);
+    // 本页自己推起的提交进度弹窗在顶不算「其他页面」（同 account 工作台口径）。
     return () =>
         identity() &&
         (_loadedIdentity?.call() ?? false) &&
-        (route == null || route.isCurrent);
+        (route == null ||
+            route.isCurrent ||
+            (_submitProgressRoute?.isCurrent ?? false));
   }
+
+  ModalRoute<dynamic>? _submitProgressRoute;
 
   bool _submissionPending = false;
   @override
@@ -878,29 +883,43 @@ class _ProductionDrawBatchIssuePageState
     });
     try {
       _submissionPending = true;
-      final result = await runFormDraftSubmission(() {
-        if (!canPublish() ||
-            _blocked(ref.read(currentPermissionsProvider)) != null) {
-          throw StateError('页面或登录身份已变化，本次未提交新单据');
-        }
-        dispatched = true;
-        return _submittedDiscoveries.isEmpty
-            ? repository.issueFullBatch(
-                idempotencyKey: _requestKey!,
-                docIds: _submittedDocIds,
-                weights: _submittedWeights,
-                reason: _submittedReason,
-                itemIds: widget.selectedItemIds,
-              )
-            : repository.issueDiscoveryBatch(
-                idempotencyKey: _requestKey!,
-                docIds: _submittedDocIds,
-                discoveries: _submittedDiscoveries,
-                weights: _submittedWeights,
-                reason: _submittedReason,
-                itemIds: widget.selectedItemIds,
-              );
-      }, isDefiniteRejection: rejects);
+      // 整批一次请求出库，发出后无法撤回：不提供「取消」。
+      final result = await showUtenProgress<WarehouseDrawBatchIssueResult?>(
+        context,
+        title: '批量领料出库',
+        icon: Icons.outbox_outlined,
+        initialStatus: '正在批量出库',
+        initialDetail: '${_submittedDocIds.length} 张领料单',
+        cancellable: false,
+        invalidation: formDraftIdentityInvalidation,
+        onRouteOpened: (route) => _submitProgressRoute = route,
+        action: (_) => runFormDraftSubmission(() {
+          if (!canPublish() ||
+              _blocked(ref.read(currentPermissionsProvider)) != null) {
+            throw StateError('页面或登录身份已变化，本次未提交新单据');
+          }
+          dispatched = true;
+          return _submittedDiscoveries.isEmpty
+              ? repository.issueFullBatch(
+                  idempotencyKey: _requestKey!,
+                  docIds: _submittedDocIds,
+                  weights: _submittedWeights,
+                  reason: _submittedReason,
+                  itemIds: widget.selectedItemIds,
+                )
+              : repository.issueDiscoveryBatch(
+                  idempotencyKey: _requestKey!,
+                  docIds: _submittedDocIds,
+                  discoveries: _submittedDiscoveries,
+                  weights: _submittedWeights,
+                  reason: _submittedReason,
+                  itemIds: widget.selectedItemIds,
+                );
+        }, isDefiniteRejection: rejects),
+      );
+      // 弹窗因身份/服务器切换收尾（cancellable:false 下唯一返回 null 的路径）：
+      // 旧页不再发布结果，原提交的成败由后台继续核对。
+      if (result == null) return;
       requestScope.checkCurrent();
       if (!_receiptConfirmsBatch(result)) {
         throw StateError('服务器返回的结果不完整，无法确认本次是否成功');
@@ -934,6 +953,7 @@ class _ProductionDrawBatchIssuePageState
       }
     } finally {
       _submissionPending = false;
+      _submitProgressRoute = null;
       if (mounted) setState(() => _saving = false);
     }
   }
@@ -1102,12 +1122,6 @@ class _ProductionDrawBatchIssuePageState
                             ),
                           ),
                         ),
-                        // 批量出库事务期间的全屏加载遮罩。
-                        if (_saving)
-                          const UtenBusyOverlay(
-                            title: '正在批量出库',
-                            description: '正在确认领料并完成整批出库，请勿重复提交或离开本页。',
-                          ),
                       ],
                     ),
             ),
@@ -1138,7 +1152,6 @@ class _ProductionDrawBatchIssuePageState
                         type: UtenButtonType.danger,
                         size: UtenButtonSize.large,
                         icon: Icons.outbound_outlined,
-                        isLoading: _saving,
                         onPressed: blocked != null || _saving ? null : _submit,
                         onDisabledTap: () =>
                             context.appWarning(blocked ?? '正在出库，请稍候'),

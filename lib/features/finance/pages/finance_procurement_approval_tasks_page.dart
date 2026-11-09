@@ -22,6 +22,7 @@ import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/feedback/uten_progress_dialog.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -112,6 +113,9 @@ class _FinanceProcurementApprovalTasksPageState
   Set<String> _selectedIds = <String>{};
   final Map<String, FinanceProcurementApprovalTask> _selectedTasksById = {};
   bool _busyDecision = false;
+
+  /// 批量提交段由进度弹窗表达, 页面遮罩让位(认领核对段仍用遮罩)。
+  bool _batchDecisionProgress = false;
   TaskClaimSession? _batchClaim;
 
   @override
@@ -733,17 +737,34 @@ class _FinanceProcurementApprovalTasksPageState
     Future<Object?> Function() action,
     String okMsg,
   ) async {
-    setState(() => _busyDecision = true);
+    setState(() {
+      _busyDecision = true;
+      _batchDecisionProgress = true;
+    });
     try {
       final claim = _batchClaim;
-      if (claim == null || !await claim.validateForDecision() || !mounted) {
-        if (mounted) {
-          context.appWarning(claim?.failureMessage ?? '审核认领已失效，请重新核对');
-        }
+      // 整批一次请求, 发出后无法撤回: 不提供「取消」。
+      final submitted = await showUtenProgress<bool>(
+        context,
+        title: '批量审批',
+        icon: Icons.fact_check_outlined,
+        initialStatus: '正在提交批量审批',
+        cancellable: false,
+        action: (_) async {
+          if (claim == null ||
+              !await claim.validateForDecision() ||
+              !mounted) {
+            return false;
+          }
+          await action();
+          return true;
+        },
+      );
+      if (!mounted) return;
+      if (submitted != true) {
+        context.appWarning(claim?.failureMessage ?? '审核认领已失效，请重新核对');
         return;
       }
-      await action();
-      if (!mounted) return;
       context.appSuccess(okMsg);
       setState(_clearSelectionState);
       refreshBadges(ref);
@@ -757,6 +778,8 @@ class _FinanceProcurementApprovalTasksPageState
           ).financeBatchReviewResultUnknown,
         );
       }
+    } finally {
+      if (mounted) setState(() => _batchDecisionProgress = false);
     }
   }
 
@@ -786,7 +809,7 @@ class _FinanceProcurementApprovalTasksPageState
           main,
           // 批量审批提交期间的全屏居中遮罩（2026-09-25 统一口径：点按钮跑
           // 网络一律 UtenBusyOverlay，弃折叠头里的 LinearProgressIndicator）。
-          if (_busyDecision)
+          if (_busyDecision && !_batchDecisionProgress)
             const Positioned.fill(
               child: UtenBusyOverlay(title: '正在处理批量审批，请稍候'),
             ),

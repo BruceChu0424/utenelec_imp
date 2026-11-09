@@ -199,7 +199,8 @@ public class ReferenceMethodService {
      * 加密 Excel 导出（settlement_method:export）：小字典不分页，全量导出。
      * 列集与前端结算方式表格一致：编号 / 名称 / 状态 / 系统角色 / 到期基准 / 到期规则 / 账期口径。
      */
-    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ,
+            timeout = com.uten.imp.common.export.ExportTransactions.TIMEOUT_SECONDS)
     public ExportPayload exportSettlementAdmin(SettlementMethodAdminQueryFilter f) {
         List<ExportColumn> cols = List.of(
                 new ExportColumn("code", "编号", ExportColumn.TEXT),

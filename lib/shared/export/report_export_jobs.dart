@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
+import 'package:dio/dio.dart' show CancelToken, ProgressCallback;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
@@ -90,6 +91,7 @@ class ReportExportJob {
       status = json['status'] as String,
       cancelRequested = json['cancelRequested'] == true,
       rows = (json['rows'] as num?)?.toInt() ?? 0,
+      totalRows = (json['totalRows'] as num?)?.toInt(),
       bytes = (json['bytes'] as num?)?.toInt() ?? 0,
       snapshotAt = json['snapshotAt']?.toString(),
       createdAt = json['createdAt']?.toString(),
@@ -107,6 +109,10 @@ class ReportExportJob {
   final String status;
   final bool cancelRequested;
   final int rows;
+
+  /// 读取开始时的权威总行数(服务端 2026-11-08 起提供); 未知为 null——
+  /// 此时进度显示为不确定, 不伪造百分比。
+  final int? totalRows;
   final int bytes;
   final String? snapshotAt;
   final String? createdAt;
@@ -118,6 +124,13 @@ class ReportExportJob {
   bool get active => status == 'PENDING' || status == 'RUNNING';
   bool get downloadable => status == 'SUCCEEDED';
   bool get awaitingPrecision => status == 'WAITING_PRECISION';
+
+  /// 生成进度 0..1; 总数未知(或还在排队)时为 null。
+  double? get progressFraction {
+    final total = totalRows;
+    if (total == null || total <= 0 || status != 'RUNNING') return null;
+    return (rows / total).clamp(0.0, 1.0).toDouble();
+  }
   String get statusLabel => active && cancelRequested
       ? '正在取消'
       : switch (status) {
@@ -291,10 +304,19 @@ class ReportExportJobsClient {
         : null;
   }
 
-  Future<Uint8List> download(String id, String password) async {
+  Future<Uint8List> download(
+    String id,
+    String password, {
+    CancelToken? cancelToken,
+    ProgressCallback? onReceiveProgress,
+  }) async {
     final bytes = await scope.run(
-      () =>
-          api.downloadBytes('$base/$id/download', body: {'password': password}),
+      () => api.downloadBytes(
+        '$base/$id/download',
+        body: {'password': password},
+        cancelToken: cancelToken,
+        onReceiveProgress: onReceiveProgress,
+      ),
     );
     await scope.verify();
     await verifyDownload(id);
@@ -312,22 +334,36 @@ class ReportExportJobsClient {
   }
 
   /// Null means the caller must use its explicitly bounded compatibility path.
+  ///
+  /// [onReceived] 汇报已写入的累计字节数(进度弹窗用, 总量取任务的 bytes)。
   Future<String?> downloadToFile(
     String id,
     String password,
     String filename, {
     String? directory,
     required bool Function() stillCurrent,
+    void Function(int received)? onReceived,
   }) async {
     if (!api.streamingDownloads || !await canSaveStream()) return null;
     await scope.verify();
+    Stream<Uint8List> counted(Stream<Uint8List> source) async* {
+      var received = 0;
+      await for (final chunk in source) {
+        received += chunk.length;
+        onReceived?.call(received);
+        yield chunk;
+      }
+    }
+
     try {
       return await scope.run(
         () => saveStream(
-          api.downloadExportStream(
-            '$base/$id/download',
-            body: {'password': password},
-            stillCurrent: () => stillCurrent() && scope.isCurrent,
+          counted(
+            api.downloadExportStream(
+              '$base/$id/download',
+              body: {'password': password},
+              stillCurrent: () => stillCurrent() && scope.isCurrent,
+            ),
           ),
           filename,
           stillCurrent: () => stillCurrent() && scope.isCurrent,

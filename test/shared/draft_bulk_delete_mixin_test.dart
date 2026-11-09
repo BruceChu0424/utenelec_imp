@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
-import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/shared/badges/badge_registry.dart';
@@ -119,11 +118,64 @@ Future<void> _confirm(WidgetTester tester, {bool waitForIdle = true}) async {
   } else {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 250));
-    expect(find.byType(UtenBusyOverlayCard), findsOneWidget);
+    expect(find.byKey(const ValueKey('uten-progress-cancel')), findsOneWidget);
   }
 }
 
 void main() {
+  testWidgets('整批共用一个进度弹窗，逐张前进且删除、刷新、更新数量都走完才到 100%', (
+    tester,
+  ) async {
+    final fixture = await _mount(tester);
+    final first = Completer<void>();
+    fixture.operations.deleteHandler = (id) async {
+      if (id == 'a') await first.future;
+    };
+    await _openConfirmation(tester);
+    await _confirm(tester, waitForIdle: false);
+    expect(find.text('删除所选草稿'), findsOneWidget);
+    expect(find.text('0 / 3'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+
+    first.complete();
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('uten-progress-cancel')), findsNothing);
+    expect(fixture.operations.deleted, ['a', 'b', 'c']);
+    expect(fixture.notifications.single.kind, AppNotificationKind.success);
+  });
+
+  testWidgets('点取消：办完进行中的一张就停，已删除的算数，不重放、不计失败', (tester) async {
+    final fixture = await _mount(tester);
+    final first = Completer<void>();
+    fixture.operations.deleteHandler = (id) async {
+      if (id == 'a') await first.future;
+    };
+    await _openConfirmation(tester);
+    await _confirm(tester, waitForIdle: false);
+    expect(fixture.operations.deleted, ['a']);
+
+    await tester.tap(find.byKey(const ValueKey('uten-progress-cancel')));
+    await tester.pump();
+    expect(
+      find.byKey(const ValueKey('uten-progress-stopping')),
+      findsOneWidget,
+      reason: '进行中的一张不中断',
+    );
+
+    first.complete();
+    await tester.pumpAndSettle();
+    expect(fixture.operations.deleted, ['a'], reason: '后续不再开始');
+    expect(fixture.state.selectedDraftIds, {'b', 'c'});
+    expect(fixture.operations.reloads, 1);
+    expect(fixture.badges.refreshCalls, 1);
+    final notice = fixture.notifications.single;
+    expect(notice.kind, AppNotificationKind.warning);
+    expect(notice.message, contains('已删除 1 张'));
+    expect(notice.message, contains('其余 2 张未处理'));
+    expect(notice.message, isNot(contains('未删除')));
+    expect(fixture.state.draftDeleteBusy, isFalse);
+  });
+
   testWidgets('类型专属批量动作的选择不会混入通用删除子集', (tester) async {
     final fixture = await _mount(tester);
     fixture.state.deleteSubset = {'b'};

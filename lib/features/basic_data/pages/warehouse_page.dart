@@ -38,6 +38,7 @@ import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
+import '../../../components/feedback/uten_progress_dialog.dart';
 import '../../../components/feedback/uten_task_progress_dialog.dart';
 import '../../../shared/auth/read_owner_fence.dart';
 import '../../../shared/widgets/read_owned_dialog.dart';
@@ -216,6 +217,9 @@ class _WarehousePageState extends ConsumerState<WarehousePage>
   bool _tableView = false;
   bool _tableBatchBusy = false;
   bool _tableBatchWriting = false;
+
+  /// 批量提交段进入进度弹窗时为 true：页面遮罩让位，避免双重遮罩。
+  bool _batchProgressOpen = false;
   int _tableBatchEpoch = 0;
   final Set<ModalRoute<dynamic>> _tableBatchDialogs = {};
   final _readOwnerChanges = ValueNotifier<int>(0);
@@ -1367,20 +1371,39 @@ class _WarehousePageState extends ConsumerState<WarehousePage>
                   dialogScopeBuilder: (dialogContext, dialog) =>
                       _ownTableBatchDialog(dialogContext, dialog, epoch),
                 );
-          if (confirmed != true || !current()) return null;
+          if (confirmed != true || !current() || !mounted) return null;
           setState(() => _tableBatchWriting = true);
+          _batchProgressOpen = true;
           final repository = ref.read(masterBatchRepositoryProvider);
           final items = [for (final id in targets) MasterBatchItem(id)];
-          return deleting
-              ? repository.delete(
-                  entityPath: ApiEndpoints.warehouses,
-                  items: items,
-                )
-              : repository.changeStatus(
-                  entityPath: ApiEndpoints.warehouses,
-                  status: status,
-                  items: items,
-                );
+          // 整批一次请求提交，发出后无法撤回：不提供「取消」。弹窗路由登记进
+          // _tableBatchDialogs：批量纪元失效时统一关闭并丢弃旧结果。
+          return showUtenProgress<MasterBatchResult>(
+            context,
+            title: deleting
+                ? '批量删除仓库'
+                : '批量${status == '禁用' ? '停用' : '启用'}仓库',
+            icon: Icons.task_alt_outlined,
+            initialStatus: deleting
+                ? '正在删除'
+                : '正在${status == '禁用' ? '停用' : '启用'}',
+            initialDetail: '${items.length} 项',
+            cancellable: false,
+            onRouteOpened: (route) {
+              _tableBatchDialogs.removeWhere((entry) => !entry.isActive);
+              _tableBatchDialogs.add(route);
+            },
+            action: (_) => deleting
+                ? repository.delete(
+                    entityPath: ApiEndpoints.warehouses,
+                    items: items,
+                  )
+                : repository.changeStatus(
+                    entityPath: ApiEndpoints.warehouses,
+                    status: status,
+                    items: items,
+                  ),
+          );
         },
       );
       if (!mounted || !current() || result == null) return;
@@ -1412,6 +1435,7 @@ class _WarehousePageState extends ConsumerState<WarehousePage>
     } catch (_) {
       if (mounted && current()) context.appError('仓库批量操作失败，请刷新后重试');
     } finally {
+      _batchProgressOpen = false;
       if (mounted && epoch == _tableBatchEpoch) {
         setState(() {
           _tableBatchBusy = false;
@@ -1524,7 +1548,7 @@ class _WarehousePageState extends ConsumerState<WarehousePage>
             ],
           ),
         ),
-        if (_tableBatchWriting)
+        if (_tableBatchWriting && !_batchProgressOpen)
           const UtenBusyOverlay(showDoNotLeaveHint: false, title: '正在处理仓库资料'),
       ],
     ),

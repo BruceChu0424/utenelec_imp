@@ -572,6 +572,10 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
               label: localizedText(context, '组装信息', 'Assembly', '조립 정보'),
               width: 120,
               exportable: false,
+              // 有/无两项来自服务端 facets(hasBom 桶，选中后按 hasBom=true/false
+              // 走服务端谓词)；本列不是文本列，关掉列关键词检索，避免提交服务端
+              // 不支持的 search.hasBom。
+              columnSearchEnabled: false,
               value: (goods) => goods.hasBom
                   ? localizedText(context, '有组装信息', 'Has assembly', '조립 정보 있음')
                   : localizedText(context, '无组装信息', 'No assembly', '조립 정보 없음'),

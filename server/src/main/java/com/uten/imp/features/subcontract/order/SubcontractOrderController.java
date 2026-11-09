@@ -169,10 +169,13 @@ public class SubcontractOrderController {
     }
 
     /**
-     * 明细行「仓库库存数量」列 (2026-11-07 用户口径: 数量列右侧的即时库存参考)。
-     * goodsIds 为逗号分隔的货品 UUID, 返回这些货品按颜色聚合的库存桶
-     * {goodsId, colorId, qty, qtyExact, unitName}; 口径 = 货品资料「库存量」列
-     * (参与核算仓现存量, 不含不良品仓/线边仓, 基本单位)。无余额的桶不返回, 前端按 0 显示。
+     * 明细行「仓库库存数量」列 (数量列右侧的下单参考, 2026-11-08 口径)。goodsIds 为逗号分隔的
+     * 货品 UUID, 返回 {goodsId, colorId, qty, qtyExact, unitName, basis} 桶 (货品基本单位):
+     * 有可发外直属物料 (BOM) 的货品 basis=BOM_KIT, qty = 直属物料现存量折算的可委外数量 (各物料
+     * 取短板, 与齐套/冻结领料计划同一直属边与折算), colorId 为空, 对该货品各颜色的行都适用;
+     * 没有可发外直属物料的货品 basis=OWN_STOCK, 回退自身现存量按颜色分桶, 无余额的桶不返回 (前端按 0)。
+     * 现存量口径 = 货品资料「库存量」列 (参与核算仓, 不含不良品仓/线边仓, 不扣预留), 不限制订货数量。
+     * 计算见 {@link SubcontractOrderService#goodsStockBuckets}。
      */
     @GetMapping("/goods-stock")
     @PreAuthorize("hasAuthority('subcontract_order:view')")

@@ -288,7 +288,10 @@ public final class ReportQueryKit {
                 }
                 long reported = total.applyAsLong(r);
                 if (reported >= 0) {
-                    if (expected < 0) expected = reported;
+                    if (expected < 0) {
+                        expected = reported;
+                        com.uten.imp.common.export.ExportProgress.announceTotal(expected);
+                    }
                     else if (reported != expected) throw new IllegalStateException("Export source count changed");
                 }
                 Map<String,Object> pageMetadata=documentMetadata.apply(r);if(pageMetadata==null)pageMetadata=Map.of();
@@ -303,6 +306,7 @@ public final class ReportQueryKit {
                 if (pageRows.size() > size) throw new IllegalStateException("Export source batch grew");
                 requireExportRowCount((long) seen + pageRows.size());
                 seen = Math.addExact(seen, pageRows.size());
+                com.uten.imp.common.export.ExportProgress.rows(seen);
                 if (expected >= 0 && (seen > expected || (pageRows.size() < size && seen < expected)))
                     throw new IllegalStateException("Export source is incomplete");
                 // Check every batch, including unknown counts and rows committed during legacy reads.

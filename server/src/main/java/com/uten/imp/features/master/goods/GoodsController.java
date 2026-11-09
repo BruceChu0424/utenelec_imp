@@ -96,6 +96,8 @@ public class GoodsController {
             @RequestParam(required = false) UUID owningWarehouse,
             @RequestParam(required = false) UUID owningWorkshop,
             @RequestParam(required = false) Boolean includeRelated,
+            // 「组装信息」表头筛选：true=有组装信息，false=无组装信息，不传=不筛
+            @RequestParam(required = false) Boolean hasBom,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String sort,
@@ -106,7 +108,8 @@ public class GoodsController {
                 colorLegacyId, unitLegacyId, sourceType, excludeDisabled,
                 excludeStub, disabledOnly, stubOnly,
                 owningWarehouse, owningWorkshop, includeRelated).withColumnSearch(
-                        com.uten.imp.common.util.ColumnKeywordSearch.requestValues(request)).withReferences(colorRef, unitRef), page, size, sort, order);
+                        com.uten.imp.common.util.ColumnKeywordSearch.requestValues(request)).withReferences(colorRef, unitRef)
+                .withHasBom(hasBom), page, size, sort, order);
     }
 
     /** Same authoritative list query; the JSON body avoids URL limits for large, explicit category scopes. */
@@ -240,6 +243,7 @@ public class GoodsController {
             @RequestParam(required = false) UUID owningWarehouse,
             @RequestParam(required = false) UUID owningWorkshop,
             @RequestParam(required = false) Boolean includeRelated,
+            @RequestParam(required = false) Boolean hasBom,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order,
             @Valid @RequestBody ExportPasswordRequest body) {
@@ -248,7 +252,8 @@ public class GoodsController {
                 mouldCode, rearInsertCode, paper,
                 colorLegacyId, unitLegacyId, sourceType, excludeDisabled,
                 excludeStub, disabledOnly, stubOnly, owningWarehouse, owningWorkshop, includeRelated).withColumnSearch(
-                        com.uten.imp.common.util.ColumnKeywordSearch.requestValues(request)).withReferences(colorRef, unitRef), sort, order),
+                        com.uten.imp.common.util.ColumnKeywordSearch.requestValues(request)).withReferences(colorRef, unitRef)
+                        .withHasBom(hasBom), sort, order),
                 GoodsExportProjection.forImportTemplate(body.columnProjection()), "master_goods");
         ExportPayload payload = sourceWorkbook.payload();
         byte[] xlsx = sourceWorkbook.bytes();

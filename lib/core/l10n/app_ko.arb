@@ -2351,6 +2351,18 @@
   },
   "aiJobQueued": "대기 중입니다. 곧 시작합니다",
   "aiJobSlowHint": "내용이 많으면 1~2분 걸릴 수 있습니다. 다시 누르지 말고 기다려 주세요",
+  "progressCancel": "취소",
+  "progressElapsed": "경과 시간 {time}",
+  "@progressElapsed": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "progressSlowHint": "데이터가 많으면 1~2분 걸릴 수 있습니다. 다시 누르지 말고 기다려 주세요",
+  "progressStopping": "중지하는 중: 현재 항목이 끝나면 멈춥니다. 완료된 항목은 유지되며 중복 제출되지 않습니다",
+  "progressStoppingButton": "중지하는 중…",
   "aiJobTimeout": "처리 시간이 너무 길어 기다리기를 멈췄습니다. 잠시 후 다시 시도하거나 파일을 나눠 주세요",
   "aiJobGone": "이번 작업이 더 이상 없습니다(정리되었을 수 있음). 다시 시작해 주세요",
   "aiJobFailedGeneric": "처리하지 못했습니다. 잠시 후 다시 시도해 주세요",

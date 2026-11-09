@@ -40,8 +40,25 @@ public record GoodsQueryFilter(
         Boolean includeRelated, // Explicitly include descriptive-only/mixed descriptive matches after primary goods.
         java.util.Map<String, String> columnSearch,
         String colorRef,
-        String unitRef
+        String unitRef,
+        // 「组装信息」表头筛选：true=有在用组装信息，false=无；null=不筛。口径与列表 hasBom 投影同一
+        // （父件非迁移占位 + 存在未删除且组件非迁移占位的 BOM 边），由 GoodsService 统一生成谓词。
+        Boolean hasBom
 ) {
+    /** Compatibility constructor for callers predating the assembly-information header filter. */
+    public GoodsQueryFilter(UUID categoryId, Set<UUID> categoryRootIds, String keyword, Set<String> nullFields,
+                            String series, String model, String material, String code, String name, String spec,
+                            String cNumber, String requireRemark, String mouldCode, String rearInsertCode, String paper,
+                            Integer colorLegacyId, Integer unitLegacyId, String sourceType, Boolean excludeDisabled,
+                            Boolean excludeStub, Boolean disabledOnly, Boolean stubOnly, UUID owningWarehouse,
+                            UUID owningWorkshop, Boolean includeRelated, java.util.Map<String, String> columnSearch,
+                            String colorRef, String unitRef) {
+        this(categoryId, categoryRootIds, keyword, nullFields, series, model, material, code, name, spec, cNumber,
+                requireRemark, mouldCode, rearInsertCode, paper, colorLegacyId, unitLegacyId, sourceType, excludeDisabled,
+                excludeStub, disabledOnly, stubOnly, owningWarehouse, owningWorkshop, includeRelated, columnSearch,
+                colorRef, unitRef, null);
+    }
+
     /** Compatibility constructor for callers predating UUID-aware header references. */
     public GoodsQueryFilter(UUID categoryId, Set<UUID> categoryRootIds, String keyword, Set<String> nullFields,
                             String series, String model, String material, String code, String name, String spec,
@@ -58,7 +75,15 @@ public record GoodsQueryFilter(
         return new GoodsQueryFilter(categoryId, categoryRootIds, keyword, nullFields, series, model, material, code,
                 name, spec, cNumber, requireRemark, mouldCode, rearInsertCode, paper, colorLegacyId, unitLegacyId,
                 sourceType, excludeDisabled, excludeStub, disabledOnly, stubOnly, owningWarehouse, owningWorkshop,
-                includeRelated, columnSearch, color, unit);
+                includeRelated, columnSearch, color, unit, hasBom);
+    }
+
+    /** 「组装信息」表头筛选值（true/false/null=不筛），其余条件原样保留。 */
+    public GoodsQueryFilter withHasBom(Boolean present) {
+        return new GoodsQueryFilter(categoryId, categoryRootIds, keyword, nullFields, series, model, material, code,
+                name, spec, cNumber, requireRemark, mouldCode, rearInsertCode, paper, colorLegacyId, unitLegacyId,
+                sourceType, excludeDisabled, excludeStub, disabledOnly, stubOnly, owningWarehouse, owningWorkshop,
+                includeRelated, columnSearch, colorRef, unitRef, present);
     }
     public GoodsQueryFilter(UUID categoryId, Set<UUID> categoryRootIds, String keyword, Set<String> nullFields,
                             String series, String model, String material, String code, String name, String spec,
@@ -75,7 +100,7 @@ public record GoodsQueryFilter(
         return new GoodsQueryFilter(categoryId, categoryRootIds, keyword, nullFields, series, model, material, code,
                 name, spec, cNumber, requireRemark, mouldCode, rearInsertCode, paper, colorLegacyId, unitLegacyId,
                 sourceType, excludeDisabled, excludeStub, disabledOnly, stubOnly, owningWarehouse, owningWorkshop,
-                includeRelated, search, colorRef, unitRef);
+                includeRelated, search, colorRef, unitRef, hasBom);
     }
     /** Existing callers retain the default identity/category-only candidate set. */
     public GoodsQueryFilter(UUID categoryId, Set<UUID> categoryRootIds, String keyword, Set<String> nullFields,
@@ -103,6 +128,7 @@ public record GoodsQueryFilter(
                 excludeDisabled, excludeStub, disabledOnly, stubOnly,
                 "owningWarehouse".equals(field) ? null : owningWarehouse,
                 "owningWorkshop".equals(field) ? null : owningWorkshop, includeRelated, columnSearch,
-                "colorRef".equals(field) ? null : colorRef, "unitRef".equals(field) ? null : unitRef);
+                "colorRef".equals(field) ? null : colorRef, "unitRef".equals(field) ? null : unitRef,
+                "hasBom".equals(field) ? null : hasBom);
     }
 }

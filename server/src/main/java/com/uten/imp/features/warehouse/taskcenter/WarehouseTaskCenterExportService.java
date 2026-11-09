@@ -20,7 +20,8 @@ import java.util.Map;
  * 在同一只读快照中按 100 行的内部批次收齐当前筛选的全部结果，流式写入同一个文件。
  */
 @Service
-@Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+@Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ,
+        timeout = com.uten.imp.common.export.ExportTransactions.TIMEOUT_SECONDS)
 public class WarehouseTaskCenterExportService {
     private final WarehouseOutboundTaskCenterQueryService outbound;
     private final WarehouseInboundTaskCenterQueryService inbound;

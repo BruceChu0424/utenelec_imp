@@ -27,6 +27,7 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_batch_reject_dialog.dart';
+import '../../../components/feedback/uten_progress_dialog.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -171,6 +172,7 @@ class _VisitorApprovalListPageState
     await _runBatch(
       ids,
       verb: l10n.visitorBatchVerbApprove,
+      icon: Icons.check_circle_outline_rounded,
       call: (repo, id) => repo.action(id, action: 'approve'),
     );
   }
@@ -191,6 +193,7 @@ class _VisitorApprovalListPageState
     await _runBatch(
       ids,
       verb: l10n.visitorBatchVerbReject,
+      icon: Icons.cancel_outlined,
       call: (repo, id) =>
           repo.action(id, action: 'reject', rejectReason: reason),
     );
@@ -234,15 +237,18 @@ class _VisitorApprovalListPageState
     await _runBatch(
       forwardable,
       verb: l10n.visitorBatchVerbForward,
+      icon: Icons.forward_to_inbox_outlined,
       skipped: skipped,
       call: (repo, id) => repo.action(id, action: 'forward'),
     );
   }
 
   /// 批量执行体：逐单调用单审 API（幂等），单条失败不中断整批，失败聚合提示。
+  /// afterCurrent 取消＝当前这单办完即停，已办结果照常呈现。
   Future<void> _runBatch(
     Set<String> ids, {
     required String verb,
+    required IconData icon,
     required Future<void> Function(VisitorStaffRepository repo, String id) call,
     int skipped = 0,
   }) async {
@@ -250,16 +256,37 @@ class _VisitorApprovalListPageState
     setState(() => _batchBusy = true);
     final repo = ref.read(visitorStaffRepositoryProvider);
     var okCount = 0;
+    var stopped = false;
     final failures = <String>[];
-    for (final id in ids) {
-      try {
-        await call(repo, id);
-        okCount++;
-      } on ApiException catch (e) {
-        failures.add(e.message);
-      } catch (_) {
-        failures.add(l10n.commonError);
-      }
+    await showUtenProgress<void>(
+      context,
+      title: '批量$verb',
+      icon: icon,
+      initialStatus: '正在$verb',
+      initialDetail: '${ids.length} 条申请',
+      cancelMode: UtenProgressCancel.afterCurrent,
+      action: (progress) async {
+        var done = 0;
+        for (final id in ids) {
+          if (progress.isCancelled) {
+            stopped = true;
+            break;
+          }
+          progress.count(done, ids.length, status: '正在$verb');
+          try {
+            await call(repo, id);
+            okCount++;
+          } on ApiException catch (e) {
+            failures.add(e.message);
+          } catch (_) {
+            failures.add(l10n.commonError);
+          }
+          done++;
+        }
+      },
+    );
+    if (stopped) {
+      failures.add('已停止，其余 ${ids.length - okCount - failures.length} 条未处理');
     }
     if (!mounted) return;
     setState(() {
@@ -298,7 +325,6 @@ class _VisitorApprovalListPageState
         type: UtenButtonType.success,
         size: UtenButtonSize.large,
         icon: Icons.check_circle_outline_rounded,
-        isLoading: _batchBusy,
         onPressed: enabled
             ? () => _batchApprove(Set<String>.of(selectedIds))
             : null,
@@ -308,7 +334,6 @@ class _VisitorApprovalListPageState
         key: const Key('visitor-approval-batch-forward'),
         size: UtenButtonSize.large,
         icon: Icons.forward_to_inbox_outlined,
-        isLoading: _batchBusy,
         onPressed: enabled
             ? () => _batchForward(Set<String>.of(selectedIds), pageItems)
             : null,
@@ -319,7 +344,6 @@ class _VisitorApprovalListPageState
         type: UtenButtonType.danger,
         size: UtenButtonSize.large,
         icon: Icons.cancel_outlined,
-        isLoading: _batchBusy,
         onPressed: enabled
             ? () => _batchReject(Set<String>.of(selectedIds))
             : null,

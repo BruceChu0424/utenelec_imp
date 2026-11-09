@@ -2,6 +2,7 @@ package com.uten.imp.features.master.client;
 
 import com.uten.imp.common.mastercode.CategoryDrivenCodeService;
 import com.uten.imp.common.util.EmployeeNameResolver;
+import com.uten.imp.features.master.client.dto.FacetBucket;
 import com.uten.imp.features.master.clientcategory.ClientCategory;
 import com.uten.imp.features.master.clientcategory.ClientCategoryRepository;
 import com.uten.imp.features.org.employee.EmployeeRepository;
@@ -82,5 +83,45 @@ class ClientFacetVisibilityConsistencyTest {
                     .contains("owner_employee_id is null")
                     .doesNotContain("join employees");
         });
+    }
+
+    @org.junit.jupiter.api.Test
+    void creditFloorBucketsAndNullCountReachTheResponseSeparatelyFromCredit() {
+        EntityManager em = mock(EntityManager.class);
+        when(em.createNativeQuery(anyString())).thenAnswer(call -> {
+            String statement = call.getArgument(0);
+            Query query = mock(Query.class);
+            when(query.setParameter(anyString(), org.mockito.ArgumentMatchers.any())).thenReturn(query);
+            List<Object> rows = statement.startsWith("select credit_floor as v")
+                    ? List.of(new Object[] {new java.math.BigDecimal("5000.0000"), 3L},
+                            new Object[] {new java.math.BigDecimal("0.0000"), 2L})
+                    : statement.startsWith("select credit as v")
+                    ? List.<Object>of((Object) new Object[] {new java.math.BigDecimal("12.3456"), 1L})
+                    : List.of();
+            when(query.getResultList()).thenReturn(rows);
+            when(query.getSingleResult()).thenReturn(statement.contains("credit_floor is null") ? 4L : 0L);
+            return query;
+        });
+        ClientAccessPolicy access = mock(ClientAccessPolicy.class);
+        ClientAccessPolicy.ClientScope scope = mock(ClientAccessPolicy.ClientScope.class);
+        when(access.evaluate()).thenReturn(scope);
+        when(access.nativeReadScope("", scope)).thenReturn(
+                new ClientAccessPolicy.NativeReadScope("true", "owners", Set.of(), null, null));
+        ClientService service = new ClientService(
+                mock(ClientRepository.class), mock(ClientCategoryRepository.class), mock(TxSessionVars.class), em,
+                mock(CategoryDrivenCodeService.class), access,
+                mock(EmployeeRepository.class), mock(EmployeeNameResolver.class));
+
+        var facets = service.facets(null, true);
+
+        // 铺底额(credit_floor)一直在 FACET_COLUMNS 里计算，此前 DTO 漏传导致表头候选为空。
+        assertThat(facets.getCreditFloor())
+                .extracting(FacetBucket::getValue, FacetBucket::getCount)
+                .containsExactly(org.assertj.core.api.Assertions.tuple("5000.0000", 3L),
+                        org.assertj.core.api.Assertions.tuple("0.0000", 2L));
+        assertThat(facets.getCredit())
+                .extracting(FacetBucket::getValue, FacetBucket::getCount)
+                .containsExactly(org.assertj.core.api.Assertions.tuple("12.3456", 1L));
+        assertThat(facets.getNullCounts()).containsEntry("creditFloor", 4L).containsEntry("credit", 0L);
     }
 }

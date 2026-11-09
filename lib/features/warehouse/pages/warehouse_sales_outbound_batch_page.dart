@@ -9,6 +9,7 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
+import '../../../components/feedback/uten_progress_dialog.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
@@ -662,69 +663,93 @@ class _WarehouseSalesOutboundBatchPageState
       _attempted = true;
     });
     final repository = ref.read(warehouseSalesOutboundRepositoryProvider);
+    final actionLabel = warehouseSalesOutboundActionLabel(l10n, widget.action);
+    // 待办理目标先定口径；进度按「已办理 / 总张数」推进，afterCurrent 取消＝
+    // 当前这张办完即停，已办结果与未知提交保护照常保留。
+    final pending = <int>[
+      for (var i = 0; i < details.length; i++)
+        if (!_completed.contains(details[i].header.id)) i,
+    ];
+    var cancelled = false;
     try {
       requestScope.checkCurrent();
       await runFormDraftSubmission(
-        () => requestScope.run(() async {
-          for (var i = 0; i < details.length; i++) {
-            final reviewed = details[i];
-            if (_completed.contains(reviewed.header.id)) continue;
-            try {
-              final latest = await repository.detail(reviewed.header.id);
-              requestScope.checkCurrent();
-              if (warehouseSalesOutboundReviewSnapshot(latest) !=
-                      warehouseSalesOutboundReviewSnapshot(reviewed) ||
-                  warehouseSalesOutboundPrimaryAction(latest.header) !=
-                      widget.action) {
-                throw FormatException(l10n.warehouseOutboundBatchStale);
+        () => showUtenProgress<void>(
+          context,
+          title: l10n.warehouseOutboundBatchAction(actionLabel),
+          icon: Icons.outbound_outlined,
+          initialStatus: '正在$actionLabel',
+          initialDetail: '${pending.length} 张',
+          cancelMode: UtenProgressCancel.afterCurrent,
+          invalidation: formDraftIdentityInvalidation,
+          action: (progress) => requestScope.run(() async {
+            var done = 0;
+            for (final i in pending) {
+              if (progress.isCancelled) {
+                cancelled = true;
+                break;
               }
-              _unknownShipment = reviewed.header.id;
-              await saveFormDraftNow();
-              requestScope.checkCurrent();
-              if (!formDraftIdentityIsCurrent) {
-                throw ApiException('SESSION_CHANGED', '登录身份已变化，请重新进入任务中心');
-              }
-              final updated = await repository.transition(
-                reviewed.header.id,
-                targetStatus: widget.action.targetStatus,
-                reason: _reason.text.trim(),
-                stockPlaces: _picking[reviewed.header.id]?.stockPlaces,
-                lineWarehouses: _picking[reviewed.header.id]?.lineWarehouses,
-                lineWeights: _picking[reviewed.header.id]?.lineWeights,
-                deliveryComponents:
-                    _picking[reviewed.header.id]?.deliveryComponentsPayload,
-                itemIds: widget.selectedItemIds == null
-                    ? null
-                    : reviewed.lines.map((line) => line.id).toList(),
-              );
-              requestScope.checkCurrent();
-              if (updated.header.id != reviewed.header.id ||
-                  updated.header.warehouseWorkStatus !=
-                      widget.action.targetStatus) {
-                throw FormatException(l10n.warehouseOutboundBatchUnknown);
-              }
-              _completed.add(reviewed.header.id);
-              _unknownShipment = null;
-              details[i] = updated;
-              await checkpointFormDraftAfterCreation();
-              if (mounted) setState(() {});
-            } catch (error) {
-              if (error is ApiException &&
-                  (error.httpStatus == 400 ||
-                      error.httpStatus == 422 ||
-                      (error.httpStatus == 409 && error.code == 'CONFLICT'))) {
+              progress.count(done, pending.length, status: '正在$actionLabel');
+              final reviewed = details[i];
+              try {
+                final latest = await repository.detail(reviewed.header.id);
+                requestScope.checkCurrent();
+                if (warehouseSalesOutboundReviewSnapshot(latest) !=
+                        warehouseSalesOutboundReviewSnapshot(reviewed) ||
+                    warehouseSalesOutboundPrimaryAction(latest.header) !=
+                        widget.action) {
+                  throw FormatException(l10n.warehouseOutboundBatchStale);
+                }
+                _unknownShipment = reviewed.header.id;
+                await saveFormDraftNow();
+                requestScope.checkCurrent();
+                if (!formDraftIdentityIsCurrent) {
+                  throw ApiException('SESSION_CHANGED', '登录身份已变化，请重新进入任务中心');
+                }
+                final updated = await repository.transition(
+                  reviewed.header.id,
+                  targetStatus: widget.action.targetStatus,
+                  reason: _reason.text.trim(),
+                  stockPlaces: _picking[reviewed.header.id]?.stockPlaces,
+                  lineWarehouses: _picking[reviewed.header.id]?.lineWarehouses,
+                  lineWeights: _picking[reviewed.header.id]?.lineWeights,
+                  deliveryComponents:
+                      _picking[reviewed.header.id]?.deliveryComponentsPayload,
+                  itemIds: widget.selectedItemIds == null
+                      ? null
+                      : reviewed.lines.map((line) => line.id).toList(),
+                );
+                requestScope.checkCurrent();
+                if (updated.header.id != reviewed.header.id ||
+                    updated.header.warehouseWorkStatus !=
+                        widget.action.targetStatus) {
+                  throw FormatException(l10n.warehouseOutboundBatchUnknown);
+                }
+                _completed.add(reviewed.header.id);
                 _unknownShipment = null;
+                details[i] = updated;
+                await checkpointFormDraftAfterCreation();
+                if (mounted) setState(() {});
+                done++;
+              } catch (error) {
+                if (error is ApiException &&
+                    (error.httpStatus == 400 ||
+                        error.httpStatus == 422 ||
+                        (error.httpStatus == 409 &&
+                            error.code == 'CONFLICT'))) {
+                  _unknownShipment = null;
+                }
+                _failedId = reviewed.header.id;
+                _error = describeSubmitError(
+                  error,
+                  fallback: l10n.warehouseOutboundBatchUnknown,
+                );
+                await checkpointFormDraftAfterCreation();
+                break;
               }
-              _failedId = reviewed.header.id;
-              _error = describeSubmitError(
-                error,
-                fallback: l10n.warehouseOutboundBatchUnknown,
-              );
-              await checkpointFormDraftAfterCreation();
-              break;
             }
-          }
-        }),
+          }),
+        ),
       );
     } catch (error) {
       _failedId ??= _targetIds.firstOrNull;
@@ -751,7 +776,11 @@ class _WarehouseSalesOutboundBatchPageState
     } else {
       await saveFormDraftNow();
       if (mounted) {
-        context.appWarning('可办理来源已处理，其余来源仍未派发，原批次继续保留');
+        context.appWarning(
+          cancelled
+              ? '已办理 ${_completed.length} 张，已按要求停止，其余来源继续保留'
+              : '可办理来源已处理，其余来源仍未派发，原批次继续保留',
+        );
       }
     }
   }
@@ -812,7 +841,6 @@ class _WarehouseSalesOutboundBatchPageState
                   type: UtenButtonType.danger,
                   size: UtenButtonSize.large,
                   icon: Icons.fact_check_outlined,
-                  isLoading: _saving,
                   onPressed: _loading || _saving || _confirming || _attempted
                       ? null
                       : _submit,
@@ -1034,12 +1062,6 @@ class _WarehouseSalesOutboundBatchPageState
                           ),
                         ),
                 ),
-                if (_saving)
-                  Positioned.fill(
-                    child: UtenBusyOverlay(
-                      title: l10n.warehouseOutboundBatchAction(actionLabel),
-                    ),
-                  ),
               ],
             ),
           ),

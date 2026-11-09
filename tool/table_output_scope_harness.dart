@@ -19,6 +19,9 @@ class _LocalApi extends ApiClient {
     String path, {
     Object? body,
     Map<String, dynamic>? query,
+    CancelToken? cancelToken,
+    ProgressCallback? onReceiveProgress,
+    Map<String, String>? headers,
   }) async => throw const FormatException('本地合成数据只用于交互验证，不生成正式文件');
 
   _LocalApi() : super(Dio());

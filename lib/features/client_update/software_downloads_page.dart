@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../components/buttons/uten_button.dart';
+import '../../components/feedback/uten_progress_dialog.dart';
 import '../../components/inputs/uten_dropdown_scroll_scope.dart';
 import '../../components/feedback/uten_motion.dart';
 import '../../components/layout/uten_app_bar.dart';
@@ -757,18 +758,12 @@ class _DownloadStatus extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const SizedBox(height: UtenSpacing.s16),
+          // 全项目唯一进度条样式(UtenProgressBar): 平滑动画与「减少动画」
+          // 服从在组件内维护, 这里只喂当前比例。
           Semantics(
             liveRegion: true,
             label: '下载进度 ${(controller.progress * 100).floor()}%',
-            child: duration == Duration.zero
-                ? LinearProgressIndicator(value: controller.progress)
-                : TweenAnimationBuilder<double>(
-                    tween: Tween(begin: 0, end: controller.progress),
-                    duration: duration,
-                    curve: UtenAnim.standard,
-                    builder: (context, value, _) =>
-                        LinearProgressIndicator(value: value),
-                  ),
+            child: UtenProgressBar(value: controller.progress),
           ),
           TextButton(
             onPressed: controller.cancelDownload,

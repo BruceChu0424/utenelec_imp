@@ -292,12 +292,22 @@ namespace Uten.Legacy.Desktop.Features.Units
                 if (destination == null || !Current) return;
                 if(selectedOnly)await RefreshSelectedCapabilityAsync(fromJob);
                 transfer = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token); UpdateActions();
-                var progress = new Progress<long>(bytes => { if (Current) ShowStatus("正在保存 Excel：" + (bytes / 1024d / 1024d).ToString("0.0") + " MiB"); });
-                UnitExportFile file = fromJob
-                    ? await session.DownloadUnitExportJobAsync(currentJob.Id, secret, destination, mutationOwner, transfer.Token, progress)
-                    : await session.DownloadLegacyUnitExportAsync(UnitExportService.LegacyParameters(query), secret, projection?.ToJson(),
-                        destination, mutationOwner, transfer.Token, progress, CurrentSelectedIds, selectionVersion);
-                if (Current) { saved.Text = file.Path; ShowStatus("Excel 已完整保存。"); }
+                // 2026-11-09 与 Flutter「统一进度弹窗」同步：下载全程持有一块进度弹窗。
+                // 服务端不回总长（分块传输总量未知）→ 扫动条 + 已收字节详情，不伪造
+                // 百分比；「取消」= 取消传输令牌，已提交的任务与幂等语义不受影响。
+                using (var waiting = UtenBusyDialog.Show(this, "正在保存 Excel", () => transfer.Cancel()))
+                {
+                    var progress = new Progress<long>(bytes =>
+                    {
+                        waiting.Stage("正在保存 Excel：" + (bytes / 1024d / 1024d).ToString("0.0") + " MiB");
+                        if (Current) ShowStatus("正在保存 Excel：" + (bytes / 1024d / 1024d).ToString("0.0") + " MiB");
+                    });
+                    UnitExportFile file = fromJob
+                        ? await session.DownloadUnitExportJobAsync(currentJob.Id, secret, destination, mutationOwner, transfer.Token, progress)
+                        : await session.DownloadLegacyUnitExportAsync(UnitExportService.LegacyParameters(query), secret, projection?.ToJson(),
+                            destination, mutationOwner, transfer.Token, progress, CurrentSelectedIds, selectionVersion);
+                    if (Current) { saved.Text = file.Path; ShowStatus("Excel 已完整保存。"); }
+                }
             }
             catch (OperationCanceledException) { if (Current) ShowStatus("已停止下载，原任务仍保留，没有保存部分文件。"); }
             catch (ApiException error) { HandleError(error); }

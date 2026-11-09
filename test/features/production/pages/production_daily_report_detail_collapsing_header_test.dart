@@ -50,6 +50,24 @@ class _DailyReportApi extends ApiClient {
           'planNo': 'PP-2026-$i',
         },
     ],
+    // 服务端一定随详情给 outputBatches；未拆分行自成一批一组（合并行数据源）。
+    'outputBatches': <Map<String, dynamic>>[
+      for (var i = 0; i < 18; i++)
+        <String, dynamic>{
+          'batchKey': 'di-$i',
+          'itemIds': <String>['di-$i'],
+          'qty': i + 1,
+          'summary': '服务端摘要 di-$i',
+          'groups': <Map<String, dynamic>>[
+            <String, dynamic>{
+              'itemIds': <String>['di-$i'],
+              'destination': 'WAREHOUSE',
+              'qty': i + 1,
+              'summary': '送入仓库 ${i + 1}',
+            },
+          ],
+        },
+    ],
   };
 
   @override
@@ -106,9 +124,9 @@ Future<void> _pump(
 void main() {
   testWidgets('日报详情并列显示保存的实称总重量与单重，旧单仍可查看', (tester) async {
     await _pump(tester, size: const Size(1280, 900));
-    final table = tester.widget<MasterDataTableView<ProductionDailyReportItem>>(
-      find.byType(MasterDataTableView<ProductionDailyReportItem>),
-    );
+    final table = tester.widget<
+      MasterDataTableView<ProductionDailyReportDetailGroupRow>
+    >(find.byType(MasterDataTableView<ProductionDailyReportDetailGroupRow>));
     final weightIndex = table.columns.indexWhere(
       (column) => column.key == 'weight',
     );
@@ -131,16 +149,18 @@ void main() {
     expect(find.byType(UtenCollapsingHeaderScrollView), findsOneWidget);
     // 2026-09-25 起纯计数「明细 (N)」标题退役，明细表本体即 body 锚点。
     expect(
-      find.byType(MasterDataTableView<ProductionDailyReportItem>),
+      find.byType(MasterDataTableView<ProductionDailyReportDetailGroupRow>),
       findsOneWidget,
     );
     await expectUtenHeaderCollapses(
       tester,
       headerAnchor: find.text('单据号'),
-      bodyAnchor: find.byType(MasterDataTableView<ProductionDailyReportItem>),
+      bodyAnchor: find.byType(
+        MasterDataTableView<ProductionDailyReportDetailGroupRow>,
+      ),
     );
     expect(
-      find.byType(MasterDataTableView<ProductionDailyReportItem>),
+      find.byType(MasterDataTableView<ProductionDailyReportDetailGroupRow>),
       findsOneWidget,
     );
     expect(tester.takeException(), isNull);
@@ -151,7 +171,9 @@ void main() {
       await _pump(tester, size: viewport.size, textScale: 1.5);
       await expectUtenBodyReachable(
         tester,
-        bodyAnchor: find.byType(MasterDataTableView<ProductionDailyReportItem>),
+        bodyAnchor: find.byType(
+          MasterDataTableView<ProductionDailyReportDetailGroupRow>,
+        ),
       );
     });
   }

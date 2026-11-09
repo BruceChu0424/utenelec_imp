@@ -26,6 +26,7 @@ import '../../../components/data_display/uten_selection_summary_pill.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/feedback/uten_progress_dialog.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -110,6 +111,9 @@ class _FinanceSalesOrderConfirmationPageState
   SalesOrderFinancePendingPage? _result;
   bool _loading = false;
   bool _batchBusy = false;
+
+  /// 批量确认段由进度弹窗表达, 页面遮罩让位(认领核对段仍用遮罩)。
+  bool _batchDecisionProgress = false;
   String? _error;
   String _keyword = '';
   int _requestVersion = 0;
@@ -717,33 +721,47 @@ class _FinanceSalesOrderConfirmationPageState
 
       if (approved != true || !mounted) return;
 
-      setState(() => _batchBusy = true);
-      if (!await claim.validateForDecision() || !mounted) {
-        if (mounted) {
-          context.appWarning(claim.failureMessage ?? '认领已失效，请重新认领后核对');
-        }
+      setState(() {
+        _batchBusy = true;
+        _batchDecisionProgress = true;
+      });
+      // 整批一次请求, 发出后无法撤回: 不提供「取消」。
+      final submitted = await showUtenProgress<bool>(
+        context,
+        title: '批量确认订单',
+        icon: Icons.fact_check_outlined,
+        initialStatus: '正在确认所选订单',
+        initialDetail: '${tasks.length} 笔',
+        cancellable: false,
+        action: (_) async {
+          if (!await claim.validateForDecision() || !mounted) return false;
+          decisionAttempted = true;
+          await ref
+              .read(salesOrderFinanceConfirmationRepositoryProvider)
+              .confirmBatch(
+                tasks.map((item) => item.orderId),
+                remark: remark,
+                expectedRevisions: {
+                  for (final task in tasks)
+                    task.orderId: task.financeReviewRevision,
+                },
+                expectedClaimIds: {
+                  for (final task in tasks)
+                    task.orderId: claim.claimIdFor(
+                      'SALES_ORDER_FINANCE_CONFIRM',
+                      task.orderId,
+                    )!,
+                },
+              );
+          return true;
+        },
+      );
+      if (!mounted) return;
+      if (submitted != true) {
+        context.appWarning(claim.failureMessage ?? '认领已失效，请重新认领后核对');
         return;
       }
-      decisionAttempted = true;
-      await ref
-          .read(salesOrderFinanceConfirmationRepositoryProvider)
-          .confirmBatch(
-            tasks.map((item) => item.orderId),
-            remark: remark,
-            expectedRevisions: {
-              for (final task in tasks)
-                task.orderId: task.financeReviewRevision,
-            },
-            expectedClaimIds: {
-              for (final task in tasks)
-                task.orderId: claim.claimIdFor(
-                  'SALES_ORDER_FINANCE_CONFIRM',
-                  task.orderId,
-                )!,
-            },
-          );
       decisionConfirmed = true;
-      if (!mounted) return;
       context.appSuccess('已批量确认 ${tasks.length} 笔，计划部可接手排产');
       final page = _result?.page ?? 1;
       setState(_clearSelectionState);
@@ -770,7 +788,12 @@ class _FinanceSalesOrderConfirmationPageState
     } finally {
       await claim.releaseAll();
       if (identical(_batchClaim, claim)) _batchClaim = null;
-      if (mounted) setState(() => _batchBusy = false);
+      if (mounted) {
+        setState(() {
+          _batchBusy = false;
+          _batchDecisionProgress = false;
+        });
+      }
     }
   }
 
@@ -823,7 +846,7 @@ class _FinanceSalesOrderConfirmationPageState
           main,
           // 批量确认提交期间的全屏居中遮罩（2026-09-25 统一口径：点按钮跑
           // 网络一律 UtenBusyOverlay，弃折叠头里的加载条）。
-          if (_batchBusy)
+          if (_batchBusy && !_batchDecisionProgress)
             const Positioned.fill(
               child: UtenBusyOverlay(title: '正在确认所选订单，请稍候'),
             ),

@@ -137,6 +137,9 @@ class _Api extends ApiClient {
     String path, {
     Object? body,
     Map<String, dynamic>? query,
+    CancelToken? cancelToken,
+    ProgressCallback? onReceiveProgress,
+    Map<String, String>? headers,
   }) async {
     downloads.add(path);
     final gate = downloadGate;
@@ -229,7 +232,7 @@ Future<_Environment> _open(
             'gl/balance-sheet',
           ),
     stillCurrent: current,
-    onDownload: (job) async {
+    onDownload: (job, _) async {
       await c.download(job.id, '');
     },
   );
@@ -317,11 +320,15 @@ void main() {
       final download = api.downloadGate = Completer<void>();
       await tester.tap(find.text('下载文件'));
       await _frames(tester);
-      expect(find.byType(UtenBusyOverlayCard), findsOneWidget);
+      // 2026-11-08: 文件下载改用通用进度弹窗(字节进度+取消), 不再叠转圈遮罩。
+      expect(find.byType(UtenBusyOverlayCard), findsNothing);
+      expect(find.byKey(const ValueKey('uten-progress-cancel')), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
       expect(api.downloads, hasLength(1));
       download.complete();
       await tester.pumpAndSettle();
       expect(find.byType(ReportExportJobDialog), findsNothing);
+      expect(find.byKey(const ValueKey('uten-progress-cancel')), findsNothing);
       expect(find.byType(UtenBusyOverlayCard), findsNothing);
       expect(tester.takeException(), isNull);
       await env.close(tester);

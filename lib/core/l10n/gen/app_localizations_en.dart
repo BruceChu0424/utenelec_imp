@@ -5771,6 +5771,25 @@ class AppLocalizationsEn extends AppLocalizations {
       'Large files can take a minute or two. Please wait, there is no need to click again';
 
   @override
+  String get progressCancel => 'Cancel';
+
+  @override
+  String progressElapsed(String time) {
+    return 'Elapsed $time';
+  }
+
+  @override
+  String get progressSlowHint =>
+      'Large jobs can take a minute or two. Please wait, there is no need to click again';
+
+  @override
+  String get progressStopping =>
+      'Stopping: it ends after the current item finishes. Completed items are kept and nothing is submitted twice';
+
+  @override
+  String get progressStoppingButton => 'Stopping…';
+
+  @override
   String get aiJobTimeout =>
       'This took too long, so we stopped waiting. Please try again later or split the file into smaller parts';
 

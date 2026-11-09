@@ -47,6 +47,9 @@ class _PreviewApi extends ApiClient {
     String path, {
     Object? body,
     Map<String, dynamic>? query,
+    CancelToken? cancelToken,
+    ProgressCallback? onReceiveProgress,
+    Map<String, String>? headers,
   }) async {
     await Future<void>.delayed(const Duration(seconds: 3));
     throw ApiException('VALIDATION', '模拟等待已结束，未生成业务文件');

@@ -272,7 +272,7 @@ _mount(
             request: original,
             store: retained,
             stillCurrent: current ?? () => true,
-            onDownload: (_) async {},
+            onDownload: (_, _) async {},
           ),
         ),
       ),

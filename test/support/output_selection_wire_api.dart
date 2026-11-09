@@ -37,6 +37,9 @@ class OutputSelectionWireApi extends ApiClient {
     String path, {
     Object? body,
     Map<String, dynamic>? query,
+    CancelToken? cancelToken,
+    ProgressCallback? onReceiveProgress,
+    Map<String, String>? headers,
   }) async {
     downloads.add((
       path: path,

@@ -659,6 +659,78 @@ class ProductionDailyReportOutputGroup {
   );
 }
 
+/// 详情页明细表的一行（2026-11-08 合并口径）：服务端按「报工批次 + 去向 + 直送需求」
+/// 分好的产出组，去向相同的拆分份（如 需求 20000 + 超产 1000 都送仓库）合成一行，
+/// 去向不同的份天然还是分行。数量/不良数/实称总重是组成员精确合计；
+/// 货品/编号/颜色/单位/计划号/单重取源行，平台扩展列也挂源行 id。
+class ProductionDailyReportDetailGroupRow {
+  ProductionDailyReportDetailGroupRow({
+    required this.group,
+    required List<ProductionDailyReportItem> members,
+  }) : members = List.unmodifiable(members);
+
+  final ProductionDailyReportOutputGroup group;
+  final List<ProductionDailyReportItem> members;
+
+  /// 源行：与 [ProductionDailyReportInputGroup.source] 同规则（第一个非公共份）。
+  ProductionDailyReportItem get source =>
+      members.firstWhere((item) => !item.publicOutput, orElse: () => members.first);
+
+  /// 完工申报量 = 组合计（服务端按组算好，如 20000 + 1000 = 21000）。
+  String? get qtyText => group.qtyText;
+
+  /// 组不良数精确合计：ADR-129 拆分时只记第一份，求和即原值。
+  String? get defectQtyText =>
+      financeExactSumTexts(members.map((item) => item.defectQtyText));
+
+  /// 实称总重 = 组成员精确求和（与编辑页草稿恢复同范式）；任一份缺实测即未知。
+  String? get weightText =>
+      members.isEmpty
+          ? null
+          : financeExactSumTexts(members.map((item) => item.weightText));
+
+  /// 产出归属：服务端拆分说明（「需求 20000 · 实际超产 1000」）满足 ADR-118
+  /// 「详情仍区分来源」；整组都是需求份时回落源行标签（需求产出/原来源）。
+  String get outputKindLabel => group.splitText ?? source.outputKindLabel;
+
+  /// 组内第一个带处置的份（超限处置入口）。
+  String? get dispositionId {
+    for (final item in members) {
+      final id = item.dispositionId;
+      if (id != null && id.isNotEmpty) return id;
+    }
+    return null;
+  }
+
+  /// 超限原因：组内非空原因按「；」连接。
+  String? get overLimitReason {
+    final reasons = [
+      for (final item in members)
+        if ((item.overLimitReason ?? '').trim().isNotEmpty)
+          item.overLimitReason!.trim(),
+    ];
+    return reasons.isEmpty ? null : reasons.join('；');
+  }
+
+  bool get isDirectTransfer => group.destination == 'WORKSHOP';
+
+  /// 直送接收方（组标签优先，回落源行标签）。
+  String? get directTransferTargetLabel =>
+      group.receiverLabel ?? source.directTransferTargetLabel;
+
+  /// 去向说明：送仓原因去重后用「；」连接，保留两来源信息
+  /// （「报工时选择送入仓库」与「超出计划的实际产量，统一送入仓库」）。
+  String? get routeReasonText {
+    final reasons = <String>[];
+    final seen = <String>{};
+    for (final item in members) {
+      final text = item.outputRouteReasonText?.trim() ?? '';
+      if (text.isNotEmpty && seen.add(text)) reasons.add(text);
+    }
+    return reasons.isEmpty ? null : reasons.join('；');
+  }
+}
+
 /// 生产日报详情（GET /production/daily-reports/{id} → DailyReportDetail）。
 class ProductionDailyReportDetail {
   const ProductionDailyReportDetail({
@@ -771,6 +843,24 @@ class ProductionDailyReportDetail {
             for (final id in batch.itemIds)
               byId[id] ?? (throw const FormatException('报工分流明细不完整，请重新读取草稿')),
           ]),
+    ];
+  }
+
+  /// 详情页明细行（2026-11-08 合并口径）：产出批次的各去向组合并显示，
+  /// 去向相同合一行。服务端给的份缺了就拒绝渲染，不静默截断或伪造完整。
+  List<ProductionDailyReportDetailGroupRow> get detailGroupRows {
+    final byId = {for (final item in items) item.id: item};
+    return [
+      for (final batch in outputBatches)
+        for (final group in batch.groups)
+          if (group.itemIds.isNotEmpty)
+            ProductionDailyReportDetailGroupRow(
+              group: group,
+              members: [
+                for (final id in group.itemIds)
+                  byId[id] ?? (throw const FormatException('报工产出分组明细不完整，请重新读取日报')),
+              ],
+            ),
     ];
   }
 

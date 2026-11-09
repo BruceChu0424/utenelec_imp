@@ -1082,6 +1082,9 @@ class GoodsFacets {
     // V587/V590 归属两列：value=UUID（筛选回传），label=仓库名/车间名。
     'owningWarehouse',
     'owningWorkshop',
+    // 「组装信息」两桶：value=true/false（筛选回传 hasBom），label 用服务端下发的
+    // 有组装信息/无组装信息；没有空值桶。
+    'hasBom',
   ];
 
   factory GoodsFacets.fromJson(Map<String, dynamic> json) {

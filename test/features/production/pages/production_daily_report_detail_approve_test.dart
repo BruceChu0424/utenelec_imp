@@ -162,29 +162,8 @@ class _DailyReportApi extends ApiClient {
     receiptStatus = 'CONFIRMED';
   }
 
-  Map<String, dynamic> get _detail => <String, dynamic>{
-    'id': 'dr-1',
-    'billNo': 'SR20260922000005',
-    'billDate': '2026-09-22',
-    'makerName': '朱振炜',
-    'makerId': 'maker-1',
-    'createdAt': '2026-09-22T05:49:19+08:00',
-    'status': serverStatus,
-    if (serverStatus != 0 && capability == 3 && approveBodies.isNotEmpty) ...{
-      'materialReview': _materialReview,
-      'materialDecisions': approveBodies.last['materialDecisions'],
-    },
-    if (!omitVersion) 'rowVersion': versionOverride ?? rowVersion,
-    if (capability != null) 'approvalCommandVersion': capability,
-    'allowedActions': <String>[
-      if (serverStatus == 0 && approvable) 'APPROVE',
-      if (allowEdit) 'EDIT',
-    ],
-    'departmentName': '六车间',
-    'workerIds': <String>['emp-1'],
-    'workerNames': <String>['王小明'],
-    'outputBatches': reportBatches,
-    'items':
+  Map<String, dynamic> get _detail {
+    final items =
         reportItems ??
         <Map<String, dynamic>>[
           <String, dynamic>{
@@ -199,8 +178,88 @@ class _DailyReportApi extends ApiClient {
             'unitName': '只',
             ...itemOverrides,
           },
-        ],
-  };
+        ];
+    return <String, dynamic>{
+      'id': 'dr-1',
+      'billNo': 'SR20260922000005',
+      'billDate': '2026-09-22',
+      'makerName': '朱振炜',
+      'makerId': 'maker-1',
+      'createdAt': '2026-09-22T05:49:19+08:00',
+      'status': serverStatus,
+      if (serverStatus != 0 && capability == 3 && approveBodies.isNotEmpty) ...{
+        'materialReview': _materialReview,
+        'materialDecisions': approveBodies.last['materialDecisions'],
+      },
+      if (!omitVersion) 'rowVersion': versionOverride ?? rowVersion,
+      if (capability != null) 'approvalCommandVersion': capability,
+      'allowedActions': <String>[
+        if (serverStatus == 0 && approvable) 'APPROVE',
+        if (allowEdit) 'EDIT',
+      ],
+      'departmentName': '六车间',
+      'workerIds': <String>['emp-1'],
+      'workerNames': <String>['王小明'],
+      // 服务端真实响应一定带 outputBatches（DailyReportOutputGroups 按行合成）；
+      // 用例未显式给批次时按同一口径合成，详情页合并行才有真实数据源。
+      'outputBatches': reportBatches.isNotEmpty
+          ? reportBatches
+          : _synthesizedOutputBatches(items),
+      'items': items,
+    };
+  }
+
+  /// 服务端 DailyReportOutputGroups 的口径替身：没拆分的行自成一批一组，
+  /// 同批按去向(直送需求)分组成实物交接批。
+  static List<Map<String, dynamic>> _synthesizedOutputBatches(
+    List<Map<String, dynamic>> items,
+  ) {
+    final batches = <String, List<Map<String, dynamic>>>{};
+    for (final item in items) {
+      batches
+          .putIfAbsent((item['outputBatchId'] ?? item['id']) as String, () => [])
+          .add(item);
+    }
+    List<List<Map<String, dynamic>>> groupMembersByDestination(
+      List<Map<String, dynamic>> members,
+    ) {
+      final groups = <String, List<Map<String, dynamic>>>{};
+      for (final member in members) {
+        final key =
+            '${member['destination'] ?? 'WAREHOUSE'}:${member['directTransferDemandId'] ?? ''}';
+        groups.putIfAbsent(key, () => []).add(member);
+      }
+      return groups.values.toList();
+    }
+
+    Map<String, dynamic> groupOf(List<Map<String, dynamic>> members) => {
+      'itemIds': [for (final member in members) member['id']],
+      'destination': members.first['destination'] ?? 'WAREHOUSE',
+      if (members.first['qtyExact'] != null)
+        'qtyExact': members.first['qtyExact'],
+      'qty': members.fold<num>(
+        0,
+        (sum, member) => sum + ((member['qty'] as num?) ?? 0),
+      ),
+      'summary': '服务端组摘要',
+    };
+    return [
+      for (final entry in batches.entries)
+        {
+          'batchKey': entry.key,
+          'sourceItemId': entry.value.first['id'],
+          'itemIds': [for (final member in entry.value) member['id']],
+          'qty': entry
+              .value
+              .fold<num>(0, (sum, member) => sum + ((member['qty'] as num?) ?? 0)),
+          'summary': '服务端摘要 ${entry.key}',
+          'groups': [
+            for (final members in groupMembersByDestination(entry.value))
+              groupOf(members),
+          ],
+        },
+    ];
+  }
 
   @override
   Future<Map<String, dynamic>> get(
@@ -548,6 +607,16 @@ Future<void> _tapApprove(WidgetTester tester, {bool settle = true}) async {
   }
 }
 
+/// 由裸明细构造合并行（组内单份）：列语义断言用。
+ProductionDailyReportDetailGroupRow _groupRowOf(Map<String, dynamic> item) =>
+    ProductionDailyReportDetailGroupRow(
+      group: ProductionDailyReportOutputGroup.fromJson({
+        'itemIds': [item['id']],
+        'qty': (item['qty'] as num?) ?? 0,
+      }),
+      members: [ProductionDailyReportItem.fromJson(item)],
+    );
+
 void main() {
   registerDailyReportReviewV2Cases();
   registerDailyReportMaterialReviewCases();
@@ -594,7 +663,38 @@ void main() {
         },
       ],
       reportBatches: const [
-        {'batchKey': 'batch-one', 'summary': '以前逐条列出的确认内容'},
+        {
+          'batchKey': 'batch-one',
+          'itemIds': ['share-direct', 'share-warehouse'],
+          'summary': '以前逐条列出的确认内容',
+          'groups': [
+            {
+              'itemIds': ['share-direct'],
+              'destination': 'WORKSHOP',
+              'qty': 0.0001,
+              'summary': '转给 上层工单 0.0001',
+            },
+            {
+              'itemIds': ['share-warehouse'],
+              'destination': 'WAREHOUSE',
+              'qty': 90071992547409.1234,
+              'summary': '送入仓库 90071992547409.1234',
+            },
+          ],
+        },
+        {
+          'batchKey': 'batch-two',
+          'itemIds': ['share-boxes'],
+          'summary': '服务端摘要 batch-two',
+          'groups': [
+            {
+              'itemIds': ['share-boxes'],
+              'destination': 'WAREHOUSE',
+              'qty': 2.5,
+              'summary': '送入仓库 2.5',
+            },
+          ],
+        },
       ],
     );
 
@@ -1326,10 +1426,10 @@ void main() {
   ]) {
     testWidgets('审核明细精确数量：${sample.$2}', (tester) async {
       await _pump(tester, onApprove: (_) => null, itemOverrides: sample.$1);
-      final table = tester
-          .widget<MasterDataTableView<ProductionDailyReportItem>>(
-            find.byType(MasterDataTableView<ProductionDailyReportItem>),
-          );
+      final table = tester.widget<
+        MasterDataTableView<ProductionDailyReportDetailGroupRow>
+      >(find.byType(MasterDataTableView<ProductionDailyReportDetailGroupRow>));
+      expect(table.items, hasLength(1));
       expect(
         table.columns
             .singleWhere((column) => column.key == 'qty')
@@ -1347,24 +1447,118 @@ void main() {
     });
   }
 
+  testWidgets('超产拆分去向相同合并一行：21000 与拆分说明', (tester) async {
+    await _pump(
+      tester,
+      onApprove: (_) => null,
+      reportItems: const [
+        {
+          'id': 'share-demand',
+          'goodsId': 'g-1',
+          'goodsName': '外贸V5多功能三插后座',
+          'goodsCode': 'HV50070',
+          'colorName': '深灰色',
+          'unitName': '只',
+          'qty': 20000,
+          'defectQty': 5,
+          'planNo': 'SJ20260922000016',
+          'outputBatchId': 'batch',
+          'destination': 'WAREHOUSE',
+          'outputKind': 'PLANNED',
+          'outputRouteReasonText': '报工时选择送入仓库',
+        },
+        {
+          'id': 'share-surplus',
+          'goodsId': 'g-1',
+          'goodsName': '外贸V5多功能三插后座',
+          'goodsCode': 'HV50070',
+          'colorName': '深灰色',
+          'unitName': '只',
+          'qty': 1000,
+          'outputBatchId': 'batch',
+          'destination': 'WAREHOUSE',
+          'publicOutput': true,
+          'actualSurplus': true,
+          'outputKind': 'ACTUAL_SURPLUS',
+          'outputRouteReasonText': '超出计划的实际产量，统一送入仓库',
+        },
+      ],
+      reportBatches: const [
+        {
+          'batchKey': 'batch',
+          'sourceItemId': 'share-demand',
+          'itemIds': ['share-demand', 'share-surplus'],
+          'qty': 21000,
+          'summary': '服务端摘要 batch',
+          'groups': [
+            {
+              'itemIds': ['share-demand', 'share-surplus'],
+              'destination': 'WAREHOUSE',
+              'qty': 21000,
+              'splitText': '需求 20000 · 实际超产 1000',
+              'reasonText': '报工时选择送入仓库',
+              'summary': '送入仓库 21000',
+            },
+          ],
+        },
+      ],
+    );
+    final table = tester.widget<MasterDataTableView<
+      ProductionDailyReportDetailGroupRow
+    >>(find.byType(MasterDataTableView<ProductionDailyReportDetailGroupRow>));
+    expect(table.items, hasLength(1), reason: '去向相同的两份合成一行');
+    final row = table.items.single;
+    expect(
+      table.columns.singleWhere((column) => column.key == 'qty').value(row),
+      '21000 只',
+    );
+    expect(
+      table.columns.singleWhere((column) => column.key == 'defectQty').value(
+        row,
+      ),
+      '5 只',
+    );
+    expect(
+      table.columns.singleWhere((column) => column.key == 'outputKind').value(
+        row,
+      ),
+      '需求 20000 · 实际超产 1000',
+    );
+    expect(
+      table.columns.singleWhere((column) => column.key == 'destination').value(
+        row,
+      ),
+      '送入仓库',
+    );
+    expect(
+      table.columns.singleWhere((column) => column.key == 'routeNote').value(
+        row,
+      ),
+      '报工时选择送入仓库；超出计划的实际产量，统一送入仓库',
+    );
+    expect(find.text('21000 只'), findsWidgets);
+    expect(find.text('需求 20000 · 实际超产 1000'), findsWidgets);
+    expect(find.text('20000 只'), findsNothing);
+    expect(find.text('1000 只'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('明细显示不良数：列头说明只记录，0 留空不显示', (tester) async {
     await _pump(tester, onApprove: (_) => null);
-    final table = tester.widget<MasterDataTableView<ProductionDailyReportItem>>(
-      find.byType(MasterDataTableView<ProductionDailyReportItem>),
-    );
+    final table = tester.widget<
+      MasterDataTableView<ProductionDailyReportDetailGroupRow>
+    >(find.byType(MasterDataTableView<ProductionDailyReportDetailGroupRow>));
     final defect = table.columns.singleWhere(
       (column) => column.key == 'defectQty',
     );
     expect(defect.label, '不良数');
     expect(defect.info, productionDailyReportDefectInfo);
-    expect(table.items.single.defectQty, 12.5);
+    expect(table.items.single.defectQtyText, '12.5');
     // 2026-10-10 数量内联口径：不良数直接带单位显示。
     expect(find.text('12.5 只'), findsOneWidget);
-    expect(defect.value(const ProductionDailyReportItem(id: 'slice')), isNull);
+    expect(defect.value(_groupRowOf(const {'id': 'slice'})), isNull);
     expect(
-      defect.value(
-        ProductionDailyReportItem.fromJson(const {'id': 'x', 'defectQty': 3}),
-      ),
+      defect.value(_groupRowOf(const {'id': 'x', 'defectQty': 3})),
       '3',
     );
     expect(tester.takeException(), isNull);

@@ -7,6 +7,7 @@ import 'dart:convert';
 import 'package:uuid/uuid.dart';
 import 'package:collection/collection.dart';
 import '../../../components/feedback/uten_dialog.dart';
+import '../../../components/feedback/uten_progress_dialog.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/inputs/uten_input.dart';
 import '../../../components/inputs/uten_field_hint_icon.dart';
@@ -672,12 +673,24 @@ class _AuxiliaryImportState extends ConsumerState<_AuxiliaryImport>
     setState(() => _busy = true);
     try {
       final scope = await captureFormDraftRequestScope();
-      final original = _preview!,
-          bytes = await scope.run(
-            () => _api.postForBytes(
-              '/finance/auxiliary-imports/${original['importId']}/file',
-            ),
-          );
+      if (!mounted || !_current) return;
+      final original = _preview!;
+      // 原件下载进统一进度弹窗: 字节进度、可立即取消; 取消则不校验不落盘。
+      final fetched = await showUtenProgress<Uint8List>(
+        context,
+        title: '下载原明细文件',
+        icon: Icons.download_outlined,
+        initialStatus: '正在下载',
+        initialDetail: original['sourceName']?.toString(),
+        action: (progress) => scope.run(
+          () => _api.postForBytes(
+            '/finance/auxiliary-imports/${original['importId']}/file',
+            onReceiveProgress: progress.receiving('正在下载'),
+          ),
+        ),
+      );
+      if (fetched == null || !_current || !scope.isCurrent) return;
+      final bytes = fetched;
       if (!_current || !scope.isCurrent) return;
       if (await sha256HexResponsive(
             bytes,

@@ -10229,6 +10229,36 @@ abstract class AppLocalizations {
   /// **'内容较多时需要一两分钟, 请耐心等待, 不用重复点'**
   String get aiJobSlowHint;
 
+  /// No description provided for @progressCancel.
+  ///
+  /// In zh, this message translates to:
+  /// **'取消'**
+  String get progressCancel;
+
+  /// No description provided for @progressElapsed.
+  ///
+  /// In zh, this message translates to:
+  /// **'已进行 {time}'**
+  String progressElapsed(String time);
+
+  /// No description provided for @progressSlowHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'数据量大时需要一两分钟, 请耐心等待, 不用重复点'**
+  String get progressSlowHint;
+
+  /// No description provided for @progressStopping.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在停止: 当前这一项办完后结束, 已完成的保留, 不会重复提交'**
+  String get progressStopping;
+
+  /// No description provided for @progressStoppingButton.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在停止…'**
+  String get progressStoppingButton;
+
   /// No description provided for @aiJobTimeout.
   ///
   /// In zh, this message translates to:

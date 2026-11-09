@@ -195,6 +195,7 @@ String inboundRowIssueMessage(
 ///
 /// 点哪颗就把路线带进批量登记页，批量页只显示那一条路线的提交按钮。
 /// 「先入库后质检」只对持有独立权限的账号显示(服务端同样兜底)。
+/// [busy] 只禁用按钮防连点；等待由调用方的进度弹窗呈现，按钮内不转圈。
 List<Widget> inboundRouteBatchButtons(
   BuildContext context, {
   required int count,
@@ -218,7 +219,6 @@ List<Widget> inboundRouteBatchButtons(
             ? UtenButtonType.primary
             : UtenButtonType.danger,
         icon: route.icon,
-        isLoading: busy,
         onPressed: busy || count == 0 ? null : () => onSelected(route),
         onDisabledTap: count == 0
             ? () => context.appWarning(emptyWarning)

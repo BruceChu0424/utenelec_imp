@@ -34,6 +34,7 @@ import '../models/notice.dart';
 import '../models/notice_group.dart';
 import '../providers/notice_providers.dart';
 import '../widgets/notice_card.dart';
+import '../../../components/feedback/uten_progress_dialog.dart';
 import '../widgets/notice_action_busy.dart';
 import '../widgets/notice_detail_dialog.dart';
 import '../widgets/notice_group_dialog.dart';
@@ -129,12 +130,17 @@ class _NoticeListPageState extends ConsumerState<NoticeListPage> {
     if (confirmed != true) return;
 
     if (!mounted) return;
-    final deleted = await runNoticeActionWithBusy(
+    // 一次请求删除整批，发出后无法撤回：不提供「取消」。
+    final deleted = await showUtenProgress<int>(
       context,
-      title: '正在删除通知',
-      action: () => deleteNotices(ref, _selected.toList()),
+      title: '批量删除通知',
+      icon: Icons.delete_outline_rounded,
+      initialStatus: '正在删除通知',
+      initialDetail: '$count 条',
+      cancellable: false,
+      action: (_) => deleteNotices(ref, _selected.toList()),
     );
-    if (!mounted) return;
+    if (!mounted || deleted == null) return;
     _exitSelection();
     context.appSuccess('已删除 $deleted 条通知');
   }
@@ -209,12 +215,19 @@ class _NoticeListPageState extends ConsumerState<NoticeListPage> {
                     size: UtenActionButtonSize.small,
                     label: const Text('全部已读'),
                     onAction: () async {
-                      await runNoticeActionWithBusy(
+                      // 一次请求标记全部已读，发出后无法撤回：不提供「取消」。
+                      final done = await showUtenProgress<bool>(
                         context,
-                        title: '正在标记已读',
-                        action: () => markAllNoticeRead(ref),
+                        title: '全部标记已读',
+                        icon: Icons.checklist_rounded,
+                        initialStatus: '正在标记已读',
+                        cancellable: false,
+                        action: (_) async {
+                          await markAllNoticeRead(ref);
+                          return true;
+                        },
                       );
-                      if (context.mounted) {
+                      if (context.mounted && done == true) {
                         context.appSuccess('全部已读');
                       }
                     },

@@ -263,6 +263,8 @@ public class SecurityConfig {
                 // ADR-133: 公共 AI 识别上传的文件名/类型(AiJobController); 跨源网页上传靠它们通过预检。
                 "X-Uten-File-Name",
                 "X-Uten-File-Type",
+                // 2026-11-08: 同步导出生成进度操作号(ExportRateLimitInterceptor 登记, 客户端轮询)。
+                com.uten.imp.common.export.ExportProgress.HEADER,
                 com.uten.imp.common.finance.BusinessPrecisionContext.HEADER,
                 com.uten.imp.security.StepUpInterceptor.HEADER,
                 com.uten.imp.security.AutomaticRequestPolicy.HEADER,

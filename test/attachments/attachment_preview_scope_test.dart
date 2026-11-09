@@ -35,14 +35,19 @@ class _Files extends AttachmentService {
   Completer<Uint8List>? gate;
   int downloads = 0;
   @override
-  Future<Uint8List> downloadBytes(Attachment attachment) async {
+  Future<Uint8List> downloadBytes(
+    Attachment attachment, {
+    void Function(int received, int total)? onReceiveProgress,
+  }) async {
     downloads++;
     return gate == null ? Uint8List.fromList([97, 98, 99]) : gate!.future;
   }
 
   @override
-  Future<Uint8List> previewBytes(Attachment attachment) async =>
-      Uint8List.fromList('%PDF-1.4 minimal'.codeUnits);
+  Future<Uint8List> previewBytes(
+    Attachment attachment, {
+    void Function(int received, int total)? onReceiveProgress,
+  }) async => Uint8List.fromList('%PDF-1.4 minimal'.codeUnits);
 }
 
 Future<void> _mount(

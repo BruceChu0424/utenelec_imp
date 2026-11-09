@@ -1365,6 +1365,7 @@ final class _MaterialAggregateTableController {
       // 纯网络等待挂全页遮罩(与产品视图 notify 同一通道 bucketActionBusyMessage)；
       // 确认弹窗之前必须撤掉，否则会把弹窗盖在背后转圈。
       owner.bucketActionBusyMessage.value = '正在核对汇总下达内容';
+      owner._orderProgress?.setStatus('正在核对汇总下达内容');
       try {
         await refreshPreview(
           keys: keys,
@@ -1421,11 +1422,13 @@ final class _MaterialAggregateTableController {
     });
     try {
       // 确认弹窗已收口，这里起是纯网络段：挂遮罩(见上，同一次用户口径)。
-      owner.bucketActionBusyMessage.value = makesPlans
+      final busyMessage = makesPlans
           ? request.approveNow
                 ? '正在生成并审核下达'
                 : '正在生成生产计划'
           : '正在下达物料';
+      owner.bucketActionBusyMessage.value = busyMessage;
+      owner._orderProgress?.setStatus(busyMessage);
       final result = await withDraftMutation(
         () => owner.ref
             .read(productionPlanRepositoryProvider)

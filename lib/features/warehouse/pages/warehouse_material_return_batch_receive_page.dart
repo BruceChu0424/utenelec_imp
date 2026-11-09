@@ -11,7 +11,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
-import '../../../components/feedback/uten_busy_overlay.dart';
+import '../../../components/feedback/uten_progress_dialog.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -474,81 +474,105 @@ class _WarehouseMaterialReturnBatchReceivePageState
       final requestScope = await requestScopeFuture;
       var done = 0;
       _uncertain = true;
-      await runFormDraftSubmission(
-        () => requestScope.run(() async {
-          for (final row in _rows.where(
+      // 待收料目标先定口径（同原循环过滤），进度按「已收 / 总张数」推进；
+      // afterCurrent 取消＝当前这张收完即停，已收结果与未知提交保护照常保留。
+      final targets = _rows
+          .where(
             (row) =>
                 !_blockedSources.contains(row.detail.id) &&
                 (!wasUnknown || row.detail.id == _pendingDocumentId),
-          )) {
-            if (row.done) continue;
-            requestScope.checkCurrent();
-            if (!mounted ||
-                !formDraftIdentityIsCurrent ||
-                (!ref.read(isSuperAdminProvider) &&
-                    !ref
-                        .read(currentPermissionsProvider)
-                        .contains(Perm.stockDocApprove))) {
-              throw ApiException('SESSION_CHANGED', '身份或收料权限已变化，已成功收料保留，本次停止');
-            }
-            final warehouseId =
-                (wasUnknown
-                    ? (_pendingCommand?['warehouseId'] as String?)
-                    : null) ??
-                row.warehouseId!;
-            _pendingDocumentId = row.detail.id;
-            _pendingCommand ??= {
-              'documentId': row.detail.id,
-              'warehouseId': warehouseId,
-              'idempotencyKey': businessIdempotencyKey(
-                'material-return-confirm',
-                '${row.detail.id}|$warehouseId',
-              ),
-              'itemIds': widget.selectedItemIds == null
-                  ? null
-                  : row.detail.items
-                        .map((item) => item.id)
-                        .whereType<String>()
-                        .toList(),
-            };
-            _validatePendingCommand();
-            if (wasUnknown) {
-              final fresh = await repo.detail(row.detail.id);
-              requestScope.checkCurrent();
-              final expected = (_pendingCommand!['itemIds'] as List?)
-                  ?.cast<String>();
-              final actual = fresh.items
-                  .map((item) => item.id)
-                  .whereType<String>()
-                  .toSet();
-              if (fresh.id != row.detail.id ||
-                  (expected != null &&
-                      (actual.length != expected.length ||
-                          !actual.containsAll(expected)))) {
-                throw const FormatException('原收料明细范围已变化，请保留原命令核对');
+          )
+          .where((row) => !row.done)
+          .toList();
+      var cancelled = false;
+      await runFormDraftSubmission(
+        () => showUtenProgress<int>(
+          context,
+          title: '批量收料',
+          icon: Icons.move_to_inbox_rounded,
+          initialStatus: '正在批量收料',
+          initialDetail: '${targets.length} 张退料单',
+          cancelMode: UtenProgressCancel.afterCurrent,
+          invalidation: formDraftIdentityInvalidation,
+          action: (progress) => requestScope.run(() async {
+            for (final row in targets) {
+              if (progress.isCancelled) {
+                cancelled = true;
+                break;
               }
+              progress.count(done, targets.length, status: '正在批量收料');
+              requestScope.checkCurrent();
+              if (!mounted ||
+                  !formDraftIdentityIsCurrent ||
+                  (!ref.read(isSuperAdminProvider) &&
+                      !ref
+                          .read(currentPermissionsProvider)
+                          .contains(Perm.stockDocApprove))) {
+                throw ApiException(
+                  'SESSION_CHANGED',
+                  '身份或收料权限已变化，已成功收料保留，本次停止',
+                );
+              }
+              final warehouseId =
+                  (wasUnknown
+                      ? (_pendingCommand?['warehouseId'] as String?)
+                      : null) ??
+                  row.warehouseId!;
+              _pendingDocumentId = row.detail.id;
+              _pendingCommand ??= {
+                'documentId': row.detail.id,
+                'warehouseId': warehouseId,
+                'idempotencyKey': businessIdempotencyKey(
+                  'material-return-confirm',
+                  '${row.detail.id}|$warehouseId',
+                ),
+                'itemIds': widget.selectedItemIds == null
+                    ? null
+                    : row.detail.items
+                          .map((item) => item.id)
+                          .whereType<String>()
+                          .toList(),
+              };
+              _validatePendingCommand();
+              if (wasUnknown) {
+                final fresh = await repo.detail(row.detail.id);
+                requestScope.checkCurrent();
+                final expected = (_pendingCommand!['itemIds'] as List?)
+                    ?.cast<String>();
+                final actual = fresh.items
+                    .map((item) => item.id)
+                    .whereType<String>()
+                    .toSet();
+                if (fresh.id != row.detail.id ||
+                    (expected != null &&
+                        (actual.length != expected.length ||
+                            !actual.containsAll(expected)))) {
+                  throw const FormatException('原收料明细范围已变化，请保留原命令核对');
+                }
+              }
+              await saveFormDraftNow();
+              requestScope.checkCurrent();
+              final result = await repo.confirmMaterialReturn(
+                row.detail.id,
+                warehouseId: warehouseId,
+                idempotencyKey: _pendingCommand!['idempotencyKey'] as String,
+                itemIds: (_pendingCommand!['itemIds'] as List?)?.cast<String>(),
+              );
+              requestScope.checkCurrent();
+              if (result.id != row.detail.id ||
+                  result.status != 1 ||
+                  result.warehouseId != warehouseId) {
+                throw StateError('原收料回执不完整，继续保留原命令');
+              }
+              row.done = true;
+              _pendingDocumentId = null;
+              _pendingCommand = null;
+              done++;
+              await saveFormDraftNow();
             }
-            await saveFormDraftNow();
-            requestScope.checkCurrent();
-            final result = await repo.confirmMaterialReturn(
-              row.detail.id,
-              warehouseId: warehouseId,
-              idempotencyKey: _pendingCommand!['idempotencyKey'] as String,
-              itemIds: (_pendingCommand!['itemIds'] as List?)?.cast<String>(),
-            );
-            requestScope.checkCurrent();
-            if (result.id != row.detail.id ||
-                result.status != 1 ||
-                result.warehouseId != warehouseId) {
-              throw StateError('原收料回执不完整，继续保留原命令');
-            }
-            row.done = true;
-            _pendingDocumentId = null;
-            _pendingCommand = null;
-            done++;
-            await saveFormDraftNow();
-          }
-        }),
+            return done;
+          }),
+        ),
         isDefiniteRejection: (error) =>
             !wasUnknown &&
             (error.httpStatus == 400 ||
@@ -559,7 +583,13 @@ class _WarehouseMaterialReturnBatchReceivePageState
       _uncertain = false;
       if (_rows.any((row) => !row.done)) {
         await saveFormDraftNow();
-        if (mounted) context.appInfo('已核对收料 $done 张，其余来源继续保留未派发');
+        if (mounted) {
+          context.appInfo(
+            cancelled
+                ? '已收料 $done 张，已按要求停止，其余继续保留未派发'
+                : '已核对收料 $done 张，其余来源继续保留未派发',
+          );
+        }
         return;
       }
       await completeFormDraft();
@@ -781,7 +811,6 @@ class _WarehouseMaterialReturnBatchReceivePageState
                   UtenButton(
                     key: const Key('material-return-batch-confirm'),
                     icon: Icons.move_to_inbox_rounded,
-                    isLoading: _saving,
                     onPressed: _saving || !_allPicked || !canApprove
                         ? null
                         : _submit,
@@ -793,7 +822,6 @@ class _WarehouseMaterialReturnBatchReceivePageState
                   ),
                 ],
               ),
-              if (_saving) const UtenBusyOverlay(title: '正在批量收料'),
             ],
           ),
         ),

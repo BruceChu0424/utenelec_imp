@@ -24,6 +24,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_confirmation_summary.dart';
 import '../../../components/feedback/uten_context_menu.dart';
+import '../../../components/feedback/uten_progress_dialog.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
@@ -308,17 +309,26 @@ class _WarehouseInboundExpectationsViewState
       if (confirmed != true || !mounted) return;
       setState(() => _batchSending = true);
       try {
-        final result = await ref
-            .read(procurementInboundRepositoryProvider)
-            .batchCompleteArrivals(
-              receiptIds: receiptIds,
-              idempotencyKey: _batchKey(
-                selectedIds
-                    .where((id) => drafts.any((task) => task.id == id))
-                    .toSet(),
+        // 一个事务整批送检，发出后无法撤回：不提供「取消」。
+        final result = await showUtenProgress<WarehouseArrivalBatchCompleteResult>(
+          context,
+          title: '批量送检',
+          icon: Icons.fact_check_outlined,
+          initialStatus: '正在送品质部待检',
+          initialDetail: '${receiptIds.length} 张收货单',
+          cancellable: false,
+          action: (_) => ref
+              .read(procurementInboundRepositoryProvider)
+              .batchCompleteArrivals(
+                receiptIds: receiptIds,
+                idempotencyKey: _batchKey(
+                  selectedIds
+                      .where((id) => drafts.any((task) => task.id == id))
+                      .toSet(),
+                ),
               ),
-            );
-        if (!mounted) return;
+        );
+        if (!mounted || result == null) return;
         invalidateWarehouseTaskCounts(ref);
         final quarantined = result.items
             .where(

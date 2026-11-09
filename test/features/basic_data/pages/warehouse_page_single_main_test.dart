@@ -23,6 +23,7 @@ import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:uten_imp/components/feedback/uten_context_menu.dart';
 import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
+import 'package:uten_imp/components/feedback/uten_progress_dialog.dart';
 import 'package:uten_imp/components/feedback/uten_task_progress_dialog.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_inline_edit.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
@@ -182,9 +183,13 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(UtenBusyOverlay), findsNothing);
     await tester.tap(find.text('确认'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
-    expect(find.byType(UtenBusyOverlay), findsOneWidget);
+    // 批量提交进进度弹窗（扫动条是循环动画，不能用 pumpAndSettle）。
+    await pumpUntil(
+      tester,
+      () => batch.commands.isNotEmpty,
+      reason: '批量停用应已发出',
+    );
+    expect(find.byType(UtenProgressBar), findsOneWidget);
     expect(batch.commands, hasLength(1));
     batch.pending!.complete(
       const MasterBatchResult(
@@ -197,6 +202,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    expect(find.byType(UtenProgressBar), findsNothing);
     expect(find.byType(UtenBusyOverlay), findsNothing);
     expect(tester.takeException(), isNull);
   });

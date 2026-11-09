@@ -4,6 +4,7 @@ import 'package:uten_imp/shared/paging/paged_read_window_binding.dart';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/feedback/uten_progress_dialog.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
@@ -369,22 +370,18 @@ void main() {
     expect(current!(), isTrue);
     progress!(1, 1);
     await tester.pump();
-    expect(find.text('导出单据(1/1)'), findsOneWidget);
-    await selectFilterSegment(tester, '历史记录');
+    // 2026-11-09 起导出全程在统一进度弹窗内: 逐份计数在弹窗详情行呈现,
+    // 模态弹窗挡住页面交互(不再能用按钮文案进度)。
+    expect(find.byType(UtenProgressBar), findsOneWidget);
+    expect(find.text('1 / 1'), findsOneWidget);
+    // 取消＝当前这份读完即停: stillCurrent 立即翻假, 旧导出不再继续,
+    // 弹窗等 action 结束后收尾。
+    await tester.tap(find.byKey(const Key('uten-progress-cancel')));
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
     expect(current!(), isFalse);
-    expect(button, findsOneWidget);
-    await selectFilterSegment(tester, '进行中');
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
-    expect(
-      current!(),
-      isFalse,
-      reason: 'returning to the same query cannot revive an old export',
-    );
     gate.complete();
     await tester.pumpAndSettle();
+    expect(find.byType(UtenProgressBar), findsNothing);
     expect(tester.takeException(), isNull);
   });
 

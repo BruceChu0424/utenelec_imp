@@ -2469,6 +2469,18 @@
   },
   "aiJobQueued": "Waiting in line, starting shortly",
   "aiJobSlowHint": "Large files can take a minute or two. Please wait, there is no need to click again",
+  "progressCancel": "Cancel",
+  "progressElapsed": "Elapsed {time}",
+  "@progressElapsed": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "progressSlowHint": "Large jobs can take a minute or two. Please wait, there is no need to click again",
+  "progressStopping": "Stopping: it ends after the current item finishes. Completed items are kept and nothing is submitted twice",
+  "progressStoppingButton": "Stopping…",
   "aiJobTimeout": "This took too long, so we stopped waiting. Please try again later or split the file into smaller parts",
   "aiJobGone": "This task no longer exists (it may have been cleaned up). Please start again",
   "aiJobFailedGeneric": "That did not work this time. Please try again later",

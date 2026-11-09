@@ -136,19 +136,25 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
     }
 
     /**
-     * 当前预计到货行还能登记的数量(订货单位)。采购沿用财务快照(收满订货量即关闭, 允许超收量
-     * 不进预计到货, ADR-144)。委外(ADR-143 §三.6): 只放行委外商用我方已发直属物料能做成的完整套数
+     * 当前预计到货行还在催收登记的数量(订货单位)。采购沿用财务快照(收满订货量即关闭, 允许超收量
+     * 不进预计到货, ADR-144)。委外(2026-11-08 口径修订): 催收与完结以「订货量」为准——
+     * LEAST(订量 + 已退货 + IQC 不合格已实物退回待补 − 已收 − 已结案损耗,
+     * 物理可回厂上限)。允许损耗与已过账超量不进催收目标: 它们只放宽登记上限
+     * (可收至订量×(1+损耗)与物理容量孰低, 加超收过账, 见 {@link #normalFinishedRemainderQty}
+     * 与登记容量 arrivalCapacity), 仓库仍可把损耗内多到的货收进来, 超量部分走既有
+     * PENDING_FINANCE/超量隔离流程。少收仍走短交案件(V1098「短交必须案件结案」政策),
+     * 结案认损的量经 {@code fn_subcontract_settled_loss_qty} 扣减催收目标。
+     * 物理可回厂上限(ADR-143 §三.6)只放行委外商用我方已发直属物料能做成的完整套数
      * ({@code fn_subcontract_returnable_qty}) + 财务已批准入库的委外商自带料
      * ({@code arrival_overage_posted_qty}) + IQC 不合格已实物退回待补的量, 再扣全部已审核回厂;
      * 从不把不同物料折算后相加。已批准的委外明细一定有冻结计划行(缺 BOM 不能下单, §二.3);
      * 万一没有, 可回厂套数按 0 计(fail-closed)。
-     * 最终容量仍受订单净未收量约束。
-     * 已发齐(或已结束领料)且回厂数量进入允许损耗范围的开放短交案件，不再催仓库补登记余量；
      * 待检与损耗结账仍由品质放行后的原流程处理。本方法仅用于任务查询，不改变财务批准额度。
      */
     private static String currentReceivableQty(String itemAlias) {
-        // The normal finished allowance and base-BOM physical capacity are independent
-        // bounds. Neither is an actual receipt or a loss deduction.
+        // The ordered-quantity collection target and the base-BOM physical capacity are
+        // independent bounds. Neither the loss allowance nor an overage posting is an
+        // actual receipt or a loss deduction; they only widen the register capacity.
         return """
                 COALESCE((SELECT LEAST(
                     %2$s,
@@ -168,11 +174,16 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                 """.formatted(itemAlias, subcontractNormalRemainingQty("supplied_item"));
     }
 
-    /** Outstanding receipt authority survives a temporary shortage of supplied material. */
+    /**
+     * 委外催收与完结目标(订货单位, 2026-11-08 口径修订): 基准是订货量本身, 不是
+     * 订量×(1+损耗)。订量收齐即完结; 允许损耗只放宽登记上限({@link #normalFinishedRemainderQty}
+     * 与 arrivalCapacity), 超收过账({@code arrival_overage_posted_qty})同理不进本式。
+     * 已退货与 IQC 实物退回待补回冲目标, 已结案损耗(V688/ADR-114)扣减目标。
+     * 目标不因供料临时短缺消失(expectation 完结判定复用本式)。
+     */
     private static String subcontractNormalRemainingQty(String orderItemAlias) {
         return """
-                GREATEST(fn_subcontract_normal_receipt_limit(%1$s.id)
-                    + COALESCE(%1$s.arrival_overage_posted_qty,0)
+                GREATEST(COALESCE(%1$s.qty,0)
                     + COALESCE(%1$s.returned_qty,0)
                     + COALESCE((SELECT SUM(rejection.failed_qty)
                         FROM procurement_iqc_rejection_cases rejection
@@ -185,7 +196,10 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                 """.formatted(orderItemAlias);
     }
 
-    /** Lifecycle of the expected work, independent of its currently executable material capacity. */
+    /**
+     * Lifecycle of the expected work, independent of its currently executable material capacity.
+     * 复用 {@link #subcontractNormalRemainingQty}: 完结判定同样以订量为基准。
+     */
     private static String subcontractExpectationOutstandingQty(String itemAlias) {
         return """
                 COALESCE((SELECT (%2$s) * source.unit_rate / NULLIF(%1$s.unit_rate,0)
@@ -203,7 +217,12 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                 """.formatted(itemAlias);
     }
 
-    /** Contract-only normal remainder; explicit finance-approved excess stays in legacy authority fields. */
+    /**
+     * 登记侧「正常可收」余量(订货单位): 基准仍是订量×(1+损耗)({@code fn_subcontract_normal_receipt_limit}),
+     * 与物理容量({@link #materialReceivableQty})取孰低后供登记页「最多可收」使用。它与催收目标
+     * ({@link #subcontractNormalRemainingQty}, 以订量为基准)是两条口径: 允许损耗只在这里放宽上限,
+     * 不催仓库把损耗备料弹性收齐。显式财务批准的公共超量留在既有授权字段, 不进本式。
+     */
     private static String normalFinishedRemainderQty(String itemAlias) {
         return """
                 COALESCE((SELECT GREATEST(fn_subcontract_normal_receipt_limit(source.id)+COALESCE(source.returned_qty,0)

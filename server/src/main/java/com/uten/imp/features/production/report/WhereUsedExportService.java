@@ -36,7 +36,8 @@ public class WhereUsedExportService {
     private final EmployeeNameResolver employeeNames;
 
     @PreAuthorize("hasAuthority('production_where_used:view') and hasAuthority('production_where_used:export')")
-    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ,
+            timeout = com.uten.imp.common.export.ExportTransactions.TIMEOUT_SECONDS)
     public ExportDocument document(UUID materialId, String source, LocalDate from, LocalDate to,
                                    String sort, String order) {
         Collector collector=new Collector();
@@ -45,7 +46,8 @@ public class WhereUsedExportService {
     }
 
     @PreAuthorize("hasAuthority('production_where_used:view') and hasAuthority('production_where_used:export')")
-    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ,
+            timeout = com.uten.imp.common.export.ExportTransactions.TIMEOUT_SECONDS)
     public ExportDocument document(UUID materialId,String source,LocalDate from,LocalDate to,String sort,String order,
             Map<String,String> filters) {
         Collector collector=new Collector();

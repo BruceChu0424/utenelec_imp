@@ -1,8 +1,8 @@
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../components/buttons/uten_back_button.dart';
+import '../../components/feedback/uten_progress_dialog.dart';
 import '../../components/buttons/uten_button.dart';
 import '../../components/feedback/uten_motion.dart';
 import '../../core/constants/app_info.dart';
@@ -808,12 +808,12 @@ class _UpdateMarkState extends State<_UpdateMark>
           Positioned.fill(
             child: RotationTransition(
               turns: _rotation,
-              child: CustomPaint(
-                painter: _UpdateRing(
-                  accent: accent,
-                  track: colors.outlineVariant,
-                  progress: widget.progress ?? (widget.spinning ? 0.23 : 1),
-                ),
+              // 2026-11-09 起圆环换全项目唯一组件 UtenProgressRing, 样式
+              // 来源统一在组件文件维护。
+              child: UtenProgressRing(
+                accent: accent,
+                track: colors.outlineVariant,
+                progress: widget.progress ?? (widget.spinning ? 0.23 : 1),
               ),
             ),
           ),
@@ -856,36 +856,4 @@ class _UpdateMarkState extends State<_UpdateMark>
       ),
     );
   }
-}
-
-class _UpdateRing extends CustomPainter {
-  const _UpdateRing({
-    required this.accent,
-    required this.track,
-    required this.progress,
-  });
-  final Color accent, track;
-  final double progress;
-  @override
-  void paint(Canvas canvas, Size size) {
-    final rect = (Offset.zero & size).deflate(2);
-    final pen = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.5
-      ..strokeCap = StrokeCap.round;
-    canvas.drawOval(rect, pen..color = track);
-    canvas.drawArc(
-      rect,
-      -math.pi / 2,
-      2 * math.pi * progress.clamp(0, 1),
-      false,
-      pen..color = accent,
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant _UpdateRing oldDelegate) =>
-      accent != oldDelegate.accent ||
-      track != oldDelegate.track ||
-      progress != oldDelegate.progress;
 }

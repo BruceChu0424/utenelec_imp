@@ -90,6 +90,7 @@ public class XlsxExportService {
                 if (projection == null || projection.rowSelection() == null) {
                     if (writer.rowCount() != result.total()) throw new IllegalStateException("Export source is incomplete");
                 }
+                ExportProgress.phase(ExportProgress.Phase.PACKAGING);
                 writer.finish(ExportTemporaryBudget.artifactOutput(out, directory,
                         ExportOperationCheckpoint::check, ExportResourceLimits.LEGACY_ARTIFACT_BYTES));
                 return new SourceWorkbook(new ExportPayload(result.columns(), List.of(), result.total(),
@@ -124,7 +125,8 @@ public class XlsxExportService {
                 temporaryDirectory==null?null:new ExportTemporaryBudget(temporaryDirectory)));
     }
 
-    private static org.apache.poi.xssf.streaming.SheetDataWriter privateSheetWriter(ExportTemporaryBudget budget) throws IOException {
+    private static org.apache.poi.xssf.streaming.SheetDataWriter privateSheetWriter(ExportTemporaryBudget budget,
+            java.util.function.BooleanSupplier richText) throws IOException {
         var strategy = new org.apache.poi.util.DefaultTempFileCreationStrategy(budget.directory.toFile()) {
             @Override public java.io.File createTempFile(String prefix, String suffix) throws IOException {
                 var path = java.nio.file.Files.createTempFile(budget.directory,"report-sheet-",suffix);
@@ -138,7 +140,7 @@ public class XlsxExportService {
             // their own directory and budget; no process-wide setting changes.
             return org.apache.poi.util.TempFile.withStrategy(strategy, () -> {
                 try {
-                    return new RichTextSheetDataWriter() {
+                    return new RichTextSheetDataWriter(richText) {
                         @Override protected java.io.OutputStream decorateOutputStream(java.io.FileOutputStream output) throws IOException {
                             return new java.util.zip.GZIPOutputStream(budget.guard(output));
                         }
@@ -153,12 +155,15 @@ public class XlsxExportService {
     }
 
     /** Preserve inline rich runs without retaining every string in a shared
-     * strings table. Ordinary cells still use POI's bounded streaming writer. */
+     * strings table. Ordinary cells still use POI's bounded streaming writer.
+     * Until the workbook writes a rich run, no cell can carry one: skip the
+     * per-cell rich-string materialization that otherwise builds an XMLBeans run. */
     private static class RichTextSheetDataWriter extends org.apache.poi.xssf.streaming.GZIPSheetDataWriter {
-        RichTextSheetDataWriter() throws IOException { super(); }
+        private final java.util.function.BooleanSupplier richText;
+        RichTextSheetDataWriter(java.util.function.BooleanSupplier richText) throws IOException { super(); this.richText=richText; }
 
         @Override public void writeCell(int columnIndex, Cell cell) throws IOException {
-            if(cell==null||cell.getCellType()!=org.apache.poi.ss.usermodel.CellType.STRING
+            if(cell==null||!richText.getAsBoolean()||cell.getCellType()!=org.apache.poi.ss.usermodel.CellType.STRING
                     ||!(cell.getRichStringCellValue() instanceof org.apache.poi.xssf.usermodel.XSSFRichTextString rich)
                     ||!rich.hasFormatting()) {
                 super.writeCell(columnIndex,cell);
@@ -193,6 +198,8 @@ public class XlsxExportService {
         private boolean finished;
         private boolean written;
         private boolean closed;
+        /** Set before the first rich run reaches a row; rows flush to sheet writers only afterwards. */
+        private boolean richText;
         private final class SheetState {
             final Sheet sheet;final List<ExportColumn> columns;final ExportTableLayout layout;int rowIndex=1,dataCount;
             final boolean document;
@@ -200,6 +207,9 @@ public class XlsxExportService {
             final Map<Integer,List<ExportTableLayout.Band>> bands=new java.util.HashMap<>();
             final Map<Integer,List<ExportTableLayout.TextSpan>> spans=new java.util.HashMap<>();
             final Map<Integer,List<ExportTableLayout.SupplementalCell>> supplemental=new java.util.TreeMap<>();
+            // An unstyled blank cell makes POI resolve its column default through XMLBeans on every
+            // write. Columns get widths, never default styles, so one resolution per column is exact.
+            final Map<Integer,CellStyle> columnStyles=new java.util.HashMap<>();
             Sheet notes;int notesRow=1;
             SheetState(Sheet sheet,List<ExportColumn> columns,ExportTableLayout layout,boolean document){
                 this.sheet=sheet;this.columns=List.copyOf(columns);this.layout=layout;this.document=document;this.rowIndex=layout==null?1:layout.headerRow()+1;
@@ -213,7 +223,7 @@ public class XlsxExportService {
             this.tempBudget = tempBudget;
             workbook = new SXSSFWorkbook(ROW_ACCESS_WINDOW) {
                 @Override protected org.apache.poi.xssf.streaming.SheetDataWriter createSheetDataWriter() throws IOException {
-                    return tempBudget==null?new RichTextSheetDataWriter():privateSheetWriter(tempBudget);
+                    return tempBudget==null?new RichTextSheetDataWriter(() -> richText):privateSheetWriter(tempBudget,() -> richText);
                 }
             };
             this.projection = projection;
@@ -448,8 +458,12 @@ public class XlsxExportService {
                 for (int i = 0; i < columns.size(); i++) {
                     ExportColumn column = columns.get(i);
                     Cell cell = row.createCell(i);
-                    writeCell(cell, column.type(), values == null ? null : values.get(column.key()), number, quantity, text,units);
-                    if(state.layout==null)applyUnit(cell, column, values, workbook, units);
+                    Object raw = values == null ? null : values.get(column.key());
+                    writeCell(cell, column.type(), raw, number, quantity, text,units);
+                    if(state.layout==null) {
+                        applyUnit(cell, column, values, workbook, units);
+                        if(raw==null)cell.setCellStyle(state.columnStyles.computeIfAbsent(i,state.sheet::getColumnStyle));
+                    }
                     else {
                         var layout=state.layout;var alignment=HorizontalAlignment.valueOf(ExportTableLayout.columnAlignment(column.type()));
                         boolean bold=false;String fill=null;
@@ -486,7 +500,7 @@ public class XlsxExportService {
                                 });
                                 rich.applyFont(span.start(),span.end(),font);
                             }
-                            if(rich!=null)cell.setCellValue(rich);
+                            if(rich!=null){richText=true;cell.setCellValue(rich);}
                         }
                     }
                 }

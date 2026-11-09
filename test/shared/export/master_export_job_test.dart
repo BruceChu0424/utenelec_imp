@@ -82,6 +82,26 @@ void main() {
       );
     },
   );
+  test('goods assembly header exports as the typed hasBom boolean', () {
+    for (final entry in {'true': true, 'false': false}.entries) {
+      final parameters = masterExportJobParameters('goods', {
+        'categoryId': 'finished',
+        'hasBom': entry.key,
+        'excludeStub': true,
+      }, {});
+      final filter = jsonDecode(parameters['filter'] as String) as Map;
+      expect(filter['hasBom'], entry.value);
+      expect(filter['excludeStub'], true);
+      expect(filter, isNot(contains('columnSearch')));
+    }
+    final unfiltered = masterExportJobParameters('goods', {
+      'categoryId': 'finished',
+    }, {});
+    expect(
+      jsonDecode(unfiltered['filter'] as String) as Map,
+      isNot(contains('hasBom')),
+    );
+  });
   test('contacts preserve body-only precedence and nested column search', () {
     final parameters = masterExportJobParameters(
       'client',

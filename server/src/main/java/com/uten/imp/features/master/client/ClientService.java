@@ -337,7 +337,8 @@ public class ClientService {
      * （空显「未分配」，与表格同兜底），不再导旧库 empId 数字串；表格没有「状态」列
      * （启停走前导分组/行菜单），导出同步不带。
      */
-    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ,
+            timeout = com.uten.imp.common.export.ExportTransactions.TIMEOUT_SECONDS)
     public ExportPayload export(ClientQueryFilter f, String sort, String order) {
         List<ExportColumn> cols = List.of(
                 new ExportColumn("code", "客户编码", ExportColumn.TEXT),
@@ -456,7 +457,7 @@ public class ClientService {
                 buckets.get("linkman"), buckets.get("mobile"), buckets.get("phone"),
                 buckets.get("phone2"), buckets.get("fax"), buckets.get("postcode"),
                 buckets.get("address"), buckets.get("bank"), buckets.get("bankAccount"),
-                buckets.get("taxId"), buckets.get("credit"), buckets.get("website"),
+                buckets.get("taxId"), buckets.get("credit"), buckets.get("creditFloor"), buckets.get("website"),
                 nullCounts);
     }
 

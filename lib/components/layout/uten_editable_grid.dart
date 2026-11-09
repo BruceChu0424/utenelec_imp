@@ -63,6 +63,7 @@ import 'dart:convert';
 import '../data_display/uten_status_cell_color.dart';
 import '../data_display/uten_table_output_scope.dart';
 
+import '../../core/theme/uten_colors.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../inputs/uten_table_cell_hints.dart';
 import '../inputs/uten_table_cell_spec.dart';
@@ -93,6 +94,21 @@ R _profileEditableGridWork<R>(String label, R Function() work) {
     observer(label, clock.elapsed);
   }
 }
+
+/// 重点核对列（[EditableGridColumn.emphasized]）的字重：单元格、冻结副本与列宽
+/// 测量共用这一处，测宽与渲染不再各写各的（轻测重绘会把红字挤成省略号）。
+const FontWeight _emphasizedFontWeight = FontWeight.w800;
+
+/// 重点核对列的红字色（[UtenColors.emphasisText] 公共定色，与 MasterDataTableView、
+/// UtenRevisionTable 同一处）。非重点列，或格子正铺语义底色（[semanticBackground]，
+/// 底色对比色优先、不叠加）时返回 null。
+Color? _emphasisTextColor(
+  ThemeData theme,
+  EditableGridColumn column, {
+  bool semanticBackground = false,
+}) => !column.emphasized || semanticBackground
+    ? null
+    : UtenColors.emphasisText(theme.brightness);
 
 /// 行模型基类。行持有自己的 TextEditingController / ValueNotifier（跨重建存活）。
 /// 删行/清空/替换时由 [UtenEditableGridController] 调 [dispose] 释放，避免泄漏。
@@ -179,6 +195,7 @@ class EditableGridColumn<T extends EditableGridRow> {
     this.legendOf,
     this.reviewReasonOf,
     this.aiSensitive = false,
+    this.emphasized = false,
   });
 
   final String key;
@@ -223,6 +240,12 @@ class EditableGridColumn<T extends EditableGridRow> {
   /// 只给要画跨行图形的列用——层级树列（[UtenTreeTableCell]）若被居中收缩，
   /// 层级竖线就接不到相邻行。默认 false，既有列一字不变。
   final bool fillsCellHeight;
+
+  /// 重点核对列：整列红色加粗（与 MasterDataTableView 的 `MasterColumnDef.emphasized`
+  /// 同色同字重：浅色 errorText / 深色 errorOnDark + w800），语义是「请逐行核对
+  /// 这些数字」。列自身带语义底色（[cellColor]）时底色对比色优先，不叠加；横滚
+  /// 冻结副本同样式，列宽按同一字重测量。默认 false，既有列一字不变。
+  final bool emphasized;
 
   /// 该列是否必填：表头文案后显红 *；单元为空时由 [RequiredCellFrame] 描红边。
   /// 开启 [UtenEditableGrid.showColumnSettings] 后必填列锁定——表头设置列表
@@ -2923,7 +2946,10 @@ class _UtenEditableGridState<T extends EditableGridRow>
     headerWidth: 0,
     bodyWidth: utenTableCellTextWidth(
       text,
-      style: utenIsStatusOrProgressColumn(col.key, col.label)
+      // 测宽字重跟渲染走：重点核对列 w800，状态/进度列 w700，其余常规。
+      style: col.emphasized
+          ? _measureStyle.copyWith(fontWeight: _emphasizedFontWeight)
+          : utenIsStatusOrProgressColumn(col.key, col.label)
           ? _measureStyle.copyWith(fontWeight: FontWeight.w700)
           : _measureStyle,
       textScaler: scaler,
@@ -4578,8 +4604,14 @@ class _DataRow<T extends EditableGridRow> extends StatelessWidget {
                                     '',
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
+                                // 重点核对列在冻结副本里同样红字加粗(副本不铺语义底色)。
                                 style: theme.textTheme.bodyMedium?.copyWith(
-                                  color: theme.colorScheme.onSurface,
+                                  color:
+                                      _emphasisTextColor(theme, columns[i]) ??
+                                      theme.colorScheme.onSurface,
+                                  fontWeight: columns[i].emphasized
+                                      ? _emphasizedFontWeight
+                                      : null,
                                   fontFeatures: columns[i].numeric
                                       ? const [FontFeature.tabularFigures()]
                                       : null,
@@ -4720,6 +4752,13 @@ class _DataRow<T extends EditableGridRow> extends StatelessWidget {
       final Color? onCellColor = cellColor == null
           ? null
           : utenSemanticCellForeground(context, cellColor);
+      // 重点核对列红字加粗；语义底色格让位给底色对比色(不叠加，口径同
+      // MasterDataTableView._cellTextStyle)。
+      final emphasisColor = _emphasisTextColor(
+        theme,
+        column,
+        semanticBackground: onCellColor != null,
+      );
       return UtenTableCellFrame(
         backgroundColor: cellColor,
         border: cellColor == null
@@ -4734,13 +4773,15 @@ class _DataRow<T extends EditableGridRow> extends StatelessWidget {
             column: column,
             child: DefaultTextStyle.merge(
               style: TextStyle(
-                color: onCellColor ?? theme.colorScheme.onSurface,
+                color:
+                    onCellColor ?? emphasisColor ?? theme.colorScheme.onSurface,
                 fontFeatures: column.numeric
                     ? const [FontFeature.tabularFigures()]
                     : null,
                 // 72b66001/8fdb5ea6521765875b577edf4e0052a07c97(2026-10-08 7528623753e35f84)3002
-                fontWeight:
-                    utenIsStatusOrProgressColumn(column.key, column.label)
+                fontWeight: emphasisColor != null
+                    ? _emphasizedFontWeight
+                    : utenIsStatusOrProgressColumn(column.key, column.label)
                     ? FontWeight.w700
                     : null,
               ),

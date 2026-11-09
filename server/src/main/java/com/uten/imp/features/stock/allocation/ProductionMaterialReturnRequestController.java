@@ -36,11 +36,11 @@ public class ProductionMaterialReturnRequestController {
     public Document cancel(@PathVariable UUID planId, @PathVariable UUID documentId, @RequestBody Cancel request) {
         return service.cancel(planId, documentId, request);
     }
-    /** 车间退料待仓库实收数(徽章来源 productionReturn): 与库存单据列表同一仓库范围(ADR-149, 调入仓)。 */
+    /** 车间退料待仓库实收数(徽章来源 productionReturn): 与入库任务中心及库存单据列表同一浏览范围
+     *  (ADR-149, 调入仓; currentForRead)。2026-11-08 起按会话主体浏览、不挂任务改写, 动作资格仍由方法权限把关。 */
     @GetMapping("/return-requests/warehouse/count")
-    @com.uten.imp.security.BusinessTaskRead
     @PreAuthorize("hasAuthority('stock_doc:view') and hasAuthority('stock_doc:approve')")
     public Map<String, Long> count(@RequestParam(required = false) UUID scopeWarehouseId) {
-        return Map.of("count", taskRowCounts.productionReturn(warehouseScopes.current(scopeWarehouseId)));
+        return Map.of("count", taskRowCounts.productionReturn(warehouseScopes.currentForRead(scopeWarehouseId)));
     }
 }

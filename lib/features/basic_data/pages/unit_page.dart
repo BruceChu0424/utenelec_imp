@@ -52,6 +52,7 @@ import '../widgets/master_inline_page_mixin.dart';
 import '../widgets/master_operation_history_panel.dart';
 import '../widgets/master_detail_sheet.dart';
 import '../widgets/master_edit_dialog.dart';
+import '../widgets/master_batch_progress.dart';
 import '../widgets/master_edit_owner.dart';
 import '../widgets/master_status_confirmation.dart';
 import '../widgets/master_batch_feedback.dart';
@@ -136,6 +137,9 @@ class _UnitPageState extends ConsumerState<UnitPage>
   bool _detailLoading = false;
   Set<String> _selectedUnitIds = {};
   bool _rowOpBusy = false;
+
+  /// 批量提交段进入进度弹窗时为 true：页面遮罩让位，避免双重遮罩。
+  bool _batchProgressOpen = false;
   int _queryEpoch = 0;
   final _operationOwners = <MasterEditOwner>{};
   MasterEditOwner? _busyOwner;
@@ -720,10 +724,21 @@ class _UnitPageState extends ConsumerState<UnitPage>
     required Map<String, String?> labels,
   }) async {
     _setOperationBusy(owner, true);
+    _batchProgressOpen = true;
     try {
-      final result = await owner.run(command);
+      // 整批一次请求提交，发出后无法撤回：不提供「取消」；弹窗路由登记给
+      // owner，身份/范围失效时按取消收尾。
+      final result = await runMasterBatchWithProgress(
+        context,
+        owner: owner,
+        title: '$action单位',
+        status: '正在$action',
+        detail: '${labels.length} 项',
+        command: command,
+      );
+      _batchProgressOpen = false;
       _setOperationBusy(owner, false);
-      if (!mounted || !owner.isCurrent) return;
+      if (!mounted || !owner.isCurrent || result == null) return;
       setState(
         () => _selectedUnitIds = {
           for (final row in result.results)
@@ -748,6 +763,7 @@ class _UnitPageState extends ConsumerState<UnitPage>
     } catch (_) {
       if (mounted && owner.isCurrent) context.appError('$action失败，请稍后重试');
     } finally {
+      _batchProgressOpen = false;
       _setOperationBusy(owner, false);
     }
   }
@@ -1012,7 +1028,7 @@ class _UnitPageState extends ConsumerState<UnitPage>
                 ),
               ),
             ),
-            if (_rowOpBusy)
+            if (_rowOpBusy && !_batchProgressOpen)
               const UtenBusyOverlay(showDoNotLeaveHint: false, title: '正在处理单位'),
           ],
         ),

@@ -14,9 +14,12 @@ import 'package:uten_imp/components/inputs/uten_date_field.dart';
 import 'package:uten_imp/components/inputs/uten_employee_picker.dart';
 import 'package:uten_imp/components/data_display/uten_totals_summary_bar.dart';
 import 'package:uten_imp/core/utils/china_datetime.dart';
+import 'package:uten_imp/core/theme/dark_theme.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
+import 'package:uten_imp/core/theme/uten_colors.dart';
 import 'package:uten_imp/core/theme/uten_control_theme.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
+import 'package:uten_imp/components/layout/uten_table_column_kit.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/widgets/warehouse_hierarchy_dropdown.dart';
 import 'package:uten_imp/core/network/api_client.dart';
@@ -194,6 +197,97 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+  // 2026-11-08 用户批注「加粗变红」：领料数量整列重点核对红字加粗(明暗主题
+  // 同 MasterDataTableView 口径)，同款生成的仓内可动用不连带变红。
+  for (final brightness in Brightness.values) {
+    testWidgets('领料数量列红字加粗、仓内可动用保持常规 ${brightness.name}', (tester) async {
+      await setUtenTestSurfaceSize(tester, const Size(1440, 1100));
+      addTearDown(() => setUtenTestSurfaceSize(tester, null));
+      final dark = brightness == Brightness.dark;
+      await tester.pumpWidget(
+        _app(
+          SubcontractOutboundFakeApi(),
+          theme: dark ? buildDarkTheme() : buildLightTheme(),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final grid = tester.widget<UtenEditableGrid<SubcontractOutboundTableRow>>(
+        find.byType(UtenEditableGrid<SubcontractOutboundTableRow>),
+      );
+      expect(
+        grid.columns.where((column) => column.emphasized).map((c) => c.key),
+        ['requested'],
+      );
+      // 按列 key 定位首行数据格，读实际绘制段落的样式(含格内 DefaultTextStyle)。
+      TextStyle painted(String columnKey, String text) {
+        final cell = find.byKey(ValueKey(('uten-grid-cell', columnKey))).first;
+        final paragraph = find.descendant(
+          of: find.descendant(of: cell, matching: find.text(text)),
+          matching: find.byType(RichText),
+        );
+        return tester.widget<RichText>(paragraph).text.style!;
+      }
+
+      final requested = painted('requested', '100 个');
+      expect(
+        requested.color,
+        dark ? UtenColors.errorOnDark : UtenColors.errorText,
+      );
+      expect(requested.fontWeight, FontWeight.w800);
+      final available = painted('stockAvailable', '500 个');
+      final scheme = Theme.of(
+        tester.element(find.byType(SubcontractOutboundDetailTable)),
+      ).colorScheme;
+      expect(available.color, scheme.onSurface);
+      expect(
+        available.fontWeight,
+        isNot(anyOf(FontWeight.w700, FontWeight.w800)),
+      );
+      expect(tester.takeException(), isNull);
+    });
+  }
+  testWidgets('固定领料数量列后横滚，冻结副本同样红字加粗', (tester) async {
+    await setUtenTestSurfaceSize(tester, const Size(1440, 1100));
+    addTearDown(() => setUtenTestSurfaceSize(tester, null));
+    final layout = _SavedDetailLayout(
+      _detailTableKey,
+      const PlatformTableLayout(order: ['requested'], pinned: {'requested'}),
+    );
+    await tester.pumpWidget(
+      _app(SubcontractOutboundFakeApi(), tableLayout: layout),
+    );
+    await tester.pumpAndSettle();
+    Iterable<Text> frozenCopies() {
+      final cells = find
+          .descendant(
+            of: find.byKey(const ValueKey(('uten-grid-cell', 'requested'))),
+            matching: find.text('100 个'),
+          )
+          .evaluate()
+          .toSet();
+      return find
+          .text('100 个')
+          .evaluate()
+          .where((element) => !cells.contains(element))
+          .map((element) => element.widget as Text);
+    }
+
+    expect(frozenCopies(), isEmpty, reason: '未横滚时只有原数据格');
+    tester
+        .widget<UtenFrozenLeadingColumn>(
+          find.byType(UtenFrozenLeadingColumn).first,
+        )
+        .horizontal
+        .jumpTo(240);
+    await tester.pumpAndSettle();
+    final copies = frozenCopies().toList();
+    expect(copies, hasLength(3), reason: '三行各有一份钉在左缘的只读快照');
+    for (final copy in copies) {
+      expect(copy.style?.color, UtenColors.errorText);
+      expect(copy.style?.fontWeight, FontWeight.w800);
+    }
+    expect(tester.takeException(), isNull);
+  });
   testWidgets(
     'partial subcontract selection never saves away unselected reservations',
     (tester) async {
@@ -963,6 +1057,7 @@ Widget _app(
   SubcontractOutboundFakeApi api, {
   Set<String> permissions = subcontractOutboundPermissions,
   bool productionTheme = false,
+  ThemeData? theme,
   List<String>? selectedItemIds,
   PlatformTableLayoutNotifier? tableLayout,
   TableColumnProjectionController? projection,
@@ -991,9 +1086,11 @@ Widget _app(
       ],
     ],
     child: MaterialApp(
-      theme: productionTheme
-          ? buildLightTheme().copyWith(platform: TargetPlatform.windows)
-          : null,
+      theme:
+          theme ??
+          (productionTheme
+              ? buildLightTheme().copyWith(platform: TargetPlatform.windows)
+              : null),
       home: projection == null
           ? home
           : TableColumnProjectionScope(controller: projection, child: home),

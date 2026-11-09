@@ -13,6 +13,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
+import '../../../components/feedback/uten_progress_dialog.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
@@ -141,6 +142,12 @@ class _SalesShipmentTaskWorkbenchState
   final Set<String> _selectedIds = <String>{};
   final Map<String, SalesDocListItem> _selectedById = {};
   bool _busyDecision = false;
+
+  /// 账号/权限/服务器切换（exportContextEpoch）的失效源：批量进度弹窗据此收尾。
+  final _ownerChanges = ValueNotifier<int>(0);
+
+  /// 批量提交段进入进度弹窗时为 true：页面遮罩只盖认领核对段，避免双重遮罩。
+  bool _batchProgressOpen = false;
   TaskClaimSession? _batchClaim;
 
   bool get _isFinance =>
@@ -196,6 +203,7 @@ class _SalesShipmentTaskWorkbenchState
     super.initState();
     ref.listenManual(exportContextEpochProvider, (previous, next) {
       if (!mounted || previous == next) return;
+      _ownerChanges.value++;
       setState(() {
         ++_requestGeneration;
         _result = null;
@@ -255,6 +263,7 @@ class _SalesShipmentTaskWorkbenchState
     final completion = widget.refreshCompletion;
     if (completion != null && !completion.isCompleted) completion.complete();
     _batchClaim?.releaseAll().ignore();
+    _ownerChanges.dispose();
     super.dispose();
   }
 
@@ -565,7 +574,12 @@ class _SalesShipmentTaskWorkbenchState
   Future<void> _releaseBatchClaim(TaskClaimSession claim) async {
     await claim.releaseAll();
     if (identical(_batchClaim, claim)) _batchClaim = null;
-    if (mounted) setState(() => _busyDecision = false);
+    if (mounted) {
+      setState(() {
+        _busyDecision = false;
+        _batchProgressOpen = false;
+      });
+    }
   }
 
   Future<void> _approveSelected() async {
@@ -757,36 +771,59 @@ class _SalesShipmentTaskWorkbenchState
         }
         return;
       }
+      if (!mounted) return;
       final repo = ref.read(salesRepositoryProvider(SalesDocType.shipment));
-      final decisions = <ShipmentFinanceBatchDecision>[];
-      for (final id in selectedIds) {
-        final info = await repo.financeAuditInfo(id);
-        if (!current() ||
-            !_canDecideFinance(forApprove: forApprove) ||
-            !_readableSnapshot(info) ||
-            !info.allows(forApprove ? 'APPROVE' : 'REJECT')) {
-          if (mounted) {
-            context.appWarning('部分出货单的内容或处理权已变化，请刷新后重新核对');
+      setState(() => _batchProgressOpen = true);
+      // 一个弹窗走完「逐单核对快照」与「整批提交」：整批一次请求，发出后无法撤回，
+      // 不提供「取消」；账号/权限/服务器切换时弹窗收尾，旧结果不再呈现。
+      final submitted = await showUtenProgress<bool>(
+        context,
+        title: forApprove ? '批量放行出货单' : '批量退回出货单',
+        icon: forApprove
+            ? Icons.check_circle_outline_rounded
+            : Icons.undo_rounded,
+        initialStatus: '正在核对所选单据',
+        cancellable: false,
+        invalidation: _ownerChanges,
+        action: (progress) async {
+          final decisions = <ShipmentFinanceBatchDecision>[];
+          for (var i = 0; i < selectedIds.length; i++) {
+            progress.count(i, selectedIds.length, status: '正在核对所选单据');
+            final id = selectedIds[i];
+            final info = await repo.financeAuditInfo(id);
+            if (!current() ||
+                !_canDecideFinance(forApprove: forApprove) ||
+                !_readableSnapshot(info) ||
+                !info.allows(forApprove ? 'APPROVE' : 'REJECT')) {
+              if (mounted) {
+                context.appWarning('部分出货单的内容或处理权已变化，请刷新后重新核对');
+              }
+              return false;
+            }
+            decisions.add(
+              ShipmentFinanceBatchDecision(
+                id: id,
+                expectedRevision: info.reviewRevision!,
+                expectedContentHash: info.contentHash!,
+                expectedClaimId: claim.claimIdFor(
+                  'SALES_SHIPMENT_FINANCE_AUDIT',
+                  id,
+                )!,
+              ),
+            );
           }
-          return;
-        }
-        decisions.add(
-          ShipmentFinanceBatchDecision(
-            id: id,
-            expectedRevision: info.reviewRevision!,
-            expectedContentHash: info.contentHash!,
-            expectedClaimId: claim.claimIdFor(
-              'SALES_SHIPMENT_FINANCE_AUDIT',
-              id,
-            )!,
-          ),
-        );
-      }
-      if (!current()) return;
-      final scope = await repo.api.captureRequestScope(isCurrent: current);
-      await scope.run(() => action(decisions));
-      await scope.verify();
-      if (!mounted || !current()) return;
+          if (!current()) return false;
+          progress.stage(
+            forApprove ? '正在提交批量放行' : '正在提交批量退回',
+            detail: '${decisions.length} 张',
+          );
+          final scope = await repo.api.captureRequestScope(isCurrent: current);
+          await scope.run(() => action(decisions));
+          await scope.verify();
+          return true;
+        },
+      );
+      if (submitted != true || !mounted || !current()) return;
       context.appSuccess(okMsg);
       setState(_clearSelection);
       refreshBadges(ref);
@@ -833,7 +870,7 @@ class _SalesShipmentTaskWorkbenchState
           children: [
             main,
             // 2026-09-12 口径：批量提交等一段必须屏幕中央加载动画（跟随网络段）。
-            if (_busyDecision)
+            if (_busyDecision && !_batchProgressOpen)
               const Positioned.fill(
                 child: UtenBusyOverlay(title: '正在提交批量审核决定'),
               ),
@@ -1156,7 +1193,6 @@ class _SalesShipmentTaskWorkbenchState
           type: UtenButtonType.danger,
           size: UtenButtonSize.large,
           icon: Icons.reply_rounded,
-          isLoading: _busyDecision,
           onPressed: issue == null && !_busyDecision ? _rejectSelected : null,
           onDisabledTap: issue == null ? null : () => context.appWarning(issue),
           child: Text('批量退回(${selectedIds.length})'),
@@ -1166,7 +1202,6 @@ class _SalesShipmentTaskWorkbenchState
           key: const Key('finance-shipment-batch-approve'),
           size: UtenButtonSize.large,
           icon: Icons.fact_check_outlined,
-          isLoading: _busyDecision,
           onPressed: issue == null && !_busyDecision ? _approveSelected : null,
           onDisabledTap: issue == null ? null : () => context.appWarning(issue),
           child: Text('批量放行(${selectedIds.length})'),

@@ -268,6 +268,9 @@ class _SyntheticApi extends ApiClient {
     String path, {
     Object? body,
     Map<String, dynamic>? query,
+    CancelToken? cancelToken,
+    ProgressCallback? onReceiveProgress,
+    Map<String, String>? headers,
   }) async {
     final parts = path.split('/');
     if (parts.length != 4 ||

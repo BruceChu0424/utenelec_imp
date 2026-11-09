@@ -105,6 +105,92 @@ void main() {
     expect(container.read(goodsFacetRepositoryProvider), isNull);
   });
   test(
+    'assembly buckets keep server labels and travel as the hasBom list, facet and candidate parameter',
+    () async {
+      final facets = GoodsFacets.fromJson({
+        'hasBom': [
+          {'value': 'true', 'count': 5, 'label': '有组装信息'},
+          {'value': 'false', 'count': 0, 'label': '无组装信息'},
+        ],
+        'nullCounts': {'series': 1},
+      });
+      expect(facets.fields['hasBom']!.map((bucket) => bucket.value), [
+        'true',
+        'false',
+      ]);
+      expect(facets.fields['hasBom']!.map((bucket) => bucket.display), [
+        '有组装信息',
+        '无组装信息',
+      ]);
+      expect(facets.fields['hasBom']!.map((bucket) => bucket.count), [5, 0]);
+      expect(facets.nullCounts.containsKey('hasBom'), isFalse);
+      // Older servers omit the key; the header simply has no candidates.
+      expect(GoodsFacets.fromJson({}).fields['hasBom'], isEmpty);
+
+      final requests = <RequestOptions>[];
+      final dio = Dio(BaseOptions(baseUrl: 'http://localhost/api'));
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (options, handler) {
+            requests.add(options);
+            handler.resolve(
+              Response(
+                requestOptions: options,
+                statusCode: 200,
+                data: options.path.endsWith('facet-values')
+                    ? {
+                        'items': [
+                          {'value': 'true', 'count': 5, 'label': '有组装信息'},
+                        ],
+                        'hasMore': false,
+                      }
+                    : options.path.endsWith('facets')
+                    ? <String, dynamic>{}
+                    : {
+                        'items': <Map<String, dynamic>>[],
+                        'total': 0,
+                        'page': 1,
+                        'size': 20,
+                        'totalPages': 1,
+                      },
+              ),
+            );
+          },
+        ),
+      );
+      final api = ApiClient(dio);
+      final page = await GoodsFacetRepository(api).values(
+        field: 'hasBom',
+        search: '有',
+        categoryId: 'finished',
+        filters: {'series': 'S1', 'hasBom': 'false'},
+      );
+      expect(requests.last.path, endsWith('/master/goods/facet-values'));
+      expect(requests.last.queryParameters['field'], 'hasBom');
+      expect(requests.last.queryParameters['search'], '有');
+      expect(requests.last.queryParameters['series'], 'S1');
+      expect(requests.last.queryParameters['hasBom'], 'false');
+      expect(page.items.single.display, '有组装信息');
+
+      await DioGoodsRepository(
+        api,
+      ).list('finished', filters: {'hasBom': 'true'});
+      expect(requests.last.path, endsWith('/master/goods'));
+      expect(requests.last.queryParameters['hasBom'], 'true');
+      expect(
+        requests.last.queryParameters.keys.where(
+          (key) => key.startsWith('search.'),
+        ),
+        isEmpty,
+      );
+      await DioGoodsRepository(
+        api,
+      ).facets('finished', filters: {'hasBom': 'false'});
+      expect(requests.last.path, endsWith('/master/goods/facets'));
+      expect(requests.last.queryParameters['hasBom'], 'false');
+    },
+  );
+  test(
     'candidate search carries authorized list scope and a separate candidate keyword',
     () async {
       late RequestOptions request;

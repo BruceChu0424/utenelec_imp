@@ -621,7 +621,8 @@ public class FulfillmentWorkbenchQueryService {
     }
 
     /** Same row source, filters, ordering and document fences as the on-screen purchase table. */
-    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ,
+            timeout = com.uten.imp.common.export.ExportTransactions.TIMEOUT_SECONDS)
     public ExportPayload exportPurchase(
             String status, String keyword, String exception, LocalDate dateFrom, LocalDate dateTo,
             FulfillmentWorkbenchTableQuery table, int maxRows) {
@@ -629,7 +630,8 @@ public class FulfillmentWorkbenchQueryService {
     }
 
     /** Only the item-backed progress/history tables share this projection; pending draw tasks have their own source. */
-    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ,
+            timeout = com.uten.imp.common.export.ExportTransactions.TIMEOUT_SECONDS)
     public ExportPayload exportSubcontract(
             String status, String keyword, String exception, LocalDate dateFrom, LocalDate dateTo,
             FulfillmentWorkbenchTableQuery table, int maxRows) {

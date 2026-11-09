@@ -659,6 +659,14 @@ void main() {
     expect(find.text('申请 LQ20260927000001'), findsWidgets);
     expect(source.value(request), '—');
     expect(source.value(draw), 'LQ20260927000001');
+    // 服务端分页表：当页行就地筛选不成立，批次列不声明 filterFromRows，
+    // 也没有服务端批次桶，表头保持纯标签（不渲染筛选入口）。
+    expect(source.filterFromRows, isFalse);
+    expect(table.facets.containsKey('drawBatchNo'), isFalse);
+    expect(
+      find.byKey(const ValueKey('master-column-filter-drawBatchNo')),
+      findsNothing,
+    );
     expect(tester.takeException(), isNull);
   });
 

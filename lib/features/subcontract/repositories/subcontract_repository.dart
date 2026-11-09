@@ -181,9 +181,11 @@ class SubcontractRepository {
     Set<String> goodsIds,
   ) => loadProcurementTerms(api, '$_base/last-terms', goodsIds);
 
-  /// 订货明细行「仓库库存数量」：按货品批量拉取颜色分桶的即时库存（参与核算仓
-  /// 现存量，基本单位；无余额桶不返回，调用方按 0 显示）。返回
-  /// `'goodsId|colorId'`（无色行 colorId 为空串）→ 含单位的展示文本。
+  /// 订货明细行「仓库库存数量」：按货品批量拉取（货品基本单位，值为含单位的展示
+  /// 文本）。有可发外直属物料(BOM)的委外件 = 直属物料在参与核算仓的现存量折算的
+  /// 可委外数量（各物料取短板，与成品颜色无关），键 `'goodsId|*'`；没有 BOM 的
+  /// 货品回退自身现存量按颜色分桶，键 `'goodsId|colorId'`（无色行 colorId 为空串），
+  /// 无余额桶不返回。取值统一用 [goodsStockTextOf]，查不到由调用方按 0 显示。
   Future<Map<String, String>> goodsStockTexts(Set<String> goodsIds) async {
     if (goodsIds.isEmpty) return const {};
     final rows = await api.getList(
@@ -192,12 +194,21 @@ class SubcontractRepository {
     );
     return {
       for (final row in rows)
-        if (row['goodsId'] is String)
-          '${row['goodsId']}|${row['colorId'] as String? ?? ''}': _stockText(
-            row,
-          ),
+        if (row['goodsId'] is String) _stockKey(row): _stockText(row),
     };
   }
+
+  /// 从 [goodsStockTexts] 结果取某行的展示文本：先按货品×颜色精确桶（无 BOM 的自身
+  /// 现存量），再取该货品与颜色无关的 BOM 折算值；都没有返回 null。
+  static String? goodsStockTextOf(
+    Map<String, String> texts,
+    String goodsId,
+    String? colorId,
+  ) => texts['$goodsId|${colorId ?? ''}'] ?? texts['$goodsId|*'];
+
+  static String _stockKey(Map<String, dynamic> row) => row['basis'] == 'BOM_KIT'
+      ? '${row['goodsId']}|*'
+      : '${row['goodsId']}|${row['colorId'] as String? ?? ''}';
 
   static String _stockText(Map<String, dynamic> row) {
     final qty = receiptRecordedDecimal(row, 'qty');

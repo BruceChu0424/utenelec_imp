@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_dialog.dart';
+import '../../../components/feedback/uten_progress_dialog.dart';
 import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_input.dart';
@@ -1027,8 +1028,19 @@ class _ConfirmationDetailState extends ConsumerState<_ConfirmationDetail> {
     if (!_current || _busy) return;
     setState(() => _busy = true);
     try {
-      final bytes = await _api.postForBytes('$_path/${widget.id}/file');
-      if (_current) {
+      // 原确认件下载进统一进度弹窗: 字节进度、可立即取消; 取消则不落盘。
+      final bytes = await showUtenProgress<Uint8List>(
+        context,
+        title: '下载确认文件',
+        icon: Icons.download_outlined,
+        initialStatus: '正在下载',
+        initialDetail: _data?['file_name']?.toString(),
+        action: (progress) => _api.postForBytes(
+          '$_path/${widget.id}/file',
+          onReceiveProgress: progress.receiving('正在下载'),
+        ),
+      );
+      if (bytes != null && _current) {
         await saveBytes(
           bytes,
           '${_data?['file_name'] ?? 'confirmation.bin'}',

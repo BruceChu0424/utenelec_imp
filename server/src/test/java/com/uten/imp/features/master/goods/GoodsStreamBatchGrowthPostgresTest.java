@@ -45,16 +45,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class GoodsStreamBatchGrowthPostgresTest {
     /**
-     * GoodsService.list 的 BOM 存在性 JPQL 在 Hibernate 下的 SQL 形态：两个外键都是 NOT NULL，
-     * 路径上的隐式内连接与原查询逐行等价。只是镜像，生产 JPQL 一变就由
+     * GoodsService.list 的 BOM 存在性 JPQL 在 Hibernate 下的 SQL 形态：组件外键 NOT NULL，
+     * 子查询里的隐式内连接与原查询逐行等价。只是镜像，生产 JPQL 一变就由
      * {@link #requireBomPresenceJpqlUnchanged()} 拦下，必须同步改写。
      */
     private static final String BOM_PRESENCE_SQL = """
-            SELECT DISTINCT b.goods_id FROM goods_bom_items b
-            JOIN goods g ON g.id = b.goods_id
-            JOIN goods c ON c.id = b.component_goods_id
-            WHERE b.goods_id IN (:ids) AND b.is_deleted = false
-              AND g.auto_created = false AND c.auto_created = false
+            SELECT p.id FROM goods p
+            WHERE p.id IN (:ids) AND p.auto_created = false
+              AND EXISTS (SELECT 1 FROM goods_bom_items b
+                          JOIN goods c ON c.id = b.component_goods_id
+                          WHERE b.goods_id = p.id AND b.is_deleted = false
+                            AND c.auto_created = false)
             """;
     private static final Set<String> GROWING_TABLES = Set.of("goods", "goods_bom_items", "stock_balances");
     private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:16-alpine")
@@ -82,6 +83,8 @@ class GoodsStreamBatchGrowthPostgresTest {
                 )""");
         jdbc.execute("CREATE INDEX idx_goods_bom_goods ON goods_bom_items(goods_id)");               // V79
         jdbc.execute("CREATE INDEX idx_goods_bom_component ON goods_bom_items(component_goods_id)");  // V79
+        jdbc.execute("CREATE UNIQUE INDEX uq_goods_bom_component ON goods_bom_items(goods_id, component_goods_id)"
+                + " WHERE is_deleted = false");                                                        // V79
         jdbc.execute("CREATE INDEX idx_gbi_where_used_active ON goods_bom_items(component_goods_id, goods_id)"
                 + " INCLUDE (qty) WHERE is_deleted = FALSE");                                          // V186
         jdbc.execute("""
@@ -187,7 +190,10 @@ class GoodsStreamBatchGrowthPostgresTest {
             String bomPlan = db.queryForObject("EXPLAIN (ANALYZE,BUFFERS,FORMAT JSON) " + BOM_PRESENCE_SQL, ids, String.class);
             String stockPlan = db.queryForObject("EXPLAIN (ANALYZE,BUFFERS,FORMAT JSON) " + GoodsStockQuantities.SQL, ids, String.class);
             // 小体量下顺序扫描小目录做哈希连接是合法的代价选择；体量到 10 万起，逐批读必须按本批 id
-            // 走索引，否则 331 批 × 全表扫描随目录线性变慢。
+            // 走索引，否则 331 批 × 全表扫描随目录线性变慢。本夹具货品只有两列、每个货品一条在用 BOM，
+            // 复现不了生产库(行宽约 458 字节、平均 5.5 条 BOM)的计划翻转：2026-11-08 旧的两表 JOIN
+            // 写法在 3.6 万货品的库上规划成两次整表扫描 goods 的哈希连接，每批 55~116 ms，全量导出
+            // 超出事务截止时间，而本守卫在此夹具下照样通过；改用按父件 EXISTS 后同库每批约 1.3 ms。
             if (history >= 100_000) {
                 assertTrue(seqScanned(bomPlan).isEmpty(), "BOM 存在性计划不得顺序扫描大表: " + bomPlan);
                 assertTrue(seqScanned(stockPlan).isEmpty(), "库存量计划不得顺序扫描大表: " + stockPlan);
@@ -230,9 +236,11 @@ class GoodsStreamBatchGrowthPostgresTest {
     private static void requireBomPresenceJpqlUnchanged() throws Exception {
         String source = Files.readString(Path.of(
                 "src/main/java/com/uten/imp/features/master/goods/GoodsService.java")).replaceAll("\\s+", " ");
-        assertTrue(source.contains("select distinct b.goods.id from GoodsBomItem b"
-                        + " where b.goods.id in :ids and b.deleted = false"
-                        + " and b.goods.autoCreated = false and b.component.autoCreated = false"),
+        assertTrue(source.contains("select p.id from Goods p"
+                        + " where p.id in :ids and p.autoCreated = false"
+                        + " and exists (select 1 from GoodsBomItem b"
+                        + " where b.goods = p and b.deleted = false"
+                        + " and b.component.autoCreated = false)"),
                 "GoodsService.list 的 BOM 存在性 JPQL 已变化，须同步改写 BOM_PRESENCE_SQL");
     }
 }

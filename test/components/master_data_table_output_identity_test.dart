@@ -43,6 +43,9 @@ class _OutputApi extends ApiClient {
     String path, {
     Object? body,
     Map<String, dynamic>? query,
+    CancelToken? cancelToken,
+    ProgressCallback? onReceiveProgress,
+    Map<String, String>? headers,
   }) async {
     bodies.add(Map<String, dynamic>.from(body! as Map));
     queries.add({...?query});

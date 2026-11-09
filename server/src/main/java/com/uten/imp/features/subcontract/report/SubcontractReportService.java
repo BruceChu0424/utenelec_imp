@@ -968,7 +968,7 @@ public class SubcontractReportService {
      * 列定义映射 ReportColumn→ExportColumn（剥离 width）。report 取值与 GET 路径一致：
      * {RECEIPT|RETURN|MATERIAL_ISSUE|MATERIAL_RETURN}/{detail|summary} 或独立 in-out-status。
      */
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, timeout = com.uten.imp.common.export.ExportTransactions.TIMEOUT_SECONDS)
     public ExportPayload export(String report, Map<String, String> p, String sort, String order) {
         String billNo = p == null ? null : p.get("billNo");
         UUID supplierId = ReportQueryKit.parseUuid(p == null ? null : p.get("supplierId"));

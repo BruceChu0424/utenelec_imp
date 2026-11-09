@@ -7,9 +7,9 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_app_bar_action_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_card.dart';
-import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/feedback/uten_progress_dialog.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsible_section.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
@@ -62,10 +62,11 @@ class _WarehouseStockBatchOutboundPageState
   final Map<String, Set<String>> _originalItemIds = {};
   bool _loading = true;
   bool _saving = false;
-  bool _confirming = false;
   bool _stopped = false;
   int _loadEpoch = 0;
   String? _error;
+  // 会话/身份失效信号：批量进度弹窗接 invalidation，守卫触发时按取消收尾。
+  final ValueNotifier<int> _taskInvalidation = ValueNotifier<int>(0);
   bool get _inbound => widget.docType == StockDocType.otherIn;
   String get _confirmLabel =>
       _inbound ? '确认批量入库' : _l10n.warehouseStockOutboundConfirm;
@@ -102,6 +103,7 @@ class _WarehouseStockBatchOutboundPageState
   @override
   void onWarehouseTaskInvalidated() {
     ++_loadEpoch;
+    _taskInvalidation.value++;
     if (!mounted) return;
     setState(() {
       _documents = [];
@@ -115,10 +117,15 @@ class _WarehouseStockBatchOutboundPageState
       _incompleteDocuments.clear();
       _loading = false;
       _saving = false;
-      _confirming = false;
       _stopped = true;
       _error = '账号、服务器或权限已变化，请重新进入核对';
     });
+  }
+
+  @override
+  void dispose() {
+    _taskInvalidation.dispose();
+    super.dispose();
   }
 
   bool _eligible(StockDocDetail d) =>
@@ -351,7 +358,6 @@ class _WarehouseStockBatchOutboundPageState
     // Lock selection and navigation before opening the second confirmation.
     setState(() {
       _saving = true;
-      _confirming = true;
     });
     try {
       final scope = await captureWarehouseTaskScope();
@@ -367,72 +373,107 @@ class _WarehouseStockBatchOutboundPageState
               : _l10n.warehouseStockOutboundConfirmMessage(targets.length),
         ),
       );
-      if (confirmed != true || !warehouseTaskIsCurrent) return;
+      if (confirmed != true || !mounted || !warehouseTaskIsCurrent) return;
       scope.checkCurrent();
-      setState(() => _confirming = false);
       final repo = ref.read(stockDocRepositoryProvider(widget.docType));
-      for (final target in targets) {
-        var dispatched = false;
-        try {
-          if (!_canApprove) throw StateError('Permission changed');
-          scope.checkCurrent();
-          final result = await scope.run(() {
-            dispatched = true;
-            return repo.approveReviewed(
-              target.id,
-              expectedReviewToken: _reviewTokens[target.id]!,
-              itemIds: widget.selectedItemIds == null
-                  ? null
-                  : target.items
-                        .map((item) => item.id)
-                        .whereType<String>()
-                        .toList(),
+      var cancelled = false;
+      // 逐张办理：afterCurrent 取消＝当前这张办完即停，已办结果照常保留；
+      // 会话/身份失效时弹窗按取消收尾，旧结果不再呈现。
+      await showUtenProgress<void>(
+        context,
+        title: _confirmLabel,
+        icon: Icons.outbound_outlined,
+        initialStatus: _inbound ? '正在确认入库' : '正在办理出库',
+        initialDetail: '${targets.length} 张',
+        cancelMode: UtenProgressCancel.afterCurrent,
+        invalidation: _taskInvalidation,
+        action: (progress) async {
+          var done = 0;
+          for (final target in targets) {
+            if (progress.isCancelled) {
+              cancelled = true;
+              break;
+            }
+            if (!warehouseTaskIsCurrent) return;
+            progress.count(
+              done,
+              targets.length,
+              status: _inbound ? '正在确认入库' : '正在办理出库',
             );
-          });
-          scope.checkCurrent();
-          if (result.status != 1 || result.id != target.id) {
-            throw StateError('Unexpected result');
+            var dispatched = false;
+            try {
+              if (!_canApprove) throw StateError('Permission changed');
+              scope.checkCurrent();
+              final result = await scope.run(() {
+                dispatched = true;
+                return repo.approveReviewed(
+                  target.id,
+                  expectedReviewToken: _reviewTokens[target.id]!,
+                  itemIds: widget.selectedItemIds == null
+                      ? null
+                      : target.items
+                            .map((item) => item.id)
+                            .whereType<String>()
+                            .toList(),
+                );
+              });
+              scope.checkCurrent();
+              if (result.status != 1 || result.id != target.id) {
+                throw StateError('Unexpected result');
+              }
+              if (!warehouseTaskIsCurrent) return;
+              setState(() {
+                _doneIds.add(target.id);
+                _selectedIds.remove(target.id);
+              });
+              done++;
+            } catch (e) {
+              if (!warehouseTaskIsCurrent) return;
+              setState(() {
+                final definite =
+                    e is ApiException &&
+                    ((e.httpStatus != null &&
+                            const [
+                              400,
+                              403,
+                              404,
+                              409,
+                              422,
+                            ].contains(e.httpStatus) &&
+                            e.hasResponseCode) ||
+                        e.code == 'CONFLICT');
+                if (dispatched && !definite) {
+                  _pendingVerification.add(target.id);
+                }
+                _stopped = true;
+                _results[target.id] =
+                    e is ApiException &&
+                        e.httpStatus != null &&
+                        e.httpStatus! < 500
+                    ? e.message
+                    : e is ApiException && e.code == 'CONFLICT'
+                    ? e.message
+                    : _inbound
+                    ? '入库结果尚未确认，请刷新原单核对'
+                    : _l10n.warehouseOutboundBatchUnknown;
+              });
+              break;
+            }
           }
-          if (!warehouseTaskIsCurrent) return;
-          setState(() {
-            _doneIds.add(target.id);
-            _selectedIds.remove(target.id);
-          });
-        } catch (e) {
-          if (!warehouseTaskIsCurrent) return;
-          setState(() {
-            final definite =
-                e is ApiException &&
-                ((e.httpStatus != null &&
-                        const [
-                          400,
-                          403,
-                          404,
-                          409,
-                          422,
-                        ].contains(e.httpStatus) &&
-                        e.hasResponseCode) ||
-                    e.code == 'CONFLICT');
-            if (dispatched && !definite) _pendingVerification.add(target.id);
-            _stopped = true;
-            _results[target.id] =
-                e is ApiException && e.httpStatus != null && e.httpStatus! < 500
-                ? e.message
-                : e is ApiException && e.code == 'CONFLICT'
-                ? e.message
-                : _inbound
-                ? '入库结果尚未确认，请刷新原单核对'
-                : _l10n.warehouseOutboundBatchUnknown;
-          });
-          break;
-        }
-      }
+        },
+      );
       if (!mounted || !warehouseTaskIsCurrent) return;
       bumpListRefresh(ref, widget.docType.refreshKey);
       invalidateWarehouseTaskCounts(ref);
       if (_stopped) {
         context.appWarning(
           _inbound ? '本批入库已暂停，请核对未完成单据' : _l10n.warehouseOutboundBatchStopped,
+        );
+      } else if (cancelled) {
+        context.appInfo(
+          _inbound
+              ? '已入库 ${_doneIds.length} 张，已按要求停止，其余继续保留'
+              : '已出库 ${_doneIds.length} 张，已按要求停止，其余继续保留',
         );
       } else {
         context.appSuccess(
@@ -450,10 +491,7 @@ class _WarehouseStockBatchOutboundPageState
       }
     } finally {
       if (mounted) {
-        setState(() {
-          _saving = false;
-          _confirming = false;
-        });
+        setState(() => _saving = false);
       }
     }
   }
@@ -595,8 +633,6 @@ class _WarehouseStockBatchOutboundPageState
                                                 'warehouse-stock-batch-outbound-confirm',
                                               ),
                                               icon: Icons.outbound_outlined,
-                                              isLoading:
-                                                  _saving && !_confirming,
                                               type: UtenButtonType.danger,
                                               size: UtenButtonSize.large,
                                               onPressed:
@@ -616,14 +652,6 @@ class _WarehouseStockBatchOutboundPageState
                   ),
                 ),
               ),
-              if (_saving && !_confirming)
-                Positioned.fill(
-                  child: UtenBusyOverlay(
-                    title: _inbound
-                        ? '正在确认入库'
-                        : l10n.warehouseStockOutboundProcessing,
-                  ),
-                ),
             ],
           ),
         ),

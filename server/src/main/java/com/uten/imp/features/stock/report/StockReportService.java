@@ -395,7 +395,7 @@ public class StockReportService {
      * <p>白名单：kind 仅认 {@code detail}/{@code summary}（switch default 抛错）；docType 走
      * {@link #normalizeDocType}（命中 {@link #DOC_TYPES} 集合，防 SQL 注入）。过滤参数化（{@link WhereBuilder}）。
      */
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, timeout = com.uten.imp.common.export.ExportTransactions.TIMEOUT_SECONDS)
     public ExportPayload export(String report, Map<String, String> p, String sort, String order) {
         if (report == null || report.isBlank()) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "请指定要导出的报表");

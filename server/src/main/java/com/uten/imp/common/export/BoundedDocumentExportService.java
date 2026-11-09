@@ -21,7 +21,7 @@ public class BoundedDocumentExportService {
     private final WorkbookDownloadService protection;
     private final ExportDocumentProjectionService projections;
 
-    @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
+    @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ,timeout=ExportTransactions.TIMEOUT_SECONDS)
     public byte[] build(String format,String password,TableColumnProjection projection,
                         String section,String scope,Runnable readSource) {
         if(!"pdf".equals(format)&&!"xlsx".equals(format))throw new ApiException(ErrorCode.VALIDATION_FAILED,"导出格式无效");

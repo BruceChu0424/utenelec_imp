@@ -22,7 +22,10 @@ abstract interface class PayrollRepository {
   });
   Future<PayrollSlip> getSlip(String id);
   Future<PayrollSlip?> markViewed(String id);
-  Future<Uint8List> downloadSlip(String id);
+  Future<Uint8List> downloadSlip(
+    String id, {
+    void Function(int received, int total)? onReceiveProgress,
+  });
 
   Future<PagedResult<PayrollBatch>> listBatches({
     int page = 1,
@@ -97,8 +100,13 @@ class DioPayrollRepository implements PayrollRepository {
   }
 
   @override
-  Future<Uint8List> downloadSlip(String id) =>
-      _api.downloadBytes('$_slips/$id/download');
+  Future<Uint8List> downloadSlip(
+    String id, {
+    void Function(int received, int total)? onReceiveProgress,
+  }) => _api.downloadBytes(
+    '$_slips/$id/download',
+    onReceiveProgress: onReceiveProgress,
+  );
 
   @override
   Future<PagedResult<PayrollBatch>> listBatches({

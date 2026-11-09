@@ -14,6 +14,7 @@ import 'package:uten_imp/components/layout/uten_page_layout.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
+import '../../../components/feedback/uten_progress_dialog.dart';
 import '../../../shared/models/retained_async_page.dart';
 import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../shared/models/paged_result.dart';
@@ -108,11 +109,14 @@ class _ExpenseApprovalListPageState
 
   /// 批量审批进行中（防并发 + 按钮加载态）。
   bool _batchBusy = false;
-  bool _batchSending = false;
   bool _refreshing = false;
   bool _queueReady = true;
   int _queueGeneration = 0;
   bool _queueListenerBound = false;
+
+  /// 身份/权限/范围失效（_retireSelection 的旁路）：批量进度弹窗据此收尾，
+  /// 让旧批量的迟到结果不再呈现。
+  final _identityChanges = ValueNotifier<int>(0);
 
   @override
   void initState() {
@@ -124,6 +128,12 @@ class _ExpenseApprovalListPageState
     ref.listenManual(readScopeRevisionProvider, (previous, next) {
       if (previous != next) _retireSelection();
     });
+  }
+
+  @override
+  void dispose() {
+    _identityChanges.dispose();
+    super.dispose();
   }
 
   @override
@@ -173,11 +183,11 @@ class _ExpenseApprovalListPageState
     if (!mounted) return;
     ++_selectionGeneration;
     ++_operationGeneration;
+    _identityChanges.value++;
     void clear() {
       _selectedIds = {};
       _selectedClaims.clear();
       _batchBusy = false;
-      _batchSending = false;
     }
 
     if (_selectedIds.isNotEmpty || _batchBusy) {
@@ -537,7 +547,7 @@ class _ExpenseApprovalListPageState
       body: Stack(
         children: [
           body,
-          if (_batchSending || _refreshing)
+          if (_refreshing)
             const UtenBusyOverlay(title: '正在处理报销', showDoNotLeaveHint: false),
         ],
       ),
@@ -646,7 +656,6 @@ class _ExpenseApprovalListPageState
           type: UtenButtonType.success,
           size: UtenButtonSize.large,
           icon: Icons.check_circle_outline_rounded,
-          isLoading: _batchSending,
           onPressed: selectedIds.isNotEmpty && !_batchBusy
               ? () => _batchApprove(Set<String>.of(selectedIds))
               : null,
@@ -657,7 +666,6 @@ class _ExpenseApprovalListPageState
         type: UtenButtonType.danger,
         size: UtenButtonSize.large,
         icon: Icons.cancel_outlined,
-        isLoading: _batchSending,
         onPressed: selectedIds.isNotEmpty && !_batchBusy
             ? () => _batchReject(Set<String>.of(selectedIds))
             : null,
@@ -774,20 +782,34 @@ class _ExpenseApprovalListPageState
             return null;
           }
           attempted = true;
-          setState(() => _batchSending = true);
-          return approve
-              ? repository.approveBatch(ids, expectedVersions: versions)
-              : repository.rejectBatch(ids, reason, expectedVersions: versions);
+          if (!mounted) return null;
+          // 整批一次请求，发出后无法撤回：不提供「取消」。
+          return showUtenProgress<int?>(
+            context,
+            title: approve ? '批量通过报销' : '批量驳回报销',
+            icon: approve
+                ? Icons.check_circle_outline_rounded
+                : Icons.cancel_outlined,
+            initialStatus: approve ? '正在批量通过' : '正在批量驳回',
+            initialDetail: '${ids.length} 单',
+            cancellable: false,
+            invalidation: _identityChanges,
+            action: (_) => approve
+                ? repository.approveBatch(ids, expectedVersions: versions)
+                : repository.rejectBatch(
+                    ids,
+                    reason,
+                    expectedVersions: versions,
+                  ),
+          );
         },
       );
       if (!mounted || !current() || processed == null) return;
-      setState(() => _batchSending = false);
       context.appSuccess(
         approve ? '已通过 $processed 单报销' : '已驳回 $processed 单报销，等待申请人修订后重新提交',
       );
     } catch (error) {
       if (mounted && current()) {
-        setState(() => _batchSending = false);
         context.appApiError(error);
       }
     } finally {
@@ -795,7 +817,6 @@ class _ExpenseApprovalListPageState
       if (mounted && operation == _operationGeneration) {
         setState(() {
           _batchBusy = false;
-          _batchSending = false;
           if (attempted) {
             ++_selectionGeneration;
             _selectedIds = {};

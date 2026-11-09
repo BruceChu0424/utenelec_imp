@@ -582,11 +582,25 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     }
 
     /**
-     * 委外订货单行级「仓库库存数量」(/goods-stock 返回体): 按货品×颜色聚合的即时库存,
-     * 口径与货品资料「库存量」列一致 (stock_balances 现存量, 仅参与核算仓库, 不含不良品仓
-     * 与线边仓) —— 直接查 stock_balances 表, 遵循「表访问非跨特性 Java 依赖」的架构边界。
-     * qty 为货品基本单位量; unitName 缺失 (历史无单位) 时为 null, 前端只显数量。
-     * 无余额行的货品×颜色不返回, 调用方按 0 显示。
+     * 委外订货单行级「仓库库存数量」(/goods-stock 返回体, 2026-11-08 口径): 委外是我方供料,
+     * 成品自身通常从不入库, 这一列回答「现有直属物料够委外多少」, 单位 = 该货品基本单位。
+     *
+     * <ul>
+     *   <li><b>有可发外直属物料 (BOM) 的货品</b> ({@link GoodsStockBucket#BASIS_BOM_KIT}): 每条直属边的
+     *       物料现存量折算套数, 各物料取短板。直属边与物料颜色 (COALESCE(边颜色, 物料默认颜色), 按该颜色桶
+     *       精确匹配) 和批准时冻结领料计划、委外齐套同一判据 {@code fn_subcontract_draw_edges}; 每套用量按
+     *       基本单位 (换算率 1) 与齐套 {@code fn_subcontract_application_kit_facts_batch} 同式
+     *       {@code ROUND(换算率 × 边用量, 6)}; 物料量折套数复用 {@code fn_subcontract_draw_sets}
+     *       (精确截断到 4 位小数, 与齐套「可下单」同一取整)。不计正常损耗加成 (齐套同口径)。
+     *       与成品颜色无关, 每个货品返回一桶 (colorId 为空; 物料无现存量时为 0)。</li>
+     *   <li><b>没有可发外直属物料的货品</b> ({@link GoodsStockBucket#BASIS_OWN_STOCK}): 回退该货品自身现存量,
+     *       按颜色分桶; 无余额的货品×颜色不返回, 调用方按 0 显示。</li>
+     * </ul>
+     *
+     * <p>两条路径的现存量同一口径 (货品资料「库存量」列): stock_balances 现存量毛量, 仅参与核算仓库,
+     * 不含不良品仓与线边仓 —— 只作下单参考、不限制订货数量, 刻意不扣预留 (领料可领量另走
+     * v_stock_available 与齐套物料池, 不混用)。直接查表, 遵循「表访问非跨特性 Java 依赖」的架构边界;
+     * 全部在一条 SQL 内算完, Java 只读不复算。unitName 缺失 (历史无单位) 时为 null, 前端只显数量。
      */
     @Transactional(readOnly = true)
     public List<GoodsStockBucket> goodsStockBuckets(java.util.Collection<UUID> goodsIds) {
@@ -597,32 +611,75 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         for (Object[] row : com.uten.imp.common.util.NativeQueryResults.objectArrayRows(
                 em.createNativeQuery(
                 """
-                SELECT b.goods_id, b.color_id, SUM(b.qty) AS qty, stock_unit.name AS unit_name
-                FROM stock_balances b
-                JOIN warehouses w ON w.id = b.warehouse_id
-                JOIN goods g ON g.id = b.goods_id
+                WITH requested AS MATERIALIZED (
+                    SELECT g.id AS goods_id, g.unit_id, g.unit_legacy_id
+                    FROM goods g
+                    WHERE g.id IN (:ids)
+                ), edges AS MATERIALIZED (
+                    -- 可发外直属边与解析后的物料颜色 (冻结领料计划与齐套的唯一判据), 基本单位换算率 = 1
+                    SELECT requested.goods_id, edge.component_goods_id, edge.color_id,
+                           ROUND(edge.edge_qty, 6) AS bom_unit_qty
+                    FROM requested
+                    CROSS JOIN LATERAL fn_subcontract_draw_edges(requested.goods_id) edge
+                ), stock_goods AS (
+                    SELECT edges.component_goods_id AS goods_id FROM edges
+                    UNION
+                    SELECT requested.goods_id FROM requested
+                    WHERE NOT EXISTS (SELECT 1 FROM edges WHERE edges.goods_id = requested.goods_id)
+                ), stock AS MATERIALIZED (
+                    -- 货品资料「库存量」同口径 (现存量毛量, 仅参与核算仓, 不含不良品仓与线边仓)
+                    SELECT b.goods_id, b.color_id, SUM(b.qty) AS qty
+                    FROM stock_goods
+                    JOIN stock_balances b ON b.goods_id = stock_goods.goods_id
+                    JOIN warehouses w ON w.id = b.warehouse_id
+                    WHERE w.is_accountable AND NOT w.is_defective AND NOT w.is_line_side
+                    GROUP BY b.goods_id, b.color_id
+                ), buckets AS (
+                    SELECT edges.goods_id, CAST(NULL AS uuid) AS color_id,
+                           MIN(COALESCE(fn_subcontract_draw_sets(stock.qty, edges.bom_unit_qty), 0)) AS qty,
+                           'BOM_KIT' AS basis
+                    FROM edges
+                    LEFT JOIN stock ON stock.goods_id = edges.component_goods_id
+                     AND stock.color_id IS NOT DISTINCT FROM edges.color_id
+                    GROUP BY edges.goods_id
+                    UNION ALL
+                    SELECT stock.goods_id, stock.color_id, stock.qty, 'OWN_STOCK' AS basis
+                    FROM stock
+                    JOIN requested ON requested.goods_id = stock.goods_id
+                    WHERE NOT EXISTS (SELECT 1 FROM edges WHERE edges.goods_id = requested.goods_id)
+                )
+                SELECT buckets.goods_id, buckets.color_id, buckets.qty, stock_unit.name AS unit_name, buckets.basis
+                FROM buckets
+                JOIN requested ON requested.goods_id = buckets.goods_id
                 LEFT JOIN units stock_unit
                   ON NOT stock_unit.is_deleted AND NULLIF(btrim(stock_unit.name), '') IS NOT NULL
-                 AND (stock_unit.id = g.unit_id OR (g.unit_id IS NULL
-                      AND stock_unit.legacy_id = NULLIF(g.unit_legacy_id, 0)))
-                WHERE w.is_accountable AND NOT w.is_defective AND NOT w.is_line_side
-                  AND b.goods_id IN (:ids)
-                GROUP BY b.goods_id, b.color_id, stock_unit.name
-                ORDER BY b.goods_id, b.color_id NULLS FIRST
+                 AND (stock_unit.id = requested.unit_id OR (requested.unit_id IS NULL
+                      AND stock_unit.legacy_id = NULLIF(requested.unit_legacy_id, 0)))
+                ORDER BY buckets.goods_id, buckets.color_id NULLS FIRST
                 """).setParameter("ids", goodsIds))) {
             buckets.add(new GoodsStockBucket((UUID) row[0], (UUID) row[1],
                     row[2] == null ? BigDecimal.ZERO : (BigDecimal) row[2],
-                    (String) row[3]));
+                    (String) row[3], (String) row[4]));
         }
         return buckets;
     }
 
-    /** 单个货品×颜色桶的即时库存 (行级「仓库库存数量」列数据源)。 */
+    /**
+     * 行级「仓库库存数量」列的一桶 (基本单位)。basis = {@link #BASIS_BOM_KIT} 时 qty 是直属物料现存量
+     * 折算的可委外数量, colorId 为空, 对该货品任何颜色的行都适用; basis = {@link #BASIS_OWN_STOCK} 时
+     * qty 是该货品×颜色的自身现存量 (无 BOM 回退)。
+     */
     public record GoodsStockBucket(
             UUID goodsId,
             UUID colorId,
             BigDecimal qty,
-            String unitName) {
+            String unitName,
+            String basis) {
+        /** 直属物料现存量折算的可委外数量 (各物料取短板, 与成品颜色无关)。 */
+        public static final String BASIS_BOM_KIT = "BOM_KIT";
+        /** 没有可发外直属物料: 该货品×颜色的自身现存量。 */
+        public static final String BASIS_OWN_STOCK = "OWN_STOCK";
+
         @com.fasterxml.jackson.annotation.JsonProperty("qtyExact")
         public String qtyExact() { return com.uten.imp.common.util.DecimalText.of(qty); }
     }

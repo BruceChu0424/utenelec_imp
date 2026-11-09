@@ -120,6 +120,11 @@ public class GoodsService {
         FACET_COLUMNS.put("unitRef", "unit_id");
     }
 
+    /** 「组装信息」表头字段：派生布尔（见 {@link #bomPresence}），桶值 true/false，不在物理列白名单里。 */
+    private static final String BOM_FACET = "hasBom";
+    private static final String BOM_PRESENT_LABEL = "有组装信息";
+    private static final String BOM_ABSENT_LABEL = "无组装信息";
+
     private final GoodsRepository repo;
     private final MaterialCategoryRepository categoryRepo;
     private final ColorRepository colorRepo;
@@ -183,7 +188,7 @@ public class GoodsService {
                 root.fetch("mould", jakarta.persistence.criteria.JoinType.LEFT);
                 root.fetch("currency", jakarta.persistence.criteria.JoinType.LEFT);
             }
-            Predicate predicate = goodsPredicate(f, subtreeIds, scope, root, cb, keyword);
+            Predicate predicate = goodsPredicate(f, subtreeIds, scope, root, q, cb, keyword);
             predicate = cb.and(predicate, com.uten.imp.features.master.search.MasterColumnSearch.predicate(
                     cb, root.get("id"), com.uten.imp.features.master.search.MasterColumnSearch.Domain.GOODS, f.columnSearch()));
             if (keyword.active() && q != null && q.getResultType() != Long.class) {
@@ -205,11 +210,15 @@ public class GoodsService {
         Pageable pageable = Pageables.of(page, size, keyword.active()||stockSort ? Sort.unsorted() : requestedSort);
         Page<Goods> p = com.uten.imp.common.export.MasterExportSource.page(repo, em, Goods.class, spec, pageable, f);
         List<Goods> content = p.getContent();
+        // 本批父件逐个 EXISTS，探到第一条在用 BOM 即停。改写前的两表 JOIN 在三万余货品时被规划成
+        // 两次整表扫描 goods 的哈希连接，每批数十毫秒，完整流/导出几百批累计超出事务截止时间。
         Set<UUID> goodsWithBom = content.isEmpty() ? Set.of() : new java.util.HashSet<>(
                 em.createQuery("""
-                        select distinct b.goods.id from GoodsBomItem b
-                        where b.goods.id in :ids and b.deleted = false
-                          and b.goods.autoCreated = false and b.component.autoCreated = false
+                        select p.id from Goods p
+                        where p.id in :ids and p.autoCreated = false
+                          and exists (select 1 from GoodsBomItem b
+                                      where b.goods = p and b.deleted = false
+                                        and b.component.autoCreated = false)
                         """, UUID.class)
                         .setParameter("ids", content.stream().map(Goods::getId).toList())
                         .getResultList());
@@ -266,7 +275,7 @@ public class GoodsService {
         var targetQuery = cb.createQuery(Goods.class);
         var targetRoot = targetQuery.from(Goods.class);
         targetQuery.where(cb.and(
-                goodsPredicate(filter, subtree, scope, targetRoot, cb, keyword),
+                goodsPredicate(filter, subtree, scope, targetRoot, targetQuery, cb, keyword),
                 com.uten.imp.features.master.search.MasterColumnSearch.predicate(cb, targetRoot.get("id"),
                         com.uten.imp.features.master.search.MasterColumnSearch.Domain.GOODS, filter.columnSearch()),
                 cb.equal(targetRoot.get("id"), id)));
@@ -310,7 +319,7 @@ public class GoodsService {
             same = cb.and(same, value == null ? cb.isNull(expression) : cb.equal(expression, value));
         }
         countQuery.select(cb.count(root)).where(cb.and(
-                goodsPredicate(filter, subtree, scope, root, cb, keyword),
+                goodsPredicate(filter, subtree, scope, root, countQuery, cb, keyword),
                 com.uten.imp.features.master.search.MasterColumnSearch.predicate(cb, root.get("id"),
                         com.uten.imp.features.master.search.MasterColumnSearch.Domain.GOODS, filter.columnSearch()), before));
         long preceding = em.createQuery(countQuery).getSingleResult();
@@ -347,7 +356,7 @@ public class GoodsService {
         Root<Goods> root = query.from(Goods.class);
         Path<UUID> categoryId = root.get("category").get("id");
         var keyword = keywordPlan(f);
-        Predicate filters = goodsPredicate(f, subtreeIds, scope, root, cb, keyword);
+        Predicate filters = goodsPredicate(f, subtreeIds, scope, root, query, cb, keyword);
         filters = cb.and(filters, com.uten.imp.features.master.search.MasterColumnSearch.predicate(
                 cb, root.get("id"), com.uten.imp.features.master.search.MasterColumnSearch.Domain.GOODS, f.columnSearch()));
         var rank = keyword.rank(cb, categoryId, root.get("code"), root.get("name"),
@@ -359,12 +368,14 @@ public class GoodsService {
         return em.createQuery(query).getResultList();
     }
 
-    /** list 与 matchingCategoryIds 共用同一权威过滤，避免定位结果越过 scope/权限。 */
+    /** list 与 matchingCategoryIds 共用同一权威过滤，避免定位结果越过 scope/权限。
+     *  {@code query} 是谓词所属查询，用于关联「组装信息」EXISTS 子查询。 */
     private Predicate goodsPredicate(
             GoodsQueryFilter f,
             List<UUID> subtreeIds,
             com.uten.imp.security.OwnerVisibility.OwnerScope scope,
             Root<Goods> root,
+            jakarta.persistence.criteria.CommonAbstractCriteria query,
             CriteriaBuilder cb,
             GoodsSearchPolicy keyword) {
         requireHeaderVisibility(f,null);
@@ -437,6 +448,9 @@ public class GoodsService {
         if (Boolean.TRUE.equals(f.disabledOnly())) {
             ps.add(cb.equal(root.get("status"), "禁用"));
         }
+        if (f.hasBom() != null) {
+            ps.add(bomPresence(query, root, cb, f.hasBom()));
+        }
         if (f.nullFields() != null) {
             for (String fld : f.nullFields()) {
                 if (GoodsReferenceFacet.supports(fld)) ps.add(cb.isNull(GoodsReferenceFacet.projection(root, cb, fld).value()));
@@ -444,6 +458,25 @@ public class GoodsService {
             }
         }
         return cb.and(ps.toArray(new Predicate[0]));
+    }
+
+    /**
+     * 「组装信息」表头筛选：与 {@link #list} 的 hasBom 投影同一口径——父件不是迁移占位，且存在
+     * 未删除、组件不是迁移占位的 BOM 边（组件停用时退役的边已软删，不算在用组装信息）。
+     * present=false 取补集（含迁移占位父件），两桶互斥并覆盖当前筛选范围内全部货品。
+     */
+    private static Predicate bomPresence(jakarta.persistence.criteria.CommonAbstractCriteria query,
+                                         Root<Goods> root, CriteriaBuilder cb, boolean present) {
+        Objects.requireNonNull(query, "组装信息筛选需要所属查询来关联 BOM 子查询");
+        var bom = query.subquery(UUID.class);
+        Root<GoodsBomItem> edge = bom.from(GoodsBomItem.class);
+        bom.select(edge.get("id")).where(
+                cb.equal(edge.get("goods"), root),
+                cb.isFalse(edge.get("deleted")),
+                cb.isFalse(edge.get("component").get("autoCreated")));
+        return present
+                ? cb.and(cb.isFalse(root.get("autoCreated")), cb.exists(bom))
+                : cb.or(cb.isTrue(root.get("autoCreated")), cb.not(cb.exists(bom)));
     }
 
     private GoodsSearchPolicy keywordPlan(GoodsQueryFilter filter) {
@@ -724,7 +757,8 @@ public class GoodsService {
      * 「状态」（导出口径本就排除禁用品，该列恒「使用」）。例外保留「类别」：表格里分类由
      * 左侧树表达，平铺导出需要它携带树上下文，且货品导入必填类别列（导出改完可直接导回）。
      */
-    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ,
+            timeout = com.uten.imp.common.export.ExportTransactions.TIMEOUT_SECONDS)
     public ExportPayload export(GoodsQueryFilter f, String sort, String order) {
         Map<UUID, String> categoryPath = categoryPathMap();
         boolean showPrice = canViewPrice();
@@ -809,12 +843,14 @@ public class GoodsService {
     public com.uten.imp.features.master.goods.dto.GoodsFacetPage facetValues(
             GoodsQueryFilter filter, String field, String search, int page, int size) {
         boolean reference = "owningWarehouse".equals(field) || "owningWorkshop".equals(field) || GoodsReferenceFacet.supports(field);
-        if (!FACET_COLUMNS.containsKey(field) && !reference && !"code".equals(field)) {
+        boolean bomPresence = BOM_FACET.equals(field);
+        if (!FACET_COLUMNS.containsKey(field) && !reference && !"code".equals(field) && !bomPresence) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "不支持的货品表头字段");
         }
         if (page < 1 || page > 100000 || size < 1 || size > 100 || (search != null && search.length() > 200)) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "候选搜索参数无效");
         }
+        if (bomPresence) return bomPresenceFacetPage(filter, search, page, size);
         GoodsQueryFilter facetFilter = filter.forFacet(field);
         var scope = goodsScope();
         var keyword = keywordPlan(filter);
@@ -831,7 +867,7 @@ public class GoodsService {
         if (reference) query.select(cb.array(value, count, label)).groupBy(value, label);
         else query.select(cb.array(value, count)).groupBy(value);
         List<Predicate> predicates = new ArrayList<>();
-        predicates.add(goodsPredicate(facetFilter, ids, scope, root, cb, keyword));
+        predicates.add(goodsPredicate(facetFilter, ids, scope, root, query, cb, keyword));
         predicates.add(com.uten.imp.features.master.search.MasterColumnSearch.predicate(cb, root.get("id"),
                 com.uten.imp.features.master.search.MasterColumnSearch.Domain.GOODS, facetFilter.columnSearch()));
         predicates.add(cb.isNotNull(value));
@@ -902,7 +938,7 @@ public class GoodsService {
             var count = cb.count(root);
             if (reference) query.select(cb.array(value, count, label)).groupBy(value, label);
             else query.select(cb.array(value, count)).groupBy(value);
-            query.where(cb.and(goodsPredicate(facetFilter, ids, scope, root, cb, keyword), cb.isNotNull(value),
+            query.where(cb.and(goodsPredicate(facetFilter, ids, scope, root, query, cb, keyword), cb.isNotNull(value),
                     com.uten.imp.features.master.search.MasterColumnSearch.predicate(cb, root.get("id"),
                             com.uten.imp.features.master.search.MasterColumnSearch.Domain.GOODS, filter.columnSearch())));
             query.orderBy(cb.desc(count), cb.asc(reference ? label : value));
@@ -917,7 +953,7 @@ public class GoodsService {
             CriteriaQuery<Long> nullQuery = cb.createQuery(Long.class);
             Root<Goods> nullRoot = nullQuery.from(Goods.class);
             nullQuery.select(cb.count(nullRoot)).where(cb.and(
-                    goodsPredicate(facetFilter, ids, scope, nullRoot, cb, keyword), cb.isNull(GoodsReferenceFacet.supports(field)
+                    goodsPredicate(facetFilter, ids, scope, nullRoot, nullQuery, cb, keyword), cb.isNull(GoodsReferenceFacet.supports(field)
                             ? GoodsReferenceFacet.projection(nullRoot, cb, field).value() : nullRoot.get(field)),
                     com.uten.imp.features.master.search.MasterColumnSearch.predicate(cb, nullRoot.get("id"),
                             com.uten.imp.features.master.search.MasterColumnSearch.Domain.GOODS, filter.columnSearch())));
@@ -928,7 +964,46 @@ public class GoodsService {
                 buckets.get("name"), buckets.get("spec"), buckets.get("material"),
                 buckets.get("rearInsertCode"), buckets.get("paper"),
                 buckets.get("colorLegacyId"), buckets.get("unitLegacyId"), buckets.get("sourceType"),
-                buckets.get("owningWarehouse"), buckets.get("owningWorkshop"), nullCounts, buckets.get("colorRef"), buckets.get("unitRef"));
+                buckets.get("owningWarehouse"), buckets.get("owningWorkshop"), nullCounts, buckets.get("colorRef"), buckets.get("unitRef"),
+                bomPresenceBuckets(filter, ids, scope, keyword));
+    }
+
+    /**
+     * 「组装信息」两桶（固定顺序：有、无）：不是 goods 物理列，每桶计数直接复用列表的权威谓词
+     * （放开本字段自身条件，保留其余筛选、关键词、分类范围与可见权限），即选中该桶后列表的总数。
+     * 布尔口径没有空值桶；计数为 0 的桶照样下发，表头始终给出两个选项。
+     */
+    private List<FacetBucket> bomPresenceBuckets(GoodsQueryFilter filter, List<UUID> ids,
+            com.uten.imp.security.OwnerVisibility.OwnerScope scope, GoodsSearchPolicy keyword) {
+        GoodsQueryFilter released = filter.forFacet(BOM_FACET);
+        List<FacetBucket> buckets = new ArrayList<>(2);
+        for (boolean present : new boolean[] {true, false}) {
+            GoodsQueryFilter bucketFilter = released.withHasBom(present);
+            CriteriaBuilder cb = em.getCriteriaBuilder();
+            CriteriaQuery<Long> query = cb.createQuery(Long.class);
+            Root<Goods> root = query.from(Goods.class);
+            query.select(cb.count(root)).where(cb.and(goodsPredicate(bucketFilter, ids, scope, root, query, cb, keyword),
+                    com.uten.imp.features.master.search.MasterColumnSearch.predicate(cb, root.get("id"),
+                            com.uten.imp.features.master.search.MasterColumnSearch.Domain.GOODS, bucketFilter.columnSearch())));
+            buckets.add(new FacetBucket(String.valueOf(present), em.createQuery(query).getSingleResult(),
+                    present ? BOM_PRESENT_LABEL : BOM_ABSENT_LABEL));
+        }
+        return buckets;
+    }
+
+    /** 组装信息候选页：两桶按展示名匹配候选关键词后分页（与其他表头候选同一页参数校验）。 */
+    private com.uten.imp.features.master.goods.dto.GoodsFacetPage bomPresenceFacetPage(
+            GoodsQueryFilter filter, String search, int page, int size) {
+        var scope = goodsScope();
+        var keyword = keywordPlan(filter);
+        var ids = resolveCategoryScopeIds(filter);
+        List<FacetBucket> matched = bomPresenceBuckets(filter, ids, scope, keyword).stream()
+                .filter(bucket -> KeywordSearch.terms(search).isEmpty() || KeywordSearch.matches(search, bucket.getLabel()))
+                .toList();
+        int offset = Pageables.checkedOffset(page, size);
+        List<FacetBucket> items = offset >= matched.size() ? List.of()
+                : matched.subList(offset, Math.min(matched.size(), offset + size));
+        return new com.uten.imp.features.master.goods.dto.GoodsFacetPage(items, offset + items.size() < matched.size());
     }
 
     /** facets 桶展示标签：颜色/单位字段用解析名（解析不到回落 #id），其余字段=label=value。 */

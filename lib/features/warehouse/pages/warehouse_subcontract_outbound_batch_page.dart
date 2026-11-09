@@ -22,7 +22,7 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/feedback/uten_empty.dart';
-import '../../../components/feedback/uten_busy_overlay.dart';
+import '../../../components/feedback/uten_progress_dialog.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
@@ -921,6 +921,7 @@ class _WarehouseSubcontractOutboundBatchPageState
         );
         if (!confirmed || !mounted || !_canExecute) return;
         await scope.verify();
+        if (!mounted) return;
         setState(() {
           _confirming = false;
           _saving = true;
@@ -929,83 +930,112 @@ class _WarehouseSubcontractOutboundBatchPageState
           subcontractRepositoryProvider(SubcontractDocType.materialIssue),
         );
         _submittedDraftIds = targets.map((draft) => draft.document.id).toSet();
-        for (final draft in targets) {
-          if (!mounted || !formDraftIdentityIsCurrent || !_canExecute) break;
-          final id = draft.document.id;
-          var dispatched = false;
-          try {
-            final fresh = await repo.selectedOutboundReview(id);
-            if (!mounted || !formDraftIdentityIsCurrent) break;
-            if (fresh.fingerprint != draft.reviewFingerprint) {
-              throw FormatException(l10n.warehouseSubcontractOutboundChanged);
+        var cancelled = false;
+        // 逐张办理：afterCurrent 取消＝当前这张办完即停，已办结果与原子命令
+        // 保护照常保留；身份失效时弹窗按取消收尾。
+        await showUtenProgress<void>(
+          context,
+          title: l10n.warehouseSubcontractOutboundBatchAction,
+          icon: Icons.outbound_outlined,
+          initialStatus: '正在办理出库',
+          initialDetail: '${targets.length} 张领料单',
+          cancelMode: UtenProgressCancel.afterCurrent,
+          invalidation: formDraftIdentityInvalidation,
+          action: (progress) async {
+            var done = 0;
+            for (final draft in targets) {
+              if (progress.isCancelled) {
+                cancelled = true;
+                break;
+              }
+              if (!mounted || !formDraftIdentityIsCurrent || !_canExecute) {
+                break;
+              }
+              progress.count(done, targets.length, status: '正在办理出库');
+              final id = draft.document.id;
+              var dispatched = false;
+              try {
+                final fresh = await repo.selectedOutboundReview(id);
+                if (!mounted || !formDraftIdentityIsCurrent) break;
+                if (fresh.fingerprint != draft.reviewFingerprint) {
+                  throw FormatException(
+                    l10n.warehouseSubcontractOutboundChanged,
+                  );
+                }
+                _atomicReadableSources.add(id);
+                final command =
+                    jsonDecode(
+                          jsonEncode({
+                            'idempotencyKey': const Uuid().v4(),
+                            'fingerprint': fresh.fingerprint,
+                            'itemIds': draft.lines
+                                .where((line) => line.selected && !line.skipped)
+                                .map((line) => line.draftItemId)
+                                .toList(),
+                            'document': _selectedDocument(draft),
+                          }),
+                        )
+                        as Map<String, dynamic>;
+                _atomicCommands[id] = command;
+                final routeScope = WarehouseTaskItemSelection(
+                  widget.selectedItemIds,
+                );
+                _atomicSourceScopes[id] = draft.lines
+                    .where((line) => routeScope.contains(line.draftItemId))
+                    .map((line) => line.draftItemId)
+                    .toList();
+                _atomicUnknownIds.add(id);
+                draft.state = SubcontractOutboundExecutionState.saving;
+                _retainedUncertainInputs[id] = _captureInput(draft);
+                await saveFormDraftNow();
+                if (formDraftRecoveryRevision == null) {
+                  throw const FormatException('原出仓内容尚未持久保存，本次未发送，请稍后重试');
+                }
+                await scope.verify();
+                if (!mounted || !_canExecute) break;
+                dispatched = true;
+                final result = await repo.submitSelectedOutbound(id, command);
+                if (!mounted || !formDraftIdentityIsCurrent) break;
+                _confirmAtomicResult(id, result);
+                await checkpointFormDraftAfterCreation();
+              } catch (error) {
+                if (!mounted || !formDraftIdentityIsCurrent) break;
+                _changed = _changed || dispatched;
+                final rejected =
+                    error is ApiException &&
+                    error.httpStatus != null &&
+                    error.httpStatus! >= 400 &&
+                    error.httpStatus! < 500 &&
+                    error.httpStatus != 408;
+                if (!dispatched || rejected) {
+                  _atomicCommands.remove(id);
+                  _atomicSourceScopes.remove(id);
+                  _atomicUnknownIds.remove(id);
+                  _atomicReadableSources.remove(id);
+                  _retainedUncertainInputs.remove(id);
+                  draft.state = SubcontractOutboundExecutionState.blocked;
+                } else {
+                  draft.state =
+                      SubcontractOutboundExecutionState.needsVerification;
+                  _retainedUncertainInputs[id] = {
+                    ..._retainedUncertainInputs[id]!,
+                    'state': draft.state.name,
+                  };
+                }
+                draft.error = _atomicUnknownIds.contains(id)
+                    ? '原出仓结果待核对；原请求内容和编号已保留，不会办理未选明细'
+                    : _message(error);
+                await checkpointFormDraftAfterCreation();
+                break;
+              }
+              done++;
             }
-            _atomicReadableSources.add(id);
-            final command =
-                jsonDecode(
-                      jsonEncode({
-                        'idempotencyKey': const Uuid().v4(),
-                        'fingerprint': fresh.fingerprint,
-                        'itemIds': draft.lines
-                            .where((line) => line.selected && !line.skipped)
-                            .map((line) => line.draftItemId)
-                            .toList(),
-                        'document': _selectedDocument(draft),
-                      }),
-                    )
-                    as Map<String, dynamic>;
-            _atomicCommands[id] = command;
-            final routeScope = WarehouseTaskItemSelection(
-              widget.selectedItemIds,
-            );
-            _atomicSourceScopes[id] = draft.lines
-                .where((line) => routeScope.contains(line.draftItemId))
-                .map((line) => line.draftItemId)
-                .toList();
-            _atomicUnknownIds.add(id);
-            draft.state = SubcontractOutboundExecutionState.saving;
-            _retainedUncertainInputs[id] = _captureInput(draft);
-            await saveFormDraftNow();
-            if (formDraftRecoveryRevision == null) {
-              throw const FormatException('原出仓内容尚未持久保存，本次未发送，请稍后重试');
-            }
-            await scope.verify();
-            if (!mounted || !_canExecute) break;
-            dispatched = true;
-            final result = await repo.submitSelectedOutbound(id, command);
-            if (!mounted || !formDraftIdentityIsCurrent) break;
-            _confirmAtomicResult(id, result);
-            await checkpointFormDraftAfterCreation();
-          } catch (error) {
-            if (!mounted || !formDraftIdentityIsCurrent) break;
-            _changed = _changed || dispatched;
-            final rejected =
-                error is ApiException &&
-                error.httpStatus != null &&
-                error.httpStatus! >= 400 &&
-                error.httpStatus! < 500 &&
-                error.httpStatus != 408;
-            if (!dispatched || rejected) {
-              _atomicCommands.remove(id);
-              _atomicSourceScopes.remove(id);
-              _atomicUnknownIds.remove(id);
-              _atomicReadableSources.remove(id);
-              _retainedUncertainInputs.remove(id);
-              draft.state = SubcontractOutboundExecutionState.blocked;
-            } else {
-              draft.state = SubcontractOutboundExecutionState.needsVerification;
-              _retainedUncertainInputs[id] = {
-                ..._retainedUncertainInputs[id]!,
-                'state': draft.state.name,
-              };
-            }
-            draft.error = _atomicUnknownIds.contains(id)
-                ? '原出仓结果待核对；原请求内容和编号已保留，不会办理未选明细'
-                : _message(error);
-            await checkpointFormDraftAfterCreation();
-            break;
-          }
-        }
+          },
+        );
         if (!mounted || !formDraftIdentityIsCurrent) return;
+        if (cancelled) {
+          context.appInfo('已出库 ${_completedIssueIds.length} 张，已按要求停止，其余继续保留');
+        }
         setState(() {});
         invalidateWarehouseTaskCounts(ref);
         if (_atomicUnknownIds.isEmpty &&
@@ -1044,27 +1074,46 @@ class _WarehouseSubcontractOutboundBatchPageState
         final repo = ref.read(
           subcontractRepositoryProvider(SubcontractDocType.materialIssue),
         );
-        for (final id in _atomicUnknownIds.toList()) {
-          var readable = false;
-          try {
-            final receipt = await _readAtomicReceipt(repo, id);
-            await scope.verify();
-            readable = true;
-            _changed = true;
-            final result =
-                receipt ??
-                await repo.submitSelectedOutbound(id, _atomicCommands[id]!);
-            if (!mounted || !formDraftIdentityIsCurrent) return;
-            _confirmAtomicResult(id, result);
-          } catch (error) {
-            if (!mounted || !formDraftIdentityIsCurrent) return;
-            if (!readable) _activateAtomicRecovery(captureFormDraft());
-            context.appError(
-              readable ? _message(error) : '原来源当前不可读取，原操作和范围继续保留',
-            );
-          }
-          await checkpointFormDraftAfterCreation();
-        }
+        final pendingIds = _atomicUnknownIds.toList();
+        // 按原内容逐张重试（先读回执、无回执才重发原命令）：afterCurrent 取消＝
+        // 当前这张办完即停，原子命令与待核对状态照常保留。
+        await showUtenProgress<void>(
+          context,
+          title: l10n.warehouseSubcontractOutboundBatchAction,
+          icon: Icons.outbound_outlined,
+          initialStatus: '正在按原内容重试',
+          initialDetail: '${pendingIds.length} 张领料单',
+          cancelMode: UtenProgressCancel.afterCurrent,
+          invalidation: formDraftIdentityInvalidation,
+          action: (progress) async {
+            var done = 0;
+            for (final id in pendingIds) {
+              if (progress.isCancelled) break;
+              progress.count(done, pendingIds.length, status: '正在按原内容重试');
+              var readable = false;
+              try {
+                final receipt = await _readAtomicReceipt(repo, id);
+                await scope.verify();
+                readable = true;
+                _changed = true;
+                final result =
+                    receipt ??
+                    await repo.submitSelectedOutbound(id, _atomicCommands[id]!);
+                if (!mounted || !formDraftIdentityIsCurrent) break;
+                _confirmAtomicResult(id, result);
+              } catch (error) {
+                if (!mounted || !formDraftIdentityIsCurrent) break;
+                if (!readable) _activateAtomicRecovery(captureFormDraft());
+                context.appError(
+                  readable ? _message(error) : '原来源当前不可读取，原操作和范围继续保留',
+                );
+              }
+              await checkpointFormDraftAfterCreation();
+              done++;
+            }
+          },
+        );
+        if (!mounted || !formDraftIdentityIsCurrent) return;
         invalidateWarehouseTaskCounts(ref);
         if (_atomicUnknownIds.isEmpty &&
             widget.issueIds.every(_completedIssueIds.contains)) {
@@ -1121,98 +1170,121 @@ class _WarehouseSubcontractOutboundBatchPageState
         subcontractRepositoryProvider(SubcontractDocType.materialIssue),
       );
       _submittedDraftIds = targets.map((draft) => draft.document.id).toSet();
-      for (final draft in targets) {
-        if (!mounted || !formDraftIdentityIsCurrent) break;
-        var writeStarted = false;
-        try {
-          // Re-read the exact EC draft. Never overwrite a draft that another
-          // employee (or the subcontract side) has changed since it was read.
-          final document = draft.document;
-          final fresh = await repo.detail(document.id);
-          if (!mounted || !formDraftIdentityIsCurrent) break;
-          if (subcontractOutboundDraftFingerprint(fresh) !=
-              subcontractOutboundDraftFingerprint(document)) {
-            throw FormatException(l10n.warehouseSubcontractOutboundChanged);
-          }
-          setState(
-            () => draft.state = SubcontractOutboundExecutionState.saving,
-          );
-          await saveFormDraftNow();
-          if (!mounted || !formDraftIdentityIsCurrent) break;
-          writeStarted = true;
-          draft.document = await repo.update(document.id, {
-            'billDate': _date(draft.date),
-            'supplierId': document.supplierId,
-            'warehouseId': draft.warehouseId,
-            'workerId': draft.workerId,
-            // Automatic dates freeze only when the server commits approval.
-            'deliverDate': draft.deliveryDate == null
-                ? null
-                : _date(draft.deliveryDate!),
-            'remark': draft.remark.text.trim().isEmpty
-                ? null
-                : draft.remark.text.trim(),
-            // 填 0 的行不回传: 服务端删行并退回它占用的库存。
-            'items': subcontractOutboundPayloadItems(draft.lines),
-            if (widget.selectedItemIds != null)
-              'itemIds': draft.lines.map((line) => line.draftItemId).toList(),
-          });
-          _changed = true;
-          if (!mounted || !formDraftIdentityIsCurrent) break;
-          final beforeApproval = await repo.detail(draft.document.id);
-          if (!mounted || !formDraftIdentityIsCurrent) break;
-          if (subcontractOutboundDraftFingerprint(beforeApproval) !=
-              subcontractOutboundDraftFingerprint(draft.document)) {
-            throw FormatException(l10n.warehouseSubcontractOutboundChanged);
-          }
-          setState(
-            () => draft.state = SubcontractOutboundExecutionState.approving,
-          );
-          await saveFormDraftNow();
-          if (!mounted || !formDraftIdentityIsCurrent) break;
-          final approved = widget.selectedItemIds == null
-              ? await repo.approve(draft.document.id)
-              : await repo.approveSelected(
-                  draft.document.id,
-                  draft.document.items
-                      .map((item) => item.id)
-                      .whereType<String>()
+      var cancelled = false;
+      // 逐张保存并审核：afterCurrent 取消＝当前这张办完即停，草稿与未知提交
+      // 保护照常保留。
+      await showUtenProgress<void>(
+        context,
+        title: l10n.warehouseSubcontractOutboundBatchAction,
+        icon: Icons.outbound_outlined,
+        initialStatus: '正在办理出库',
+        initialDetail: '${targets.length} 张领料单',
+        cancelMode: UtenProgressCancel.afterCurrent,
+        invalidation: formDraftIdentityInvalidation,
+        action: (progress) async {
+          var done = 0;
+          for (final draft in targets) {
+            if (progress.isCancelled) {
+              cancelled = true;
+              break;
+            }
+            if (!mounted || !formDraftIdentityIsCurrent) break;
+            progress.count(done, targets.length, status: '正在办理出库');
+            var writeStarted = false;
+            try {
+              // Re-read the exact EC draft. Never overwrite a draft that another
+              // employee (or the subcontract side) has changed since it was read.
+              final document = draft.document;
+              final fresh = await repo.detail(document.id);
+              if (!mounted || !formDraftIdentityIsCurrent) break;
+              if (subcontractOutboundDraftFingerprint(fresh) !=
+                  subcontractOutboundDraftFingerprint(document)) {
+                throw FormatException(l10n.warehouseSubcontractOutboundChanged);
+              }
+              setState(
+                () => draft.state = SubcontractOutboundExecutionState.saving,
+              );
+              await saveFormDraftNow();
+              if (!mounted || !formDraftIdentityIsCurrent) break;
+              writeStarted = true;
+              draft.document = await repo.update(document.id, {
+                'billDate': _date(draft.date),
+                'supplierId': document.supplierId,
+                'warehouseId': draft.warehouseId,
+                'workerId': draft.workerId,
+                // Automatic dates freeze only when the server commits approval.
+                'deliverDate': draft.deliveryDate == null
+                    ? null
+                    : _date(draft.deliveryDate!),
+                'remark': draft.remark.text.trim().isEmpty
+                    ? null
+                    : draft.remark.text.trim(),
+                // 填 0 的行不回传: 服务端删行并退回它占用的库存。
+                'items': subcontractOutboundPayloadItems(draft.lines),
+                if (widget.selectedItemIds != null)
+                  'itemIds': draft.lines
+                      .map((line) => line.draftItemId)
                       .toList(),
-                );
-          if (!mounted || !formDraftIdentityIsCurrent) break;
-          if (approved.status != 1) {
-            throw StateError(l10n.warehouseSubcontractOutboundUncertain);
+              });
+              _changed = true;
+              if (!mounted || !formDraftIdentityIsCurrent) break;
+              final beforeApproval = await repo.detail(draft.document.id);
+              if (!mounted || !formDraftIdentityIsCurrent) break;
+              if (subcontractOutboundDraftFingerprint(beforeApproval) !=
+                  subcontractOutboundDraftFingerprint(draft.document)) {
+                throw FormatException(l10n.warehouseSubcontractOutboundChanged);
+              }
+              setState(
+                () => draft.state = SubcontractOutboundExecutionState.approving,
+              );
+              await saveFormDraftNow();
+              if (!mounted || !formDraftIdentityIsCurrent) break;
+              final approved = widget.selectedItemIds == null
+                  ? await repo.approve(draft.document.id)
+                  : await repo.approveSelected(
+                      draft.document.id,
+                      draft.document.items
+                          .map((item) => item.id)
+                          .whereType<String>()
+                          .toList(),
+                    );
+              if (!mounted || !formDraftIdentityIsCurrent) break;
+              if (approved.status != 1) {
+                throw StateError(l10n.warehouseSubcontractOutboundUncertain);
+              }
+              draft.document = approved;
+              setState(() {
+                draft.state = SubcontractOutboundExecutionState.completed;
+                draft.error = null;
+                _completedIssueIds.add(draft.document.id);
+                _retainedUncertainInputs.remove(draft.document.id);
+              });
+              await saveFormDraftNow();
+            } catch (error) {
+              if (!mounted || !formDraftIdentityIsCurrent) break;
+              final uncertain =
+                  writeStarted &&
+                  error is! FormatException &&
+                  !(error is ApiException &&
+                      error.httpStatus != null &&
+                      error.httpStatus! >= 400 &&
+                      error.httpStatus! < 500);
+              setState(() {
+                draft.state = uncertain
+                    ? SubcontractOutboundExecutionState.needsVerification
+                    : SubcontractOutboundExecutionState.blocked;
+                draft.error = uncertain
+                    ? l10n.warehouseSubcontractOutboundUncertain
+                    : _message(error);
+              });
+              _changed = _changed || writeStarted;
+              await checkpointFormDraftAfterCreation();
+              break;
+            }
+            done++;
           }
-          draft.document = approved;
-          setState(() {
-            draft.state = SubcontractOutboundExecutionState.completed;
-            draft.error = null;
-            _completedIssueIds.add(draft.document.id);
-            _retainedUncertainInputs.remove(draft.document.id);
-          });
-          await saveFormDraftNow();
-        } catch (error) {
-          if (!mounted || !formDraftIdentityIsCurrent) break;
-          final uncertain =
-              writeStarted &&
-              error is! FormatException &&
-              !(error is ApiException &&
-                  error.httpStatus != null &&
-                  error.httpStatus! >= 400 &&
-                  error.httpStatus! < 500);
-          setState(() {
-            draft.state = uncertain
-                ? SubcontractOutboundExecutionState.needsVerification
-                : SubcontractOutboundExecutionState.blocked;
-            draft.error = uncertain
-                ? l10n.warehouseSubcontractOutboundUncertain
-                : _message(error);
-          });
-          _changed = _changed || writeStarted;
-          await checkpointFormDraftAfterCreation();
-          break;
-        }
-      }
+        },
+      );
       if (!mounted) return;
       invalidateWarehouseTaskCounts(ref);
       final completed = _drafts
@@ -1222,7 +1294,12 @@ class _WarehouseSubcontractOutboundBatchPageState
           )
           .length;
       context.appInfo(
-        l10n.warehouseSubcontractOutboundBatchResult(completed, _drafts.length),
+        cancelled
+            ? '已出库 $completed 张，已按要求停止，其余继续保留'
+            : l10n.warehouseSubcontractOutboundBatchResult(
+                completed,
+                _drafts.length,
+              ),
       );
       if (targets.every(
         (draft) => draft.state == SubcontractOutboundExecutionState.completed,
@@ -1258,44 +1335,75 @@ class _WarehouseSubcontractOutboundBatchPageState
       final repo = ref.read(
         subcontractRepositoryProvider(SubcontractDocType.materialIssue),
       );
-      for (final id in _atomicUnknownIds.toList()) {
-        try {
-          final receipt = await _readAtomicReceipt(repo, id);
-          if (!mounted || !formDraftIdentityIsCurrent) return;
-          if (receipt != null) _confirmAtomicResult(id, receipt);
-        } catch (error) {
-          if (mounted && formDraftIdentityIsCurrent) {
-            _activateAtomicRecovery(captureFormDraft());
-            context.appError('原来源当前不可读取，原操作和范围继续保留');
+      final unknownIds = _atomicUnknownIds.toList();
+      final verificationDrafts = _drafts
+          .where(
+            (draft) =>
+                draft.state ==
+                    SubcontractOutboundExecutionState.needsVerification &&
+                !_atomicCommands.containsKey(draft.document.id),
+          )
+          .toList();
+      final total = unknownIds.length + verificationDrafts.length;
+      // 核对是纯读取：可立即取消；进度按「已核对 / 待核对来源数」推进。
+      var identityLost = false;
+      await showUtenProgress<void>(
+        context,
+        title: l10n.warehouseSubcontractOutboundVerify,
+        icon: Icons.rule_rounded,
+        initialStatus: '正在核对出库结果',
+        initialDetail: '$total 个来源',
+        invalidation: formDraftIdentityInvalidation,
+        action: (progress) async {
+          var done = 0;
+          for (final id in unknownIds) {
+            if (progress.isCancelled) break;
+            progress.count(done, total, status: '正在核对出库结果');
+            try {
+              final receipt = await _readAtomicReceipt(repo, id);
+              if (!mounted || !formDraftIdentityIsCurrent) {
+                identityLost = true;
+                return;
+              }
+              if (receipt != null) _confirmAtomicResult(id, receipt);
+            } catch (error) {
+              if (mounted && formDraftIdentityIsCurrent) {
+                _activateAtomicRecovery(captureFormDraft());
+                context.appError('原来源当前不可读取，原操作和范围继续保留');
+              }
+            }
+            done++;
           }
-        }
-      }
-      for (final draft in _drafts.where(
-        (draft) =>
-            draft.state ==
-                SubcontractOutboundExecutionState.needsVerification &&
-            !_atomicCommands.containsKey(draft.document.id),
-      )) {
-        try {
-          final fresh = await repo.detail(draft.document.id);
-          if (!mounted || !formDraftIdentityIsCurrent) return;
-          // A draft still visible after a timeout is not proof that an earlier
-          // mutation cannot commit later. Keep it blocked; verification is GET only.
-          if (fresh.status == 1) {
-            setState(() {
-              draft.document = fresh;
-              draft.state = SubcontractOutboundExecutionState.completed;
-              draft.error = null;
-              _completedIssueIds.add(draft.document.id);
-              _retainedUncertainInputs.remove(draft.document.id);
-            });
+          for (final draft in verificationDrafts) {
+            if (progress.isCancelled) break;
+            progress.count(done, total, status: '正在核对出库结果');
+            try {
+              final fresh = await repo.detail(draft.document.id);
+              if (!mounted || !formDraftIdentityIsCurrent) {
+                identityLost = true;
+                return;
+              }
+              // A draft still visible after a timeout is not proof that an earlier
+              // mutation cannot commit later. Keep it blocked; verification is GET only.
+              if (fresh.status == 1) {
+                setState(() {
+                  draft.document = fresh;
+                  draft.state = SubcontractOutboundExecutionState.completed;
+                  draft.error = null;
+                  _completedIssueIds.add(draft.document.id);
+                  _retainedUncertainInputs.remove(draft.document.id);
+                });
+              }
+            } catch (error) {
+              if (mounted) {
+                context.appError(_message(error));
+              }
+            }
+            done++;
           }
-        } catch (error) {
-          if (mounted) {
-            context.appError(_message(error));
-          }
-        }
-      }
+        },
+      );
+      if (identityLost || !mounted || !formDraftIdentityIsCurrent) return;
       invalidateWarehouseTaskCounts(ref);
       await checkpointFormDraftAfterCreation();
       if (mounted &&
@@ -1509,10 +1617,6 @@ class _WarehouseSubcontractOutboundBatchPageState
                   ),
                 ),
               ),
-              if (_saving)
-                Positioned.fill(
-                  child: UtenBusyOverlay(title: l10n.commonLoading),
-                ),
             ],
           ),
           floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
@@ -1545,7 +1649,6 @@ class _WarehouseSubcontractOutboundBatchPageState
                       UtenButton(
                         type: UtenButtonType.secondary,
                         size: UtenButtonSize.large,
-                        isLoading: _saving,
                         onPressed: _saving ? null : _verify,
                         child: Text(l10n.warehouseSubcontractOutboundVerify),
                       ),
@@ -1562,7 +1665,6 @@ class _WarehouseSubcontractOutboundBatchPageState
                         type: UtenButtonType.danger,
                         size: UtenButtonSize.large,
                         icon: Icons.outbound_outlined,
-                        isLoading: _saving,
                         onPressed: pending && !_saving && !_confirming
                             ? _submit
                             : null,

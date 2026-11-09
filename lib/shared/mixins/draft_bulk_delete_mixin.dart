@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../components/buttons/uten_button.dart';
 import '../../components/feedback/uten_dialog.dart';
-import '../../components/feedback/uten_busy_overlay.dart';
+import '../../components/feedback/uten_progress_dialog.dart';
 import '../../core/network/api_exception.dart';
 import '../../core/ui/app_notification.dart';
 import '../badges/badge_registry.dart';
@@ -127,62 +127,91 @@ mixin DraftBulkDeleteMixin<T extends StatefulWidget> on State<T> {
         confirmLabel: '确认删除',
         danger: true,
       );
-      if (confirmed != true || !stillCurrent()) return;
+      if (confirmed != true || !mounted || !stillCurrent()) return;
 
       final deleted = <String>{};
       final failures = <String>[];
       var uncertain = false;
       String? uncertaintyReason;
       var interrupted = false;
-      for (final id in ids) {
-        if (!mounted || !stillCurrent()) {
-          interrupted = true;
-          break;
-        }
-        try {
-          await UtenBusyOverlay.run(
-            context,
-            title: '正在删除草稿',
-            action: () => delete(id),
-          );
-          deleted.add(id);
-        } on ApiException catch (error) {
-          if (error.code == 'DRAFT_DELETE_STOPPED') {
-            failures.add(error.message);
-            break;
-          }
-          if (error is NetworkException ||
-              error is NetworkTimeoutException ||
-              (error.httpStatus ?? 0) >= 500) {
-            uncertain = true;
-            uncertaintyReason = error.message;
-            break;
-          }
-          failures.add(error.message);
-        } catch (_) {
-          // 未收到可确认的业务拒绝，不能把未知结果宣称为“删除失败且未生效”。
-          uncertain = true;
-          break;
-        }
-      }
-      if (!mounted || container.read(authenticatedScopeProvider) != scope) {
-        return;
-      }
-      setState(() => _draftIds.removeAll(deleted));
+      var stoppedByUser = false;
+      var processed = 0;
       var refreshed = true;
-      try {
-        await UtenBusyOverlay.run(context, title: '正在刷新草稿列表', action: reload);
-      } catch (_) {
-        refreshed = false;
-      }
-      if (!mounted || container.read(authenticatedScopeProvider) != scope) {
-        return;
-      }
-      // 与业务写拦截器共用单飞刷新，草稿分段、任务卡、工作台使用同一份快照。
-      await UtenBusyOverlay.run(
+      // 逐张删除 + 刷新列表 + 更新草稿数量, 都走完才到 100%。
+      final steps = ids.length + 2;
+      String deletedDetail() => '已删除 ${deleted.length} 张';
+      await showUtenProgress<void>(
         context,
-        title: '正在更新草稿数量',
-        action: () => container.read(badgeSummaryProvider.notifier).refresh(),
+        title: '删除所选草稿',
+        icon: Icons.delete_outline_rounded,
+        initialStatus: '正在删除草稿',
+        cancelMode: UtenProgressCancel.afterCurrent,
+        action: (progress) async {
+          progress.count(0, steps, detail: '0 / ${ids.length}');
+          for (final id in ids) {
+            if (!mounted || !stillCurrent()) {
+              interrupted = true;
+              break;
+            }
+            if (progress.isCancelled) {
+              stoppedByUser = true;
+              break;
+            }
+            try {
+              await delete(id);
+              deleted.add(id);
+            } on ApiException catch (error) {
+              if (error.code == 'DRAFT_DELETE_STOPPED') {
+                failures.add(error.message);
+                break;
+              }
+              if (error is NetworkException ||
+                  error is NetworkTimeoutException ||
+                  (error.httpStatus ?? 0) >= 500) {
+                uncertain = true;
+                uncertaintyReason = error.message;
+                break;
+              }
+              failures.add(error.message);
+            } catch (_) {
+              // 未收到可确认的业务拒绝，不能把未知结果宣称为“删除失败且未生效”。
+              uncertain = true;
+              break;
+            }
+            processed++;
+            progress.count(
+              processed,
+              steps,
+              detail: '$processed / ${ids.length}',
+            );
+          }
+          if (!mounted || container.read(authenticatedScopeProvider) != scope) {
+            return;
+          }
+          setState(() => _draftIds.removeAll(deleted));
+          progress.count(
+            ids.length,
+            steps,
+            status: '正在刷新草稿列表',
+            detail: deletedDetail(),
+          );
+          try {
+            await reload();
+          } catch (_) {
+            refreshed = false;
+          }
+          if (!mounted || container.read(authenticatedScopeProvider) != scope) {
+            return;
+          }
+          progress.count(
+            ids.length + 1,
+            steps,
+            status: '正在更新草稿数量',
+            detail: deletedDetail(),
+          );
+          // 与业务写拦截器共用单飞刷新，草稿分段、任务卡、工作台使用同一份快照。
+          await container.read(badgeSummaryProvider.notifier).refresh();
+        },
       );
       if (!mounted || container.read(authenticatedScopeProvider) != scope) {
         return;
@@ -194,11 +223,15 @@ mixin DraftBulkDeleteMixin<T extends StatefulWidget> on State<T> {
           '${uncertaintyReason == null ? '' : '$uncertaintyReason。'}'
           '${refreshed ? '请核对刷新后的列表再操作。' : '列表刷新未完成，请刷新核对后再操作。'}',
         );
-      } else if (failures.isNotEmpty || interrupted || !refreshed) {
+      } else if (failures.isNotEmpty ||
+          interrupted ||
+          stoppedByUser ||
+          !refreshed) {
         final reasons = failures.toSet().take(2).join('；');
         context.appWarning(
           '$summary${failures.isEmpty ? '' : '，${failures.length} 张未删除：$reasons'}'
           '${interrupted ? '；选择范围已变化，后续删除已停止' : ''}'
+          '${stoppedByUser ? '；已取消后续删除，其余 ${ids.length - processed} 张未处理' : ''}'
           '${refreshed ? '' : '；列表刷新未完成，请手动刷新核对'}',
         );
       } else {

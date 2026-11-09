@@ -4,6 +4,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.annotation.Autowired;
+import com.uten.imp.common.export.ExportProgress;
 import com.uten.imp.common.export.LegacyExportBudget;
 import com.uten.imp.common.export.LegacyExportRows;
 import org.springframework.web.method.HandlerMethod;
@@ -27,6 +28,8 @@ public class ExportRateLimitInterceptor implements HandlerInterceptor {
 
     private static final String CONCURRENCY_PERMIT_ATTRIBUTE =
             ExportRateLimitInterceptor.class.getName() + ".permit";
+    private static final String PROGRESS_ATTRIBUTE =
+            ExportRateLimitInterceptor.class.getName() + ".progress";
 
     private final ExportRateLimiter rateLimiter;
     private final SecurityContextCurrentUser currentUser;
@@ -60,7 +63,22 @@ public class ExportRateLimitInterceptor implements HandlerInterceptor {
         LegacyExportRows natural = handler instanceof HandlerMethod method ? method.getMethodAnnotation(LegacyExportRows.class) : null;
         request.setAttribute(CONCURRENCY_PERMIT_ATTRIBUTE, path.endsWith("/download") ? budget.openDownload()
                 : natural == null ? budget.open() : budget.openNatural(natural.value()));
+        // 客户端带上操作号时登记可轮询的生成进度(只本人可读), 进度条随读取一步一步前进。
+        UUID operation = operationOf(request);
+        if (operation != null && !path.endsWith("/download"))
+            request.setAttribute(PROGRESS_ATTRIBUTE, ExportProgress.openRegistered(userId.get(), operation));
         return true;
+    }
+
+    private static UUID operationOf(HttpServletRequest request) {
+        String raw = request.getHeader(ExportProgress.HEADER);
+        if (raw == null || raw.length() != 36) return null;
+        try {
+            UUID value = UUID.fromString(raw);
+            return value.toString().equals(raw.toLowerCase(java.util.Locale.ROOT)) ? value : null;
+        } catch (IllegalArgumentException invalid) {
+            return null;
+        }
     }
 
     @Override
@@ -69,6 +87,10 @@ public class ExportRateLimitInterceptor implements HandlerInterceptor {
             HttpServletResponse response,
             Object handler,
             Exception exception) {
+        if (request.getAttribute(PROGRESS_ATTRIBUTE) instanceof ExportProgress progress) {
+            request.removeAttribute(PROGRESS_ATTRIBUTE);
+            progress.close();
+        }
         if (request.getAttribute(CONCURRENCY_PERMIT_ATTRIBUTE) instanceof LegacyExportBudget.Scope scope) {
             request.removeAttribute(CONCURRENCY_PERMIT_ATTRIBUTE);
             scope.close();

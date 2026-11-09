@@ -111,7 +111,8 @@ public class ColorService {
      * 加密 Excel 导出：循环 list 分页累积全部行（size=100），硬上限防 OOM。
      * 列集与前端颜色表格一致：编号 / 颜色名称 / 状态 / 备注。
      */
-    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ,
+            timeout = com.uten.imp.common.export.ExportTransactions.TIMEOUT_SECONDS)
     public ExportPayload export(ColorQueryFilter f) {
         List<ExportColumn> cols = List.of(
                 new ExportColumn("code", "编号", ExportColumn.TEXT),

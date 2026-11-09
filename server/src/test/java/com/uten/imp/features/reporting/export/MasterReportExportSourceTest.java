@@ -108,6 +108,22 @@ class MasterReportExportSourceTest {
         }
         verifyNoInteractions(clients);
     }
+    @Test void goodsAssemblyHeaderFilterIsAcceptedByTheStrictTaskParserAndReachesTheTypedExport(){
+        exporter("goods");
+        source.validate(request("goods","{\"hasBom\":true,\"excludeStub\":true}"));
+        source.read(request("goods","{\"hasBom\":true,\"excludeStub\":true,\"series\":\"S1\"}"));
+        var present=(GoodsQueryFilter)decoded.get();
+        assertThat(present.hasBom()).isTrue();
+        assertThat(present.series()).isEqualTo("S1");
+        assertThat(present.excludeStub()).isTrue();
+        // Older clients put the header value in the task filter as text.
+        source.read(request("goods","{\"hasBom\":\"false\"}"));
+        assertThat(((GoodsQueryFilter)decoded.get()).hasBom()).isFalse();
+        source.read(request("goods","{}"));
+        assertThat(((GoodsQueryFilter)decoded.get()).hasBom()).isNull();
+        assertThatThrownBy(()->source.validate(request("goods","{\"hasBom\":\"maybe\"}")))
+                .isInstanceOf(ApiException.class).hasMessage("主档导出筛选参数无效");
+    }
     @Test void accountAndCurrencyTasksKeepPrivateTermsAndOriginalDecimalHeaderPrecision(){
         exporter("account");
         source.read(request("account","{\"keyword\":\"6222\",\"columnSearch\":{\"bankAccountNo\":\"6222%_\",\"balanceCurrent\":\">90071992547409.1234\"}}"));

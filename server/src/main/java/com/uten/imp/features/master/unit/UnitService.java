@@ -321,7 +321,8 @@ public class UnitService {
      * 加密 Excel 导出：循环 list 分页累积全部行（size=100），硬上限防 OOM。
      * 列集与日常单位资料一致：名称 / 编号 / 状态。
      */
-    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ,
+            timeout = com.uten.imp.common.export.ExportTransactions.TIMEOUT_SECONDS)
     public ExportPayload export(UnitQueryFilter f) {
         List<ExportColumn> cols = List.of(
                 new ExportColumn("code", "编号", ExportColumn.TEXT),

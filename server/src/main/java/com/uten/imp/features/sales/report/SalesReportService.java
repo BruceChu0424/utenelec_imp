@@ -916,7 +916,7 @@ public class SalesReportService {
      * 列定义映射 ReportColumn→ExportColumn（剥离 width）。report 取值与 GET 路径一致
      * （{docType}/{detail|summary}，docType 大写）：ORDER/detail 等 8 个。
      */
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, timeout = com.uten.imp.common.export.ExportTransactions.TIMEOUT_SECONDS)
     @PreAuthorize("hasAuthority('sales_report:export')")
     public ExportPayload export(String report, Map<String, String> p, String sort, String order) {
         String billNo = p == null ? null : p.get("billNo");

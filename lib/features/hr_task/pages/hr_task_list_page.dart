@@ -48,6 +48,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_dialog.dart';
+import '../../../components/feedback/uten_progress_dialog.dart';
 import '../../../shared/models/retained_async_page.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
@@ -776,7 +777,6 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
           type: UtenButtonType.danger,
           size: UtenButtonSize.large,
           icon: Icons.how_to_reg_outlined,
-          isLoading: _batchBusy,
           onPressed: enabled
               ? () => _batchConfirm(Set<String>.of(selectedIds), all)
               : null,
@@ -789,7 +789,6 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
           type: UtenButtonType.danger,
           size: UtenButtonSize.large,
           icon: _type.icon,
-          isLoading: _batchBusy,
           onPressed: enabled
               ? () => _batchBless(Set<String>.of(selectedIds), toBless)
               : null,
@@ -869,18 +868,38 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
     setState(() => _batchBusy = true);
     final repo = ref.read(employeeRepositoryProvider);
     var okCount = 0;
+    var stopped = false;
     final failures = <String>[];
-    for (final id in targets) {
-      final name = byId[id]?.name ?? id;
-      try {
-        await repo.confirm(id, confirmedDate: date);
-        okCount++;
-      } on ApiException catch (e) {
-        failures.add('$name：${e.message}');
-      } catch (_) {
-        failures.add('$name：操作失败');
-      }
-    }
+    // 逐人登记转正：afterCurrent 取消＝当前这人的请求办完即停，不中断、不重放，
+    // 已办结果照常呈现。
+    await showUtenProgress<void>(
+      context,
+      title: '批量登记转正',
+      icon: Icons.event_available_outlined,
+      initialStatus: '正在登记转正日期',
+      initialDetail: '${targets.length} 人',
+      cancelMode: UtenProgressCancel.afterCurrent,
+      action: (progress) async {
+        var done = 0;
+        for (final id in targets) {
+          if (progress.isCancelled) {
+            stopped = true;
+            break;
+          }
+          final name = byId[id]?.name ?? id;
+          try {
+            await repo.confirm(id, confirmedDate: date);
+            okCount++;
+          } on ApiException catch (e) {
+            failures.add('$name：${e.message}');
+          } catch (_) {
+            failures.add('$name：操作失败');
+          }
+          done++;
+          progress.count(done, targets.length, status: '正在登记转正日期');
+        }
+      },
+    );
     final blockedNames = [for (final id in blocked) byId[id]?.name ?? id];
     if (!mounted) return;
     setState(() {
@@ -894,6 +913,9 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
       ...failures,
       for (final name in blockedNames) '$name：他人认领处理中，已跳过',
     ];
+    if (stopped) {
+      allFailures.add('已停止，其余 ${targets.length - okCount - failures.length} 人未处理');
+    }
     if (allFailures.isNotEmpty) {
       context.appError('${allFailures.length} 人未完成：${allFailures.first}');
     }
@@ -969,11 +991,19 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
         ? NoticeType.birthday
         : NoticeType.anniversary;
     try {
-      final result = await ref
-          .read(noticeRepositoryProvider)
-          .publishCelebrationBatch(type: noticeType, employeeIds: targets);
-      if (!mounted) return;
-      // V454：一天一类型一张聚合卡；toast 说清「卡数 + 覆盖人数」
+      // 一次请求发布整批祝福卡，发出后无法撤回：不提供「取消」。
+      final result = await showUtenProgress<CelebrationBatchResult>(
+        context,
+        title: '批量送祝福',
+        icon: Icons.cake_outlined,
+        initialStatus: '正在发布祝福卡',
+        initialDetail: '${targets.length} 人',
+        cancellable: false,
+        action: (_) => ref
+            .read(noticeRepositoryProvider)
+            .publishCelebrationBatch(type: noticeType, employeeIds: targets),
+      );
+      if (!mounted || result == null) return;      // V454：一天一类型一张聚合卡；toast 说清「卡数 + 覆盖人数」
       final covered = result.notices > 0
           ? '已发布祝福卡，覆盖 ${result.published} 位同事'
           : '所选同事均已祝福';

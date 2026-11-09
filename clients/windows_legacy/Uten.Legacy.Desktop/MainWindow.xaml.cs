@@ -426,18 +426,31 @@ namespace Uten.Legacy.Desktop
                 if (release == null) { ConnectionLabel.Text = "当前没有适用于本客户端的更新。"; return; }
                 if (new UpdatePromptWindow(this, release).ShowDialog() != true) return;
                 SetBusy(true); WorkspacePanel.IsEnabled = false;
-                var progress = new Progress<long>(received => ConnectionLabel.Text = "正在下载并校验更新："
-                    + (received / 1024d / 1024d).ToString("0.0") + " / " + (release.SizeBytes / 1024d / 1024d).ToString("0.0") + " MiB");
-                using (var prepared = await updates.PrepareAsync(release, lifetime.Token, progress))
+                // 2026-11-09 与 Flutter「统一进度弹窗」同步：更新下载总量已知
+                // （release.SizeBytes）→ 确定进度 + 已收/总量详情；PrepareAsync 没有
+                // 用户级取消通道，与 Flutter 端 prepareUpdate 同口径不提供「取消」。
+                var waiting = UtenBusyDialog.ShowProgress(this, "正在下载并校验更新");
+                try
                 {
-                    if (closing || owner != session.Generation) return;
-                    if (!CanLeaveWorkspace())
-                    { ConnectionLabel.Text = "当前页面仍有未完成操作，已取消本次更新退出。"; return; }
-                    prepared.AuthorizeShutdown();
-                    DiagnosticsLog.Record("update.handoff");
-                    ConnectionLabel.Text = "更新预检已完成，软件正在正常退出…";
-                    Application.Current.Shutdown(0);
+                    var progress = new Progress<long>(received =>
+                    {
+                        waiting.Report(received, release.SizeBytes);
+                        ConnectionLabel.Text = "正在下载并校验更新："
+                            + (received / 1024d / 1024d).ToString("0.0") + " / " + (release.SizeBytes / 1024d / 1024d).ToString("0.0") + " MiB";
+                    });
+                    using (var prepared = await updates.PrepareAsync(release, lifetime.Token, progress))
+                    {
+                        if (closing || owner != session.Generation) return;
+                        if (!CanLeaveWorkspace())
+                        { ConnectionLabel.Text = "当前页面仍有未完成操作，已取消本次更新退出。"; return; }
+                        prepared.AuthorizeShutdown();
+                        DiagnosticsLog.Record("update.handoff");
+                        ConnectionLabel.Text = "更新预检已完成，软件正在正常退出…";
+                        waiting.Dispose();
+                        Application.Current.Shutdown(0);
+                    }
                 }
+                finally { waiting.Dispose(); }
             }
             catch (OperationCanceledException) { }
             catch (ApiException error) { if (!closing) ConnectionLabel.Text = error.UserMessage; }

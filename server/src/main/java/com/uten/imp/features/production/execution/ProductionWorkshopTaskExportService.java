@@ -19,7 +19,7 @@ import java.util.*;
 public class ProductionWorkshopTaskExportService {
     public static final String REPORT = WorkshopTaskExportContract.REPORT;
     private final ProductionExecutionWorkbenchService tasks;
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, timeout = com.uten.imp.common.export.ExportTransactions.TIMEOUT_SECONDS)
     public ExportPayload export(Map<String, String> p, String sort, String order) {
         CurrentAuthorityGuard.requireAll("production_execution:view", "production_report:export");
         WorkshopTaskExportContract.validate(p, sort, order);

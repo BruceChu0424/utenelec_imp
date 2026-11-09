@@ -546,7 +546,8 @@ public class GoodsBomService {
             new ExportColumn("componentGoodsId", "组件系统标识", ExportColumn.TEXT));
 
     /** 整树展开导出({@link #EXPORT_COLUMNS})。层级只用级联序号表达(1 / 3.1 / 3.1.1)，不再加缩进与子层星号标记。 */
-    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ,
+            timeout = com.uten.imp.common.export.ExportTransactions.TIMEOUT_SECONDS)
     public ExportPayload exportPayload(UUID goodsId) {
         List<ExportColumn> columns = canViewStock() ? EXPORT_COLUMNS
                 : EXPORT_COLUMNS.stream().filter(column -> !"stockQty".equals(column.key())).toList();

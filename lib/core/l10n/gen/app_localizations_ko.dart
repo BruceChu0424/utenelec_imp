@@ -5637,6 +5637,24 @@ class AppLocalizationsKo extends AppLocalizations {
   String get aiJobSlowHint => '내용이 많으면 1~2분 걸릴 수 있습니다. 다시 누르지 말고 기다려 주세요';
 
   @override
+  String get progressCancel => '취소';
+
+  @override
+  String progressElapsed(String time) {
+    return '경과 시간 $time';
+  }
+
+  @override
+  String get progressSlowHint => '데이터가 많으면 1~2분 걸릴 수 있습니다. 다시 누르지 말고 기다려 주세요';
+
+  @override
+  String get progressStopping =>
+      '중지하는 중: 현재 항목이 끝나면 멈춥니다. 완료된 항목은 유지되며 중복 제출되지 않습니다';
+
+  @override
+  String get progressStoppingButton => '중지하는 중…';
+
+  @override
   String get aiJobTimeout =>
       '처리 시간이 너무 길어 기다리기를 멈췄습니다. 잠시 후 다시 시도하거나 파일을 나눠 주세요';
 

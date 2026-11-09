@@ -38,6 +38,7 @@ import '../../../components/buttons/uten_export_button.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_context_menu.dart';
+import '../../../components/feedback/uten_progress_dialog.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -183,8 +184,8 @@ class _OperationsWorkbenchPageState
   final Set<String> _selectedIds = {};
 
   /// 批量导出单据的进度（done/total）；null = 不在导出中。导出期间按钮转
-  /// 加载态并显示「导出单据(n/N)」。
-  ({int done, int total})? _docExportProgress;
+  /// 单据导出进行中(防连点; 进度展示走统一进度弹窗)。
+  bool _docExporting = false;
   int _docExportQueryRevision = 0;
   Map<String, Object?>? _docExportQuery;
   bool _closureBusy = false;
@@ -931,26 +932,22 @@ class _OperationsWorkbenchPageState
         // 已关联的订货单沿用详情打印的 PDF；能力未注入时隐藏订单导出动作。
         if ((_seg?.code == _inProgressStage || _seg?.history == true) &&
             widget.purchaseOrderBatchExport != null) {
-          final progress = _docExportProgress;
-          final issue = progress != null
+          final issue = _docExporting
               ? null
               : _loading
               ? '正在刷新采购任务，请稍候'
               : _purchaseExportIssue(selected);
           return _SelectionPrimaryAction(
             buttonKey: const Key('operations-workbench-purchase-export-docs'),
-            label: progress == null
-                ? (selected.isEmpty
-                      ? '导出单据'
-                      : '导出单据(${_exportOrderDocumentsOf(selected).length})')
-                : '导出单据(${progress.done}/${progress.total})',
+            label: selected.isEmpty
+                ? '导出单据'
+                : '导出单据(${_exportOrderDocumentsOf(selected).length})',
             icon: Icons.print_outlined,
             readyTooltip: '把已选任务的采购单导出为 PDF 文件（多份自动打包 zip）',
             unavailableReason: issue,
             type: UtenButtonType.primary,
             route: null,
             onRun: issue == null ? _exportSelectedOrderDocs : null,
-            busy: progress != null,
           );
         }
         return null;
@@ -1029,7 +1026,7 @@ class _OperationsWorkbenchPageState
       _exportSelection(selected).issue;
 
   Future<void> _exportSelectedOrderDocs() async {
-    if (_docExportProgress != null) return;
+    if (_docExporting) return;
     final export = widget.purchaseOrderBatchExport;
     if (export == null) return;
     // 执行前再次校验整个选择，避免刷新/状态变化后只导出其中一部分。
@@ -1048,21 +1045,28 @@ class _OperationsWorkbenchPageState
         generation == _readerGeneration &&
         queryRevision == _docExportQueryRevision &&
         mapEquals(query, _queryIdentity);
-    setState(() => _docExportProgress = (done: 0, total: documents.length));
+    setState(() => _docExporting = true);
     try {
-      await export(
+      // 导出全程一个进度弹窗: 逐份读取计数, afterCurrent 取消＝当前这份读完
+      // 即停, 已读内容不再生成/保存。
+      await showUtenProgress<void>(
         context,
-        apiClient: ref.read(apiClientProvider),
-        documents: documents,
-        onProgress: (done, total) {
-          if (current()) {
-            setState(() => _docExportProgress = (done: done, total: total));
-          }
-        },
-        stillCurrent: current,
+        title: '导出采购单',
+        icon: Icons.print_outlined,
+        initialStatus: '正在导出单据',
+        initialDetail: '${documents.length} 份',
+        cancelMode: UtenProgressCancel.afterCurrent,
+        action: (progress) => export(
+          context,
+          apiClient: ref.read(apiClientProvider),
+          documents: documents,
+          onProgress: (done, total) =>
+              progress.count(done, total, status: '正在导出单据'),
+          stillCurrent: () => current() && !progress.isCancelled,
+        ),
       );
     } finally {
-      if (mounted) setState(() => _docExportProgress = null);
+      if (mounted) setState(() => _docExporting = false);
     }
   }
 
@@ -1172,7 +1176,7 @@ class _OperationsWorkbenchPageState
     selectedRowCount: _selectedIds.length,
     targets: _selectedClosureTargets,
     onSubmit: _requestSelectedClosures,
-    busy: _closureBusy || _loading || _docExportProgress != null,
+    busy: _closureBusy || _loading || _docExporting,
   );
 
   Widget _buildFloatingSelectionAction(_SelectionPrimaryAction action) {
@@ -1184,7 +1188,6 @@ class _OperationsWorkbenchPageState
         size: UtenButtonSize.large,
         type: action.type,
         icon: action.icon,
-        isLoading: action.busy,
         onPressed: action.enabled
             ? (action.onRun ?? () => goFrom(context, action.route!))
             : null,
@@ -1462,7 +1465,6 @@ class _SelectionPrimaryAction {
     required this.route,
     this.type = UtenButtonType.danger,
     this.onRun,
-    this.busy = false,
   });
 
   final Key buttonKey;
@@ -1477,10 +1479,8 @@ class _SelectionPrimaryAction {
   final UtenButtonType type;
 
   /// 回调型动作（批量导出单据）；与 [route]（跳转型动作）二选一。
+  /// 执行中的等待反馈由统一进度弹窗持有，按钮不再转圈。
   final Future<void> Function()? onRun;
-
-  /// 动作执行中（按钮转加载态，label 由调用方带进度更新）。
-  final bool busy;
 
   bool get enabled => route != null || onRun != null;
 }

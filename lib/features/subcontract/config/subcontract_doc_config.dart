@@ -165,7 +165,7 @@ class SubcontractDocConfig {
   final bool itemHasStep; // 工序（进仓/退货）
   final bool itemHasBoxQty; // 胶箱数量（材料出）
   final bool itemHasAllowedLossPct; // 供料损耗上限%（订货；主档记忆预填，成品目标不折减）
-  final bool itemHasGoodsStock; // 仓库库存数量（订货；服务端按货品×颜色下发的即时库存参考）
+  final bool itemHasGoodsStock; // 仓库库存数量（订货；有 BOM 按直属物料折算可委外数，否则自身现存量）
 
   // 明细链路差异（编辑页"从上游引入"按钮 + 回写 *ItemId）
   final bool linkToApplicationItem; // 订货 → 申请
@@ -261,7 +261,8 @@ class SubcontractDocConfig {
     itemHasWeight: true,
     // 每行供料损耗上限来自货品主档记忆；回厂不足成品目标仍需仓库确认并交委外判定。
     itemHasAllowedLossPct: true,
-    // 2026-11-07 用户口径：数量列右侧加「仓库库存数量」即时库存参考列（只读，不限制下单）。
+    // 2026-11-07 用户口径：数量列右侧加「仓库库存数量」参考列（只读，不限制下单）；
+    // 2026-11-08 起有 BOM 的委外件按直属物料现存量折算可委外数量，无 BOM 回退自身现存量。
     itemHasGoodsStock: true,
     linkToApplicationItem: true,
     showReceived: true,

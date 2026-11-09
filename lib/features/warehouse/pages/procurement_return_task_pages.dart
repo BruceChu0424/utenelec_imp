@@ -13,6 +13,7 @@ import '../../../components/data_display/uten_selection_summary_pill.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/feedback/uten_progress_dialog.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -72,6 +73,25 @@ class _ProcurementReturnTasksPageState
   int _requestVersion = 0;
   final Set<String> _selected = {};
   bool _batchSaving = false;
+  // 数据属主（身份/服务器）切换信号：批量进度弹窗接 invalidation 按取消收尾。
+  final ValueNotifier<int> _ownerChanges = ValueNotifier<int>(0);
+  ProviderSubscription<int>? _ownerSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _ownerSubscription = ref.listenManual(
+      exportContextEpochProvider,
+      (_, _) => _ownerChanges.value++,
+    );
+  }
+
+  @override
+  void dispose() {
+    _ownerSubscription?.close();
+    _ownerChanges.dispose();
+    super.dispose();
+  }
 
   /// 当前分段；null = 未选（2026-09-24 任务中心统一范式：未选不发请求）。
   _ReturnSeg? _seg;
@@ -245,29 +265,49 @@ class _ProcurementReturnTasksPageState
     } finally {
       noteCtl.dispose();
     }
-    if (note == null || !current()) return;
-    setState(() {
-      _batchSaving = true;
-      _loading = true;
-    });
+    if (note == null || !mounted || !current()) return;
+    setState(() => _batchSaving = true);
     try {
       final repo = ref.read(procurementInboundRepositoryProvider);
       var ok = 0;
       var fail = 0;
-      for (final task in tasks) {
-        if (!current()) break;
-        final returnTask = task.returnTask;
-        if (returnTask == null) continue;
-        try {
-          await repo.completeReturn(
-            returnTaskId: returnTask.id,
-            expectedVersion: returnTask.version,
-            completionNote: note,
-          );
-          ok++;
-        } catch (_) {
-          fail++;
-        }
+      var cancelled = false;
+      // 逐条确认退回：afterCurrent 取消＝当前这条办完即停，已办结果照常保留。
+      await showUtenProgress<void>(
+        context,
+        title: '批量确认退回',
+        icon: Icons.assignment_return_outlined,
+        initialStatus: '正在记录退回供应商',
+        initialDetail: '${tasks.length} 条任务',
+        cancelMode: UtenProgressCancel.afterCurrent,
+        invalidation: _ownerChanges,
+        action: (progress) async {
+          var done = 0;
+          for (final task in tasks) {
+            if (progress.isCancelled) {
+              cancelled = true;
+              break;
+            }
+            if (!current()) break;
+            progress.count(done, tasks.length, status: '正在记录退回供应商');
+            final returnTask = task.returnTask;
+            if (returnTask == null) continue;
+            try {
+              await repo.completeReturn(
+                returnTaskId: returnTask.id,
+                expectedVersion: returnTask.version,
+                completionNote: note,
+              );
+              ok++;
+            } catch (_) {
+              fail++;
+            }
+            done++;
+          }
+        },
+      );
+      if (cancelled && mounted && current()) {
+        context.appInfo('已确认 $ok 条，已按要求停止，其余任务继续保留');
       }
       if (!current()) return;
       _selected.clear();

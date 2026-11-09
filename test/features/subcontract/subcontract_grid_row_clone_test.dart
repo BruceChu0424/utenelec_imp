@@ -1,11 +1,54 @@
 // SubcontractGridRow.clone（明细复制/粘贴，2026-09-03）：
 // 语义同 PurchaseGridRow.clone——拷用户录入（含损耗单四列）与主档透传 + 行委外商；
 // 不拷上游 id / planItemId / 来源谱系 / 到货门控 / sourceLocked。
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/subcontract/config/subcontract_doc_config.dart';
+import 'package:uten_imp/features/subcontract/models/subcontract_doc.dart';
+import 'package:uten_imp/features/subcontract/repositories/subcontract_repository.dart';
 import 'package:uten_imp/features/subcontract/widgets/subcontract_grid_columns.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
+
+/// /goods-stock 桩：有 BOM 的委外件一桶(BOM_KIT, 颜色为空)，无 BOM 的货品按颜色分桶。
+class _GoodsStockApi extends ApiClient {
+  _GoodsStockApi() : super(Dio());
+  String? path;
+  Map<String, dynamic>? query;
+
+  @override
+  Future<List<Map<String, dynamic>>> getList(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async {
+    this.path = path;
+    this.query = query;
+    return [
+      {
+        'goodsId': 'kit',
+        'colorId': null,
+        'qtyExact': '11000',
+        'unitName': '件',
+        'basis': 'BOM_KIT',
+      },
+      {
+        'goodsId': 'own',
+        'colorId': 'red',
+        'qtyExact': '7',
+        'unitName': '件',
+        'basis': 'OWN_STOCK',
+      },
+      {
+        'goodsId': 'own',
+        'colorId': null,
+        'qtyExact': '3',
+        'unitName': '件',
+        'basis': 'OWN_STOCK',
+      },
+    ];
+  }
+}
 
 void main() {
   testWidgets(
@@ -241,5 +284,26 @@ void main() {
       );
       expect(keys, isNot(contains('stockQty')), reason: cfg.type.name);
     }
+  });
+
+  test('仓库库存数量：BOM 折算值适用于该货品任意颜色的行，无 BOM 按本行颜色桶精确取', () async {
+    final api = _GoodsStockApi();
+    final texts = await SubcontractRepository(
+      api,
+      SubcontractDocType.order,
+    ).goodsStockTexts({'kit', 'own'});
+
+    expect(api.path, '/subcontract/orders/goods-stock');
+    expect(api.query, {'goodsIds': 'kit,own'});
+    String? textOf(String goodsId, String? colorId) =>
+        SubcontractRepository.goodsStockTextOf(texts, goodsId, colorId);
+    // 有 BOM：直属物料折算的可委外数量与成品颜色无关。
+    expect(textOf('kit', 'blue'), '11000 件');
+    expect(textOf('kit', null), '11000 件');
+    // 无 BOM：回退自身现存量，按本行颜色桶取，不跨颜色借数。
+    expect(textOf('own', 'red'), '7 件');
+    expect(textOf('own', null), '3 件');
+    expect(textOf('own', 'blue'), isNull);
+    expect(textOf('missing', null), isNull);
   });
 }

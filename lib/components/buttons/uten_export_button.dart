@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:dio/dio.dart' show CancelToken;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart'
     show defaultTargetPlatform, kIsWeb, TargetPlatform;
@@ -9,6 +11,8 @@ import '../layout/uten_app_bar_action_scope.dart';
 import '../layout/uten_collapsible_content.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:collection/collection.dart';
+import 'package:intl/intl.dart' show NumberFormat;
+import 'package:uuid/uuid.dart';
 
 import '../../core/io/file_saver.dart';
 import '../../shared/export/master_export_job.dart';
@@ -29,7 +33,7 @@ import '../../shared/providers/shared_providers.dart';
 import 'uten_button.dart';
 import '../feedback/uten_dialog.dart';
 import '../feedback/uten_dialog_modules.dart';
-import '../feedback/uten_task_progress_dialog.dart';
+import '../feedback/uten_progress_dialog.dart';
 import '../data_display/uten_table_output_scope.dart';
 import '../inputs/uten_field_hint_icon.dart';
 import '../feedback/uten_busy_overlay.dart';
@@ -171,7 +175,6 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
   Future<void> _onTap() async {
     if (!widget.enabled || !_authorized || _loading || _preparing) return;
     final operation = ++_operation;
-    final progressOwner = Object();
     final actionContext = UtenAppBarActionScope.actionContextOf(context);
     final epoch = ref.read(exportContextEpochProvider);
     final api = ref.read(apiClientProvider);
@@ -219,29 +222,27 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
         return;
       }
       final UtenExportSelection preparedSelection = selection;
-      await runUtenBlockingTask<void>(
-        context: actionContext,
+      // 一次导出一个进度弹窗: 准备→生成→下载→保存都在同一个弹窗里, 可随时取消
+      // (2026-11-08 统一: 导出不用转圈遮罩)。后台任务路径在本弹窗关闭后再打开
+      // 自己的任务弹窗(launchJob)。
+      final launchJob = await showUtenProgress<Future<void> Function()?>(
+        actionContext,
         title: AppLocalizations.of(context).exportPreparingFile,
+        icon: Icons.file_download_outlined,
+        initialStatus: '正在准备导出',
         isCurrent: current,
         invalidation: _progressInvalidation,
-        owner: progressOwner,
-        task: () async {
+        action: (progress) async {
           final selectedOnly = choice.scope == UtenTableOutputScope.selected;
-          final selectedSnapshot =
-              selectedOnly &&
-                  widget.queryForSelection == null &&
-                  masterExportJobReport(widget.endpoint) == null &&
-                  table != null
-              ? await runUtenBlockingTask<UtenTableOutputSelection>(
-                  context: actionContext,
-                  title: '正在读取选中记录',
-                  isCurrent: current,
-                  invalidation: _progressInvalidation,
-                  owner: progressOwner,
-                  task: table.outputSelection.snapshot,
-                )
-              : null;
-          if (!mounted || !actionContext.mounted || !current()) return;
+          UtenTableOutputSelection? selectedSnapshot;
+          if (selectedOnly &&
+              widget.queryForSelection == null &&
+              masterExportJobReport(widget.endpoint) == null &&
+              table != null) {
+            progress.stage('正在读取选中记录');
+            selectedSnapshot = await table.outputSelection.snapshot();
+          }
+          if (!mounted || !actionContext.mounted || !current()) return null;
           final selectedRows = selectedSnapshot?.rows;
           if (selectedOnly &&
               widget.queryForSelection == null &&
@@ -249,9 +250,9 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
               (selectedRows == null ||
                   selectedRows.length != selected.length)) {
             context.appError('选中记录缺少完整输出身份，请刷新后重试');
-            return;
+            return null;
           }
-          await _doExport(
+          return _doExport(
             choice,
             preparedSelection,
             current,
@@ -259,10 +260,13 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
             scope,
             selectedOnly ? selected : null,
             selectedRows,
-            progressOwner,
+            progress,
           );
         },
       );
+      if (launchJob != null && mounted && actionContext.mounted && current()) {
+        await launchJob();
+      }
     } on ApiException catch (error) {
       if (mounted && current()) context.appError(error.message);
     } on FormatException catch (error) {
@@ -281,7 +285,9 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
     }
   }
 
-  Future<void> _doExport(
+  /// 在进度弹窗里完成同步导出; 走后台任务时返回「打开任务弹窗」的回调,
+  /// 由调用方在进度弹窗关闭后执行(两个弹窗不叠放)。
+  Future<Future<void> Function()?> _doExport(
     _ExportFileChoice choice,
     UtenExportSelection selection,
     bool Function() current,
@@ -289,9 +295,9 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
     AuthenticatedRequestScope scope,
     Set<String>? selectedIds,
     List<Map<String, String?>>? selectedRows,
-    Object progressOwner,
+    UtenProgressSession progress,
   ) async {
-    if (!mounted || !widget.enabled || !current()) return;
+    if (!mounted || !widget.enabled || !current()) return null;
     setState(() => _loading = true);
     final actionContext = UtenAppBarActionScope.actionContextOf(context);
     final projection =
@@ -303,7 +309,7 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
         (widget.tableKey != null ||
             TableColumnProjectionScope.hasCurrentTables(actionContext))) {
       context.appError('无法确定要导出的表头，请返回对应表格后重试');
-      return;
+      return null;
     }
     // 纯展示列（树形身份格等）不进导出投影：后端导出列集没有对应列，送过去
     // 会被「列不存在或不在可导出范围」整单拒绝（2026-10-20「导出组件」事故）。
@@ -321,7 +327,7 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
           );
     if (exportProjection != null && exportProjection.columns.isEmpty) {
       context.appError('当前表格没有可导出的列');
-      return;
+      return null;
     }
     final domain = reportExportJobDomain(widget.endpoint);
     final taskReport =
@@ -373,15 +379,9 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
     final jobs = ReportExportJobsClient(api, scope);
     var available = false;
     if (selectedOutput || (domain != null && supportsTask)) {
-      available = await runUtenBlockingTask(
-        context: actionContext,
-        title: AppLocalizations.of(context).exportPreparingFile,
-        isCurrent: current,
-        invalidation: _progressInvalidation,
-        owner: progressOwner,
-        task: jobs.available,
-      );
-      if (!mounted || !current() || !actionContext.mounted) return;
+      progress.stage('正在准备导出');
+      available = await jobs.available();
+      if (!mounted || !current() || !actionContext.mounted) return null;
       if (selectedOutput && !jobs.supportsSelectedOutput) {
         throw ApiException(
           'OUTPUT_SELECTION_UNSUPPORTED',
@@ -409,52 +409,70 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
               ? exportProjection.toJson()
               : null,
         );
-        // The task dialog owns progress now; keep the underlying action gated
-        // by _preparing without spinning an obscured button indefinitely.
-        setState(() => _loading = false);
-        await UtenBusyOverlay.yieldWhile(
-          () => showDialog<void>(
-            context: actionContext,
-            barrierDismissible: false,
-            builder: (_) => ReportExportJobDialog(
-              client: jobs,
-              request: request,
-              store: ReportExportPendingStore(
-                ref.read(sharedPreferencesProvider),
-                scope.identity,
-                domain,
-                taskReport,
-                format: selection.extension,
-              ),
-              stillCurrent: current,
-              onDownload: (job) async {
-                final filename = _exportFilename(selection, choice);
-                final saved = await jobs.downloadToFile(
-                  job.id,
-                  choice.password,
-                  filename,
-                  directory: choice.directory,
-                  stillCurrent: current,
-                );
-                if (!mounted || !current()) return;
-                if (saved != null) {
-                  _announceSaved(saved, filename);
-                  return;
-                }
-                if (job.bytes > 32 * 1024 * 1024) {
-                  throw ApiException(
-                    'STREAMING_UNAVAILABLE',
-                    '当前浏览器不支持大文件保存，请使用桌面版下载原任务',
+        // 后台任务有自己的进度弹窗: 先关掉本进度弹窗再打开, 两个弹窗不叠放。
+        return () async {
+          // The task dialog owns progress now; keep the underlying action gated
+          // by _preparing without spinning an obscured button indefinitely.
+          if (mounted) setState(() => _loading = false);
+          await UtenBusyOverlay.yieldWhile(
+            () => showDialog<void>(
+              context: actionContext,
+              barrierDismissible: false,
+              builder: (_) => ReportExportJobDialog(
+                client: jobs,
+                request: request,
+                store: ReportExportPendingStore(
+                  ref.read(sharedPreferencesProvider),
+                  scope.identity,
+                  domain,
+                  taskReport,
+                  format: selection.extension,
+                ),
+                stillCurrent: current,
+                onDownload: (job, progress) async {
+                  final filename = _exportFilename(selection, choice);
+                  bool receiving() => current() && !progress.isCancelled;
+                  final saved = await jobs.downloadToFile(
+                    job.id,
+                    choice.password,
+                    filename,
+                    directory: choice.directory,
+                    stillCurrent: receiving,
+                    onReceived: (received) => progress.bytes(
+                      received,
+                      job.bytes,
+                      status: '正在下载文件',
+                    ),
                   );
-                }
-                final bytes = await jobs.download(job.id, choice.password);
-                if (!mounted || !current()) return;
-                await _saveExport(bytes, selection, current, choice);
-              },
+                  if (!mounted || !receiving()) return;
+                  if (saved != null) {
+                    _announceSaved(saved, filename);
+                    return;
+                  }
+                  if (job.bytes > 32 * 1024 * 1024) {
+                    throw ApiException(
+                      'STREAMING_UNAVAILABLE',
+                      '当前浏览器不支持大文件保存，请使用桌面版下载原任务',
+                    );
+                  }
+                  final cancelToken = CancelToken();
+                  unawaited(
+                    progress.whenCancelled.then((_) => cancelToken.cancel()),
+                  );
+                  final bytes = await jobs.download(
+                    job.id,
+                    choice.password,
+                    cancelToken: cancelToken,
+                    onReceiveProgress: progress.receiving('正在下载文件'),
+                  );
+                  if (!mounted || !receiving()) return;
+                  progress.stage('正在保存文件', detail: formatUtenBytes(bytes.length));
+                  await _saveExport(bytes, selection, current, choice);
+                },
+              ),
             ),
-          ),
-        );
-        return;
+          );
+        };
       }
       if (selection.extension == 'pdf' &&
           domain != 'where_used' &&
@@ -472,30 +490,58 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
         legacyBody[entry.value] = legacyQuery.remove(entry.key);
       }
     }
-    await runUtenBlockingTask(
-      context: actionContext,
-      title: AppLocalizations.of(context).exportPreparingFile,
-      isCurrent: current,
-      invalidation: _progressInvalidation,
-      owner: progressOwner,
-      task: () async {
-        final Uint8List bytes = await scope.run(
-          () => api.downloadBytes(
-            widget.endpoint,
-            body: {
-              ...legacyBody,
-              if (exportProjection != null)
-                'columnProjection': exportProjection.toJson(),
-              'password': choice.password,
-            },
-            query: {'report': widget.report, ...legacyQuery},
-          ),
-        );
-        await scope.verify();
-        if (!mounted || !current()) return;
-        await _saveExport(bytes, selection, current, choice);
-      },
-    );
+    // 同步导出: 服务端整份生成后才开始发送字节, 只看下载字节会「0 直接跳 100」。
+    // 带上操作号让服务端登记生成进度, 请求进行中每 0.5 秒读一次「已读 / 总数 /
+    // 阶段」, 进度条随读取一步一步前进; 字节到达后接着走下载段。取消即中断传输。
+    final curve = _SyncExportCurve(progress);
+    curve.preparing();
+    final cancelToken = CancelToken();
+    unawaited(progress.whenCancelled.then((_) => cancelToken.cancel()));
+    final operation = const Uuid().v4();
+    var awaitingPoll = false;
+    Timer? poller;
+    void pollGeneration() {
+      if (awaitingPoll || progress.isCancelled) return;
+      awaitingPoll = true;
+      api
+          .get('/exports/progress/$operation')
+          .then((snapshot) {
+            if (poller?.isActive ?? false) curve.server(snapshot);
+          }, onError: (Object _) {
+            // 外网并发满(429)或偶发网络抖动: 跳过这一次, 不打断导出本身。
+          })
+          .whenComplete(() => awaitingPoll = false);
+    }
+
+    poller = Timer.periodic(_generationPollInterval, (_) => pollGeneration());
+    final Uint8List bytes;
+    try {
+      bytes = await scope.run(
+        () => api.downloadBytes(
+          widget.endpoint,
+          body: {
+            ...legacyBody,
+            if (exportProjection != null)
+              'columnProjection': exportProjection.toJson(),
+            'password': choice.password,
+          },
+          query: {'report': widget.report, ...legacyQuery},
+          headers: {_exportOperationHeader: operation},
+          cancelToken: cancelToken,
+          onReceiveProgress: (received, total) {
+            poller?.cancel();
+            curve.download(received, total);
+          },
+        ),
+      );
+    } finally {
+      poller.cancel();
+    }
+    await scope.verify();
+    if (!mounted || !current() || progress.isCancelled) return null;
+    curve.saving(bytes.length);
+    await _saveExport(bytes, selection, current, choice);
+    return null;
   }
 
   Future<void> _saveExport(
@@ -546,7 +592,7 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
         !ref.watch(currentPermissionsProvider).contains(requiredPermission)) {
       return const SizedBox.shrink();
     }
-    // 文字按钮（年长用户多，文字"下载表格"比纯图标易懂）；loading 时 UtenButton 自带转圈并禁用。
+    // 文字按钮（年长用户多，文字"下载表格"比纯图标易懂）。
     return UtenButton(
       type: widget.type,
       size: widget.size,
@@ -557,8 +603,9 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
               : null),
       icon: widget.icon,
       compactIcon: Icons.download_rounded,
-      isLoading: _loading,
-      onPressed: widget.enabled && !_preparing ? _onTap : null,
+      // 等待状态只由通用进度弹窗表达(百分比 + 进度条), 按钮不再叠转圈;
+      // _loading / _preparing 仍负责防连点。
+      onPressed: widget.enabled && !_preparing && !_loading ? _onTap : null,
       child: Text(widget.label),
     );
   }
@@ -945,5 +992,65 @@ class _ExportFileDialogState extends State<_ExportFileDialog> {
         ),
       ],
     );
+  }
+}
+
+/// 服务端登记同步导出生成进度所认的请求头(与服务端 ExportProgress.HEADER 一致)。
+const _exportOperationHeader = 'X-Uten-Export-Operation';
+const _generationPollInterval = Duration(milliseconds: 500);
+
+/// 同步导出的整体进度: 读取数据 0–90%、生成文件 92%、加密 95%、下载 95–99%、
+/// 保存 100%, 只进不退。读取段按服务端真实「已读 / 总数」推进; 服务端没给总数
+/// 时保持扫动条并显示已读行数, 不伪造百分比。
+class _SyncExportCurve {
+  _SyncExportCurve(this.session);
+
+  final UtenProgressSession session;
+  final _rows = NumberFormat.decimalPattern('zh');
+  double _floor = 0;
+
+  void preparing() => session.stage('正在读取数据');
+
+  void server(Map<String, dynamic> snapshot) {
+    // 204(尚未登记或已结束)读成空对象: 保持当前进度。
+    if (snapshot['phase'] == null) return;
+    final rows = (snapshot['rows'] as num?)?.toInt() ?? 0;
+    final total = (snapshot['total'] as num?)?.toInt();
+    switch (snapshot['phase']) {
+      case 'PACKAGING':
+        _report(0.92, '正在生成文件', total == null ? null : '共 ${_rows.format(total)} 行');
+      case 'ENCRYPTING':
+        _report(0.95, '正在加密文件', total == null ? null : '共 ${_rows.format(total)} 行');
+      default:
+        if (total == null || total <= 0) {
+          session.stage('正在读取数据', detail: '已读取 ${_rows.format(rows)} 行');
+          return;
+        }
+        _report(
+          0.9 * rows / total,
+          '正在读取数据',
+          '${_rows.format(rows)} / ${_rows.format(total)} 行',
+        );
+    }
+  }
+
+  void download(int received, int total) {
+    if (total <= 0) {
+      _report(_floor, '正在下载文件', formatUtenBytes(received));
+      return;
+    }
+    _report(
+      0.95 + 0.04 * received / total,
+      '正在下载文件',
+      '${formatUtenBytes(received)} / ${formatUtenBytes(total)}',
+    );
+  }
+
+  void saving(int bytes) => _report(1, '正在保存文件', formatUtenBytes(bytes));
+
+  void _report(double value, String status, String? detail) {
+    if (value < _floor) value = _floor;
+    _floor = value;
+    session.percent(value, status: status, detail: detail);
   }
 }

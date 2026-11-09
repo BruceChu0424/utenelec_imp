@@ -31,6 +31,7 @@ import 'package:uten_imp/core/router/page_resume_provider.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
+import 'package:uten_imp/components/feedback/uten_progress_dialog.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/features/production/pages/production_workshop_tasks_page.dart';
 import 'package:uten_imp/features/production/pages/production_material_discovery_request_page.dart';
@@ -1712,7 +1713,7 @@ void batchBusyOverlayTests() {
     expect(find.text('批量开工(1)'), findsOneWidget);
     await tester.tap(find.text('批量开工(1)'));
     await pumpFrames(tester);
-    expect(find.byKey(const Key('workshop-batch-start-busy')), findsOneWidget);
+    expect(find.byType(UtenProgressBar), findsOneWidget);
     expect(find.text('正在开工'), findsOneWidget);
 
     // 提交已回来但列表还在重拉: 遮罩不撤, 只换文案。文案不许说「已提交」——
@@ -1720,7 +1721,7 @@ void batchBusyOverlayTests() {
     loadGate.pending = Completer<void>();
     plans.startGate!.complete();
     await pumpFrames(tester);
-    expect(find.byKey(const Key('workshop-batch-start-busy')), findsOneWidget);
+    expect(find.byType(UtenProgressBar), findsOneWidget);
     expect(find.text('正在刷新任务列表'), findsOneWidget);
     final container = ProviderScope.containerOf(
       tester.element(find.byType(ProductionWorkshopTasksPage)),
@@ -1734,7 +1735,7 @@ void batchBusyOverlayTests() {
     loadGate.pending!.complete();
     loadGate.pending = null;
     await tester.pumpAndSettle();
-    expect(find.byKey(const Key('workshop-batch-start-busy')), findsNothing);
+    expect(find.byType(UtenProgressBar), findsNothing);
     expect(plans.startedPlanIds, ['plan-segment-a']);
     expect(
       container.read(appNotificationProvider).last.message,
@@ -1763,7 +1764,7 @@ void batchBusyOverlayTests() {
     await tester.tap(_menuEntry('持续生产(1)'));
     await pumpFrames(tester);
     expect(
-      find.byKey(const Key('workshop-route-confirm-busy')),
+      find.byType(UtenProgressBar),
       findsOneWidget,
     );
     expect(find.text('正在确认生产路线'), findsOneWidget);
@@ -1772,7 +1773,7 @@ void batchBusyOverlayTests() {
     plans.confirmGate!.complete();
     await pumpFrames(tester);
     expect(
-      find.byKey(const Key('workshop-route-confirm-busy')),
+      find.byType(UtenProgressBar),
       findsOneWidget,
     );
     expect(find.text('正在刷新任务列表'), findsOneWidget);
@@ -1780,7 +1781,7 @@ void batchBusyOverlayTests() {
     loadGate.pending!.complete();
     loadGate.pending = null;
     await tester.pumpAndSettle();
-    expect(find.byKey(const Key('workshop-route-confirm-busy')), findsNothing);
+    expect(find.byType(UtenProgressBar), findsNothing);
     expect(plans.confirmedRoutes, [('segment-a', 'CONTINUOUS')]);
     expect(tester.takeException(), isNull);
   });
@@ -1845,7 +1846,7 @@ void batchBusyOverlayTests() {
         findsOneWidget,
       );
       expect(
-        find.byKey(const Key('workshop-draw-review-refresh-busy')),
+        find.byType(UtenProgressBar),
         findsNothing,
       );
       expect(find.byType(UtenBusyOverlay), findsOneWidget);
@@ -1867,7 +1868,7 @@ void batchBusyOverlayTests() {
       await pumpFrames(tester, 8);
       expect(taskReads, readsBeforeReturn);
       expect(
-        find.byKey(const Key('workshop-draw-review-refresh-busy')),
+        find.byType(UtenProgressBar),
         findsNothing,
         reason:
             'Hidden return waits must not put a root overlay on another page.',
@@ -1876,7 +1877,7 @@ void batchBusyOverlayTests() {
       await pumpFrames(tester, 8);
       expect(taskReads, readsBeforeReturn + 1);
       expect(
-        find.byKey(const Key('workshop-draw-review-refresh-busy')),
+        find.byType(UtenProgressBar),
         findsOneWidget,
       );
       expect(find.byKey(const Key('discovery-request-loading')), findsNothing);
@@ -1908,7 +1909,7 @@ void batchBusyOverlayTests() {
       await tester.tap(find.text('批量开工(1)'));
       await pumpFrames(tester);
       expect(
-        find.byKey(const Key('workshop-batch-start-busy')),
+        find.byType(UtenProgressBar),
         findsOneWidget,
       );
 
@@ -1920,14 +1921,14 @@ void batchBusyOverlayTests() {
       bumpPageResumeState(notifier, RouteName.productionWorkshopTasks);
       await pumpFrames(tester);
       expect(
-        find.byKey(const Key('workshop-batch-start-busy')),
+        find.byType(UtenProgressBar),
         findsOneWidget,
       );
       expect(plans.startedPlanIds, isEmpty);
 
       plans.startGate!.complete();
       await pumpFrames(tester, 8);
-      expect(find.byKey(const Key('workshop-batch-start-busy')), findsNothing);
+      expect(find.byType(UtenProgressBar), findsNothing);
       expect(plans.startedPlanIds, hasLength(1));
       expect(tester.takeException(), isNull);
     },
@@ -2054,7 +2055,7 @@ void routeConfirmationTests() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
       expect(
-        find.byKey(const Key('workshop-route-confirm-busy')),
+        find.byType(UtenProgressBar),
         findsOneWidget,
       );
       plans.confirmGate!.complete();

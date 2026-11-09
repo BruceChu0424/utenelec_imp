@@ -107,6 +107,9 @@ class _Api extends ApiClient {
     String path, {
     Object? body,
     Map<String, dynamic>? query,
+    CancelToken? cancelToken,
+    ProgressCallback? onReceiveProgress,
+    Map<String, String>? headers,
   }) async {
     downloads.add((path: path, body: body));
     downloadQueries.add({...?query});
@@ -540,7 +543,7 @@ void main() {
                 request?.report ?? 'order/detail',
               ),
               stillCurrent: () => true,
-              onDownload: (job) async => client.download(job.id, ''),
+              onDownload: (job, _) async => client.download(job.id, ''),
             ),
           ),
         ),

@@ -78,6 +78,39 @@ class ExportRateLimitInterceptorTest {
         verify(rateLimiter, org.mockito.Mockito.times(3)).check(userId);
     }
 
+    @Test void anOperationHeaderRegistersPollableProgressOnlyForTheRequestLifetime() {
+        var users = mock(SecurityContextCurrentUser.class);
+        UUID userId = UUID.randomUUID(), operation = UUID.randomUUID();
+        when(users.id()).thenReturn(Optional.of(userId));
+        var interceptor = new ExportRateLimitInterceptor(mock(ExportRateLimiter.class), users, 1);
+        var request = (MockHttpServletRequest) postRequest();
+        request.addHeader(com.uten.imp.common.export.ExportProgress.HEADER, operation.toString());
+        var response = mock(HttpServletResponse.class);
+        assertTrue(interceptor.preHandle(request, response, new Object()));
+        com.uten.imp.common.export.ExportProgress.announceTotal(39_000);
+        com.uten.imp.common.export.ExportProgress.rows(1_200);
+        var snapshot = com.uten.imp.common.export.ExportProgress.snapshot(userId, operation).orElseThrow();
+        org.junit.jupiter.api.Assertions.assertEquals(1_200L, snapshot.rows());
+        org.junit.jupiter.api.Assertions.assertEquals(39_000L, snapshot.total());
+        interceptor.afterCompletion(request, response, new Object(), null);
+        assertTrue(com.uten.imp.common.export.ExportProgress.snapshot(userId, operation).isEmpty());
+        org.junit.jupiter.api.Assertions.assertNull(com.uten.imp.common.export.ExportProgress.currentTotal());
+    }
+
+    @Test void malformedOperationHeadersAreIgnoredWithoutFailingTheExport() {
+        var users = mock(SecurityContextCurrentUser.class);
+        UUID userId = UUID.randomUUID();
+        when(users.id()).thenReturn(Optional.of(userId));
+        var interceptor = new ExportRateLimitInterceptor(mock(ExportRateLimiter.class), users, 1);
+        var request = (MockHttpServletRequest) postRequest();
+        request.addHeader(com.uten.imp.common.export.ExportProgress.HEADER, "../../not-a-uuid");
+        var response = mock(HttpServletResponse.class);
+        assertTrue(interceptor.preHandle(request, response, new Object()));
+        com.uten.imp.common.export.ExportProgress.rows(5);
+        org.junit.jupiter.api.Assertions.assertNull(com.uten.imp.common.export.ExportProgress.currentTotal());
+        interceptor.afterCompletion(request, response, new Object(), null);
+    }
+
     private HttpServletRequest postRequest() {
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.setMethod("POST");

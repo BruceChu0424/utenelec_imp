@@ -218,7 +218,8 @@ public class AuditQueryService {
      * bulk export because they are large and more sensitive. The audit ID and
      * request ID remain available for a focused detail investigation.
      */
-    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ,
+            timeout = com.uten.imp.common.export.ExportTransactions.TIMEOUT_SECONDS)
     @PreAuthorize("hasAuthority('audit_log:view')"
             + " and hasAuthority('audit_log:export')")
     public ExportPayload export(AuditSearchCriteria criteria) {
@@ -227,6 +228,7 @@ public class AuditQueryService {
         // export view; no inferred maximum ID is used as a completeness watermark.
         Specification<AuditLog> spec = specification(criteria);
         long total = repo.count(spec);
+        com.uten.imp.common.export.ExportProgress.announceTotal(total);
         var sink=com.uten.imp.common.export.ExportPageSink.current();
         List<Map<String,Object>> rows=sink==null?new ArrayList<>():null;
         List<ExportColumn> currentColumns = new ArrayList<>(EXPORT_COLUMNS);
@@ -239,11 +241,14 @@ public class AuditQueryService {
             new ExportColumn("device", "设备", ExportColumn.TEXT),
             new ExportColumn("change", "变化摘要", ExportColumn.TEXT)));
         if(total>0) {
+            long[] seen={0};
             java.util.Objects.requireNonNull(exportReader,"Audit export projection reader is required").read(spec,total,batch->{
                 com.uten.imp.common.export.ExportOperationCheckpoint.check();
                 AuditActorDirectory.Resolution actors=actorDirectory.resolve(AuditActorDirectory.actorIdsOf(batch),AuditActorDirectory.actorAccountsOf(batch));
                 List<Map<String,Object>> projected=batch.stream().map(value->toExportRow(value,actors)).toList();
                 if(sink==null)rows.addAll(projected);else sink.accept(new ExportPayload(currentColumns,projected,Math.toIntExact(total)));
+                seen[0]+=projected.size();
+                com.uten.imp.common.export.ExportProgress.rows(seen[0]);
             });
         } else if(sink!=null)sink.accept(new ExportPayload(currentColumns,List.of(),0));
         return new ExportPayload(currentColumns, sink==null?rows:List.of(), Math.toIntExact(total));

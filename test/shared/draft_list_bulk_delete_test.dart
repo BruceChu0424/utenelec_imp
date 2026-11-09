@@ -9,7 +9,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
-import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/expense/models/expense_claim.dart';
 import 'package:uten_imp/features/expense/pages/expense_list_page.dart';
@@ -322,7 +321,7 @@ void main() {
           await _confirmDelete(tester, waitForCompletion: false);
           expect(api.detailReads, ['draft-1']);
           expect(api.detailGate!.isCompleted, isFalse);
-          expect(find.byType(UtenBusyOverlay), findsOneWidget);
+          expect(find.byKey(const ValueKey('uten-progress-cancel')), findsOneWidget);
           expect(api.deletes, isEmpty);
           if (changeIdentity) {
             final element = kind == _Kind.daily

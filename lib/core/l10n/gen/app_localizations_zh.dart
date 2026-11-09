@@ -5466,6 +5466,23 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiJobSlowHint => '内容较多时需要一两分钟, 请耐心等待, 不用重复点';
 
   @override
+  String get progressCancel => '取消';
+
+  @override
+  String progressElapsed(String time) {
+    return '已进行 $time';
+  }
+
+  @override
+  String get progressSlowHint => '数据量大时需要一两分钟, 请耐心等待, 不用重复点';
+
+  @override
+  String get progressStopping => '正在停止: 当前这一项办完后结束, 已完成的保留, 不会重复提交';
+
+  @override
+  String get progressStoppingButton => '正在停止…';
+
+  @override
   String get aiJobTimeout => '处理时间太长, 已停止等待。请稍后再试, 或把文件拆小一些';
 
   @override

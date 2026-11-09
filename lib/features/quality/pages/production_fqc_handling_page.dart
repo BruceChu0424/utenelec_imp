@@ -36,7 +36,7 @@ import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_confirmation_summary.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_inline_notice.dart';
-import '../../../components/feedback/uten_busy_overlay.dart';
+import '../../../components/feedback/uten_progress_dialog.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_field_message.dart';
@@ -149,11 +149,15 @@ class _FqcSubmissionNotSent implements Exception {
 
 /// A late original-server response may finish there, but must not notify or pop
 /// a different user's/server's page or a route pushed over this editor.
+/// [ownDialogCurrent] 排除本编辑器自己推起的提交进度弹窗（同 account 工作台的
+/// _batchDialogs 口径）：弹窗路由在顶不算「其他页面」；别的页面推到弹窗之上
+/// 时弹窗路由不再是 current，守卫照常拦截。
 bool Function() _captureFqcResponseView(
   BuildContext context,
   WidgetRef ref,
   String Function() documentId, {
   required bool Function() identityIsCurrent,
+  bool Function()? ownDialogCurrent,
 }) {
   final scope = ref.read(authenticatedScopeProvider);
   final server = ref.read(apiBaseUrlProvider);
@@ -165,7 +169,9 @@ bool Function() _captureFqcResponseView(
       documentId() == originalDocumentId &&
       ref.read(authenticatedScopeProvider) == scope &&
       ref.read(apiBaseUrlProvider) == server &&
-      (route == null || route.isCurrent);
+      (route == null ||
+          route.isCurrent ||
+          (ownDialogCurrent != null && ownDialogCurrent()));
 }
 
 // These structured application responses reject this attempt. After an earlier
@@ -805,6 +811,8 @@ class _ProductionFqcSheetHandlingPageState
   bool _loading = true;
   bool _confirming = false;
   bool _submitting = false;
+  // 本页自己推起的提交进度弹窗路由：弹窗在顶时响应视图守卫不算被其他页面压住。
+  ModalRoute<dynamic>? _submitProgressRoute;
   int _loadGeneration = 0;
   bool get _canDecide => productionFqcDecisionAllowed(
     ref.read(productionFqcDecisionCapabilityProvider),
@@ -957,6 +965,7 @@ class _ProductionFqcSheetHandlingPageState
       ref,
       () => widget.sheetId,
       identityIsCurrent: () => formDraftIdentityIsCurrent,
+      ownDialogCurrent: () => _submitProgressRoute?.isCurrent ?? false,
     );
     // A queued or older read cannot replace the rows owned by this review.
     ++_loadGeneration;
@@ -1012,21 +1021,43 @@ class _ProductionFqcSheetHandlingPageState
       context.appWarning('含不合格数量时结论原因至少 2 个字');
       return;
     }
+    // 闭包会丢失上方空值检查的类型提升，这里先钉成非空局部。
+    final confirmedReason = reason;
+    final confirmedScope = requestScope!;
     setState(() => _submitting = true);
+    List<ProductionFqcDecisionResult>? result;
     try {
       if (!mounted || !canPublish()) return;
-      final result = await FqcReportRow.sendReport(
-        rows: selected,
-        reason: reason,
-        repository: ref.read(productionFqcRepositoryProvider),
-        guard: (send, reject) => runFormDraftSubmission(() {
-          if (!canPublish() || !_hasFqcApprovalPermission(ref)) {
-            throw const _FqcSubmissionNotSent();
-          }
-          return requestScope!.run(send);
-        }, isDefiniteRejection: reject),
-      );
-      await requestScope!.verify();
+      // 整份报告一次请求提交，发出后无法撤回：不提供「取消」。
+      try {
+        result = await showUtenProgress<List<ProductionFqcDecisionResult>?>(
+          context,
+          title: pending.isNotEmpty ? '确认原提交' : '提交检验报告',
+          icon: Icons.fact_check_outlined,
+          initialStatus: '正在提交检验报告',
+          initialDetail: '${selected.length} 行',
+          cancellable: false,
+          invalidation: formDraftIdentityInvalidation,
+          onRouteOpened: (route) => _submitProgressRoute = route,
+          action: (_) async {
+            final rows = await FqcReportRow.sendReport(
+              rows: selected,
+              reason: confirmedReason,
+              repository: ref.read(productionFqcRepositoryProvider),
+              guard: (send, reject) => runFormDraftSubmission(() {
+                if (!canPublish() || !_hasFqcApprovalPermission(ref)) {
+                  throw const _FqcSubmissionNotSent();
+                }
+                return confirmedScope.run(send);
+              }, isDefiniteRejection: reject),
+            );
+            await confirmedScope.verify();
+            return rows;
+          },
+        );
+      } finally {
+        _submitProgressRoute = null;
+      }
       if (!mounted || !canPublish()) return;
       setState(() {});
       if (result == null) {
@@ -1040,7 +1071,7 @@ class _ProductionFqcSheetHandlingPageState
       }
       // All acknowledged rows are fenced before the one local checkpoint.
       await checkpointFormDraftAfterCreation();
-      await requestScope.verify();
+      await confirmedScope.verify();
       if (!mounted || !canPublish()) return;
       context.appSuccess(
         pending.isNotEmpty
@@ -1056,7 +1087,7 @@ class _ProductionFqcSheetHandlingPageState
     } catch (_) {
       // This boundary contains only local persistence, refresh and navigation.
       // Every successful response has already fenced its row as confirmed.
-      if (canPublish() && requestScope?.isCurrent != false) {
+      if (canPublish() && confirmedScope.isCurrent != false) {
         setState(() => _error = '提交结果已保留，页面更新或本机保存未完成，请刷新查看；已确认行不会再次提交');
       }
     } finally {
@@ -1098,20 +1129,9 @@ class _ProductionFqcSheetHandlingPageState
                   actionLabel: '重新加载',
                   onAction: _load,
                 )
-              : Stack(
-                  children: [
-                    AbsorbPointer(
-                      absorbing: _loading || _confirming || _submitting,
-                      child: _buildBody(context),
-                    ),
-                    if (_submitting)
-                      const Positioned.fill(
-                        child: UtenBusyOverlay(
-                          title: '正在提交检验报告',
-                          description: '本报告一起提交，已登记的原决定不会重复。',
-                        ),
-                      ),
-                  ],
+              : AbsorbPointer(
+                  absorbing: _loading || _confirming || _submitting,
+                  child: _buildBody(context),
                 ),
         ),
       ),
@@ -1169,10 +1189,6 @@ class _ProductionFqcSheetHandlingPageState
                       style: TextStyle(color: theme.colorScheme.error),
                     ),
                   ),
-                ],
-                if (_submitting) ...[
-                  const SizedBox(height: UtenSpacing.s8),
-                  const LinearProgressIndicator(key: Key('fqc-sheet-progress')),
                 ],
                 const SizedBox(height: UtenSpacing.s8),
               ],
@@ -1266,7 +1282,6 @@ class _ProductionFqcSheetHandlingPageState
         size: UtenButtonSize.large,
         type: UtenButtonType.danger,
         icon: Icons.fact_check_outlined,
-        isLoading: _submitting,
         onPressed: _loading || _confirming || _submitting || selectedIds.isEmpty
             ? null
             : _submitReport,
@@ -1721,6 +1736,8 @@ class _ProductionFqcInspectionPageState
   bool _loading = true;
   bool _confirming = false;
   bool _saving = false;
+  // 本页自己推起的提交进度弹窗路由：弹窗在顶时响应视图守卫不算被其他页面压住。
+  ModalRoute<dynamic>? _submitProgressRoute;
   int _loadGeneration = 0;
   bool get _canDecide => productionFqcDecisionAllowed(
     ref.read(productionFqcDecisionCapabilityProvider),
@@ -1837,6 +1854,7 @@ class _ProductionFqcInspectionPageState
       ref,
       () => widget.inspectionId,
       identityIsCurrent: () => formDraftIdentityIsCurrent,
+      ownDialogCurrent: () => _submitProgressRoute?.isCurrent ?? false,
     );
     ++_loadGeneration;
     setState(() => _confirming = true);
@@ -1878,18 +1896,35 @@ class _ProductionFqcInspectionPageState
       context.appWarning('含不合格数量时结论原因至少 2 个字');
       return;
     }
+    // 闭包会丢失上方空值检查的类型提升，这里先钉成非空局部。
+    final confirmedReason = reason;
     setState(() => _saving = true);
+    ProductionFqcDecisionResult? result;
     try {
-      final result = await row.send(
-        reason: reason,
-        repository: ref.read(productionFqcRepositoryProvider),
-        guard: (send, reject) => runFormDraftSubmission(() {
-          if (!canPublish() || !_hasFqcApprovalPermission(ref)) {
-            throw const _FqcSubmissionNotSent();
-          }
-          return send();
-        }, isDefiniteRejection: reject),
-      );
+      // 单份决定一次请求提交，发出后无法撤回：不提供「取消」。
+      try {
+        result = await showUtenProgress<ProductionFqcDecisionResult?>(
+          context,
+          title: row.needsReconciliation ? '确认原提交' : '提交检验报告',
+          icon: Icons.fact_check_outlined,
+          initialStatus: '正在提交检验报告',
+          cancellable: false,
+          invalidation: formDraftIdentityInvalidation,
+          onRouteOpened: (route) => _submitProgressRoute = route,
+          action: (_) => row.send(
+            reason: confirmedReason,
+            repository: ref.read(productionFqcRepositoryProvider),
+            guard: (send, reject) => runFormDraftSubmission(() {
+              if (!canPublish() || !_hasFqcApprovalPermission(ref)) {
+                throw const _FqcSubmissionNotSent();
+              }
+              return send();
+            }, isDefiniteRejection: reject),
+          ),
+        );
+      } finally {
+        _submitProgressRoute = null;
+      }
       if (!mounted || !canPublish()) return;
       setState(() {
         if (result != null) _inspection = result.inspection;
@@ -1960,7 +1995,6 @@ class _ProductionFqcInspectionPageState
                     type: UtenButtonType.danger,
                     size: UtenButtonSize.large,
                     icon: Icons.fact_check_outlined,
-                    isLoading: _saving,
                     onPressed: _loading || _confirming || _saving
                         ? null
                         : _submitReport,

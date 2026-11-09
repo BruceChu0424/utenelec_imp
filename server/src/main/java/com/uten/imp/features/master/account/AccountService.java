@@ -188,7 +188,8 @@ public class AccountService {
      * （期初/累计收款/累计付款/调整累计/警戒线表格不显示，导出不再多给）；无余额权限者
      * 整列不导出（与表格摘列同口径，不是空单元格）。accountType/币种按展示文字。
      */
-    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ,
+            timeout = com.uten.imp.common.export.ExportTransactions.TIMEOUT_SECONDS)
     public ExportPayload export(AccountQueryFilter f, String sort, String order) {
         boolean showBalance = hasAuthority("account:balance:view");
         List<ExportColumn> cols = new ArrayList<>();

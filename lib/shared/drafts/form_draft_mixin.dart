@@ -138,6 +138,7 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
   /// draft evidence stays with its owner; this editor cannot start more work.
   void invalidateFormDraftIdentity() {
     if (!mounted || _draftDisposed || _draftIdentityChanged) return;
+    _identityInvalidation?.value++;
     final lease = _draftPreservationLease;
     Map<String, dynamic>? snapshot;
     if (_draftReady &&
@@ -261,6 +262,13 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
   }
 
   Iterable<Listenable> get formDraftListenables => const [];
+
+  /// 身份/服务器切换（即本 mixin 的 invalidateFormDraftIdentity）的失效源，
+  /// 供进度弹窗等路由级等待件的 `invalidation` 使用：切换后弹窗按取消收尾，
+  /// 离开守卫得以放行导航。惰性创建；随 mixin dispose 一并释放。
+  ValueNotifier<int>? _identityInvalidation;
+  Listenable get formDraftIdentityInvalidation =>
+      (_identityInvalidation ??= ValueNotifier<int>(0));
 
   /// Static grids retain their legacy codec. Pages that rebuild derived rows
   /// must override both hooks and bind writable fields to stable business rows.
@@ -1366,6 +1374,8 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
     }
     _draftServerSubscription?.close();
     _draftListeners.clear();
+    _identityInvalidation?.dispose();
+    _identityInvalidation = null;
     super.dispose();
   }
 }

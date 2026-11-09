@@ -655,9 +655,10 @@ class _SubcontractOrderEditPageState
   }
 
   /// 行级「仓库库存数量」列回填：按当前行的货品×颜色多重集签名去重，行集或所选
-  /// 货品变化后批量拉一次 /goods-stock（即时库存现存量，货品资料「库存量」同口径），
-  /// 把展示文本写回各行 notifier；服务端无该货品×颜色的桶 = 库存 0。请求失败静默
-  /// （列保持「—」，不阻塞订货录入），挂在 generation 上防串写旧结果。
+  /// 货品变化后批量拉一次 /goods-stock（有 BOM 的委外件 = 直属物料现存量折算的可
+  /// 委外数量，与颜色无关；无 BOM 回退该货品×颜色自身现存量），把展示文本写回各行
+  /// notifier；服务端未返回 = 0。请求失败静默（列保持「—」，不阻塞订货录入），
+  /// 挂在 generation 上防串写旧结果。
   int _goodsStockGeneration = 0;
   String? _goodsStockSignature;
   void _scheduleGoodsStockRefresh() {
@@ -699,7 +700,12 @@ class _SubcontractOrderEditPageState
         final goodsId = row.goods?.id;
         row.stockQtyTextNotifier.value = goodsId == null
             ? null
-            : (texts['$goodsId|${row.colorId ?? ''}'] ?? '0');
+            : (SubcontractRepository.goodsStockTextOf(
+                    texts,
+                    goodsId,
+                    row.colorId,
+                  ) ??
+                  '0');
       }
     } catch (_) {
       // 静默降级：库存参考列保持「—」。

@@ -37,6 +37,7 @@ class ReportTablePdfWorkerTest {
         when(service.requireStorage()).thenReturn(directory);when(pdf.openDocumentStream(directory)).thenReturn(document);
         when(transactions.getTransaction(any())).thenAnswer(call->new SimpleTransactionStatus());
         when(repository.heartbeat(eq(job),anyInt())).thenReturn(true);
+        when(repository.heartbeat(eq(job),anyInt(),any())).thenReturn(true);
         var columns=List.of(new ExportColumn("id","系统标识",ExportColumn.TEXT));
         var request=new ReportExportRequest(UUID.randomUUID(),"sales","ORDER/detail",Map.of(),null,null,null,"pdf");
         when(source.read(request)).thenAnswer(call->{

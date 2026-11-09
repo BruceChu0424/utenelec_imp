@@ -2,7 +2,9 @@
 //
 // Material 自带区间选择器把关闭按钮钉死在头部左上、铅笔与「应用」钉在右上，
 // 布局不可通过主题调整；这里自绘紧凑弹窗（内容自适应高度，最大 520 宽）：
-// 共享渐变标题、右上角关闭及底部居中的「取消 / 确定」。
+// 共享渐变标题、右上角关闭及底部居中的「取消 / 确定」按钮组；当前选中的
+// 日期与标题文字同排显示在标题行（2026-11-08 用户口径），不再单独占一行，
+// 月份模式除外——年月已在导航行展示，标题保持只有 helpText。
 // 口径出自 admin 审计日志（2026-09-28 用户口径），2026-10-24 推广为全站
 // 唯一形态：所有日期范围选择都走本函数，不再各自内联 builder。
 import 'package:flutter/material.dart';
@@ -429,12 +431,12 @@ class _UtenDateRangePickerDialogState extends State<UtenDateRangePickerDialog> {
     return UtenAlertDialog(
       maxWidth: 520,
       showCloseButton: true,
-      title: _buildHeader(scheme, helpText),
+      semanticLabel: helpText,
+      title: _buildHeader(helpText),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _buildSelection(scheme, localizations),
           if (widget.allowOpenRange) _buildOpenEnds(),
           _buildMonthNav(scheme, localizations),
           if (_view == _CalendarView.days) ...[
@@ -491,25 +493,56 @@ class _UtenDateRangePickerDialogState extends State<UtenDateRangePickerDialog> {
     );
   }
 
-  Widget _buildHeader(ColorScheme scheme, String helpText) => UtenDialogHeading(
-    icon: Icons.date_range_outlined,
-    title: Row(
-      children: [
-        Flexible(child: Text(helpText)),
-        UtenFieldHintIcon(
-          dense: true,
-          info: _t(
-            context,
-            '点击年月可直接选择年份和月份。日期范围先选开始，再选结束；同一天可选两次。',
-            'Click the month and year to jump to a year and month. For a range, select the start and then the end.',
-            '연월을 눌러 연도와 월을 바로 선택하세요. 범위는 시작일과 종료일을 차례로 선택하세요.',
+  Widget _buildHeader(String helpText) {
+    final selection = _headerSelectionText();
+    return UtenDialogHeading(
+      icon: Icons.date_range_outlined,
+      // 标题与当前选中日期同一标题区：一行放得下时同排；放不下时日期折到
+      // 标题区自己的行并占满整行宽度，完整换行显示而不是截断日期。
+      title: Wrap(
+        spacing: UtenSpacing.s12,
+        runSpacing: UtenSpacing.s4,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          Text(helpText),
+          UtenFieldHintIcon(
+            dense: true,
+            info: _t(
+              context,
+              '点击年月可直接选择年份和月份。日期范围先选开始，再选结束；同一天可选两次。',
+              'Click the month and year to jump to a year and month. For a range, select the start and then the end.',
+              '연월을 눌러 연도와 월을 바로 선택하세요. 범위는 시작일과 종료일을 차례로 선택하세요.',
+            ),
           ),
-        ),
-      ],
-    ),
-  );
+          if (selection != null)
+            Semantics(
+              liveRegion: true,
+              child: Text(
+                selection,
+                key: const Key('uten-date-selection'),
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  fontFeatures: [FontFeature.tabularFigures()],
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
 
-  Widget _buildSelection(ColorScheme scheme, MaterialLocalizations l10n) {
+  /// 标题行右侧显示的当前选择（2026-11-08 起替代弹窗中间的单独选择行）。
+  /// 月份模式的年月已在导航行展示、单日未选时保持标题干净，均不返回文字；
+  /// 区间与开放端沿用原选择行的格式化口径。
+  String? _headerSelectionText() {
+    final l10n = MaterialLocalizations.of(context);
+    if (widget.monthOnly) return null;
+    if (widget.singleDate) {
+      return _startDate == null ? null : l10n.formatCompactDate(_startDate!);
+    }
     final start = _unboundedStart
         ? (widget.openStartLabel ?? _t(context, '不限开始', 'No start', '시작 제한 없음'))
         : _startDate == null
@@ -520,30 +553,7 @@ class _UtenDateRangePickerDialogState extends State<UtenDateRangePickerDialog> {
         : _endDate == null
         ? l10n.dateRangeEndLabel
         : l10n.formatCompactDate(_endDate!);
-    return Semantics(
-      liveRegion: true,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: UtenSpacing.s16,
-          vertical: UtenSpacing.s8,
-        ),
-        child: Text(
-          widget.singleDate
-              ? (_startDate == null
-                    ? _t(context, '未选择日期', 'No date selected', '선택한 날짜 없음')
-                    : widget.monthOnly
-                    ? l10n.formatMonthYear(_startDate!)
-                    : l10n.formatCompactDate(_startDate!))
-              : '$start – $end',
-          key: const Key('uten-date-selection'),
-          style: TextStyle(
-            color: scheme.onSurface,
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ),
-    );
+    return '$start – $end';
   }
 
   Widget _buildOpenEnds() => Wrap(

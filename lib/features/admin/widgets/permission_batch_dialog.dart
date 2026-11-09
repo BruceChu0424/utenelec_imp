@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_dialog.dart';
+import '../../../components/feedback/uten_progress_dialog.dart';
 import '../../../components/inputs/uten_dropdown_scroll_scope.dart';
 import '../../../components/layout/uten_segment_row.dart';
 import '../../../core/network/api_client.dart';
@@ -122,27 +123,45 @@ class _PermissionBatchState extends ConsumerState<PermissionBatchDialog> {
     try {
       final api = ref.read(apiClientProvider);
       final scope = await api.captureRequestScope(isCurrent: () => _current);
-      Map<String, dynamic> response;
+      Map<String, dynamic>? response;
       if (widget.templateMode &&
           widget.userIds.length == 1 &&
           widget.departmentIds.isEmpty) {
         final repository = ref.read(permissionTemplateRepositoryProvider);
         if (commit) {
-          await scope.run(
-            () => repository.apply(
-              widget.userIds.single,
-              _template!,
-              _merge,
-              preview!,
-              _confirmed,
+          if (!mounted) return;
+          // 一次请求应用整批权限，发出后无法撤回：不提供「取消」。
+          await showUtenProgress<void>(
+            context,
+            title: '应用权限模板',
+            icon: Icons.admin_panel_settings_outlined,
+            initialStatus: '正在应用模板',
+            initialDetail: '1 名员工',
+            cancellable: false,
+            action: (_) => scope.run(
+              () => repository.apply(
+                widget.userIds.single,
+                _template!,
+                _merge,
+                preview!,
+                _confirmed,
+              ),
             ),
           );
           response = const {};
         } else {
-          final result = await scope.run(
-            () => repository.preview(widget.userIds.single, _template!, _merge),
+          if (!mounted) return;
+          final result = await showUtenProgress<PermissionTransferPreview?>(
+            context,
+            title: '预览权限变更',
+            icon: Icons.admin_panel_settings_outlined,
+            initialStatus: '正在生成预览',
+            initialDetail: '1 名员工',
+            action: (_) => scope.run(
+              () => repository.preview(widget.userIds.single, _template!, _merge),
+            ),
           );
-          if (!mounted || !_current) return;
+          if (!mounted || !_current || result == null) return;
           setState(() {
             _preview = result;
             _confirmed.clear();
@@ -150,18 +169,29 @@ class _PermissionBatchState extends ConsumerState<PermissionBatchDialog> {
           return;
         }
       } else {
-        response = await scope.run(
-          () => api.post(
-            commit ? _path : '$_path/preview',
-            body: commit
-                ? {
-                    'request': request,
-                    'expectedFingerprint': preview!.fingerprint,
-                    'sensitiveConfirmations': _confirmed.toList()..sort(),
-                  }
-                : request,
+        if (!mounted) return;
+        final total = widget.userIds.length + widget.departmentIds.length;
+        response = await showUtenProgress<Map<String, dynamic>>(
+          context,
+          title: commit ? '批量设置权限' : '预览权限变更',
+          icon: Icons.admin_panel_settings_outlined,
+          initialStatus: commit ? '正在应用变更' : '正在生成预览',
+          initialDetail: '$total 个对象',
+          cancellable: !commit,
+          action: (_) => scope.run(
+            () => api.post(
+              commit ? _path : '$_path/preview',
+              body: commit
+                  ? {
+                      'request': request,
+                      'expectedFingerprint': preview!.fingerprint,
+                      'sensitiveConfirmations': _confirmed.toList()..sort(),
+                    }
+                  : request,
+            ),
           ),
         );
+        if (response == null) return;
       }
       if (!mounted || !_current) return;
       if (commit) {
@@ -169,7 +199,7 @@ class _PermissionBatchState extends ConsumerState<PermissionBatchDialog> {
         Navigator.pop(context, true);
       } else {
         setState(() {
-          _preview = PermissionTransferPreview.fromJson(response);
+          _preview = PermissionTransferPreview.fromJson(response!);
           _confirmed.clear();
         });
       }
@@ -259,7 +289,6 @@ class _PermissionBatchState extends ConsumerState<PermissionBatchDialog> {
         actions: [
           UtenButton(
             type: UtenButtonType.secondary,
-            isLoading: _busy && !_committing,
             onPressed:
                 _enabled &&
                     count > 0 &&
@@ -273,7 +302,6 @@ class _PermissionBatchState extends ConsumerState<PermissionBatchDialog> {
           ),
           UtenButton(
             key: const ValueKey('confirm-apply-permission-template'),
-            isLoading: _committing,
             onPressed:
                 _enabled &&
                     _preview?.canApply == true &&

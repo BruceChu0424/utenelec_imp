@@ -4,6 +4,7 @@ import 'package:uten_imp/shared/models/department_node.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
+import '../../support/pump_until.dart';
 
 import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
@@ -35,6 +36,7 @@ import 'package:uten_imp/core/theme/uten_scroll_behavior.dart';
 import 'package:uten_imp/features/company_files/models/company_file.dart';
 import 'package:uten_imp/features/company_files/models/company_file_access_draft.dart';
 import 'package:uten_imp/features/company_files/pages/company_files_page.dart';
+// eslint-disable-next-line
 import 'package:uten_imp/features/company_files/repositories/company_file_repository.dart';
 import 'package:uten_imp/features/company_files/widgets/company_file_item.dart';
 import 'package:uten_imp/features/company_files/widgets/company_file_detail_row.dart';
@@ -424,7 +426,10 @@ class _TextAttachments extends AttachmentService {
   }
 
   @override
-  Future<Uint8List> downloadBytes(Attachment attachment) async {
+  Future<Uint8List> downloadBytes(
+    Attachment attachment, {
+    void Function(int received, int total)? onReceiveProgress,
+  }) async {
     downloadCount++;
     if (downloadGate != null) return downloadGate!.future;
     return Uint8List.fromList([97, 98, 99]);
@@ -2557,11 +2562,22 @@ void main() {
     await tester.tap(card);
     await tester.pump(const Duration(milliseconds: 100));
     await tester.tap(card);
-    await tester.pump(const Duration(milliseconds: 350));
+    // 2026-11-09 起读取先进统一进度弹窗(字节进度, 扫动条为循环动画不能
+    // pumpAndSettle), 完成后让位预览弹窗; 用 pumpUntil 等预览弹窗出现。
+    await pumpUntil(
+      tester,
+      () => tester.any(find.byType(AttachmentPreviewDialog)),
+      reason: '附件读取完成后应打开预览弹窗',
+    );
+    await tester.pump(const Duration(milliseconds: 300));
     expect(find.byType(AttachmentPreviewDialog), findsOneWidget);
     final before = repository.calls;
     await tester.tap(find.byIcon(Icons.close_rounded));
-    await tester.pump(const Duration(milliseconds: 350));
+    await pumpUntil(
+      tester,
+      () => !tester.any(find.byType(AttachmentPreviewDialog)),
+      reason: '预览弹窗应关闭并触发重校验',
+    );
     expect(repository.calls, before + 1);
     expect(find.byType(AttachmentPreviewDialog), findsNothing);
     expect(tester.takeException(), isNull);

@@ -9,7 +9,7 @@ import 'package:uuid/uuid.dart';
 import '../../../../components/buttons/uten_back_button.dart';
 import '../../../../components/buttons/uten_button.dart';
 import '../../../../components/data_display/uten_selection_summary_pill.dart';
-import '../../../../components/feedback/uten_busy_overlay.dart';
+import '../../../../components/feedback/uten_progress_dialog.dart';
 import '../../../../components/feedback/uten_context_menu.dart';
 import '../../../../components/feedback/uten_dialog.dart';
 import '../../../../components/feedback/uten_empty.dart';
@@ -98,7 +98,6 @@ class _WorkshopMaterialIssueBatchPageState
   String? _error;
   bool _loading = true;
   bool _saving = false;
-  bool _confirming = false;
   bool _isReturn = false;
   int _rowSequence = 0;
 
@@ -756,7 +755,6 @@ class _WorkshopMaterialIssueBatchPageState
     }
     setState(() {
       _saving = true;
-      _confirming = true;
       _error = null;
     });
     try {
@@ -771,84 +769,123 @@ class _WorkshopMaterialIssueBatchPageState
           '仅办理本次所选 ${_selection.values.fold<int>(0, (n, ids) => n + ids.length)} 项，未选明细继续保留待办。',
         ),
       );
-      if (confirmed != true || !scope.isCurrent) return;
-      setState(() => _confirming = false);
+      if (confirmed != true || !mounted || !scope.isCurrent) return;
       final recoveryIds = _readableUnknownIds;
       final orderedIds = [
         ...recoveryIds,
         for (final id in _selection.keys)
           if (!recoveryIds.contains(id)) id,
       ];
-      for (final id in orderedIds) {
+      // 同原循环逐单跳过口径（已完成/不可读/来源问题的申请不办理），进度按
+      // 「已办理 / 待办理申请数」推进；afterCurrent 取消＝当前申请办完即停。
+      bool skippable(String id) {
         final existing = _commands[id];
-        if (_completed.contains(id) && existing?['state'] != 'unknown') {
-          continue;
-        }
         final wasUnknown = existing?['state'] == 'unknown';
-        if (_unavailableSources.contains(id) ||
-            (!wasUnknown && (_sourceProblems.containsKey(id) || _unknown))) {
-          continue;
-        }
-        var dispatched = false;
-        try {
-          final command = existing ?? _freeze(id);
-          _commands[id] = command;
-          await saveFormDraftNow();
-          final body = command['body'] as Map;
-          await runFormDraftSubmission(
-            () => scope.run(() {
-              dispatched = true;
-              return _repo.fulfil(
-                id,
-                expectedVersion: body['v'] as int,
-                lines: [
-                  for (final row in body['lines'] as List)
-                    Map<String, dynamic>.from(row as Map),
-                ],
-                materialSetup: [
-                  for (final row in body['materialSetup'] as List)
-                    Map<String, dynamic>.from(row as Map),
-                ],
-                supplement: body['supplement'] is Map
-                    ? WmSupplement(
-                        periodId:
-                            (body['supplement'] as Map)['periodId'] as String,
-                        reason: (body['supplement'] as Map)['reason'] as String,
-                      )
-                    : null,
-                idempotencyKey: command['key'] as String,
-              );
-            }),
-            isDefiniteRejection: (error) => !wasUnknown && _definite(error),
-          );
-          scope.checkCurrent();
-          setState(() {
-            command['state'] = 'confirmed';
-            _completed.add(id);
-            for (final setup in body['materialSetup'] as List) {
-              _configuredGoods.add((setup as Map)['goodsId'] as String);
+        return (_completed.contains(id) && !wasUnknown) ||
+            _unavailableSources.contains(id) ||
+            (!wasUnknown && (_sourceProblems.containsKey(id) || _unknown));
+      }
+
+      final processableIds = [
+        for (final id in orderedIds)
+          if (!skippable(id)) id,
+      ];
+      var cancelled = false;
+      await showUtenProgress<void>(
+        context,
+        title: _isReturn ? '生产退料入库' : '生产领料出库',
+        icon: _isReturn ? Icons.move_to_inbox_rounded : Icons.outbound_outlined,
+        initialStatus: _isReturn ? '正在办理入库' : '正在办理出库',
+        initialDetail: '${processableIds.length} 张申请',
+        cancelMode: UtenProgressCancel.afterCurrent,
+        invalidation: formDraftIdentityInvalidation,
+        action: (progress) async {
+          var done = 0;
+          for (final id in orderedIds) {
+            if (progress.isCancelled) {
+              cancelled = true;
+              break;
             }
-          });
-          await saveFormDraftNow();
-        } catch (error) {
-          if (!scope.isCurrent) return;
-          final rejected =
-              !wasUnknown &&
-              (!dispatched || error is ApiException && _definite(error));
-          if (rejected) {
-            _commands.remove(id);
+            if (skippable(id)) continue;
+            progress.count(
+              done,
+              processableIds.length,
+              status: _isReturn ? '正在办理入库' : '正在办理出库',
+            );
+            final existing = _commands[id];
+            final wasUnknown = existing?['state'] == 'unknown';
+            var dispatched = false;
+            try {
+              final command = existing ?? _freeze(id);
+              _commands[id] = command;
+              await saveFormDraftNow();
+              final body = command['body'] as Map;
+              await runFormDraftSubmission(
+                () => scope.run(() {
+                  dispatched = true;
+                  return _repo.fulfil(
+                    id,
+                    expectedVersion: body['v'] as int,
+                    lines: [
+                      for (final row in body['lines'] as List)
+                        Map<String, dynamic>.from(row as Map),
+                    ],
+                    materialSetup: [
+                      for (final row in body['materialSetup'] as List)
+                        Map<String, dynamic>.from(row as Map),
+                    ],
+                    supplement: body['supplement'] is Map
+                        ? WmSupplement(
+                            periodId:
+                                (body['supplement'] as Map)['periodId']
+                                    as String,
+                            reason:
+                                (body['supplement'] as Map)['reason'] as String,
+                          )
+                        : null,
+                    idempotencyKey: command['key'] as String,
+                  );
+                }),
+                isDefiniteRejection: (error) => !wasUnknown && _definite(error),
+              );
+              scope.checkCurrent();
+              setState(() {
+                command['state'] = 'confirmed';
+                _completed.add(id);
+                for (final setup in body['materialSetup'] as List) {
+                  _configuredGoods.add((setup as Map)['goodsId'] as String);
+                }
+              });
+              await saveFormDraftNow();
+              done++;
+            } catch (error) {
+              if (!scope.isCurrent) return;
+              final rejected =
+                  !wasUnknown &&
+                  (!dispatched || error is ApiException && _definite(error));
+              if (rejected) {
+                _commands.remove(id);
+              }
+              setState(
+                () => _error = rejected
+                    ? describeSubmitError(error, fallback: '本次未提交，请保留页面重试')
+                    : '本批已暂停，原提交结果待确认；请原样重试核对结果，已完成的明细不会重复办理。',
+              );
+              try {
+                if (rejected) await releaseFormDraftBeforeDispatch();
+                await saveFormDraftNow();
+              } catch (_) {}
+              break;
+            }
           }
-          setState(
-            () => _error = rejected
-                ? describeSubmitError(error, fallback: '本次未提交，请保留页面重试')
-                : '本批已暂停，原提交结果待确认；请原样重试核对结果，已完成的明细不会重复办理。',
-          );
-          try {
-            if (rejected) await releaseFormDraftBeforeDispatch();
-            await saveFormDraftNow();
-          } catch (_) {}
-          break;
-        }
+        },
+      );
+      if (cancelled && mounted) {
+        setState(
+          () => _error = _isReturn
+              ? '已按要求停止；已入库明细保留，其余明细继续保留待办。'
+              : '已按要求停止；已出库明细保留，其余明细继续保留待办。',
+        );
       }
       if (!mounted || !scope.isCurrent) return;
       if (recovering && !_unknown && _hasSourceProblems) {
@@ -876,10 +913,7 @@ class _WorkshopMaterialIssueBatchPageState
       }
     } finally {
       if (mounted) {
-        setState(() {
-          _saving = false;
-          _confirming = false;
-        });
+        setState(() => _saving = false);
       }
     }
   }
@@ -1222,8 +1256,6 @@ class _WorkshopMaterialIssueBatchPageState
                         ),
                       ),
               ),
-              if (_saving && !_confirming)
-                const UtenBusyOverlay(title: '正在办理所选明细'),
             ],
           ),
         ),

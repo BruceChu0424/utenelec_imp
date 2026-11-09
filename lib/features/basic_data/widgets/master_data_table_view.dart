@@ -3997,9 +3997,11 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       } else {
         final bodyStyle =
             Theme.of(context).textTheme.bodyMedium ?? const TextStyle();
-        // Status/progress values use the same bold geometry as their cells.
-        final style =
-            def.emphasized || utenIsStatusOrProgressColumn(def.key, def.label)
+        // Status/progress values use the same bold geometry as their cells;
+        // emphasized columns render at w800 (_cellTextStyle), so measure there.
+        final style = def.emphasized
+            ? bodyStyle.copyWith(fontWeight: FontWeight.w800)
+            : utenIsStatusOrProgressColumn(def.key, def.label)
             ? bodyStyle.copyWith(fontWeight: FontWeight.w700)
             : bodyStyle;
         width = _measureText(text, style, textScaler);
@@ -7613,9 +7615,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         onCellColor,
         bold: utenIsStatusOrProgressColumn(column.key, column.label),
         emphasisColor: column.emphasized
-            ? (Theme.of(context).brightness == Brightness.dark
-                  ? UtenColors.errorOnDark
-                  : UtenColors.errorText)
+            ? UtenColors.emphasisText(Theme.of(context).brightness)
             : null,
       );
       return SizedBox(

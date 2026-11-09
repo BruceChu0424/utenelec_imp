@@ -239,11 +239,13 @@ class AttachmentService {
   });
 
   Future<Uint8List> downloadBytes(
-    Attachment attachment,
-  ) => _reloadSafety.trackRead(() async {
+    Attachment attachment, {
+    void Function(int received, int total)? onReceiveProgress,
+  }) => _reloadSafety.trackRead(() async {
     if (attachment.isReadOnly) {
       return _api.getBytes(
         '$_base/${Uri.encodeComponent(attachment.id)}/history/download',
+        onReceiveProgress: onReceiveProgress,
       );
     }
     final grant = await _api.get('$_base/${attachment.id}/download-grant');
@@ -260,11 +262,15 @@ class AttachmentService {
           responseType: ResponseType.bytes,
           followRedirects: false,
         ),
+        onReceiveProgress: onReceiveProgress,
       );
       bytes = Uint8List.fromList(r.data ?? const []);
     } else {
       _requireInternalRawPath(downloadUrl);
-      bytes = await _api.getBytes(downloadUrl);
+      bytes = await _api.getBytes(
+        downloadUrl,
+        onReceiveProgress: onReceiveProgress,
+      );
     }
     // Storage compression is transparent: only the original bytes are accepted
     // by preview, Copy and Save. Legacy rows without a hash retain size checks.
@@ -291,8 +297,13 @@ class AttachmentService {
 
   /// Office 文档服务端转 PDF 后的字节（`GET /attachments/{id}/preview`）。
   /// 服务器未装转换组件或转换失败时后端返回业务错误，由调用方回落为下载。
-  Future<Uint8List> previewBytes(Attachment attachment) =>
-      _api.getBytes('$_base/${attachment.id}/preview');
+  Future<Uint8List> previewBytes(
+    Attachment attachment, {
+    void Function(int received, int total)? onReceiveProgress,
+  }) => _api.getBytes(
+    '$_base/${attachment.id}/preview',
+    onReceiveProgress: onReceiveProgress,
+  );
 
   Future<PresignResult> presign({
     required String ownerType,

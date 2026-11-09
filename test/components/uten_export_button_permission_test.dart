@@ -429,9 +429,10 @@ void main() {
       expect(api.results, hasLength(2));
       api.results.first.completeError(StateError('old request failed'));
       await tester.pump();
+      // 等待状态由进度弹窗表达, 按钮不转圈; 防连点仍在: 新身份的导出没结束就不能再点。
       expect(
-        tester.widget<UtenButton>(find.byType(UtenButton).first).isLoading,
-        isTrue,
+        tester.widget<UtenButton>(find.byType(UtenButton).first).onPressed,
+        isNull,
       );
       await tester.pumpWidget(const SizedBox.shrink());
       api.results.last.completeError(StateError('test finished'));
@@ -952,6 +953,9 @@ class _CapturingApi extends ApiClient {
     String path, {
     Object? body,
     Map<String, dynamic>? query,
+    CancelToken? cancelToken,
+    ProgressCallback? onReceiveProgress,
+    Map<String, String>? headers,
   }) async {
     if (body is Map<String, dynamic>) bodies.add(Map.of(body));
     throw StateError('capture only');
@@ -978,6 +982,9 @@ class _DeferredDownloadApi extends ApiClient {
     String path, {
     Object? body,
     Map<String, dynamic>? query,
+    CancelToken? cancelToken,
+    ProgressCallback? onReceiveProgress,
+    Map<String, String>? headers,
   }) {
     downloads++;
     return result.future;
@@ -992,6 +999,9 @@ class _QueuedDownloadApi extends ApiClient {
     String path, {
     Object? body,
     Map<String, dynamic>? query,
+    CancelToken? cancelToken,
+    ProgressCallback? onReceiveProgress,
+    Map<String, String>? headers,
   }) {
     final pending = Completer<Uint8List>();
     results.add(pending);
@@ -1007,6 +1017,9 @@ class _NoDownloadApi extends ApiClient {
     String path, {
     Object? body,
     Map<String, dynamic>? query,
+    CancelToken? cancelToken,
+    ProgressCallback? onReceiveProgress,
+    Map<String, String>? headers,
   }) async {
     downloads++;
     throw StateError('Revoked export must not reach the network');

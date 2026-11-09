@@ -22,6 +22,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
+import '../../../components/feedback/uten_progress_dialog.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/print/uten_print_preview.dart';
 import 'package:collection/collection.dart';
@@ -136,6 +137,9 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage>
   PagedResult<CurrencyListItem>? _page;
   Set<String> _selectedCurrencyIds = {};
   bool _rowOpBusy = false;
+
+  /// 批量提交段进入进度弹窗时为 true：页面遮罩让位，避免双重遮罩。
+  bool _batchProgressOpen = false;
   int _queryEpoch = 0;
   final _operationOwners = <MasterEditOwner>{};
   MasterEditOwner? _busyOwner;
@@ -745,71 +749,95 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage>
         return;
       }
       _setOperationBusy(owner, true);
-      final results = <MasterBatchItemResult>[];
-      for (final id in ids) {
-        if (!owner.isCurrent) return;
-        String? label = labels[id];
-        try {
-          final current = await owner.run(
-            () => ref.read(currencyRepositoryProvider).detail(id),
-          );
-          label = current.name ?? current.code ?? label;
-          if (current.baseCurrency) {
-            results.add(
-              MasterBatchItemResult(
-                id: id,
-                ok: false,
-                label: label,
-                reason: '本位币不可停用或删除',
-              ),
-            );
-            continue;
-          }
-          if (!owner.isCurrent) return;
-          if (status == null) {
-            await owner.run(
-              () => ref.read(currencyRepositoryProvider).delete(id),
-            );
-          } else if (current.status != status) {
-            await owner.run(
-              () => ref
-                  .read(masterStatusRepositoryProvider)
-                  .change(
-                    resourcePath: ApiEndpoints.currency(id),
-                    status: status,
+      if (!mounted) return;
+      _batchProgressOpen = true;
+      final MasterBatchResult? result;
+      try {
+        // 逐币种一条条办理（先读详情再写）：afterCurrent 取消＝当前币种办完即停，
+        // 已办结果照常呈现；owner 失效时弹窗收尾，旧结果不再呈现。
+        result = await showUtenProgress<MasterBatchResult?>(
+          context,
+          title: '$action币种',
+          icon: Icons.task_alt_outlined,
+          initialStatus: '正在$action',
+          cancelMode: UtenProgressCancel.afterCurrent,
+          invalidation: owner,
+          onRouteOpened: owner.trackRoute,
+          action: (progress) async {
+            final results = <MasterBatchItemResult>[];
+            for (final id in ids) {
+              if (progress.isCancelled || !owner.isCurrent) break;
+              progress.count(results.length, ids.length, status: '正在$action');
+              String? label = labels[id];
+              try {
+                final current = await owner.run(
+                  () => ref.read(currencyRepositoryProvider).detail(id),
+                );
+                label = current.name ?? current.code ?? label;
+                if (current.baseCurrency) {
+                  results.add(
+                    MasterBatchItemResult(
+                      id: id,
+                      ok: false,
+                      label: label,
+                      reason: '本位币不可停用或删除',
+                    ),
+                  );
+                  continue;
+                }
+                if (!owner.isCurrent) break;
+                if (status == null) {
+                  await owner.run(
+                    () => ref.read(currencyRepositoryProvider).delete(id),
+                  );
+                } else if (current.status != status) {
+                  await owner.run(
+                    () => ref
+                        .read(masterStatusRepositoryProvider)
+                        .change(
+                          resourcePath: ApiEndpoints.currency(id),
+                          status: status,
+                        ),
+                  );
+                }
+                results.add(MasterBatchItemResult(id: id, ok: true, label: label));
+              } on ApiException catch (error) {
+                if (!owner.isCurrent) break;
+                if (isSessionBoundaryError(error)) rethrow;
+                results.add(
+                  MasterBatchItemResult(
+                    id: id,
+                    ok: false,
+                    label: label,
+                    reason: error.message,
                   ),
+                );
+              }
+            }
+            if (!mounted || !owner.isCurrent) return null;
+            return MasterBatchResult(
+              succeeded: results.where((row) => row.ok).length,
+              failed: results.where((row) => !row.ok).length,
+              results: results,
             );
-          }
-          results.add(MasterBatchItemResult(id: id, ok: true, label: label));
-        } on ApiException catch (error) {
-          if (!owner.isCurrent) return;
-          if (isSessionBoundaryError(error)) rethrow;
-          results.add(
-            MasterBatchItemResult(
-              id: id,
-              ok: false,
-              label: label,
-              reason: error.message,
-            ),
-          );
-        }
+          },
+        );
+      } finally {
+        _batchProgressOpen = false;
       }
-      if (!mounted || !owner.isCurrent) return;
-      final result = MasterBatchResult(
-        succeeded: results.where((row) => row.ok).length,
-        failed: results.where((row) => !row.ok).length,
-        results: results,
-      );
+      // 闭包会丢失上方空值检查的类型提升，这里先钉成非空局部。
+      final confirmedResult = result;
+      if (!mounted || !owner.isCurrent || confirmedResult == null) return;
       _setOperationBusy(owner, false);
       setState(
         () => _selectedCurrencyIds = {
-          for (final row in result.results)
+          for (final row in confirmedResult.results)
             if (!row.ok && _selectedCurrencyIds.contains(row.id)) row.id,
         },
       );
       await showMasterBatchOutcome(
         context,
-        result,
+        confirmedResult,
         action: action,
         noun: '币种',
         labelOf: (id) => labels[id],
@@ -1124,7 +1152,7 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage>
                 ),
               ),
             ),
-            if (_rowOpBusy)
+            if (_rowOpBusy && !_batchProgressOpen)
               const UtenBusyOverlay(showDoNotLeaveHint: false, title: '正在处理币种'),
           ],
         ),

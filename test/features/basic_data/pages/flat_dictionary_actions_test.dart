@@ -211,7 +211,14 @@ void main() {
           await tester.tap(find.text('停用选中'));
           await pumpAndSettleWithIo(tester);
           await tester.tap(find.text('确认').last);
-          await pumpWithIo(tester, const Duration(milliseconds: 80));
+          // 批量提交进进度弹窗（扫动条是循环动画，不能用 pumpAndSettle），
+          // 等第一条写出现在测试桩里。
+          await pumpUntil(
+            tester,
+            () => api.writes.isNotEmpty,
+            reason: '批量停用应已发出',
+            realIo: true,
+          );
           expect(api.writes, hasLength(1));
           container.read(_identity.notifier).state = const AuthenticatedScope(
             userId: 'second-user',
@@ -255,7 +262,12 @@ void main() {
         await tester.tap(find.text('停用选中'));
         await pumpAndSettleWithIo(tester);
         await tester.tap(find.text('确认').last);
-        await pumpWithIo(tester, const Duration(milliseconds: 80));
+        await pumpUntil(
+          tester,
+          () => api.writes.isNotEmpty,
+          reason: '第一次批量停用应已发出',
+          realIo: true,
+        );
         expect(api.writes, hasLength(1));
         container.read(_identity.notifier).state = const AuthenticatedScope(
           userId: 'second-user',
@@ -267,16 +279,27 @@ void main() {
         await tester.tap(find.text('停用选中'));
         await pumpAndSettleWithIo(tester);
         await tester.tap(find.text('确认').last);
-        await pumpWithIo(tester, const Duration(milliseconds: 80));
+        // 第二次批量提交的进度弹窗开着（循环动画），不能用 pumpAndSettle。
+        await pumpUntil(
+          tester,
+          () => api.writes.length >= 2,
+          reason: '第二次批量停用应已发出',
+          realIo: true,
+        );
         expect(api.writes, hasLength(2));
         first.complete();
         await pumpWithIo(tester, const Duration(milliseconds: 80));
-        expect(find.text('正在处理${_noun(type)}'), findsOneWidget);
+        // unit 页叫「停用」、color 页叫「禁用」，统一断言进度弹窗的阶段文案。
+        final workingStatus = find.byWidgetPredicate(
+          (widget) =>
+              widget is Text && (widget.data ?? '').startsWith('正在'),
+        );
+        expect(workingStatus, findsOneWidget);
         expect(find.textContaining('已停用'), findsNothing);
         expect(container.read(appNotificationProvider), isEmpty);
         second.complete();
         await pumpAndSettleWithIo(tester);
-        expect(find.text('正在处理${_noun(type)}'), findsNothing);
+        expect(workingStatus, findsNothing);
         expect(tester.takeException(), isNull);
       },
     );
@@ -581,9 +604,14 @@ void main() {
         await tester.tap(find.text('删除选中'));
         await pumpAndSettleWithIo(tester);
         await tester.tap(find.text('删除').last);
-        await pumpWithIo(tester, const Duration(milliseconds: 80));
-        await pumpWithIo(tester, const Duration(milliseconds: 80));
-        expect(find.text('正在处理${_noun(type)}'), findsOneWidget);
+        // 批量删除进进度弹窗（循环动画），等第一条写发出后弹窗正在展示。
+        await pumpUntil(
+          tester,
+          () => api.writes.isNotEmpty,
+          reason: '批量删除应已发出',
+          realIo: true,
+        );
+        expect(find.text('正在删除'), findsOneWidget);
         pending.complete();
         await pumpAndSettleWithIo(tester);
         expect(find.text('被货品或单据引用'), findsOneWidget);
@@ -642,7 +670,13 @@ void main() {
       await tester.tap(find.text('停用选中'));
       await pumpAndSettleWithIo(tester);
       await tester.tap(find.text('确认').last);
-      await pumpWithIo(tester, const Duration(milliseconds: 80));
+      // 逐币种串行办理进进度弹窗（循环动画），等第一条写发出。
+      await pumpUntil(
+        tester,
+        () => api.writes.isNotEmpty,
+        reason: '第一条币种停用应已发出',
+        realIo: true,
+      );
       expect(api.writes.single.path, '/master/currencies/one/status');
       container.read(_identity.notifier).state = const AuthenticatedScope(
         userId: 'second-user',

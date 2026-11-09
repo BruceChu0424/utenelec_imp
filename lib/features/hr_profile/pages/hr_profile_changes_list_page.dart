@@ -32,6 +32,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/inputs/uten_multi_value_cell.dart';
 import '../../../components/feedback/uten_batch_reject_dialog.dart';
+import '../../../components/feedback/uten_progress_dialog.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -202,7 +203,13 @@ class _HrProfileChangesListPageState
       responsibilityDescription: '确认后，系统将以此登录员工记录所选 $count 批修改申请的审核责任。',
     );
     if (!confirmed || !mounted) return;
-    await _runBatch(ids, action: 'approve', reason: null, verb: '通过');
+    await _runBatch(
+      ids,
+      action: 'approve',
+      reason: null,
+      verb: '通过',
+      icon: Icons.check_circle_outline_rounded,
+    );
   }
 
   /// 批量驳回：公共原因对话框一次填写（含责任提示），逐批应用同一原因。
@@ -216,30 +223,59 @@ class _HrProfileChangesListPageState
       description: '驳回原因将同步给 ${ids.length} 位申请人，请说明具体问题。',
     );
     if (reason == null || reason.isEmpty || !mounted) return;
-    await _runBatch(ids, action: 'reject', reason: reason, verb: '驳回');
+    await _runBatch(
+      ids,
+      action: 'reject',
+      reason: reason,
+      verb: '驳回',
+      icon: Icons.cancel_outlined,
+    );
   }
 
   /// 批量执行体：逐批调用单审 API，失败聚合提示，结束后刷新队列与徽章。
+  /// afterCurrent 取消＝当前这批办完即停，已办结果照常呈现。
   Future<void> _runBatch(
     Set<String> ids, {
     required String action,
     required String? reason,
     required String verb,
+    required IconData icon,
   }) async {
     final l10n = AppLocalizations.of(context);
     setState(() => _batchBusy = true);
     final repo = ref.read(profileChangeRepositoryProvider);
     var okCount = 0;
+    var stopped = false;
     final failures = <String>[];
-    for (final batchId in ids) {
-      try {
-        await repo.review(batchId, action, reason);
-        okCount++;
-      } on ApiException catch (e) {
-        failures.add(e.message);
-      } catch (_) {
-        failures.add(l10n.commonError);
-      }
+    await showUtenProgress<void>(
+      context,
+      title: '批量$verb',
+      icon: icon,
+      initialStatus: '正在$verb',
+      initialDetail: '${ids.length} 批修改申请',
+      cancelMode: UtenProgressCancel.afterCurrent,
+      action: (progress) async {
+        var done = 0;
+        for (final batchId in ids) {
+          if (progress.isCancelled) {
+            stopped = true;
+            break;
+          }
+          progress.count(done, ids.length, status: '正在$verb');
+          try {
+            await repo.review(batchId, action, reason);
+            okCount++;
+          } on ApiException catch (e) {
+            failures.add(e.message);
+          } catch (_) {
+            failures.add(l10n.commonError);
+          }
+          done++;
+        }
+      },
+    );
+    if (stopped) {
+      failures.add('已停止，其余 ${ids.length - okCount - failures.length} 批未处理');
     }
     if (!mounted) return;
     setState(() {
@@ -271,7 +307,6 @@ class _HrProfileChangesListPageState
         type: UtenButtonType.success,
         size: UtenButtonSize.large,
         icon: Icons.check_circle_outline_rounded,
-        isLoading: _batchBusy,
         onPressed: selectedIds.isNotEmpty && !_batchBusy
             ? () => _batchApprove(Set<String>.of(selectedIds))
             : null,
@@ -282,7 +317,6 @@ class _HrProfileChangesListPageState
         type: UtenButtonType.danger,
         size: UtenButtonSize.large,
         icon: Icons.cancel_outlined,
-        isLoading: _batchBusy,
         onPressed: selectedIds.isNotEmpty && !_batchBusy
             ? () => _batchReject(Set<String>.of(selectedIds))
             : null,

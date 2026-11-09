@@ -64,6 +64,12 @@ class FulfillmentHttpDeadlineContractTest {
             var request=new MockHttpServletRequest(path.contains("receipt")?"GET":"POST",path);
             filter.doFilter(request,new MockHttpServletResponse(),(req,res)->assertNull(FulfillmentCommandDeadline.current()));
         }
+        // 导出/下载是产文件的读, 不吃命令预算; 否则 40 秒截止会压住导出事务的 2 分钟口径。
+        for(String path:java.util.List.of("/api/sales/report/export","/api/finance/report/export",
+                "/api/production/report/export","/api/report-export-jobs/x/download","/api/payroll/slips/x/download")){
+            var request=new MockHttpServletRequest("POST",path);
+            filter.doFilter(request,new MockHttpServletResponse(),(req,res)->assertNull(FulfillmentCommandDeadline.current()));
+        }
     }
     @Test void filterWrapsSecurityAndResetsItsScopeEvenOnRejectedOrFailedRequests() throws Exception {
         var registration=new FulfillmentHttpDeadlineConfig().fulfillmentHttpDeadline("40s");

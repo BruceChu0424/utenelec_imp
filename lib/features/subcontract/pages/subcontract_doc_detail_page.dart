@@ -816,17 +816,11 @@ class _SubcontractDocDetailPageState
                                 categories: const ['合同', '加工要求', '图片', '其他'],
                               ),
                               const SizedBox(height: UtenSpacing.s12),
-                              // 点名审核员可看主订货详情，完整履约进度仍需订货查看权限。
+                              // 点名审核员可看主订货详情，完整履约进度仍需订货查看权限；
+                              // 无权限时不另写说明行（权限边界不需要占位文案）。
                               if (canViewOrderProgress)
                                 SubcontractOrderProgressSection(
                                   orderId: _detail!.id,
-                                )
-                              else
-                                Text(
-                                  '当前为财务审批任务视角；完整委外履约进度需委外订货查看权限。',
-                                  style: theme.textTheme.bodySmall?.copyWith(
-                                    color: theme.colorScheme.onSurfaceVariant,
-                                  ),
                                 ),
                             ],
                           ],
@@ -842,17 +836,19 @@ class _SubcontractDocDetailPageState
                           UtenFloatingActionGroup.controlHeight +
                               UtenSpacing.s32,
                         ),
-                        // 订货单在明细表下方挂「委外物料」折叠卡(2026-10-30 用户口径:
-                        // 成品↔直属物料对应关系); 其余单据类型只有明细表。
+                        // 订货单在明细表上方挂「委外物料」折叠卡(2026-10-30 用户口径:
+                        // 成品↔直属物料对应关系; 2026-11-08 用户口径「移到表格上面」:
+                        // 置于表头设置/全屏工具条之上, 随 body 常驻); 其余单据类型
+                        // 只有明细表。
                         child:
                             widget.docType == SubcontractDocType.order &&
                                 (_detail?.materials.isNotEmpty ?? false)
                             ? Column(
                                 crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
-                                  Expanded(child: _itemsCard(theme)),
-                                  const SizedBox(height: UtenSpacing.s8),
                                   _materialsCard(theme),
+                                  const SizedBox(height: UtenSpacing.s8),
+                                  Expanded(child: _itemsCard(theme)),
                                 ],
                               )
                             : _itemsCard(theme),
@@ -1648,7 +1644,8 @@ class _SubcontractDocDetailPageState
   /// 委外物料(直属物料)折叠卡：订货单详情的「成品↔物料」对应关系
   /// (2026-10-30 用户口径: 委外订货单不能只有成品)。已批准明细读冻结计划行
   /// (含已发净量), 未批准明细按批准时同一公式现算(单上注明「预估」)。
-  /// 收起时只占标题行, 不挤明细表; 展开后自身滚动(高度封顶)。
+  /// 2026-11-08 起挂在明细表(表头设置/全屏工具条)上方: 默认收起只占标题行;
+  /// 展开后自身滚动(高度封顶), 明细表让出相应可见高度、仍各自内滚。
   Widget _materialsCard(ThemeData theme) {
     final materials = _detail!.materials;
     final frozenCount = materials.where((m) => m.frozen).length;

@@ -6,8 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
+import 'package:uten_imp/components/feedback/uten_progress_dialog.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/theme/dark_theme.dart';
@@ -343,10 +343,14 @@ void main() {
         matching: find.byType(FilledButton),
       ),
     );
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 40));
+    // 批量提交进进度弹窗（扫动条是循环动画，不能用 pumpAndSettle 等它）。
+    for (var frame = 0;
+        frame < 40 && fixture.writes.isEmpty;
+        frame++) {
+      await tester.pump(const Duration(milliseconds: 40));
+    }
     expect(fixture.writes, hasLength(1));
-    expect(find.byType(UtenBusyOverlay), findsWidgets);
+    expect(find.byType(UtenProgressBar), findsWidgets);
     fixture.batch!.complete();
     await tester.pumpAndSettle();
     expect(fixture.writes.single.path, '/master/payment-styles/batch-status');

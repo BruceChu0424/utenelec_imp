@@ -779,10 +779,19 @@ class ApiClient {
   });
 
   /// 下载原始字节（附件本地后端 raw 端点流式下载）。
-  Future<Uint8List> getBytes(String path) => _reloadSafety.trackRead(() async {
+  ///
+  /// [cancelToken] 让进度弹窗的「取消」真正停下传输；[onReceiveProgress] 汇报
+  /// 已收/总字节（服务端未给 Content-Length 时 total 为 -1）。
+  Future<Uint8List> getBytes(
+    String path, {
+    CancelToken? cancelToken,
+    ProgressCallback? onReceiveProgress,
+  }) => _reloadSafety.trackRead(() async {
     try {
       final r = await _dio.get<List<int>>(
         path,
+        cancelToken: cancelToken,
+        onReceiveProgress: onReceiveProgress,
         options: Options(responseType: ResponseType.bytes),
       );
       return Uint8List.fromList(r.data ?? const []);
@@ -793,18 +802,23 @@ class ApiClient {
 
   /// 以 POST 下载原始字节。文档字节端点读取时会落安检/审计记录，属于
   /// 服务端 CSRF 要求下的写方法端点；语义仍是读取，沿用读安全语义。
-  Future<Uint8List> postForBytes(String path) =>
-      _reloadSafety.trackRead(() async {
-        try {
-          final r = await _dio.post<List<int>>(
-            path,
-            options: Options(responseType: ResponseType.bytes),
-          );
-          return Uint8List.fromList(r.data ?? const []);
-        } on DioException catch (e) {
-          throw _convert(e);
-        }
-      });
+  Future<Uint8List> postForBytes(
+    String path, {
+    CancelToken? cancelToken,
+    ProgressCallback? onReceiveProgress,
+  }) => _reloadSafety.trackRead(() async {
+    try {
+      final r = await _dio.post<List<int>>(
+        path,
+        cancelToken: cancelToken,
+        onReceiveProgress: onReceiveProgress,
+        options: Options(responseType: ResponseType.bytes),
+      );
+      return Uint8List.fromList(r.data ?? const []);
+    } on DioException catch (e) {
+      throw _convert(e);
+    }
+  });
 
   /// Client packages stay in a stream instead of retaining a desktop bundle in
   /// memory. Only API-relative paths are accepted; credentials never follow an
@@ -956,19 +970,28 @@ class ApiClient {
 
   /// 下载二进制（Excel 导出用）：POST [path]，可选密码走 [body]，过滤/排序走 [query]，
   /// 以 bytes 接收。AuthInterceptor 自动管 401 刷新。错误体（bytes）尝试解 JSON 取业务消息。
+  ///
+  /// [headers] 供同步导出带上进度操作号（X-Uten-Export-Operation），服务端据此登记
+  /// 可轮询的生成进度。
   Future<Uint8List> downloadBytes(
     String path, {
     Object? body,
     Map<String, dynamic>? query,
+    CancelToken? cancelToken,
+    ProgressCallback? onReceiveProgress,
+    Map<String, String>? headers,
   }) => _reloadSafety.trackRead(() async {
     try {
       final r = await _dio.post<List<int>>(
         path,
         data: body,
         queryParameters: query,
+        cancelToken: cancelToken,
+        onReceiveProgress: onReceiveProgress,
         options: Options(
           responseType: ResponseType.bytes,
           receiveTimeout: apiDownloadReceiveTimeout,
+          headers: headers,
         ),
       );
       return Uint8List.fromList(r.data ?? const []);

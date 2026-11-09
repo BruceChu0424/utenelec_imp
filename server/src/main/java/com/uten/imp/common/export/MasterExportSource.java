@@ -60,6 +60,7 @@ public final class MasterExportSource {
                     if (expected < 0) throw new IllegalStateException("Master export requires its initial count");
                     MasterExportSelection.requireComplete(expected);
                     ReportQueryKit.requireExportRowCount(expected);
+                    ExportProgress.announceTotal(expected);
                 } else if (result.getTotal() != expected) {
                     throw new IllegalStateException("Master export source count changed");
                 }
@@ -70,6 +71,7 @@ public final class MasterExportSource {
                 }
                 seen = Math.addExact(seen, rows.size());
                 ReportQueryKit.requireExportRowCount(seen);
+                ExportProgress.rows(seen);
                 if (seen > expected || (rows.isEmpty() && seen < expected))
                     throw new IllegalStateException("Master export source is incomplete");
                 if (sink == null) collected.addAll(rows);

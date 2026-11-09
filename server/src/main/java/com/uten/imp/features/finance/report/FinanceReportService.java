@@ -2609,7 +2609,8 @@ public class FinanceReportService {
      * <p>滚动余额报表（statement/flow·detail、account/statement）每次分页都从全量重算余额后切片，
      * 跨页累积时每页的「余额」均基于全集正确计算，导出值与页内一致。
      */
-    @Transactional(readOnly = true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    @Transactional(readOnly = true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ,
+            timeout = com.uten.imp.common.export.ExportTransactions.TIMEOUT_SECONDS)
     public ExportPayload export(String report, Map<String, String> p, String sort, String order) {
         Map<String,String> query=p==null?Map.of():new LinkedHashMap<>(p);
         if(report==null||FinanceTemplateLayouts.key(report,query)==null)return exportRaw(report,p,sort,order);

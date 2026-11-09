@@ -18,8 +18,11 @@ import java.time.Instant;
  * Attachments older than the configured age leave the NVMe hot root for the
  * large RAID volume; downloads keep working through the archive fallback.
  * Company-library attachments are excluded — they are read often and stay on
- * the hot root permanently. Deletes never happen here; a move interrupted at
- * any point is safe to re-run on the next pass.
+ * the hot root permanently. Heat beats age in both directions: an attachment
+ * downloaded or previewed within {@value #RECENT_ACCESS_DAYS} days (its own
+ * {@code attachments.last_used_at}, see {@link AttachmentUsageRecorder}) stays
+ * on or returns to the hot root. Deletes never happen here; a move interrupted
+ * at any point is safe to re-run on the next pass.
  */
 @Component
 @Profile("!cloud")
@@ -51,13 +54,13 @@ class InternalStorageTieringScheduler {
         if (archiveAfterDays <= 0) return;
         Instant cutoff = Instant.now().minus(Duration.ofDays(archiveAfterDays));
         Instant activeCutoff = Instant.now().minus(Duration.ofDays(RECENT_ACCESS_DAYS));
-        // Heat beats age: anything downloaded or preview-authorized inside the
-        // recent window stays on the NVMe hot root no matter how old it is.
+        // Heat beats age: anything downloaded or previewed inside the recent
+        // window stays on the NVMe hot root no matter how old it is. Heat lives
+        // on the attachment row itself (last_used_at, advanced by the download
+        // and preview paths via AttachmentUsageRecorder); the audit log is
+        // evidence only and is never read for business decisions.
         var activeIds = java.util.Set.copyOf(jdbc.queryForList(
-                "SELECT DISTINCT l.target_id FROM audit_log l" +
-                " WHERE l.target_type = 'attachments'" +
-                " AND l.action IN ('attachment_download_raw','attachment_download_grant','attachment.presign')" +
-                " AND l.created_at >= ?",
+                "SELECT a.id::text FROM attachments a WHERE a.last_used_at >= ?",
                 String.class, java.sql.Timestamp.from(activeCutoff)));
         // Company-library nodes reference their attachments explicitly and keep
         // them on the hot root regardless of age.

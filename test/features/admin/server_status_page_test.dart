@@ -201,89 +201,88 @@ void main() {
     },
   );
 
-  testWidgets(
-    'storage section groups volumes by where content is stored',
-    (tester) async {
-      await withClock(Clock.fixed(sampledAt), () async {
-        final repository = _Repository(() async => _sample(sampledAt));
-        // 2026-11-10 迁移后的实际布局：备份并入 /data；上传附件在独立媒体卷。
-        final storage = _StorageRepository(
-          () async => ServerStorageSummary.fromJson({
-            'revision': 'r1',
-            'status': 'NORMAL',
-            'capabilities': {'available': true, 'canCleanup': false},
-            'volumes': [
-              {
-                'id': 'v-data',
-                'label': '存储卷 1',
-                'mount': '/data',
-                'totalBytes': 1800000000000,
-                'usedBytes': 208000000000,
-                'freeBytes': 1592000000000,
-              },
-              {
-                'id': 'v-media',
-                'label': '存储卷 2',
-                'mount': '/var/lib/uten-imp-media',
-                'totalBytes': 200000000000,
-                'usedBytes': 389000000,
-                'freeBytes': 199611000000,
-              },
-            ],
-            'categories': [
-              {
-                'kind': 'DATABASE',
-                'label': '数据库目录',
-                'status': 'NORMAL',
-                'logicalBytes': 19000000000,
-                'volumeId': 'v-data',
-              },
-              {
-                'kind': 'PAIRED_BACKUPS',
-                'label': '数据库与上传文件配套备份',
-                'status': 'NORMAL',
-                'logicalBytes': 165000000000,
-                'volumeId': 'v-data',
-              },
-              {
-                // 覆盖整个系统根的概览类不进分区明细。
-                'kind': 'SYSTEM',
-                'label': '系统目录',
-                'status': 'NORMAL',
-                'logicalBytes': 33000000000,
-                'volumeId': 'v-data',
-              },
-              {
-                'kind': 'UPLOADS',
-                'label': '当前上传目录',
-                'status': 'NORMAL',
-                'logicalBytes': 389000000,
-                'volumeId': 'v-media',
-              },
-            ],
-          }),
-        );
-        await _pump(tester, repository, storage: storage);
-        await tester.pumpAndSettle();
-        // 分区名按挂载点落位，不露「存储卷 1」这类泛称。
-        expect(find.text('数据库与备份区'), findsOneWidget);
-        expect(find.text('上传文件区'), findsOneWidget);
-        expect(find.text('存储卷 1'), findsNothing);
-        // 剩余量与占用明细按通俗单位展示。
-        expect(find.text('剩余 1.4T'), findsOneWidget);
-        expect(find.text('剩余 185.9G'), findsOneWidget);
-        expect(find.text('配套备份（数据库＋附件）'), findsOneWidget);
-        expect(find.text('153.7G'), findsOneWidget);
-        expect(find.text('上传的附件'), findsOneWidget);
-        expect(find.text('371M'), findsOneWidget);
-        // SYSTEM 概览类与数据库卷里的重叠，不单独占一行。
-        expect(find.text('系统目录'), findsNothing);
-        expect(tester.takeException(), isNull);
-        await _capture(tester, 'storage-zones-fixture.png');
-        await tester.pumpWidget(const SizedBox.shrink());
-      });
-    },
-  );
+  testWidgets('storage section groups volumes by where content is stored', (
+    tester,
+  ) async {
+    await withClock(Clock.fixed(sampledAt), () async {
+      final repository = _Repository(() async => _sample(sampledAt));
+      // 2026-11-10 迁移后的实际布局：备份并入 /data；上传附件在独立媒体卷。
+      final storage = _StorageRepository(
+        () async => ServerStorageSummary.fromJson({
+          'revision': 'r1',
+          'status': 'NORMAL',
+          'capabilities': {'available': true, 'canCleanup': false},
+          'volumes': [
+            {
+              'id': 'v-data',
+              'label': '存储卷 1',
+              'mount': '/data',
+              'totalBytes': 1800000000000,
+              'usedBytes': 208000000000,
+              'freeBytes': 1592000000000,
+            },
+            {
+              'id': 'v-media',
+              'label': '存储卷 2',
+              'mount': '/var/lib/uten-imp-media',
+              'totalBytes': 200000000000,
+              'usedBytes': 389000000,
+              'freeBytes': 199611000000,
+            },
+          ],
+          'categories': [
+            {
+              'kind': 'DATABASE',
+              'label': '数据库目录',
+              'status': 'NORMAL',
+              'logicalBytes': 19000000000,
+              'volumeId': 'v-data',
+            },
+            {
+              'kind': 'PAIRED_BACKUPS',
+              'label': '数据库与上传文件配套备份',
+              'status': 'NORMAL',
+              'logicalBytes': 165000000000,
+              'volumeId': 'v-data',
+            },
+            {
+              // 覆盖整个系统根的概览类不进分区明细。
+              'kind': 'SYSTEM',
+              'label': '系统目录',
+              'status': 'NORMAL',
+              'logicalBytes': 33000000000,
+              'volumeId': 'v-data',
+            },
+            {
+              'kind': 'UPLOADS',
+              'label': '当前上传目录',
+              'status': 'NORMAL',
+              'logicalBytes': 389000000,
+              'volumeId': 'v-media',
+            },
+          ],
+        }),
+      );
+      await _pump(tester, repository, storage: storage);
+      await tester.pumpAndSettle();
+      // 分区名按挂载点落位，不露「存储卷 1」这类泛称。
+      expect(find.text('数据库与备份区'), findsOneWidget);
+      expect(find.text('上传文件区'), findsOneWidget);
+      expect(find.text('存储卷 1'), findsNothing);
+      // 剩余量与占用明细按通俗单位展示。
+      expect(find.text('剩余 1.4T'), findsOneWidget);
+      expect(find.text('剩余 185.9G'), findsOneWidget);
+      expect(find.text('配套备份（数据库＋附件）'), findsOneWidget);
+      expect(find.text('153.7G'), findsOneWidget);
+      expect(find.text('上传的附件'), findsOneWidget);
+      expect(find.text('371M'), findsOneWidget);
+      // SYSTEM 概览类与数据库卷里的重叠，不单独占一行。
+      expect(find.text('系统目录'), findsNothing);
+      expect(tester.takeException(), isNull);
+      await _capture(tester, 'storage-zones-fixture.png');
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  });
 
   testWidgets(
     'overall unknown preserves fresh metric states and backup check failure wording',
@@ -765,8 +764,8 @@ Future<ProviderContainer> _pump(
                   'revision': 'r0',
                   'status': 'UNKNOWN',
                   'capabilities': {'available': false},
-                  'volumes': [],
-                  'categories': [],
+                  'volumes': <Object?>[],
+                  'categories': <Object?>[],
                 }),
               ),
         ),

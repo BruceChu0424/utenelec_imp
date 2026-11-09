@@ -25,17 +25,30 @@ class HostAlertCategoryTest(unittest.TestCase):
         self.assertIn("病毒扫描服务", recorder.category("down-clamav-daemon")[2])
 
     def test_disk_reason_is_specific_and_preserves_existing_volume_throttle(self):
-        original_key = recorder.category("disk-/srv/uten-backup")[0]
+        # Every reason stays specific on a labelled volume and keeps the
+        # volume's existing throttle key regardless of the reason suffix.
+        original_key = recorder.category("disk-/data")[0]
         for reason, expected in {
-            "low-free": "本机备份盘可用空间低于20GiB",
-            "unmounted": "本机备份盘未挂载",
-            "full": "本机备份盘使用率达到九成",
-            "inodes": "本机备份盘文件数量接近上限",
-            "probe-failed": "本机备份盘容量检查失败",
+            "low-free": "数据盘可用空间低于20GiB",
+            "unmounted": "数据盘未挂载",
+            "full": "数据盘使用率达到九成",
+            "inodes": "数据盘文件数量接近上限",
+            "probe-failed": "数据盘容量检查失败",
         }.items():
             with self.subTest(reason=reason):
                 self.assertEqual((original_key, "CRITICAL", expected),
-                                 recorder.category("disk-/srv/uten-backup:" + reason))
+                                 recorder.category("disk-/data:" + reason))
+        self.assertEqual(recorder.category("disk-/data"),
+                         recorder.category("disk-/data:private-secret"))
+
+    def test_retired_backup_volume_falls_back_to_generic_disk_label(self):
+        # 2026-11-10 storage migration folds /srv/uten-backup into /data, so its
+        # dedicated label retired; a late alert from the old mount still gets a
+        # specific reason under the generic label and keeps its own throttle key.
+        original_key = recorder.category("disk-/srv/uten-backup")[0]
+        self.assertEqual((original_key, "CRITICAL", "磁盘可用空间低于20GiB"),
+                         recorder.category("disk-/srv/uten-backup:low-free"))
+        self.assertNotIn("本机备份盘", recorder.category("disk-/srv/uten-backup:unmounted")[2])
         self.assertEqual(recorder.category("disk-/srv/uten-backup"),
                          recorder.category("disk-/srv/uten-backup:private-secret"))
 

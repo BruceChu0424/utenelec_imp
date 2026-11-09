@@ -42,7 +42,14 @@ import static org.junit.jupiter.api.Assertions.*;
     "uten.features.goods-owner-scope-enabled=false", "uten.storage.uploads-enabled=true",
     "uten.storage.malware-scan.provider=test-only"})
 class ColorRemarkRuntimeEndToEndTest {
-    private static final PostgreSQLContainer DB=new PostgreSQLContainer("postgres:16-alpine");
+    /*
+     * history.restore(...) takes LOCK TABLE colors IN SHARE ROW EXCLUSIVE MODE NOWAIT (MasterRecordHistoryService).
+     * An autovacuum VACUUM/ANALYZE holds SHARE UPDATE EXCLUSIVE, which that NOWAIT reports as "资料正在更新" at
+     * random (same race as PermissionConfigurationTransferPostgresTest, CI run 42530372449). Nothing here tests
+     * autovacuum, so this private fixture database runs without it; fsync=off is the container's default and stays.
+     */
+    private static final PostgreSQLContainer DB=new PostgreSQLContainer("postgres:16-alpine")
+            .withCommand("postgres","-c","fsync=off","-c","autovacuum=off");
     private static final UUID OLD_COLOR=UUID.randomUUID();
     private static long oldVersion;
     @DynamicPropertySource static void database(DynamicPropertyRegistry registry) {

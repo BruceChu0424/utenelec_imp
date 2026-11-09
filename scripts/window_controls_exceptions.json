@@ -17,6 +17,14 @@
   },
   {
     "kind": "raw-close-icon",
+    "path": "lib/components/feedback/uten_progress_dialog.dart",
+    "owner": "_UtenProgressDialogState.build",
+    "fingerprint": "385426ec3c3a443887641a92e137be78f11e3a433644a092ca8c572b55987b1c",
+    "count": 1,
+    "reason": "Cancels the running progress action (aborts the transfer, or stops a batch after its current item) rather than merely dismissing its progress window; the dialog closes only when the action settles."
+  },
+  {
+    "kind": "raw-close-icon",
     "path": "lib/components/feedback/uten_progress_timeline.dart",
     "owner": "_TimelineTile.build",
     "fingerprint": "19757fa3a66f7e3a49d185257a0aa336aba4a47832506809da3a345cb6d277f9",
@@ -323,9 +331,17 @@
     "kind": "raw-close-icon",
     "path": "lib/features/expense/pages/expense_approval_list_page.dart",
     "owner": "_ExpenseApprovalListPageState._batchActions",
-    "fingerprint": "481020a61c37f648c5fcacacc4450647305a3d8cf260db97928d1a1a29c5c897",
+    "fingerprint": "6be4eff851853f0162028eb5ded1069b9c0187a553cd14122facc484918ef437",
     "count": 1,
     "reason": "Rejects a frozen selection of expense approvals through _batchReject/_runBatch and repository.rejectBatch with the shown versions; it does not close a window."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/features/expense/pages/expense_approval_list_page.dart",
+    "owner": "_ExpenseApprovalListPageState._runBatch",
+    "fingerprint": "0508140b0800d41be8572c72b3a9435e9dc8afb587941d5dddb6bf2065d3f374",
+    "count": 1,
+    "reason": "Non-interactive title glyph of the batch-reject progress dialog that _runBatch opens; that dialog's controls come from the shared progress component, so it does not close a window."
   },
   {
     "kind": "semantic-close-button",
@@ -339,9 +355,17 @@
     "kind": "raw-close-icon",
     "path": "lib/features/hr_profile/pages/hr_profile_changes_list_page.dart",
     "owner": "_HrProfileChangesListPageState._batchActions",
-    "fingerprint": "d1a4375f73f7806efb4e91420cd7eafcb44e0315d99ec0b76339f2efc762b0b8",
+    "fingerprint": "683fc7c3c47fb039bfbafa42b9a34b1d42d7254b9cecd6748b081c0680024bb5",
     "count": 1,
     "reason": "Rejects selected HR profile changes."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/features/hr_profile/pages/hr_profile_changes_list_page.dart",
+    "owner": "_HrProfileChangesListPageState._batchReject",
+    "fingerprint": "85c440c39049f4819491a1c87def6f45f542e51aa18f0519fe66d7fcfe77dd4a",
+    "count": 1,
+    "reason": "Passes the reject glyph to _runBatch as the non-interactive title icon of its batch-reject progress dialog; it does not close a window."
   },
   {
     "kind": "raw-close-icon",
@@ -515,9 +539,17 @@
     "kind": "raw-close-icon",
     "path": "lib/features/visitor_approval/pages/visitor_approval_list_page.dart",
     "owner": "_VisitorApprovalListPageState._batchActions",
-    "fingerprint": "1c70d4453ab83e82a32516d20ded2e0cb5ddd80497c65bd3ff450da2bfb2cb5f",
+    "fingerprint": "dcc0c13a154b91f23a9b5cf5a5d3748a25c48552115a40cc7087cb034610ae26",
     "count": 1,
     "reason": "Rejects selected visitor approvals through the batch decision callback."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/features/visitor_approval/pages/visitor_approval_list_page.dart",
+    "owner": "_VisitorApprovalListPageState._batchReject",
+    "fingerprint": "63f0b7f75d5095dcf4766ca15fe768f2e6eae59c892fbddeeacc9ee1074f83b4",
+    "count": 1,
+    "reason": "Passes the reject glyph to _runBatch as the non-interactive title icon of its batch-reject progress dialog; it does not close a window."
   },
   {
     "kind": "raw-close-icon",

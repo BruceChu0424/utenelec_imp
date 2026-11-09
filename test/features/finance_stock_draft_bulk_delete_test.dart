@@ -350,7 +350,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('销售收款单删除'), findsOneWidget);
     expect(api.events, ['GET a']);
-    await tester.tap(find.text('取消'));
+    // 进度弹窗的「取消」与页面按钮同名, 用组件稳定 Key 定位(2026-11-09 随
+    // 草稿批量删除统一进度弹窗适配)。
+    await tester.tap(find.byKey(const ValueKey('uten-progress-cancel')));
     await tester.pumpAndSettle();
     expect(api.deleted, isEmpty);
     expect(api.events, ['GET a']);

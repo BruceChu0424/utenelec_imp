@@ -8,8 +8,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
-import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
+import 'package:uten_imp/components/feedback/uten_progress_dialog.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/basic_data/models/product_category_node.dart';
@@ -346,7 +346,7 @@ void main() {
         await tester.pump(const Duration(milliseconds: 20));
       }
       expect(fixture.writes, hasLength(1));
-      expect(find.byType(UtenBusyOverlay), findsOneWidget);
+      expect(find.byType(UtenProgressBar), findsOneWidget);
       app.container.read(_identity.notifier).state = 'B';
       await tester.pump();
       app.container.read(_identity.notifier).state = 'A';
@@ -354,7 +354,7 @@ void main() {
       fixture.gate.complete();
       await tester.pumpAndSettle();
       expect(find.textContaining('PRIVATE-OLD'), findsNothing);
-      expect(find.byType(UtenBusyOverlay), findsNothing);
+      expect(find.byType(UtenProgressBar), findsNothing);
       expect(tester.takeException(), isNull);
     },
   );
@@ -392,11 +392,11 @@ void main() {
       for (var frame = 0; frame < 8; frame++) {
         await tester.pump(const Duration(milliseconds: 20));
       }
-      expect(find.byType(UtenBusyOverlay), findsOneWidget);
+      expect(find.byType(UtenProgressBar), findsOneWidget);
       unawaited(app.router.push<void>('/other'));
       await tester.pumpAndSettle();
       expect(find.text('另一页面'), findsOneWidget);
-      expect(find.byType(UtenBusyOverlay), findsNothing);
+      expect(find.byType(UtenProgressBar), findsNothing);
       fixture.gate.complete();
       await tester.pumpAndSettle();
       expect(find.textContaining('PRIVATE-OLD'), findsNothing);

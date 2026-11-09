@@ -2283,6 +2283,196 @@ void main() {
     },
   );
 
+  testWidgets(
+    'compact joint analysis and quantity review wait for the complete candidates while they grow',
+    (tester) async {
+      final orders = _progressiveCandidateOrders(60);
+      final batches = <({int page, int size})>[];
+      Completer<void>? holdLater;
+      final harness = await _pumpPage(
+        tester,
+        size: const Size(375, 900),
+        permissions: const {
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
+        },
+        seeded: false,
+        responseOverride: (request) async {
+          final batch = _candidateBatchOf(request);
+          if (batch == null) return null;
+          batches.add(batch);
+          if (batch.page > 1) await holdLater?.future;
+          return _candidateSlice(orders, batch);
+        },
+      );
+      final ladder = completeReadPlanBatches(orders.length);
+      expect(batches, ladder);
+      final scrollable = find
+          .descendant(
+            of: find.byKey(
+              const Key('material-analysis-candidate-mobile-list'),
+            ),
+            matching: find.byType(Scrollable),
+          )
+          .first;
+      final search = find.descendant(
+        of: find.byType(UtenSearchBar),
+        matching: find.byType(TextField),
+      );
+      // On the complete result: pick a candidate and change its quantity.
+      final checkbox = find.descendant(
+        of: find.byKey(
+          const ValueKey('material-candidate-card-progressive-line-0'),
+        ),
+        matching: find.byType(Checkbox),
+      );
+      await tester.ensureVisible(checkbox);
+      await tester.tap(checkbox);
+      await tester.pump();
+      final start = find.byKey(const Key('material-analysis-start'));
+      final review = find.byKey(
+        const Key('material-compact-edit-selected-qty'),
+      );
+      UtenButton startButton() => tester.widget<UtenButton>(start);
+      OutlinedButton reviewButton() => tester.widget<OutlinedButton>(review);
+      expect(startButton().onPressed, isNotNull);
+      // The selected-source summary follows the cards.
+      await tester.scrollUntilVisible(review, 600, scrollable: scrollable);
+      expect(reviewButton().onPressed, isNotNull);
+      final qty = find.byKey(const Key('source-qty-progressive-line-0'));
+      await tester.tap(review);
+      await tester.pumpAndSettle();
+      expect(tester.widget<TextField>(qty).controller?.text, '8');
+      await tester.enterText(qty, '7');
+      await tester.tap(find.text('数量核对完成'));
+      await tester.pumpAndSettle();
+      // A new keyword starts a new complete read whose later batch waits.
+      await tester.scrollUntilVisible(search, -600, scrollable: scrollable);
+      final hold = holdLater = Completer<void>();
+      await tester.enterText(search, '逐批');
+      for (
+        var frame = 0;
+        frame < 200 && batches.length < ladder.length * 2;
+        frame++
+      ) {
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      expect(batches, [...ladder, ...ladder]);
+      // Growing: the selection stays, while the joint analysis and the
+      // quantity review wait for the complete result.
+      expect(tester.widget<Checkbox>(checkbox).value, isTrue);
+      expect(startButton().onPressed, isNull);
+      await tester.scrollUntilVisible(review, 600, scrollable: scrollable);
+      expect(find.text('已选 1 个销售产品'), findsOneWidget);
+      expect(reviewButton().onPressed, isNull);
+      await tester.tap(start, warnIfMissed: false);
+      await tester.pump();
+      hold.complete();
+      await tester.pumpAndSettle();
+      // Complete: both entries are back, the quantity as it was entered.
+      expect(startButton().onPressed, isNotNull);
+      await tester.scrollUntilVisible(review, 600, scrollable: scrollable);
+      expect(reviewButton().onPressed, isNotNull);
+      await tester.tap(review);
+      await tester.pumpAndSettle();
+      expect(tester.widget<TextField>(qty).controller?.text, '7');
+      await tester.tap(find.text('数量核对完成'));
+      await tester.pumpAndSettle();
+      expect(
+        harness.requests.where((request) => request.path.endsWith('/preview')),
+        isEmpty,
+        reason: 'no analysis was submitted while the candidates grew',
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'wide joint analysis waits for the complete candidates while they grow',
+    (tester) async {
+      final orders = _progressiveCandidateOrders(60);
+      final batches = <({int page, int size})>[];
+      Completer<void>? holdLater;
+      final harness = await _pumpPage(
+        tester,
+        size: const Size(1200, 900),
+        permissions: const {
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
+        },
+        seeded: false,
+        responseOverride: (request) async {
+          final batch = _candidateBatchOf(request);
+          if (batch == null) return null;
+          batches.add(batch);
+          if (batch.page > 1) await holdLater?.future;
+          return _candidateSlice(orders, batch);
+        },
+      );
+      final ladder = completeReadPlanBatches(orders.length);
+      expect(batches, ladder);
+      final table = find.byKey(const Key('material-analysis-candidate-table'));
+      // On the complete result: pick the first candidate row.
+      await tester.tap(
+        find
+            .descendant(of: table, matching: find.byType(Checkbox))
+            .at(1)
+            .hitTestable(),
+      );
+      await tester.pump();
+      final qty = find.descendant(
+        of: table,
+        matching: find.byKey(const Key('source-qty-progressive-line-0')),
+      );
+      expect(qty, findsOneWidget);
+      await tester.enterText(qty, '7');
+      await tester.pump();
+      final start = find.byKey(const Key('material-analysis-start'));
+      UtenButton startButton() => tester.widget<UtenButton>(start);
+      expect(find.text('联合分析所选 1 项'), findsOneWidget);
+      expect(startButton().onPressed, isNotNull);
+      expect(tester.widget<TextField>(qty).enabled, isTrue);
+      // A new keyword starts a new complete read whose later batch waits.
+      final hold = holdLater = Completer<void>();
+      await tester.enterText(
+        find.descendant(
+          of: find.byType(UtenSearchBar).first,
+          matching: find.byType(TextField),
+        ),
+        '逐批',
+      );
+      for (
+        var frame = 0;
+        frame < 200 && batches.length < ladder.length * 2;
+        frame++
+      ) {
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      expect(batches, [...ladder, ...ladder]);
+      // Growing: the retained selection's joint analysis and its inline
+      // quantity wait; the entered quantity stays.
+      expect(find.text('联合分析所选 1 项'), findsOneWidget);
+      expect(startButton().onPressed, isNull);
+      expect(tester.widget<TextField>(qty).enabled, isFalse);
+      expect(tester.widget<TextField>(qty).controller?.text, '7');
+      await tester.tap(start, warnIfMissed: false);
+      await tester.pump();
+      hold.complete();
+      await tester.pumpAndSettle();
+      // Complete: the joint analysis and the quantity are back as they were.
+      expect(find.text('联合分析所选 1 项'), findsOneWidget);
+      expect(startButton().onPressed, isNotNull);
+      expect(tester.widget<TextField>(qty).enabled, isTrue);
+      expect(tester.widget<TextField>(qty).controller?.text, '7');
+      expect(
+        harness.requests.where((request) => request.path.endsWith('/preview')),
+        isEmpty,
+        reason: 'no analysis was submitted while the candidates grew',
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('seeded manual analysis sends the stable demand reference', (
     tester,
   ) async {

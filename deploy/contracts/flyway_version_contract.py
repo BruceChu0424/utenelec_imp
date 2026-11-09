@@ -115,6 +115,27 @@ def _flyway_head_identity(version: object) -> int | str:
     return key[0] if len(key) == 1 else str(version)
 
 
+def _flyway_history_head(history: object) -> int | str:
+    """Return the head of installed_rank-ordered (version, script) history rows.
+
+    The head is the semantic maximum, never the row applied last: a dotted
+    backfill installed after a larger integer stays below that integer. Each
+    row binds its observed version to its exact script, and the rows obey the
+    shared rank rule (unique versions, integers strictly increasing by rank).
+    """
+    if type(history) not in (list, tuple) or not history:
+        raise _FLYWAY_CONTRACT_ERROR("Flyway history must be a non-empty row sequence")
+    seen: set = set()
+    prior_integer = (0,)
+    for row in history:
+        if type(row) not in (list, tuple) or len(row) != 2:
+            raise _FLYWAY_CONTRACT_ERROR("Flyway history row must be an exact version/script pair")
+        version_key = _flyway_history_version_key(row[0], row[1])
+        prior_integer = _flyway_history_order_frontier(version_key, seen, prior_integer)
+        seen.add(version_key)
+    return _flyway_head_identity(".".join(str(part) for part in max(seen)))
+
+
 def _flyway_head_key(value: object) -> tuple[int, ...]:
     """Read the existing integer head or the explicit new dotted-string form."""
     if type(value) is int and value > 0 and len(str(value)) <= 50:

@@ -51,7 +51,7 @@ Usage: sudo bash drill-restore.sh [options]
   --repo NUMBER                     pgBackRest repository number (default: 1)
   --port NUMBER                     Isolated PostgreSQL port (default: 5433)
   --startup-timeout SECONDS         Recovery startup deadline (default: 300)
-  --expected-flyway-version NUMBER  Required exact latest successful version
+  --expected-flyway-version NUMBER  Required exact Flyway head (semantic maximum, not the last applied row)
   --expected-migration-count NUMBER Required exact successful versioned rows
   --min-users NUMBER                Minimum users rows (default: 1)
   --min-goods NUMBER                Minimum goods rows (default: 0)
@@ -693,7 +693,20 @@ failed_migrations="$(psql_drill uten_imp 'SELECT count(*) FROM flyway_schema_his
 invalid_successful_history_count="$(psql_drill uten_imp "SELECT count(*) FROM flyway_schema_history WHERE success AND (version IS NULL OR checksum IS NULL OR type IS DISTINCT FROM 'SQL');")"
 [[ "$invalid_successful_history_count" == 0 ]] \
   || die 'Flyway history contains a successful repeatable/non-SQL row, a null version/checksum, or a non-canonical version'
-latest_flyway_version="$(psql_drill uten_imp "SELECT version FROM flyway_schema_history WHERE success AND version IS NOT NULL ORDER BY installed_rank DESC LIMIT 1;")"
+# The head is the shared-contract semantic maximum, never the row applied last: a
+# dotted backfill may be installed after a larger integer. The trusted guard reads
+# the rows in installed_rank order and fails closed on a duplicate, an integer
+# regression or a version that differs from its exact script.
+if ! ranked_history_rows="$(psql_drill uten_imp \
+  "SELECT version || chr(9) || script || chr(9) || checksum::text FROM flyway_schema_history WHERE success AND version IS NOT NULL ORDER BY installed_rank;")"; then
+  die 'could not read the isolated restored Flyway history'
+fi
+if ! ranked_history_summary="$(/usr/bin/python3 -I "$trusted_release_guard" \
+  flyway-rows --history --summary <<<"$ranked_history_rows")"; then
+  die 'isolated restored Flyway history violates the shared rank-order, uniqueness or script-binding contract'
+fi
+unset ranked_history_rows
+IFS=$'\t' read -r _ latest_flyway_version <<<"$ranked_history_summary"
 [[ "$latest_flyway_version" == "$expected_flyway_version" ]] \
   || die "latest Flyway version is $latest_flyway_version, expected $expected_flyway_version"
 successful_migration_count="$(psql_drill uten_imp "SELECT count(*) FROM flyway_schema_history WHERE success AND version IS NOT NULL;")"

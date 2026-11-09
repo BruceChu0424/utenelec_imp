@@ -33,7 +33,7 @@ _GUARD_PATH = Path(__file__).resolve().with_name("release_guard.py")
 _GUARD_MODULE_NAME = "uten_imp_release_guard"
 _PREVERIFIED_GUARD_GLOBAL = "_UTEN_PREVERIFIED_RELEASE_GUARD"
 _GUARD_MAXIMUM_BYTES = 4 * 1024 * 1024
-_GUARD_SHA256 = "a38b71aec9ed540541e4e3752793077d95f9ef2cf75930e91b75860ddf546266"
+_GUARD_SHA256 = "3f68bac64f203228882671b5785770d19aee93877aaded1a3910d787c98cfe0d"
 OSS_IO_SHA256 = "a3d8a8d4044617e500293ae2dad036b9fd0f1f890d07b2bf87fc6a4e3535f77b"
 WHEELHOUSE_SUPPLY_CHAIN_SHA256 = (
     "b46bee01c173d4cd56d21a80bb40983dba535199d011f5ecc18625e2405c3bea"
@@ -366,7 +366,7 @@ DATABASE_RECOVERY_VERIFIER_SHA256 = (
 # Updated after the runtime boot verifier and its focused fault tests are
 # reviewed byte-for-byte. Phase 4 refuses to install any other source.
 RUNTIME_BOOT_VERIFIER_SHA256 = (
-    "4e0ae05f182e28e443f9f4c3132b915d46ce18986a73b990f3af425a361ec46e"
+    "56f5c524ac0b6e96de40b2be5ed34fafc7e500ea511b74a76d0ae56e3788aa67"
 )
 STORAGE_BOOT_VERIFIER_SHA256 = (
     "0880678bcff0ad03149c0e0d90fccb9f6b274788b3c4e9e6add0d487d64dd83f"
@@ -375,7 +375,7 @@ STORAGE_MOUNT_OBSERVER_SHA256 = (
     "b96476e50edad6178e3ab55516659b9b3b656653a6c0e376d173566d2cd88ddb"
 )
 MIGRATION_AUTHORIZATION_HELPER_SHA256 = (
-    "d133de1777cb023d50eade015779aa872ec65b23dc4bdcf298d46e86aed85bd0"
+    "9600aa2726c298fc4216ebbdd49c6fe771eac557b842427f3ae0ca3eadb979aa"
 )
 ENTRY_WATCHDOG_UNIT_SHA256 = (
     "e018a0f67a268e81066350f9d0ae2c923825a3cc907c49c4e4854ce1c807f16a"
@@ -13060,7 +13060,7 @@ def main() -> int:
 
 # BEGIN GENERATED FLYWAY VERSION CONTRACT
 # Source: deploy/contracts/flyway_version_contract.py
-# SHA-256: 39d4279fdc1e117f18456bfcf230d45c3e2c27d75dd6f4a92947123084063d5f
+# SHA-256: 80935ca03a076b46e8c41e1ced27f75baaf89c4c99365294cb3d0d5e398e7c00
 _FLYWAY_CONTRACT_ERROR = ValueError
 
 # These immutable, already-applied basenames predate canonical wire versions.
@@ -13154,6 +13154,20 @@ def _flyway_wire_version(value: object, script: object) -> str:
 def _flyway_head_identity(version: object) -> int | str:
     key = _flyway_version_key(version)
     return key[0] if len(key) == 1 else str(version)
+
+
+def _flyway_history_head(history: object) -> int | str:
+    if type(history) not in (list, tuple) or not history:
+        raise _FLYWAY_CONTRACT_ERROR("Flyway history must be a non-empty row sequence")
+    seen: set = set()
+    prior_integer = (0,)
+    for row in history:
+        if type(row) not in (list, tuple) or len(row) != 2:
+            raise _FLYWAY_CONTRACT_ERROR("Flyway history row must be an exact version/script pair")
+        version_key = _flyway_history_version_key(row[0], row[1])
+        prior_integer = _flyway_history_order_frontier(version_key, seen, prior_integer)
+        seen.add(version_key)
+    return _flyway_head_identity(".".join(str(part) for part in max(seen)))
 
 
 def _flyway_head_key(value: object) -> tuple[int, ...]:

@@ -140,5 +140,17 @@ class StandaloneVersionTests(unittest.TestCase):
         self.assertEqual("", result.stdout)
 
 
+class ReadOnlyAuditHeadTests(unittest.TestCase):
+    def test_mould_audit_reports_the_semantic_head_not_the_last_applied_row(self):
+        # A dotted backfill can be the row applied last; the reported migration is the
+        # head under the reviewed history ordering, never ORDER BY installed_rank DESC.
+        script = (ROOT / "server/legacy_migration/audit_mould_manufacturers.ps1").read_text(encoding="utf-8")
+        ordering = "ORDER BY string_to_array(version, '.')::numeric[]"
+        self.assertIn(ordering, verify_candidate.history_rows_sql())
+        self.assertNotIn("installed_rank DESC", script)
+        self.assertIn("'latestMigration',(SELECT version FROM flyway_schema_history WHERE success AND "
+                      "version IS NOT NULL " + ordering + " DESC LIMIT 1)", script)
+
+
 if __name__ == "__main__":
     unittest.main()

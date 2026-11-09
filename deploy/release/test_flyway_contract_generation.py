@@ -35,8 +35,8 @@ class FlywayContractGenerationTest(unittest.TestCase):
             text=True, capture_output=True, check=False,
         )
 
-    def test_all_thirteen_copies_and_every_existing_pin_match_the_single_source(self):
-        self.assertEqual(13, len(GENERATOR.TARGETS))
+    def test_all_fourteen_copies_and_every_existing_pin_match_the_single_source(self):
+        self.assertEqual(14, len(GENERATOR.TARGETS))
         for relative, error_type in GENERATOR.TARGETS.items():
             with self.subTest(caller=relative):
                 self.assertEqual((ROOT / relative).read_text(encoding="utf-8"), GENERATOR.render(ROOT, relative))
@@ -48,6 +48,10 @@ class FlywayContractGenerationTest(unittest.TestCase):
                 self.assertEqual((1,), scope["_flyway_history_version_key"]("01", "V01__enable_pgcrypto.sql"))
                 with self.assertRaises(CallerError):
                     scope["_flyway_version_key"]("999_11")
+                late_backfill = [("999", "V999__a.sql"), ("1000", "V1000__b.sql"), ("999.1", "V999_1__c.sql")]
+                self.assertEqual(1000, scope["_flyway_history_head"](late_backfill))
+                with self.assertRaises(CallerError):
+                    scope["_flyway_history_head"]([("1000", "V1000__b.sql"), ("999", "V999__a.sql")])
         self.assertEqual([], GENERATOR.sync_pins(ROOT, True))
 
     def test_check_rejects_source_drift_without_rewriting_any_copy_or_pin(self):

@@ -12,8 +12,7 @@ import '../models/production_execution_workbench.dart';
 import '../repositories/production_execution_workbench_repository.dart';
 
 const _warehouseAvailableLabel = '本任务仓库可用';
-const _warehouseAvailableHint =
-    '含本任务专属来源和扣除其他占用及安全库存后可用的公共数量。齐套生产在到齐前不预留。';
+const _warehouseAvailableHint = '含本任务专属来源和扣除其他占用及安全库存后可用的公共数量。齐套生产在到齐前不预留。';
 
 /// 逐种物料状态 → 档位（ADR-169 锚定，与流程词表/物料摘要同口径）：
 /// 已领到车间=绿（就绪）；已备好可领=蓝（去领料动作）；已申请待仓库发料=

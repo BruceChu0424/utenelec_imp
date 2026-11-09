@@ -76,11 +76,7 @@ class _Api extends ApiClient {
       'items': size == 1
           ? <Map<String, dynamic>>[]
           : [
-              for (
-                var index = (page - 1) * size + 1;
-                index <= last;
-                index++
-              )
+              for (var index = (page - 1) * size + 1; index <= last; index++)
                 {
                   'id': 'row-$index',
                   'orderId': 'order-$index',

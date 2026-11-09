@@ -310,7 +310,10 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage>
           setState(() {
             _result =
                 (partial
-                        as PagedReadSnapshot<FinancePayableItem, FinancePayablesResult>)
+                        as PagedReadSnapshot<
+                          FinancePayableItem,
+                          FinancePayablesResult
+                        >)
                     .snapshot;
           });
         },

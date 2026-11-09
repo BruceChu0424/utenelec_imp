@@ -124,9 +124,10 @@ Future<void> _pump(
 void main() {
   testWidgets('日报详情并列显示保存的实称总重量与单重，旧单仍可查看', (tester) async {
     await _pump(tester, size: const Size(1280, 900));
-    final table = tester.widget<
-      MasterDataTableView<ProductionDailyReportDetailGroupRow>
-    >(find.byType(MasterDataTableView<ProductionDailyReportDetailGroupRow>));
+    final table = tester
+        .widget<MasterDataTableView<ProductionDailyReportDetailGroupRow>>(
+          find.byType(MasterDataTableView<ProductionDailyReportDetailGroupRow>),
+        );
     final weightIndex = table.columns.indexWhere(
       (column) => column.key == 'weight',
     );

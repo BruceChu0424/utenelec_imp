@@ -1365,11 +1365,13 @@ abstract class _MaterialAnalysisPageBase
     });
     try {
       final repository = ref.read(productionPlanRepositoryProvider);
-      Future<PagedReadSnapshot<MaterialAnalysisSalesCandidate,
-              MaterialAnalysisSalesCandidatePage>> fetchCandidates(
-        int target,
-        int size,
-      ) async {
+      Future<
+        PagedReadSnapshot<
+          MaterialAnalysisSalesCandidate,
+          MaterialAnalysisSalesCandidatePage
+        >
+      >
+      fetchCandidates(int target, int size) async {
         final result = await repository.materialAnalysisSalesCandidates(
           page: target,
           size: size,

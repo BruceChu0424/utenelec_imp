@@ -1530,22 +1530,21 @@ class _ProductionDailyReportDetailPageState
             // 平台扩展列：表键/scope 与逐份渲染时 platform_table_registry 里
             // ProductionDailyReportItem 的绑定一致，合并行以源行 id 作为记录 id，
             // 已保存的列偏好与自定义扩展列不因合并显示而丢。
-            platformBinding: PlatformTableBinding<
-              ProductionDailyReportDetailGroupRow
-            >(
-              tableKey: 'production.daily.items',
-              scope: 'production_daily_report_item',
-              recordIdOf: (row) => row.source.id,
-              columnAliases: const {
-                'goodsName': 'goods',
-                'goodsNameEn': 'nameEn',
-                'colorName': 'color',
-                'unitName': 'unit',
-                'listPrice': 'price',
-                'amountOriginal': 'amount',
-                'mfgMonth': 'mstatus',
-              },
-            ),
+            platformBinding:
+                PlatformTableBinding<ProductionDailyReportDetailGroupRow>(
+                  tableKey: 'production.daily.items',
+                  scope: 'production_daily_report_item',
+                  recordIdOf: (row) => row.source.id,
+                  columnAliases: const {
+                    'goodsName': 'goods',
+                    'goodsNameEn': 'nameEn',
+                    'colorName': 'color',
+                    'unitName': 'unit',
+                    'listPrice': 'price',
+                    'amountOriginal': 'amount',
+                    'mfgMonth': 'mstatus',
+                  },
+                ),
             primary: true,
             columns: [
               // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。
@@ -1558,8 +1557,9 @@ class _ProductionDailyReportDetailPageState
                 width: 200,
                 value: (row) => _dictText(row.source.goodsName) ?? '—',
                 cellBuilderHandlesSemantics: true,
-                cellBuilder: (_, row) =>
-                    UtenGoodsIdentityCell(name: _dictText(row.source.goodsName)),
+                cellBuilder: (_, row) => UtenGoodsIdentityCell(
+                  name: _dictText(row.source.goodsName),
+                ),
               ),
               MasterColumnDef(
                 key: 'goodsCode',
@@ -1574,8 +1574,9 @@ class _ProductionDailyReportDetailPageState
                 key: 'colorName',
                 label: '颜色',
                 width: 96,
-                value: (row) =>
-                    UtenGoodsAttributeCell.text(_dictText(row.source.colorName)),
+                value: (row) => UtenGoodsAttributeCell.text(
+                  _dictText(row.source.colorName),
+                ),
                 cellBuilder: (_, row) =>
                     UtenGoodsAttributeCell(_dictText(row.source.colorName)),
               ),

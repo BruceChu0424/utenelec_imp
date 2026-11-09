@@ -776,9 +776,7 @@ class _FinanceProcurementApprovalTasksPageState
         initialStatus: '正在提交批量审批',
         cancellable: false,
         action: (_) async {
-          if (claim == null ||
-              !await claim.validateForDecision() ||
-              !mounted) {
+          if (claim == null || !await claim.validateForDecision() || !mounted) {
             return false;
           }
           await action();

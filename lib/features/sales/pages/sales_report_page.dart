@@ -542,9 +542,7 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
     // While the complete read is still running, its validated prefix renders as
     // growing pending rows; totals/statistics still wait for the complete one.
     final showingPartial = _partialData != null;
-    final data = matches
-        ? source
-        : (_partialData ?? source.pendingQuery());
+    final data = matches ? source : (_partialData ?? source.pendingQuery());
     // 状态类列（label 含「状态」，如 单据状态）在客户端映射处排到最前，并收紧
     // 声明宽（value 即显示文案 → 72；表格仍按内容自动适配加宽）；其余列保持
     // 服务端元数据的顺序与宽度。

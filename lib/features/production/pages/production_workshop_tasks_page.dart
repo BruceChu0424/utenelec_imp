@@ -3677,7 +3677,9 @@ class _ProductionWorkshopTasksPageState
           key: ValueKey('workshop-material-summary-${task.segmentId}'),
           segments: _materialSummaryParts(task),
           tooltip: _materialSummaryTooltip(task),
-          onPressed: _navigating || _loading ? null : () => _openMaterials(task),
+          onPressed: _navigating || _loading
+              ? null
+              : () => _openMaterials(task),
         ),
       ),
     // 2026-09-16 用户口径：产品名称 / 编号 / 颜色靠前——先看清是哪个产品，再往右

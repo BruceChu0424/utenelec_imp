@@ -217,7 +217,10 @@ class _DailyReportApi extends ApiClient {
     final batches = <String, List<Map<String, dynamic>>>{};
     for (final item in items) {
       batches
-          .putIfAbsent((item['outputBatchId'] ?? item['id']) as String, () => [])
+          .putIfAbsent(
+            (item['outputBatchId'] ?? item['id']) as String,
+            () => [],
+          )
           .add(item);
     }
     List<List<Map<String, dynamic>>> groupMembersByDestination(
@@ -249,9 +252,10 @@ class _DailyReportApi extends ApiClient {
           'batchKey': entry.key,
           'sourceItemId': entry.value.first['id'],
           'itemIds': [for (final member in entry.value) member['id']],
-          'qty': entry
-              .value
-              .fold<num>(0, (sum, member) => sum + ((member['qty'] as num?) ?? 0)),
+          'qty': entry.value.fold<num>(
+            0,
+            (sum, member) => sum + ((member['qty'] as num?) ?? 0),
+          ),
           'summary': '服务端摘要 ${entry.key}',
           'groups': [
             for (final members in groupMembersByDestination(entry.value))
@@ -1426,9 +1430,12 @@ void main() {
   ]) {
     testWidgets('审核明细精确数量：${sample.$2}', (tester) async {
       await _pump(tester, onApprove: (_) => null, itemOverrides: sample.$1);
-      final table = tester.widget<
-        MasterDataTableView<ProductionDailyReportDetailGroupRow>
-      >(find.byType(MasterDataTableView<ProductionDailyReportDetailGroupRow>));
+      final table = tester
+          .widget<MasterDataTableView<ProductionDailyReportDetailGroupRow>>(
+            find.byType(
+              MasterDataTableView<ProductionDailyReportDetailGroupRow>,
+            ),
+          );
       expect(table.items, hasLength(1));
       expect(
         table.columns
@@ -1503,9 +1510,10 @@ void main() {
         },
       ],
     );
-    final table = tester.widget<MasterDataTableView<
-      ProductionDailyReportDetailGroupRow
-    >>(find.byType(MasterDataTableView<ProductionDailyReportDetailGroupRow>));
+    final table = tester
+        .widget<MasterDataTableView<ProductionDailyReportDetailGroupRow>>(
+          find.byType(MasterDataTableView<ProductionDailyReportDetailGroupRow>),
+        );
     expect(table.items, hasLength(1), reason: '去向相同的两份合成一行');
     final row = table.items.single;
     expect(
@@ -1513,27 +1521,27 @@ void main() {
       '21000 只',
     );
     expect(
-      table.columns.singleWhere((column) => column.key == 'defectQty').value(
-        row,
-      ),
+      table.columns
+          .singleWhere((column) => column.key == 'defectQty')
+          .value(row),
       '5 只',
     );
     expect(
-      table.columns.singleWhere((column) => column.key == 'outputKind').value(
-        row,
-      ),
+      table.columns
+          .singleWhere((column) => column.key == 'outputKind')
+          .value(row),
       '需求 20000 · 实际超产 1000',
     );
     expect(
-      table.columns.singleWhere((column) => column.key == 'destination').value(
-        row,
-      ),
+      table.columns
+          .singleWhere((column) => column.key == 'destination')
+          .value(row),
       '送入仓库',
     );
     expect(
-      table.columns.singleWhere((column) => column.key == 'routeNote').value(
-        row,
-      ),
+      table.columns
+          .singleWhere((column) => column.key == 'routeNote')
+          .value(row),
       '报工时选择送入仓库；超出计划的实际产量，统一送入仓库',
     );
     expect(find.text('21000 只'), findsWidgets);
@@ -1545,9 +1553,10 @@ void main() {
 
   testWidgets('明细显示不良数：列头说明只记录，0 留空不显示', (tester) async {
     await _pump(tester, onApprove: (_) => null);
-    final table = tester.widget<
-      MasterDataTableView<ProductionDailyReportDetailGroupRow>
-    >(find.byType(MasterDataTableView<ProductionDailyReportDetailGroupRow>));
+    final table = tester
+        .widget<MasterDataTableView<ProductionDailyReportDetailGroupRow>>(
+          find.byType(MasterDataTableView<ProductionDailyReportDetailGroupRow>),
+        );
     final defect = table.columns.singleWhere(
       (column) => column.key == 'defectQty',
     );
@@ -1557,10 +1566,7 @@ void main() {
     // 2026-10-10 数量内联口径：不良数直接带单位显示。
     expect(find.text('12.5 只'), findsOneWidget);
     expect(defect.value(_groupRowOf(const {'id': 'slice'})), isNull);
-    expect(
-      defect.value(_groupRowOf(const {'id': 'x', 'defectQty': 3})),
-      '3',
-    );
+    expect(defect.value(_groupRowOf(const {'id': 'x', 'defectQty': 3})), '3');
     expect(tester.takeException(), isNull);
   });
 

@@ -313,24 +313,25 @@ class _WarehouseInboundExpectationsViewState
       setState(() => _batchSending = true);
       try {
         // 一个事务整批送检，发出后无法撤回：不提供「取消」。
-        final result = await showUtenProgress<WarehouseArrivalBatchCompleteResult>(
-          context,
-          title: '批量送检',
-          icon: Icons.fact_check_outlined,
-          initialStatus: '正在送品质部待检',
-          initialDetail: '${receiptIds.length} 张收货单',
-          cancellable: false,
-          action: (_) => ref
-              .read(procurementInboundRepositoryProvider)
-              .batchCompleteArrivals(
-                receiptIds: receiptIds,
-                idempotencyKey: _batchKey(
-                  selectedIds
-                      .where((id) => drafts.any((task) => task.id == id))
-                      .toSet(),
-                ),
-              ),
-        );
+        final result =
+            await showUtenProgress<WarehouseArrivalBatchCompleteResult>(
+              context,
+              title: '批量送检',
+              icon: Icons.fact_check_outlined,
+              initialStatus: '正在送品质部待检',
+              initialDetail: '${receiptIds.length} 张收货单',
+              cancellable: false,
+              action: (_) => ref
+                  .read(procurementInboundRepositoryProvider)
+                  .batchCompleteArrivals(
+                    receiptIds: receiptIds,
+                    idempotencyKey: _batchKey(
+                      selectedIds
+                          .where((id) => drafts.any((task) => task.id == id))
+                          .toSet(),
+                    ),
+                  ),
+            );
         if (!mounted || result == null) return;
         invalidateWarehouseTaskCounts(ref);
         final quarantined = result.items

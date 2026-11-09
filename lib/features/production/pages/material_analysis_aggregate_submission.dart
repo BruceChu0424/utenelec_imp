@@ -236,7 +236,8 @@ final class _MaterialAggregateSubmission {
             final positive = ready
                 .where(
                   (key) =>
-                      (double.tryParse(table.drafts[key]?.totalText ?? '') ?? 0) >
+                      (double.tryParse(table.drafts[key]?.totalText ?? '') ??
+                              0) >
                           0 ||
                       !table.validText(table.drafts[key]?.totalText ?? ''),
                 )
@@ -272,7 +273,8 @@ final class _MaterialAggregateSubmission {
               }
             }
             final sources = [
-              for (final key in active) ...table.draftGroups(table.drafts[key]!),
+              for (final key in active)
+                ...table.draftGroups(table.drafts[key]!),
             ];
             final success = await table.submitStage(
               sources,

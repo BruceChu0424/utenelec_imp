@@ -59,13 +59,14 @@ class _Stock {
         aQty = batch * 2;
         if (item.orderItemId == 'item-1') bQty = batch.toDouble();
       } else {
-        double requested(
-          String planItemId, {
-          String warehouseId = 'wh-1',
-        }) => item.lines!
-            .where((line) =>
-                line.planItemId == planItemId && line.warehouseId == warehouseId)
-            .fold(0, (sum, line) => sum + num.parse(line.qty.toString()));
+        double requested(String planItemId, {String warehouseId = 'wh-1'}) =>
+            item.lines!
+                .where(
+                  (line) =>
+                      line.planItemId == planItemId &&
+                      line.warehouseId == warehouseId,
+                )
+                .fold(0, (sum, line) => sum + num.parse(line.qty.toString()));
         aQty = requested('plan-a');
         bQty = requested('plan-b');
         if (aQty > stock.kg + 0.0001) {
@@ -226,7 +227,10 @@ void main() {
 
     // 第三轮改版：一张表，列序 = 领料仓库|物料名称|编号|颜色|领料数量|仓库可用|委外单号|委外件名称。
     expect(find.text('出仓分配（按仓库）'), findsNothing);
-    expect(find.byKey(const Key('subcontract-draw-request-tasks')), findsNothing);
+    expect(
+      find.byKey(const Key('subcontract-draw-request-tasks')),
+      findsNothing,
+    );
     for (final label in [
       '领料仓库',
       '物料名称',
@@ -240,18 +244,9 @@ void main() {
       expect(_inLines(find.text(label)), findsOneWidget, reason: '缺列 $label');
     }
     // 默认量 = 联合分配：item-1 领 40(物料A 80kg、物料B 40 个)，item-2 领 60(物料A 120kg)。
-    expect(
-      tester.widget<UtenInput>(_quantity(_rowA1)).controller!.text,
-      '80',
-    );
-    expect(
-      tester.widget<UtenInput>(_quantity(_rowB1)).controller!.text,
-      '40',
-    );
-    expect(
-      tester.widget<UtenInput>(_quantity(_rowA2)).controller!.text,
-      '120',
-    );
+    expect(tester.widget<UtenInput>(_quantity(_rowA1)).controller!.text, '80');
+    expect(tester.widget<UtenInput>(_quantity(_rowB1)).controller!.text, '40');
+    expect(tester.widget<UtenInput>(_quantity(_rowA2)).controller!.text, '120');
     // 委外单号与委外件名称已拆列，不再拼成「EO · 名称」。
     expect(_inLines(find.text('WD-001')), findsWidgets);
     expect(_inLines(find.text('委外件A')), findsWidgets);
@@ -351,10 +346,9 @@ void main() {
       containsAll(['plan-a:80', 'plan-b:40']),
     );
     final second = items.singleWhere((item) => item.orderItemId == 'item-2');
-    expect(
-      second.lines!.map((line) => '${line.planItemId}:${line.qty}'),
-      ['plan-a:120'],
-    );
+    expect(second.lines!.map((line) => '${line.planItemId}:${line.qty}'), [
+      'plan-a:120',
+    ]);
     expect(key, isNotEmpty);
   });
 
@@ -444,7 +438,10 @@ void main() {
 
     expect(_inLines(find.text('未确定')), findsOneWidget);
     expect(_inLines(find.text('该物料暂无可用库存')), findsOneWidget);
-    expect(tester.widget<UtenInput>(_quantity('item-2|plan-a|')).enabled, isFalse);
+    expect(
+      tester.widget<UtenInput>(_quantity('item-2|plan-a|')).enabled,
+      isFalse,
+    );
     expect(find.textContaining('提交领料(0)'), findsOneWidget);
     expect(_submit(tester).onPressed, isNull);
   });
@@ -495,17 +492,11 @@ void main() {
     expect(
       [
         for (final item in second)
-          '${item.orderItemId}:${[
-                for (final line in item.lines ?? const <SubcontractDrawRequestLine>[])
-                '${line.planItemId}=${line.qty}',
-              ].join(',')}',
+          '${item.orderItemId}:${[for (final line in item.lines ?? const <SubcontractDrawRequestLine>[]) '${line.planItemId}=${line.qty}'].join(',')}',
       ],
       equals([
         for (final item in first)
-          '${item.orderItemId}:${[
-                for (final line in item.lines ?? const <SubcontractDrawRequestLine>[])
-                '${line.planItemId}=${line.qty}',
-              ].join(',')}',
+          '${item.orderItemId}:${[for (final line in item.lines ?? const <SubcontractDrawRequestLine>[]) '${line.planItemId}=${line.qty}'].join(',')}',
       ]),
       reason: '续传保持原提交内容',
     );
@@ -558,14 +549,22 @@ void main() {
           'documentCount': bQty > 0 ? 1 : 0,
         });
       };
-      await _pump(tester, gateway, ids: const ['item-1'], planItemIds: ['plan-b']);
+      await _pump(
+        tester,
+        gateway,
+        ids: const ['item-1'],
+        planItemIds: ['plan-b'],
+      );
 
       final first = gateway.previews.first.single;
       expect(first.planItemIds, ['plan-b'], reason: '首次预览按所选物料取默认量');
       expect(first.lines, isNull);
       expect(_quantity(_rowB1), findsOneWidget);
       expect(_quantity(_rowA1), findsNothing, reason: '没选中的物料A 不显示');
-      expect(tester.widget<UtenInput>(_quantity(_rowB1)).controller!.text, '30');
+      expect(
+        tester.widget<UtenInput>(_quantity(_rowB1)).controller!.text,
+        '30',
+      );
 
       // 分批：本次只领 10，核对库存后提交——只提交物料B 这一行。
       await tester.enterText(_quantity(_rowB1), '10');

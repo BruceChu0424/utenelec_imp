@@ -660,10 +660,11 @@ class _GoodsPriceAnalysisPageState extends ConsumerState<GoodsPriceAnalysisPage>
       idOf: (row) => row.identity,
       fetchPage: (target) =>
           repository.historyTable(goodsId, {...parameters, 'page': target}),
-      fetchPageSized: (target, size) => repository.historyTable(
-        goodsId,
-        {...parameters, 'page': target, 'size': size},
-      ),
+      fetchPageSized: (target, size) => repository.historyTable(goodsId, {
+        ...parameters,
+        'page': target,
+        'size': size,
+      }),
       onProgressiveBatch: onProgressiveBatch,
     );
   }

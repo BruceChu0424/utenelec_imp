@@ -438,11 +438,8 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
                     filename,
                     directory: choice.directory,
                     stillCurrent: receiving,
-                    onReceived: (received) => progress.bytes(
-                      received,
-                      job.bytes,
-                      status: '正在下载文件',
-                    ),
+                    onReceived: (received) =>
+                        progress.bytes(received, job.bytes, status: '正在下载文件'),
                   );
                   if (!mounted || !receiving()) return;
                   if (saved != null) {
@@ -466,7 +463,10 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
                     onReceiveProgress: progress.receiving('正在下载文件'),
                   );
                   if (!mounted || !receiving()) return;
-                  progress.stage('正在保存文件', detail: formatUtenBytes(bytes.length));
+                  progress.stage(
+                    '正在保存文件',
+                    detail: formatUtenBytes(bytes.length),
+                  );
                   await _saveExport(bytes, selection, current, choice);
                 },
               ),
@@ -505,11 +505,14 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
       awaitingPoll = true;
       api
           .get('/exports/progress/$operation')
-          .then((snapshot) {
-            if (poller?.isActive ?? false) curve.server(snapshot);
-          }, onError: (Object _) {
-            // 外网并发满(429)或偶发网络抖动: 跳过这一次, 不打断导出本身。
-          })
+          .then(
+            (snapshot) {
+              if (poller?.isActive ?? false) curve.server(snapshot);
+            },
+            onError: (Object _) {
+              // 外网并发满(429)或偶发网络抖动: 跳过这一次, 不打断导出本身。
+            },
+          )
           .whenComplete(() => awaitingPoll = false);
     }
 
@@ -1018,9 +1021,17 @@ class _SyncExportCurve {
     final total = (snapshot['total'] as num?)?.toInt();
     switch (snapshot['phase']) {
       case 'PACKAGING':
-        _report(0.92, '正在生成文件', total == null ? null : '共 ${_rows.format(total)} 行');
+        _report(
+          0.92,
+          '正在生成文件',
+          total == null ? null : '共 ${_rows.format(total)} 行',
+        );
       case 'ENCRYPTING':
-        _report(0.95, '正在加密文件', total == null ? null : '共 ${_rows.format(total)} 行');
+        _report(
+          0.95,
+          '正在加密文件',
+          total == null ? null : '共 ${_rows.format(total)} 行',
+        );
       default:
         if (total == null || total <= 0) {
           session.stage('正在读取数据', detail: '已读取 ${_rows.format(rows)} 行');

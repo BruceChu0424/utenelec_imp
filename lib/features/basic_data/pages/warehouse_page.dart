@@ -1380,9 +1380,7 @@ class _WarehousePageState extends ConsumerState<WarehousePage>
           // _tableBatchDialogs：批量纪元失效时统一关闭并丢弃旧结果。
           return showUtenProgress<MasterBatchResult>(
             context,
-            title: deleting
-                ? '批量删除仓库'
-                : '批量${status == '禁用' ? '停用' : '启用'}仓库',
+            title: deleting ? '批量删除仓库' : '批量${status == '禁用' ? '停用' : '启用'}仓库',
             icon: Icons.task_alt_outlined,
             initialStatus: deleting
                 ? '正在删除'

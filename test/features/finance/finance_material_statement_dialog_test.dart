@@ -82,10 +82,7 @@ void main() {
     // offsets 0/50/100/200, every row exactly once.
     expect(api.historyQueries.map((q) => q['page']), [1, 2, 2, 2]);
     expect(api.historyQueries.map((q) => q['size']), [50, 50, 100, 200]);
-    expect(
-      api.historyQueries.every((q) => q['contextId'] == _ctx),
-      isTrue,
-    );
+    expect(api.historyQueries.every((q) => q['contextId'] == _ctx), isTrue);
     final before = api.historyQueries.length;
     await t.drag(finder, const Offset(0, -900));
     await t.pumpAndSettle();

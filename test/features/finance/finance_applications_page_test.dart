@@ -154,10 +154,7 @@ void main() {
         api.queries
             .where((q) => q.path == financeApplicationsApi)
             .map((q) => (q.query?['page'], q.query?['size'])),
-        [
-          (1, 50),
-          (2, 50),
-        ],
+        [(1, 50), (2, 50)],
         reason: 'Ninety summaries stream as two aligned fifty-row batches',
       );
       final table = tester.widget<MasterDataTableView<Map<String, dynamic>>>(

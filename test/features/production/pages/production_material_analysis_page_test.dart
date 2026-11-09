@@ -6153,9 +6153,7 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
       await tester.pump();
-      final progress = find.byKey(
-        const ValueKey('uten-progress-cancel'),
-      );
+      final progress = find.byKey(const ValueKey('uten-progress-cancel'));
       expect(progress, findsOneWidget);
       expect(find.text('正在生成并审核下达'), findsOneWidget);
       expect(

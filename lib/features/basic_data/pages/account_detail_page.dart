@@ -380,11 +380,11 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage>
           setState(() {
             _statement =
                 (partial
-                    as PagedReadSnapshot<
-                      AccountStatementRow,
-                      AccountStatementPage
-                    >)
-                  .snapshot;
+                        as PagedReadSnapshot<
+                          AccountStatementRow,
+                          AccountStatementPage
+                        >)
+                    .snapshot;
           });
         },
       );

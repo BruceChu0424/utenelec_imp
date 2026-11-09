@@ -85,7 +85,9 @@ void main() {
           '无组装信息',
         ]);
 
-        final header = find.byKey(const ValueKey('master-column-filter-hasBom'));
+        final header = find.byKey(
+          const ValueKey('master-column-filter-hasBom'),
+        );
         Future<void> openHeader() async {
           await tester.ensureVisible(header.first);
           await tester.pumpAndSettle();
@@ -96,7 +98,10 @@ void main() {
         await openHeader();
         expect(find.text('有组装信息 (2)'), findsOneWidget);
         expect(find.text('无组装信息 (1)'), findsOneWidget);
-        expect(find.byKey(const Key('uten-column-keyword-search')), findsNothing);
+        expect(
+          find.byKey(const Key('uten-column-keyword-search')),
+          findsNothing,
+        );
         if (remote) {
           expect(api.facetQueries, isNotEmpty);
           expect(api.facetQueries.last['field'], 'hasBom');
@@ -206,24 +211,26 @@ class _GoodsWithAssembly implements GoodsRepository {
     final rows = disabledOnly || stubOnly
         ? const <GoodsListItem>[]
         : [
-            const GoodsListItem(
-              id: 'with-bom',
-              code: 'CP-001',
-              name: '组装成品',
-              hasBom: true,
-              status: '使用',
-            ),
-            const GoodsListItem(
-              id: 'without-bom',
-              code: 'CP-002',
-              name: '散件',
-              status: '使用',
-            ),
-          ].where(
-            (row) =>
-                filters['hasBom'] == null ||
-                row.hasBom == (filters['hasBom'] == 'true'),
-          ).toList();
+                const GoodsListItem(
+                  id: 'with-bom',
+                  code: 'CP-001',
+                  name: '组装成品',
+                  hasBom: true,
+                  status: '使用',
+                ),
+                const GoodsListItem(
+                  id: 'without-bom',
+                  code: 'CP-002',
+                  name: '散件',
+                  status: '使用',
+                ),
+              ]
+              .where(
+                (row) =>
+                    filters['hasBom'] == null ||
+                    row.hasBom == (filters['hasBom'] == 'true'),
+              )
+              .toList();
     return PagedResult(
       items: rows,
       page: page,

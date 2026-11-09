@@ -605,17 +605,16 @@ class _OperationsWorkbenchPageState
           // counts/badges, selection, facets-dependent actions and the busy
           // state still wait for the awaited complete result below.
           onProgressiveBatch: (partial) {
-            if (requestId != _requestId ||
-                !mapEquals(query, _queryIdentity)) {
+            if (requestId != _requestId || !mapEquals(query, _queryIdentity)) {
               return;
             }
             setState(() {
               _data =
                   (partial
-                      as PagedReadSnapshot<
-                        OperationsWorkbenchTask,
-                        OperationsWorkbenchData
-                      >)
+                          as PagedReadSnapshot<
+                            OperationsWorkbenchTask,
+                            OperationsWorkbenchData
+                          >)
                       .snapshot;
             });
           },

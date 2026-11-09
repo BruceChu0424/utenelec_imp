@@ -291,8 +291,7 @@ void main() {
         await pumpWithIo(tester, const Duration(milliseconds: 80));
         // unit 页叫「停用」、color 页叫「禁用」，统一断言进度弹窗的阶段文案。
         final workingStatus = find.byWidgetPredicate(
-          (widget) =>
-              widget is Text && (widget.data ?? '').startsWith('正在'),
+          (widget) => widget is Text && (widget.data ?? '').startsWith('正在'),
         );
         expect(workingStatus, findsOneWidget);
         expect(find.textContaining('已停用'), findsNothing);

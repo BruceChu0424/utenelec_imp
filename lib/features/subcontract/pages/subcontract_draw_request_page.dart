@@ -210,7 +210,9 @@ class _SubcontractDrawRequestPageState
         for (final id in ids)
           SubcontractDrawRequestItem(
             orderItemId: id,
-            planItemIds: planItems == null ? null : (planItems.toList()..sort()),
+            planItemIds: planItems == null
+                ? null
+                : (planItems.toList()..sort()),
           ),
       ]);
       if (!_acceptPreview(request)) return;
@@ -242,8 +244,10 @@ class _SubcontractDrawRequestPageState
   /// 记住一次核对结果。默认量(服务端预填)只在重建输入框时写入控制器；
   /// 重新核对不覆盖手工输入——行的默认值与用户输入一致时本就是同一个数。
   /// 按物料领料时服务端仍回全部开放物料的候选行，这里只留所选物料。
-  void _rememberPreview(SubcontractDrawPreview preview,
-      {bool resetInputs = false}) {
+  void _rememberPreview(
+    SubcontractDrawPreview preview, {
+    bool resetInputs = false,
+  }) {
     _preview = preview;
     _edited = false;
     _previewDirty = false;
@@ -269,10 +273,7 @@ class _SubcontractDrawRequestPageState
         for (final line in lines)
           MapEntry(
             line.identity,
-            positiveDocumentQuantityText(
-                  line.quantityText('qty') ?? '',
-                ) ??
-                '',
+            positiveDocumentQuantityText(line.quantityText('qty') ?? '') ?? '',
           ),
       ]);
     if (resetInputs) {
@@ -286,7 +287,10 @@ class _SubcontractDrawRequestPageState
         ..clear()
         ..addEntries([
           for (final line in lines)
-            MapEntry(line.identity, TextEditingController(text: _rowDefaults[line.identity])),
+            MapEntry(
+              line.identity,
+              TextEditingController(text: _rowDefaults[line.identity]),
+            ),
         ]);
     }
   }
@@ -395,18 +399,15 @@ class _SubcontractDrawRequestPageState
     SubcontractDrawPreview preview,
     List<SubcontractDrawRequestItem> items,
   ) {
-    final rows = {
-      for (final line in preview.lines) line.identity: line,
-    };
+    final rows = {for (final line in preview.lines) line.identity: line};
     for (final item in items) {
-      for (final requested in item.lines ?? const <SubcontractDrawRequestLine>[]) {
+      for (final requested
+          in item.lines ?? const <SubcontractDrawRequestLine>[]) {
         final identity =
             '${item.orderItemId}|${requested.planItemId}|${requested.warehouseId}';
         final echoed = rows[identity];
         if (echoed == null ||
-            positiveDocumentQuantityText(
-                  echoed.quantityText('qty') ?? '',
-                ) !=
+            positiveDocumentQuantityText(echoed.quantityText('qty') ?? '') !=
                 requested.qty) {
           throw const FormatException('领料核对结果有变化，请返回任务中心重新选择');
         }
@@ -462,9 +463,9 @@ class _SubcontractDrawRequestPageState
         ...items,
       ]..sort((a, b) => a.orderItemId.compareTo(b.orderItemId)))
         '${item.orderItemId}:'
-        '${_canonicalLines(item.lines)}:'
-        '${_tasks[item.orderItemId]?.quantityText('drawnQty')}:'
-        '${_tasks[item.orderItemId]?.quantityText('drawableQty')}',
+            '${_canonicalLines(item.lines)}:'
+            '${_tasks[item.orderItemId]?.quantityText('drawnQty')}:'
+            '${_tasks[item.orderItemId]?.quantityText('drawableQty')}',
     ].join('|');
     return businessIdempotencyKey(
       'subcontract-draw',
@@ -474,13 +475,15 @@ class _SubcontractDrawRequestPageState
 
   /// 行按(计划行, 仓)排序后拼接，同一批领料只有一种规范表示。
   static String _canonicalLines(List<SubcontractDrawRequestLine>? lines) {
-    final ordered = [...?lines]..sort(
-      (a, b) => '${a.planItemId}|${a.warehouseId}'.compareTo(
-        '${b.planItemId}|${b.warehouseId}',
-      ),
-    );
+    final ordered = [...?lines]
+      ..sort(
+        (a, b) => '${a.planItemId}|${a.warehouseId}'.compareTo(
+          '${b.planItemId}|${b.warehouseId}',
+        ),
+      );
     return [
-      for (final line in ordered) '${line.planItemId}|${line.warehouseId}|${line.qty}',
+      for (final line in ordered)
+        '${line.planItemId}|${line.warehouseId}|${line.qty}',
     ].join(',');
   }
 
@@ -686,10 +689,7 @@ class _SubcontractDrawRequestPageState
                             padding: padding,
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                ..._feedback(),
-                                _table(),
-                              ],
+                              children: [..._feedback(), _table()],
                             ),
                           ),
                         ),
@@ -920,29 +920,23 @@ class _SubcontractDrawRequestPageState
         if (error != null)
           ExcludeSemantics(child: UtenFieldMessage.error(error, maxLines: 2)),
         if (unavailable)
-          const ExcludeSemantics(
-            child: UtenFieldMessage.autofill('该物料暂无可用库存'),
-          ),
+          const ExcludeSemantics(child: UtenFieldMessage.autofill('该物料暂无可用库存')),
       ],
     );
   }
 
   bool get _availabilityCurrent => !_previewDirty;
 
-  Widget _availableCell(
-    BuildContext context,
-    SubcontractDrawPreviewLine line,
-  ) {
+  Widget _availableCell(BuildContext context, SubcontractDrawPreviewLine line) {
     final text = formatExactQtyWithUnit(
       line.quantityText('warehouseAvailableQty'),
       line.unitName,
     );
     if (text.isEmpty) return const Text('—');
     final colors = Theme.of(context).colorScheme;
-    final exceeded = _liveRowMaxima.containsKey(line.identity) ||
-        _liveLineMaxima.containsKey(
-          '${line.orderItemId}|${line.planItemId}',
-        );
+    final exceeded =
+        _liveRowMaxima.containsKey(line.identity) ||
+        _liveLineMaxima.containsKey('${line.orderItemId}|${line.planItemId}');
     return Text(
       _availabilityCurrent ? text : '上次核对 $text',
       maxLines: 1,

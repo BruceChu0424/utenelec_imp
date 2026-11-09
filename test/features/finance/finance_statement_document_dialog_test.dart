@@ -155,10 +155,16 @@ void main() {
         2,
         2,
       ]);
-      expect(
-        api.originalQueries.map((query) => query['size']),
-        [50, 50, 100, 200, 50, 50, 100, 200],
-      );
+      expect(api.originalQueries.map((query) => query['size']), [
+        50,
+        50,
+        100,
+        200,
+        50,
+        50,
+        100,
+        200,
+      ]);
       expect(table().currentPage, 1);
       expect(table().totalPages, 1);
       expect(api.commands, isEmpty);

@@ -24,7 +24,8 @@ import 'task_material_cards.dart';
 Future<Set<String>?> showTaskMaterialSelectionDialog<T>(
   BuildContext context, {
   required TaskMaterialSelectionDialog<T> dialog,
-}) => UtenDialog.showAndWaitForExit<Set<String>>(context, builder: (_) => dialog);
+}) =>
+    UtenDialog.showAndWaitForExit<Set<String>>(context, builder: (_) => dialog);
 
 class TaskMaterialSelectionDialog<T> extends ConsumerStatefulWidget {
   const TaskMaterialSelectionDialog({
@@ -247,9 +248,7 @@ class _TaskMaterialSelectionDialogState<T>
 
   void _continueToDraw() {
     if (!_canSelect || _selectedIds.isEmpty) return;
-    final ids = {
-      for (final id in _selectedIds) ...?_targets?[id],
-    };
+    final ids = {for (final id in _selectedIds) ...?_targets?[id]};
     if (ids.isNotEmpty) Navigator.of(context).pop(ids);
   }
 

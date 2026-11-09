@@ -131,27 +131,27 @@ final myProfileChangeTableProvider = FutureProvider.autoDispose
         final result = await ref
             .watch(myProfileChangeTableReadProvider(key.status))
             .read(
-                  key.page,
-                  fetchPage: (page) => _profilePageSnapshot(
-                    repository.myList(
-                      page: page,
-                      status: key.status,
-                      columns: columns.searches,
-                      sort: columns.sort,
-                      ascending: columns.ascending,
-                    ),
-                  ),
-                  fetchPageSized: (page, size) => _profilePageSnapshot(
-                    repository.myList(
-                      page: page,
-                      size: size,
-                      status: key.status,
-                      columns: columns.searches,
-                      sort: columns.sort,
-                      ascending: columns.ascending,
-                    ),
-                  ),
-                );
+              key.page,
+              fetchPage: (page) => _profilePageSnapshot(
+                repository.myList(
+                  page: page,
+                  status: key.status,
+                  columns: columns.searches,
+                  sort: columns.sort,
+                  ascending: columns.ascending,
+                ),
+              ),
+              fetchPageSized: (page, size) => _profilePageSnapshot(
+                repository.myList(
+                  page: page,
+                  size: size,
+                  status: key.status,
+                  columns: columns.searches,
+                  sort: columns.sort,
+                  ascending: columns.ascending,
+                ),
+              ),
+            );
         return (result
                 as PagedReadSnapshot<
                   MyProfileChangeListItem,

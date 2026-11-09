@@ -315,7 +315,11 @@ class _AdminAiUsageRecordsPageState
           if (!_current || generation != _generation) return;
           setState(() {
             _data =
-                (partial as PagedReadSnapshot<AiUsageAuditRecord, AiUsageAuditResult>)
+                (partial
+                        as PagedReadSnapshot<
+                          AiUsageAuditRecord,
+                          AiUsageAuditResult
+                        >)
                     .snapshot;
           });
         },

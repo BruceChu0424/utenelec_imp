@@ -375,9 +375,14 @@ class _ProductionFinishedBatchStockInPageState
     try {
       _uncertain = true;
       // 整批一次请求点收，发出后无法撤回：不提供「取消」。
-      final result = await showUtenProgress<
-        ({int confirmedCount, bool replay, Set<String> confirmedDocumentIds})?
-      >(
+      final result =
+          await showUtenProgress<
+            ({
+              int confirmedCount,
+              bool replay,
+              Set<String> confirmedDocumentIds,
+            })?
+          >(
             context,
             title: '批量点收入库',
             icon: Icons.inventory_rounded,

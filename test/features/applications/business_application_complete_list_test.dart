@@ -140,10 +140,12 @@ void main() {
         expect(table.items.last.id, 'fresh-250');
         // One fresh complete source: (1,50)(2,50)(2,100)(2,200).
         expect(api.reads.map((read) => read.$2['page']), [1, 2, 1, 2, 2, 2]);
-        expect(
-          api.reads.skip(2).map((read) => read.$2['size']),
-          [50, 50, 100, 200],
-        );
+        expect(api.reads.skip(2).map((read) => read.$2['size']), [
+          50,
+          50,
+          100,
+          200,
+        ]);
         expect(tester.takeException(), isNull);
       } finally {
         await tester.pumpWidget(const SizedBox.shrink());
@@ -219,10 +221,7 @@ void main() {
       final complete = await container.read(provider.future);
       expect(complete.items, hasLength(251));
       expect(api.reads.map((r) => r.$2['page']), [1, 2, 1, 2, 2, 2]);
-      expect(
-        api.reads.map((r) => r.$2['size']),
-        [50, 50, 50, 50, 100, 200],
-      );
+      expect(api.reads.map((r) => r.$2['size']), [50, 50, 50, 50, 100, 200]);
     },
   );
 

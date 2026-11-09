@@ -816,7 +816,9 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage>
                         ),
                   );
                 }
-                results.add(MasterBatchItemResult(id: id, ok: true, label: label));
+                results.add(
+                  MasterBatchItemResult(id: id, ok: true, label: label),
+                );
               } on ApiException catch (error) {
                 if (!owner.isCurrent) break;
                 if (isSessionBoundaryError(error)) rethrow;

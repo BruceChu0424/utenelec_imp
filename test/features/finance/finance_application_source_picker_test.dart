@@ -22,10 +22,7 @@ void main() {
     (tester) async {
       final api = _Api();
       await _mount(tester, api);
-      expect(api.calls.map((c) => (c['page'], c['size'])), [
-        (1, 50),
-        (2, 100),
-      ]);
+      expect(api.calls.map((c) => (c['page'], c['size'])), [(1, 50), (2, 100)]);
       expect(_table(tester).items, hasLength(125));
       expect(_table(tester).items.last['id'], 'source-124');
       expect(find.textContaining('结果超过100条'), findsNothing);

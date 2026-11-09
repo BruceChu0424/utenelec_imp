@@ -139,9 +139,10 @@ class _SubcontractMaterialDialogState extends State<SubcontractMaterialDialog> {
   @override
   Widget build(BuildContext context) {
     final row = widget.row;
-    final identity = [row.orderBillNo, row.goodsName]
-        .where((part) => part.trim().isNotEmpty)
-        .join(' · ');
+    final identity = [
+      row.orderBillNo,
+      row.goodsName,
+    ].where((part) => part.trim().isNotEmpty).join(' · ');
     return TaskMaterialSelectionDialog<SubcontractDrawMaterial>(
       dialogKey: ValueKey('subcontract-material-dialog-${row.orderItemId}'),
       title: identity.isEmpty ? '委外任务物料' : '委外任务物料 · $identity',

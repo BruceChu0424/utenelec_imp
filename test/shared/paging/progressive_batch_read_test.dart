@@ -56,7 +56,11 @@ UiWorkBudget _unbounded({bool Function()? isCurrent}) => UiWorkBudget(
 void _expectNoRowReadTwice(List<(int, int)> requests, int total) {
   var offset = 0;
   for (final (page, size) in requests) {
-    expect((page - 1) * size, offset, reason: 'each batch starts at the next unread row');
+    expect(
+      (page - 1) * size,
+      offset,
+      reason: 'each batch starts at the next unread row',
+    );
     offset += size;
   }
   expect(offset, greaterThanOrEqualTo(total));
@@ -65,7 +69,9 @@ void _expectNoRowReadTwice(List<(int, int)> requests, int total) {
 void main() {
   final vectors =
       jsonDecode(
-            File('contracts/complete-read-batch-plan-v1.json').readAsStringSync(),
+            File(
+              'contracts/complete-read-batch-plan-v1.json',
+            ).readAsStringSync(),
           )
           as Map<String, dynamic>;
   final plans = vectors['plans'] as Map<String, dynamic>;
@@ -113,7 +119,10 @@ void main() {
       idOf: (row) => row,
     );
     expect(server.requests.first, (1, 50));
-    expect(server.requests.skip(3).every((request) => request.$2 == 200), isTrue);
+    expect(
+      server.requests.skip(3).every((request) => request.$2 == 200),
+      isTrue,
+    );
     _expectNoRowReadTwice(server.requests, 1000);
   });
 
@@ -364,7 +373,9 @@ void main() {
         expect(published, [50]);
         current = false;
         async.elapse(kProgressiveBatchInterval);
-        expect(published, [50], reason: 'a held prefix of a retired read is dropped');
+        expect(published, [
+          50,
+        ], reason: 'a held prefix of a retired read is dropped');
         gates.last.complete();
         async.flushMicrotasks();
         expect(failure, isNotNull);
@@ -412,8 +423,9 @@ void main() {
           1,
           scope: 'goods',
           fetchPage: (page) => server.load(page, 100),
-          fetchPageSized: (page, size) =>
-              size == 200 ? throw StateError('stream broke') : server.load(page, size),
+          fetchPageSized: (page, size) => size == 200
+              ? throw StateError('stream broke')
+              : server.load(page, size),
           isCurrent: () => true,
           onProgressiveBatch: published.add,
         ),
@@ -451,62 +463,68 @@ void main() {
       expect(published, isEmpty);
     });
 
-    test('a same-query restart keeps the rows on screen until it has more', () async {
-      final reader = ScopedPagedRead<String>(idOf: (row) => row);
-      final hold = Completer<void>();
-      final first = <int>[];
-      final firstRead = reader.read(
-        1,
-        scope: 'goods',
-        fetchPage: (page) => _OffsetServer(1000).load(page, 100),
-        fetchPageSized: (page, size) async {
-          if (size == 200) await hold.future;
-          return _OffsetServer(1000).load(page, size);
-        },
-        isCurrent: () => true,
-        progressiveInterval: Duration.zero,
-        onProgressiveBatch: (partial) => first.add(partial.items.length),
-      );
-      await pumpEventQueue();
-      expect(first.last, 200);
-      final second = <int>[];
-      final result = await reader.read(
-        1,
-        scope: 'goods',
-        fetchPage: (page) => _OffsetServer(1000).load(page, 100),
-        fetchPageSized: _OffsetServer(1000).load,
-        isCurrent: () => true,
-        progressiveInterval: Duration.zero,
-        onProgressiveBatch: (partial) => second.add(partial.items.length),
-      );
-      expect(second.every((count) => count > 200), isTrue);
-      expect(result.items, hasLength(1000));
-      hold.complete();
-      await expectLater(firstRead, throwsA(anything));
-    });
+    test(
+      'a same-query restart keeps the rows on screen until it has more',
+      () async {
+        final reader = ScopedPagedRead<String>(idOf: (row) => row);
+        final hold = Completer<void>();
+        final first = <int>[];
+        final firstRead = reader.read(
+          1,
+          scope: 'goods',
+          fetchPage: (page) => _OffsetServer(1000).load(page, 100),
+          fetchPageSized: (page, size) async {
+            if (size == 200) await hold.future;
+            return _OffsetServer(1000).load(page, size);
+          },
+          isCurrent: () => true,
+          progressiveInterval: Duration.zero,
+          onProgressiveBatch: (partial) => first.add(partial.items.length),
+        );
+        await pumpEventQueue();
+        expect(first.last, 200);
+        final second = <int>[];
+        final result = await reader.read(
+          1,
+          scope: 'goods',
+          fetchPage: (page) => _OffsetServer(1000).load(page, 100),
+          fetchPageSized: _OffsetServer(1000).load,
+          isCurrent: () => true,
+          progressiveInterval: Duration.zero,
+          onProgressiveBatch: (partial) => second.add(partial.items.length),
+        );
+        expect(second.every((count) => count > 200), isTrue);
+        expect(result.items, hasLength(1000));
+        hold.complete();
+        await expectLater(firstRead, throwsA(anything));
+      },
+    );
 
-    test('a reread of an accepted result keeps it instead of growing', () async {
-      final reader = ScopedPagedRead<String>(idOf: (row) => row);
-      final server = _OffsetServer(450);
-      await reader.read(
-        1,
-        scope: 'goods',
-        fetchPage: (page) => server.load(page, 100),
-        fetchPageSized: server.load,
-        isCurrent: () => true,
-      );
-      final published = <PagedResult<String>>[];
-      final result = await reader.read(
-        1,
-        scope: 'goods',
-        fetchPage: (page) => server.load(page, 100),
-        fetchPageSized: server.load,
-        isCurrent: () => true,
-        onProgressiveBatch: published.add,
-      );
-      expect(published, isEmpty);
-      expect(result.items, hasLength(450));
-    });
+    test(
+      'a reread of an accepted result keeps it instead of growing',
+      () async {
+        final reader = ScopedPagedRead<String>(idOf: (row) => row);
+        final server = _OffsetServer(450);
+        await reader.read(
+          1,
+          scope: 'goods',
+          fetchPage: (page) => server.load(page, 100),
+          fetchPageSized: server.load,
+          isCurrent: () => true,
+        );
+        final published = <PagedResult<String>>[];
+        final result = await reader.read(
+          1,
+          scope: 'goods',
+          fetchPage: (page) => server.load(page, 100),
+          fetchPageSized: server.load,
+          isCurrent: () => true,
+          onProgressiveBatch: published.add,
+        );
+        expect(published, isEmpty);
+        expect(result.items, hasLength(450));
+      },
+    );
 
     test('complete readers in the view zone claim the slot once', () async {
       final published = <PagedResult<Object?>>[];

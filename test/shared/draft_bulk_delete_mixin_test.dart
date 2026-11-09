@@ -123,9 +123,7 @@ Future<void> _confirm(WidgetTester tester, {bool waitForIdle = true}) async {
 }
 
 void main() {
-  testWidgets('整批共用一个进度弹窗，逐张前进且删除、刷新、更新数量都走完才到 100%', (
-    tester,
-  ) async {
+  testWidgets('整批共用一个进度弹窗，逐张前进且删除、刷新、更新数量都走完才到 100%', (tester) async {
     final fixture = await _mount(tester);
     final first = Completer<void>();
     fixture.operations.deleteHandler = (id) async {

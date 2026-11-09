@@ -709,9 +709,8 @@ class _QualityBatchApprovalPageState
     await _sendSubmission();
   }
 
-  String _submissionStatus() => _submission?.phase == QualityBatchPhase.fqc
-      ? '正在批量通过自制产成品'
-      : '正在提交检验报告';
+  String _submissionStatus() =>
+      _submission?.phase == QualityBatchPhase.fqc ? '正在批量通过自制产成品' : '正在提交检验报告';
 
   /// 进度弹窗的详情行：本阶段要处理多少。IQC 与 FQC 是两段请求，按当前阶段说。
   String? _submissionProgressDetail() {

@@ -51,7 +51,10 @@ class InstantInventoryRepository {
       query: {
         'page': page,
         'size': size,
-        if (!includeMetadata) ...{'includeTotals': false, 'includeFacets': false},
+        if (!includeMetadata) ...{
+          'includeTotals': false,
+          'includeFacets': false,
+        },
         'categoryId': ?categoryId,
         'warehouseId': ?warehouseId,
         'includeDefective': includeDefective,

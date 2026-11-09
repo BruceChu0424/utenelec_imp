@@ -131,6 +131,7 @@ class ReportExportJob {
     if (total == null || total <= 0 || status != 'RUNNING') return null;
     return (rows / total).clamp(0.0, 1.0).toDouble();
   }
+
   String get statusLabel => active && cancelRequested
       ? '正在取消'
       : switch (status) {

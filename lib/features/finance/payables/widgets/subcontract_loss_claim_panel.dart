@@ -183,7 +183,7 @@ class _SubcontractLossClaimPanelState
                           SubcontractLossClaimSummary,
                           SubcontractLossClaimPageResult
                         >)
-                  .snapshot;
+                    .snapshot;
           });
         },
       );

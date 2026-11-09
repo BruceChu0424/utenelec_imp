@@ -914,7 +914,9 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
       for (final name in blockedNames) '$name：他人认领处理中，已跳过',
     ];
     if (stopped) {
-      allFailures.add('已停止，其余 ${targets.length - okCount - failures.length} 人未处理');
+      allFailures.add(
+        '已停止，其余 ${targets.length - okCount - failures.length} 人未处理',
+      );
     }
     if (allFailures.isNotEmpty) {
       context.appError('${allFailures.length} 人未完成：${allFailures.first}');
@@ -1003,7 +1005,8 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
             .read(noticeRepositoryProvider)
             .publishCelebrationBatch(type: noticeType, employeeIds: targets),
       );
-      if (!mounted || result == null) return;      // V454：一天一类型一张聚合卡；toast 说清「卡数 + 覆盖人数」
+      if (!mounted || result == null) return;
+      // V454：一天一类型一张聚合卡；toast 说清「卡数 + 覆盖人数」
       final covered = result.notices > 0
           ? '已发布祝福卡，覆盖 ${result.published} 位同事'
           : '所选同事均已祝福';

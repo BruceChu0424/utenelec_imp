@@ -110,24 +110,24 @@ final myAsHostProvider = FutureProvider.autoDispose
         return ref
             .watch(visitorHostReadProvider(q.status))
             .read(
-                q.page,
-                fetchPage: (page) => repository.myAsHost(
-                  status: q.status,
-                  page: page,
-                  size: 100,
-                  columns: columns.searches,
-                  sort: columns.sort,
-                  ascending: columns.ascending,
-                ),
-                fetchPageSized: (page, size) => repository.myAsHost(
-                  status: q.status,
-                  page: page,
-                  size: size,
-                  columns: columns.searches,
-                  sort: columns.sort,
-                  ascending: columns.ascending,
-                ),
-              );
+              q.page,
+              fetchPage: (page) => repository.myAsHost(
+                status: q.status,
+                page: page,
+                size: 100,
+                columns: columns.searches,
+                sort: columns.sort,
+                ascending: columns.ascending,
+              ),
+              fetchPageSized: (page, size) => repository.myAsHost(
+                status: q.status,
+                page: page,
+                size: size,
+                columns: columns.searches,
+                sort: columns.sort,
+                ascending: columns.ascending,
+              ),
+            );
       },
       retry: pagedReadProviderRetry,
       dependencies: [

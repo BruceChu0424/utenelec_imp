@@ -91,8 +91,7 @@ void main() {
     expect(
       find.byWidgetPredicate(
         (widget) =>
-            widget is SelectableText &&
-            (widget.data ?? '').contains('读取未完成'),
+            widget is SelectableText && (widget.data ?? '').contains('读取未完成'),
       ),
       findsOneWidget,
     );

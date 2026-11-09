@@ -180,11 +180,7 @@ Finder get _progress =>
 /// [expected] 是反馈区外壳(AnimatedSize/AnimatedSwitcher)的时长;
 /// [bar] 是进度条动画时长——2026-11-09 起进度条换成全项目唯一组件
 /// UtenProgressBar, 动画时长统一为 UtenAnim.slow, 不再跟外壳同速。
-void _expectMotion(
-  WidgetTester tester,
-  Duration expected, {
-  Duration? bar,
-}) {
+void _expectMotion(WidgetTester tester, Duration expected, {Duration? bar}) {
   final tween = find.descendant(
     of: _progress,
     matching: find.byWidgetPredicate(

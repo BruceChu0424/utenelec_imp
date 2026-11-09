@@ -960,9 +960,10 @@ void main() {
       final late = Completer<SubcontractDrawTaskList>();
       draw.onList = (_) => late.future;
       final link =
-          initial.columns
-                  .singleWhere((c) => c.key == 'material')
-                  .cellBuilder!(tester.element(finder), initial.items.first)
+          initial.columns.singleWhere((c) => c.key == 'material').cellBuilder!(
+                tester.element(finder),
+                initial.items.first,
+              )
               as InkWell;
       link.onTap!();
       await tester.pump();
@@ -1061,9 +1062,10 @@ void main() {
         finder,
       );
       final link =
-          table.columns
-                  .singleWhere((c) => c.key == 'material')
-                  .cellBuilder!(tester.element(finder), table.items.first)
+          table.columns.singleWhere((c) => c.key == 'material').cellBuilder!(
+                tester.element(finder),
+                table.items.first,
+              )
               as InkWell;
       link.onTap!();
       await tester.pumpAndSettle();
@@ -1087,9 +1089,7 @@ void main() {
           (query['page']! as int, query['size']! as int),
       ], _progressiveBatches(201));
       expect(
-        scoped.every(
-          (query) => (query['applicationItemIds']! as List).isEmpty,
-        ),
+        scoped.every((query) => (query['applicationItemIds']! as List).isEmpty),
         isTrue,
       );
       expect(find.byKey(const Key('subcontract-draw-next')), findsNothing);
@@ -1130,9 +1130,7 @@ void main() {
       expect(table().unpagedItems, hasLength(201));
       expect(find.byKey(const Key('subcontract-draw-next')), findsNothing);
       final link =
-          table().columns
-                  .singleWhere((c) => c.key == 'material')
-                  .cellBuilder!(
+          table().columns.singleWhere((c) => c.key == 'material').cellBuilder!(
                 tester.element(
                   find.byKey(
                     const Key('subcontract-decomposition-pending-table'),
@@ -1168,10 +1166,10 @@ void main() {
       expect(find.byKey(const Key('subcontract-draw-scope')), findsNothing);
       expect(table().unpagedItems, hasLength(201));
       // The unscoped 201-row read ends on the ladder's last batch (2,200).
-      expect(
-        (draw.listQueries.last['page'], draw.listQueries.last['size']),
-        _progressiveBatches(201).last,
-      );
+      expect((
+        draw.listQueries.last['page'],
+        draw.listQueries.last['size'],
+      ), _progressiveBatches(201).last);
       expect(
         (table().unpagedItems.last as SubcontractPendingDrawRow)
             .row
@@ -1210,9 +1208,7 @@ void main() {
         find.byKey(const Key('subcontract-decomposition-pending-table')),
       );
       final link =
-          table().columns
-                  .singleWhere((c) => c.key == 'material')
-                  .cellBuilder!(
+          table().columns.singleWhere((c) => c.key == 'material').cellBuilder!(
                 tester.element(
                   find.byKey(
                     const Key('subcontract-decomposition-pending-table'),
@@ -1228,10 +1224,10 @@ void main() {
         'application-item-1',
       ]);
       // The exact-source 201-row read ends on the ladder's last batch (2,200).
-      expect(
-        (draw.listQueries.last['page'], draw.listQueries.last['size']),
-        _progressiveBatches(201).last,
-      );
+      expect((
+        draw.listQueries.last['page'],
+        draw.listQueries.last['size'],
+      ), _progressiveBatches(201).last);
       expect(
         (table().unpagedItems.last as SubcontractPendingDrawRow)
             .row
@@ -1290,9 +1286,7 @@ void main() {
       final late = Completer<SubcontractDrawTaskList>();
       draw.onList = (_) => late.future;
       final link =
-          initial.columns
-                  .singleWhere((c) => c.key == 'material')
-                  .cellBuilder!(
+          initial.columns.singleWhere((c) => c.key == 'material').cellBuilder!(
                 tester.element(
                   find.byKey(
                     const Key('subcontract-decomposition-pending-table'),
@@ -2584,7 +2578,10 @@ void main() {
         ]);
         // 2026-11-09「物料」列(替换原「领料数量」)：按种显示，与车间物料列同一口径；
         // 多种物料不再合成一个数量。
-        expect(table.columns.where((c) => c.key == 'materialBudgetQty'), isEmpty);
+        expect(
+          table.columns.where((c) => c.key == 'materialBudgetQty'),
+          isEmpty,
+        );
         final material = table.columns.singleWhere(
           (column) => column.key == 'material',
         );
@@ -2599,22 +2596,17 @@ void main() {
           material.value(table.unpagedItems[4]),
           '已领 1/3 种 · 缺 1 种 · 可领 1 种',
         );
-        for (final label in [
-          '物料',
-          '委外件名称',
-          '编号',
-          '颜色',
-          '需求量',
-          '待下单量',
-          '可下单',
-        ]) {
+        for (final label in ['物料', '委外件名称', '编号', '颜色', '需求量', '待下单量', '可下单']) {
           expect(
             table.columns.where((column) => column.label == label),
             hasLength(1),
             reason: label,
           );
         }
-        expect(table.columns.where((column) => column.label == '领料数量'), isEmpty);
+        expect(
+          table.columns.where((column) => column.label == '领料数量'),
+          isEmpty,
+        );
         // 2026-10-10：委外商列申请行改由服务端投影下发(V836；未定商是业务
         // 事实仍显示「—」)；领料行数量列内联订货单位，独立「单位」列已删除。
         final supplierColumn = table.columns.singleWhere(
@@ -2992,9 +2984,10 @@ void main() {
         );
         expect(summary, findsOneWidget);
         expect(
-          tester.widget<MaterialKindSummaryCell>(summary).segments.map(
-            (segment) => segment.$1,
-          ),
+          tester
+              .widget<MaterialKindSummaryCell>(summary)
+              .segments
+              .map((segment) => segment.$1),
           ['已领 0/3 种', '可领 2 种'],
         );
         await tester.tap(summary);
@@ -3014,20 +3007,26 @@ void main() {
         expect(
           tester
               .widget<Checkbox>(
-                find.byKey(const ValueKey('subcontract-material-select-plan-c')),
+                find.byKey(
+                  const ValueKey('subcontract-material-select-plan-c'),
+                ),
               )
               .onChanged,
           isNull,
           reason: '本次可领为 0 的物料不能勾',
         );
-        await tester.tap(find.byKey(const Key('subcontract-material-select-all')));
+        await tester.tap(
+          find.byKey(const Key('subcontract-material-select-all')),
+        );
         await tester.pumpAndSettle();
         expect(find.text('去领料（2 种）'), findsOneWidget);
         await tester.tap(
           find.byKey(const ValueKey('subcontract-material-select-plan-a')),
         );
         await tester.pumpAndSettle();
-        await tester.tap(find.byKey(const Key('subcontract-material-continue')));
+        await tester.tap(
+          find.byKey(const Key('subcontract-material-continue')),
+        );
         await tester.pumpAndSettle();
 
         expect(opened, [

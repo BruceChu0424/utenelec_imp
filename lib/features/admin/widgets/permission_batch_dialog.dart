@@ -158,7 +158,8 @@ class _PermissionBatchState extends ConsumerState<PermissionBatchDialog> {
             initialStatus: '正在生成预览',
             initialDetail: '1 名员工',
             action: (_) => scope.run(
-              () => repository.preview(widget.userIds.single, _template!, _merge),
+              () =>
+                  repository.preview(widget.userIds.single, _template!, _merge),
             ),
           );
           if (!mounted || !_current || result == null) return;

@@ -673,8 +673,10 @@ class ProductionDailyReportDetailGroupRow {
   final List<ProductionDailyReportItem> members;
 
   /// 源行：与 [ProductionDailyReportInputGroup.source] 同规则（第一个非公共份）。
-  ProductionDailyReportItem get source =>
-      members.firstWhere((item) => !item.publicOutput, orElse: () => members.first);
+  ProductionDailyReportItem get source => members.firstWhere(
+    (item) => !item.publicOutput,
+    orElse: () => members.first,
+  );
 
   /// 完工申报量 = 组合计（服务端按组算好，如 20000 + 1000 = 21000）。
   String? get qtyText => group.qtyText;
@@ -684,10 +686,9 @@ class ProductionDailyReportDetailGroupRow {
       financeExactSumTexts(members.map((item) => item.defectQtyText));
 
   /// 实称总重 = 组成员精确求和（与编辑页草稿恢复同范式）；任一份缺实测即未知。
-  String? get weightText =>
-      members.isEmpty
-          ? null
-          : financeExactSumTexts(members.map((item) => item.weightText));
+  String? get weightText => members.isEmpty
+      ? null
+      : financeExactSumTexts(members.map((item) => item.weightText));
 
   /// 产出归属：服务端拆分说明（「需求 20000 · 实际超产 1000」）满足 ADR-118
   /// 「详情仍区分来源」；整组都是需求份时回落源行标签（需求产出/原来源）。
@@ -858,7 +859,8 @@ class ProductionDailyReportDetail {
               group: group,
               members: [
                 for (final id in group.itemIds)
-                  byId[id] ?? (throw const FormatException('报工产出分组明细不完整，请重新读取日报')),
+                  byId[id] ??
+                      (throw const FormatException('报工产出分组明细不完整，请重新读取日报')),
               ],
             ),
     ];

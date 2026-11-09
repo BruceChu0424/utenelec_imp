@@ -321,7 +321,10 @@ void main() {
           await _confirmDelete(tester, waitForCompletion: false);
           expect(api.detailReads, ['draft-1']);
           expect(api.detailGate!.isCompleted, isFalse);
-          expect(find.byKey(const ValueKey('uten-progress-cancel')), findsOneWidget);
+          expect(
+            find.byKey(const ValueKey('uten-progress-cancel')),
+            findsOneWidget,
+          );
           expect(api.deletes, isEmpty);
           if (changeIdentity) {
             final element = kind == _Kind.daily

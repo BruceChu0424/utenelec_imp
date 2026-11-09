@@ -398,44 +398,45 @@ class _WarehouseQualityBatchStockInPageState
     });
     try {
       // 按收货单整批一次请求提交，中途不会只成功一半；发出后无法撤回：不提供「取消」。
-      final result = await showUtenProgress<WarehouseQualityBatchConfirmResult?>(
-        context,
-        title: '批量入库',
-        icon: Icons.inventory_rounded,
-        initialStatus: '正在批量入库',
-        initialDetail: '${command.batches.length} 张收货单',
-        cancellable: false,
-        invalidation: formDraftIdentityInvalidation,
-        action: (_) async {
-          final requestScope = await scopeFuture;
-          boundScope = requestScope;
-          _pendingCommand = command;
-          return runFormDraftSubmission(
-            () => requestScope.run(() {
-              if (!_canConfirmStockIn) {
-                locallyRejected = true;
-                _pendingCommand = previousPending;
-                throw ApiException(
-                  'FORBIDDEN',
-                  '当前账号不能确认批量入库，请重新核对权限',
-                  httpStatus: 403,
-                );
-              }
-              return ref
-                  .read(warehouseQualityResultRepositoryProvider)
-                  .batchConfirm(command);
-            }),
-            isDefiniteRejection: (error) =>
-                previousPending == null &&
-                ApiMutationReloadSafety.isDefiniteRejection(error) &&
-                (locallyRejected ||
-                    error.httpStatus == 400 ||
-                    error.httpStatus == 403 ||
-                    error.httpStatus == 422 ||
-                    (error.httpStatus == 409 && error.code == 'CONFLICT')),
+      final result =
+          await showUtenProgress<WarehouseQualityBatchConfirmResult?>(
+            context,
+            title: '批量入库',
+            icon: Icons.inventory_rounded,
+            initialStatus: '正在批量入库',
+            initialDetail: '${command.batches.length} 张收货单',
+            cancellable: false,
+            invalidation: formDraftIdentityInvalidation,
+            action: (_) async {
+              final requestScope = await scopeFuture;
+              boundScope = requestScope;
+              _pendingCommand = command;
+              return runFormDraftSubmission(
+                () => requestScope.run(() {
+                  if (!_canConfirmStockIn) {
+                    locallyRejected = true;
+                    _pendingCommand = previousPending;
+                    throw ApiException(
+                      'FORBIDDEN',
+                      '当前账号不能确认批量入库，请重新核对权限',
+                      httpStatus: 403,
+                    );
+                  }
+                  return ref
+                      .read(warehouseQualityResultRepositoryProvider)
+                      .batchConfirm(command);
+                }),
+                isDefiniteRejection: (error) =>
+                    previousPending == null &&
+                    ApiMutationReloadSafety.isDefiniteRejection(error) &&
+                    (locallyRejected ||
+                        error.httpStatus == 400 ||
+                        error.httpStatus == 403 ||
+                        error.httpStatus == 422 ||
+                        (error.httpStatus == 409 && error.code == 'CONFLICT')),
+              );
+            },
           );
-        },
-      );
       // 弹窗因身份/服务器切换收尾（cancellable:false 下唯一返回 null 的路径）：
       // 旧页不再发布结果，原提交由待核对状态保留。
       if (result == null) return;

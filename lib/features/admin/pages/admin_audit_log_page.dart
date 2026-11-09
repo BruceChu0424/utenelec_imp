@@ -668,8 +668,7 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage>
       int target,
       int? highWater, [
       int size = 100,
-    ]) =>
-        repository is AuditHeaderSessionRepository
+    ]) => repository is AuditHeaderSessionRepository
         ? (repository as AuditHeaderSessionRepository).sessionHeaderPage({
             'actorId': actor.actorId,
             'dateFrom': from,

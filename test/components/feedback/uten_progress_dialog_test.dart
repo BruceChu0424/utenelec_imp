@@ -106,9 +106,7 @@ void main() {
     expect(find.text(_zh.progressElapsed('0:00')), findsOneWidget);
     expect(find.text(_zh.progressCancel), findsOneWidget);
     expect(
-      tester
-          .getSize(find.byKey(const ValueKey('uten-progress-cancel')))
-          .height,
+      tester.getSize(find.byKey(const ValueKey('uten-progress-cancel'))).height,
       greaterThanOrEqualTo(48),
     );
     // 全项目进度弹窗不出现转圈(规范: 导出/下载/批量等待用进度条)。
@@ -242,7 +240,10 @@ void main() {
       await tester.pump();
       expect(find.text('正在导出货品资料'), findsOneWidget);
       expect(find.text(_zh.progressStoppingButton), findsOneWidget);
-      expect(find.byKey(const ValueKey('uten-progress-stopping')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('uten-progress-stopping')),
+        findsOneWidget,
+      );
       final button = tester.widget<UtenButton>(
         find.byKey(const ValueKey('uten-progress-cancel')),
       );
@@ -290,7 +291,10 @@ void main() {
       await tester.binding.handlePopRoute();
       await tester.pump();
       expect(find.text('正在导出货品资料'), findsOneWidget);
-      expect(find.byKey(const ValueKey('uten-progress-stopping')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('uten-progress-stopping')),
+        findsOneWidget,
+      );
 
       batch.writes[0].complete();
       await tester.pumpAndSettle();

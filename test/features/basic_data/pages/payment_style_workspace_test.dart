@@ -344,9 +344,7 @@ void main() {
       ),
     );
     // 批量提交进进度弹窗（扫动条是循环动画，不能用 pumpAndSettle 等它）。
-    for (var frame = 0;
-        frame < 40 && fixture.writes.isEmpty;
-        frame++) {
+    for (var frame = 0; frame < 40 && fixture.writes.isEmpty; frame++) {
       await tester.pump(const Duration(milliseconds: 40));
     }
     expect(fixture.writes, hasLength(1));

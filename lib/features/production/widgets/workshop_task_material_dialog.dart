@@ -44,10 +44,10 @@ class WorkshopTaskMaterialDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final identity = [task.productName, task.segmentCode]
-        .whereType<String>()
-        .where((part) => part.isNotEmpty)
-        .join(' · ');
+    final identity = [
+      task.productName,
+      task.segmentCode,
+    ].whereType<String>().where((part) => part.isNotEmpty).join(' · ');
     return TaskMaterialSelectionDialog<ProductionWorkshopTaskMaterial>(
       dialogKey: ValueKey('workshop-material-dialog-${task.segmentId}'),
       title: identity.isEmpty ? '任务物料' : '任务物料 · $identity',
@@ -61,8 +61,10 @@ class WorkshopTaskMaterialDialog extends StatelessWidget {
       loadMaterials: (ref) => ref
           .read(productionExecutionWorkbenchRepositoryProvider)
           .workshopTaskMaterials(task.segmentId),
-      entryOf: (material) =>
-          workshopTaskMaterialEntry(material, unitFallback: task.productUnitName),
+      entryOf: (material) => workshopTaskMaterialEntry(
+        material,
+        unitFallback: task.productUnitName,
+      ),
       isShort: (material) => material.shortageQty > 0,
       loadDrawTargets: (ref) async {
         final preview = await ref

@@ -1601,7 +1601,9 @@ class _FinanceReportTablePageState extends ConsumerState<FinanceReportTablePage>
     final showingPartial = _partialData != null;
     final data = _acceptedQueryCurrent && _data != null
         ? _data!
-        : (_partialData ?? _data?.pendingQuery() ?? _reportMetadata.loadingData);
+        : (_partialData ??
+              _data?.pendingQuery() ??
+              _reportMetadata.loadingData);
     // 状态列前置（全站口径）：列元数据来自服务端，客户端映射时把「状态」类列
     // （单据状态/审核状态等）排到最前，其余列保持服务端顺序；两个分区各自保持
     // 原有相对顺序。
@@ -1683,9 +1685,7 @@ class _FinanceReportTablePageState extends ConsumerState<FinanceReportTablePage>
     final pendingNotes = _pendingSourceNotes;
     final totalsBar = reportTotalsBar(
       showingPartial ? const [] : data.totals,
-      statisticsGeneratedAt: showingPartial
-          ? null
-          : data.statisticsGeneratedAt,
+      statisticsGeneratedAt: showingPartial ? null : data.statisticsGeneratedAt,
     );
     return LayoutBuilder(
       builder: (context, tableConstraints) =>

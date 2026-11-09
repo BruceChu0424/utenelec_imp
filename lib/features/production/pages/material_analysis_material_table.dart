@@ -7408,10 +7408,7 @@ abstract class _MaterialAnalysisMaterialTableState
           abandoned = true;
           return;
         }
-        if (!halted &&
-            split.merged.isNotEmpty &&
-            mounted &&
-            !stopRequested()) {
+        if (!halted && split.merged.isNotEmpty && mounted && !stopRequested()) {
           progress.startSegment('正在下达物料', split.merged.length);
           // The root receipt has expanded its actual BOM requirement. Look up the
           // same selected line identities in that snapshot before seeding drafts.
@@ -9137,7 +9134,9 @@ abstract class _MaterialAnalysisMaterialTableState
         _applyAnalysis(current);
       });
       if (stopped) {
-        context.appWarning('已采用 $completed/${chosen.length} 项；已取消后续采用，余下项目未执行，请按最新结果重新选择。');
+        context.appWarning(
+          '已采用 $completed/${chosen.length} 项；已取消后续采用，余下项目未执行，请按最新结果重新选择。',
+        );
       } else {
         context.appSuccess('已认领公共供给，尚需下达量已更新；实际合格入库前仍不计现货或可开工量');
       }

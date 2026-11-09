@@ -654,7 +654,8 @@ class _OffsetTargetPickerState extends ConsumerState<_OffsetTargetPicker>
             _items = partial.items
                 .where(
                   (item) =>
-                      item.openItemKind == 'PAYABLE' && item.status != 'SETTLED',
+                      item.openItemKind == 'PAYABLE' &&
+                      item.status != 'SETTLED',
                 )
                 .toList(growable: false);
           });

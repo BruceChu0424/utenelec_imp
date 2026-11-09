@@ -180,7 +180,7 @@ class _SupplierSettlementPanelState
                           SupplierSettlementSummary,
                           SupplierSettlementPageResult
                         >)
-                  .snapshot;
+                    .snapshot;
           });
         },
       );

@@ -322,7 +322,10 @@ void main() {
       await _frames(tester);
       // 2026-11-08: 文件下载改用通用进度弹窗(字节进度+取消), 不再叠转圈遮罩。
       expect(find.byType(UtenBusyOverlayCard), findsNothing);
-      expect(find.byKey(const ValueKey('uten-progress-cancel')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('uten-progress-cancel')),
+        findsOneWidget,
+      );
       expect(find.byType(CircularProgressIndicator), findsNothing);
       expect(api.downloads, hasLength(1));
       download.complete();

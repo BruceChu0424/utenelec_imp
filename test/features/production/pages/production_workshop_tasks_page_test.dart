@@ -1765,19 +1765,13 @@ void batchBusyOverlayTests() {
     await tester.pumpAndSettle();
     await tester.tap(_menuEntry('持续生产(1)'));
     await pumpFrames(tester);
-    expect(
-      find.byType(UtenProgressBar),
-      findsOneWidget,
-    );
+    expect(find.byType(UtenProgressBar), findsOneWidget);
     expect(find.text('正在确认生产路线'), findsOneWidget);
 
     loadGate.pending = Completer<void>();
     plans.confirmGate!.complete();
     await pumpFrames(tester);
-    expect(
-      find.byType(UtenProgressBar),
-      findsOneWidget,
-    );
+    expect(find.byType(UtenProgressBar), findsOneWidget);
     expect(find.text('正在刷新任务列表'), findsOneWidget);
 
     loadGate.pending!.complete();
@@ -1847,10 +1841,7 @@ void batchBusyOverlayTests() {
         find.byKey(const Key('discovery-request-loading')),
         findsOneWidget,
       );
-      expect(
-        find.byType(UtenProgressBar),
-        findsNothing,
-      );
+      expect(find.byType(UtenProgressBar), findsNothing);
       expect(find.byType(UtenBusyOverlay), findsOneWidget);
       loadGate.pending!.complete();
       loadGate.pending = null;
@@ -1878,10 +1869,7 @@ void batchBusyOverlayTests() {
       workshopActive.value = true;
       await pumpFrames(tester, 8);
       expect(taskReads, readsBeforeReturn + 1);
-      expect(
-        find.byType(UtenProgressBar),
-        findsOneWidget,
-      );
+      expect(find.byType(UtenProgressBar), findsOneWidget);
       expect(find.byKey(const Key('discovery-request-loading')), findsNothing);
       loadGate.pending!.complete();
       loadGate.pending = null;
@@ -1910,10 +1898,7 @@ void batchBusyOverlayTests() {
       plans.startGate = Completer<void>();
       await tester.tap(find.text('批量开工(1)'));
       await pumpFrames(tester);
-      expect(
-        find.byType(UtenProgressBar),
-        findsOneWidget,
-      );
+      expect(find.byType(UtenProgressBar), findsOneWidget);
 
       // Navigation return must not retire a pending business write or replay it.
       final notifier = ProviderScope.containerOf(
@@ -1922,10 +1907,7 @@ void batchBusyOverlayTests() {
       bumpPageResumeState(notifier, '/production/daily-reports/new');
       bumpPageResumeState(notifier, RouteName.productionWorkshopTasks);
       await pumpFrames(tester);
-      expect(
-        find.byType(UtenProgressBar),
-        findsOneWidget,
-      );
+      expect(find.byType(UtenProgressBar), findsOneWidget);
       expect(plans.startedPlanIds, isEmpty);
 
       plans.startGate!.complete();
@@ -2056,10 +2038,7 @@ void routeConfirmationTests() {
       await tester.tap(_menuEntry('持续生产'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
-      expect(
-        find.byType(UtenProgressBar),
-        findsOneWidget,
-      );
+      expect(find.byType(UtenProgressBar), findsOneWidget);
       plans.confirmGate!.complete();
       await tester.pumpAndSettle();
       expect(plans.confirmedRoutes, [('segment-c', 'CONTINUOUS')]);

@@ -214,6 +214,133 @@ void main() {
     expect(batches, completeReadPlanBatches(rows.length));
     expect(tester.takeException(), isNull);
   });
+  testWidgets('375px 新查询读取失败时显示失败与重试，不再展示上一查询的卡片', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(375, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    tester.view.physicalSize = const Size(375, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final template =
+        (_analysisPage()['items']! as List).single as Map<String, dynamic>;
+    // Each keyword names its own analyses, so each query's cards are its own.
+    String? failKeyword;
+    var failNext = false;
+    final keywords = <String?>[];
+    final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (request, handler) {
+          final page = request.queryParameters['page'];
+          final size = request.queryParameters['size'];
+          if (page is! int || size is! int) {
+            handler.resolve(
+              Response<dynamic>(
+                requestOptions: request,
+                statusCode: 200,
+                data: const <String, dynamic>{},
+              ),
+            );
+            return;
+          }
+          final keyword = request.queryParameters['keyword'] as String?;
+          keywords.add(keyword);
+          if (failNext || (keyword != null && keyword == failKeyword)) {
+            failNext = false;
+            handler.reject(
+              DioException(
+                requestOptions: request,
+                type: DioExceptionType.connectionError,
+              ),
+            );
+            return;
+          }
+          final rows = [
+            for (var index = 0; index < 3; index++)
+              {...template, 'analysisId': '${keyword ?? 'analysis'}-$index'},
+          ];
+          handler.resolve(
+            Response<dynamic>(
+              requestOptions: request,
+              statusCode: 200,
+              data: {
+                'items': rows.skip((page - 1) * size).take(size).toList(),
+                'page': page,
+                'size': size,
+                'total': rows.length,
+                'totalPages': (rows.length + size - 1) ~/ size,
+              },
+            ),
+          );
+        },
+      ),
+    );
+    final router = GoRouter(
+      initialLocation: RouteName.productionMaterialAnalysisHistory,
+      routes: [
+        GoRoute(
+          path: RouteName.productionMaterialAnalysisHistory,
+          builder: (_, _) => const ProductionMaterialAnalysisHistoryPage(),
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          masterNameServiceProvider.overrideWithValue(_PlanningMainNames()),
+          productionPlanRepositoryProvider.overrideWithValue(
+            ProductionPlanRepository(ApiClient(dio)),
+          ),
+        ],
+        child: PageResumeTestBridge(
+          router: router,
+          child: MaterialApp.router(routerConfig: router),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final previous = find.byKey(const Key('analysis-history-row-analysis-0'));
+    expect(previous, findsOneWidget);
+    // A same-query refresh that fails keeps the last complete result.
+    failNext = true;
+    final refresh = find.byKey(const Key('analysis-history-refresh'));
+    if (refresh.evaluate().isEmpty) {
+      await tester.tap(find.byKey(const Key('uten-app-bar-more-actions')));
+      await tester.pumpAndSettle();
+    }
+    await tester.tap(refresh);
+    await tester.pumpAndSettle();
+    expect(failNext, isFalse);
+    expect(previous, findsOneWidget);
+    // A new query that fails: the previous query's cards are not its result,
+    // so only the failure and its retry remain.
+    failKeyword = 'NEW-QUERY';
+    await tester.enterText(
+      find.descendant(
+        of: find.byKey(const Key('analysis-history-search')),
+        matching: find.byType(TextField),
+      ),
+      'NEW-QUERY',
+    );
+    await tester.pump(const Duration(milliseconds: 350));
+    await tester.pumpAndSettle();
+    expect(keywords.last, 'NEW-QUERY');
+    expect(previous, findsNothing);
+    expect(find.byKey(const Key('analysis-history-cards')), findsNothing);
+    expect(find.widgetWithText(UtenButton, '重试'), findsOneWidget);
+    // The retry reads the same new query and shows its own cards.
+    failKeyword = null;
+    await tester.tap(find.widgetWithText(UtenButton, '重试'));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const Key('analysis-history-row-NEW-QUERY-0')),
+      findsOneWidget,
+    );
+    expect(previous, findsNothing);
+    expect(keywords.last, 'NEW-QUERY');
+    expect(tester.takeException(), isNull);
+  });
   for (final width in [1200.0, 834.0, 375.0]) {
     testWidgets('分析记录刷新在顶栏且保留查询 $width', (tester) async {
       await tester.binding.setSurfaceSize(Size(width, 900));

@@ -41,6 +41,10 @@ class _Api extends ApiClient {
   Completer<void>? failLaterProgress;
   // A later progress batch waits here, then answers normally.
   Completer<void>? holdLaterProgress;
+  // Every progress batch of this keyword fails at once.
+  String? failKeyword;
+  // The next progress batch fails once.
+  bool failNextProgress = false;
 
   @override
   Future<Map<String, dynamic>> get(
@@ -61,9 +65,15 @@ class _Api extends ApiClient {
     if (path == '/production/plans/progress' && completeProgress) {
       progressQueries.add({...?query});
       // An offset-exact server: the requested (page, size) slice of one fixed
-      // 251-row dataset, with total and totalPages echoed for that size.
+      // 251-row dataset, with total and totalPages echoed for that size. A
+      // keyword names its own plans, so each query's rows are its own.
       final page = query!['page'] as int;
       final size = query['size'] as int;
+      final keyword = query['keyword'] as String?;
+      if (failNextProgress || (keyword != null && keyword == failKeyword)) {
+        failNextProgress = false;
+        throw ApiException('SERVER_ERROR', '生产进度读取失败');
+      }
       if (progressQueries.length > 1 && failLaterProgress != null) {
         await failLaterProgress!.future;
         throw ApiException('SERVER_ERROR', '生产进度后续批读取失败');
@@ -71,10 +81,11 @@ class _Api extends ApiClient {
       if (progressQueries.length > 1 && holdLaterProgress != null) {
         await holdLaterProgress!.future;
       }
+      final prefix = keyword ?? 'progress';
       return {
         'items': [
           for (var i = (page - 1) * size; i < page * size && i < 251; i++)
-            {'planId': 'progress-$i', 'billNo': 'PP-$i', 'closed': true},
+            {'planId': '$prefix-$i', 'billNo': 'PP-$i', 'closed': true},
         ],
         'page': page,
         'size': size,
@@ -280,6 +291,60 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('置顶'), findsOneWidget);
       expect(api.writes, isEmpty, reason: 'no flag write was replayed');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'history progress of a new query that fails shows the failure, not the previous query plans',
+    (tester) async {
+      final api = _Api()..completeProgress = true;
+      await _mount(tester, api);
+      await tester.tap(find.text('历史记录'));
+      await tester.pumpAndSettle();
+      Iterable<Element> planCards() =>
+          find.byType(Card).evaluate().where((card) {
+            final key = card.widget.key;
+            return key is ValueKey<String> &&
+                key.value.startsWith('production-progress-plan-');
+          });
+      final previous = find.byKey(
+        const ValueKey('production-progress-plan-progress-0'),
+      );
+      expect(previous, findsOneWidget);
+      // A same-query refresh that fails keeps the last complete result.
+      api.failNextProgress = true;
+      await tester.tap(find.byKey(const Key('production-pending-refresh')));
+      await tester.pumpAndSettle();
+      expect(api.failNextProgress, isFalse);
+      expect(previous, findsOneWidget);
+      // A new query whose first batch fails: the previous query's plans are
+      // not its result, so only the failure and its retry remain.
+      api.failKeyword = 'NEW-QUERY';
+      await tester.enterText(
+        find.descendant(
+          of: find.byType(UtenSearchBar).first,
+          matching: find.byType(TextField),
+        ),
+        'NEW-QUERY',
+      );
+      await tester.pump(const Duration(milliseconds: 350));
+      await tester.pumpAndSettle();
+      expect(api.progressQueries.last['keyword'], 'NEW-QUERY');
+      expect(previous, findsNothing);
+      expect(planCards(), isEmpty);
+      expect(find.text('生产进度读取失败'), findsOneWidget);
+      expect(find.text('重试'), findsOneWidget);
+      // The retry reads the same new query and shows its own plans.
+      api.failKeyword = null;
+      await tester.tap(find.text('重试'));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('production-progress-plan-NEW-QUERY-0')),
+        findsOneWidget,
+      );
+      expect(previous, findsNothing);
+      expect(api.progressQueries.last['keyword'], 'NEW-QUERY');
       expect(tester.takeException(), isNull);
     },
   );

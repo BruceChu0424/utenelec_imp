@@ -23,6 +23,8 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../core/utils/display_datetime.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/paging/paged_read_window_binding.dart'
+    show readWindowBindingOf;
 import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
 import '../../../shared/auth/read_owner_fence.dart';
 import '../../../shared/providers/master_name_provider.dart';
@@ -120,9 +122,6 @@ class _ProductionMaterialAnalysisHistoryPageState
       _loading = true;
       _error = null;
     });
-    // Progressive rows shown by this read: the compact cards render them
-    // without the table's retirement, so a failure takes them down here.
-    var partialRows = false;
     try {
       final rows = readScopedPage<MaterialAnalysisListItem>(
         page,
@@ -149,7 +148,6 @@ class _ProductionMaterialAnalysisHistoryPageState
         ),
         onProgressiveBatch: (partial) {
           if (!current()) return;
-          partialRows = true;
           setState(() => _page = partial);
         },
       );
@@ -164,12 +162,28 @@ class _ProductionMaterialAnalysisHistoryPageState
     } catch (error) {
       if (isRetiredViewRead(error)) return;
       if (!current()) return;
+      // Rows of another query or of this failed read are retired with their
+      // read (see [_currentPage]); the failure and its retry take their place.
       setState(() {
-        if (partialRows) _page = null;
         _loading = false;
         _error = productionErrorMessage(error, fallback: '物料分析记录加载失败，请稍后重试');
       });
     }
+  }
+
+  /// [_page] counts as the current query's result only while its read is
+  /// current — the predicate the table applies to its own rows. A read of
+  /// another query (keyword, status, source) or owner retires the previous
+  /// rows, so the compact cards neither keep them while that query loads nor
+  /// after it fails; a failed read's progressive rows are retired the same
+  /// way. A same-query refresh keeps its read, and with it the last complete
+  /// result, also when the refresh fails.
+  PagedResult<MaterialAnalysisListItem>? get _currentPage {
+    final page = _page;
+    if (page == null || readWindowBindingOf(page.items)?.isCurrent == false) {
+      return null;
+    }
+    return page;
   }
 
   Future<void> _warmNames(bool Function() current) async {
@@ -327,10 +341,16 @@ class _ProductionMaterialAnalysisHistoryPageState
 
   Widget _content(ThemeData theme, bool compact) {
     final page = _page;
-    if (compact && _loading && page == null) {
+    final current = _currentPage;
+    // Compact cards: retired rows of a previous query wait for the current
+    // read — never its result, and never an empty result before it starts.
+    if (compact &&
+        current == null &&
+        _error == null &&
+        (_loading || page != null)) {
       return const Center(child: CircularProgressIndicator());
     }
-    if (compact && _error != null && page == null) {
+    if (compact && _error != null && current == null) {
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -353,8 +373,15 @@ class _ProductionMaterialAnalysisHistoryPageState
         ),
       );
     }
+    // The table retires withdrawn rows itself (and reports an incomplete read
+    // while the host still holds them), so it receives the raw rows.
     final items = page?.items ?? const <MaterialAnalysisListItem>[];
-    if (compact) return _cards(theme, items);
+    if (compact) {
+      return _cards(
+        theme,
+        current?.items ?? const <MaterialAnalysisListItem>[],
+      );
+    }
     return MasterDataTableView<MaterialAnalysisListItem>(
       rowsController: _tableRows,
       expensiveRowMounts: false,

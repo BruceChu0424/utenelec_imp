@@ -72,6 +72,12 @@ public class AttachmentService implements AttachmentAccessPort {
     @org.springframework.beans.factory.annotation.Autowired
     private AttachmentLinkedEvidenceSupport linkedEvidence;
 
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(AttachmentService.class);
+
+    /** 冷热分层的访问热度写入口；手工构造（测试）时为空即不记。 */
+    @org.springframework.beans.factory.annotation.Autowired
+    private AttachmentUsageRecorder usageRecorder;
+
     @Override
     @Transactional(readOnly = true)
     public java.util.Optional<AttachmentAccessPort.AvatarContent> openSelectedAvatar(String ownerType, UUID ownerId) {
@@ -355,6 +361,7 @@ public class AttachmentService implements AttachmentAccessPort {
         audit.logExplicit(user.getId(), user.getLoginAccount(),
                 "attachment_download_grant", "attachments",
                 id.toString(), "success");
+        recordUse(id);
         return new AttachmentDownloadResponse(grant.url(), grant.expiresAt());
     }
 
@@ -379,6 +386,7 @@ public class AttachmentService implements AttachmentAccessPort {
         }
         audit.logExplicit(user.getId(), user.getLoginAccount(),
                 "attachment_preview", "attachments", id.toString(), "success");
+        recordUse(id);
         return new PreviewSource(attachment.getId(), attachment.getOriginalName(),
                 normalizeContentType(attachment.getContentType()), attachment.getSizeBytes(),
                 attachment.getSha256(), () -> downloadVerifier.open(attachment));
@@ -512,7 +520,21 @@ public class AttachmentService implements AttachmentAccessPort {
                 ? metadata.getContentType() : MediaType.APPLICATION_OCTET_STREAM_VALUE;
         // 与 downloadGrant（OSS/通用入口）对等的业务级下载审计：谁在何时取走了哪个附件。
         auditDownloadOrClose(input,user,"attachment_download_raw",metadata.getId());
+        recordUse(metadata.getId());
         return new RawDownload(input, contentType, fileName, metadata.getSizeBytes());
+    }
+
+    /**
+     * 下载/预览已通过授权并写好审计后推进附件的最近使用时间（冷热分层热度）。
+     * 独立短事务、按天节流；任何失败只记日志，绝不让下载失败或重放。
+     */
+    private void recordUse(UUID attachmentId) {
+        if (usageRecorder == null) return;
+        try {
+            usageRecorder.recordUse(attachmentId);
+        } catch (RuntimeException failure) {
+            log.warn("Attachment usage heat not recorded for {}: {}", attachmentId, failure.getMessage());
+        }
     }
 
     private void auditDownloadOrClose(InputStream input, AuthUser user, String action, UUID attachmentId) {

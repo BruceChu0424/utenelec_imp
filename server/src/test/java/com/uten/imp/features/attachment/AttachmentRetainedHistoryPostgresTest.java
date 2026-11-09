@@ -223,6 +223,80 @@ class AttachmentRetainedHistoryPostgresTest {
         assertThat(service.history(legacy.getId()).sha256()).isNull();
     }
 
+    @Test void downloadAndPreviewAdvanceUsageHeatOnTheAttachmentRowOncePerDayWithoutAuditNoise() throws Exception {
+        ReflectionTestUtils.setField(service,"usageRecorder",new AttachmentUsageRecorder(jdbc));
+        byte[] bytes="常用合同 冷热分层热度".getBytes(StandardCharsets.UTF_8);
+        Attachment row=create(bytes,AttachmentLifecycleState.CLEAN);
+        assertThat(lastUsed(row)).isNull();
+        // The FULL row audit is live here: an ordinary column change is evidence...
+        int audited=auditRows(row);
+        jdbc.update("UPDATE attachments SET category='合同' WHERE id=?",row.getId());
+        assertThat(auditRows(row)).isEqualTo(audited+1);
+        audited=auditRows(row);
+
+        try(var input=service.openRaw(row.getStorageKey()).stream()){assertThat(input.readAllBytes()).isEqualTo(bytes);}
+        Instant first=lastUsed(row);
+        assertThat(first).isNotNull();
+        // ...while heat writes never become row audit events (last_used_at is an operational column).
+        assertThat(auditRows(row)).isEqualTo(audited);
+        // Same day: throttled, the attachment row is not written again.
+        try(var input=service.openRaw(row.getStorageKey()).stream()){input.readAllBytes();}
+        service.openPreviewSource(row.getId());
+        assertThat(lastUsed(row)).isEqualTo(first);
+        // Older than a day: preview and download-grant advance it again.
+        jdbc.update("UPDATE attachments SET last_used_at=now()-interval '3 days' WHERE id=?",row.getId());
+        service.openPreviewSource(row.getId());
+        assertThat(lastUsed(row)).isAfter(Instant.now().minus(java.time.Duration.ofHours(1)));
+        jdbc.update("UPDATE attachments SET last_used_at=now()-interval '3 days' WHERE id=?",row.getId());
+        service.downloadGrant(row.getId());
+        assertThat(lastUsed(row)).isAfter(Instant.now().minus(java.time.Duration.ofHours(1)));
+        assertThat(auditRows(row)).isEqualTo(audited);
+
+        // A row locked by another writer is skipped instead of making the download wait.
+        jdbc.update("UPDATE attachments SET last_used_at=NULL WHERE id=?",row.getId());
+        try(var holder=jdbc.getDataSource().getConnection()){
+            holder.setAutoCommit(false);
+            try(var lock=holder.prepareStatement("SELECT id FROM attachments WHERE id=? FOR UPDATE")){
+                lock.setObject(1,row.getId());lock.executeQuery().close();
+            }
+            assertThat(new AttachmentUsageRecorder(jdbc).recordUse(row.getId())).isFalse();
+            holder.rollback();
+        }
+        assertThat(lastUsed(row)).isNull();
+
+        // Deleted history is immutable and never touched; the guard stays intact.
+        Attachment retained=create("已删除历史".getBytes(StandardCharsets.UTF_8),AttachmentLifecycleState.RETAINED_HISTORY);
+        assertThat(new AttachmentUsageRecorder(jdbc).recordUse(retained.getId())).isFalse();
+        assertThat(lastUsed(retained)).isNull();
+
+        // A failing heat write never fails or replays the download itself.
+        var failing=mock(AttachmentUsageRecorder.class);
+        when(failing.recordUse(any())).thenThrow(new org.springframework.dao.QueryTimeoutException("heat write timed out"));
+        ReflectionTestUtils.setField(service,"usageRecorder",failing);
+        try(var input=service.openRaw(row.getStorageKey()).stream()){assertThat(input.readAllBytes()).isEqualTo(bytes);}
+        assertThat(service.downloadGrant(row.getId())).isNotNull();
+        verify(failing,times(2)).recordUse(row.getId());
+    }
+
+    @Test void tieringSchedulerReadsHeatFromTheAttachmentRowWithinTheNinetyDayWindow() throws Exception {
+        Attachment hot=create("近期用过".getBytes(StandardCharsets.UTF_8),AttachmentLifecycleState.CLEAN);
+        Attachment stale=create("久未使用".getBytes(StandardCharsets.UTF_8),AttachmentLifecycleState.CLEAN);
+        Attachment never=create("从未使用".getBytes(StandardCharsets.UTF_8),AttachmentLifecycleState.CLEAN);
+        assertThat(new AttachmentUsageRecorder(jdbc).recordUse(hot.getId())).isTrue();
+        jdbc.update("UPDATE attachments SET last_used_at=now()-interval '91 days' WHERE id=?",stale.getId());
+        var active=jdbc.queryForList(InternalStorageTieringScheduler.RECENTLY_USED_SQL,String.class,
+                java.sql.Timestamp.from(Instant.now().minus(java.time.Duration.ofDays(InternalStorageTieringScheduler.RECENT_ACCESS_DAYS))));
+        assertThat(active).contains(hot.getId().toString())
+                .doesNotContain(stale.getId().toString(),never.getId().toString());
+    }
+
+    private Instant lastUsed(Attachment row){
+        var value=jdbc.queryForObject("SELECT last_used_at FROM attachments WHERE id=?",java.sql.Timestamp.class,row.getId());
+        return value==null?null:value.toInstant();
+    }
+    private int auditRows(Attachment row){
+        return jdbc.queryForObject("SELECT count(*) FROM audit_log WHERE target_id=?",Integer.class,row.getId().toString());
+    }
     private boolean referencedFinal(Attachment row){return AttachmentReconciliationService.isReferenced(jdbc,row.getStorageProvider(),"FINAL",row.getStorageKey(),row.getStorageVersion());}
     private Attachment create(byte[] bytes,AttachmentLifecycleState state) throws Exception {
         return create(bytes,state,true);

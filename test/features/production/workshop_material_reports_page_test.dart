@@ -25,6 +25,7 @@ import 'package:uten_imp/features/production/models/workshop_material_report_mod
 import 'package:uten_imp/features/production/pages/workshop_material_reports_page.dart';
 import 'package:uten_imp/features/production/repositories/workshop_material_report_repository.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
+import 'package:uten_imp/shared/paging/complete_paged_snapshot.dart';
 import 'package:uten_imp/shared/search/table_column_query.dart';
 import 'package:uten_imp/shared/widgets/reauth_dialog.dart';
 import '../../support/filter_segment_tap.dart';
@@ -442,12 +443,24 @@ void main() {
       expect(query.page, 2);
       expect(table().currentPage, 1);
       expect(table().totalPages, 1);
-      expect(repo.ledgerQueries.reversed.take(3).map((read) => read.page), [
-        3,
-        2,
-        1,
-      ]);
-      expect(repo.ledgerQueries.every((read) => read.size == 50), isTrue);
+      // 2026-11-08 阶梯完整读取：120 行 = 50 → 50 → 100（末批 20 行）。
+      expect(
+        repo.ledgerQueries.reversed
+            .take(3)
+            .map((read) => (read.page, read.size)),
+        [(2, 100), (2, 50), (1, 50)],
+      );
+      // 每个内部批次都是其 offset 处的阶梯批大小（有界、不重读不漏读）。
+      expect(
+        repo.ledgerQueries.every(
+          (read) =>
+              read.size ==
+              CompleteReadBatchPlan.progressive.sizeAt(
+                (read.page - 1) * read.size,
+              ),
+        ),
+        isTrue,
+      );
       expect(query.bin, 'bin-1');
       expect(query.query.searches, containsPair('kind', '已审核账面修正'));
       expect(

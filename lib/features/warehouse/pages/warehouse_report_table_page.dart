@@ -97,6 +97,11 @@ class _WarehouseReportTablePageState
   bool _loading = false;
   int _loadGeneration = 0;
 
+  /// Growing rows of the in-flight complete read (progressive prefix). Never
+  /// accepted: totals/export stay on [_data]; the complete result replaces it.
+  ReportData? _partialData;
+  PagedResult<Map<String, dynamic>>? _lastNotifiedPage;
+
   /// 「返回即刷新」登记用的本页路径（build 首次捕获）。
   String? _myLocation;
 
@@ -111,6 +116,7 @@ class _WarehouseReportTablePageState
 
   @override
   void dispose() {
+    _reportPages.removeListener(_onReportPagesChanged);
     _reportRead.dispose();
     _reportPages.dispose();
     super.dispose();
@@ -119,6 +125,7 @@ class _WarehouseReportTablePageState
   @override
   void initState() {
     super.initState();
+    _reportPages.addListener(_onReportPagesChanged);
     // Keep the monotonic reader epoch observed for this page's whole lifetime.
     ref.listenManual(exportContextEpochProvider, (previous, next) {
       if (!mounted || previous == next) return;
@@ -228,6 +235,25 @@ class _WarehouseReportTablePageState
     ...sortQueryParams(_sortKey, _sortAsc),
   };
 
+  /// Progressive prefix of the running complete read: only a page object the
+  /// controller newly published while still loading (never the stale result a
+  /// fresh load keeps until its first batch, never the accepted result) feeds
+  /// [_partialData]. The complete result and failures replace/clear it whole.
+  void _onReportPagesChanged() {
+    if (!mounted) return;
+    final page = _reportPages.page;
+    if (identical(page, _lastNotifiedPage)) return;
+    _lastNotifiedPage = page;
+    final partial =
+        _reportPages.loading &&
+            page is ReportPageSnapshot &&
+            !identical(page.snapshot, _data)
+        ? page.snapshot
+        : null;
+    if (identical(partial, _partialData)) return;
+    setState(() => _partialData = partial);
+  }
+
   Future<void> _load({
     bool background = false,
     bool reuseMetadata = false,
@@ -280,11 +306,17 @@ class _WarehouseReportTablePageState
     Future<PagedResult<Map<String, dynamic>>> fetchPage(int targetPage) =>
         read.read(targetPage);
 
+    // A new read starts from its own batches; a superseded read's prefix never
+    // stands in for the pending query.
+    _partialData = null;
     final pending = _reportPages.load(
       requestedPage,
       silent: background && _data != null,
       fetch: () => fetchPage(requestedPage),
-      fetchPage: fetchPage,
+      // The nested report reader returns the whole result itself (first batch
+      // 50, then aligned up to 200) and publishes each growing prefix through
+      // the controller while the read continues.
+      fetchComplete: () => fetchPage(requestedPage),
       isCurrent: current,
       ownerIsCurrent: queryCurrent,
     );
@@ -296,6 +328,7 @@ class _WarehouseReportTablePageState
     final failure = _reportPages.refreshError ?? _reportPages.error;
     setState(() {
       _loading = false;
+      _partialData = null;
       if (_reportPages.page == null) {
         _data = null;
       } else if (failure == null && _reportRead.accept(_reportPages.page)) {
@@ -485,7 +518,10 @@ class _WarehouseReportTablePageState
   }
 
   Widget _buildTable() {
-    final data = _data ?? _reportMetadata.loadingData;
+    // While the complete read is still running, its validated prefix renders
+    // as growing pending rows; totals/statistics wait for the complete one.
+    final showingPartial = _partialData != null;
+    final data = _partialData ?? _data ?? _reportMetadata.loadingData;
     // 重量列 (type 'weight', 千克) 按用户显示单位换算; 估算行前缀「≈」, 没称留空。
     final weightDisplay = ref.watch(warehouseWeightUnitsPrefsProvider).display;
     final hasWeight = data.columns.any((c) => c.type == 'weight');
@@ -600,9 +636,11 @@ class _WarehouseReportTablePageState
       // 服务端分页表格：合计由后端在整个结果集上算（reportTotalsBar），
       // 不是对当前这一页求和；后端未声明合计列时返回 null，整条不渲染。
       summaryBar: reportTotalsBar(
-        data.totals,
+        showingPartial ? const [] : data.totals,
         weightDisplay: weightDisplay,
-        statisticsGeneratedAt: data.statisticsGeneratedAt,
+        statisticsGeneratedAt: showingPartial
+            ? null
+            : data.statisticsGeneratedAt,
       ),
       currentPage: data.page,
       totalPages: data.totalPages,

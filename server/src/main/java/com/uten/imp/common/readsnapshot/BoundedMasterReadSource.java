@@ -14,9 +14,12 @@ import java.util.function.LongConsumer;
 import java.util.stream.Stream;
 
 /** One counted, sorted database cursor shared by complete reads and exports.
- * Each owner supplies its own authority, deadline and total-row policy. */
+ * Each owner supplies its own authority, deadline and total-row policy. Each
+ * batch continues exactly where the cursor stands: exports keep 100-row batches,
+ * progressive complete reads take 50, 50, 100, then 200 rows per batch. */
 public final class BoundedMasterReadSource {
     public static final int BATCH_ROWS = 100;
+    public static final int MAX_BATCH_ROWS = com.uten.imp.common.web.CompleteReadBatchPlan.MAX_BATCH_SIZE;
     private static final ThreadLocal<Session> CURRENT = new ThreadLocal<>();
     private BoundedMasterReadSource() { }
 
@@ -92,7 +95,6 @@ public final class BoundedMasterReadSource {
         Stream<?> stream;
         Iterator<?> iterator;
         long total, consumed;
-        int nextPage;
         boolean failed, closed;
 
         private Session(EntityManager em, Runnable checkpoint, LongConsumer countPolicy) {
@@ -110,8 +112,10 @@ public final class BoundedMasterReadSource {
         <T> Page<T> read(JpaSpecificationExecutor<T> repository, EntityManager requestedEm, Class<T> requestedType,
                 Specification<T> specification, Pageable pageable, Object requestedFilter) {
             checkpoint.run();
+            // The next batch must start exactly at the cursor: no skipped or repeated row.
             if (closed || failed || Thread.currentThread() != owner || requestedEm != em
-                    || pageable.getPageNumber() != nextPage || pageable.getPageSize() != BATCH_ROWS)
+                    || pageable.getOffset() != consumed || pageable.getPageSize() < 1
+                    || pageable.getPageSize() > MAX_BATCH_ROWS)
                 throw new IllegalStateException("Master read cursor sequence changed");
             try {
                 if (type == null) {
@@ -142,8 +146,8 @@ public final class BoundedMasterReadSource {
                         || !Objects.equals(filter, freeze(requestedFilter))) {
                     throw new IllegalStateException("Master read cursor conditions changed");
                 }
-                List<T> rows = new ArrayList<>(BATCH_ROWS);
-                int count = (int)Math.min(BATCH_ROWS, total - consumed);
+                int count = (int)Math.min(pageable.getPageSize(), total - consumed);
+                List<T> rows = new ArrayList<>(Math.max(count, 0));
                 for (int index = 0; index < count; index++) {
                     checkpoint.run();
                     if (!iterator.hasNext()) throw new IllegalStateException("Master read cursor ended early");
@@ -155,7 +159,6 @@ public final class BoundedMasterReadSource {
                     if (iterator.hasNext()) throw new IllegalStateException("Master read count differs from its cursor");
                     closeStream();
                 }
-                nextPage++;
                 return new PageImpl<>(rows, pageable, total);
             } catch (RuntimeException failure) {
                 failed = true;

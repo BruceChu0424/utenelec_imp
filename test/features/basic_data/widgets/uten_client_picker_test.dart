@@ -598,7 +598,8 @@ void main() {
     await tester.pump(const Duration(milliseconds: 301));
     await tester.pumpAndSettle();
 
-    expect(clientRepository.searchPages, [1, 2]);
+    // Both rows fit the first progressive batch (1,50): one search request.
+    expect(clientRepository.searchPages, [1]);
     expect(clientRepository.contextPages, [1]);
     final tree = tester.widget<UtenCategoryTreeView<ProductCategoryNode>>(
       find.byType(UtenCategoryTreeView<ProductCategoryNode>),
@@ -735,7 +736,9 @@ void main() {
       await tester.showKeyboard(_searchEditable());
       await tester.testTextInput.receiveAction(TextInputAction.search);
       await tester.pumpAndSettle();
-      expect(repository.searchPages, [1, 2, 1, 2]);
+      // Each explicit fresh search is one complete read; both rows fit the
+      // first progressive batch (1,50).
+      expect(repository.searchPages, [1, 1]);
       expect(repository.contextPages, [1, 1]);
       final tree = tester.widget<UtenCategoryTreeView<ProductCategoryNode>>(
         find.byType(UtenCategoryTreeView<ProductCategoryNode>),
@@ -1155,13 +1158,15 @@ class _FakeClientRepository implements ClientRepository {
       );
     }
     if (keyword == '集团') {
+      // Each requested batch is the exact slice at its offset.
+      const rows = [localClient, overseasClient];
       return PagedResult(
         readScopeVersion: scopeVersion,
-        items: page == 1 ? const [localClient] : const [overseasClient],
+        items: rows.skip((page - 1) * size).take(size).toList(),
         page: page,
         size: size,
-        total: 2,
-        totalPages: 2,
+        total: rows.length,
+        totalPages: (rows.length + size - 1) ~/ size,
       );
     }
     if (keyword == '含占位') {

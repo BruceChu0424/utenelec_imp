@@ -1333,7 +1333,8 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
           MasterPaneQuery(
             categoryId: query.categoryId,
             page: target,
-            size: query.size ?? batchSize ?? 100,
+            // The shared reader's batch size (50 first, then up to 200).
+            size: batchSize ?? query.size ?? 100,
             keyword: query.keyword,
             filters: query.filters,
             sort: query.sort,
@@ -1346,14 +1347,14 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
       _listError = null;
       _pageNum = page;
     });
-    // First-batch rows may render while the complete stream continues.
+    // Each validated batch may render while the complete read continues.
     // _listLoading stays true until the complete result, which keeps export,
     // print, batch and write entry points disabled; any failed or retired read
-    // takes the provisional rows down and restores what was on screen before.
-    var showedProvisional = false;
-    final beforeProvisional = _displayedQueryStale ? null : _page;
-    void retireProvisional() {
-      if (showedProvisional) _page = beforeProvisional;
+    // takes the progressive rows down and restores what was on screen before.
+    var showedProgressive = false;
+    final beforeProgressive = _displayedQueryStale ? null : _page;
+    void retireProgressive() {
+      if (showedProgressive) _page = beforeProgressive;
     }
 
     try {
@@ -1372,9 +1373,9 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
           isCurrent: requestCurrent,
           isOwnerCurrent: readerCurrent,
           useCache: useCache,
-          onProvisionalBatch: (partial) {
+          onProgressiveBatch: (partial) {
             if (!mounted || !requestCurrent()) return;
-            showedProvisional = true;
+            showedProgressive = true;
             setState(() {
               _page = partial;
               _pageNum = 1;
@@ -1412,14 +1413,14 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
     } on ApiException catch (e) {
       if (isRetiredViewRead(e)) {
         if (mounted && _listRequests.isCurrent(generation)) {
-          setState(retireProvisional);
+          setState(retireProgressive);
         }
         return;
       }
       if (!readerCurrent() || !_listRequests.isCurrent(generation)) return;
       if (_pageAccessDenied(e)) _pageReads.invalidate();
       setState(() {
-        retireProvisional();
+        retireProgressive();
         if (_displayedQueryStale || _pageAccessDenied(e)) _page = null;
         _displayedQueryStale = false;
         _listError = e.message;
@@ -1427,13 +1428,13 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
     } catch (error) {
       if (isRetiredViewRead(error)) {
         if (mounted && _listRequests.isCurrent(generation)) {
-          setState(retireProvisional);
+          setState(retireProgressive);
         }
         return;
       }
       if (!readerCurrent() || !_listRequests.isCurrent(generation)) return;
       setState(() {
-        retireProvisional();
+        retireProgressive();
         if (_displayedQueryStale) _page = null;
         _displayedQueryStale = false;
         _listError = '加载${_c.noun}列表失败'; // TODO(l10n): 补 arb

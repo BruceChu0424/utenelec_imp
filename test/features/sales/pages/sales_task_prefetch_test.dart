@@ -17,6 +17,7 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
+import 'package:uten_imp/shared/paging/complete_paged_snapshot.dart';
 
 import '../../../helpers/badge_summary_fixture.dart';
 import '../../../support/uten_test_actions.dart';
@@ -42,9 +43,8 @@ class _Read {
 }
 
 class _PrefetchApi extends ApiClient {
-  _PrefetchApi({this.progressRows = 1, this.progressTotal = 1}) : super(Dio());
+  _PrefetchApi({this.progressTotal = 1}) : super(Dio());
 
-  final int progressRows;
   final int progressTotal;
   String responseRevision = '';
   final businessWrites = <String>[];
@@ -101,14 +101,17 @@ class _PrefetchApi extends ApiClient {
       if (activeRows > maximumActiveRows) maximumActiveRows = activeRows;
       try {
         await deferredRows['$path:${read.stage}']?.future;
+        // 2026-11-08 阶梯完整读取：订货进度 fake 按请求的 (page,size) 切片
+        // progressTotal 行（行数 = clamp(total-offset,0,size)），每行唯一身份。
+        final page = query?['page'] as int? ?? 1;
+        final size = query?['size'] as int? ?? 50;
+        final start = (page - 1) * size;
+        final count = (progressTotal - start).clamp(0, size);
         return {
           'items': path == _progressPath
-              ? List.generate(progressRows, (index) {
-                  final offset =
-                      ((query?['page'] as int? ?? 1) - 1) *
-                          (query?['size'] as int? ?? 50) +
-                      index;
-                  final suffix = progressRows == 1 ? '' : '-$offset';
+              ? List.generate(count, (index) {
+                  final offset = start + index;
+                  final suffix = progressTotal == 1 ? '' : '-$offset';
                   return {
                     'orderId': 'progress-${read.stage}$suffix',
                     'billNo': '${revision}PROGRESS-${read.stage}$suffix',
@@ -368,7 +371,8 @@ void main() {
     expect(api.rows, hasLength(1));
     expect(api.rows.every((read) => read.path == '/sales/quotes'), isTrue);
     expect(api.rows.every((read) => read.query['page'] == 1), isTrue);
-    expect(api.rows.every((read) => read.query['size'] == 100), isTrue);
+    // 2026-11-08 阶梯完整读取：首批 (1,50)，单条结果一次读完。
+    expect(api.rows.every((read) => read.query['size'] == 50), isTrue);
     expect(
       api.rows.every(
         (read) =>
@@ -446,8 +450,8 @@ void main() {
     await _close(tester, api);
   });
 
-  testWidgets('十万条完整结果保留原50行内部批次，真实滚动至末行不再请求', (tester) async {
-    final api = _PrefetchApi(progressRows: 50, progressTotal: 100000);
+  testWidgets('十万条完整结果按阶梯批次读完，真实滚动至末行不再请求', (tester) async {
+    final api = _PrefetchApi(progressTotal: 100000);
     await _mount(tester, api, initialGroup: 'progress');
     await tester.tap(find.text('进行中'));
     await _pumpReads(tester);
@@ -461,12 +465,22 @@ void main() {
     expect(page.total, 100000);
     expect(page.totalPages, 1);
     expect(table.totalPages, 1);
+    // 2026-11-08 阶梯完整读取：50 → 50 → 100 → 200…，每批是其 offset 处
+    // 的对齐批大小（page = offset/size + 1），不重读不漏读。
+    final ladder = <(int, int)>[];
+    for (var offset = 0; offset < 100000;) {
+      final size = CompleteReadBatchPlan.progressive.sizeAt(offset);
+      ladder.add((offset ~/ size + 1, size));
+      offset += size;
+    }
     final reads = api.forStage('IN_PROGRESS');
-    expect(reads, hasLength(2000));
-    expect(reads.map((read) => read.query['page']), [
-      for (var i = 1; i <= 2000; i++) i,
-    ]);
-    expect(reads.every((read) => read.query['size'] == 50), isTrue);
+    expect(reads, hasLength(ladder.length));
+    expect(
+      reads.map((read) => (read.query['page'], read.query['size'])),
+      ladder,
+    );
+    expect(ladder.take(4), [(1, 50), (2, 50), (2, 100), (2, 200)]);
+    expect(ladder.last, (500, 200));
     final identities = table.rowsController!.items
         .map((row) => row.orderId)
         .toSet();
@@ -514,7 +528,7 @@ void main() {
           .join(', '),
     );
     expect(lastRowVisible(), isTrue);
-    expect(api.forStage('IN_PROGRESS'), hasLength(2000));
+    expect(api.forStage('IN_PROGRESS'), hasLength(ladder.length));
     expect(api.rows.every((read) => read.stage == 'IN_PROGRESS'), isTrue);
     expect(tester.takeException(), isNull);
     expect(api.businessWrites, isEmpty);

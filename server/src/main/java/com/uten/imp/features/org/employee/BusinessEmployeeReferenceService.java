@@ -6,6 +6,7 @@ import com.uten.imp.common.util.DepartmentSearchSql;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.common.web.Pageables;
 import com.uten.imp.features.org.department.Department;
 import com.uten.imp.features.org.department.DepartmentRepository;
 import com.uten.imp.features.org.department.DepartmentService;
@@ -42,7 +43,7 @@ public class BusinessEmployeeReferenceService {
     public PageResponse<BusinessEmployeeReference> candidates(String purpose,int page,int requestedSize,String search,
             Set<String> statuses,UUID departmentId,boolean includeSubtree,String accountStatus,String employmentStatus) {
         access.require(purpose);
-        int safePage=Math.max(1,page),size=Math.min(100,Math.max(1,requestedSize));
+        int safePage=Math.max(1,page),size=Math.min(Pageables.MAX_PAGE_SIZE,Math.max(1,requestedSize));
         boolean searched=!KeywordSearch.terms(search).isEmpty();
         String prefix=DepartmentSearchSql.prefix(searched);
         String from=FROM+DepartmentSearchSql.joins(searched,"e.department_id");

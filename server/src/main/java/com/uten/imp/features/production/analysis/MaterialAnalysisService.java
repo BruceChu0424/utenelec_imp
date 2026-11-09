@@ -11,6 +11,7 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.NativeFacets;
 import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.common.web.Pageables;
 import com.uten.imp.features.production.ProductionDocumentAccessPolicy;
 import com.uten.imp.features.production.fulfillment.PlanningPackageFingerprint;
 import com.uten.imp.security.OwnerVisibility;
@@ -383,7 +384,7 @@ public class MaterialAnalysisService {
     public PageResponse<AnalysisListItem> list(
             String keyword, String status, String sourceType, int page, int size) {
         int safePage = Math.max(1, page);
-        int safeSize = Math.min(Math.max(1, size), 100);
+        int safeSize = Math.min(Math.max(1, size), Pageables.MAX_PAGE_SIZE);
         String normalizedKeyword = KeywordSearch.phrase(keyword);
         String normalizedStatus = blankToNull(status) == null
                 ? "" : status.strip().toUpperCase(Locale.ROOT);
@@ -1165,7 +1166,7 @@ public class MaterialAnalysisService {
             String keyword, int rawPage, int rawSize,
             String sort, String order, String orderBillNo) {
         int page = Math.max(rawPage, 1);
-        int size = Math.min(Math.max(rawSize, 1), 100);
+        int size = Math.min(Math.max(rawSize, 1), Pageables.MAX_PAGE_SIZE);
         String kw = KeywordSearch.phrase(keyword);
         boolean billNoFilter = orderBillNo != null && !orderBillNo.isBlank();
         Query countQuery = em.createNativeQuery(

@@ -86,7 +86,13 @@ class VersionedSummaryPagesPostgresTest {
         assertThat(first.total()).isEqualTo(1001);assertThat(first.totalPages()).isEqualTo(2);assertThat(first.items()).hasSize(1000);
         assertThat(tail.items()).singleElement().satisfies(row->{assertThat(row.get("id")).isEqualTo(1001);assertThat(row.get("value")).isEqualTo("9007199254740993.123456789012345678901234");});
         assertThat(tail.readSnapshotRevision()).isEqualTo(first.readSnapshotRevision());assertThat(tail.readDataVersion()).isEqualTo(first.readDataVersion());
-        assertThatThrownBy(()->page(2,999,first.readSnapshotRevision())).isInstanceOf(ApiException.class);
+        // 2026-11-08 (summary-read-v2): the batch size is transport only. An aligned
+        // continuation of another size keeps the same proof and returns exactly its rows.
+        var aligned=page(2,500,first.readSnapshotRevision());
+        assertThat(aligned.readSnapshotRevision()).isEqualTo(first.readSnapshotRevision());
+        assertThat(aligned.items()).hasSize(500);
+        assertThat(aligned.items().getFirst().get("id")).isEqualTo(501);
+        assertThatThrownBy(()->page(2,1001,first.readSnapshotRevision())).isInstanceOf(ApiException.class);
     }
 
     @Test void completeStreamProofIsCapturedInsideItsRrAndTheFinalFreshFenceRejectsAConcurrentCommit() {

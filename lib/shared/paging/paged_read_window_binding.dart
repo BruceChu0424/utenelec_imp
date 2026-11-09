@@ -12,6 +12,7 @@ class PagedReadWindowSession<T> {
   bool get pending => _core.pending;
   bool get failed => _core.failed;
   bool get empty => _core.empty;
+  bool get growing => _core.growing;
 
   void invalidate() => _core.invalidate();
   void beginRead() {
@@ -26,10 +27,16 @@ class PagedReadWindowSession<T> {
     } else {
       _core.pending = false;
       _core.failed = true;
+      _core.growing = false;
     }
   }
 
-  PagedResult<T> bindResult(PagedResult<T> result, {bool pending = false}) {
+  /// [growing] marks progressive rows of a complete read still continuing.
+  PagedResult<T> bindResult(
+    PagedResult<T> result, {
+    bool pending = false,
+    bool growing = false,
+  }) {
     if (result.items.isEmpty && !isIndependentPagedRows(result.items)) {
       result = result.withRowsFrom(
         const <Object?>[],
@@ -46,6 +53,7 @@ class PagedReadWindowSession<T> {
     }
     _core.pending = pending;
     _core.failed = false;
+    _core.growing = growing;
     _core.empty = !pending && result.items.isEmpty;
     _readOwners[result.items] = PagedReadWindowBinding<T>._(_core, null);
     return result;
@@ -62,6 +70,10 @@ class PagedReadWindowBinding<T> {
   bool get pending => _core.pending;
   bool get failed => _core.failed;
   bool get empty => _core.empty;
+
+  /// The rows are a validated prefix of a complete read that is still
+  /// loading; the complete result replaces them as a whole.
+  bool get growing => _core.growing && _core.isCurrent;
 
   bool sameSession(PagedReadWindowBinding<Object?>? other) =>
       other != null &&
@@ -105,10 +117,12 @@ class _ResultOwner {
   bool pending = false;
   bool failed = false;
   bool empty = false;
+  bool growing = false;
   bool get isCurrent => _valid && ownerCurrent();
   void invalidate() {
     _valid = false;
     pending = false;
     failed = false;
+    growing = false;
   }
 }

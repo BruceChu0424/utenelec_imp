@@ -706,7 +706,7 @@ public class CompanyFileService implements CompanyFileHistoryAccessPort {
 
     public List<Principal> principals(String type, String search, int page, int size) {
         var plan = principalRead(type, search, null, false);
-        int limit = Math.clamp(size, 1, 100);
+        int limit = Math.clamp(size, 1, Pageables.MAX_PAGE_SIZE);
         return principalRows(plan, limit, (long) Math.max(0, page) * limit);
     }
 

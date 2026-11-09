@@ -64,7 +64,7 @@ public class FinancePayableStatementAdjustmentService implements FinancePayableS
     /** Legacy callers receive both axes. A versioned transport reads only its
      * explicitly requested axis, without repeating the other first page. */
     private Map<String,Object> choiceParts(Context context,int page,int size,int adjustmentPage,String part){
-        read();var original=original(context);int p=Math.max(1,page),s=Math.max(1,Math.min(100,size));
+        read();var original=original(context);int p=Math.max(1,page),s=Math.max(1,Math.min(Pageables.MAX_PAGE_SIZE,size));
         var result=new LinkedHashMap<String,Object>();
         result.put("original",Map.of("reviewId",original.reviewId(),"documentSha256",original.documentSha256(),"periodAmountOriginal",original.periodAmount().toPlainString(),"dateFrom",original.dateFrom(),"dateTo",original.dateTo()));
         if(!"adjustments".equals(part)){

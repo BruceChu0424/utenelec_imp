@@ -261,7 +261,17 @@ class _GoodsPriceAnalysisPageState extends ConsumerState<GoodsPriceAnalysisPage>
         _error = null;
       });
       try {
-        final result = await _readCompleteHistory(1, isCurrent: accepts);
+        final result = await _readCompleteHistory(
+          1,
+          isCurrent: accepts,
+          onProgressiveBatch: (partial) {
+            if (!accepts() || !_allowed || !_historyOnly || !mounted) return;
+            setState(() {
+              _historyPage = partial;
+              _historyTableMode = true;
+            });
+          },
+        );
         if (!accepts() || !_allowed || !_historyOnly) return;
         acceptNativeRead();
         final selectedId = preserveSelection ? _selectedRow?.identity : null;
@@ -615,11 +625,11 @@ class _GoodsPriceAnalysisPageState extends ConsumerState<GoodsPriceAnalysisPage>
     await _navigation.push(path);
   }
 
-  Map<String, dynamic> _tableParameters(int page) => {
+  Map<String, dynamic> _tableParameters(int page, {int size = 100}) => {
     'kind': _kind,
     ..._filters,
     'page': page,
-    'size': 100,
+    'size': size,
     if (_tableSort != null) 'sort': _tableSort,
     'ascending': _tableAscending,
     'filters': jsonEncode(_tableFilters),
@@ -628,6 +638,7 @@ class _GoodsPriceAnalysisPageState extends ConsumerState<GoodsPriceAnalysisPage>
     int page, {
     bool useCache = false,
     bool Function()? isCurrent,
+    void Function(PagedResult<PriceObservation> partial)? onProgressiveBatch,
   }) {
     final repository = ref.read(priceAnalysisRepositoryProvider);
     final goodsId = widget.goodsId;
@@ -649,6 +660,11 @@ class _GoodsPriceAnalysisPageState extends ConsumerState<GoodsPriceAnalysisPage>
       idOf: (row) => row.identity,
       fetchPage: (target) =>
           repository.historyTable(goodsId, {...parameters, 'page': target}),
+      fetchPageSized: (target, size) => repository.historyTable(
+        goodsId,
+        {...parameters, 'page': target, 'size': size},
+      ),
+      onProgressiveBatch: onProgressiveBatch,
     );
   }
 
@@ -672,6 +688,20 @@ class _GoodsPriceAnalysisPageState extends ConsumerState<GoodsPriceAnalysisPage>
         page,
         useCache: useCache,
         isCurrent: () => owns() && revision == _historyRevision,
+        onProgressiveBatch: (partial) {
+          if (!mounted ||
+              !owns() ||
+              !_allowed ||
+              identity != _identity ||
+              revision != _historyRevision ||
+              !nativeReadAccessConfirmed) {
+            return;
+          }
+          setState(() {
+            _historyPage = partial;
+            _historyTableMode = true;
+          });
+        },
       );
       if (!mounted ||
           !owns() ||

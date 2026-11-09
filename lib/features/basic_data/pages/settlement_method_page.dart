@@ -225,6 +225,24 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage>
           keyword: keyword,
           filters: filters,
         ),
+        fetchPageSized: (target, size) => repository.settlementAdminPage(
+          page: target,
+          size: size,
+          keyword: keyword,
+          filters: filters,
+        ),
+        onProgressiveBatch: (partial) {
+          if (!mounted ||
+              !inlineAcceptsRead(inlineReadBoundary) ||
+              !_loadRequests.isCurrent(generation) ||
+              epoch != ref.read(exportContextEpochProvider)) {
+            return;
+          }
+          setState(() {
+            _page = partial;
+            _items = partial.items;
+          });
+        },
       );
       if (!mounted ||
           !inlineAcceptsRead(inlineReadBoundary) ||

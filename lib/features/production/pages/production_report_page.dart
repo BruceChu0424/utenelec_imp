@@ -96,6 +96,12 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
   bool _loading = false;
   int _loadGeneration = 0;
 
+  /// Growing rows of the in-flight complete read (progressive prefix). Never
+  /// accepted: [ReportPagedRead.accept] and the accepted endpoint/query/page
+  /// fields only move on the complete result; totals/export stay on [_data].
+  ReportData? _partialData;
+  PagedResult<Map<String, dynamic>>? _lastNotifiedPage;
+
   /// 「返回即刷新」登记用的本页路径（build 首次捕获）。
   String? _myLocation;
 
@@ -110,14 +116,35 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
 
   @override
   void dispose() {
+    _reportPages.removeListener(_onReportPagesChanged);
     _reportRead.dispose();
     _reportPages.dispose();
     super.dispose();
   }
 
+  /// The controller publishes each growing batch while its complete read
+  /// continues; rows only — [ReportPagedRead.accept]/totals/export still wait
+  /// for the final result assigned in [_load].
+  void _onReportPagesChanged() {
+    // An accepted result is kept during a reread; only a fresh read grows.
+    if (!mounted || _data != null) return;
+    final page = _reportPages.page;
+    final partial = page is ReportPageSnapshot ? page.snapshot : null;
+    if (partial == null) {
+      if (_partialData == null) return;
+      _lastNotifiedPage = null;
+      setState(() => _partialData = null);
+      return;
+    }
+    if (identical(partial.rows, _lastNotifiedPage?.items)) return;
+    _lastNotifiedPage = page;
+    setState(() => _partialData = partial);
+  }
+
   @override
   void initState() {
     super.initState();
+    _reportPages.addListener(_onReportPagesChanged);
     // Keep the monotonic reader epoch observed for this page's whole lifetime.
     ref.listenManual(exportContextEpochProvider, (previous, next) {
       if (!mounted || previous == next) return;
@@ -270,11 +297,12 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
 
     // Status counts share the same current query, independently of its pages.
     refreshDocumentStatusCounts(ref, _statusScope, force: !reuseMetadata);
+    _partialData = null;
     final pending = _reportPages.load(
       requestedPage,
       silent: background && _data != null,
       fetch: () => fetchPage(requestedPage),
-      fetchPage: fetchPage,
+      fetchComplete: () => fetchPage(requestedPage),
       isCurrent: current,
       ownerIsCurrent: queryCurrent,
     );
@@ -286,6 +314,8 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
     final failure = _reportPages.refreshError ?? _reportPages.error;
     setState(() {
       _loading = false;
+      _partialData = null;
+      _lastNotifiedPage = null;
       if (_reportPages.page == null) {
         _data = null;
       } else if (failure == null && _reportRead.accept(_reportPages.page)) {
@@ -492,7 +522,9 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
   }
 
   Widget _buildTable() {
-    final source = _data ?? _reportMetadata.loadingData;
+    // During a fresh complete read the growing prefix renders immediately; the
+    // accepted result (totals/export) still waits for the final snapshot.
+    final source = _data ?? _partialData ?? _reportMetadata.loadingData;
     final matches =
         _acceptedEndpoint == _readEndpoint &&
         const DeepCollectionEquality().equals(_acceptedQuery, _readQuery);

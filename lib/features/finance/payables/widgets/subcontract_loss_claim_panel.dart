@@ -149,6 +149,43 @@ class _SubcontractLossClaimPanelState
             rebuildSnapshot: response.withPage,
           );
         },
+        fetchPageSized: (target, size) async {
+          final response = await repo.list(
+            status: status,
+            keyword: keyword,
+            page: target,
+            size: size,
+            sort: sort,
+            order: order,
+            wasteBillNo: wasteBillNo,
+          );
+          return PagedReadSnapshot<
+            SubcontractLossClaimSummary,
+            SubcontractLossClaimPageResult
+          >(
+            page: PagedResult(
+              items: response.items,
+              page: response.page,
+              size: response.size,
+              total: response.total,
+              totalPages: response.totalPages,
+            ),
+            snapshot: response,
+            rebuildSnapshot: response.withPage,
+          );
+        },
+        onProgressiveBatch: (partial) {
+          if (!mounted || !_requests.isCurrent(generation)) return;
+          setState(() {
+            _result =
+                (partial
+                        as PagedReadSnapshot<
+                          SubcontractLossClaimSummary,
+                          SubcontractLossClaimPageResult
+                        >)
+                  .snapshot;
+          });
+        },
       );
       final result =
           (cachedPage

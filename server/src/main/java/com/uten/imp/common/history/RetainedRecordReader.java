@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.common.domain.SoftDeletableEntity;
 import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.common.web.Pageables;
 import jakarta.persistence.EntityManager;
 import java.time.Instant;
 import java.time.OffsetDateTime;
@@ -95,7 +96,7 @@ public class RetainedRecordReader {
                                      java.util.Set<String> sourceTables) {
         if(sourceTables!=null && sourceTables.isEmpty())return List.of();
         java.util.Set<String> allowed=sourceTables==null?null:java.util.Set.copyOf(sourceTables);
-        int bounded = Math.max(1, Math.min(size, 100));
+        int bounded = Math.max(1, Math.min(size, Pageables.MAX_PAGE_SIZE));
         String sql="""
                 WITH RECURSIVE owned(id,source_table,source_id) AS (
                     SELECT id,source_table,source_id FROM business_record_history

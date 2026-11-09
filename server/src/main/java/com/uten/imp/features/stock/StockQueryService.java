@@ -350,14 +350,24 @@ public class StockQueryService {
             throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED,"即时库存不支持所选候选字段");
         }
         PageResponse<InstantInventoryRow> rows = instantPage(sql, page, size, sort, order);
+        // 逐批完整读取(2026-11-08)：首批带合计与表头桶，续批按共享读取计划
+        // includeTotals=false&includeFacets=false 只取同口径的行与计数；
+        // 合计/桶仍是首批在整个结果集上算的服务端值，客户端不对批次求和。
+        var readPlan = com.uten.imp.common.report.ReportReadPlan.current();
+        if (!readPlan.includeTotals() && !readPlan.includeFacets()) {
+            return rows;
+        }
 
         // 表格下方合计：把 core(= 列表查询本体，已含分类子树/仓库范围/含不良品仓开关/关键字
         // 全部过滤条件)原样包成派生表再聚合——**和表格显示的是同一批行**，不带 LIMIT/OFFSET，
         // 所以是整个结果集的合计而不是当前这一页。绑定参数与 dataQ/countQ 逐个对齐，
         // 任何一个筛选变化都会同时改变列表和合计，不可能对不上。
-        List<com.uten.imp.common.report.ReportTotal> totals =
+        List<com.uten.imp.common.report.ReportTotal> totals = readPlan.totals(() ->
                 com.uten.imp.common.report.ReportTotalsCalculator.compute(
-                        em, sql.core(), "", "", sql::bindAll, INSTANT_TOTAL_SPECS);
+                        em, sql.core(), "", "", sql::bindAll, INSTANT_TOTAL_SPECS));
+        if (!readPlan.includeFacets()) {
+            return new com.uten.imp.common.web.TotaledPageResponse<>(rows, totals, java.util.Map.of(), java.util.Map.of());
+        }
         // 归属仓库 facet：在同一口径(未应用归属筛选本身)的 core 上聚合，
         // 行粒度=货品×颜色(与列表行一致)，空归属由 nullCounts 单独计。
         var facetQ = em.createNativeQuery(instantFacetSql(sql,"owningWarehouse")+" ORDER BY c DESC,label ASC LIMIT 50");

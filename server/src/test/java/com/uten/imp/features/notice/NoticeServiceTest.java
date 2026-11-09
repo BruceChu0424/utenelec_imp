@@ -284,7 +284,7 @@ class NoticeServiceTest {
                 ArgumentCaptor.forClass(Pageable.class);
         verify(noticeRepository).findVisibleArrivalsAfter(
                 eq(userId), eq(Instant.EPOCH), eq(zeroId), any(), pageable.capture());
-        assertEquals(101, pageable.getValue().getPageSize());
+        assertEquals(201, pageable.getValue().getPageSize());
     }
 
     @Test
@@ -1204,19 +1204,19 @@ class NoticeServiceTest {
     }
 
     @Test
-    void listBlessingsRetainsALegalNativeLongOffsetAndItsFiftyRowMaximum() {
+    void listBlessingsRetainsALegalNativeLongOffsetAndItsTwoHundredRowMaximum() {
         UUID noticeId = UUID.randomUUID();
         stubVisibleBroadcast(noticeId);
-        long offset = (long) Integer.MAX_VALUE * 50;
+        long offset = (long) Integer.MAX_VALUE * 200;
         when(blessRepo.countByNoticeId(noticeId)).thenReturn(offset + 1);
-        when(blessRepo.findPage(noticeId, 50, offset)).thenReturn(List.of(
+        when(blessRepo.findPage(noticeId, 200, offset)).thenReturn(List.of(
                 blessingRow(UUID.randomUUID(), "原顺序", "保留长offset", userId)));
 
         NoticeService.BlessingPage result = service.listBlessings(noticeId, Integer.MAX_VALUE, Integer.MAX_VALUE);
 
         assertEquals(offset + 1, result.count());
         assertEquals(1, result.items().size());
-        verify(blessRepo).findPage(noticeId, 50, offset);
+        verify(blessRepo).findPage(noticeId, 200, offset);
     }
 
     @Test

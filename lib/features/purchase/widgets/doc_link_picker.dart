@@ -229,10 +229,20 @@ Future<PurchaseLinkPickResult?> showDocLinkPicker(
         },
         serverColumnSearchKeys: const {'billNo', 'supplier'},
         listDocsWithFilters:
-            (ref, page, keyword, supplierId, sort, order, filters) => ref
+            (
+              ref,
+              page,
+              keyword,
+              supplierId,
+              sort,
+              order,
+              filters, {
+              int size = 20,
+            }) => ref
                 .read(purchaseRepositoryProvider(upstream))
                 .list(
                   page: page,
+                  size: size,
                   // 业务约束：只引入已审单（草稿/红冲不可引入）。
                   filter: PurchaseDocFilter(
                     keyword: keyword,

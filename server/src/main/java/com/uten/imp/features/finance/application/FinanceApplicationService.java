@@ -167,7 +167,7 @@ public class FinanceApplicationService {
 
     @Transactional(readOnly=true)
     public Map<String,Object> list(String queue,String search,int page,int size){
-        var actor=roles.staff();if(!canEnter(actor))throw new ApiException(ErrorCode.FORBIDDEN);page=Math.max(1,page);size=Math.max(1,Math.min(100,size));
+        var actor=roles.staff();if(!canEnter(actor))throw new ApiException(ErrorCode.FORBIDDEN);page=Math.max(1,page);size=Math.max(1,Math.min(Pageables.MAX_PAGE_SIZE,size));
         if(!Set.of("mine","pending","payment","history").contains(queue))throw invalid("申请分类不存在");
         boolean operational=roles.has(actor,FinanceApplicationPermissions.EXECUTE)||roles.has(actor,FinanceApplicationPermissions.CONFIRM)||roles.has(actor,FinanceApplicationPermissions.REVERSE);
         var readScope=reads.predicate("a",actor);String scope=readScope.sql();

@@ -38,7 +38,9 @@ class _FakeVisitorStaffRepository extends Fake
     return PagedResult(
       items: items,
       page: page,
-      size: size,
+      // This server keeps its own one-row page size whatever the reader asks;
+      // the shared reader detects it and continues the complete read on it.
+      size: 1,
       // Both pages describe the same dataset, so accepting page two must not
       // manufacture a count change that retires the prepared read window.
       total: items.length + (nextPage == null ? 0 : 1),
@@ -132,7 +134,7 @@ void main() {
             _application('second', VisitorApplicationStatus.hostReviewing),
           ],
           page: 2,
-          size: 20,
+          size: 1,
           total: 2,
           totalPages: 2,
         ),
@@ -208,7 +210,7 @@ void main() {
             _application('second', VisitorApplicationStatus.hostReviewing),
           ],
           page: 2,
-          size: 20,
+          size: 1,
           total: 2,
           totalPages: 2,
         ),

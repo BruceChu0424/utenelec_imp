@@ -51,7 +51,10 @@ void main() {
       await tester.tap(find.text('打开贷项'));
       await tester.pumpAndSettle();
       expect(api.pages, [1, 2, 3]);
-      expect(api.requestedSizes, everyElement(200));
+      // Progressive complete read (2026-11-08): the first batch forwards the
+      // plan's 50; this server answers with its own page size (1), so the
+      // reader continues on exactly that size — every row once.
+      expect(api.requestedSizes, [50, 1, 1]);
       expect(api.statuses, everyElement('OPEN'));
       expect(
         find.byKey(const ValueKey('supplier-offset-target-payable-1')),
@@ -162,7 +165,9 @@ void main() {
       await tester.pump(const Duration(seconds: 1));
       expect(api.pages, [1, 2, 3, 1, 2]);
       expect(api.statuses, everyElement('OPEN'));
-      expect(api.requestedSizes, everyElement(200));
+      // Each fresh complete read starts at the plan's 50 and continues on the
+      // server's own page size (1).
+      expect(api.requestedSizes, [50, 1, 1, 50, 1]);
       expect(tester.takeException(), isNull);
     },
   );

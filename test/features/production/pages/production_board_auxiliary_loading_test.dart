@@ -12,10 +12,26 @@ import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart
 import 'package:uten_imp/features/production/pages/production_board_page.dart';
 import 'package:uten_imp/features/production/repositories/production_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/paging/complete_paged_snapshot.dart'
+    show CompleteReadBatchPlan;
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 import '../../../helpers/badge_summary_fixture.dart';
+
+/// The (page, size) requests of one complete read under the shared
+/// progressive plan: 50 → 50 → 100 → 200 …, each batch at its exact offset.
+List<(int, int)> _progressiveBatches(int total) {
+  const plan = CompleteReadBatchPlan.progressive;
+  final batches = <(int, int)>[];
+  var offset = 0;
+  do {
+    final size = plan.sizeAt(offset);
+    batches.add((offset ~/ size + 1, size));
+    offset += size;
+  } while (offset < total);
+  return batches;
+}
 
 const _emptyPage = <String, dynamic>{
   'items': <Object?>[],
@@ -53,6 +69,8 @@ class _Api extends ApiClient {
     }
     if (path == '/production/plans/progress' && completeProgress) {
       progressQueries.add({...?query});
+      // An offset-exact server: the requested (page, size) slice of one fixed
+      // 251-row dataset, with total and totalPages echoed for that size.
       final page = query!['page'] as int;
       final size = query['size'] as int;
       return {
@@ -63,7 +81,7 @@ class _Api extends ApiClient {
         'page': page,
         'size': size,
         'total': 251,
-        'totalPages': 3,
+        'totalPages': (251 + size - 1) ~/ size,
       };
     }
     if (path == '/production/plans/progress/summary') return summary.future;
@@ -118,20 +136,22 @@ void main() {
     (tester) async {
       final api = _Api()..completeProgress = true;
       await _mount(tester, api);
+      // One complete read of 251 summaries in the shared progressive ladder:
+      // (1,50) (2,50) (2,100) (2,200), each batch at its exact offset.
+      final batches = _progressiveBatches(251);
       await tester.tap(find.text('历史记录'));
       for (
         var frame = 0;
-        frame < 200 && api.progressQueries.length < 3;
+        frame < 200 && api.progressQueries.length < batches.length;
         frame++
       ) {
         await tester.pump(const Duration(milliseconds: 16));
       }
       await tester.pumpAndSettle();
-      expect(api.progressQueries.map((query) => query['page']), [1, 2, 3]);
-      expect(
-        api.progressQueries.every((query) => query['size'] == 100),
-        isTrue,
-      );
+      expect([
+        for (final query in api.progressQueries)
+          (query['page'] as int, query['size'] as int),
+      ], batches);
       expect(find.text('20 条/页'), findsNothing);
       expect(find.text('50 条/页'), findsNothing);
       final list = find.byType(ListView).last;
@@ -151,7 +171,7 @@ void main() {
       expect(find.byType(Card).evaluate().length, lessThan(40));
       position.jumpTo(0);
       await tester.pumpAndSettle();
-      expect(api.progressQueries, hasLength(3));
+      expect(api.progressQueries, hasLength(batches.length));
       expect(tester.takeException(), isNull);
     },
   );

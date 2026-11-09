@@ -1289,11 +1289,12 @@ void main() {
       'PREPARING',
       'IN_PROGRESS',
     ]);
+    // 2026-11-08 阶梯完整读取：首批 (1,50)。
     expect(
       repository.requests.every(
         (query) =>
             query['page'] == 1 &&
-            query['size'] == 100 &&
+            query['size'] == 50 &&
             query['keyword'] == '' &&
             query['workshopDepartmentId'] == null &&
             query['preparationFilter'] == null &&
@@ -1477,11 +1478,12 @@ void main() {
       'COMPLETED',
       'IN_PROGRESS',
     ]);
+    // 2026-11-08 阶梯完整读取：每个分类查询都从首批 (1,50) 开始。
     expect(
       repository.batchQueries.every(
         (query) =>
             query['page'] == 1 &&
-            query['size'] == 100 &&
+            query['size'] == 50 &&
             query['workshopDepartmentId'] == null,
       ),
       isTrue,

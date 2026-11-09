@@ -1,0 +1,35 @@
+{
+  "schema": "uten-complete-read-batch-plan-v1",
+  "description": "Shared Dart/Java cases for complete-list batch plans (2026-11-08 user decision: first batch 50 rows, later batches grow aligned to 200). Every request is [page, size] with offset == (page - 1) * size; consecutive requests cover the rows exactly once. 'fixed' plans keep one size.",
+  "plans": {
+    "progressive": { "firstBatchSize": 50, "maxBatchSize": 200 },
+    "fixed100": { "firstBatchSize": 100, "maxBatchSize": 100 }
+  },
+  "cases": [
+    { "plan": "progressive", "total": 0, "requests": [[1, 50]] },
+    { "plan": "progressive", "total": 1, "requests": [[1, 50]] },
+    { "plan": "progressive", "total": 50, "requests": [[1, 50]] },
+    { "plan": "progressive", "total": 51, "requests": [[1, 50], [2, 50]] },
+    { "plan": "progressive", "total": 100, "requests": [[1, 50], [2, 50]] },
+    { "plan": "progressive", "total": 101, "requests": [[1, 50], [2, 50], [2, 100]] },
+    { "plan": "progressive", "total": 200, "requests": [[1, 50], [2, 50], [2, 100]] },
+    { "plan": "progressive", "total": 201, "requests": [[1, 50], [2, 50], [2, 100], [2, 200]] },
+    { "plan": "progressive", "total": 400, "requests": [[1, 50], [2, 50], [2, 100], [2, 200]] },
+    { "plan": "progressive", "total": 401, "requests": [[1, 50], [2, 50], [2, 100], [2, 200], [3, 200]] },
+    {
+      "plan": "progressive",
+      "total": 1000,
+      "requests": [[1, 50], [2, 50], [2, 100], [2, 200], [3, 200], [4, 200], [5, 200]]
+    },
+    {
+      "plan": "progressive",
+      "total": 35763,
+      "requestCount": 181,
+      "firstRequests": [[1, 50], [2, 50], [2, 100], [2, 200], [3, 200]],
+      "lastRequest": [179, 200],
+      "lastRows": 163
+    },
+    { "plan": "fixed100", "total": 0, "requests": [[1, 100]] },
+    { "plan": "fixed100", "total": 250, "requests": [[1, 100], [2, 100], [3, 100]] }
+  ]
+}

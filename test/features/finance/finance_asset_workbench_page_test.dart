@@ -14,6 +14,8 @@ import 'package:uten_imp/features/finance/repositories/finance_asset_overview_re
 import 'package:uten_imp/features/finance/repositories/finance_asset_workbench_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
+import 'package:uten_imp/shared/paging/complete_paged_snapshot.dart'
+    show CompleteReadBatchPlan;
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/drafts/form_draft_category.dart';
 import 'package:uten_imp/shared/drafts/form_draft_store.dart';
@@ -619,10 +621,16 @@ void main() {
       );
       await tester.tap(find.text('月末处理'));
       await tester.pumpAndSettle();
-      expect(repository.runQueries, [
-        (page: 1, size: 100),
-        (page: 2, size: 100),
-      ]);
+      // 120 runs in the shared progressive plan's exact aligned batches:
+      // (1,50) (2,50) (2,100) — every run read exactly once.
+      const plan = CompleteReadBatchPlan.progressive;
+      final batches = <({int page, int size})>[];
+      for (var offset = 0; offset < 120;) {
+        final size = plan.sizeAt(offset);
+        batches.add((page: offset ~/ size + 1, size: size));
+        offset += size;
+      }
+      expect(repository.runQueries, batches);
       final rows = tester.widget<UtenAncestorRowWindow<AssetPostingRun>>(
         find.byType(UtenAncestorRowWindow<AssetPostingRun>),
       );
@@ -646,10 +654,7 @@ void main() {
       );
       position.jumpTo(0);
       await tester.pumpAndSettle();
-      expect(repository.runQueries, [
-        (page: 1, size: 100),
-        (page: 2, size: 100),
-      ]);
+      expect(repository.runQueries, batches);
       expect(tester.takeException(), isNull);
     },
   );

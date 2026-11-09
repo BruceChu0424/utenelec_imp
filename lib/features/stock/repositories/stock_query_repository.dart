@@ -92,9 +92,12 @@ class StockQueryRepository {
   /// warehouseRelatedOnly 仅保留所选仓范围内有余额或收货记录的货品+颜色，
   /// 用于仓库资料内的库存表，避免全公司零库存货品占位。
   /// 行动清单使用专用路由，旧服务端必须明确失败，不能把忽略规则的全量数据当风险。
+  /// [includeMetadata]=false 只取同口径的行与计数(完整读取的续批)，合计与表头桶
+  /// 只在首批由服务端在整个结果集上计算。
   Future<PagedResult<InstantInventoryRow>> instantInventory({
     int page = 1,
     int size = 20,
+    bool includeMetadata = true,
     String? categoryId,
     String? warehouseId,
     bool includeDefective = false,
@@ -115,6 +118,7 @@ class StockQueryRepository {
   }) => _instantInventory.instantInventory(
     page: page,
     size: size,
+    includeMetadata: includeMetadata,
     categoryId: categoryId,
     warehouseId: warehouseId,
     includeDefective: includeDefective,

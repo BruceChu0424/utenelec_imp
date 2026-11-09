@@ -255,7 +255,7 @@ void main() {
             (r.path == '/master/${kind}s/summaries' ||
                 r.path == '/master/${kind}s' ||
                 r.path == '/master/${kind}s/search') &&
-            _parameters(r)['size'] == 100 &&
+            _parameters(r)['size'] == kProgressiveSummaryStreamSize &&
             _parameters(r)['page'] == 1,
       );
       expect(_parameters(query).containsKey('categoryId'), isFalse);
@@ -274,7 +274,7 @@ void main() {
             (r.path == '/master/${kind}s/summaries' ||
                 r.path == '/master/${kind}s' ||
                 r.path == '/master/${kind}s/search') &&
-            _parameters(r)['size'] == 100,
+            _parameters(r)['size'] == kProgressiveSummaryStreamSize,
       );
       expect(_parameters(scoped)['categoryId'], 'cat-b');
       expect(_parameters(scoped)['page'], 1);

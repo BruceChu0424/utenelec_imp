@@ -7,6 +7,7 @@ import com.uten.imp.common.util.KeywordSearch;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.common.web.Pageables;
 import jakarta.persistence.EntityManager;
 import com.uten.imp.common.report.ReportExportCursor;
 import com.uten.imp.common.report.ReportReadPlan;
@@ -643,7 +644,7 @@ public class ProductionWhereUsedQueryService {
     public PageResponse<WhereUsedMaterialOption> searchWhereUsedMaterials(
             String keyword, String categoryId, int page, int size,boolean includeRelated) {
         int safePage = Math.max(1, page);
-        int safeSize = Math.min(Math.max(1, size), 50);
+        int safeSize = Math.min(Math.max(1, size), Pageables.MAX_PAGE_SIZE);
         String normalizedKeyword = KeywordSearch.phrase(keyword);
         String normalizedCategory = normalizeMaterialCategory(categoryId);
         if (normalizedKeyword.isEmpty() && normalizedCategory == null) {

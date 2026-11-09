@@ -6,6 +6,7 @@ import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.util.NativeValueConverters;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.web.Pageables;
 import com.uten.imp.features.stock.StockDocAccessPolicy;
 import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialScope;
 import com.uten.imp.security.ProductionStockTaskAccessPolicy;
@@ -364,7 +365,7 @@ public class WarehouseOutboundTaskCenterQueryService {
         order = order == null ? "desc" : order.toLowerCase(Locale.ROOT);
         if (!Set.of("asc", "desc").contains(order)) throw new ApiException(ErrorCode.VALIDATION_FAILED, "排序方向不正确");
         return new Filter(source, status, keyword, billNo, filter.dateFrom(), filter.dateTo(), filter.scopeWarehouseId(),
-                Math.max(1, filter.page()), Math.max(1, Math.min(100, filter.size())), sort, order, filter.view(), filter.columnSearch());
+                Math.max(1, filter.page()), Math.max(1, Math.min(Pageables.MAX_PAGE_SIZE, filter.size())), sort, order, filter.view(), filter.columnSearch());
     }
 
     private static String clean(String value) { return value == null || value.isBlank() ? null : value.trim(); }

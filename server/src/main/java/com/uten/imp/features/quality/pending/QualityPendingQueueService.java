@@ -9,6 +9,7 @@ import com.uten.imp.common.util.KeywordSearch;
 import com.uten.imp.common.util.TaskKeywordSearch;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.web.Pageables;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
@@ -62,7 +63,7 @@ public class QualityPendingQueueService {
             }
         }
         if(plans.isEmpty())throw new ApiException(ErrorCode.FORBIDDEN);
-        int size=Math.max(1,Math.min(100,request.size()==null?10:request.size()));
+        int size=Math.max(1,Math.min(Pageables.MAX_PAGE_SIZE,request.size()==null?10:request.size()));
         int wanted=Math.max(1,request.page()==null?1:request.page());
         String keyword=KeywordSearch.phrase(request.keyword());
         if(keyword.length()>500)throw invalid("搜索内容过长");

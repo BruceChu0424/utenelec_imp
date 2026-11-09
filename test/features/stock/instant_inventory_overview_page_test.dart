@@ -171,7 +171,11 @@ void main() {
     _expectScope(risk);
     expect(summary['size'], 1);
     expect(summary['attention'], isNull);
-    expect(risk['size'], 100);
+    // 2026-11-08 阶梯完整读取：风险明细首批 (1,50) 并带合计/分面元数据。
+    expect(risk['page'], 1);
+    expect(risk['size'], 50);
+    expect(risk.containsKey('includeTotals'), isFalse);
+    expect(risk.containsKey('includeFacets'), isFalse);
     expect(risk['attention'], 'NEGATIVE_BALANCE');
     expect(risk['sort'], 'negativeBalanceCount');
     expect(risk['order'], 'desc');

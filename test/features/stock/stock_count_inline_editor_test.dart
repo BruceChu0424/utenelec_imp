@@ -21,6 +21,8 @@ import 'package:uten_imp/features/warehouse/materialbin/pages/workshop_material_
 import 'package:uten_imp/features/warehouse/materialbin/repositories/workshop_material_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
+import 'package:uten_imp/shared/paging/complete_paged_snapshot.dart'
+    show CompleteReadBatchPlan;
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 import 'instant_inventory_test_fixture.dart';
@@ -246,9 +248,13 @@ void main() {
         expect(editor.error, isNull);
         expect(editor.rows.values.single.snapshot.qty, '90071992547409.1235');
         expect(repo.candidateWarehouses, everyElement(_normal.id));
+        // Retry keeps the original goods chunking (≤50 ids per batch) and the
+        // shared progressive first batch size; these small reads end there.
         expect(
           repo.candidateBatches.every(
-            (batch) => batch.$1.length <= 50 && batch.$3 == 100,
+            (batch) =>
+                batch.$1.length <= 50 &&
+                batch.$3 == CompleteReadBatchPlan.progressive.firstBatchSize,
           ),
           isTrue,
         );
@@ -270,7 +276,8 @@ void main() {
       await editor.ensureRows(ids);
       expect(editor.rows, hasLength(51));
       expect(repo.candidateBatches.map((batch) => batch.$1.length), [50, 1]);
-      expect(repo.candidateBatches.map((batch) => batch.$3), [100, 100]);
+      // Each 50-goods chunk completes in the progressive first batch (1,50).
+      expect(repo.candidateBatches.map((batch) => batch.$3), [50, 50]);
       expect(
         editor.rows.values.every(
           (row) => row.snapshot.qty == '1.000000000000000000000001',

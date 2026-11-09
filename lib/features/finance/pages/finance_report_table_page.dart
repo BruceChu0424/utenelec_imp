@@ -152,6 +152,12 @@ class _FinanceReportTablePageState extends ConsumerState<FinanceReportTablePage>
   int _loadGeneration = 0;
   String? _error;
 
+  /// Growing rows of the in-flight complete read (progressive prefix). Never
+  /// accepted: [ReportPagedRead.accept], [_acceptedReadQuery] and the totals/
+  /// document metadata below the table only move on the complete result.
+  ReportData? _partialData;
+  PagedResult<Map<String, dynamic>>? _lastNotifiedPage;
+
   /// 「返回即刷新」登记用的本页路径（build 首次捕获）。
   String? _myLocation;
 
@@ -170,6 +176,7 @@ class _FinanceReportTablePageState extends ConsumerState<FinanceReportTablePage>
 
   @override
   void dispose() {
+    _reportPages.removeListener(_onReportPagesChanged);
     _reportRead.dispose();
     _reportPages.dispose();
     super.dispose();
@@ -178,6 +185,7 @@ class _FinanceReportTablePageState extends ConsumerState<FinanceReportTablePage>
   @override
   void initState() {
     super.initState();
+    _reportPages.addListener(_onReportPagesChanged);
     // Keep the monotonic reader epoch observed for this page's whole lifetime.
     ref.listenManual(exportContextEpochProvider, (previous, next) {
       if (!mounted || previous == next) return;
@@ -186,6 +194,7 @@ class _FinanceReportTablePageState extends ConsumerState<FinanceReportTablePage>
         _reportRead.invalidate();
         ++_loadGeneration;
         _data = null;
+        _partialData = null;
         _acceptedReadQuery = null;
         _loading = false;
         _keyword = '';
@@ -223,6 +232,7 @@ class _FinanceReportTablePageState extends ConsumerState<FinanceReportTablePage>
     _reportPages.invalidateReadOwner(notify: false);
     _reportRead.invalidate();
     _data = null;
+    _partialData = null;
     _acceptedReadQuery = null;
     _loading = true;
     _keyword = '';
@@ -593,6 +603,25 @@ class _FinanceReportTablePageState extends ConsumerState<FinanceReportTablePage>
       ...sortQueryParams(_sortKey, _sortAsc),
   };
 
+  /// Progressive prefix of the running complete read: only a page object the
+  /// controller newly published while still loading (never the stale result a
+  /// fresh load keeps until its first batch, never the accepted result) feeds
+  /// [_partialData]. The complete result and failures replace/clear it whole.
+  void _onReportPagesChanged() {
+    if (!mounted) return;
+    final page = _reportPages.page;
+    if (identical(page, _lastNotifiedPage)) return;
+    _lastNotifiedPage = page;
+    final partial =
+        _reportPages.loading &&
+            page is ReportPageSnapshot &&
+            !identical(page.snapshot, _data)
+        ? page.snapshot
+        : null;
+    if (identical(partial, _partialData)) return;
+    setState(() => _partialData = partial);
+  }
+
   Future<void> _load({
     bool background = false,
     bool refreshContexts = false,
@@ -619,6 +648,7 @@ class _FinanceReportTablePageState extends ConsumerState<FinanceReportTablePage>
       _reportPages.invalidateReadOwner(notify: false);
       setState(() {
         _data = null;
+        _partialData = null;
         _acceptedReadQuery = null;
         _loading = false;
         _error = null;
@@ -687,6 +717,7 @@ class _FinanceReportTablePageState extends ConsumerState<FinanceReportTablePage>
         ++_loadGeneration;
         setState(() {
           _data = null;
+          _partialData = null;
           _acceptedReadQuery = null;
           _retainedSchemaVersion = null;
           _error = error.message;
@@ -704,11 +735,17 @@ class _FinanceReportTablePageState extends ConsumerState<FinanceReportTablePage>
       }
     }
 
+    // A new read starts from its own batches; a superseded read's prefix never
+    // stands in for the pending query.
+    _partialData = null;
     final pending = _reportPages.load(
       1,
       silent: background && _data != null,
       fetch: () => fetchPage(1),
-      fetchPage: fetchPage,
+      // The nested report reader returns the whole result itself (first batch
+      // 50, then aligned up to 200) and publishes each growing prefix through
+      // the controller while the read continues.
+      fetchComplete: () => fetchPage(1),
       isCurrent: current,
       ownerIsCurrent: queryCurrent,
     );
@@ -722,6 +759,7 @@ class _FinanceReportTablePageState extends ConsumerState<FinanceReportTablePage>
     setState(() {
       _loading = false;
       _error = failure;
+      _partialData = null;
       if (_reportPages.page == null) {
         final failureCause = readFailure;
         final ownerRetired =
@@ -1557,9 +1595,13 @@ class _FinanceReportTablePageState extends ConsumerState<FinanceReportTablePage>
   }
 
   Widget _buildTable() {
+    // While the complete read is still running, its validated prefix renders
+    // as growing pending rows; totals/statistics and the document metadata
+    // below the table wait for the complete accepted result.
+    final showingPartial = _partialData != null;
     final data = _acceptedQueryCurrent && _data != null
         ? _data!
-        : (_data?.pendingQuery() ?? _reportMetadata.loadingData);
+        : (_partialData ?? _data?.pendingQuery() ?? _reportMetadata.loadingData);
     // 状态列前置（全站口径）：列元数据来自服务端，客户端映射时把「状态」类列
     // （单据状态/审核状态等）排到最前，其余列保持服务端顺序；两个分区各自保持
     // 原有相对顺序。
@@ -1640,8 +1682,10 @@ class _FinanceReportTablePageState extends ConsumerState<FinanceReportTablePage>
         .toList();
     final pendingNotes = _pendingSourceNotes;
     final totalsBar = reportTotalsBar(
-      data.totals,
-      statisticsGeneratedAt: data.statisticsGeneratedAt,
+      showingPartial ? const [] : data.totals,
+      statisticsGeneratedAt: showingPartial
+          ? null
+          : data.statisticsGeneratedAt,
     );
     return LayoutBuilder(
       builder: (context, tableConstraints) =>
@@ -2004,16 +2048,18 @@ class _FinanceReportTablePageState extends ConsumerState<FinanceReportTablePage>
                 : '暂无报表数据',
             // 服务端分页表格：合计由后端在整个结果集上算（reportTotalsBar），
             // 不是对当前这一页求和；后端未声明合计列时返回 null，整条不渲染。
-            summaryBar: data.documentMetadata.isEmpty
-                ? totalsBar
-                : Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      ?totalsBar,
-                      if (data.documentMetadata.isNotEmpty)
-                        _documentMetadata(data, header: false),
-                    ],
-                  ),
+            summaryBar: showingPartial
+                ? null
+                : (data.documentMetadata.isEmpty
+                      ? totalsBar
+                      : Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            ?totalsBar,
+                            if (data.documentMetadata.isNotEmpty)
+                              _documentMetadata(data, header: false),
+                          ],
+                        )),
             currentPage: data.page,
             totalPages: data.totalPages,
             paginationScope: (

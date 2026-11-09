@@ -183,11 +183,11 @@ class DraftWorkspaceRead<T> {
   /// The server's page identity and completeness checks remain authoritative.
   /// Each validated page is projected before requesting the next one.
   Future<void> loadPages<R>(
-    Future<PagedResult<R>> Function(int page) fetch,
+    Future<PagedResult<R>> Function(int page, int size) fetch,
     Future<List<T>> Function(List<R> rows) project,
   ) async {
     await loadCompletePagedResult<R>(
-      loadPage: (page, size) => fetch(page),
+      loadPage: fetch,
       isCurrent: () => current,
       onPage: (response) async {
         _requireCurrent();

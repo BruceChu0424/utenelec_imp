@@ -299,6 +299,14 @@ class _SalesShipmentTaskWorkbenchState
       _error = null;
       _page = requestedPage;
     });
+    // A failed read takes its progressive rows down and restores what was on
+    // screen before (the table keys its read error on empty rows).
+    var showedProgressive = false;
+    final beforeProgressive = _result;
+    void retireProgressive() {
+      if (showedProgressive) _result = beforeProgressive;
+    }
+
     try {
       final pageRepository = ref.read(
         salesRepositoryProvider(SalesDocType.shipment),
@@ -344,6 +352,20 @@ class _SalesShipmentTaskWorkbenchState
           sort: pageSort,
           order: pageOrder,
         ),
+        fetchPageSized: (target, size) => pageRepository.list(
+          page: target,
+          size: size,
+          filter: pageFilter,
+          sort: pageSort,
+          order: pageOrder,
+        ),
+        // Rows only: selection, client names and query acceptance wait for
+        // the complete result.
+        onProgressiveBatch: (partial) {
+          if (!current()) return;
+          showedProgressive = true;
+          setState(() => _result = partial);
+        },
       );
       if (!current()) return;
       unawaited(
@@ -364,6 +386,7 @@ class _SalesShipmentTaskWorkbenchState
     } on ApiException catch (error) {
       if (!current()) return;
       setState(() {
+        retireProgressive();
         if ({401, 403}.contains(error.httpStatus)) {
           _result = null;
           _columnFilters.reset();
@@ -375,6 +398,7 @@ class _SalesShipmentTaskWorkbenchState
     } catch (_) {
       if (!current()) return;
       setState(() {
+        retireProgressive();
         _error = _isFinance ? '出货财务审核任务加载失败' : '销售出库任务加载失败';
         _loading = false;
       });

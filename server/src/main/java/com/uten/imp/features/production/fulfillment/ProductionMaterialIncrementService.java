@@ -10,6 +10,7 @@ import com.uten.imp.common.util.NativeValueConverters;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.common.web.Pageables;
 import com.uten.imp.features.production.ProductionDocumentAccessPolicy;
 import com.uten.imp.features.production.ProductionWorkshopMembership;
 import com.uten.imp.features.production.plan.ProductionPlanMutationFootprintService;
@@ -157,7 +158,7 @@ public class ProductionMaterialIncrementService {
         var count=em.createNativeQuery("SELECT count(*) FROM production_material_increment_requests request WHERE "+predicate);
         readScope.bind(count);
         if(!"ALL".equals(filter))count.setParameter("status",filter);
-        long total=((Number)count.getSingleResult()).longValue();int boundedSize=Math.min(Math.max(size,1),100),boundedPage=Math.max(page,1);
+        long total=((Number)count.getSingleResult()).longValue();int boundedSize=Math.min(Math.max(size,1),Pageables.MAX_PAGE_SIZE),boundedPage=Math.max(page,1);
         var query=em.createNativeQuery(PROJECTION+" WHERE "+predicate+" ORDER BY request.submitted_at DESC,request.id DESC LIMIT :size OFFSET :offset")
                 .setParameter("size",boundedSize).setParameter("offset",(long)(boundedPage-1)*boundedSize);
         readScope.bind(query);

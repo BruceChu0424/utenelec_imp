@@ -280,6 +280,22 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage>
           sort: pageColumns.sort,
           ascending: pageColumns.ascending,
         ),
+        fetchPageSized: (target, size) => pageRepository.list(
+          reviewRoute: pageReviewRoute,
+          status: pageStatus,
+          scopeWarehouseId: pageScopeWarehouseId,
+          keyword: pageKeyword,
+          page: target,
+          size: size,
+          columns: pageColumns.searches,
+          sort: pageColumns.sort,
+          ascending: pageColumns.ascending,
+        ),
+        // Rows only: selection pruning waits for the complete result.
+        onProgressiveBatch: (partial) {
+          if (!mounted || sequence != _sequence) return;
+          setState(() => _page = partial);
+        },
       );
       if (mounted && sequence == _sequence) {
         setState(() {

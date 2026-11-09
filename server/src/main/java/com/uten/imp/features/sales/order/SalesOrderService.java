@@ -471,7 +471,7 @@ public class SalesOrderService {
     public PageResponse<OrderProgressRow> progress(
             int page, int size, String stage, String keyword, LocalDate dateFrom, LocalDate dateTo,
             String sort, String order, String billNo) {
-        int safeSize = Math.max(1, Math.min(size, 100));
+        int safeSize = Math.max(1, Math.min(size, Pageables.MAX_PAGE_SIZE));
         int safePage = Math.max(1, page);
         String normalizedStage = normalizeProgressStage(stage);
         String normalizedKeyword = KeywordSearch.phrase(keyword);

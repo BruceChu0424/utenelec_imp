@@ -134,6 +134,9 @@ class _WarehouseQualityResultsPageState
   }
 
   PagedResult<WarehouseQualityResultTask>? _result;
+
+  /// 当前 [_result] 是否为逐批渐进行（失败即整体下撤，不留半截列表）。
+  bool _progressiveRows = false;
   Object? _acceptedQuery;
   bool _loading = false;
   String? _error;
@@ -450,12 +453,34 @@ class _WarehouseQualityResultsPageState
           billNo: pageBillNo,
           scopeWarehouseId: pageScopeWarehouseId,
         ).read(ref, pageRepository),
+        fetchPageSized: (target, size) => WarehouseQualityPageQuery(
+          page: target,
+          size: size,
+          view: pageView,
+          receiptType: pageReceiptType,
+          workStatus: pageWorkStatus,
+          keyword: pageKeyword,
+          dateFrom: pageDateFrom,
+          dateTo: pageDateTo,
+          sort: pageSort,
+          order: pageOrder,
+          billNo: pageBillNo,
+          scopeWarehouseId: pageScopeWarehouseId,
+        ).read(ref, pageRepository),
+        onProgressiveBatch: (partial) {
+          if (!current()) return;
+          setState(() {
+            _result = partial;
+            _progressiveRows = true;
+          });
+        },
       );
       // 单号 facets 与列表同口径（2026-09-25 单号列统一）；失败静默（下拉降级为空）。
 
       if (!current()) return;
       setState(() {
         _result = result;
+        _progressiveRows = false;
         _acceptedQuery = query;
         _loading = false;
       });
@@ -470,12 +495,20 @@ class _WarehouseQualityResultsPageState
           _statusCounts = null;
           _selectedIds = {};
         }
+        if (_progressiveRows) {
+          _result = null;
+          _progressiveRows = false;
+        }
         _error = error.message;
         _loading = false;
       });
     } catch (_) {
       if (!current()) return;
       setState(() {
+        if (_progressiveRows) {
+          _result = null;
+          _progressiveRows = false;
+        }
         _error = '品质检查结果加载失败，请检查网络后重试';
         _loading = false;
       });

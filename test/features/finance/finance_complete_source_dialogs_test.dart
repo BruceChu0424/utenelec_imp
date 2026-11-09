@@ -19,6 +19,8 @@ import 'package:uten_imp/features/finance/widgets/finance_procurement_confirmati
 import 'package:uten_imp/features/finance/widgets/finance_statement_document_dialog.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
+import 'package:uten_imp/shared/paging/complete_paged_snapshot.dart'
+    show CompleteReadBatchPlan;
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
@@ -55,6 +57,22 @@ MasterDataTableView<Map<String, dynamic>> _value(
   WidgetTester tester,
   String key,
 ) => tester.widget<MasterDataTableView<Map<String, dynamic>>>(_table(key));
+
+/// The exact (page, size) batches the shared progressive plan reads for a
+/// complete source of [total] rows: 50, 50, 100, 200 … at aligned offsets.
+List<({int page, int size})> _progressiveBatches(int total) {
+  const plan = CompleteReadBatchPlan.progressive;
+  final batches = <({int page, int size})>[];
+  for (var offset = 0; offset < total;) {
+    final size = plan.sizeAt(offset);
+    batches.add((page: offset ~/ size + 1, size: size));
+    offset += size;
+  }
+  return batches;
+}
+
+/// The 251-row fixture's batches: (1,50) (2,50) (2,100) (2,200).
+final _complete = _progressiveBatches(251);
 
 Future<void> _mount(
   WidgetTester tester,
@@ -196,7 +214,12 @@ void main() {
       });
       const key = 'finance.auxiliary.directory.v1';
       expect(_value(tester, key).items, hasLength(251));
-      expect(api.reads.map((r) => r.$2['page']), ['1', '2', '3']);
+      expect(api.reads.map((r) => r.$2['page']), [
+        for (final batch in _complete) '${batch.page}',
+      ]);
+      expect(api.reads.map((r) => r.$2['size']), [
+        for (final batch in _complete) '${batch.size}',
+      ]);
       expect(
         api.reads.every((r) => r.$2['accountCode'] == '1122-original'),
         isTrue,
@@ -239,7 +262,7 @@ void main() {
       expect(selected?['accountingCurrencyId'], 'book-cny-original');
       expect(selected?['amountExact'], _exact);
       expect(selected?['version'], 37);
-      expect(api.reads, hasLength(3));
+      expect(api.reads, hasLength(_complete.length));
       expect(api.writes, isEmpty);
     },
   );
@@ -290,18 +313,15 @@ void main() {
       expect(_value(tester, offsets).items, hasLength(251));
       expect(_value(tester, offsets).items.last['offsetId'], 'offset-250');
       final references = api.reads.where((r) => r.$1.endsWith('/references'));
-      expect(
-        references
-            .where((r) => r.$2['kind'] == 'cash')
-            .map((r) => r.$2['page']),
-        ['1', '2', '3'],
-      );
-      expect(
-        references
-            .where((r) => r.$2['kind'] == 'offsets')
-            .map((r) => r.$2['page']),
-        ['1', '2', '3'],
-      );
+      for (final kind in ['cash', 'offsets']) {
+        final reads = references.where((r) => r.$2['kind'] == kind);
+        expect(reads.map((r) => r.$2['page']), [
+          for (final batch in _complete) '${batch.page}',
+        ]);
+        expect(reads.map((r) => r.$2['size']), [
+          for (final batch in _complete) '${batch.size}',
+        ]);
+      }
       await _tail(tester, api, cash, '收付款250');
       await _tail(tester, api, offsets, 'offset-250');
       expect(api.writes, isEmpty);
@@ -343,14 +363,20 @@ void main() {
         ),
         isTrue,
       );
+      // The PENDING read's batches come first, then the HISTORY read's.
       expect(
-        api.reads.take(3).every((r) => r.$2['status'] == 'PENDING'),
+        api.reads
+            .take(_complete.length)
+            .every((r) => r.$2['status'] == 'PENDING'),
         isTrue,
       );
       expect(
-        api.reads.skip(3).every((r) => !r.$2.containsKey('status')),
+        api.reads
+            .skip(_complete.length)
+            .every((r) => !r.$2.containsKey('status')),
         isTrue,
       );
+      expect(api.reads, hasLength(_complete.length * 2));
       expect(api.writes, isEmpty);
     },
   );
@@ -371,7 +397,7 @@ void main() {
         _value(tester, 'finance-statement-documents-REVIEWS').items,
         hasLength(251),
       );
-      expect(api.reads, hasLength(3));
+      expect(api.reads, hasLength(_complete.length));
       expect(api.reads.every((r) => r.$1.endsWith('/reviews/query')), isTrue);
       expect(api.readBodies, everyElement(_scope));
       for (final kind in ['OWN', 'COUNTERPART', 'CONTEXT']) {
@@ -429,8 +455,9 @@ void main() {
         hasLength(1),
       );
       final original = api.reads.where((r) => r.$1.endsWith('/original-table'));
-      expect(original.map((r) => r.$2['page']), [1, 2, 3]);
-      expect(original.every((r) => r.$2['size'] == 100), isTrue);
+      expect(original.map((r) => (page: r.$2['page'], size: r.$2['size'])), [
+        for (final batch in _complete) (page: batch.page, size: batch.size),
+      ]);
       expect(api.writes, isEmpty);
     },
   );
@@ -444,12 +471,20 @@ void main() {
       });
       const key = 'finance.material-context.picker.v1';
       expect(_value(tester, key).items, isEmpty);
+      // The first batch read and published; the second batch failed.
       expect(api.reads.map((r) => r.$2['page']), [1, 2]);
       api.failSecond = false;
       _value(tester, key).onRetry!();
       await tester.pumpAndSettle();
       expect(_value(tester, key).items, hasLength(251));
-      expect(api.reads.map((r) => r.$2['page']), [1, 2, 1, 2, 3]);
+      expect(api.reads.map((r) => r.$2['page']), [
+        1,
+        2,
+        for (final batch in _complete) batch.page,
+      ]);
+      expect(api.reads.skip(2).map((r) => r.$2['size']), [
+        for (final batch in _complete) batch.size,
+      ]);
     },
   );
 
@@ -468,7 +503,17 @@ void main() {
         MaterialPageRoute(builder: (_) => const Scaffold(body: Text('覆盖页'))),
       );
       await tester.pumpAndSettle();
-      final old = api.page('/finance/material-statements', 2, 100);
+      // The held request is the second progressive batch.
+      final held = api.reads.last.$2;
+      expect(
+        (page: held['page'], size: held['size']),
+        (page: _complete[1].page, size: _complete[1].size),
+      );
+      final old = api.page(
+        '/finance/material-statements',
+        _complete[1].page,
+        _complete[1].size,
+      );
       final pending = api.second!;
       api.second = null;
       api.version = 2;
@@ -481,7 +526,11 @@ void main() {
       final table = _value(tester, 'finance.material-context.picker.v1');
       expect(table.items, hasLength(251));
       expect(table.items.every((row) => row['version'] == 38), isTrue);
-      expect(api.reads.map((r) => r.$2['page']), [1, 2, 1, 2, 3]);
+      expect(api.reads.map((r) => r.$2['page']), [
+        1,
+        2,
+        for (final batch in _complete) batch.page,
+      ]);
       expect(api.writes, isEmpty);
     },
   );

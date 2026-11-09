@@ -12,6 +12,7 @@ import 'package:uten_imp/features/procurement_iqc_rejection/pages/procurement_iq
 import 'package:uten_imp/features/procurement_iqc_rejection/repositories/procurement_iqc_rejection_repository.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/paging/paged_read_window_binding.dart';
 
 void main() {
   for (final duplicate in [false, true]) {
@@ -40,8 +41,12 @@ void main() {
         MasterDataTableView<ProcurementIqcRejectionCase> table() =>
             tester.widget(find.byKey(const Key('iqc-rejection-task-table')));
         if (duplicate) {
-          expect(table().items, isEmpty);
-          expect(table().error, isNotNull);
+          // 首批 50 行校验通过即 provisional 展示；第二批重复身份使整个
+          // 会话退休（半截列表不得当作当前结果），首读失败内联提示后整体重读。
+          final partial = table().items;
+          expect(partial, isNotEmpty);
+          expect(readWindowBindingOf(partial)!.isCurrent, isFalse);
+          expect(find.text('无法加载 IQC 不合格任务'), findsOneWidget);
           expect(gateway.filters.map((filter) => filter.page), [1, 2]);
           gateway.duplicateSecondPage = false;
           table().onRetry!();
@@ -54,11 +59,15 @@ void main() {
           '90071992547409.123456789012',
         );
         expect(table().items.last.currencyCode, 'USD');
+        // 2026-11-08 阶梯完整读取：201 行 = 50 → 50 → 100 → 200（末批 1 行）。
         expect(
           gateway.filters.map((filter) => filter.page),
-          duplicate ? [1, 2, 1, 2, 3] : [1, 2, 3],
+          duplicate ? [1, 2, 1, 2, 2, 2] : [1, 2, 2, 2],
         );
-        expect(gateway.filters.map((filter) => filter.size), everyElement(100));
+        expect(
+          gateway.filters.map((filter) => filter.size),
+          duplicate ? [50, 50, 50, 50, 100, 200] : [50, 50, 100, 200],
+        );
         final reads = gateway.filters.length;
         final rows = table().items;
         final scrollable = find.byWidget(
@@ -308,7 +317,8 @@ void main() {
         'receiptType': 'SUBCONTRACT',
         'status': 'FINANCE_EXCEPTION',
         'page': '1',
-        'size': '100',
+        // 阶梯完整读取首批固定 50 行。
+        'size': '50',
       });
       expect(find.textContaining('G-001'), findsWidgets);
       table().onFilterChanged('receiptType', null);

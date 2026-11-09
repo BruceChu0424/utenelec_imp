@@ -32,6 +32,7 @@ import 'package:uten_imp/features/subcontract/pages/subcontract_report_table_pag
 import 'package:uten_imp/features/warehouse/config/warehouse_report_config.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_report_table_page.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/paging/complete_paged_snapshot.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
@@ -319,8 +320,11 @@ class _ReportApi extends ApiClient with NativeFacetFakeTransport {
         ],
       };
     }
-    final size = (parameters['size'] as int? ?? 50).clamp(1, 50).toInt();
-    final total = pages == 2 ? 51 : pages * size;
+    // The complete reader walks the progressive ladder (50→50→100→200…), so
+    // the fake honors whatever (page, size) was requested while the fixture
+    // total stays a stable pages × 50 rows.
+    final size = (parameters['size'] as int? ?? 50).clamp(1, 1000).toInt();
+    final total = pages == 2 ? 51 : pages * 50;
     final offset = (page - 1) * size;
     return {
       'readScopeVersion': 'fixture-v1',
@@ -922,14 +926,24 @@ void main() {
           expect(table().currentPage, 1);
         }
         if (const {'statement', 'account', 'ar-ap'}.contains(entry.key)) {
+          // 4000 rows walk the progressive ladder 50→50→100→200…, each batch
+          // one exact server page of its own size:
+          // (1,50) (2,50) (2,100) (2,200) (3,200) … (20,200).
+          const longTotal = 80 * 50;
+          final ladderPages = <int>[];
+          for (var offset = 0; offset < longTotal;) {
+            final size = CompleteReadBatchPlan.progressive.sizeAt(offset);
+            ladderPages.add(offset ~/ size + 1);
+            offset += (longTotal - offset).clamp(0, size);
+          }
           api.pages = 80;
           final beforeLongRead = api.queries.length;
           table().onRetry!();
           await tester.pumpAndSettle();
-          expect(table().items, hasLength(4000));
+          expect(table().items, hasLength(longTotal));
           expect(
             api.queries.skip(beforeLongRead).map((query) => query['page']),
-            [for (var page = 1; page <= 80; page++) page],
+            ladderPages,
           );
           final beforeScroll = api.queries.length;
           await tester.drag(finder, const Offset(0, -200000));
@@ -947,7 +961,7 @@ void main() {
           );
           expect(
             api.queries.skip(beforeRefresh).map((query) => query['page']),
-            [for (var page = 1; page <= 80; page++) page],
+            ladderPages,
           );
         }
         expect(tester.takeException(), isNull);

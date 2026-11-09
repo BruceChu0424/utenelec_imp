@@ -5,6 +5,7 @@ import 'package:flutter/widgets.dart';
 
 import '../../../core/network/api_exception.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/paging/paged_read_intent.dart';
 import '../../../shared/paging/scoped_paged_read.dart';
 import '../../../shared/paging/read_view_activity.dart';
 import 'report_data.dart';
@@ -236,6 +237,10 @@ class ReportPageRead {
       _isCurrent();
 
   Future<PagedResult<Map<String, dynamic>>> read(int page) async {
+    // An outer complete reader (fetchComplete) offers its progressive slot:
+    // this report read owns the rows, so its batches are published there.
+    final slot = PagedReadIntent.currentProgressive;
+    final publish = slot != null && slot.claim() ? slot.publish : null;
     try {
       final fresh = _freshRead;
       _freshRead = false;
@@ -245,12 +250,16 @@ class ReportPageRead {
           page,
           scope: _scope,
           fetchPage: _read,
+          fetchPageSized: _read,
           isCurrent: () => !_owner._disposed && _isCurrent(),
           useCache: !fresh,
           revalidateWindow: !_revalidatingWindow,
           canPrefetch: () =>
               !_revalidatingWindow && (_canPrefetch?.call() ?? true),
           onPrefetchError: _onPrefetchError,
+          onProgressiveBatch: publish == null
+              ? null
+              : (partial) => publish(partial as PagedResult<Object?>),
         ),
       );
     } catch (error) {
@@ -259,10 +268,10 @@ class ReportPageRead {
     }
   }
 
-  Future<PagedResult<Map<String, dynamic>>> _read(int page) async {
+  Future<PagedResult<Map<String, dynamic>>> _read(int page, [int? size]) async {
     try {
       final candidate = _candidate.fork();
-      final json = await _fetch(candidate.queryForPage(page));
+      final json = await _fetch(candidate.queryForPage(page, size: size));
       if (!isCurrent()) throw StateError('Report query changed');
       var report = candidate.merge(
         await parseReportResponseResponsive(json, page, isCurrent: isCurrent),
@@ -287,7 +296,7 @@ class ReportPageRead {
       // serial window transaction omit duplicate counts/statistics; only
       // ReportPagedRead.accept publishes metadata to the visible controller.
       _candidate = candidate;
-      return ReportPageSnapshot._(report, _size, candidate, this);
+      return ReportPageSnapshot._(report, size ?? _size, candidate, this);
     } on ApiException {
       rethrow;
     } catch (error) {

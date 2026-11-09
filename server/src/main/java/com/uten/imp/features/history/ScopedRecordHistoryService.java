@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.common.util.KeywordSearch;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.web.Pageables;
 import com.uten.imp.application.port.CompanyFileHistoryAccessPort;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.SecurityContextCurrentUser;
@@ -48,7 +49,7 @@ public class ScopedRecordHistoryService {
     public Page search(Area area, Filters filters) {
         authorize(area);
         validate(filters);
-        int size = Math.clamp(filters.size(), 1, 100);
+        int size = Math.clamp(filters.size(), 1, Pageables.MAX_PAGE_SIZE);
         long cursor = filters.cursor() == null ? Long.MAX_VALUE : filters.cursor();
         List<Entry> visible = new ArrayList<>(size + 1);
         // Scan in bounded batches. A hidden fact never consumes a visible page slot,

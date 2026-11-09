@@ -133,6 +133,19 @@ class _RateListState extends ConsumerState<ProductionOverproductionRateListPage>
           planNo: requestedPlan,
           segmentCode: requestedSegment,
         ),
+        fetchPageSized: (target, size) => repository.list(
+          status: requestedStatus,
+          page: target,
+          size: size,
+          sort: requestedSort,
+          order: requestedOrder,
+          planNo: requestedPlan,
+          segmentCode: requestedSegment,
+        ),
+        onProgressiveBatch: (partial) {
+          if (!mounted || request != _request) return;
+          setState(() => _data = partial);
+        },
       );
       // 单号 facets 与列表同上下文（不含单号自身筛选）；失败不阻断列表。
 

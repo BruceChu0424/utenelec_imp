@@ -248,7 +248,7 @@ class ProductionWhereUsedQueryServiceTest {
         var result = service().searchWhereUsedMaterials("  ", categoryId.toString(), -3, 500);
 
         assertThat(result.getPage()).isEqualTo(1);
-        assertThat(result.getSize()).isEqualTo(50);
+        assertThat(result.getSize()).isEqualTo(200);
         assertThat(result.getItems()).singleElement().satisfies(item -> {
             assertThat(item.autoCreated()).isTrue();
             assertThat(item.deleted()).isTrue();
@@ -258,7 +258,7 @@ class ProductionWhereUsedQueryServiceTest {
             assertThat(item.series()).isNull();
         });
         verify(pageQuery).setParameter("categoryId", categoryId);
-        verify(pageQuery).setParameter("__limit", 50);
+        verify(pageQuery).setParameter("__limit", 200);
         verify(pageQuery).setParameter("__offset", 0L);
         verify(pageQuery, never()).setParameter(org.mockito.ArgumentMatchers.eq("materialKeyword"), any());
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);

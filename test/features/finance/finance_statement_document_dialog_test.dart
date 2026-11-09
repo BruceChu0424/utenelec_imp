@@ -77,15 +77,17 @@ void main() {
         isTrue,
       );
       expect(table.items.map(table.idOf!).toSet(), hasLength(251));
-      expect(api.originalQueries.map((q) => q['page']), [1, 2, 3]);
-      expect(api.originalQueries.every((q) => q['size'] == 100), isTrue);
+      // Complete-read ladder (2026-11-08): 50 then aligned 50/100/200 batches;
+      // every row read exactly once, no scroll-triggered reads.
+      expect(api.originalQueries.map((q) => q['page']), [1, 2, 2, 2]);
+      expect(api.originalQueries.map((q) => q['size']), [50, 50, 100, 200]);
       expect(table.currentPage, 1);
       expect(table.totalPages, 1);
       final body = utenTestTableBodyController(tester, finder);
       body.position.jumpTo(body.position.maxScrollExtent);
       await tester.pumpAndSettle();
       expect(body.position.pixels, greaterThan(0));
-      expect(api.originalQueries, hasLength(3));
+      expect(api.originalQueries, hasLength(4));
       expect(api.commands, isEmpty);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
@@ -146,14 +148,16 @@ void main() {
       expect(api.originalQueries.map((query) => query['page']), [
         1,
         2,
-        3,
+        2,
+        2,
         1,
         2,
-        3,
+        2,
+        2,
       ]);
       expect(
-        api.originalQueries.every((query) => query['size'] == 100),
-        isTrue,
+        api.originalQueries.map((query) => query['size']),
+        [50, 50, 100, 200, 50, 50, 100, 200],
       );
       expect(table().currentPage, 1);
       expect(table().totalPages, 1);
@@ -225,7 +229,7 @@ void main() {
             .widget<MasterDataTableView<Map<String, dynamic>>>(finder);
         expect(accepted.items, hasLength(251));
         expect(accepted.error, isNull);
-        expect(api.originalQueries.map((q) => q['page']), [1, 2, 1, 2, 3]);
+        expect(api.originalQueries.map((q) => q['page']), [1, 2, 1, 2, 2, 2]);
         expect(api.commands, isEmpty);
         expect(tester.takeException(), isNull);
         await tester.pumpWidget(const SizedBox());

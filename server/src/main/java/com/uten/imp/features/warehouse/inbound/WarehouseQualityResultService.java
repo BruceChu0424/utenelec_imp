@@ -9,6 +9,7 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.NativeFacets;
 import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.common.web.Pageables;
 import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.ReleasedSlice;
 import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.InboundAllocation;
 import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.StockInHistoryItem;
@@ -321,7 +322,7 @@ public class WarehouseQualityResultService {
             WarehouseTaskScope warehouseScope,
             TaskView view) {
         int normalizedPage = Math.max(page, 1);
-        int normalizedSize = Math.min(Math.max(size, 1), 100);
+        int normalizedSize = Math.min(Math.max(size, 1), Pageables.MAX_PAGE_SIZE);
         String workStatus = normalizeStatus(status);
         String type = normalizeFilterType(receiptType);
         String search = normalizeSearch(keyword);

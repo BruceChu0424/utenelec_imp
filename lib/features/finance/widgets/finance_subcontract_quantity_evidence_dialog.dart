@@ -149,29 +149,46 @@ class _EvidenceDirectoryState extends ConsumerState<_EvidenceDirectory>
       _busy = true;
       _error = null;
     });
+    var partialRows = false;
     try {
       final api = ref.read(apiClientProvider),
           guard = await api.captureRequestScope(isCurrent: () => _current);
-      final result = await readViewActivity.runRead(
-        () => _current,
-        () => guard.run(
-          () => loadCompletePagedResult<Map<String, dynamic>>(
-            isCurrent: () => _current && guard.isCurrent,
-            idOf: (row) => row['id'],
-            loadPage: (page, size) async =>
-                PagedResult.fromJsonResponsive<Map<String, dynamic>>(
-                  await api.get(
-                    _base,
-                    query: {...widget.scope, 'page': page, 'size': size},
-                  ),
-                  (row) => row,
-                ),
-          ),
-        ),
-      );
+      final result = await readViewActivity
+          .runRead(
+            () => _current,
+            () => guard.run(
+              () => loadCompletePagedResult<Map<String, dynamic>>(
+                isCurrent: () => _current && guard.isCurrent,
+                idOf: (row) => row['id'],
+                loadPage: (page, size) async =>
+                    PagedResult.fromJsonResponsive<Map<String, dynamic>>(
+                      await api.get(
+                        _base,
+                        query: {...widget.scope, 'page': page, 'size': size},
+                      ),
+                      (row) => row,
+                    ),
+                onProgressiveBatch: (partial) {
+                  if (!_current || !guard.isCurrent) return;
+                  setState(() {
+                    _rows = partial.items;
+                    partialRows = true;
+                  });
+                },
+              ),
+            ),
+          )
+          .catchError((Object error, StackTrace stack) {
+            // 逐批前缀不是完整结果：失败时整体下撤，不能留半张清单。
+            if (partialRows && _current) {
+              setState(() => _rows = []);
+            }
+            Error.throwWithStackTrace(error, stack);
+          });
       if (_current && guard.isCurrent) {
         setState(() {
           _rows = result.items;
+          partialRows = false;
         });
       }
     } catch (e) {
@@ -1391,44 +1408,61 @@ class _EvidencePickerState extends ConsumerState<_EvidencePicker>
       _busy = true;
       _error = null;
     });
+    var partialRows = false;
     try {
       final api = ref.read(apiClientProvider),
           guard = await api.captureRequestScope(isCurrent: () => _current);
       final group = widget.kind == 'GROUP';
       final keyword = _q.text;
-      final result = await readViewActivity.runRead(
-        () => _current,
-        () => guard.run(
-          () => loadCompletePagedResult<Map<String, dynamic>>(
-            isCurrent: () => _current && guard.isCurrent,
-            idOf: (row) => _pickerIdentity(row, widget.kind),
-            loadPage: (page, size) async =>
-                PagedResult.fromJsonResponsive<Map<String, dynamic>>(
-                  await api.get(
-                    group
-                        ? '/finance/subcontract-loss-policies/source-choices'
-                        : '$_base/sources',
-                    query: {
-                      if (group)
-                        'supplierId': widget.scope['supplierId']
-                      else
-                        ...widget.scope,
-                      if (!group) 'kind': widget.kind,
-                      if (widget.orderItemId != null)
-                        'orderItemId': widget.orderItemId,
-                      'keyword': keyword,
-                      'page': page,
-                      'size': size,
-                    },
-                  ),
-                  (row) => row,
-                ),
-          ),
-        ),
-      );
+      final result = await readViewActivity
+          .runRead(
+            () => _current,
+            () => guard.run(
+              () => loadCompletePagedResult<Map<String, dynamic>>(
+                isCurrent: () => _current && guard.isCurrent,
+                idOf: (row) => _pickerIdentity(row, widget.kind),
+                loadPage: (page, size) async =>
+                    PagedResult.fromJsonResponsive<Map<String, dynamic>>(
+                      await api.get(
+                        group
+                            ? '/finance/subcontract-loss-policies/source-choices'
+                            : '$_base/sources',
+                        query: {
+                          if (group)
+                            'supplierId': widget.scope['supplierId']
+                          else
+                            ...widget.scope,
+                          if (!group) 'kind': widget.kind,
+                          if (widget.orderItemId != null)
+                            'orderItemId': widget.orderItemId,
+                          'keyword': keyword,
+                          'page': page,
+                          'size': size,
+                        },
+                      ),
+                      (row) => row,
+                    ),
+                onProgressiveBatch: (partial) {
+                  if (!_current || !guard.isCurrent) return;
+                  setState(() {
+                    _rows = partial.items;
+                    partialRows = true;
+                  });
+                },
+              ),
+            ),
+          )
+          .catchError((Object error, StackTrace stack) {
+            // 逐批前缀不是完整结果：失败时整体下撤，不能留半张清单。
+            if (partialRows && _current) {
+              setState(() => _rows = []);
+            }
+            Error.throwWithStackTrace(error, stack);
+          });
       if (_current && guard.isCurrent) {
         setState(() {
           _rows = result.items;
+          partialRows = false;
         });
       }
     } catch (e) {

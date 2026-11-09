@@ -33,7 +33,7 @@ public class FinanceSubcontractQuantityEvidenceService implements FinanceSubcont
     private record Validated(Input input,String scopeKey,String statementKey,SourceSnapshot source,SourceSnapshot material,BigDecimal applied,BigDecimal estimate,String estimateBasis) { }
     @Transactional(readOnly=true)
     public Map<String,Object> list(Scope scope,int page,int size){
-        read();scope(scope);int p=Math.max(1,page),s=Math.max(1,Math.min(100,size));
+        read();scope(scope);int p=Math.max(1,page),s=Math.max(1,Math.min(Pageables.MAX_PAGE_SIZE,size));
         var named=new org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate(db);var parameters=new HashMap<String,Object>(Map.of("partyId",scope.supplierId(),"from",scope.dateFrom(),"to",scope.dateTo()));
         String selection=" FROM finance_subcontract_quantity_evidence evidence WHERE "+scopeSelection();
         long total=Objects.requireNonNull(named.queryForObject("SELECT count(*)"+selection,parameters,Long.class));parameters.put("size",s);parameters.put("offset",(long)(p-1)*s);
@@ -52,7 +52,7 @@ public class FinanceSubcontractQuantityEvidenceService implements FinanceSubcont
         var args=new ArrayList<Object>();args.add(scope.supplierId());if(!linkedIssue){args.add(scope.dateFrom());}args.add(scope.dateTo());
         if(orderItemId!=null){from+=" AND item.order_item_id=?";args.add(orderItemId);}
         if(keyword!=null&&!keyword.isBlank()){from+=" AND lower(concat_ws(' ',document.bill_no,goods.code,goods.name)) LIKE '%'||lower(?)||'%'";args.add(keyword.strip());}
-        long total=Objects.requireNonNull(db.queryForObject("SELECT count(*)"+from,Long.class,args.toArray()));int p=Math.max(1,page),n=Math.max(1,Math.min(100,size));args.add(n);args.add((long)(p-1)*n);
+        long total=Objects.requireNonNull(db.queryForObject("SELECT count(*)"+from,Long.class,args.toArray()));int p=Math.max(1,page),n=Math.max(1,Math.min(Pageables.MAX_PAGE_SIZE,size));args.add(n);args.add((long)(p-1)*n);
         var ids=db.queryForList("SELECT item.id"+from+" ORDER BY COALESCE(item.bill_date,document.bill_date),document.bill_no,item.id LIMIT ? OFFSET ?",UUID.class,args.toArray());
         return Map.of("items",ids.stream().map(id->sourceChoice(new SourceRef(kind,id),scope.supplierId())).toList(),"page",p,"size",n,"total",total,"totalPages",(total+n-1)/n);
     }

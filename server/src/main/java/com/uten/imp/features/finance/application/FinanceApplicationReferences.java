@@ -28,7 +28,7 @@ public class FinanceApplicationReferences {
     @Transactional(readOnly=true)
     public PageResponse<Map<String,Object>> sourcesPage(String kind,String search,UUID supplier,UUID currency,int page,int size){
         var query=sourceQuery(kind,search,supplier,currency);
-        page=Math.max(1,page);size=Math.max(1,Math.min(100,size));
+        page=Math.max(1,page);size=Math.max(1,Math.min(Pageables.MAX_PAGE_SIZE,size));
         long total=db.queryForObject("SELECT count(*) FROM ("+query.sql()+") source_count",Long.class,query.args());
         var parameters=new ArrayList<>(Arrays.asList(query.args()));parameters.add(size);parameters.add((long)(page-1)*size);
         var rows=db.queryForList(query.sql()+" ORDER BY "+query.order()+" LIMIT ? OFFSET ?",parameters.toArray());

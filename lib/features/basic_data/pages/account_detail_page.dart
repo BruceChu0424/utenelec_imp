@@ -342,33 +342,50 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage>
       Map<String, String?>.of(_columnFilters.values),
     ];
     try {
+      Future<PagedReadSnapshot<AccountStatementRow, AccountStatementPage>>
+      readStatement(int target, int size) async {
+        final result = await repository.statement(
+          accountId: accountId,
+          dateFrom: from,
+          dateTo: to,
+          keyword: keyword,
+          page: target,
+          size: size,
+          billNo: billNo,
+          columnQuery: columnQuery,
+        );
+        return PagedReadSnapshot<AccountStatementRow, AccountStatementPage>(
+          page: PagedResult(
+            items: result.rows,
+            page: result.page,
+            size: result.size,
+            total: result.total,
+            totalPages: result.totalPages,
+          ),
+          snapshot: result,
+          rebuildSnapshot: result.withPage,
+        );
+      }
+
       final cached = await readScopedPage<AccountStatementRow>(
         page,
         query: pagingQuery(),
         currentQuery: pagingQuery,
         useCache: useCache,
-        fetchPage: (target) async {
-          final result = await repository.statement(
-            accountId: accountId,
-            dateFrom: from,
-            dateTo: to,
-            keyword: keyword,
-            page: target,
-            size: 100,
-            billNo: billNo,
-            columnQuery: columnQuery,
-          );
-          return PagedReadSnapshot<AccountStatementRow, AccountStatementPage>(
-            page: PagedResult(
-              items: result.rows,
-              page: result.page,
-              size: result.size,
-              total: result.total,
-              totalPages: result.totalPages,
-            ),
-            snapshot: result,
-            rebuildSnapshot: result.withPage,
-          );
+        fetchPage: (target) => readStatement(target, 100),
+        fetchPageSized: readStatement,
+        onProgressiveBatch: (partial) {
+          if (!mounted || !_flowRequests.isCurrent(generation)) return;
+          // 行流水按时间序逐行展示；余额是每行服务端值，前缀展示不改变语义。
+          setState(() {
+            _statement =
+                (partial
+                    as PagedReadSnapshot<
+                      AccountStatementRow,
+                      AccountStatementPage
+                    >)
+                  .snapshot;
+          });
         },
       );
       final result =

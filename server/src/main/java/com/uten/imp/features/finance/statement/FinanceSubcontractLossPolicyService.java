@@ -26,7 +26,7 @@ public class FinanceSubcontractLossPolicyService {
     private void read(){CurrentAuthorityGuard.requireAll("finance_report:view");FinanceCompanyReportAccess.require(access);}
     @Transactional(readOnly=true)
     public Map<String,Object> list(UUID supplierId,String keyword,int page,int size){
-        read();int p=Math.max(1,page),s=Math.max(1,Math.min(100,size));var values=new ArrayList<Object>();String where=" WHERE 1=1";
+        read();int p=Math.max(1,page),s=Math.max(1,Math.min(Pageables.MAX_PAGE_SIZE,size));var values=new ArrayList<Object>();String where=" WHERE 1=1";
         if(supplierId!=null){where+=" AND policy.supplier_id=?";values.add(supplierId);}
         if(keyword!=null&&!keyword.isBlank()){where+=" AND lower(concat_ws(' ',supplier.code,supplier.name,goods.code,goods.name,unit.code,unit.name)) LIKE '%'||lower(?)||'%'";values.add(keyword.strip());}
         String from=" FROM finance_subcontract_loss_policies policy JOIN suppliers supplier ON supplier.id=policy.supplier_id JOIN goods goods ON goods.id=policy.goods_id JOIN units unit ON unit.id=policy.unit_id LEFT JOIN colors color ON color.id=policy.color_id";
@@ -38,7 +38,7 @@ public class FinanceSubcontractLossPolicyService {
     @Transactional(readOnly=true)
     public Map<String,Object> sourceChoices(UUID supplierId,String keyword,int page,int size){
         read();if(supplierId==null)throw invalid("请先选择真实委外供应商");dictionary("suppliers",supplierId);
-        int p=Math.max(1,page),s=Math.max(1,Math.min(100,size));
+        int p=Math.max(1,page),s=Math.max(1,Math.min(Pageables.MAX_PAGE_SIZE,size));
         String candidates="""
             WITH dimensions AS (
               SELECT item.goods_id,item.color_id,item.unit_id,true AS actual_source

@@ -1096,31 +1096,48 @@ class _GlPickerState extends ConsumerState<_PayrollGlPicker>
     });
     try {
       Map<String, dynamic> first = const {};
+      var partialRows = false;
       bool current() => _current && read == _read;
-      final value = await readViewActivity.runRead(
-        current,
-        () => loadCompletePagedResult<Map<String, dynamic>>(
-          isCurrent: current,
-          idOf: (row) {
-            if (widget.kind == 'EXISTING_NON_CASH_VOUCHER') {
-              return row['voucherId'];
+      final value = await readViewActivity
+          .runRead(
+            current,
+            () => loadCompletePagedResult<Map<String, dynamic>>(
+              isCurrent: current,
+              idOf: (row) {
+                if (widget.kind == 'EXISTING_NON_CASH_VOUCHER') {
+                  return row['voucherId'];
+                }
+                final id = row['entryId'];
+                final allocation = row['allocationNo'];
+                return id == null || id.toString().isEmpty || allocation == null
+                    ? null
+                    : '$id|$allocation';
+              },
+              loadPage: (page, size) async {
+                final response = await _api.get(
+                  '$financeApplicationsApi/${widget.application['id']}/payroll-gl-sources/page',
+                  query: {...query, 'page': page, 'size': size},
+                );
+                if (page == 1) first = response;
+                return PagedResult.fromJson(response, (row) => row);
+              },
+              // 余额池（_pool）与依赖它的清偿入口仍等完整结果。
+              onProgressiveBatch: (partial) {
+                if (!mounted || read != _read || !_current) return;
+                setState(() {
+                  _rows = partial.items;
+                  partialRows = true;
+                });
+              },
+            ),
+          )
+          .catchError((Object error, StackTrace stack) {
+            // 逐批前缀不是完整结果：失败时整体下撤，不能留半张清单。
+            if (partialRows && mounted && read == _read && _current) {
+              setState(() => _rows = []);
             }
-            final id = row['entryId'];
-            final allocation = row['allocationNo'];
-            return id == null || id.toString().isEmpty || allocation == null
-                ? null
-                : '$id|$allocation';
-          },
-          loadPage: (page, size) async {
-            final response = await _api.get(
-              '$financeApplicationsApi/${widget.application['id']}/payroll-gl-sources/page',
-              query: {...query, 'page': page, 'size': size},
-            );
-            if (page == 1) first = response;
-            return PagedResult.fromJson(response, (row) => row);
-          },
-        ),
-      );
+            Error.throwWithStackTrace(error, stack);
+          });
       if (mounted && read == _read && _current) {
         setState(() {
           _rows = value.items;

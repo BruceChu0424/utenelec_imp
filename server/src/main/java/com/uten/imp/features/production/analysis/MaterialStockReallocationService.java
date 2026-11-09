@@ -7,6 +7,7 @@ import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.common.web.Pageables;
 import com.uten.imp.features.production.ProductionDocumentAccessPolicy;
 import com.uten.imp.features.production.fulfillment.PlanningPackageFingerprint;
 import com.uten.imp.application.concurrency.FulfillmentMutationLocks;
@@ -64,7 +65,7 @@ public class MaterialStockReallocationService implements PreplanOriginEntitlemen
             int page,
             int size) {
         int safePage = Math.max(page, 1);
-        int safeSize = Math.min(Math.max(size, 1), 100);
+        int safeSize = Math.min(Math.max(size, 1), Pageables.MAX_PAGE_SIZE);
         Endpoint source = endpoint(sourceAnalysisId, sourceMaterialLineId, false);
         access.requireWritable(
                 source.makerId(), "只能从本人可维护的物料分析发起让料", access.scope());
@@ -168,7 +169,7 @@ public class MaterialStockReallocationService implements PreplanOriginEntitlemen
             UUID targetAnalysisId, UUID targetMaterialLineId,
             String keyword, int page, int size) {
         int safePage = Math.max(page, 1);
-        int safeSize = Math.min(Math.max(size, 1), 100);
+        int safeSize = Math.min(Math.max(size, 1), Pageables.MAX_PAGE_SIZE);
         Endpoint target = endpoint(targetAnalysisId, targetMaterialLineId, false);
         OwnerVisibility.OwnerScope scope = access.scope();
         access.requireWritable(target.makerId(), "无权为该物料分析调入材料", scope);

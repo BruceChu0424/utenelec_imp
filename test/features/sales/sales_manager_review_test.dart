@@ -33,6 +33,8 @@ import 'package:uten_imp/features/sales/pages/sales_manager_review_page.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/attachments/business_attachment_section.dart';
 import 'package:uten_imp/shared/models/user.dart';
+import 'package:uten_imp/shared/paging/complete_paged_snapshot.dart'
+    show CompleteReadBatchPlan;
 import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/repositories/task_claim_repository.dart';
 import '../../helpers/badge_summary_fixture.dart';
@@ -41,6 +43,19 @@ import '../../helpers/finance_claim_fixture.dart';
 const _capture = bool.fromEnvironment('UTEN_MANAGER_CAPTURE');
 bool _fontsLoaded = false;
 final _captureKey = GlobalKey();
+
+/// The exact (page, size) batches the shared progressive plan reads for a
+/// complete source of [total] rows: 50, 50, 100 … at aligned offsets.
+List<({int page, int size})> _progressiveBatches(int total) {
+  const plan = CompleteReadBatchPlan.progressive;
+  final batches = <({int page, int size})>[];
+  for (var offset = 0; offset < total;) {
+    final size = plan.sizeAt(offset);
+    batches.add((page: offset ~/ size + 1, size: size));
+    offset += size;
+  }
+  return batches;
+}
 
 class _Session extends SessionNotifier {
   @override
@@ -85,34 +100,41 @@ class _Api extends ApiClient {
       if (denyQueue) {
         throw ApiException('FORBIDDEN', 'queue revoked', httpStatus: 403);
       }
-      final page = multiPage ? (query?['page'] as int? ?? 1) : 1;
-      return {
-        'page': page,
-        'size': 30,
-        'total': (multiPage ? 2 : 1) * (mixedKinds ? 2 : 1),
-        'totalPages': multiPage ? 2 : 1,
-        'items': [
+      // One fixed source: order-1 (and order-2 with multiPage), each followed
+      // by a same-id quote with mixedKinds. Every batch is the exact page of
+      // the requested size; the total never depends on that size.
+      final source = <Map<String, dynamic>>[
+        for (var order = 1; order <= (multiPage ? 2 : 1); order++) ...[
           {
-            'id': 'order-$page',
-            'billNo': 'XS-20261031-00$page',
+            'id': 'order-$order',
+            'billNo': 'XS-20261031-00$order',
             'billDate': '2026-10-31',
             'clientName': '优腾测试客户',
             'sellerName': '销售员',
             'currencyName': '人民币',
             'totalOriginal': '123456.7891',
-            'revision': 6 + page,
+            'revision': 6 + order,
             'state': 'PENDING',
             'kind': 'order',
           },
           if (mixedKinds)
             {
-              'id': 'order-$page',
+              'id': 'order-$order',
               'kind': 'quote',
               'state': 'PENDING',
-              'billNo': 'BJ-SAME-ID-$page',
+              'billNo': 'BJ-SAME-ID-$order',
               'revision': 99,
             },
         ],
+      ];
+      final page = query?['page'] as int? ?? 1;
+      final size = query?['size'] as int? ?? 30;
+      return {
+        'page': page,
+        'size': size,
+        'total': source.length,
+        'totalPages': (source.length + size - 1) ~/ size,
+        'items': source.skip((page - 1) * size).take(size).toList(),
       };
     }
     if (path.endsWith('/quotes/quote-1')) {
@@ -680,6 +702,7 @@ void main() {
       expect(table.columns.first.key, 'state');
       expect(table.serverColumnSearch, isTrue);
       expect(api.queueQueries.last['kind'], 'all');
+      final beforeFilter = api.queueQueries.length;
       table.onFilterChanged('search.seller', '销售员');
       await tester.pumpAndSettle();
       expect(api.queueQueries.last['search.seller'], '销售员');
@@ -688,8 +711,17 @@ void main() {
       );
       expect(table.items, hasLength(2));
       expect(table.items.last.id, 'order-2');
-      expect(api.queueQueries.last['page'], 2);
-      expect(api.queueQueries.last['search.seller'], '销售员');
+      // The complete filtered read sends the header condition with every
+      // batch of the shared progressive plan for its two-row source.
+      final filtered = api.queueQueries.sublist(beforeFilter);
+      expect([
+        for (final query in filtered)
+          (page: query['page'], size: query['size']),
+      ], _progressiveBatches(2));
+      expect(
+        filtered.map((query) => query['search.seller']),
+        everyElement('销售员'),
+      );
       await tester.tap(find.text('历史记录'));
       await tester.pumpAndSettle();
       expect(api.queueQueries.last['state'], 'HISTORY');

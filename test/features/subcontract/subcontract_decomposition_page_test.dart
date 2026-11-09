@@ -42,8 +42,24 @@ import 'package:uten_imp/features/subcontract/widgets/subcontract_application_de
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/badges/badge_registry.dart';
 import 'package:uten_imp/shared/models/subcontract_task_source.dart';
+import 'package:uten_imp/shared/paging/complete_paged_snapshot.dart'
+    show CompleteReadBatchPlan;
 import '../../helpers/badge_summary_fixture.dart';
 import '../../helpers/workbench_read_fixture.dart';
+
+/// The (page, size) requests of one complete read under the shared
+/// progressive plan: 50 → 50 → 100 → 200 …, each batch at its exact offset.
+List<(int, int)> _progressiveBatches(int total) {
+  const plan = CompleteReadBatchPlan.progressive;
+  final batches = <(int, int)>[];
+  var offset = 0;
+  do {
+    final size = plan.sizeAt(offset);
+    batches.add((offset ~/ size + 1, size));
+    offset += size;
+  } while (offset < total);
+  return batches;
+}
 
 const _decomposePermissions = {
   Perm.subcontractApplicationView,
@@ -1063,12 +1079,15 @@ void main() {
       final scoped = draw.listQueries.where(
         (query) => query['applicationId'] == 'application-parent',
       );
-      expect(scoped.map((query) => query['page']), [1, 2, 3]);
+      // One complete parent-scoped read of 201 lines in the shared progressive
+      // ladder: (1,50) (2,50) (2,100) (2,200), never narrowed to item ids.
+      expect([
+        for (final query in scoped)
+          (query['page']! as int, query['size']! as int),
+      ], _progressiveBatches(201));
       expect(
         scoped.every(
-          (query) =>
-              query['size'] == 100 &&
-              (query['applicationItemIds']! as List).isEmpty,
+          (query) => (query['applicationItemIds']! as List).isEmpty,
         ),
         isTrue,
       );
@@ -1147,7 +1166,11 @@ void main() {
       expect(draw.listQueries.last['applicationItemIds'], isEmpty);
       expect(find.byKey(const Key('subcontract-draw-scope')), findsNothing);
       expect(table().unpagedItems, hasLength(201));
-      expect(draw.listQueries.last['page'], 3);
+      // The unscoped 201-row read ends on the ladder's last batch (2,200).
+      expect(
+        (draw.listQueries.last['page'], draw.listQueries.last['size']),
+        _progressiveBatches(201).last,
+      );
       expect(
         (table().unpagedItems.last as SubcontractPendingDrawRow)
             .row
@@ -1203,7 +1226,11 @@ void main() {
       expect(draw.listQueries.last['applicationItemIds'], [
         'application-item-1',
       ]);
-      expect(draw.listQueries.last['page'], 3);
+      // The exact-source 201-row read ends on the ladder's last batch (2,200).
+      expect(
+        (draw.listQueries.last['page'], draw.listQueries.last['size']),
+        _progressiveBatches(201).last,
+      );
       expect(
         (table().unpagedItems.last as SubcontractPendingDrawRow)
             .row
@@ -1214,10 +1241,12 @@ void main() {
       draw.rows.removeWhere((row) => row.orderItemId == 'linked-200');
       await tester.tap(find.byTooltip('刷新委外任务'));
       await tester.pumpAndSettle();
-      expect(
-        draw.listQueries.skip(beforeRefresh).map((query) => query['page']),
-        [1, 2],
-      );
+      // The refresh rereads the 200 remaining rows from offset 0 as one
+      // complete ladder: (1,50) (2,50) (2,100).
+      expect([
+        for (final query in draw.listQueries.skip(beforeRefresh))
+          (query['page']! as int, query['size']! as int),
+      ], _progressiveBatches(200));
       expect(draw.listQueries.last['applicationItemIds'], [
         'application-item-1',
       ]);
@@ -2321,7 +2350,10 @@ void main() {
         expect(gateway.queries, hasLength(1));
         expect(gateway.queries.single['status'], 'WAITING_ORDER');
         expect(gateway.queries.single['keyword'], 'EA-application-partial');
-        expect(gateway.queries.single['size'], 100);
+        expect(
+          gateway.queries.single['size'],
+          CompleteReadBatchPlan.progressive.firstBatchSize,
+        );
         expect(
           find.widgetWithText(TextField, 'EA-application-partial'),
           findsOneWidget,

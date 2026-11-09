@@ -263,6 +263,7 @@ class _WarehouseInventoryPanelState
         loadPage: (page, size) => repository.instantInventory(
           page: page,
           size: size,
+          includeMetadata: page == 1,
           warehouseId: warehouseId,
           includeDefective: true,
           includeLineSide: true,
@@ -358,6 +359,29 @@ class _WarehouseInventoryPanelState
           sort: sort,
           order: order,
         ),
+        // 首批带合计与表头桶；续批只取同口径的行与计数。
+        fetchPageSized: (target, batchSize) => repository.instantInventory(
+          page: target,
+          size: batchSize,
+          includeMetadata: target == 1,
+          warehouseId: warehouseId,
+          includeDefective: true,
+          includeLineSide: true,
+          warehouseRelatedOnly: true,
+          keyword: keyword,
+          owningWarehouse: owning,
+          owningWarehouseNull: owningNull,
+          colorId: color,
+          series: series,
+          dateFrom: dateFrom,
+          dateTo: dateTo,
+          sort: sort,
+          order: order,
+        ),
+        onProgressiveBatch: (partial) {
+          if (!_isCurrent(version, boundary)) return;
+          setState(() => _result = partial);
+        },
       );
       if (!_isCurrent(version, boundary)) return;
       setState(() {

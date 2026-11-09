@@ -7,6 +7,7 @@ import com.uten.imp.common.finance.CostFraction;
 import com.uten.imp.common.util.FinancialExactAmount;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.web.Pageables;
 import com.uten.imp.features.master.client.ClientAccessPolicy;
 import com.uten.imp.features.master.goods.GoodsCostMasker;
 import com.uten.imp.security.SecurityContextCurrentUser;
@@ -64,16 +65,16 @@ public class GoodsCostSheetService {
     }
     public Sheet get(UUID id) {require(VIEW);Sheet s=load(id,false);assertScope(s.input(),s.calculation());return s;}
 
-    /** Compatibility route keeps its original maximum network batch100. */
+    /** Compatibility route keeps the shared interactive page maximum ({@link Pageables#MAX_PAGE_SIZE}). */
     @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ,timeout=60)
     public VersionPage versions(UUID goodsId,int page,int size,String status,String currencyId,
             Map<String,String> searches,String sort,String order) {
-        return readVersionSummaries(goodsId,page,Math.clamp(size,1,100),status,currencyId,searches,sort,order,null);
+        return readVersionSummaries(goodsId,page,Math.clamp(size,1,Pageables.MAX_PAGE_SIZE),status,currencyId,searches,sort,order,null);
     }
     @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ,timeout=60)
     public VersionPage versions(UUID goodsId,int page,int size,String status,String currencyId,
             Map<String,String> searches,String sort,String order,String readSnapshotRevision) {
-        return readVersionSummaries(goodsId,page,Math.clamp(size,1,100),status,currencyId,searches,sort,order,readSnapshotRevision);
+        return readVersionSummaries(goodsId,page,Math.clamp(size,1,Pageables.MAX_PAGE_SIZE),status,currencyId,searches,sort,order,readSnapshotRevision);
     }
     /** The new lean-only route may use1000 rows per transport, never a total cap. */
     @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ,timeout=60)

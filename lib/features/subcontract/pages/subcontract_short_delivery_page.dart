@@ -242,6 +242,24 @@ class _SubcontractShortDeliveryPageState
             orderBillNo: pageOrderBillNo,
             columnFilters: pageColumnFilters,
           ),
+          fetchPageSized: (target, size) => pageRepository.list(
+            segment: pageSegment,
+            keyword: pageKeyword,
+            supplierId: pageSupplierId,
+            orderId: pageOrderId,
+            dateFrom: pageDateFrom,
+            dateTo: pageDateTo,
+            page: target,
+            size: size,
+            sort: pageSort,
+            order: pageOrder,
+            orderBillNo: pageOrderBillNo,
+            columnFilters: pageColumnFilters,
+          ),
+          onProgressiveBatch: (partial) {
+            if (!current()) return;
+            setState(() => _result = partial);
+          },
         );
       }
       if (!current()) return;

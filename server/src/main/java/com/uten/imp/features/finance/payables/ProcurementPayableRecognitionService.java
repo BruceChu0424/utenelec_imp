@@ -177,7 +177,7 @@ public class ProcurementPayableRecognitionService implements ProcurementPayableR
     }
 
     @Transactional(readOnly=true) public Map<String,Object> candidates(UUID supplierId,UUID currencyId,String status,int page,int size){
-        read();int p=Math.max(1,page),s=Math.max(1,Math.min(100,size));var args=new ArrayList<Object>();String where=" WHERE true";
+        read();int p=Math.max(1,page),s=Math.max(1,Math.min(Pageables.MAX_PAGE_SIZE,size));var args=new ArrayList<Object>();String where=" WHERE true";
         if(supplierId!=null){where+=" AND c.supplier_id=?";args.add(supplierId);}if(currencyId!=null){where+=" AND c.currency_id=?";args.add(currencyId);}
         if(status!=null&&!status.isBlank()){if(!Set.of("PENDING","CONFIRMED","ZERO_CONFIRMED","SOURCE_REVERSED").contains(status))throw invalid("状态不正确");where+=" AND c.status=?";args.add(status);}
         long total=db.queryForObject("SELECT count(*) FROM finance_procurement_payable_candidates c"+where,Long.class,args.toArray());args.add(s);args.add((long)(p-1)*s);
@@ -256,7 +256,7 @@ public class ProcurementPayableRecognitionService implements ProcurementPayableR
     @Transactional(readOnly=true) public Map<String,Object> operation(UUID request){read();var rows=db.queryForList("SELECT id FROM finance_procurement_ap_recognitions WHERE request_id=? AND submitted_by=?",request,current.requireId());if(rows.isEmpty())throw new ApiException(ErrorCode.NOT_FOUND,"本人原请求尚无可读取回执，请保留原编号及完整内容核对");return recognition((UUID)rows.getFirst().get("id"));}
     @Transactional(readOnly=true) public Map<String,Object> recognition(UUID id){read();var row=new LinkedHashMap<>(batch(id,false));for(String key:List.of("payload_hash","file_provider","file_key","file_version")){row.remove(key);}var lines=db.queryForList("SELECT l.*,c.source_type,c.source_id,c.bill_no,c.commercial_date,c.due_date FROM finance_procurement_ap_recognition_lines l JOIN finance_procurement_payable_candidates c ON c.id=l.candidate_id WHERE l.recognition_id=? ORDER BY c.commercial_date,c.bill_no,c.id",id);lines.forEach(com.uten.imp.common.report.ReportQueryKit::includeDecimalTexts);row.put("lines",lines);return row;}
     @Transactional(readOnly=true) public Map<String,Object> recognitions(UUID supplier,UUID currency,int page,int size){
-        read();int p=Math.max(1,page),s=Math.max(1,Math.min(100,size));var args=new ArrayList<Object>();String where=" WHERE true";
+        read();int p=Math.max(1,page),s=Math.max(1,Math.min(Pageables.MAX_PAGE_SIZE,size));var args=new ArrayList<Object>();String where=" WHERE true";
         if(supplier!=null){where+=" AND r.supplier_id=?";args.add(supplier);}if(currency!=null){where+=" AND r.currency_id=?";args.add(currency);}
         long total=db.queryForObject("SELECT count(*) FROM finance_procurement_ap_recognitions r"+where,Long.class,args.toArray());args.add(s);args.add((long)(p-1)*s);
         var rows=db.queryForList("SELECT r.id,r.effective_date AS \"effectiveDate\",r.status,r.source_reference AS \"sourceReference\",r.file_name AS \"fileName\",r.counterpart_confirmed_by AS \"counterpartConfirmedBy\",r.counterpart_confirmed_date AS \"counterpartConfirmedDate\",r.created_at AS \"createdAt\" FROM finance_procurement_ap_recognitions r"+where+" ORDER BY r.created_at DESC,r.id LIMIT ? OFFSET ?",args.toArray());

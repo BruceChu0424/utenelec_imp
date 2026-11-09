@@ -5,8 +5,14 @@ import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/summary_stream_contract.dart';
+import 'package:uten_imp/shared/paging/complete_paged_snapshot.dart'
+    show CompleteReadBatchPlan;
+import 'package:uten_imp/shared/paging/complete_summary_stream.dart'
+    show kProgressiveSummaryStreamSize;
 
 import 'versioned_summary_test_response.dart';
+export 'package:uten_imp/shared/paging/complete_summary_stream.dart'
+    show kProgressiveSummaryStreamSize;
 export 'versioned_summary_test_response.dart' show masterSummaryTestParameters;
 
 const _scope =
@@ -17,6 +23,8 @@ const _dataVersion =
     'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc';
 
 /// Validate the actual Dio request without rewriting its transport or filter.
+/// `size` selects the frame plan exactly as the server does: 100 keeps the
+/// original fixed frames, [kProgressiveSummaryStreamSize] the 50→200 ladder.
 void _validateRequest(RequestOptions request) {
   final parameters = masterSummaryTestParameters(request);
   final acceptsStream = request.headers.entries.any(
@@ -30,32 +38,45 @@ void _validateRequest(RequestOptions request) {
       request.extra[summaryStreamRequestKey] != true ||
       !acceptsStream ||
       parameters['page'] != 1 ||
-      parameters['size'] != 100 ||
+      (parameters['size'] != 100 &&
+          parameters['size'] != kProgressiveSummaryStreamSize) ||
       request.queryParameters.containsKey('readSnapshotRevision')) {
     throw StateError('Expected one bounded complete-summary NDJSON request');
   }
 }
 
-/// All original rows appear once. Internal pages stay bounded at 100, with a
-/// complete marker and a real stream EOF rather than a legacy JSON response.
+/// All original rows appear once. Every frame is the exact bounded page the
+/// shared plan places at the rows already sent (the server's own framing),
+/// followed by a complete marker and a real stream EOF rather than a legacy
+/// JSON response.
 List<Map<String, dynamic>> masterSummaryStreamTestFrames(
   List<Map<String, dynamic>> items,
   RequestOptions request,
 ) {
   _validateRequest(request);
-  final pages = (items.length + 99) ~/ 100;
+  final plan =
+      masterSummaryTestParameters(request)['size'] ==
+          kProgressiveSummaryStreamSize
+      ? CompleteReadBatchPlan.progressive
+      : const CompleteReadBatchPlan.fixed(100);
+  final frames = <Map<String, dynamic>>[];
+  var offset = 0;
+  do {
+    final size = plan.sizeAt(offset);
+    frames.add({
+      'type': 'page',
+      'value': versionedSummaryTestResponse(
+        items,
+        {'page': offset ~/ size + 1, 'size': size},
+        scopeVersion: _scope,
+        revision: _revision,
+        dataVersion: _dataVersion,
+      ),
+    });
+    offset += size;
+  } while (offset < items.length);
   return [
-    for (var page = 1; page <= (pages == 0 ? 1 : pages); page++)
-      {
-        'type': 'page',
-        'value': versionedSummaryTestResponse(
-          items,
-          {'page': page, 'size': 100},
-          scopeVersion: _scope,
-          revision: _revision,
-          dataVersion: _dataVersion,
-        ),
-      },
+    ...frames,
     {
       'type': 'complete',
       'total': items.length,

@@ -233,7 +233,9 @@ void main() {
       expect(typed.items.last.processingTargets.single.quantity, '200');
       expect(typed.metadata['sourceSnapshot'], {'pending': 7});
       expect(typed.readScopeVersion, 'transport-proof');
-      expect(api.queries.map((query) => query['size']), [100, 100, 100]);
+      // 2026-11-08 阶梯完整读取：251 行 = 50 → 50 → 100 → 200（末批 51 行）。
+      expect(api.queries.map((query) => query['size']), [50, 50, 100, 200]);
+      expect(api.queries.map((query) => query['page']), [1, 2, 2, 2]);
       expect(
         api.queries.every((query) => query['shipmentId'] == 'shipment-1'),
         true,
@@ -279,11 +281,14 @@ void main() {
       expect(table.items.last.processingTargets.single.quantity, '200');
       expect(table.items.last.version, 257);
       expect(table.onPageChange, isNull);
+      // 2026-11-08 阶梯完整读取：offset 0/50/100/200 → (1,50),(2,50),(2,100),(2,200)。
       expect(repo.listQueries.map((query) => (query.page, query.size)), [
-        (1, 100),
+        (1, 50),
+        (2, 50),
         (2, 100),
-        (3, 100),
+        (2, 200),
       ]);
+      final reads = repo.listQueries.length;
       final position = tester
           .stateList<ScrollableState>(
             find.descendant(of: finder, matching: find.byType(Scrollable)),
@@ -299,7 +304,8 @@ void main() {
       await tester.pumpAndSettle();
       position.jumpTo(0);
       await tester.pumpAndSettle();
-      expect(repo.listQueries, hasLength(3));
+      // Scrolling the complete result reads nothing more.
+      expect(repo.listQueries, hasLength(reads));
       expect(repo.submits, 0);
       await tester.pumpWidget(const SizedBox());
       expect(tester.takeException(), isNull);
@@ -335,7 +341,15 @@ void main() {
             .items,
         hasLength(251),
       );
-      expect(repo.listQueries.map((query) => query.page), [1, 2, 1, 2, 3]);
+      // 失败读取 (1,50),(2,50)；重试从头整体重读阶梯 50→50→100→200。
+      expect(repo.listQueries.map((query) => (query.page, query.size)), [
+        (1, 50),
+        (2, 50),
+        (1, 50),
+        (2, 50),
+        (2, 100),
+        (2, 200),
+      ]);
       expect(repo.submits, 0);
       await tester.pumpWidget(const SizedBox());
       expect(tester.takeException(), isNull);

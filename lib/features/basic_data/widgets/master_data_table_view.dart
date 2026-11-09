@@ -1099,9 +1099,11 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       widget.isLoading ||
       widget.loadingMore ||
       widget.isRefreshing ||
+      _growing ||
       _appendPage != null;
+  // Progressive rows keep the footer indicator until the complete result.
   bool get _loadingMore =>
-      !_prepending && (widget.loadingMore || _appendPage != null);
+      !_prepending && (widget.loadingMore || _growing || _appendPage != null);
   int get _currentPage => 1;
 
   void _aiRebuild(VoidCallback change) => setState(change);
@@ -2532,6 +2534,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   int? _widthFrameReset;
   List<T>? _widthGrowthPool;
   List<double>? _widthGrowthTarget;
+  // Rows of the current sample pool already scanned to the end. A progressive
+  // append continues from here instead of re-measuring the loaded prefix.
+  int _widthScannedRows = 0;
   int _widthGrowthOffset = 0;
   int _widthGrowthColumn = 0;
 
@@ -3550,9 +3555,42 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     return true;
   }
 
+  /// Progressive batches of one complete read (and its complete result) only
+  /// append rows to the same reader session; the loaded prefix keeps its
+  /// measurements and the user's text selection.
+  bool _progressiveAppend(MasterDataTableView<T> oldWidget) {
+    final before = oldWidget.items, after = widget.items;
+    if (identical(before, after) ||
+        before.isEmpty ||
+        after.length < before.length ||
+        !_sameColumnKeys(oldWidget.columns, widget.columns) ||
+        !identical(oldWidget.leadingGroups, widget.leadingGroups) ||
+        (widget.leadingGroups?.isNotEmpty ?? false) ||
+        !identical(oldWidget.unpagedItems, widget.unpagedItems)) {
+      return false;
+    }
+    final previous = readWindowBindingOf<T>(before);
+    final current = readWindowBindingOf<T>(after);
+    if (previous == null ||
+        current == null ||
+        !current.sameSession(previous) ||
+        !current.isCurrent) {
+      return false;
+    }
+    final last = before.length - 1;
+    return identical(before.first, after.first) &&
+        identical(before[last ~/ 2], after[last ~/ 2]) &&
+        identical(before[last], after[last]);
+  }
+
+  /// Rows are a validated prefix of a complete read that is still loading:
+  /// selection, row menus and batch actions wait for the complete result.
+  bool get _growing => _readWindowBinding?.growing == true;
+
   @override
   void didUpdateWidget(covariant MasterDataTableView<T> oldWidget) {
     super.didUpdateWidget(oldWidget);
+    final appended = _progressiveAppend(oldWidget);
     if (_ownsOutputSelection &&
         (!const DeepCollectionEquality().equals(
               oldWidget.paginationScope,
@@ -3578,7 +3616,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     if (!widget.enableTextSelection ||
         oldWidget.paginationScope != widget.paginationScope ||
         oldWidget.paginationRevision != widget.paginationRevision ||
-        !_sameTextSelectionRows(oldWidget)) {
+        (!appended && !_sameTextSelectionRows(oldWidget))) {
       _textSelection.clear();
     }
     if (!identical(oldWidget.items, widget.items) ||
@@ -3628,11 +3666,20 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         oldWidget.leadingGroups != widget.leadingGroups) {
       // 数据变了(翻页/筛选/排序/加载更多/静默重拉)→ 帧后只补量新出现的值，
       // 超出当前宽度才加宽；已手动调整的列不动。
+      // 逐批追加(同一读取会话)只续量新行：已量过的前缀不再重扫。
+      final continueFrom = appended && !_queryChanged
+          ? (_widthGrowthPending ? _widthGrowthOffset : _widthScannedRows)
+          : 0;
+      final continueColumn = appended && !_queryChanged && _widthGrowthPending
+          ? _widthGrowthColumn
+          : 0;
+      if (!(appended && !_queryChanged && _widthGrowthPending)) {
+        _widthGrowthTarget = null;
+      }
       _widthGrowthPending = true;
       _widthGrowthPool = null;
-      _widthGrowthTarget = null;
-      _widthGrowthOffset = 0;
-      _widthGrowthColumn = 0;
+      _widthGrowthOffset = continueFrom;
+      _widthGrowthColumn = continueColumn;
     }
     // 吸顶表：数据/列变化改表高 → post-frame 重测锚点；notifier 换实例重绑。
     if (!identical(oldWidget.stickyHeaderPinned, widget.stickyHeaderPinned)) {
@@ -3913,6 +3960,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     _widthGrowthPending = false;
     _widthGrowthPool = null;
     _widthGrowthTarget = null;
+    _widthScannedRows = 0;
     _widthGrowthOffset = 0;
     _widthGrowthColumn = 0;
     final keys = [for (final column in _columns) column.key];
@@ -4123,6 +4171,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
           setState(() => _widths = published);
           if (_fullscreen) _fsTick.value++;
         }
+        _widthScannedRows = pool.length;
         _widthGrowthPool = null;
         _widthGrowthTarget = null;
         _widthGrowthOffset = 0;
@@ -4722,6 +4771,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   /// true=全选本页；false/null=取消本页。
   /// 拷贝调用方集合后回交，从不就地改 _outputSelectedIds。
   void _onToggleAllPage(bool? newValue) {
+    if (_growing) return;
     final pageIds = _pageSelectableIds();
     if (pageIds.isEmpty) return;
     final next = Set<String>.of(_outputSelectedIds);
@@ -4736,6 +4786,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
 
   /// 单行勾选切换。
   void _toggleRow(T item, bool checked) {
+    // A growing prefix is not the complete result; selection waits for it.
+    if (_growing) return;
     if (widget.onRowSelectionChanged case final onRowSelection?) {
       onRowSelection(item, checked);
       _fsTick.value++;
@@ -5897,6 +5949,34 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
               context,
               _items.isEmpty ? 'loadImpact' : 'refreshImpact',
             ),
+            guidance: tableReadStatusText(context, 'guidance'),
+            retry: widget.onRetry,
+          ),
+        ),
+      );
+    } else if (_resultOwnerRetired && widget.items.isNotEmpty) {
+      // A complete read that failed after showing progressive rows retires
+      // its owner; the host may still hold that withdrawn prefix. It is not an
+      // empty result: never fall through to the empty state (a forged 0 rows).
+      bodyNotice = Padding(
+        key: widget.errorKey,
+        padding: const EdgeInsets.symmetric(
+          horizontal: UtenSpacing.s16,
+          vertical: UtenSpacing.s12,
+        ),
+        child: Center(
+          child: UtenTableReadStatus(
+            keyPrefix: 'master-table-initial-read',
+            ownerIdentity: (
+              this,
+              widget.paginationScope,
+              widget.paginationRevision,
+              _platform.authorizationRevision,
+              _platform.queryLifecycle,
+            ),
+            title: tableReadStatusText(context, 'loadFailed'),
+            reason: tableReadStatusText(context, 'incompleteRead'),
+            impact: tableReadStatusText(context, 'loadImpact'),
             guidance: tableReadStatusText(context, 'guidance'),
             retry: widget.onRetry,
           ),
@@ -7294,7 +7374,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
           key: const Key('master-data-table-select-all'),
           tristate: true,
           value: _headerCheckValue(pageIds),
-          onChanged: pageIds.isEmpty ? null : _onToggleAllPage,
+          onChanged: pageIds.isEmpty || _growing ? null : _onToggleAllPage,
         ),
       ),
     );
@@ -7799,8 +7879,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       child: Checkbox(
         tristate: widget.selectionStateOf != null,
         value: rowSelectionState,
-        // 无业务 id 的行禁用勾选(不计入全选)。
-        onChanged: !rowSelectable
+        // 无业务 id 的行禁用勾选(不计入全选)；逐批读取中的行等完整结果后再勾选。
+        onChanged: !rowSelectable || _growing
             ? null
             : (_) => _toggleRow(item, rowSelectionState != true),
       ),
@@ -7928,8 +8008,10 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     final onRowTap = rowCanOpen ? configuredOnRowTap : null;
     final rowCanSelect = _outputSelectable && multiId?.isNotEmpty == true;
     final configuredRowMenuBuilder = widget.rowMenuBuilder;
+    // Row menus carry write entries: they wait for the complete result.
     final rowMenuBuilder =
-        configuredRowMenuBuilder != null &&
+        !_growing &&
+            configuredRowMenuBuilder != null &&
             (widget.canShowRowMenu?.call(item) ?? true)
         ? configuredRowMenuBuilder
         : null;

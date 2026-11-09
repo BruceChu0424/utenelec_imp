@@ -14,9 +14,27 @@ import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart
 import 'package:uten_imp/features/subcontract/models/subcontract_doc.dart';
 import 'package:uten_imp/features/subcontract/pages/subcontract_business_list_pages.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/paging/complete_paged_snapshot.dart'
+    show CompleteReadBatchPlan;
 
-const _batchSize = 100;
+// Every complete read starts with the shared progressive first batch; a
+// result that fits in it is read by that single (page 1, size 50) request.
+final _batchSize = CompleteReadBatchPlan.progressive.firstBatchSize;
 late SharedPreferences _preferences;
+
+/// The (page, size) requests of one complete read under the shared
+/// progressive plan: 50 → 50 → 100 → 200 …, each batch at its exact offset.
+List<(int, int)> _progressiveBatches(int total) {
+  const plan = CompleteReadBatchPlan.progressive;
+  final batches = <(int, int)>[];
+  var offset = 0;
+  do {
+    final size = plan.sizeAt(offset);
+    batches.add((offset ~/ size + 1, size));
+    offset += size;
+  } while (offset < total);
+  return batches;
+}
 
 void main() {
   setUp(() async {
@@ -28,9 +46,10 @@ void main() {
     (tester) async {
       final api = await _mount(tester, rowCount: 201);
       await _tap(tester, '进行中');
+      // 201 rows in one complete read: (1,50) (2,50) (2,100) (2,200).
       expect(api.queries, [
-        for (final page in [1, 2, 3])
-          {'page': page, 'size': _batchSize, 'financeApproval': 'IN_PROGRESS'},
+        for (final (page, size) in _progressiveBatches(201))
+          {'page': page, 'size': size, 'financeApproval': 'IN_PROGRESS'},
       ]);
       expect(_table(tester).items, hasLength(201));
       expect(_table(tester).items.map((row) => row.id).toSet(), hasLength(201));
@@ -273,10 +292,10 @@ void main() {
       // no adjacent-page prediction or user page-number state.
       expect(_table(tester).currentPage, 1);
       expect(api.queries, [
-        for (final page in [1])
+        for (final (page, size) in _progressiveBatches(0))
           {
             'page': page,
-            'size': _batchSize,
+            'size': size,
             'dateFrom': ChinaDateTime.formatDate(defaultRange.start),
             'dateTo': ChinaDateTime.formatDate(defaultRange.end),
           },

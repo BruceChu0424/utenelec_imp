@@ -6,6 +6,7 @@ import com.uten.imp.common.util.DepartmentSearchSql;
 import com.uten.imp.common.util.EmployeeCandidateFilter;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.common.web.Pageables;
 import com.uten.imp.features.master.warehouse.dto.WarehouseKeeper;
 import com.uten.imp.features.master.warehouse.dto.WarehouseKeeperAssignment;
 import com.uten.imp.features.master.warehouse.dto.WarehouseKeeperSaveRequest;
@@ -187,7 +188,7 @@ public class WarehouseKeeperService {
     @Transactional(readOnly = true)
     public PageResponse<WarehouseKeeper> candidatesPage(String keyword, int page, int size,
             UUID departmentId, boolean includeSubtree) {
-        int safePage = Math.max(1, page), safeSize = Math.min(100, Math.max(1, size));
+        int safePage = Math.max(1, page), safeSize = Math.min(Pageables.MAX_PAGE_SIZE, Math.max(1, size));
         CandidateRead read = candidateRead(keyword, departmentId, includeSubtree);
         long total = jdbc.sql(read.prefix() + "SELECT count(*) " + read.fromWhere())
                 .params(read.parameters()).query(Long.class).single();

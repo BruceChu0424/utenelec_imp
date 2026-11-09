@@ -265,7 +265,7 @@ public class BusinessApplicationService {
     }
     @Transactional(readOnly=true) public PageResponse<Map<String,Object>> prepaymentFinanceCandidates(UUID id,int page,int size,String keyword){
         var u=user();var row=row(id,false);if(!canLinkFinanceBase(row,u))throw new ApiException(ErrorCode.FORBIDDEN);
-        int p=Math.max(1,page),s=Math.clamp(size,1,100);var result=financeReferences.prepaymentCandidates(id,retainedSupplier(row),(BigDecimal)row.get("amount"),date(fields(row),"paymentDate"),u,p,s,keyword);
+        int p=Math.max(1,page),s=Math.clamp(size,1,Pageables.MAX_PAGE_SIZE);var result=financeReferences.prepaymentCandidates(id,retainedSupplier(row),(BigDecimal)row.get("amount"),date(fields(row),"paymentDate"),u,p,s,keyword);
         return new PageResponse<>(result.items().stream().map(candidate->{Map<String,Object> out=new LinkedHashMap<>();out.put("id",candidate.id());out.put("billNo",candidate.billNo());out.put("billDate",candidate.billDate().toString());out.put("amountText",candidate.amount().toPlainString());out.put("amountBasis",candidate.amountBasis().name());out.put("currencyCode",candidate.currencyCode());if(candidate.amountBasis()==com.uten.imp.application.port.NativeApplicationOriginPort.AmountBasis.LOCAL){out.put("amountLocalText",candidate.amount().toPlainString());}out.put("status",1);return out;}).toList(),p,s,result.total(),(int)((result.total()+s-1)/s));
     }
     @Transactional(readOnly=true) public PageResponse<Map<String,Object>> list(String queue,String kind,String status,String stage,String code,int page,int size){
@@ -281,7 +281,7 @@ public class BusinessApplicationService {
             else if("ACTION_REQUIRED".equals(status))where+=" AND (a.status='REJECTED' OR "+routingStaleSql("a")+")";
             else if("FINISHED".equals(status))where+=" AND a.status IN('PAID','COMPLETED','CANCELLED') AND NOT "+postingPendingSql("a");
             else{if(!Set.of("DRAFT","SUBMITTED","REVIEWING","REJECTED","APPROVED","PAID","COMPLETED","CANCELLED").contains(status))throw invalid("未知申请状态");where+=" AND a.status=:status";params.put("status",status);}}
-        int p=Math.max(1,page),s=Math.clamp(size,1,100);params.put("limit",s);params.put("offset",(long)(p-1)*s);
+        int p=Math.max(1,page),s=Math.clamp(size,1,Pageables.MAX_PAGE_SIZE);params.put("limit",s);params.put("offset",(long)(p-1)*s);
         long total=named().queryForObject("SELECT count(*) FROM business_applications a WHERE "+where,params,Long.class);
         var rows=named().queryForList("SELECT a.*,"+routingStaleSql("a")+" AS approval_routing_stale FROM business_applications a WHERE "+where+" ORDER BY a.created_at DESC,a.id LIMIT :limit OFFSET :offset",params);
         return new PageResponse<>(rows.stream().map(row->dto(row,u,false)).toList(),p,s,total,(int)((total+s-1)/s));

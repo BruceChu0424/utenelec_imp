@@ -634,6 +634,31 @@ class _OffsetTargetPickerState extends ConsumerState<_OffsetTargetPicker>
             totalPages: value.totalPages,
           );
         },
+        fetchPageSized: (target, size) async {
+          final value = await repository.list(
+            page: target,
+            size: size,
+            filter: FinancePayablesFilter(supplierId: widget.supplierId),
+          );
+          return PagedResult(
+            items: value.items,
+            page: value.page,
+            size: value.size,
+            total: value.total,
+            totalPages: value.totalPages,
+          );
+        },
+        onProgressiveBatch: (partial) {
+          if (!mounted || version != _readVersion || _readRetired) return;
+          setState(() {
+            _items = partial.items
+                .where(
+                  (item) =>
+                      item.openItemKind == 'PAYABLE' && item.status != 'SETTLED',
+                )
+                .toList(growable: false);
+          });
+        },
       );
       if (!mounted || version != _readVersion || _readRetired) return;
       setState(() {

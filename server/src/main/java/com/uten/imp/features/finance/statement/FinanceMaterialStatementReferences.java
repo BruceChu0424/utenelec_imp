@@ -2,6 +2,7 @@ package com.uten.imp.features.finance.statement;
 
 import com.uten.imp.application.port.FinanceMaterialStatementSourcePort.*;
 import com.uten.imp.common.util.KeywordSearch;
+import com.uten.imp.common.web.Pageables;
 import com.uten.imp.features.finance.statement.FinanceMaterialStatementContracts.GlAllocationKey;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -49,7 +50,7 @@ public class FinanceMaterialStatementReferences {
         var args=new ArrayList<Object>();String where=" WHERE true";
         if(keyword!=null&&keyword.length()>240)throw invalid("候选检索内容过长");
         for(String term:KeywordSearch.terms(keyword)){where+=" AND (code ILIKE ? ESCAPE '\\' OR name ILIKE ? ESCAPE '\\')";args.add(KeywordSearch.containsPattern(term));args.add(KeywordSearch.containsPattern(term));}
-        int p=Math.max(1,page),n=Math.max(1,Math.min(100,size));long total=Objects.requireNonNull(db.queryForObject("SELECT count(*) FROM ("+source+") native_option"+where,Long.class,args.toArray()));args.add(n);args.add((long)(p-1)*n);
+        int p=Math.max(1,page),n=Math.max(1,Math.min(Pageables.MAX_PAGE_SIZE,size));long total=Objects.requireNonNull(db.queryForObject("SELECT count(*) FROM ("+source+") native_option"+where,Long.class,args.toArray()));args.add(n);args.add((long)(p-1)*n);
         var rows=db.queryForList("SELECT * FROM ("+source+") native_option"+where+" ORDER BY code,name,id LIMIT ? OFFSET ?",args.toArray());return s.exactMap(Map.of("items",rows,"page",p,"size",n,"total",total,"totalPages",(total+n-1)/n));
     }
     @Transactional(readOnly=true)
@@ -72,7 +73,7 @@ public class FinanceMaterialStatementReferences {
               AND v.reversal_of_voucher_id IS NULL AND NOT e.is_deleted AND fn_finance_gl_voucher_is_booked(v.id) AND NOT fn_finance_entry_is_pnl_closing(e.id)
             """;
         for(String term:KeywordSearch.terms(keyword)){query+=" AND (v.voucher_no ILIKE ? ESCAPE '\\' OR e.summary ILIKE ? ESCAPE '\\')";args.add(KeywordSearch.containsPattern(term));args.add(KeywordSearch.containsPattern(term));}
-        int p=Math.max(1,page),n=Math.max(1,Math.min(100,size));long total=Objects.requireNonNull(db.queryForObject("SELECT count(*) "+query,Long.class,args.toArray()));args.add(n);args.add((long)(p-1)*n);
+        int p=Math.max(1,page),n=Math.max(1,Math.min(Pageables.MAX_PAGE_SIZE,size));long total=Objects.requireNonNull(db.queryForObject("SELECT count(*) "+query,Long.class,args.toArray()));args.add(n);args.add((long)(p-1)*n);
         var rows=db.queryForList("SELECT e.id AS entry_id,a.allocation_no,e.entry_date,v.voucher_no,e.summary,a.amount_local::text AS amount_local,a.amount_original::text AS amount_original,a.currency_id,a.original_currency_id,assigned.id AS approved_assignment_id "+query+" ORDER BY e.entry_date,e.id,a.allocation_no LIMIT ? OFFSET ?",args.toArray());
         return s.exactMap(Map.of("items",rows,"page",p,"size",n,"total",total,"totalPages",(total+n-1)/n));
     }
@@ -80,7 +81,7 @@ public class FinanceMaterialStatementReferences {
     public Map<String,Object> adjustments(UUID contextId,UUID receivableEntry,int receivableAllocation,FinanceMaterialStatementContracts.AdjustmentPurpose purpose,String keyword,int page,int size){
         s.readAccess();var ar=quote(contextId,receivableEntry,receivableAllocation);String binding=purpose==FinanceMaterialStatementContracts.AdjustmentPurpose.VAT?"BS_36":"PL_22";
         var args=new ArrayList<Object>(List.of(ar.get("voucher_id"),binding));String where=" FROM gl_entries e LEFT JOIN finance_gl_entry_allocations a ON a.entry_id=e.id WHERE e.voucher_id=? AND e.direction=-1 AND NOT e.is_deleted AND NOT fn_finance_entry_is_pnl_closing(e.id) AND EXISTS(SELECT 1 FROM finance_report_line_bindings b JOIN payment_styles ancestor ON ancestor.id=b.style_id JOIN payment_styles actual ON actual.id=e.style_id WHERE b.binding_kind='STYLE' AND b.line_key=? AND (actual.id=ancestor.id OR (ancestor.path IS NOT NULL AND ancestor.path<>'' AND actual.path LIKE ancestor.path||'/%')))";
-        for(String term:KeywordSearch.terms(keyword)){where+=" AND e.summary ILIKE ? ESCAPE '\\'";args.add(KeywordSearch.containsPattern(term));}int p=Math.max(1,page),n=Math.max(1,Math.min(100,size));long total=Objects.requireNonNull(db.queryForObject("SELECT count(*)"+where,Long.class,args.toArray()));args.add(n);args.add((long)(p-1)*n);
+        for(String term:KeywordSearch.terms(keyword)){where+=" AND e.summary ILIKE ? ESCAPE '\\'";args.add(KeywordSearch.containsPattern(term));}int p=Math.max(1,page),n=Math.max(1,Math.min(Pageables.MAX_PAGE_SIZE,size));long total=Objects.requireNonNull(db.queryForObject("SELECT count(*)"+where,Long.class,args.toArray()));args.add(n);args.add((long)(p-1)*n);
         var rows=db.queryForList("SELECT e.id AS entry_id,COALESCE(a.allocation_no,0) AS allocation_no,e.entry_date,e.summary,COALESCE(a.amount_local,e.amount)::text AS amount_local,a.amount_original::text,a.original_currency_id,e.voucher_id"+where+" ORDER BY e.line_no,e.id,a.allocation_no LIMIT ? OFFSET ?",args.toArray());for(var row:rows){row.put("voucher_no",ar.get("voucher_no"));}return s.exactMap(Map.of("items",rows,"page",p,"size",n,"total",total,"totalPages",(total+n-1)/n));
     }
     @Transactional(readOnly=true)

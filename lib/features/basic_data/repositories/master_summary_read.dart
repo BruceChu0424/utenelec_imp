@@ -2,6 +2,7 @@ import '../../../core/network/api_client.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/performance/ui_work_budget.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/paging/complete_paged_snapshot.dart';
 import '../../../shared/paging/paged_read_intent.dart';
 import '../../../shared/paging/complete_summary_stream.dart';
 import '../../../shared/paging/versioned_summary_read.dart';
@@ -50,9 +51,9 @@ Future<PagedResult<T>> readCompleteMasterSummary<T>(
   required T Function(Map<String, dynamic>) decode,
   required Object? Function(T) idOf,
 }) async {
-  // Captured before any await: the view's provisional slot lives in the zone
+  // Captured before any await: the view's progressive slot lives in the zone
   // of the ScopedPagedRead that owns these rows.
-  final provisional = PagedReadIntent.currentProvisional;
+  final progressive = PagedReadIntent.currentProgressive;
   final parent = PagedReadIntent.currentRead;
   final owner = await api.captureRequestScope(
     isCurrent: () => parent?.call() ?? true,
@@ -64,24 +65,29 @@ Future<PagedResult<T>> readCompleteMasterSummary<T>(
       body: {
         'filter': captured,
         'page': 1,
-        'size': 100,
+        // Selects the progressive frame plan: 50 rows first, then up to 200.
+        'size': kProgressiveSummaryStreamSize,
         if (sort?.isNotEmpty == true) 'sort': sort,
         if (order?.isNotEmpty == true) 'order': order,
       },
       consume: (frames) async {
-        final stream = CompleteSummaryStream(frames);
+        final stream = CompleteSummaryStream(
+          frames,
+          plan: CompleteReadBatchPlan.progressive,
+        );
         // This complete read owns the view's rows, so it claims the slot unless
         // another reader in the same zone already did.
-        final publish = provisional != null && provisional.claim()
-            ? provisional.publish
+        final publish = progressive != null && progressive.claim()
+            ? progressive.publish
             : null;
         try {
           final result = await readVersionedSummarySnapshot<T>(
             isCurrent: () => owner.isCurrent,
             decode: decode,
             idOf: idOf,
+            plan: CompleteReadBatchPlan.progressive,
             loadPage: stream.page,
-            onProvisionalBatch: publish == null
+            onProgressiveBatch: publish == null
                 ? null
                 : (partial) {
                     if (owner.isCurrent) {

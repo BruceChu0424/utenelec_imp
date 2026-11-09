@@ -245,9 +245,9 @@ Future<void> _loadDraftWorkspaceRows(
   if (purchase != null) {
     final repo = ref.watch(purchaseRepositoryProvider(purchase));
     await read.loadPages(
-      (page) => repo.list(
+      (page, size) => repo.list(
         page: page,
-        size: 100,
+        size: size,
         filter: PurchaseDocFilter(
           status: 0,
           financeApproval: purchase == PurchaseDocType.order ? 'NONE' : null,
@@ -291,9 +291,9 @@ Future<void> _loadDraftWorkspaceRows(
   if (subcontract != null) {
     final repo = ref.watch(subcontractRepositoryProvider(subcontract));
     await read.loadPages(
-      (page) => repo.list(
+      (page, size) => repo.list(
         page: page,
-        size: 100,
+        size: size,
         filter: SubcontractDocFilter(
           status: 0,
           financeApproval: subcontract == SubcontractDocType.order
@@ -341,9 +341,9 @@ Future<void> _loadDraftWorkspaceRows(
     final repo = ref.watch(financeRepositoryProvider(finance));
     final financeNames = ref.read(financeNameServiceProvider);
     await read.loadPages(
-      (page) => repo.list(
+      (page, size) => repo.list(
         page: page,
-        size: 100,
+        size: size,
         filter: const FinanceDocFilter(status: 0),
       ),
       (rows) async {
@@ -387,9 +387,9 @@ Future<void> _loadDraftWorkspaceRows(
   if (kind == DraftDocKind.productionPlan) {
     final repo = ref.watch(productionPlanRepositoryProvider);
     await read.loadPages(
-      (page) => repo.list(
+      (page, size) => repo.list(
         page: page,
-        size: 100,
+        size: size,
         filter: const ProductionPlanFilter(status: 0),
       ),
       (rows) async {
@@ -423,9 +423,9 @@ Future<void> _loadDraftWorkspaceRows(
   if (kind == DraftDocKind.productionDailyReport) {
     final repo = ref.watch(productionDailyReportRepositoryProvider);
     await read.loadPages(
-      (page) => repo.list(
+      (page, size) => repo.list(
         page: page,
-        size: 100,
+        size: size,
         filter: const ProductionDailyReportFilter(status: 0),
       ),
       (rows) async {
@@ -460,9 +460,9 @@ Future<void> _loadDraftWorkspaceRows(
     final repo = ref.watch(salesRepositoryProvider(sales));
     final salesNames = ref.read(salesMasterNameServiceProvider);
     await read.loadPages(
-      (page) => repo.list(
+      (page, size) => repo.list(
         page: page,
-        size: 100,
+        size: size,
         filter: SalesDocFilter(
           status: 0,
           financeRejected: sales == SalesDocType.order ? false : null,
@@ -515,9 +515,9 @@ Future<void> _loadDraftWorkspaceRows(
   };
   for (final entry in repositories.entries) {
     await read.loadPages(
-      (page) => entry.value.list(
+      (page, size) => entry.value.list(
         page: page,
-        size: 100,
+        size: size,
         filter: const StockDocFilter(status: 0, standaloneDrafts: true),
       ),
       (rows) async {

@@ -43,6 +43,7 @@ class _FakeHrTaskRepository extends Fake implements HrTaskRepository {
   Future<PagedResult<HrCelebrationPublication>> celebrationHistory({
     required String type,
     int page = 1,
+    int size = 20,
     Map<String, String?> columnSearch = const {},
     String? sort,
     bool ascending = true,

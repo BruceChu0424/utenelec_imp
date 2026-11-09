@@ -215,6 +215,41 @@ class _SalesOrderPickerSheetState extends ConsumerState<_SalesOrderPickerSheet>
             order: order,
           );
         },
+        fetchPageSized: (target, size) async {
+          if (widget.receiptSources) {
+            final json = await ref
+                .read(apiClientProvider)
+                .get(
+                  '/finance/receipts/order-sources',
+                  query: {
+                    'page': target,
+                    'size': size,
+                    if (filter.keyword?.trim().isNotEmpty == true)
+                      'keyword': filter.keyword,
+                    'sellerId': ?filter.sellerId,
+                    ...filter.columnSearch,
+                    'sort': ?sort,
+                    'order': ?order,
+                  },
+                );
+            return PagedResult.fromJsonResponsive(
+              json,
+              SalesDocListItem.fromJson,
+            );
+          }
+          return repository.list(
+            page: target,
+            size: size,
+            filter: filter,
+            sort: sort,
+            order: order,
+          );
+        },
+        onProgressiveBatch: (partial) {
+          // 已选行的对账等完整结果。
+          if (!mounted || generation != _loadGeneration) return;
+          setState(() => _page = partial);
+        },
       );
       if (!mounted || generation != _loadGeneration) return;
       setState(() {

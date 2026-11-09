@@ -150,6 +150,7 @@ class _ManagerState extends ConsumerState<_Manager>
       _busy = true;
       _error = null;
     });
+    var partialRows = false;
     try {
       final loaded = await readViewActivity.runRead(() => _current, () async {
         final Map<String, dynamic> value;
@@ -163,6 +164,10 @@ class _ManagerState extends ConsumerState<_Manager>
             isCurrent: () => _current,
             fetchPage: (page) async => _fetchEntries(page, 100),
             fetchPageSized: _fetchEntries,
+            onProgressiveBatch: (partial) => setState(() {
+              partialRows = true;
+              _rows = _items(partial.items);
+            }),
           );
           value = {'rows': complete.items};
         } else {
@@ -205,7 +210,11 @@ class _ManagerState extends ConsumerState<_Manager>
     } catch (error) {
       if (isRetiredViewRead(error)) return;
       if (_current) {
-        setState(() => _error = humanErrorMessage(error) ?? '资料未读取完成');
+        setState(() {
+          // A failed read takes its progressive rows down as a whole.
+          if (partialRows) _rows = [];
+          _error = humanErrorMessage(error) ?? '资料未读取完成';
+        });
       }
     } finally {
       if (_current) setState(() => _busy = false);

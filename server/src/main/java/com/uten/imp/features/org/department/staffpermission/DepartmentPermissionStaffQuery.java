@@ -43,7 +43,7 @@ public class DepartmentPermissionStaffQuery {
     Result query(StaffSearchAuthority authority, UUID selectedDepartmentId, UUID excludedEmployeeId,
             String search, int requestedPage, int requestedSize, PagePermissionStaffHeaderQuery headers) {
         int page = Math.max(1, requestedPage);
-        int size = Math.min(Math.max(1, requestedSize), 50);
+        int size = Math.min(Math.max(1, requestedSize), com.uten.imp.common.web.Pageables.MAX_PAGE_SIZE);
         String normalized = search == null ? "" : search.trim();
         boolean hasSearch = !KeywordSearch.terms(normalized).isEmpty();
 

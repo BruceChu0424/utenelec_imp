@@ -77,21 +77,29 @@ class _ListRepository extends _Repository {
       'sort': sort,
       'order': order,
     });
+    // 2026-11-08 阶梯完整读取：fake 按请求的 (page,size) 切片固定总数
+    // （pages × 20 行），回显 page/size/total/totalPages，每行唯一 id。
+    final total = pages == 1 ? 1 : pages * 20;
+    final start = (page - 1) * size;
     return PagedResult(
       items: pages == 1
           ? [row]
           : [
-              for (var index = 0; index < size; index++)
+              for (
+                var index = start;
+                index < total && index < start + size;
+                index++
+              )
                 ProductionOverLimitDisposition({
                   ...row.data,
-                  'id': '${row.id}-${(page - 1) * size + index}',
+                  'id': '${row.id}-$index',
                   'status': status,
                 }),
             ],
       page: page,
       size: size,
-      total: pages == 1 ? 1 : pages * size,
-      totalPages: pages,
+      total: total,
+      totalPages: (total + size - 1) ~/ size,
     );
   }
 }
@@ -180,8 +188,9 @@ void main() {
           );
       expect(table().items, hasLength(60));
       expect(repo.queries, contains(('PENDING', 2)));
-      expect(repo.queries, [('PENDING', 1), ('PENDING', 2), ('PENDING', 3)]);
-      expect(repo.headerCalls.every((query) => query['size'] == 20), isTrue);
+      // 60 行 = 阶梯 50 → 50（末批 10 行）。
+      expect(repo.queries, [('PENDING', 1), ('PENDING', 2)]);
+      expect(repo.headerCalls.map((query) => query['size']), [50, 50]);
       expect(table().currentPage, 1);
       expect(table().totalPages, 1);
       await tester.tap(

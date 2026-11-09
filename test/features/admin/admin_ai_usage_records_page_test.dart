@@ -103,16 +103,15 @@ void main() {
   testWidgets(
     'records load the complete query once and preserve exact event fields',
     (tester) async {
-      final repository = _Repository()
-        ..pages = {
-          for (var page = 0; page < 3; page++) page: _auditBatch(page),
-        };
+      final repository = _Repository()..completeAudit = true;
       await _pump(tester, repository);
       final table = tester.widget<MasterDataTableView<AiUsageAuditRecord>>(
         find.byKey(const Key('ai-records-table')),
       );
-      expect(repository.reads.map((q) => q['page']), [0, 1, 2]);
-      expect(repository.reads.every((q) => q['size'] == 100), isTrue);
+      // Progressive complete read ladder over a size-honoring fake:
+      // (page 0, 50) → (page 1, 50) → (page 1, 100) → (page 1, 200).
+      expect(repository.reads.map((q) => q['page']), [0, 1, 1, 1]);
+      expect(repository.reads.map((q) => q['size']), [50, 50, 100, 200]);
       expect(table.items, hasLength(201));
       final second = table.items[100];
       expect(second.id, 'event-100');
@@ -126,19 +125,22 @@ void main() {
         const Offset(0, -2500),
       );
       await tester.pumpAndSettle();
-      expect(repository.reads, hasLength(3));
+      expect(repository.reads, hasLength(4));
       expect(
         find.byKey(const ValueKey('master-table-page-next')),
         findsNothing,
       );
       await tester.tap(find.byTooltip('刷新记录'));
       await tester.pumpAndSettle();
-      expect(repository.reads.map((q) => q['page']), [0, 1, 2, 0, 1, 2]);
+      expect(repository.reads.map((q) => q['page']), [
+        0, 1, 1, 1, //
+        0, 1, 1, 1,
+      ]);
     },
   );
 
   testWidgets(
-    'one complete read waits for the final batch without publishing an incomplete query',
+    'first validated batch publishes rows while the final batch is still in flight',
     (tester) async {
       final second = Completer<Map<String, dynamic>>();
       final repository = _Repository()
@@ -149,9 +151,17 @@ void main() {
       });
       await _pump(tester, repository, waitComplete: false);
       expect(repository.reads.map((q) => q['page']), [0, 1]);
-      expect(find.byKey(const Key('ai-records-table')), findsNothing);
-      expect(find.byKey(const ValueKey('ai-records-skeleton')), findsOneWidget);
       await tester.pump(const Duration(milliseconds: 100));
+      // 渐进契约: 首批已校验的 100 行先发布为行表; 完整结果仍由末批决定。
+      expect(find.byKey(const ValueKey('ai-records-skeleton')), findsNothing);
+      expect(
+        tester
+            .widget<MasterDataTableView<AiUsageAuditRecord>>(
+              find.byKey(const Key('ai-records-table')),
+            )
+            .items,
+        hasLength(100),
+      );
       expect(repository.reads, hasLength(2));
       second.complete(_auditBatch(1, total: 101));
       await tester.pumpAndSettle();
@@ -446,10 +456,7 @@ void main() {
   testWidgets(
     'complete reads and filter changes keep the selected scope and restart at page zero',
     (tester) async {
-      final repository = _Repository()
-        ..pages = {
-          for (var page = 0; page < 3; page++) page: _auditBatch(page),
-        };
+      final repository = _Repository()..completeAudit = true;
       await _pump(tester, repository);
       final table = tester.widget<MasterDataTableView<AiUsageAuditRecord>>(
         find.byKey(const Key('ai-records-table')),
@@ -459,7 +466,7 @@ void main() {
         find.byKey(const ValueKey('master-table-page-next')),
         findsNothing,
       );
-      expect(repository.reads.map((q) => q['page']), [0, 1, 2]);
+      expect(repository.reads.map((q) => q['page']), [0, 1, 1, 1]);
       await _select(tester, '时间', '近 7 天');
       expect(repository.reads.last['days'], 7);
       expect(
@@ -1095,29 +1102,42 @@ Map<String, dynamic> _auditBatch(int page, {int total = 201}) => {
       index < (page + 1) * 100 && index < total;
       index++
     )
-      {
-        'id': 'event-$index',
-        'userId': 'employee-$index',
-        'name': '员工$index',
-        'code': 'E$index',
-        'question': '问题$index',
-        'intent': 'inventory_lookup',
-        'kind': 'ERP_CHAT',
-        'status': 'SUCCEEDED',
-        'createdAt': '2026-10-26T01:02:03.123456Z',
-        'inputTokens': 9007199254740991,
-        'outputTokens': null,
-        'calls': 2,
-        'providerNames': ['服务$index'],
-        'models': ['模型$index'],
-        'costs': [
-          {
-            'basis': 'ACTUAL',
-            'currency': 'EUR',
-            'amount': '999999999999.000000001',
-          },
-        ],
-      },
+      _auditRecord(index),
+  ],
+};
+
+/// Zero-based [page] window of [size] rows over the 201-record complete result
+/// (the fake honors the requested page/size like the server ladder does).
+Map<String, dynamic> _auditWindow(int page, int size) => {
+  ..._data(),
+  'total': 201,
+  'records': [
+    for (
+      var index = page * size;
+      index < (page + 1) * size && index < 201;
+      index++
+    )
+      _auditRecord(index),
+  ],
+};
+
+Map<String, dynamic> _auditRecord(int index) => {
+  'id': 'event-$index',
+  'userId': 'employee-$index',
+  'name': '员工$index',
+  'code': 'E$index',
+  'question': '问题$index',
+  'intent': 'inventory_lookup',
+  'kind': 'ERP_CHAT',
+  'status': 'SUCCEEDED',
+  'createdAt': '2026-10-26T01:02:03.123456Z',
+  'inputTokens': 9007199254740991,
+  'outputTokens': null,
+  'calls': 2,
+  'providerNames': ['服务$index'],
+  'models': ['模型$index'],
+  'costs': [
+    {'basis': 'ACTUAL', 'currency': 'EUR', 'amount': '999999999999.000000001'},
   ],
 };
 
@@ -1153,7 +1173,10 @@ class _HeaderRepository extends _Repository
 
 class _Repository implements AiUsageAuditRepository {
   Map<String, dynamic> data = _data();
-  Map<int, Map<String, dynamic>>? pages;
+
+  /// Serves the zero-based (page, size) window of the 201-record complete
+  /// result (honors the progressive ladder's requested sizes).
+  bool completeAudit = false;
   final reads = <Map<String, dynamic>>[];
   final pendingReads = Queue<Future<Map<String, dynamic>>>();
   final saved = <(String, Map<String, dynamic>)>[];
@@ -1186,7 +1209,7 @@ class _Repository implements AiUsageAuditRepository {
       'providerId': providerId,
     });
     return pendingReads.isEmpty
-        ? Future.value(pages?[page] ?? data)
+        ? Future.value(completeAudit ? _auditWindow(page, size) : data)
         : pendingReads.removeFirst();
   }
 

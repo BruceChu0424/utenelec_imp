@@ -105,6 +105,7 @@ class _MaterialContextPickerState extends ConsumerState<_MaterialContextPicker>
             _fetchPage(page, 100, keyword, acceptedItems),
         fetchPageSized: (page, size) async =>
             _fetchPage(page, size, keyword, acceptedItems),
+        onProgressiveBatch: (partial) => setState(() => _items = partial.items),
       );
       if (!current()) return;
       setState(() {
@@ -113,9 +114,12 @@ class _MaterialContextPickerState extends ConsumerState<_MaterialContextPicker>
       });
     } catch (error) {
       if (!isRetiredViewRead(error) && current()) {
-        setState(
-          () => _error = error is ApiException ? error.message : '读取对账资料失败，请重试',
-        );
+        setState(() {
+          // A failed complete read takes its progressive prefix down with it:
+          // no partial directory remains visible as if it were the result.
+          _items = [];
+          _error = error is ApiException ? error.message : '读取对账资料失败，请重试';
+        });
       }
     } finally {
       if (_current && generation == _generation) setState(() => _busy = false);

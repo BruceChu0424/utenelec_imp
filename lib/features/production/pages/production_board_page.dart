@@ -800,6 +800,19 @@ class _PendingPanelState extends ConsumerState<_PendingPanel>
           status: filters['status'],
           billNo: filters['orderBillNo'],
         ),
+        fetchPageSized: (page, size) => repo.schedulePending(
+          page: page,
+          size: size,
+          keyword: kw,
+          sort: sort,
+          order: sort == null ? null : (ascending ? 'asc' : 'desc'),
+          status: filters['status'],
+          billNo: filters['orderBillNo'],
+        ),
+        onProgressiveBatch: (partial) {
+          if (!current()) return;
+          setState(() => _page = partial);
+        },
       );
       unawaited(_loadFacets(repo, kw, current));
       final page = await rows;
@@ -1514,6 +1527,20 @@ class _PlanPanelState extends ConsumerState<_PlanPanel>
           dateFrom: from,
           dateTo: to,
         ),
+        fetchPageSized: (page, batchSize) => repo.planProgress(
+          closed: closed,
+          sort: sort,
+          page: page,
+          size: batchSize,
+          keyword: kw,
+          workshop: ws,
+          dateFrom: from,
+          dateTo: to,
+        ),
+        onProgressiveBatch: (partial) {
+          if (!current()) return;
+          setState(() => _page = partial);
+        },
       );
       unawaited(
         _loadSummary(

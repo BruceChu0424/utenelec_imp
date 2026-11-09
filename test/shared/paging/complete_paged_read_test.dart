@@ -149,25 +149,31 @@ void main() {
           eventTurns++;
         });
         final watch = Stopwatch()..start();
+        var offset = 0;
         try {
           final result = await loadCompletePagedResult<int>(
             isCurrent: () => true,
             idOf: (row) => row,
             loadPage: (page, size) async {
-              expect(size, 100);
+              // 50 first, then aligned growth to the bounded 200 maximum.
+              expect(size, CompleteReadBatchPlan.progressive.sizeAt(offset));
+              expect((page - 1) * size, offset);
               batches++;
+              final rows = (count - offset).clamp(0, size);
+              final items = List.generate(rows, (index) => offset + index);
+              offset += rows;
               return PagedResult(
-                items: List.generate(100, (index) => (page - 1) * 100 + index),
+                items: items,
                 page: page,
                 size: size,
                 total: count,
-                totalPages: count ~/ 100,
+                totalPages: (count + size - 1) ~/ size,
               );
             },
           );
           expect(result.items.length, count);
           expect((result.items.first, result.items.last), (0, count - 1));
-          expect(batches, count ~/ 100);
+          expect(batches, 3 + (count - 200 + 199) ~/ 200);
           expect(yields, greaterThan(0));
           expect(eventTurns, greaterThan(0));
           expect((result.page, result.totalPages), (1, 1));
@@ -184,7 +190,7 @@ void main() {
   }
 
   test(
-    'all bounded batches form one local page and a sized loader receives 100 throughout',
+    'all bounded batches form one local page; a loader keeping its own page size continues on it',
     () async {
       final calls = <(int, int)>[];
       final result = await loadCompletePagedResult<int>(
@@ -195,7 +201,7 @@ void main() {
         isCurrent: () => true,
         idOf: (row) => row,
       );
-      expect(calls, [(1, 100), (2, 100), (3, 100)]);
+      expect(calls, [(1, 50), (2, 1), (3, 1)]);
       expect(result.items, [1, 2, 3]);
       expect((result.page, result.total, result.totalPages), (1, 3, 1));
     },

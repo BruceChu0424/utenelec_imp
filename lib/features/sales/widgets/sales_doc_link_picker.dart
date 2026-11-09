@@ -173,10 +173,20 @@ Future<SalesLinkPickResult?> showSalesDocLinkPicker(
         },
         serverColumnSearchKeys: const {'billNo', 'client'},
         listDocsWithFilters:
-            (ref, page, keyword, clientId, sort, order, filters) => ref
+            (
+              ref,
+              page,
+              keyword,
+              clientId,
+              sort,
+              order,
+              filters, {
+              int size = 20,
+            }) => ref
                 .read(salesRepositoryProvider(upstream))
                 .list(
                   page: page,
+                  size: size,
                   // 业务约束：只引入已审单（草稿/红冲不可引入）。
                   filter: SalesDocFilter(
                     keyword: keyword,

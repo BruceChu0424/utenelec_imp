@@ -188,43 +188,44 @@ class ExpenseListNotifier extends AsyncNotifier<PagedResult<ExpenseClaim>> {
     _lastSortAscending = sortAscending;
     final repository = ref.watch(expenseRepositoryProvider);
     final reader = ref.watch(_expenseMineReads(_readQuery));
-    return reader.read(
-      _page,
-      fetchPage: (page) =>
-          filter == ExpenseFilter.rejected &&
+    // One request shape for both loaders: the complete reader forwards its
+    // aligned batch size; the fixed-page fallback keeps the repository's 24.
+    Future<PagedResult<ExpenseClaim>> fetch(int page, int size) =>
+        filter == ExpenseFilter.rejected &&
+            status == null &&
+            repository is DioExpenseRepository
+        ? repository.listMineActionRequired(
+            page: page,
+            size: size,
+            category: category,
+            claimNo: claimNo,
+            sort: sortColumn,
+            order: sortColumn == null ? null : (sortAscending ? 'asc' : 'desc'),
+          )
+        : filter == ExpenseFilter.finished &&
               status == null &&
               repository is DioExpenseRepository
-          ? repository.listMineActionRequired(
-              page: page,
-              category: category,
-              claimNo: claimNo,
-              sort: sortColumn,
-              order: sortColumn == null
-                  ? null
-                  : (sortAscending ? 'asc' : 'desc'),
-            )
-          : filter == ExpenseFilter.finished &&
-                status == null &&
-                repository is DioExpenseRepository
-          ? repository.listMineIncludingAbandoned(
-              page: page,
-              category: category,
-              claimNo: claimNo,
-              sort: sortColumn,
-              order: sortColumn == null
-                  ? null
-                  : (sortAscending ? 'asc' : 'desc'),
-            )
-          : repository.listMine(
-              statuses: status != null ? [status] : filter.apiStatuses,
-              category: category,
-              page: page,
-              claimNo: claimNo,
-              sort: sortColumn,
-              order: sortColumn == null
-                  ? null
-                  : (sortAscending ? 'asc' : 'desc'),
-            ),
+        ? repository.listMineIncludingAbandoned(
+            page: page,
+            size: size,
+            category: category,
+            claimNo: claimNo,
+            sort: sortColumn,
+            order: sortColumn == null ? null : (sortAscending ? 'asc' : 'desc'),
+          )
+        : repository.listMine(
+            statuses: status != null ? [status] : filter.apiStatuses,
+            category: category,
+            page: page,
+            size: size,
+            claimNo: claimNo,
+            sort: sortColumn,
+            order: sortColumn == null ? null : (sortAscending ? 'asc' : 'desc'),
+          );
+    return reader.read(
+      _page,
+      fetchPage: (page) => fetch(page, 24),
+      fetchPageSized: fetch,
     );
   }
 
@@ -802,71 +803,81 @@ class ExpenseApprovalListNotifier
         : (ref.read(expenseApprovalSortAscendingProvider) ? 'asc' : 'desc');
     final repository = ref.read(expenseRepositoryProvider);
     final scope = ref.read(expenseApprovalReadScopeProvider);
+    // One request shape for both loaders: the complete reader forwards its
+    // aligned batch size; the fixed-page fallback keeps the repository's 24.
+    Future<PagedResult<ExpenseClaim>> fetch(int page, int size) {
+      if (scope.isScoped && repository is DioExpenseRepository) {
+        return repository.listApprovalScoped(
+          switch (queue) {
+            ApprovalQueue.pending => ApprovalFacetQueue.pending,
+            ApprovalQueue.payable => ApprovalFacetQueue.payable,
+            ApprovalQueue.history => ApprovalFacetQueue.history,
+            ApprovalQueue.browse => ApprovalFacetQueue.browse,
+          },
+          scope,
+          page: page,
+          size: size,
+          year: filters.year,
+          month: filters.month,
+          departmentId: filters.departmentId,
+          category: filters.category,
+          claimNo: claimNo,
+          sort: sortColumn,
+          order: order,
+        );
+      }
+      return switch (queue) {
+        ApprovalQueue.pending => repository.listPending(
+          page: page,
+          size: size,
+          year: filters.year,
+          month: filters.month,
+          departmentId: filters.departmentId,
+          category: filters.category,
+          claimNo: claimNo,
+          sort: sortColumn,
+          order: order,
+        ),
+        ApprovalQueue.history => repository.listHistory(
+          page: page,
+          size: size,
+          year: filters.year,
+          month: filters.month,
+          departmentId: filters.departmentId,
+          category: filters.category,
+          claimNo: claimNo,
+          sort: sortColumn,
+          order: order,
+        ),
+        ApprovalQueue.browse => repository.listBrowse(
+          page: page,
+          size: size,
+          year: filters.year,
+          month: filters.month,
+          departmentId: filters.departmentId,
+          category: filters.category,
+          claimNo: claimNo,
+          sort: sortColumn,
+          order: order,
+        ),
+        ApprovalQueue.payable => repository.listPayable(
+          page: page,
+          size: size,
+          year: filters.year,
+          month: filters.month,
+          departmentId: filters.departmentId,
+          category: filters.category,
+          claimNo: claimNo,
+          sort: sortColumn,
+          order: order,
+        ),
+      };
+    }
+
     return _reader.read(
       page,
-      fetchPage: (page) {
-        if (scope.isScoped && repository is DioExpenseRepository) {
-          return repository.listApprovalScoped(
-            switch (queue) {
-              ApprovalQueue.pending => ApprovalFacetQueue.pending,
-              ApprovalQueue.payable => ApprovalFacetQueue.payable,
-              ApprovalQueue.history => ApprovalFacetQueue.history,
-              ApprovalQueue.browse => ApprovalFacetQueue.browse,
-            },
-            scope,
-            page: page,
-            year: filters.year,
-            month: filters.month,
-            departmentId: filters.departmentId,
-            category: filters.category,
-            claimNo: claimNo,
-            sort: sortColumn,
-            order: order,
-          );
-        }
-        return switch (queue) {
-          ApprovalQueue.pending => repository.listPending(
-            page: page,
-            year: filters.year,
-            month: filters.month,
-            departmentId: filters.departmentId,
-            category: filters.category,
-            claimNo: claimNo,
-            sort: sortColumn,
-            order: order,
-          ),
-          ApprovalQueue.history => repository.listHistory(
-            page: page,
-            year: filters.year,
-            month: filters.month,
-            departmentId: filters.departmentId,
-            category: filters.category,
-            claimNo: claimNo,
-            sort: sortColumn,
-            order: order,
-          ),
-          ApprovalQueue.browse => repository.listBrowse(
-            page: page,
-            year: filters.year,
-            month: filters.month,
-            departmentId: filters.departmentId,
-            category: filters.category,
-            claimNo: claimNo,
-            sort: sortColumn,
-            order: order,
-          ),
-          ApprovalQueue.payable => repository.listPayable(
-            page: page,
-            year: filters.year,
-            month: filters.month,
-            departmentId: filters.departmentId,
-            category: filters.category,
-            claimNo: claimNo,
-            sort: sortColumn,
-            order: order,
-          ),
-        };
-      },
+      fetchPage: (page) => fetch(page, 24),
+      fetchPageSized: fetch,
     );
   }
 }

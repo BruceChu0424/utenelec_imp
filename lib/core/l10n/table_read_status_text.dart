@@ -21,6 +21,11 @@ const _texts = <String, List<String>>{
   'retry': ['重试', 'Retry', '다시 시도'],
   'close': ['关闭', 'Close', '닫기'],
   'loadFailed': ['数据加载失败', 'Data could not be loaded', '데이터를 불러오지 못했습니다'],
+  'incompleteRead': [
+    '读取未完成，已显示的部分记录已撤下。',
+    'The read did not finish; the rows shown so far were withdrawn.',
+    '읽기가 완료되지 않아 표시된 일부 기록을 거두었습니다.',
+  ],
   'loadImpact': [
     '尚未取得本次查询的数据。重试只会重新读取数据。',
     'Data for this query has not been loaded. Retrying only reads the data again.',

@@ -98,6 +98,9 @@ class PagedListController<T> extends ChangeNotifier {
     required Future<PagedResult<T>> Function() fetch,
     Future<PagedResult<T>> Function(int page)? fetchPage,
     Future<PagedResult<T>> Function(int page, int size)? fetchPageSized,
+    // A nested complete reader (reports) returns the whole result itself and
+    // publishes its own batches through the shared progressive slot.
+    Future<PagedResult<T>> Function()? fetchComplete,
     bool Function()? isCurrent,
     // Stable accepted-data ownership, excluding a single request generation.
     // Existing callers retain their original ownership when this is omitted.
@@ -155,6 +158,14 @@ class PagedListController<T> extends ChangeNotifier {
     error = null;
     refreshError = null;
     _notify();
+    // A fresh read shows each validated batch while it continues (rows only;
+    // loading stays true). A silent refresh keeps the accepted rows instead.
+    // Any failure or retirement takes the growing rows down as a whole.
+    var showedProgressive = false;
+    void retireProgressive() {
+      if (showedProgressive) page = null;
+    }
+
     try {
       final result = await _activity.runRead(
         owned,
@@ -174,10 +185,21 @@ class PagedListController<T> extends ChangeNotifier {
           isCurrent: owned,
           isOwnerCurrent: ownerIsCurrent == null ? null : dataOwned,
           fetchPageSized: fetchPageSized,
+          fetchComplete: fetchComplete,
+          onProgressiveBatch: background
+              ? null
+              : (partial) {
+                  if (!current()) return;
+                  showedProgressive = true;
+                  page = partial;
+                  _notify();
+                },
           useCache:
               useCachedPage &&
               queryScope != null &&
-              (fetchPage != null || fetchPageSized != null),
+              (fetchPage != null ||
+                  fetchPageSized != null ||
+                  fetchComplete != null),
         ),
       );
       retireLostOwner();
@@ -193,6 +215,7 @@ class PagedListController<T> extends ChangeNotifier {
     } on ApiException catch (failure) {
       retireLostOwner();
       if (!current()) return;
+      retireProgressive();
       if (isRetiredViewRead(failure)) {
         loading = false;
         refreshing = false;
@@ -205,6 +228,7 @@ class PagedListController<T> extends ChangeNotifier {
     } catch (failure) {
       retireLostOwner();
       if (!current()) return;
+      retireProgressive();
       if (isRetiredViewRead(failure)) {
         loading = false;
         refreshing = false;

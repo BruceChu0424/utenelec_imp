@@ -66,7 +66,7 @@ UtenDocLinkPickerConfig<_Doc, _Item, Null> _config({
     partyName: (_, partyId) => '供应商一',
     initNames: (_) async {},
     loadGoodsNames: (_, _) async {},
-    listDocs: (ref, page, keyword, partyId, sort, order) async {
+    listDocs: (ref, page, keyword, partyId, sort, order, {int size = 20}) async {
       onListParty?.call(partyId);
       return PagedResult(
         items: docs,

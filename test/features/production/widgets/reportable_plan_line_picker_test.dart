@@ -11,6 +11,7 @@ import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart
 import 'package:uten_imp/features/production/models/reportable_plan_line.dart';
 import 'package:uten_imp/features/production/repositories/production_repository.dart';
 import 'package:uten_imp/features/production/widgets/reportable_plan_line_picker.dart';
+import 'package:uten_imp/shared/paging/paged_read_window_binding.dart';
 import '../../../support/uten_test_actions.dart';
 
 void main() {
@@ -19,7 +20,7 @@ void main() {
     (tester) async {
       await tester.binding.setSurfaceSize(const Size(900, 1000));
       addTearDown(() => tester.binding.setSurfaceSize(null));
-      final requests = <int>[];
+      final requests = <(int, int)>[];
       final first = _recovery(
         id: 'rework-page-one',
         disposition: 'REWORK',
@@ -38,27 +39,29 @@ void main() {
         'orderItemId': 'order-page-two',
         'executionSegmentSalesAllocationId': 'allocation-page-two',
       };
+      // 2026-11-08 阶梯完整读取：fake 按请求的 (page,size) 切片 101 行并回显，
+      // 首行 rework-page-one、末行 sales-page-two。
+      final all = [
+        first,
+        for (var index = 1; index < 100; index++)
+          _recovery(
+            id: 'filler-$index',
+            disposition: 'REWORK',
+            maxReportQty: 2,
+            requiresMaterial: false,
+          ),
+        second,
+      ];
       final api = _pagedApi((request) async {
         final page = request.queryParameters['page'] as int;
-        requests.add(page);
-        expectSync(request.queryParameters['size'], 100);
+        final size = request.queryParameters['size'] as int;
+        requests.add((page, size));
         return {
-          'items': page == 1
-              ? [
-                  first,
-                  for (var index = 1; index < 100; index++)
-                    _recovery(
-                      id: 'filler-$index',
-                      disposition: 'REWORK',
-                      maxReportQty: 2,
-                      requiresMaterial: false,
-                    ),
-                ]
-              : [second],
+          'items': all.skip((page - 1) * size).take(size).toList(),
           'page': page,
-          'size': 100,
-          'total': 101,
-          'totalPages': 2,
+          'size': size,
+          'total': all.length,
+          'totalPages': (all.length + size - 1) ~/ size,
         };
       });
       List<ReportablePlanLine>? selected;
@@ -77,7 +80,8 @@ void main() {
       await tester.tap(find.text('选择来源'));
       await tester.pumpAndSettle();
       final rows = _reportableTable(tester).rowsController!;
-      expect(requests, [1, 2]);
+      // 101 行 = 50 → 50 → 100（末批 1 行）。
+      expect(requests, [(1, 50), (2, 50), (2, 100)]);
       expect(rows.items, hasLength(101));
       expect(_reportableTable(tester).totalPages, 1);
       final controller = utenTestTableBodyController(
@@ -104,8 +108,9 @@ void main() {
         await tester.pumpAndSettle();
       }
       expect(requests, [
-        1,
-        2,
+        (1, 50),
+        (2, 50),
+        (2, 100),
       ], reason: 'Scrolling the complete result performs no read');
       await tester.tap(find.widgetWithText(UtenButton, '确定'));
       await tester.pumpAndSettle();
@@ -167,7 +172,11 @@ void main() {
       }
       expect(requests, [(1, null), (2, null)]);
       expect(pendingPage.isCompleted, isFalse);
-      expect(_reportableTable(tester).items, isEmpty);
+      // 2026-11-08 逐批读取：fake 自有 100 行页大小，首批校验通过即作为
+      // 增长期 provisional 行展示；续批未到前它不是完整结果。
+      final provisional = _reportableTable(tester).items;
+      expect(provisional, hasLength(100));
+      expect(readWindowBindingOf(provisional)!.growing, isTrue);
       final search = find.byWidgetPredicate(
         (widget) =>
             widget is TextField &&

@@ -359,7 +359,13 @@ void main() {
         await tester.tap(button);
         await tester.pumpAndSettle();
         final reads = api.sourceQueries;
-        expect(reads.map((q) => (q['page'], q['size'])), [(1, 100), (2, 100)]);
+        // Progressive complete read (2026-11-08): 50, then aligned 50/100 —
+        // offsets 0/50/100, every source exactly once.
+        expect(reads.map((q) => (q['page'], q['size'])), [
+          (1, 50),
+          (2, 50),
+          (2, 100),
+        ]);
         expect(
           reads.every(
             (q) =>

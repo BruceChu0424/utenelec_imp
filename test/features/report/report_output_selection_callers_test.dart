@@ -234,10 +234,15 @@ class _CallerApi extends ApiClient {
   final reads = <Map<String, dynamic>>[], jobs = <Map<String, dynamic>>[];
   final readEndpoints = <String>[];
   int capabilityReads = 0;
+  // Two report lines of one document. The fake honors the complete reader's
+  // requested (page, size): rows are the exact [(page-1)*size, page*size)
+  // slice of the two lines, each keeping its own line identity.
+  static const _lineTotal = 2;
   Map<String, dynamic> _report(Map<String, dynamic>? query) {
     final values = Map<String, dynamic>.from(query ?? {});
     reads.add(values);
     final page = (values['page'] as num?)?.toInt() ?? 1;
+    final size = (values['size'] as num?)?.toInt() ?? 1;
     return {
       'columns': [
         {'key': 'goodsName', 'label': '货品名称', 'type': 'text', 'width': 220},
@@ -246,9 +251,13 @@ class _CallerApi extends ApiClient {
       ],
       'columnSearchKeys': ['goodsName', 'billDate', 'proof'],
       'rows': [
-        if (page <= 2)
+        for (
+          var line = (page - 1) * size + 1;
+          line <= _lineTotal && line <= page * size;
+          line++
+        )
           {
-            '__lineId': '$domain-line-$page',
+            '__lineId': '$domain-line-$line',
             '__srcId': '$domain-document',
             'goodsName': '查阅项目',
             'billDate': '2026-10-11',
@@ -257,13 +266,13 @@ class _CallerApi extends ApiClient {
       ],
       'facets': {
         'proof': [
-          {'value': '范围A', 'count': 2},
+          {'value': '范围A', 'count': _lineTotal},
         ],
       },
       'page': page,
-      'size': 1,
-      'total': 2,
-      'totalPages': 2,
+      'size': size,
+      'total': _lineTotal,
+      'totalPages': (_lineTotal / size).ceil(),
       'readScopeVersion': '$domain-fixture-scope',
     };
   }

@@ -8,6 +8,7 @@ import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.time.WorkAnniversary;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.web.Pageables;
 import com.uten.imp.features.admin.systemsetting.SystemSettingKey;
 import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
 import com.uten.imp.features.notice.NoticeAcknowledgmentRepository.NoticeAcknowledgerRow;
@@ -111,8 +112,8 @@ public class NoticeService {
     /** 列表/角标预览展示的最近回执人/祝福数（控制单条 NoticeDto 的查询成本）。 */
     private static final int INLINE_RECENT_LIMIT = 5;
     private static final int MAX_LIST_ITEMS = 500;
-    private static final int MAX_ARRIVAL_ITEMS = 100;
-    private static final int MAX_TODO_ITEMS = 100;
+    private static final int MAX_ARRIVAL_ITEMS = Pageables.MAX_PAGE_SIZE;
+    private static final int MAX_TODO_ITEMS = Pageables.MAX_PAGE_SIZE;
     private static final int MAX_BATCH_DELETE_ITEMS = RequestLimits.BATCH_IDS;
     private static final UUID EMPTY_ARRIVAL_CURSOR_ID = new UUID(0L, 0L);
 
@@ -636,7 +637,7 @@ public class NoticeService {
         UUID userId = requireStaffId();
         requireVisible(id, userId);
         int safePage = Math.max(0, page);
-        int safeSize = Math.min(Math.max(1, size), 50);
+        int safeSize = Math.min(Math.max(1, size), Pageables.MAX_PAGE_SIZE);
         // 走带姓名投影的 native 查询（避免逐行 N+1 解析员工姓名）
         long offset = (long) safePage * safeSize;
         long total = blessRepo.countByNoticeId(id);
@@ -669,7 +670,7 @@ public class NoticeService {
         UUID userId=requireStaffId();Notice notice=noticeRepo.findById(id).orElseThrow(()->new ApiException(ErrorCode.NOT_FOUND));
         NoticeUserState state=stateRepo.findById(new NoticeUserStateId(id,userId)).orElse(null);
         if(!visibleTo(notice,userId,state))throw new ApiException(ErrorCode.NOT_FOUND);
-        return blessRepo.findHistory(id,beforeId,Math.max(1,Math.min(50,size))).stream().map(row->new BlessingHistoryDto(
+        return blessRepo.findHistory(id,beforeId,Math.max(1,Math.min(Pageables.MAX_PAGE_SIZE,size))).stream().map(row->new BlessingHistoryDto(
             row.getId(),row.getBlessingId(),row.getSenderName(),row.getContent(),row.getRecordedAt(),row.getActorId(),row.getOperation(),
             Boolean.parseBoolean(row.getDeleted()),row.getDeletedReason(),true)).toList();
     }
@@ -680,7 +681,7 @@ public class NoticeService {
     @Transactional(readOnly = true)
     public AcknowledgerPage listAcknowledgers(UUID id, int limit) {
         requireVisible(id, requireStaffId());
-        int safeLimit = Math.min(Math.max(1, limit), 50);
+        int safeLimit = Math.min(Math.max(1, limit), Pageables.MAX_PAGE_SIZE);
         List<NoticeAcknowledgerRow> rows = ackRepo.findRecentAcknowledgers(id, safeLimit);
         List<NoticeAcknowledgerDto> items = rows.stream()
                 .map(r -> new NoticeAcknowledgerDto(r.getName(), r.getAckedAt()))

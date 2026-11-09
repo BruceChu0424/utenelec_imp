@@ -535,7 +535,7 @@ class _Api extends MasterSummaryStreamTestApi {
     );
     expect(replacementDraft, isTrue);
     final parameters = masterSummaryTestParameters(request);
-    expect(parameters['size'], 100);
+    expect(parameters['size'], kProgressiveSummaryStreamSize);
     expect(parameters['selectableOnly'], isTrue);
     return [
       {

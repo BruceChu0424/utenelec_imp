@@ -199,6 +199,12 @@ class _ProductionFqcReplenishmentBannerState
             },
             fetchPage: (page) => fetchRows(page, _pageSize),
             fetchPageSized: fetchRows,
+            // Progressive batches grow only the row list (banner + task sheet);
+            // the authoritative pending count still waits for the result below.
+            onProgressiveBatch: (partial) {
+              if (!mounted || !_requests.isCurrent(generation)) return;
+              setState(() => _result = partial);
+            },
           );
       final pendingCount =
           (result
@@ -643,11 +649,14 @@ class _ProductionFqcReplenishmentBannerState
                               ?.copyWith(fontWeight: FontWeight.w700),
                         ),
                         const SizedBox(height: UtenSpacing.s4),
-                        Text(
-                          _pendingCount > 0
-                              ? '$_pendingCount 项仍需计划确认、补料或仓库发料；每一步按真实库存事实推进。'
-                              : '当前任务均已发料就绪，可进入生产计划完成补产报工。',
-                        ),
+                        // 待办计数来自完整读取；渐进批次到达时只展示行，
+                        // 该汇总行等完整结果（loading 收起）后再出现。
+                        if (!_loading)
+                          Text(
+                            _pendingCount > 0
+                                ? '$_pendingCount 项仍需计划确认、补料或仓库发料；每一步按真实库存事实推进。'
+                                : '当前任务均已发料就绪，可进入生产计划完成补产报工。',
+                          ),
                         if (_error != null) ...[
                           const SizedBox(height: UtenSpacing.s4),
                           Text(

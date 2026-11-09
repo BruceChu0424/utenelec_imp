@@ -137,9 +137,11 @@ void main() {
         final api = _ArchiveApi(type);
         await _mount(tester, api, SubcontractLegacyHistoryPage(type: type));
         final recent = recentMonthDateRange();
+        // The complete archive read starts with the progressive first batch
+        // (page 1, size 50); the small result finishes in that one batch.
         expect(api.listQueries.single, {
           'page': 1,
-          'size': 100,
+          'size': 50,
           'originScope': 'LEGACY',
           'dateFrom': ChinaDateTime.formatDate(recent.start),
           'dateTo': ChinaDateTime.formatDate(recent.end),
@@ -156,7 +158,7 @@ void main() {
         await tester.pumpAndSettle();
         expect(api.listQueries.last, {
           'page': 1,
-          'size': 100,
+          'size': 50,
           'originScope': 'LEGACY',
         });
         final table = tester

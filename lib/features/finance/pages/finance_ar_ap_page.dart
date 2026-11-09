@@ -224,6 +224,19 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage>
           sort: sort,
           order: order,
         ),
+        fetchPageSized: (target, size) => repo.list(
+          page: target,
+          size: size,
+          filter: filter,
+          sort: sort,
+          order: order,
+        ),
+        onProgressiveBatch: (partial) {
+          if (!mounted || !_loadRequests.isCurrent(generation)) return;
+          setState(() {
+            _page = partial;
+          });
+        },
       );
       if (!mounted || !_loadRequests.isCurrent(generation)) return;
       unawaited(

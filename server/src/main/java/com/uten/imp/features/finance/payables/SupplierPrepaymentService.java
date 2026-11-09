@@ -130,7 +130,7 @@ public class SupplierPrepaymentService implements SupplierPrepaymentPort {
 
     @Transactional(readOnly=true)
     public Map<String,Object> list(UUID supplierId,UUID currencyId,int page,int size) {
-        read();int p=Math.max(1,page),s=Math.max(1,Math.min(100,size));var args=new ArrayList<Object>();String where=" WHERE true";
+        read();int p=Math.max(1,page),s=Math.max(1,Math.min(Pageables.MAX_PAGE_SIZE,size));var args=new ArrayList<Object>();String where=" WHERE true";
         if(supplierId!=null){where+=" AND a.supplier_id=?";args.add(supplierId);}if(currencyId!=null){where+=" AND a.currency_id=?";args.add(currencyId);}
         long total=db.queryForObject("SELECT count(*) FROM finance_supplier_advances a"+where,Long.class,args.toArray());args.add(s);args.add((long)(p-1)*s);
         var rows=db.queryForList("SELECT a.payment_id AS \"paymentId\",p.bill_no AS \"billNo\",a.effective_date AS \"billDate\",a.supplier_id AS \"supplierId\",supplier.code AS \"supplierCode\",supplier.name AS \"supplierName\",currency.code AS \"currencyCode\",a.currency_id AS \"currencyId\",a.amount_original AS \"amountOriginal\",a.amount_local AS \"amountLocal\",a.status FROM finance_supplier_advances a JOIN finance_payments p ON p.id=a.payment_id LEFT JOIN suppliers supplier ON supplier.id=a.supplier_id LEFT JOIN currencies currency ON currency.id=a.currency_id"+where+" ORDER BY a.effective_date DESC,p.bill_no,a.payment_id LIMIT ? OFFSET ?",args.toArray());
@@ -140,7 +140,7 @@ public class SupplierPrepaymentService implements SupplierPrepaymentPort {
     @Transactional(readOnly=true)
     public Map<String,Object> settlements(UUID paymentId,String kind,int page,int size) {
         read();advance(paymentId,false);boolean refunds="REFUND".equals(kind);if(!refunds&&!"APPLICATION".equals(kind))throw invalid("请选择预付应用或退款");
-        int p=Math.max(1,page),s=Math.max(1,Math.min(100,size));String table=refunds?"finance_supplier_advance_refunds":"finance_supplier_advance_applications";
+        int p=Math.max(1,page),s=Math.max(1,Math.min(Pageables.MAX_PAGE_SIZE,size));String table=refunds?"finance_supplier_advance_refunds":"finance_supplier_advance_applications";
         long total=db.queryForObject("SELECT count(*) FROM "+table+" WHERE payment_id=?",Long.class,paymentId);
         var rows=db.queryForList("SELECT * FROM "+table+" WHERE payment_id=? ORDER BY created_at DESC,id LIMIT ? OFFSET ?",paymentId,s,(long)(p-1)*s);
         if(!refunds)for(var row:rows){row.put("effectiveTargetParts",db.queryForList("SELECT batch_id AS \"batchId\",correction_id AS \"correctionId\",target_classification_id AS \"sourceClassificationId\",category,amount_original::text AS \"amountOriginal\",target_local::text AS \"targetLocal\" FROM v_finance_supplier_advance_target_parts_effective WHERE application_id=? ORDER BY category",row.get("id")));}

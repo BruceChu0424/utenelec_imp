@@ -573,7 +573,7 @@ class MaterialAnalysisServiceBehaviorTest {
                 " so-2026 ", " active ", " sales_order_item ", 99, 1000);
 
         assertThat(page.getPage()).isEqualTo(1);
-        assertThat(page.getSize()).isEqualTo(100);
+        assertThat(page.getSize()).isEqualTo(200);
         assertThat(page.getTotal()).isEqualTo(2);
         assertThat(page.getItems()).singleElement().satisfies(item -> {
             assertThat(item.analysisId()).isEqualTo(analysisId);

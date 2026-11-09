@@ -152,7 +152,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(api.lastQuery?['claimNo'], 'BX2026-09-01-0001');
     final filtered = api.queries.skip(filteredStart).toList();
-    expect(filtered.map((query) => query['page']), [1, 2, 3]);
+    // 3 条 ≤ 首批 50：阶梯完整读取一次 (1,50) 读完并回显。
+    expect(filtered.map((query) => (query['page'], query['size'])), [(1, 50)]);
     expect(
       filtered.map((query) => query['claimNo']),
       everyElement('BX2026-09-01-0001'),
@@ -233,35 +234,44 @@ class _ExpenseApi extends ApiClient with NativeFacetFakeTransport {
     if (path.contains('/mine')) {
       lastQuery = query == null ? null : Map<String, dynamic>.from(query);
       queries.add(Map<String, dynamic>.from(query ?? const {}));
+      // 2026-11-08 阶梯完整读取：fake 按请求的 (page,size) 正确切片并回显
+      // total=totalPages 条、每行唯一 id；否则会被 INVALID_PAGINATION 拒绝。
+      final page = (query?['page'] as num?)?.toInt() ?? 1;
+      final size = (query?['size'] as num?)?.toInt() ?? 24;
       return {
         'items': [
-          {
-            'id': 'claim-${query?['page'] ?? 1}',
-            'claimNo': 'BX2026-09-01-0001',
-            'applicantId': 'emp-1',
-            'applicantName': '王小明',
-            'title': '差旅报销',
-            'status': 'PAID',
-            'totalAmount': 1200.5,
-            'createdAt': '2026-09-01T02:00:00Z',
-            'submittedAt': '2026-09-01T03:00:00Z',
-            'approvedAt': '2026-09-02T03:00:00Z',
-            'paidAt': '2026-09-03T03:00:00Z',
-            'items': [
-              {
-                'id': 'item-1',
-                'category': 'TRAVEL',
-                'amount': 1200.5,
-                'date': '2026-08-30',
-                'description': '住宿',
-              },
-            ],
-          },
+          for (
+            var index = (page - 1) * size;
+            index < totalPages && index < page * size;
+            index++
+          )
+            {
+              'id': 'claim-$index',
+              'claimNo': 'BX2026-09-01-0001',
+              'applicantId': 'emp-1',
+              'applicantName': '王小明',
+              'title': '差旅报销',
+              'status': 'PAID',
+              'totalAmount': 1200.5,
+              'createdAt': '2026-09-01T02:00:00Z',
+              'submittedAt': '2026-09-01T03:00:00Z',
+              'approvedAt': '2026-09-02T03:00:00Z',
+              'paidAt': '2026-09-03T03:00:00Z',
+              'items': [
+                {
+                  'id': 'item-1',
+                  'category': 'TRAVEL',
+                  'amount': 1200.5,
+                  'date': '2026-08-30',
+                  'description': '住宿',
+                },
+              ],
+            },
         ],
-        'page': query?['page'] ?? 1,
-        'size': query?['size'] ?? 24,
+        'page': page,
+        'size': size,
         'total': totalPages,
-        'totalPages': totalPages,
+        'totalPages': (totalPages + size - 1) ~/ size,
       };
     }
     return const <String, dynamic>{'items': <Map<String, dynamic>>[]};

@@ -8,6 +8,7 @@ import com.uten.imp.common.util.NativeValueConverters;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.common.web.Pageables;
 import com.uten.imp.features.production.ProductionDocumentAccessPolicy;
 import com.uten.imp.features.production.ProductionWorkshopMembership;
 import com.uten.imp.features.production.quality.ProductionQualityMutationFootprintService;
@@ -115,7 +116,7 @@ public class ProductionOverLimitDispositionService {
         headers.bind(count);headers.bind(query);
         if(!Set.of("PENDING","ALL").contains(filter)){count.setParameter("status",filter);query.setParameter("status",filter);}
         long total=((Number)count.getSingleResult()).longValue();
-        int actualPage=Math.max(page,1),actualSize=Math.min(Math.max(size,1),100);
+        int actualPage=Math.max(page,1),actualSize=Math.min(Math.max(size,1),Pageables.MAX_PAGE_SIZE);
         query.setFirstResult(com.uten.imp.common.web.Pageables.checkedOffset(actualPage,actualSize)).setMaxResults(actualSize);
         boolean reviewer=access.hasAuthority(APPROVE)&&membership.isActiveOperator();
         List<View> rows=NativeQueryResults.objectArrayRows(query).stream().map(row->view(row,reviewer,List.of())).toList();

@@ -351,6 +351,23 @@ class _AccountPageState extends ConsumerState<AccountPage>
           sort: sort,
           order: order,
         ),
+        fetchPageSized: (target, size) => repository.list(
+          page: target,
+          size: size,
+          keyword: keyword,
+          filters: filters,
+          sort: sort,
+          order: order,
+        ),
+        // Rows only: selected-account snapshots wait for the complete result.
+        onProgressiveBatch: (partial) {
+          if (!mounted ||
+              !inlineAcceptsRead(inlineReadBoundary) ||
+              !_listRequests.isCurrent(generation)) {
+            return;
+          }
+          setState(() => _page = partial);
+        },
       );
       if (!mounted ||
           !inlineAcceptsRead(inlineReadBoundary) ||

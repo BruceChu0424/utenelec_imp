@@ -363,7 +363,7 @@ void main() {
     final repo = await _pump(tester, pendingCount: 0);
     expect(repo.calls, [
       (SalesQuoteFinanceState.returned, 1, null),
-      (SalesQuoteFinanceState.returned, 100, null),
+      (SalesQuoteFinanceState.returned, 50, null),
     ]);
     expect(find.text('XB-r1'), findsOneWidget);
     expect(find.text('XB-p1'), findsNothing);
@@ -381,14 +381,15 @@ void main() {
 
     await tester.tap(find.text('已退回'));
     await tester.pumpAndSettle();
-    expect(repo.calls, contains((SalesQuoteFinanceState.returned, 100, null)));
+    expect(repo.calls, contains((SalesQuoteFinanceState.returned, 50, null)));
     final table = tester.widget<MasterDataTableView<SalesQuoteFinanceListItem>>(
       find.byKey(const Key('quote-finance-desktop-table')),
     );
     expect(table.items.map((item) => item.quoteId), ['r1']);
     expect(
-      repo.calls.where((call) => call.$2 > 1).every((call) => call.$2 == 100),
+      repo.calls.where((call) => call.$2 > 1).every((call) => call.$2 == 50),
       isTrue,
+      reason: '小数据集只发阶梯首批 50，完整读取不再固定 100',
     );
     expect(find.text('已退回: 客户要改数量'), findsWidgets);
   });

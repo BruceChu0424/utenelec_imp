@@ -420,17 +420,17 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage>
         _canLoad &&
         samePagedReadQuery(query, _eventReadQuery);
     bool current() => owned() && requestCurrent();
-    Future<AuditLogPage> fetch(int target, int? highWater) =>
+    Future<AuditLogPage> fetch(int target, int? highWater, [int size = 100]) =>
         repository is AuditHeaderEventRepository
         ? (repository as AuditHeaderEventRepository).eventHeaderPage({
             ...query,
             'page': target,
-            'size': 100,
+            'size': size,
             'snapshotId': ?highWater,
           })
         : repository.list(
             page: target,
-            size: 100,
+            size: size,
             action: query['action'] as String?,
             actorId: query['actorId'] as String?,
             keyword: query['keyword'] as String?,
@@ -463,6 +463,16 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage>
         },
         fetchPage: (target) async {
           final result = await fetch(target, highWater);
+          if (!current()) throw StateError('Audit request changed');
+          if (target == 1 && highWater == null) highWater = result.snapshotId;
+          return PagedReadSnapshot(
+            page: result,
+            snapshot: result,
+            revision: (result.snapshotId, result.readScopeVersion),
+          );
+        },
+        fetchPageSized: (target, size) async {
+          final result = await fetch(target, highWater, size);
           if (!current()) throw StateError('Audit request changed');
           if (target == 1 && highWater == null) highWater = result.snapshotId;
           return PagedReadSnapshot(
@@ -654,14 +664,18 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage>
     bool current() => owned() && requestCurrent();
     final columnFilters = _sessionColumnFilters;
     final sort = _sessionSortColumn, ascending = _sessionSortAscending;
-    Future<AuditSessionPage> fetch(int target, int? highWater) =>
+    Future<AuditSessionPage> fetch(
+      int target,
+      int? highWater, [
+      int size = 100,
+    ]) =>
         repository is AuditHeaderSessionRepository
         ? (repository as AuditHeaderSessionRepository).sessionHeaderPage({
             'actorId': actor.actorId,
             'dateFrom': from,
             'dateTo': to,
             'page': target,
-            'size': 100,
+            'size': size,
             'snapshotAuditId': ?highWater,
             for (final entry in columnFilters.entries)
               if (entry.value != null)
@@ -677,7 +691,7 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage>
             dateFrom: from,
             dateTo: to,
             page: target,
-            size: 100,
+            size: size,
             snapshotAuditId: highWater,
           );
     var highWater = _snapshotId;
@@ -696,6 +710,18 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage>
         },
         fetchPage: (target) async {
           final result = await fetch(target, highWater);
+          if (!current()) throw StateError('Audit request changed');
+          if (target == 1 && highWater == null) {
+            highWater = result.snapshotAuditId;
+          }
+          return PagedReadSnapshot(
+            page: result,
+            snapshot: result,
+            revision: (result.snapshotAuditId, result.readScopeVersion),
+          );
+        },
+        fetchPageSized: (target, size) async {
+          final result = await fetch(target, highWater, size);
           if (!current()) throw StateError('Audit request changed');
           if (target == 1 && highWater == null) {
             highWater = result.snapshotAuditId;

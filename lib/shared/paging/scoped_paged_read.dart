@@ -150,6 +150,10 @@ class ScopedPagedRead<T> {
   PagedReadWindowSession<T>? _session;
   PagedResult<T>? _accepted;
   _CompleteFlight<T>? _flight;
+  // Rows the current session already showed progressively. A same-query
+  // restart keeps them on screen until it has read more; any failure retires
+  // the whole session instead of leaving a half list.
+  int _progressiveShown = 0;
 
   void invalidate() {
     _owner++;
@@ -160,6 +164,7 @@ class ScopedPagedRead<T> {
     _ownerCurrent = null;
     _accepted = null;
     _flight = null;
+    _progressiveShown = 0;
   }
 
   /// Retire the current read and cache while the same authorized query keeps
@@ -194,10 +199,12 @@ class ScopedPagedRead<T> {
     bool Function()? canPrefetch,
     void Function(Object)? onPrefetchError,
     bool revalidateWindow = true,
-    void Function(PagedResult<T> provisional)? onProvisionalBatch,
+    void Function(PagedResult<T> partial)? onProgressiveBatch,
+    Duration progressiveInterval = kProgressiveBatchInterval,
     // Continuation batches of one stable-total snapshot may be fetched
     // concurrently (identity, total and revision checks stay per batch).
     int maxConcurrentPages = 1,
+    CompleteReadBatchPlan? plan,
   }) {
     final ownerCurrent = isOwnerCurrent ?? isCurrent;
     if (_disposed || !isCurrent() || !ownerCurrent()) {
@@ -227,21 +234,29 @@ class ScopedPagedRead<T> {
     } else {
       session.beginRead();
     }
-    // Provisional first-batch display (2026-11-07): only a fresh read without
-    // an accepted result publishes its validated first batch as pending rows.
-    // The complete frame replaces them; every failure path keeps the reader's
-    // existing retirement (session.fail/invalidate), so a half list is never
-    // mistaken for the complete result.
-    final provisionalSink = onProvisionalBatch == null || _accepted != null
+    // Progressive display (2026-11-08): only a read without an accepted
+    // result publishes its validated batches as growing pending rows. The
+    // complete result replaces them; a failed read retires them as a whole.
+    // A same-query reread keeps the accepted complete rows instead.
+    var published = false;
+    final progressiveSink = onProgressiveBatch == null || _accepted != null
         ? null
-        : PagedReadProvisionalSink((partial) {
+        : PagedReadProgressiveSink((partial) {
             if (!current() || partial is! PagedResult<T>) return;
-            onProvisionalBatch(session.bindResult(partial, pending: true));
+            if (!identical(session, _session) ||
+                partial.items.length <= _progressiveShown) {
+              return;
+            }
+            _progressiveShown = partial.items.length;
+            published = true;
+            onProgressiveBatch(
+              session.bindResult(partial, pending: true, growing: true),
+            );
           });
     late final _CompleteFlight<T> flight;
     Future<PagedResult<T>> load() async {
       try {
-        final sink = provisionalSink;
+        final sink = progressiveSink;
         Future<PagedResult<T>> complete() => fetchComplete != null
             ? PagedReadIntent.scopedRead(
                 baseCurrent,
@@ -254,14 +269,16 @@ class ScopedPagedRead<T> {
                 isCurrent: baseCurrent,
                 idOf: idOf ?? this.idOf,
                 maxConcurrentPages: maxConcurrentPages,
-                onProvisionalBatch: sink == null || !sink.claim()
+                plan: plan,
+                progressiveInterval: progressiveInterval,
+                onProgressiveBatch: sink == null || !sink.claim()
                     ? null
                     : (partial) =>
                           sink.publish(partial as PagedResult<Object?>),
               );
         var result = await (sink == null
             ? complete()
-            : PagedReadIntent.provisionalRead(sink, complete));
+            : PagedReadIntent.progressiveRead(sink, complete));
         if (!current()) throw StateError('Paged read owner changed');
         if (_accepted != null &&
             _accepted!.readScopeVersion != result.readScopeVersion) {
@@ -270,12 +287,19 @@ class ScopedPagedRead<T> {
         }
         result = session.bindResult(result);
         _accepted = result;
+        _progressiveShown = 0;
         return result;
       } catch (error) {
         if (baseCurrent()) {
           if (pagedReadAccessDenied(error)) {
             invalidate();
             onPrefetchError?.call(error);
+          } else if (published || _progressiveShown > 0) {
+            // A half list is never left as if it were the complete result.
+            session.invalidate();
+            session = _session = PagedReadWindowSession<T>(isCurrent: owned);
+            _progressiveShown = 0;
+            session.fail();
           } else {
             session.fail();
           }

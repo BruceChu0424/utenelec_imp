@@ -12,6 +12,8 @@ import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/data_write_revision.dart';
 import 'package:uten_imp/core/network/read_scope_revision.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
+import 'package:uten_imp/shared/paging/complete_paged_snapshot.dart'
+    show CompleteReadBatchPlan;
 import 'package:uten_imp/features/production/pages/production_board_page.dart';
 import 'package:uten_imp/features/production/pages/production_workshop_tasks_page.dart';
 import 'package:uten_imp/features/production/repositories/production_execution_workbench_repository.dart';
@@ -452,7 +454,7 @@ void main() {
   );
 
   testWidgets(
-    'production selects complete100000 summary with bounded100 batches and no unselected group reads',
+    'production selects complete100000 summary with progressive aligned batches and no unselected group reads',
     (tester) async {
       final api = _Api(scheduleTotal: 100000)..facets = Completer<void>();
       await _mount(tester, api, const ProductionBoardPage(), {
@@ -472,12 +474,20 @@ void main() {
       expect(page.totalPages, 1);
       expect(table.rowsController!.items, hasLength(100000));
       expect(page.items.last.orderItemId, 'item-99999');
-      expect(api.requests('/production/schedule/pending'), hasLength(1000));
+      // 50 → 50 → 100 → 200 … over 100 000 rows: 3 + 499 bounded batches,
+      // each row read once (offset == (page-1)*size).
+      final expectedSizes = <int>[];
+      for (var offset = 0; offset < 100000;) {
+        final size = CompleteReadBatchPlan.progressive.sizeAt(offset);
+        expectedSizes.add(size);
+        offset += size;
+      }
+      expect(expectedSizes, hasLength(502));
       expect(
         api
             .requests('/production/schedule/pending')
-            .every((read) => read.query['size'] == 100),
-        isTrue,
+            .map((read) => read.query['size']),
+        expectedSizes,
       );
       expect(api.facets!.isCompleted, isFalse);
       expect(table.isLoading, isFalse);
@@ -509,8 +519,9 @@ void main() {
       await _frames(tester);
       expect(find.text('WORKSHOP-PREPARING'), findsOneWidget);
       expect(api.requests(path, kind: 'PREPARING'), hasLength(1));
+      // One stage read; its single batch is the progressive first batch.
       expect(
-        api.requests(path).every((read) => read.query['size'] == 100),
+        api.requests(path).every((read) => read.query['size'] == 50),
         isTrue,
       );
       expect(api.writes, isEmpty);

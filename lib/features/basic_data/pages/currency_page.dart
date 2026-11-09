@@ -281,6 +281,22 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage>
           sort: sort,
           order: order,
         ),
+        fetchPageSized: (target, size) => repository.list(
+          page: target,
+          size: size,
+          keyword: keyword,
+          filters: filters,
+          sort: sort,
+          order: order,
+        ),
+        onProgressiveBatch: (partial) {
+          if (!mounted ||
+              !inlineAcceptsRead(inlineReadBoundary) ||
+              !_loadRequests.isCurrent(generation)) {
+            return;
+          }
+          setState(() => _page = partial);
+        },
       );
       if (!mounted ||
           !inlineAcceptsRead(inlineReadBoundary) ||

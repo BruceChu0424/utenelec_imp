@@ -277,6 +277,48 @@ class _AdminAiUsageRecordsPageState
             rebuildSnapshot: typed.withPage,
           );
         },
+        fetchPageSized: (page, size) async {
+          final raw = repository is AiUsageAuditHeaderRepository
+              ? await (repository as AiUsageAuditHeaderRepository)
+                    .readWithHeaders(
+                      days: days,
+                      page: page - 1,
+                      size: size,
+                      userId: userId,
+                      providerId: providerId,
+                      filters: filters,
+                      sort: sort,
+                      ascending: ascending,
+                    )
+              : await repository.read(
+                  days: days,
+                  page: page - 1,
+                  size: size,
+                  userId: userId,
+                  providerId: providerId,
+                );
+          final typed = AiUsageAuditResult.fromJson(raw);
+          return PagedReadSnapshot<AiUsageAuditRecord, AiUsageAuditResult>(
+            page: PagedResult(
+              items: typed.records,
+              page: page,
+              size: size,
+              total: typed.total,
+              totalPages: ((typed.total + size - 1) ~/ size).clamp(1, 1 << 30),
+            ),
+            snapshot: typed,
+            rebuildSnapshot: typed.withPage,
+          );
+        },
+        onProgressiveBatch: (partial) {
+          // 只发记录行; 汇总卡、人员下拉 (_users) 与「按人员」表等完整结果。
+          if (!_current || generation != _generation) return;
+          setState(() {
+            _data =
+                (partial as PagedReadSnapshot<AiUsageAuditRecord, AiUsageAuditResult>)
+                    .snapshot;
+          });
+        },
       );
       if (!_current || generation != _generation) return;
       final typed =
@@ -434,7 +476,10 @@ class _AdminAiUsageRecordsPageState
         key: const ValueKey('ai-records-list'),
         padding: pagePadding,
         children: [
-          _SummaryRow(key: const ValueKey('ai-records-summary'), data: data),
+          _SummaryRow(
+            key: const ValueKey('ai-records-summary'),
+            data: _loading ? null : data,
+          ),
           const SizedBox(height: UtenSpacing.s16),
           _toolbar(l10n),
           const SizedBox(height: UtenSpacing.s12),

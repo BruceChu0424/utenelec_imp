@@ -79,7 +79,7 @@ class NativeSqlOffsetPostgresTest {
                 default -> throw new IllegalArgumentException(reader);
             };
             assertThat(result.getPage()).isEqualTo(Integer.MAX_VALUE);
-            assertThat(result.getSize()).isEqualTo(reader.equals("subcontract-draw") ? 200 : 100);
+            assertThat(result.getSize()).isEqualTo(200);
             assertThat(result.getItems()).isEmpty();
         }
     }

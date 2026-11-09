@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.common.web.Pageables;
 import com.uten.imp.features.webinquiry.dto.IngestRequest;
 import com.uten.imp.features.webinquiry.dto.StatusUpdateRequest;
 import com.uten.imp.features.webinquiry.dto.WebsiteInquiryDetail;
@@ -98,7 +99,7 @@ public class WebsiteInquiryService {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "未知状态: " + status);
         }
         int safePage = Math.max(1, page);
-        int safeSize = Math.min(Math.max(1, size), 100);
+        int safeSize = Math.min(Math.max(1, size), Pageables.MAX_PAGE_SIZE);
         Page<WebsiteInquiry> result = repository.search(
                 filter,
                 keyword == null ? "" : keyword.trim(),

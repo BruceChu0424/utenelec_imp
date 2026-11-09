@@ -153,11 +153,51 @@ class MasterSummaryStreamTest {
 
     @Test void completeReadCannotRaiseTheOriginalBatchCapOrStartInTheMiddle() {
         for(var invalid:List.of(new MasterSummaryReadSupport.Query<>(Map.of(),1,101,null,null),
-                new MasterSummaryReadSupport.Query<>(Map.of(),2,100,null,null))) {
+                new MasterSummaryReadSupport.Query<>(Map.of(),1,150,null,null),
+                new MasterSummaryReadSupport.Query<>(Map.of(),1,201,null,null),
+                new MasterSummaryReadSupport.Query<>(Map.of(),2,100,null,null),
+                new MasterSummaryReadSupport.Query<>(Map.of(),2,200,null,null))) {
             assertThatThrownBy(()->summaries.stream("goods-master-list","master_goods","goods:view",invalid,null,
                     (filter,page,size,sort,order)->page(page,size,1),new MockHttpServletResponse()))
                     .isInstanceOf(ApiException.class);
         }
         verifyNoInteractions(pages);
+    }
+
+    /** 2026-11-08: a client requesting 200 receives 50 rows first, then aligned frames up to 200. */
+    @Test void progressiveRequestStreamsFiftyFirstThenAlignedFramesUpToTwoHundredWithoutRepeatingARow() throws Exception {
+        var progressive = new MasterSummaryReadSupport.Query<>(query.filter(),1,MasterSummaryReadSupport.PROGRESSIVE_REQUEST_SIZE,"code","asc");
+        var requested = new ArrayList<int[]>();
+        var response = new MockHttpServletResponse();
+        summaries.stream("goods-master-list","master_goods","goods:view",progressive,null,
+                (filter,page,size,sort,order)->{requested.add(new int[]{page,size});return page(page,size,1000);},response);
+        assertThat(requested).containsExactly(new int[]{1,50},new int[]{2,50},new int[]{2,100},new int[]{2,200},
+                new int[]{3,200},new int[]{4,200},new int[]{5,200});
+        var frames = frames(response);
+        assertThat(frames).hasSize(8);
+        var sizes = new ArrayList<Integer>();
+        var ids = new ArrayList<Integer>();
+        for (var frame:frames.subList(0,7)) {
+            sizes.add(frame.get("value").get("items").size());
+            frame.get("value").get("items").forEach(row -> ids.add(row.get("id").asInt()));
+            assertThat(frame.get("value").get("readSnapshotRevision").asText()).isEqualTo(proof.readSnapshotRevision());
+        }
+        assertThat(sizes).containsExactly(50,50,100,200,200,200,200);
+        assertThat(ids).containsExactlyElementsOf(IntStream.range(0,1000).boxed().toList());
+        assertThat(frames.getLast().get("type").asText()).isEqualTo("complete");
+        assertThat(frames.getLast().get("total").asLong()).isEqualTo(1000);
+        verify(pages,times(1)).readWithProof(any(),any(),any());
+    }
+
+    @Test void progressiveEmptyAndShortResultsStillEndWithOneCompleteFrame() throws Exception {
+        for (int total:List.of(0,1,50,51)) {
+            var response = new MockHttpServletResponse();
+            summaries.stream("goods-master-list","master_goods","goods:view",
+                    new MasterSummaryReadSupport.Query<>(query.filter(),1,200,"code","asc"),null,
+                    (filter,page,size,sort,order)->page(page,size,total),response);
+            var frames = frames(response);
+            assertThat(frames.getLast().get("type").asText()).as("total=%d",total).isEqualTo("complete");
+            assertThat(frames).hasSize(total <= 50 ? 2 : 3);
+        }
     }
 }

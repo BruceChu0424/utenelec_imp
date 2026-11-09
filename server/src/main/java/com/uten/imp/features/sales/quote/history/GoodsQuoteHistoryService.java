@@ -1,6 +1,7 @@
 package com.uten.imp.features.sales.quote.history;
 
 import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.common.web.Pageables;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
@@ -66,7 +67,7 @@ public class GoodsQuoteHistoryService {
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('goods:view') and hasAuthority('sales_quote_finance:view')")
     public PageResponse<Row> list(UUID goodsId, int page, int size, Map<String, String> columns, String sort, String order) {
-        int limit = Math.clamp(size, 1, 100);
+        int limit = Math.clamp(size, 1, Pageables.MAX_PAGE_SIZE);
         var params = new MapSqlParameterSource("goodsId", goodsId.toString());
         params.addValue("goodsFilter", "{\"lines\":[{\"goodsId\":\"" + goodsId + "\"}]}");
         var criteria = com.uten.imp.common.util.SqlColumnSearch.criteria(columns, COLUMNS);

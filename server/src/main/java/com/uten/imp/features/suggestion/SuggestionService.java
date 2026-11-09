@@ -412,8 +412,8 @@ public class SuggestionService {
         if (page < 1) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "页码必须大于等于 1");
         }
-        if (size < 1 || size > 100) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "每页条数必须在 1 到 100 之间");
+        if (size < 1 || size > Pageables.MAX_PAGE_SIZE) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "每页条数必须在 1 到 " + Pageables.MAX_PAGE_SIZE + " 之间");
         }
     }
 

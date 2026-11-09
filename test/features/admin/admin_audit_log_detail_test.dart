@@ -540,7 +540,10 @@ void main() {
                 ? repository.sessionCalls
                 : repository.listCalls;
             expect(calls.map((call) => call['page']), [1, 2, 3]);
-            expect(calls.every((call) => call['size'] == 100), true);
+            // 新契约：首批按阶梯计划 50 行起读，检测到服务端自述每页 40 行后，
+            // 后续内部批沿服务端自己的页大小续读，不回退旧固定 100。
+            expect(calls.first['size'], 50);
+            expect(calls.skip(1).every((call) => call['size'] == 40), true);
             expect(
               calls
                   .skip(1)
@@ -1558,7 +1561,12 @@ void main() {
         9001,
         9001,
       ]);
-      expect(repository.listCalls.every((call) => call['size'] == 100), true);
+      // 新契约：首批 50 行起读，后续批沿用服务端自述的 40 行页大小。
+      expect(repository.listCalls.first['size'], 50);
+      expect(
+        repository.listCalls.skip(1).every((call) => call['size'] == 40),
+        true,
+      );
       expect(repository.summaryCalls, hasLength(1));
       expect(repository.summaryCalls.single['snapshotId'], 9001);
       final table = tester.widget<MasterDataTableView<AuditLogEntry>>(finder);

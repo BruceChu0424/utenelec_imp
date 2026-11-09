@@ -43,8 +43,9 @@ void main() {
     expect(find.byKey(const Key('rd-task-category-filter')), findsNothing);
     expect(table().items, hasLength(101));
     expect(table().items.every((row) => row.category == 'BOM'), isTrue);
-    expect(api.queries.map((query) => query['page']), [1, 2]);
-    expect(api.queries.every((query) => query['size'] == 100), isTrue);
+    // 2026-11-08 阶梯完整读取：101 行 = 50 → 50 → 100（末批 1 行）。
+    expect(api.queries.map((query) => query['page']), [1, 2, 2]);
+    expect(api.queries.map((query) => query['size']), [50, 50, 100]);
     expect(table().totalPages, 1);
     expect(table().facets.containsKey('status'), isFalse);
     expect(
@@ -113,8 +114,9 @@ void main() {
         index.isEven ? 'DONE' : 'CANCELED',
     ];
     expect(table().items.map((row) => row.status), statuses);
-    expect(api.queries.map((query) => query['page']), [1, 2]);
-    expect(api.queries.every((query) => query['size'] == 100), isTrue);
+    // 2026-11-08 阶梯完整读取：102 行 = 50 → 50 → 100（末批 2 行）。
+    expect(api.queries.map((query) => query['page']), [1, 2, 2]);
+    expect(api.queries.map((query) => query['size']), [50, 50, 100]);
     expect(table().totalPages, 1);
     expect(table().items.map((row) => table().columns.first.value(row)), [
       for (final status in statuses)

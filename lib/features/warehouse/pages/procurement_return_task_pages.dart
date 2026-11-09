@@ -67,6 +67,9 @@ class _ProcurementReturnTasksPageState
       _activityReturnRead?.call() ?? Future<void>.value();
 
   PagedResult<ProcurementArrivalException>? _result;
+
+  /// 当前 [_result] 是否为逐批渐进行（失败即整体下撤，不留半截列表）。
+  bool _progressiveRows = false;
   Object? _acceptedQuery;
   bool _loading = false;
   String? _error;
@@ -153,10 +156,29 @@ class _ProcurementReturnTasksPageState
           dateTo: range == null ? null : ChinaDateTime.formatDate(range.end),
           keyword: _keyword.trim().isEmpty ? null : _keyword.trim(),
         ),
+        fetchPageSized: (page, size) => repo.ownerTasks(
+          page: page,
+          size: size,
+          orderType: widget.orderType,
+          status: _seg == _ReturnSeg.history ? 'COMPLETED' : null,
+          dateFrom: range == null
+              ? null
+              : ChinaDateTime.formatDate(range.start),
+          dateTo: range == null ? null : ChinaDateTime.formatDate(range.end),
+          keyword: _keyword.trim().isEmpty ? null : _keyword.trim(),
+        ),
+        onProgressiveBatch: (partial) {
+          if (!mounted || requestVersion != _requestVersion) return;
+          setState(() {
+            _result = partial;
+            _progressiveRows = true;
+          });
+        },
       );
       if (!mounted || requestVersion != _requestVersion) return;
       setState(() {
         _result = result;
+        _progressiveRows = false;
         _acceptedQuery = query;
         _loading = false;
       });
@@ -169,6 +191,10 @@ class _ProcurementReturnTasksPageState
           _acceptedQuery = null;
           _selected.clear();
         }
+        if (_progressiveRows) {
+          _result = null;
+          _progressiveRows = false;
+        }
         _error = error.message;
         _loading = false;
       });
@@ -176,6 +202,10 @@ class _ProcurementReturnTasksPageState
       if (isRetiredViewRead(retiredReadError)) return;
       if (!mounted || requestVersion != _requestVersion) return;
       setState(() {
+        if (_progressiveRows) {
+          _result = null;
+          _progressiveRows = false;
+        }
         _error = '待退供应商任务加载失败，请检查网络后重试';
         _loading = false;
       });

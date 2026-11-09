@@ -9,7 +9,7 @@ import 'package:uten_imp/shared/stock_ledger/widgets/goods_stock_ledger_view.dar
 
 void main() {
   group('StockLedgerQuery', () {
-    test('sends scope, dates, types and caps the page size', () {
+    test('sends scope, dates, types and forwards the page size', () {
       final q = StockLedgerQuery(
         warehouseId: 'w1',
         colorId: 'c1',
@@ -28,7 +28,8 @@ void main() {
         'movementTypes': '5,6',
         'includeWeightAdjustments': true,
         'page': 2,
-        'size': 100,
+        // 页大小原样透传；上限由服务端 Pageables 钳制并回显实际值。
+        'size': 500,
       });
     });
 

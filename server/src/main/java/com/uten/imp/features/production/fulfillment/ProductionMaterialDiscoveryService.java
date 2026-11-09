@@ -11,6 +11,7 @@ import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.common.web.Pageables;
 import com.uten.imp.features.notice.ChainNoticeService;
 import com.uten.imp.features.production.ProductionDocumentAccessPolicy;
 import com.uten.imp.features.production.ProductionWorkshopMembership;
@@ -303,7 +304,7 @@ public class ProductionMaterialDiscoveryService {
     public PageResponse<Detail> list(String status,int page,int size) {
         requireWarehouse(false);String filter=status==null?"PENDING":status;
         if(!List.of("PENDING","CONFIGURED","CANCELLED").contains(filter))throw validation("申请状态不正确");
-        int p=Math.max(1,page),s=Math.max(1,Math.min(100,size));
+        int p=Math.max(1,page),s=Math.max(1,Math.min(Pageables.MAX_PAGE_SIZE,size));
         WarehouseTaskScope scope=warehouseScopes.current(null);
         String predicate=(" FROM production_material_discovery_requests request JOIN production_execution_segments segment ON segment.id=request.execution_segment_id JOIN " + com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plans") + " plan ON plan.id=segment.plan_id WHERE request.status=:status AND NOT segment.is_deleted AND segment.status NOT IN('CANCELLED','REVERSED') AND NOT plan.is_deleted AND NOT plan.is_canceled AND NOT plan.is_closed");
         if("PENDING".equals(filter))predicate+=" AND segment.status IN('WAITING','READY','DISPATCHED') AND plan.status=1 AND NOT plan.is_stopped";

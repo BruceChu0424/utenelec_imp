@@ -59,7 +59,11 @@ class _Api extends ApiClient {
       held = null;
       return pending.future;
     }
-    return _report(prefix, (query?['page'] as int?) ?? 1);
+    return _report(
+      prefix,
+      (query?['page'] as int?) ?? 1,
+      (query?['size'] as int?) ?? 50,
+    );
   }
 
   @override
@@ -72,18 +76,26 @@ class _Api extends ApiClient {
   Future<Map<String, dynamic>> put(String path, {Object? body}) async => {};
 }
 
-Map<String, dynamic> _report(String prefix, int page) => {
+// 150 rows served as the exact [(page-1)*size, page*size) slice of whatever
+// (page, size) the complete reader requested; every row keeps a unique
+// absolute line id.
+Map<String, dynamic> _report(String prefix, int page, int size) => {
   'columns': [
     {'key': 'proof', 'label': '记录', 'type': 'text', 'width': 280},
   ],
   'rows': [
-    for (var row = 0; row < 50; row++)
-      {'id': '$page-$row', 'proof': '$prefix-$page-$row'},
+    for (
+      var index = (page - 1) * size;
+      index < 150 && index < page * size;
+      index++
+    )
+      {'id': 'row-${index + 1}', 'proof': '$prefix-${index + 1}'},
   ],
   'facets': <String, dynamic>{},
   'page': page,
+  'size': size,
   'total': 150,
-  'totalPages': 3,
+  'totalPages': (150 / size).ceil(),
 };
 
 void main() {
@@ -159,9 +171,8 @@ void main() {
         void expectCompleteSnapshot(String prefix) {
           expect(table().items, hasLength(150));
           expect(table().items.map((row) => (row['id'], row['proof'])), [
-            for (var page = 1; page <= 3; page++)
-              for (var row = 0; row < 50; row++)
-                ('$page-$row', '$prefix-$page-$row'),
+            for (var line = 1; line <= 150; line++)
+              ('row-$line', '$prefix-$line'),
           ]);
           expect(table().currentPage, 1);
           expect(table().totalPages, 1);
@@ -169,8 +180,9 @@ void main() {
         }
 
         expectCompleteSnapshot('ACCEPTED');
-        expect(api.queries.map((query) => query['page']), [1, 2, 3]);
-        expect(api.queries.every((query) => query['size'] == 50), isTrue);
+        // 150 rows read as the progressive ladder (1,50) (2,50) (2,100).
+        expect(api.queries.map((query) => query['page']), [1, 2, 2]);
+        expect(api.queries.map((query) => query['size']), [50, 50, 100]);
         final originalState = tester.state(tableFinder);
         final position = utenTestTableBodyController(
           tester,
@@ -217,10 +229,11 @@ void main() {
         final fresh = await returnWithPendingRead();
         expectCompleteSnapshot('ACCEPTED');
         api.prefix = 'FRESH';
-        fresh.complete(_report('FRESH', api.heldPage!));
+        // The held request is the ladder's first batch: page 1 at size 50.
+        fresh.complete(_report('FRESH', api.heldPage!, 50));
         await tester.pumpAndSettle();
         expectCompleteSnapshot('FRESH');
-        expect(api.queries.map((query) => query['page']), [1, 2, 3, 1, 2, 3]);
+        expect(api.queries.map((query) => query['page']), [1, 2, 2, 1, 2, 2]);
         expect(tester.state(tableFinder), same(originalState));
         expectCurrentBodyRetained();
 
@@ -228,13 +241,14 @@ void main() {
         failed.completeError(ApiException('NETWORK', 'offline'));
         await tester.pumpAndSettle();
         expectCompleteSnapshot('FRESH');
+        // The failed refresh only ever issued its held first batch.
         expect(api.queries.map((query) => query['page']), [
           1,
           2,
-          3,
+          2,
           1,
           2,
-          3,
+          2,
           1,
         ]);
         expect(table().refreshError, 'offline');
@@ -254,14 +268,23 @@ void main() {
         expect(api.queries.map((query) => query['page']), [
           1,
           2,
-          3,
+          2,
           1,
           2,
-          3,
+          2,
           1,
           1,
         ]);
-        expect(api.queries.every((query) => query['size'] == 50), isTrue);
+        expect(api.queries.map((query) => query['size']), [
+          50,
+          50,
+          100,
+          50,
+          50,
+          100,
+          50,
+          50,
+        ]);
         expect(tester.takeException(), isNull);
         // The rejected route has retired its consumers; the external owner
         // still holds short-lived category snapshots until explicitly closed.

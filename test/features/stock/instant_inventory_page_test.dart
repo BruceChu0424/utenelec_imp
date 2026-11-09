@@ -876,6 +876,7 @@ class _RecordingStockRepository extends StockQueryRepository {
   Future<PagedResult<InstantInventoryRow>> instantInventory({
     int page = 1,
     int size = 20,
+    bool includeMetadata = true,
     String? categoryId,
     String? warehouseId,
     bool includeDefective = false,

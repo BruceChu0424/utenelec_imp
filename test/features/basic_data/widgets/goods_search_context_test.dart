@@ -77,7 +77,10 @@ void main() {
       1,
     ]);
     expect(
-      relatedReads.every((request) => _readParameters(request)['size'] == 100),
+      relatedReads.every(
+        (request) =>
+            _readParameters(request)['size'] == kProgressiveSummaryStreamSize,
+      ),
       isTrue,
     );
     final readsBeforeScroll = api.requests

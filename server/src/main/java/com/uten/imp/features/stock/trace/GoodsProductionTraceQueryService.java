@@ -3,6 +3,7 @@ package com.uten.imp.features.stock.trace;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.common.web.Pageables;
 import com.uten.imp.features.stock.StockDocAccessPolicy;
 import com.uten.imp.features.stock.allocation.ProductionMaterialTaskAccessPolicy;
 import com.uten.imp.features.stock.ledger.StockLedgerSource;
@@ -86,7 +87,7 @@ public class GoodsProductionTraceQueryService {
     PageResponse<TraceRow> querySelected(Selection selection,int page,int size,Map<String,String> columns,String sort,String order,String direction) {
         if(!has("stock:view"))throw new ApiException(ErrorCode.FORBIDDEN,"没有库存查看权限");
         var scope=materialAccess.queryReadScope("plan","segment");
-        int p=Math.max(1,page),s=Math.max(1,Math.min(100,size));
+        int p=Math.max(1,page),s=Math.max(1,Math.min(Pageables.MAX_PAGE_SIZE,size));
         var params=new MapSqlParameterSource(scope.parameters()).addValues(selection.parameters())
                 .addValue("limit",s).addValue("offset",(long)(p-1)*s);
         String physical="((trace.demand_id IS NOT NULL AND EXISTS(SELECT 1 FROM production_material_stock_postings posting "

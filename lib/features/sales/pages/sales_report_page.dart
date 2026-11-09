@@ -48,6 +48,7 @@ import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/paging/paged_read_intent.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../basic_data/models/master_facet.dart';
@@ -97,6 +98,12 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
   bool _loading = false;
   int _loadGeneration = 0;
 
+  /// Growing rows of the in-flight complete read (progressive prefix). Never
+  /// accepted: [ReportPagedRead.accept] and the accepted endpoint/query/page
+  /// fields only move on the complete result; totals/export stay on [_data].
+  ReportData? _partialData;
+  PagedResult<Map<String, dynamic>>? _lastNotifiedPage;
+
   /// 「返回即刷新」登记用的本页路径（build 首次捕获）。
   String? _myLocation;
 
@@ -111,6 +118,7 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
 
   @override
   void dispose() {
+    _reportPages.removeListener(_onReportPagesChanged);
     _reportRead.dispose();
     _reportPages.dispose();
     super.dispose();
@@ -119,6 +127,7 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
   @override
   void initState() {
     super.initState();
+    _reportPages.addListener(_onReportPagesChanged);
     // Keep the monotonic reader epoch observed for this page's whole lifetime.
     ref.listenManual(exportContextEpochProvider, (previous, next) {
       if (!mounted || previous == next) return;
@@ -225,6 +234,25 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
     ...sortQueryParams(_sortKey, _sortAsc),
   };
 
+  /// Progressive prefix of the running complete read: only a page object the
+  /// controller newly published while still loading (never the stale result a
+  /// fresh load keeps until its first batch, never the accepted result) feeds
+  /// [_partialData]. The complete result and failures replace/clear it whole.
+  void _onReportPagesChanged() {
+    if (!mounted) return;
+    final page = _reportPages.page;
+    if (identical(page, _lastNotifiedPage)) return;
+    _lastNotifiedPage = page;
+    final partial =
+        _reportPages.loading &&
+            page is ReportPageSnapshot &&
+            !identical(page.snapshot, _data)
+        ? page.snapshot
+        : null;
+    if (identical(partial, _partialData)) return;
+    setState(() => _partialData = partial);
+  }
+
   Future<void> _load({
     bool background = false,
     bool reuseMetadata = false,
@@ -277,11 +305,17 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
     Future<PagedResult<Map<String, dynamic>>> fetchPage(int targetPage) =>
         read.read(targetPage);
 
+    // A new read starts from its own batches; a superseded read's prefix never
+    // stands in for the pending query.
+    _partialData = null;
     final pending = _reportPages.load(
       requestedPage,
       silent: background && _data != null,
       fetch: () => fetchPage(requestedPage),
-      fetchPage: fetchPage,
+      // The nested report reader returns the whole result itself (first batch
+      // 50, then aligned up to 200) and publishes each growing prefix through
+      // the controller while the read continues.
+      fetchComplete: () => fetchPage(requestedPage),
       isCurrent: current,
       ownerIsCurrent: queryCurrent,
     );
@@ -293,6 +327,7 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
     final failure = _reportPages.refreshError ?? _reportPages.error;
     setState(() {
       _loading = false;
+      _partialData = null;
       if (_reportPages.page == null) {
         _data = null;
       } else if (failure == null && _reportRead.accept(_reportPages.page)) {
@@ -504,7 +539,12 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
     final matches =
         _acceptedEndpoint == _readEndpoint &&
         const DeepCollectionEquality().equals(_acceptedQuery, _readQuery);
-    final data = matches ? source : source.pendingQuery();
+    // While the complete read is still running, its validated prefix renders as
+    // growing pending rows; totals/statistics still wait for the complete one.
+    final showingPartial = _partialData != null;
+    final data = matches
+        ? source
+        : (_partialData ?? source.pendingQuery());
     // 状态类列（label 含「状态」，如 单据状态）在客户端映射处排到最前，并收紧
     // 声明宽（value 即显示文案 → 72；表格仍按内容自动适配加宽）；其余列保持
     // 服务端元数据的顺序与宽度。
@@ -610,8 +650,10 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
       // 服务端分页表格：合计由后端在整个结果集上算（reportTotalsBar），
       // 不是对当前这一页求和；后端未声明合计列时返回 null，整条不渲染。
       summaryBar: reportTotalsBar(
-        data.totals,
-        statisticsGeneratedAt: data.statisticsGeneratedAt,
+        showingPartial ? const [] : data.totals,
+        statisticsGeneratedAt: showingPartial
+            ? null
+            : data.statisticsGeneratedAt,
       ),
       currentPage: data.page,
       totalPages: data.totalPages,
@@ -703,6 +745,10 @@ class _SalesClientDetailDialogState
   ({Map<String, String> headers, String? sort, bool ascending, int page})?
   _acceptedHeaderView;
 
+  /// Growing prefix of the in-flight complete read; never accepted and never
+  /// feeds the accepted header view or the totals below the table.
+  ReportData? _partialData;
+
   @override
   void initState() {
     super.initState();
@@ -779,6 +825,7 @@ class _SalesClientDetailDialogState
     _reportRead.invalidate();
     setState(() {
       _data = null;
+      _partialData = null;
       _loading = false;
       _readerChanged = true;
     });
@@ -800,7 +847,10 @@ class _SalesClientDetailDialogState
         const DeepCollectionEquality().equals(query, _readQuery);
     bool current() => queryCurrent() && generation == _loadGeneration;
     final requestedPage = page ?? _tableRows.visiblePage ?? _page;
-    setState(() => _loading = true);
+    setState(() {
+      _loading = true;
+      _partialData = null;
+    });
     try {
       final read = _reportRead.begin(
         endpoint: endpoint,
@@ -817,10 +867,20 @@ class _SalesClientDetailDialogState
           if (queryCurrent() && pagedReadAccessDenied(error)) _retireRead();
         },
       );
-      final result = await read.read(requestedPage);
+      // The complete read publishes its validated prefix while it continues;
+      // the awaited final result replaces it (accept stays complete-only).
+      final slot = PagedReadProgressiveSink((partial) {
+        if (!current() || partial is! ReportPageSnapshot) return;
+        setState(() => _partialData = partial.snapshot);
+      });
+      final result = await PagedReadIntent.progressiveRead(
+        slot,
+        () => read.read(requestedPage),
+      );
       if (!current() || !_reportRead.accept(result)) return;
       setState(() {
         _data = (result as ReportPageSnapshot).snapshot;
+        _partialData = null;
         _page = result.page;
         _acceptedHeaderView = (
           headers: Map.unmodifiable(_headers),
@@ -841,6 +901,9 @@ class _SalesClientDetailDialogState
       );
       setState(() {
         _loading = false;
+        // A failed read leaves no half list; the previously accepted rows and
+        // their view state stay as the failure path already restores them.
+        _partialData = null;
         final accepted = _acceptedHeaderView;
         if (_data != null && accepted != null) {
           _headers
@@ -918,7 +981,10 @@ class _SalesClientDetailDialogState
         accepted.sort == _sortKey &&
         accepted.ascending == _sortAsc &&
         const DeepCollectionEquality().equals(accepted.headers, _headers);
-    final data = matches ? _data : _data?.pendingQuery();
+    // Growing prefix of the running read renders as pending rows; the totals
+    // line waits for the complete accepted result.
+    final showingPartial = _partialData != null;
+    final data = matches ? _data : (_partialData ?? _data?.pendingQuery());
     // 状态类列排到最前（与主表同口径，见 _buildTable）。
     final mapped = (data?.columns ?? const [])
         .map(
@@ -1037,8 +1103,10 @@ class _SalesClientDetailDialogState
                         emptyMessage: '该客户在此日期范围内暂无明细',
                         // 下钻明细同样服务端分页，合计同样来自后端整个结果集。
                         summaryBar: reportTotalsBar(
-                          data.totals,
-                          statisticsGeneratedAt: data.statisticsGeneratedAt,
+                          showingPartial ? const [] : data.totals,
+                          statisticsGeneratedAt: showingPartial
+                              ? null
+                              : data.statisticsGeneratedAt,
                         ),
                         currentPage: data.page,
                         totalPages: data.totalPages,

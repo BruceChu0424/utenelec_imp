@@ -601,6 +601,24 @@ class _OperationsWorkbenchPageState
           // Every workbench batch carries the server's read proof (V1123
           // domain), so two continuation batches may be in flight at once.
           maxConcurrentPages: 2,
+          // Progressive batches publish only the growing row list. Stage
+          // counts/badges, selection, facets-dependent actions and the busy
+          // state still wait for the awaited complete result below.
+          onProgressiveBatch: (partial) {
+            if (requestId != _requestId ||
+                !mapEquals(query, _queryIdentity)) {
+              return;
+            }
+            setState(() {
+              _data =
+                  (partial
+                      as PagedReadSnapshot<
+                        OperationsWorkbenchTask,
+                        OperationsWorkbenchData
+                      >)
+                      .snapshot;
+            });
+          },
         );
         return (cached
                 as PagedReadSnapshot<

@@ -6,6 +6,7 @@ import com.uten.imp.common.util.IdCardUtil;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.common.web.Pageables;
 import com.uten.imp.features.org.employee.Employee;
 import com.uten.imp.features.org.employee.EmployeeRepository;
 import com.uten.imp.features.org.employee.EmployeeSensitiveWritePolicy;
@@ -122,11 +123,11 @@ public class ReconcilePlanQueryService {
                 counts(plan.countsJson(), rows), rowViews);
     }
 
-    /** 计划列表（创建时间倒序，页码 1 起，size 上限 100），不含量值。 */
+    /** 计划列表（创建时间倒序，页码 1 起，size 上限 {@link Pageables#MAX_PAGE_SIZE}），不含量值。 */
     @Transactional(readOnly = true)
     public PageResponse<PlanSummary> list(int page, int size) {
         int normalizedPage = Math.max(1, page);
-        int normalizedSize = Math.min(Math.max(1, size), 100);
+        int normalizedSize = Math.min(Math.max(1, size), Pageables.MAX_PAGE_SIZE);
         List<PlanRow> plans = store.listPlans(normalizedPage, normalizedSize);
         long total = store.countPlans();
         Map<UUID, String> actorNames = actorNames(plans);

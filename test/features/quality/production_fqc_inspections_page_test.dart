@@ -21,6 +21,7 @@ import 'package:uten_imp/features/quality/pages/production_fqc_inspections_page.
 import 'package:uten_imp/features/quality/pages/quality_batch_approval_page.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/drafts/task_form_draft_recovery_notice.dart';
+import 'package:uten_imp/shared/paging/paged_read_window_binding.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/search/keyword_search.dart';
 
@@ -136,8 +137,13 @@ void main() {
             Perm.productionQualityInspectionApprove,
           },
         );
-        expect(_taskTable(tester).items, isEmpty);
-        expect(_taskTable(tester).error, isNotNull);
+        // 2026-11-08 逐批读取：校验通过的首批 40 行先进 provisional 展示；
+        // 第二批身份/范围漂移后整个会话退休，半截列表不得当作当前结果展示，
+        // 失败改为在保留值上方内联提示（error 仅在无值时下推到表格）。
+        final partial = _taskTable(tester).items;
+        expect(partial, isNotEmpty);
+        expect(readWindowBindingOf(partial)!.isCurrent, isFalse);
+        expect(find.textContaining('刷新失败：'), findsOneWidget);
         expect(_taskTable(tester).selectedIds, isEmpty);
         api.duplicateSecondPage = false;
         api.changedReadScope = false;
@@ -631,7 +637,9 @@ void main() {
       expect(_taskTable(tester).totalPages, 1);
       expect(_taskTable(tester).items, hasLength(80));
       expect(api.listQueries.map((query) => query['page']), [1, 2]);
-      expect(api.listQueries.map((query) => query['size']), everyElement(40));
+      // 2026-11-08 阶梯完整读取首批 size=50；该 fake 固定 40 行/页，
+      // 读取器采纳服务端页大小后续批固定 40。
+      expect(api.listQueries.map((query) => query['size']), [50, 40]);
       expect(
         find.byKey(const ValueKey('master-table-page-next')),
         findsNothing,
@@ -740,7 +748,8 @@ void main() {
           .skip(listCallsBeforeSearch)
           .toList();
       expect(searchQueries.map((query) => query['page']), [1, 2]);
-      expect(searchQueries.map((query) => query['size']), everyElement(40));
+      // 首批 50 起步，fake 固定 40 行/页 → 续批采纳服务端页大小 40。
+      expect(searchQueries.map((query) => query['size']), [50, 40]);
       expect(searchQueries.first['keyword'], 'V51043');
       expect(searchQueries.first['page'], 1);
       expect(

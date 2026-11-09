@@ -4,6 +4,7 @@ import com.uten.imp.application.port.*;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.common.web.Pageables;
 import com.uten.imp.features.stock.StockDocAccessPolicy;
 import com.uten.imp.features.stock.allocation.ProductionMaterialTaskAccessPolicy;
 import com.uten.imp.security.DocumentAccessPolicy.NativeReadScope;
@@ -40,7 +41,7 @@ public class MaterialTraceabilityQueryService implements MaterialTraceabilityRea
         String category=kind==null?"goods":kind.trim().toLowerCase(Locale.ROOT);
         if(!Set.of("goods","document","batch").contains(category))throw invalid("查询类型不正确");
         if(!"goods".equals(category))require("stock:view");
-        int p=Math.max(1,page),s=Math.max(1,Math.min(50,size));
+        int p=Math.max(1,page),s=Math.max(1,Math.min(Pageables.MAX_PAGE_SIZE,size));
         String term=keyword==null?"":keyword.trim();
         if(term.length()>160)throw invalid("搜索内容过长");
         if(term.isEmpty())return new PageResponse<>(List.of(),p,s,0,0);

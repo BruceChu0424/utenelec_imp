@@ -832,7 +832,9 @@ class _PagedEmployeeRepository implements EmployeeRepository {
     return PagedResult(
       items: [employee],
       page: page,
-      size: size,
+      // This server keeps its own one-row page size whatever the reader asks;
+      // the shared reader detects it and completes the list on it.
+      size: 1,
       total: 2,
       totalPages: 2,
     );

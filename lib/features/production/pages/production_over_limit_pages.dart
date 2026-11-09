@@ -156,6 +156,18 @@ class _OverLimitListState extends ConsumerState<ProductionOverLimitListPage>
           sort: sort,
           order: order,
         ),
+        fetchPageSized: (target, size) => repository.list(
+          status: status,
+          page: target,
+          size: size,
+          columnSearch: headers,
+          sort: sort,
+          order: order,
+        ),
+        onProgressiveBatch: (partial) {
+          if (!current()) return;
+          setState(() => _data = partial);
+        },
       );
       if (current()) {
         setState(() {

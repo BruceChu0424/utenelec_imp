@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.common.finance.ProcurementApprovedExchangeRate;
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.web.Pageables;
 import com.uten.imp.security.OwnerVisibility;
 import com.uten.imp.features.master.client.ClientAccessPolicy;
 import lombok.RequiredArgsConstructor;
@@ -76,7 +77,7 @@ final class GoodsPriceSourceReader {
     }
     History history(HistoryQuery request,OwnerVisibility.OwnerScope scope,boolean includeQuotes,boolean includeOrders) {
         Query q=request.context();int size=request.pageSize()==null?50:request.pageSize();
-        if(size<1||size>100)throw GoodsPriceAnalysisService.invalid("历史每页须为1至100条");
+        if(size<1||size>Pageables.MAX_PAGE_SIZE)throw GoodsPriceAnalysisService.invalid("历史每页须为1至"+Pageables.MAX_PAGE_SIZE+"条");
         LocalDate to=request.to()==null?BusinessTime.today():request.to();
         if(to.isAfter(BusinessTime.today())||request.from()!=null&&request.from().isAfter(to))throw GoodsPriceAnalysisService.invalid("历史日期范围无效");
         var p=new MapSqlParameterSource().addValue("kind",q.kind().name()).addValue("goods",q.goodsId()).addValue("to",to).addValue("size",size+1)

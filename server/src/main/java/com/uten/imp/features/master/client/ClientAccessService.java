@@ -7,6 +7,7 @@ import com.uten.imp.common.util.DepartmentSearchSql;
 import com.uten.imp.common.util.EmployeeCandidateFilter;
 import com.uten.imp.common.validation.RequestLimits;
 import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.common.web.Pageables;
 import com.uten.imp.features.master.client.dto.ClientAccessCandidate;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -63,7 +64,7 @@ public class ClientAccessService {
     public PageResponse<ClientAccessCandidate> candidates(String search, int page, int size,
             UUID departmentId, boolean includeSubtree, List<UUID> excludeEmployeeIds) {
         int safePage = Math.max(1, page);
-        int safeSize = Math.min(Math.max(1, size), 100);
+        int safeSize = Math.min(Math.max(1, size), Pageables.MAX_PAGE_SIZE);
         long offset = (long) (safePage - 1) * safeSize;
         String normalizedSearch = search == null ? "" : search.trim();
         if (normalizedSearch.length() > 100) {

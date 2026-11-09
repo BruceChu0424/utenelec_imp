@@ -589,6 +589,37 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel>
       _error = null;
     });
     try {
+      Future<PagedReadSnapshot<RdTaskRow, RdTaskData>> fetchTasks(
+        int page,
+        int size,
+      ) async {
+        final data = await repository.load(
+          status: segment.apiStatus,
+          category: category.isEmpty ? null : category,
+          keyword: keyword.isEmpty ? null : keyword,
+          page: page,
+          size: size,
+          columns: {
+            ...columns.searches,
+            'search.status': ?statusFilter,
+            'search.priority': ?priorityFilter,
+          },
+          sort: columns.sort,
+          ascending: columns.ascending,
+        );
+        return PagedReadSnapshot(
+          page: PagedResult(
+            items: data.items,
+            page: data.page,
+            size: data.size,
+            total: data.total,
+            totalPages: data.totalPages,
+          ),
+          snapshot: data,
+          rebuildSnapshot: data.withPage,
+        );
+      }
+
       final cached = await readScopedPage<RdTaskRow>(
         requestedPage,
         idOf: (row) => row.id,
@@ -611,32 +642,16 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel>
           _priorityFilter,
         ),
         useCache: useCache,
-        fetchPage: (page) async {
-          final data = await repository.load(
-            status: segment.apiStatus,
-            category: category.isEmpty ? null : category,
-            keyword: keyword.isEmpty ? null : keyword,
-            page: page,
-            size: 100,
-            columns: {
-              ...columns.searches,
-              'search.status': ?statusFilter,
-              'search.priority': ?priorityFilter,
-            },
-            sort: columns.sort,
-            ascending: columns.ascending,
-          );
-          return PagedReadSnapshot(
-            page: PagedResult(
-              items: data.items,
-              page: data.page,
-              size: data.size,
-              total: data.total,
-              totalPages: data.totalPages,
-            ),
-            snapshot: data,
-            rebuildSnapshot: data.withPage,
-          );
+        fetchPage: (page) => fetchTasks(page, 100),
+        fetchPageSized: fetchTasks,
+        // Progressive batches only grow the task rows; the page number,
+        // selection and the busy flag wait for the complete result below.
+        onProgressiveBatch: (partial) {
+          if (!mounted || requestId != _requestId) return;
+          setState(() {
+            _data =
+                (partial as PagedReadSnapshot<RdTaskRow, RdTaskData>).snapshot;
+          });
         },
       );
       final next =

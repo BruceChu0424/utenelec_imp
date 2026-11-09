@@ -43,7 +43,7 @@ public class FinanceStatementDocumentService {
 
     @Transactional(readOnly=true)
     public Map<String,Object> profiles(String kind,String templateKey,String partyRole,UUID partyId,UUID currencyId,int page,int size){
-        read();profileIdentity(kind,templateKey,partyRole,partyId,currencyId);int p=Math.max(1,page),s=Math.max(1,Math.min(100,size));
+        read();profileIdentity(kind,templateKey,partyRole,partyId,currencyId);int p=Math.max(1,page),s=Math.max(1,Math.min(Pageables.MAX_PAGE_SIZE,size));
         Object[] scope={kind,templateKey,partyRole,partyId,currencyId};String where=" WHERE kind=? AND template_key=? AND party_role IS NOT DISTINCT FROM ?::text AND party_id IS NOT DISTINCT FROM ?::uuid AND currency_id=?";
         long total=db.queryForObject("SELECT count(*) FROM finance_statement_profiles"+where,Long.class,scope);
         var args=new ArrayList<Object>(Arrays.asList(scope));args.add(s);args.add((long)(p-1)*s);
@@ -221,7 +221,7 @@ public class FinanceStatementDocumentService {
 
     @Transactional(readOnly=true)
     public Map<String,Object> reviews(Context context,int page,int size){
-        read();context(context);int p=Math.max(1,page),s=Math.max(1,Math.min(100,size));String where=" WHERE template_key=? AND party_role=? AND party_id=? AND currency_id=? AND date_from=? AND date_to=? AND material_context_id IS NOT DISTINCT FROM ?::uuid AND material_all_contexts=?";
+        read();context(context);int p=Math.max(1,page),s=Math.max(1,Math.min(Pageables.MAX_PAGE_SIZE,size));String where=" WHERE template_key=? AND party_role=? AND party_id=? AND currency_id=? AND date_from=? AND date_to=? AND material_context_id IS NOT DISTINCT FROM ?::uuid AND material_all_contexts=?";
         Object[] scope={context.templateKey(),context.partyRole(),context.partyId(),context.currencyId(),context.dateFrom(),context.dateTo(),context.materialContextId(),Boolean.TRUE.equals(context.allMaterialContexts())};
         long total=db.queryForObject("SELECT count(*) FROM finance_statement_document_reviews"+where,Long.class,scope);var args=new ArrayList<Object>(Arrays.asList(scope));args.add(s);args.add((long)(p-1)*s);
         var rows=db.queryForList("SELECT id,status,document_sha256,source_fingerprint,submitted_by,submitted_name,submitted_at,approved_by,approved_name,approved_at,review_reason,counterpart_name,counterpart_confirmed_date FROM finance_statement_document_reviews"+where+" ORDER BY submitted_at DESC,id LIMIT ? OFFSET ?",args.toArray());

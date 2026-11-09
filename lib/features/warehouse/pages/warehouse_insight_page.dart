@@ -293,6 +293,36 @@ class _WarehouseInsightPageState extends ConsumerState<WarehouseInsightPage>
             rebuildSnapshot: snapshot.withPage,
           );
         },
+        fetchPageSized: (target, size) async {
+          final snapshot = await pageRepository.health(
+            scope: pageScope,
+            page: target,
+            size: size,
+            keyword: pageKeyword,
+            abc: pageAbc,
+            onlyDead: pageOnlyDead,
+            agedOver180: pageAgedOver180,
+            sort: pageSort,
+            ascending: pageAscending,
+          );
+          return PagedReadSnapshot<InsightHealthRow, InsightHealthResult>(
+            page: snapshot.rows,
+            snapshot: snapshot,
+            rebuildSnapshot: snapshot.withPage,
+          );
+        },
+        onProgressiveBatch: (partial) {
+          if (!mounted || !_healthRequests.isCurrent(generation)) return;
+          setState(() {
+            _health =
+                (partial
+                        as PagedReadSnapshot<
+                          InsightHealthRow,
+                          InsightHealthResult
+                        >)
+                    .snapshot;
+          });
+        },
       );
       final r =
           (cached as PagedReadSnapshot<InsightHealthRow, InsightHealthResult>)
@@ -332,6 +362,17 @@ class _WarehouseInsightPageState extends ConsumerState<WarehouseInsightPage>
         useCache: useCache,
         fetchPage: (target) =>
             pageRepository.cycleCount(scope: pageScope, page: target),
+        fetchPageSized: (target, size) => pageRepository.cycleCount(
+          scope: pageScope,
+          page: target,
+          size: size,
+        ),
+        onProgressiveBatch: (partial) {
+          if (!mounted || !_cycleRequests.isCurrent(generation)) return;
+          setState(() {
+            _cycle = partial;
+          });
+        },
       );
       if (!mounted || !_cycleRequests.isCurrent(generation)) return;
       setState(() {
@@ -381,6 +422,33 @@ class _WarehouseInsightPageState extends ConsumerState<WarehouseInsightPage>
             rebuildSnapshot: snapshot.withPage,
           );
         },
+        fetchPageSized: (target, size) async {
+          final snapshot = await pageRepository.weightAlerts(
+            days: pageDays,
+            page: target,
+            size: size,
+          );
+          return PagedReadSnapshot<
+            InsightWeightAlertRow,
+            InsightWeightAlertsResult
+          >(
+            page: snapshot.rows,
+            snapshot: snapshot,
+            rebuildSnapshot: snapshot.withPage,
+          );
+        },
+        onProgressiveBatch: (partial) {
+          if (!mounted || !_alertRequests.isCurrent(generation)) return;
+          setState(() {
+            _alerts =
+                (partial
+                        as PagedReadSnapshot<
+                          InsightWeightAlertRow,
+                          InsightWeightAlertsResult
+                        >)
+                    .snapshot;
+          });
+        },
       );
       final r =
           (cached
@@ -428,6 +496,18 @@ class _WarehouseInsightPageState extends ConsumerState<WarehouseInsightPage>
           keyword: pageKeyword,
           page: target,
         ),
+        fetchPageSized: (target, size) => pageRepository.learning(
+          filter: pageFilter,
+          keyword: pageKeyword,
+          page: target,
+          size: size,
+        ),
+        onProgressiveBatch: (partial) {
+          if (!mounted || !_learningRequests.isCurrent(generation)) return;
+          setState(() {
+            _learning = partial;
+          });
+        },
       );
       if (!mounted || !_learningRequests.isCurrent(generation)) return;
       setState(() {
@@ -813,7 +893,8 @@ class _WarehouseInsightPageState extends ConsumerState<WarehouseInsightPage>
   }
 
   Widget _kpis() {
-    final o = _health?.overview;
+    // KPI 概览只在完整结果时渲染; 逐批增长期不展示半截合计。
+    final o = _healthLoading ? null : _health?.overview;
     final receiptShort = o?.receiptShort30d;
     final drawOver = o?.drawOver30d;
     final items = <MetricFilterCardItem>[
@@ -971,7 +1052,9 @@ class _WarehouseInsightPageState extends ConsumerState<WarehouseInsightPage>
           _countText('共 ${_alerts?.rows.total ?? 0} 条'),
         ]);
       case WarehouseInsightSegment.learning:
-        final coverage = _health?.overview.weighedCoveragePct;
+        final coverage = _healthLoading
+            ? null
+            : _health?.overview.weighedCoveragePct;
         children.addAll([
           UtenSegmentRow<InsightLearningFilter>(
             key: const Key('insight-learning-filter'),
@@ -1073,10 +1156,10 @@ class _WarehouseInsightPageState extends ConsumerState<WarehouseInsightPage>
       emptyMessage: _onlyDead || _agedOver180 || _abc != null
           ? '当前筛选下没有货品'
           : '当前范围没有库存',
-      summaryBar: reportTotalsBar(
-        rows?.totals ?? const [],
-        weightDisplay: display,
-      ),
+      // 合计条只在完整结果时渲染; 逐批增长期不展示半截合计。
+      summaryBar: _healthLoading
+          ? null
+          : reportTotalsBar(rows?.totals ?? const [], weightDisplay: display),
       currentPage: rows?.page ?? 1,
       totalPages: rows?.totalPages ?? 1,
       paginationScope: (_scope, _keyword, _abc, _onlyDead, _agedOver180),

@@ -52,6 +52,9 @@ class _AdvanceDirectoryState extends ConsumerState<_AdvanceDirectory>
   String? _error;
   String _kind = 'APPLICATION';
   List<Map<String, dynamic>> _rows = [];
+
+  /// [_rows] currently holds progressive rows of an unfinished read.
+  bool _partialRows = false;
   Map<String, dynamic>? _source;
   bool get _current =>
       mounted &&
@@ -122,6 +125,10 @@ class _AdvanceDirectoryState extends ConsumerState<_AdvanceDirectory>
           fetchPage: (page) async => _fetchSettlements(page, 100, id, kind),
           fetchPageSized: (page, size) async =>
               _fetchSettlements(page, size, id, kind),
+          onProgressiveBatch: (partial) => setState(() {
+            _partialRows = true;
+            _rows = partial.items;
+          }),
         );
         return (source: source, complete: complete);
       });
@@ -129,6 +136,7 @@ class _AdvanceDirectoryState extends ConsumerState<_AdvanceDirectory>
         setState(() {
           _source = result.source;
           _rows = result.complete.items;
+          _partialRows = false;
         });
       }
     } catch (e) {
@@ -138,7 +146,11 @@ class _AdvanceDirectoryState extends ConsumerState<_AdvanceDirectory>
           if (pagedReadAccessDenied(e)) {
             _rows = [];
             _source = null;
+          } else if (_partialRows) {
+            // A failed read takes its progressive rows down as a whole.
+            _rows = [];
           }
+          _partialRows = false;
           _error = _message(e);
         });
       }

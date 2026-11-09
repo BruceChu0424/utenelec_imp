@@ -56,7 +56,7 @@ class GoodsQuoteHistoryPostgresTest {
             assertThat(row.orderId()).isEqualTo(order);
             assertThat(row.orderNo()).isEqualTo("XD-HISTORY");
         });
-        assertThat(service.list(goods, -1, 1000).getSize()).isEqualTo(100);
+        assertThat(service.list(goods, -1, 1000).getSize()).isEqualTo(200);
         assertThat(service.list(UUID.randomUUID(), 1, 20).getItems()).isEmpty();
     }
 

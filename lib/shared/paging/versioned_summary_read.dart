@@ -83,10 +83,13 @@ Future<VersionedSummarySnapshot<T>> readVersionedSummarySnapshot<T>({
   loadPage,
   required bool Function() isCurrent,
   int batchSize = 100,
+  // A stream transport places each frame by the shared progressive plan; the
+  // fixed batch remains the default for paged summary endpoints.
+  CompleteReadBatchPlan? plan,
   int maxConcurrentPages = 1,
   required T Function(Map<String, dynamic> row) decode,
   required Object? Function(T row) idOf,
-  void Function(PagedResult<T> provisional)? onProvisionalBatch,
+  void Function(PagedResult<T> partial)? onProgressiveBatch,
 }) async {
   String? snapshot;
   String? firstAuthority;
@@ -94,10 +97,11 @@ Future<VersionedSummarySnapshot<T>> readVersionedSummarySnapshot<T>({
   Map<String, dynamic> firstMetadata = const {};
   final result = await loadCompletePagedResult<T>(
     isCurrent: isCurrent,
-    batchSize: batchSize,
+    batchSize: plan == null ? batchSize : null,
+    plan: plan,
     maxConcurrentPages: maxConcurrentPages,
     idOf: idOf,
-    onProvisionalBatch: onProvisionalBatch,
+    onProgressiveBatch: onProgressiveBatch,
     loadPage: (page, size) async {
       final raw = await loadPage(page, size, snapshot);
       final revision = raw['readSnapshotRevision'];

@@ -125,7 +125,9 @@ void main() {
         await tester.pumpAndSettle();
         final old = api.second!;
         api.second = null;
-        old.complete(api.page(2, 100));
+        // The held continuation is the ladder's (2,50) batch.
+        expect(api.reads.map((read) => read.$2['size']), [50, 50]);
+        old.complete(api.page(2, 50));
         await tester.pumpAndSettle();
         expect(api.reads.map((read) => read.$2['page']), [1, 2]);
         api.prefix = 'fresh';
@@ -136,7 +138,12 @@ void main() {
         );
         expect(table.items, hasLength(251));
         expect(table.items.last.id, 'fresh-250');
-        expect(api.reads.map((read) => read.$2['page']), [1, 2, 1, 2, 3]);
+        // One fresh complete source: (1,50)(2,50)(2,100)(2,200).
+        expect(api.reads.map((read) => read.$2['page']), [1, 2, 1, 2, 2, 2]);
+        expect(
+          api.reads.skip(2).map((read) => read.$2['size']),
+          [50, 50, 100, 200],
+        );
         expect(tester.takeException(), isNull);
       } finally {
         await tester.pumpWidget(const SizedBox.shrink());
@@ -165,13 +172,15 @@ void main() {
         expect(result.items.last.fields['immutableSource'], 'original-250');
         expect(
           api.reads.map((r) => r.$1),
-          List.filled(3, '/business-applications/$queue'),
+          List.filled(4, '/business-applications/$queue'),
         );
-        expect(api.reads.map((r) => r.$2['page']), [1, 2, 3]);
+        // Progressive ladder: rows 0-49, 50-99, 100-199, 200-250.
+        expect(api.reads.map((r) => r.$2['page']), [1, 2, 2, 2]);
+        expect(api.reads.map((r) => r.$2['size']), [50, 50, 100, 200]);
         for (final read in api.reads) {
           expect(read.$2, {
             'page': read.$2['page'],
-            'size': 100,
+            'size': read.$2['size'],
             'kind': 'PREPAYMENT',
             if (queue == 'mine') 'status': 'PROCESSING',
             'approvalStage': 'FINANCE',
@@ -209,7 +218,11 @@ void main() {
       container.invalidate(provider);
       final complete = await container.read(provider.future);
       expect(complete.items, hasLength(251));
-      expect(api.reads.map((r) => r.$2['page']), [1, 2, 1, 2, 3]);
+      expect(api.reads.map((r) => r.$2['page']), [1, 2, 1, 2, 2, 2]);
+      expect(
+        api.reads.map((r) => r.$2['size']),
+        [50, 50, 50, 50, 100, 200],
+      );
     },
   );
 
@@ -237,7 +250,7 @@ void main() {
       (container.read(exportContextEpochProvider.notifier) as _Epoch).retire();
       final fresh = await container.read(provider.future);
       expect(fresh.items.last.id, 'fresh-A-250');
-      oldGate.complete(api.page(2, 100, prefix: 'retired-A'));
+      oldGate.complete(api.page(2, 50, prefix: 'retired-A'));
       await Future<void>.delayed(const Duration(milliseconds: 20));
       expect(
         container.read(provider).requireValue.items.last.id,

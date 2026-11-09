@@ -179,22 +179,30 @@ class _Repository implements PriceAnalysisRepository {
     Map<String, dynamic> query,
   ) async {
     facetQueries.add(query);
+    // 2026-11-08 阶梯完整读取：fake 按 (page,size) 正确切片并回显——
+    // 行数等于 clamp(total-offset,0,size)、每行唯一 value；facetPages=1 时
+    // 仍是唯一的 PO-201 候选（首个阶梯批 (1,50) 一次读完）。
+    final page = (query['page'] as int?) ?? 1;
+    final size = (query['size'] as int?) ?? 50;
+    final buckets = [
+      for (
+        var index = (page - 1) * size;
+        index < page * size && index < facetPages;
+        index++
+      )
+        {
+          'value': 'PO-${index + 201}',
+          'label': '第${index + 201}条单据',
+          'count': 1,
+        },
+    ];
     return {
       'column': query['column'],
-      'buckets': [
-        if (facetPages == 1)
-          {'value': 'PO-201', 'label': '第201条单据', 'count': 1}
-        else
-          {
-            'value': 'PO-${query['page']}',
-            'label': '第${query['page']}页取值',
-            'count': 1,
-          },
-      ],
-      'page': query['page'] ?? 1,
-      'size': 50,
+      'buckets': buckets,
+      'page': page,
+      'size': size,
       'total': facetPages,
-      'totalPages': facetPages,
+      'totalPages': (facetPages + size - 1) ~/ size,
       'nullCount': 0,
       'hasMore': false,
     };
@@ -1324,8 +1332,9 @@ void main() {
       final calls = repository.tableQueries
           .where((query) => query['kind'] == 'SALES')
           .toList();
-      expect(calls.map((query) => query['page']), [1, 2, 3]);
-      expect(calls.every((query) => query['size'] == 100), isTrue);
+      // 2026-11-08 阶梯完整读取：240 行 = 50 → 50 → 100 → 200（末批 40 行）。
+      expect(calls.map((query) => query['page']), [1, 2, 2, 2]);
+      expect(calls.map((query) => query['size']), [50, 50, 100, 200]);
       final table = tester.widget<MasterDataTableView<PriceObservation>>(
         find.byKey(const Key('goods-price-history-table')),
       );
@@ -2183,11 +2192,19 @@ void main() {
         find.byKey(const Key('goods-price-history-table')),
       );
       expect(repository.tableQueries.first['page'], 1);
-      expect(repository.tableQueries.map((query) => query['page']), [1, 2, 3]);
-      expect(
-        repository.tableQueries.every((query) => query['size'] == 100),
-        isTrue,
-      );
+      // 2026-11-08 阶梯完整读取：201 行 = 50 → 50 → 100 → 200（末批 1 行）。
+      expect(repository.tableQueries.map((query) => query['page']), [
+        1,
+        2,
+        2,
+        2,
+      ]);
+      expect(repository.tableQueries.map((query) => query['size']), [
+        50,
+        50,
+        100,
+        200,
+      ]);
       expect(table.totalPages, 1);
       expect(table.items, hasLength(201));
       final reads = repository.tableQueries.length;
@@ -2205,7 +2222,14 @@ void main() {
       );
       updated.onFilterChanged('amount', '__null__');
       await tester.pumpAndSettle();
-      expect(repository.tableQueries.last['page'], 3);
+      // 阶梯完整读取：筛选后整体重读 201 行，末批 (2,200) 仍带同一筛选。
+      expect(
+        repository.tableQueries
+            .skip(reads)
+            .map((query) => (query['page'], query['size'])),
+        [(1, 50), (2, 50), (2, 100), (2, 200)],
+      );
+      expect(repository.tableQueries.last['page'], 2);
       expect(jsonDecode(repository.tableQueries.last['filters'] as String), {
         'amount': '__null__',
       });
@@ -2412,7 +2436,9 @@ void main() {
   testWidgets(
     'facet confirmation uses its accepted window after a leading seed',
     (tester) async {
-      final repository = _Repository()..facetPages = 2;
+      // 2026-11-08 阶梯完整读取：60 个候选跨首批 (1,50) 与续批 (2,50)，
+      // 选中续批中的候选仍从已接受的完整窗口确认。
+      final repository = _Repository()..facetPages = 60;
       Object? returned;
       await pump(
         tester,
@@ -2437,21 +2463,22 @@ void main() {
         reason: 'the whole authorized query is one local table',
       );
       expect(table.rowsController!.visiblePage, 1);
-      expect(table.items, hasLength(2));
+      expect(table.items, hasLength(60));
       expect(
         find.byKey(const ValueKey('master-table-page-next')),
         findsNothing,
       );
       final selected = table.rowsController!.items.singleWhere(
-        (row) => row.value == 'PO-2',
+        (row) => row.value == 'PO-260',
       );
       table.onRowTap!(selected);
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('goods-price-facet-confirm')));
       await tester.pumpAndSettle();
       expect(returned, isA<(String, MasterFacetBucket)>());
-      expect((returned as (String, MasterFacetBucket)).$2.value, 'PO-2');
+      expect((returned as (String, MasterFacetBucket)).$2.value, 'PO-260');
       expect(repository.facetQueries.map((query) => query['page']), [1, 2]);
+      expect(repository.facetQueries.map((query) => query['size']), [50, 50]);
       expect(tester.takeException(), isNull);
     },
   );

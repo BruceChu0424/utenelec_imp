@@ -265,6 +265,20 @@ class _ColorPageState extends ConsumerState<ColorPage>
         idOf: (row) => row.id,
         fetchPage: (target) =>
             repository.list(page: target, keyword: keyword, filters: filters),
+        fetchPageSized: (target, size) => repository.list(
+          page: target,
+          size: size,
+          keyword: keyword,
+          filters: filters,
+        ),
+        onProgressiveBatch: (partial) {
+          if (!mounted ||
+              !inlineAcceptsRead(inlineReadBoundary) ||
+              !_loadRequests.isCurrent(generation)) {
+            return;
+          }
+          setState(() => _page = partial);
+        },
       );
       if (!mounted ||
           !inlineAcceptsRead(inlineReadBoundary) ||

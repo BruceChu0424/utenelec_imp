@@ -138,6 +138,19 @@ class _ProductionFqcInspectionsPageState
           sort: requestedColumns.sort,
           ascending: requestedColumns.ascending,
         ),
+        fetchPageSized: (target, size) => pageRepository.list(
+          status: pageStatus,
+          keyword: pageKeyword,
+          page: target,
+          size: size,
+          columns: requestedColumns.searches,
+          sort: requestedColumns.sort,
+          ascending: requestedColumns.ascending,
+        ),
+        onProgressiveBatch: (partial) {
+          if (!current()) return;
+          setState(() => _result = partial);
+        },
       );
       if (!current()) return;
       setState(() {

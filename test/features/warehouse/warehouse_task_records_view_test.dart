@@ -1250,7 +1250,8 @@ void main() {
       expect(api.lastQuery, {
         'scopeWarehouseId': 'warehouse-a',
         'linePage': 1,
-        'lineSize': 100,
+        // First batch of the progressive complete read (50 → aligned to 200).
+        'lineSize': 50,
       });
       final detail = tester.widget<MasterDataTableView<Map<String, dynamic>>>(
         find.byType(MasterDataTableView<Map<String, dynamic>>),

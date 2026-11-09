@@ -121,7 +121,7 @@ Map<String, dynamic> _calculation({String total = '6337.3207'}) => {
 };
 
 class _Costs extends Fake implements GoodsCostRepository {
-  final versionQueries = <({int page, TableColumnQuery query})>[];
+  final versionQueries = <({int page, int size, TableColumnQuery query})>[];
   Completer<void>? versionGate;
   bool failVersionHeaders = false;
   int? versionTotal;
@@ -133,7 +133,7 @@ class _Costs extends Fake implements GoodsCostRepository {
     int size = 50,
     TableColumnQuery columnQuery = const TableColumnQuery(),
   }) async {
-    versionQueries.add((page: page, query: columnQuery));
+    versionQueries.add((page: page, size: size, query: columnQuery));
     if (versionReadError != null) {
       throw versionReadError!;
     }
@@ -1752,7 +1752,10 @@ void main() {
       expect(table().totalPages, 1);
       expect(table().items, hasLength(501));
       expect(table().onPageChange, isNull);
-      expect(repo.versionQueries.map((q) => q.page), [1, 2, 3, 4, 5, 6]);
+      // Progressive ladder over 501 rows: 0-49, 50-99, 100-199, 200-399,
+      // 400-500; no row is read twice.
+      expect(repo.versionQueries.map((q) => q.page), [1, 2, 2, 2, 3]);
+      expect(repo.versionQueries.map((q) => q.size), [50, 50, 100, 200, 200]);
       final versionColumn = table().columns.singleWhere(
         (column) => column.key == 'version',
       );

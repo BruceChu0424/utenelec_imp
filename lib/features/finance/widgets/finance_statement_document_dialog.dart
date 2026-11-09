@@ -220,6 +220,7 @@ class _DirectoryState extends ConsumerState<FinanceStatementDocumentDialog>
       _busy = true;
       _error = null;
     });
+    var partialRows = false;
     try {
       final data = await readScopedPage<Map<String, dynamic>>(
         1,
@@ -230,13 +231,19 @@ class _DirectoryState extends ConsumerState<FinanceStatementDocumentDialog>
         isCurrent: current,
         fetchPage: (page) async => _fetchPage(page, 100, kind),
         fetchPageSized: (page, size) async => _fetchPage(page, size, kind),
+        onProgressiveBatch: (partial) => setState(() {
+          partialRows = true;
+          _rows = partial.items;
+        }),
       );
       if (current()) setState(() => _rows = data.items);
     } catch (e) {
       if (!isRetiredViewRead(e) && current()) {
         setState(() {
           _error = _errorText(e);
-          if (pagedReadAccessDenied(e)) _rows = [];
+          // Access loss, or a failed read whose progressive rows were shown:
+          // never leave a half list next to the error.
+          if (pagedReadAccessDenied(e) || partialRows) _rows = [];
         });
       }
     } finally {
@@ -531,11 +538,17 @@ class _OriginalState extends ConsumerState<_Original>
             // for every bounded read. That instant is not the frozen document
             // version. Every other metadata fact (including confirmation,
             // paper layout, totals, columns, currency and source) must agree.
+            // The pagination envelope (size/total/totalPages) describes the
+            // current bounded batch, not the document: the complete read may
+            // use growing aligned batch sizes (2026-11-08 ladder).
             final stable = <String, dynamic>{
               for (final entry in raw.entries)
                 if (!const {
                   'rows',
                   'page',
+                  'size',
+                  'total',
+                  'totalPages',
                   'statisticsGeneratedAt',
                 }.contains(entry.key))
                   entry.key: entry.value,

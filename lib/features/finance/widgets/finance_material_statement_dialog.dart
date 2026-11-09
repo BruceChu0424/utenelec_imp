@@ -96,6 +96,7 @@ Future<Map<String, dynamic>> _readMaterialPages({
   required bool Function() current,
   required Future<Map<String, dynamic>> Function(int, int) fetch,
   Object? Function(Map<String, dynamic>)? identity,
+  void Function(List<Map<String, dynamic>> items)? onRows,
 }) async {
   Map<String, dynamic> first = {};
   final result = await loadCompletePagedResult<Map<String, dynamic>>(
@@ -106,6 +107,9 @@ Future<Map<String, dynamic>> _readMaterialPages({
       if (page == 1) first = value;
       return PagedResult.fromJsonResponsive(value, (row) => row);
     },
+    onProgressiveBatch: onRows == null
+        ? null
+        : (partial) => onRows(partial.items),
   );
   return {
     ...first,
@@ -286,6 +290,7 @@ class _MaterialDirectory extends ConsumerState<FinanceMaterialStatementSurface>
   Future<void> _load() async {
     if (!_current) return;
     final generation = ++_read;
+    var partialRows = false;
     setState(() => _busy = true);
     try {
       final api = ref.read(apiClientProvider),
@@ -301,18 +306,32 @@ class _MaterialDirectory extends ConsumerState<FinanceMaterialStatementSurface>
               _materialBase,
               query: {'q': _search.text.trim(), 'page': batch, 'size': size},
             ),
+            onRows: (items) {
+              if (!_current || !scope.isCurrent || generation != _read) return;
+              setState(() {
+                _contexts = _ml(items);
+                partialRows = true;
+              });
+            },
           ),
         ),
       );
       if (!_current || !scope.isCurrent || generation != _read) return;
       setState(() {
         _contexts = _ml(result['items']);
+        partialRows = false;
         _error = null;
         _readDenied = false;
       });
     } catch (e) {
       if (isRetiredViewRead(e)) return;
-      if (_current && generation == _read) setState(() => _readFailed(e));
+      if (_current && generation == _read) {
+        setState(() {
+          // 逐批前缀不是完整结果：失败时整体下撤。
+          if (partialRows) _contexts = [];
+          _readFailed(e);
+        });
+      }
     } finally {
       if (_current && generation == _read) setState(() => _busy = false);
     }
@@ -439,6 +458,7 @@ class _MaterialDirectory extends ConsumerState<FinanceMaterialStatementSurface>
   Future<void> _historyLoad() async {
     if (!_current || _context == null) return;
     final generation = ++_read;
+    var partialRows = false;
     setState(() => _busy = true);
     try {
       final api = ref.read(apiClientProvider),
@@ -454,26 +474,65 @@ class _MaterialDirectory extends ConsumerState<FinanceMaterialStatementSurface>
               '$_materialBase/evidence',
               query: {'contextId': _id(_context), 'page': batch, 'size': size},
             ),
+            onRows: (items) {
+              if (!_current || !scope.isCurrent || generation != _read) return;
+              setState(() {
+                _history = _ml(items);
+                partialRows = true;
+              });
+            },
           ),
         ),
       );
       if (!_current || !scope.isCurrent || generation != _read) return;
       setState(() {
         _history = _ml(value['items']);
+        partialRows = false;
         _error = null;
         _readDenied = false;
       });
     } catch (e) {
       if (isRetiredViewRead(e)) return;
-      if (_current && generation == _read) setState(() => _readFailed(e));
+      if (_current && generation == _read) {
+        setState(() {
+          if (partialRows) _history = [];
+          _readFailed(e);
+        });
+      }
     } finally {
       if (_current && generation == _read) setState(() => _busy = false);
     }
   }
 
+  /// 来源事实逐条展开为实物影响行（完整结果与逐批前缀同一投影）。
+  List<Map<String, dynamic>> _sourceRows(List<Map<String, dynamic>> facts) {
+    final rows = <Map<String, dynamic>>[];
+    for (final fact in facts) {
+      for (final effect in _ml(fact['effects'])) {
+        rows.add({
+          ...effect,
+          'billNo': fact['billNo'],
+          'originalSummary': [
+            _mm(fact['sourceSnapshot'])['document_remark'],
+            _mm(fact['sourceSnapshot'])['item_remark'],
+          ].whereType<String>().where((value) => value.isNotEmpty).join('；'),
+          'sourceUnitName': fact['unitName'],
+          'goodsCode': fact['goodsCode'],
+          'goodsName': fact['goodsName'],
+          'source': fact['key'],
+          'fact': fact,
+          'sourceIdentityFingerprint': fact['identityFingerprint'],
+          'flowRole': _rule!['flowRole'],
+        });
+      }
+    }
+    return rows;
+  }
+
   Future<void> _sourceLoad() async {
     if (!_current || _context == null || _rule == null) return;
     final generation = ++_read;
+    var partialRows = false;
     setState(() => _busy = true);
     try {
       final api = ref.read(apiClientProvider),
@@ -499,38 +558,32 @@ class _MaterialDirectory extends ConsumerState<FinanceMaterialStatementSurface>
                 'size': size,
               },
             ),
+            onRows: (items) {
+              if (!_current || !scope.isCurrent || generation != _read) return;
+              setState(() {
+                _sources = _sourceRows(_ml(items));
+                partialRows = true;
+              });
+            },
           ),
         ),
       );
       if (!_current || !scope.isCurrent || generation != _read) return;
-      final rows = <Map<String, dynamic>>[];
-      for (final fact in _ml(result['items'])) {
-        for (final effect in _ml(fact['effects'])) {
-          rows.add({
-            ...effect,
-            'billNo': fact['billNo'],
-            'originalSummary': [
-              _mm(fact['sourceSnapshot'])['document_remark'],
-              _mm(fact['sourceSnapshot'])['item_remark'],
-            ].whereType<String>().where((value) => value.isNotEmpty).join('；'),
-            'sourceUnitName': fact['unitName'],
-            'goodsCode': fact['goodsCode'],
-            'goodsName': fact['goodsName'],
-            'source': fact['key'],
-            'fact': fact,
-            'sourceIdentityFingerprint': fact['identityFingerprint'],
-            'flowRole': _rule!['flowRole'],
-          });
-        }
-      }
+      final rows = _sourceRows(_ml(result['items']));
       setState(() {
         _sources = rows;
+        partialRows = false;
         _error = null;
         _readDenied = false;
       });
     } catch (e) {
       if (isRetiredViewRead(e)) return;
-      if (_current && generation == _read) setState(() => _readFailed(e));
+      if (_current && generation == _read) {
+        setState(() {
+          if (partialRows) _sources = [];
+          _readFailed(e);
+        });
+      }
     } finally {
       if (_current && generation == _read) setState(() => _busy = false);
     }

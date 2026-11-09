@@ -77,10 +77,14 @@ void main() {
       );
       await tester.tap(find.text('打开预收'));
       await tester.pumpAndSettle();
+      // Progressive complete read (2026-11-08): first 50, then aligned
+      // offsets 50 and 100 — every row exactly once, forwarded page/size.
       expect(api.reads, [
-        {'page': 1, 'size': 100, 'clientId': 'client-1'},
+        {'page': 1, 'size': 50, 'clientId': 'client-1'},
+        {'page': 2, 'size': 50, 'clientId': 'client-1'},
         {'page': 2, 'size': 100, 'clientId': 'client-1'},
       ]);
+      final completeReads = api.reads.length;
       final window = tester
           .widget<UtenAncestorRowWindow<CustomerPrepaymentItem>>(
             find.byType(UtenAncestorRowWindow<CustomerPrepaymentItem>),
@@ -115,7 +119,8 @@ void main() {
       final position = tester.state<ScrollableState>(scroll).position;
       position.jumpTo(0);
       await tester.pumpAndSettle();
-      expect(api.reads, hasLength(2));
+      // Scrolling the loaded rows never reads again.
+      expect(api.reads, hasLength(completeReads));
       expect(find.text('100.1234'), findsOneWidget);
       expect(api.posts, isEmpty);
       expect(tester.takeException(), isNull);

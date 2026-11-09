@@ -316,7 +316,8 @@ public class FulfillmentWorkbenchQueryService {
         }
         var request = new VersionedSummaryPages.Request(READ_DOMAIN, readAuthorizationDomain(department),
                 readIdentity(department, status, keyword, exception, dateFrom, dateTo, table, warehouseScope),
-                "all", Math.max(page, 1), Math.min(Math.max(size, 1), 100), 100, null);
+                "all", Math.max(page, 1), Math.min(Math.max(size, 1), com.uten.imp.common.web.Pageables.MAX_PAGE_SIZE),
+                com.uten.imp.common.web.Pageables.MAX_PAGE_SIZE, null);
         var snapshot = versionedPages.read(request, () -> { }, () -> queryRows(department, status, keyword, exception,
                 dateFrom, dateTo, page, size, table, warehouseScope, false, includeMetadata));
         return snapshot.value().withReadProof(snapshot.readScopeVersion(), snapshot.readSnapshotRevision(),
@@ -490,7 +491,7 @@ public class FulfillmentWorkbenchQueryService {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "工作台部门不正确");
         }
         int safePage = Math.max(page, 1);
-        int safeSize = exportAll ? size : Math.min(Math.max(size, 1), 100);
+        int safeSize = exportAll ? size : Math.min(Math.max(size, 1), com.uten.imp.common.web.Pageables.MAX_PAGE_SIZE);
         if ("WAREHOUSE".equals(department)
                 && !accessPolicy.canAccessWarehouseTasks()) {
             var empty=emptyPage(safePage,safeSize);

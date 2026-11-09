@@ -147,7 +147,7 @@ class SuggestionPagingAndIntegrityTest {
         assertThrows(ApiException.class, () -> service.list(null, null, "unknown", 1, 20));
         assertThrows(ApiException.class, () -> service.list(null, null, null, 0, 20));
         assertThrows(ApiException.class, () -> service.list(null, null, null, 1, 0));
-        assertThrows(ApiException.class, () -> service.list(null, null, null, 1, 101));
+        assertThrows(ApiException.class, () -> service.list(null, null, null, 1, 201));
     }
 
     @Test

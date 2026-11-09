@@ -152,6 +152,39 @@ class _CustomerPrepaymentApplyPanelState
             rebuildSnapshot: result.withPage,
           );
         },
+        fetchPageSized: (target, size) async {
+          final result = await repository.list(
+            clientId: widget.clientId,
+            page: target,
+            size: size,
+          );
+          return PagedReadSnapshot<
+            CustomerPrepaymentItem,
+            CustomerPrepaymentPage
+          >(
+            page: PagedResult(
+              items: result.items,
+              page: result.page,
+              size: result.size,
+              total: result.total,
+              totalPages: result.totalPages,
+            ),
+            snapshot: result,
+            rebuildSnapshot: result.withPage,
+          );
+        },
+        onProgressiveBatch: (partial) {
+          if (!mounted || version != _readVersion || _readRetired) return;
+          setState(
+            () => _page =
+                (partial
+                        as PagedReadSnapshot<
+                          CustomerPrepaymentItem,
+                          CustomerPrepaymentPage
+                        >)
+                    .snapshot,
+          );
+        },
       );
       if (!mounted || version != _readVersion || _readRetired) return;
       setState(
@@ -465,8 +498,12 @@ class _CustomerPrepaymentApplyPanelState
         UtenFloatingActionGroup.scrollClearance,
       ),
       children: [
-        _summary(theme, page.summary, mixedCurrencies: mixedCurrencies),
-        const SizedBox(height: UtenSpacing.s12),
+        // 汇总卡（金额来自页面结果）只在完整结果上渲染；逐批前缀期间
+        // mixedCurrencies 判定（按 items/total）尚未定形。
+        if (!_loading) ...[
+          _summary(theme, page.summary, mixedCurrencies: mixedCurrencies),
+          const SizedBox(height: UtenSpacing.s12),
+        ],
         Text(
           '1. 选择预收来源',
           style: theme.textTheme.titleSmall?.copyWith(

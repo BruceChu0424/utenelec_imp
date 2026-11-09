@@ -7,6 +7,7 @@ import com.uten.imp.common.util.NativeValueConverters;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.common.web.Pageables;
 import com.uten.imp.features.sales.order.SalesOrder;
 import com.uten.imp.features.sales.order.SalesOrderRepository;
 import com.uten.imp.features.sales.order.SalesOrderRevisionService;
@@ -127,7 +128,7 @@ public class SalesManagerReviewService implements com.uten.imp.application.port.
         if(!history) count.setParameter("managerState",normalized);
         headers.bind(count); if(!search.isEmpty()) count.setParameter("keyword",search);
         long total=((Number)count.getSingleResult()).longValue();
-        int sz=Math.max(1,Math.min(size,100)),pages=(int)((total+sz-1)/sz);
+        int sz=Math.max(1,Math.min(size,Pageables.MAX_PAGE_SIZE)),pages=(int)((total+sz-1)/sz);
         int p=Math.max(1,Math.min(page,Math.max(1,pages)));
         var query=em.createNativeQuery("SELECT t.id,t.billNo,t.billDate,t.client,t.seller,t.currency,t.amount,t.state,t.revision,"
                 +"t.reason,t.approvedAt,t.approver,t.rejectedAt,t.rejector,t.remark,t.kind"+from

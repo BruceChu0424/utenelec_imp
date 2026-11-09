@@ -151,9 +151,14 @@ void main() {
         hasLength(1),
       );
       expect(
-        api.queries.where((q) => q.path == financeApplicationsApi),
-        hasLength(1),
-        reason: 'Ninety summaries fit one bounded one-hundred-row request',
+        api.queries
+            .where((q) => q.path == financeApplicationsApi)
+            .map((q) => (q.query?['page'], q.query?['size'])),
+        [
+          (1, 50),
+          (2, 50),
+        ],
+        reason: 'Ninety summaries stream as two aligned fifty-row batches',
       );
       final table = tester.widget<MasterDataTableView<Map<String, dynamic>>>(
         find.byType(MasterDataTableView<Map<String, dynamic>>),
@@ -170,7 +175,8 @@ void main() {
         api.queries
             .lastWhere((query) => query.path == financeApplicationsApi)
             .query?['size'],
-        100,
+        50,
+        reason: '读取按共享阶梯页大小透传，不再固定 100',
       );
       final reads = api.queries.length;
       final scroll = find

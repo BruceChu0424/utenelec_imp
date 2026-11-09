@@ -142,7 +142,10 @@ void main() {
       expect(table.totalPages, 1);
       expect(table.onPageChange, isNull);
       await _scrollLocally(tester, api, '实际材料100');
-      expect(api.reads.map((q) => q['size']), everyElement(100));
+      // Progressive complete read (2026-11-08): 50, then aligned 50/100 —
+      // offsets 0/50/100, every record exactly once.
+      expect(api.reads.map((q) => q['size']), [50, 50, 100]);
+      expect(api.reads.map((q) => q['page']), [1, 2, 2]);
       expect(api.sent, isEmpty);
       await tester.pumpWidget(const SizedBox());
       container.dispose();
@@ -184,11 +187,10 @@ void main() {
           kind == 'MATERIAL_ISSUE' ? null : '150',
         );
         final queries = api.reads.where((q) => q['kind'] == kind).toList();
-        expect(queries.map((q) => q['size']), everyElement(100));
-        expect(
-          queries.map((q) => q['page']).toList().sublist(queries.length - 2),
-          [1, 2],
-        );
+        // Progressive complete read (2026-11-08): 50, then aligned 50/100 —
+        // offsets 0/50/100, every source exactly once.
+        expect(queries.map((q) => q['size']), [50, 50, 100]);
+        expect(queries.map((q) => q['page']), [1, 2, 2]);
         expect(
           queries.map((q) => q['supplierId']),
           everyElement('supplier-real'),

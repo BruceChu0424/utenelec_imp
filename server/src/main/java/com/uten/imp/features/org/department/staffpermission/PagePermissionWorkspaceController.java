@@ -35,7 +35,7 @@ public class PagePermissionWorkspaceController {
             @RequestParam(required = false) UUID departmentId,
             @RequestParam(required = false) @Size(max = 100) String search,
             @RequestParam(defaultValue = "1") @Min(1) int page,
-            @RequestParam(defaultValue = "30") @Min(1) @Max(50) int size) {
+            @RequestParam(defaultValue = "30") @Min(1) @Max(com.uten.imp.common.web.Pageables.MAX_PAGE_SIZE) int size) {
         return workspace.staff(
                 surfaceKey, departmentId, search, page, size, headerParameters());
     }

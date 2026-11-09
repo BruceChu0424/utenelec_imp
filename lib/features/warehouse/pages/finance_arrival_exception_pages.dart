@@ -80,6 +80,9 @@ class _FinanceArrivalExceptionTasksPageState
       _activityReturnRead?.call() ?? Future<void>.value();
 
   PagedResult<ProcurementArrivalException>? _result;
+
+  /// 当前 [_result] 是否为逐批渐进行（失败即整体下撤，不留半截列表）。
+  bool _progressiveRows = false;
   Object? _acceptedQuery;
   bool _loading = false;
   String? _error;
@@ -167,10 +170,20 @@ class _FinanceArrivalExceptionTasksPageState
         useCache: useCache,
         fetchPage: (target) =>
             repo.financeTasks(page: target, size: 100, status: query),
+        fetchPageSized: (target, size) =>
+            repo.financeTasks(page: target, size: size, status: query),
+        onProgressiveBatch: (partial) {
+          if (!current()) return;
+          setState(() {
+            _result = partial;
+            _progressiveRows = true;
+          });
+        },
       );
       if (!current()) return;
       setState(() {
         _result = result;
+        _progressiveRows = false;
         _acceptedQuery = query;
         _loading = false;
       });
@@ -182,6 +195,10 @@ class _FinanceArrivalExceptionTasksPageState
           _result = null;
           _acceptedQuery = null;
         }
+        if (_progressiveRows) {
+          _result = null;
+          _progressiveRows = false;
+        }
         _error = error.message;
         _loading = false;
       });
@@ -189,6 +206,10 @@ class _FinanceArrivalExceptionTasksPageState
       if (isRetiredViewRead(retiredReadError)) return;
       if (!current()) return;
       setState(() {
+        if (_progressiveRows) {
+          _result = null;
+          _progressiveRows = false;
+        }
         _error = '超量到货任务加载失败，请检查网络后重试';
         _loading = false;
       });

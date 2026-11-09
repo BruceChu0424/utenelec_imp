@@ -81,6 +81,7 @@ import '../../../shared/paging/paged_read_window_binding.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../../shared/providers/export_context_epoch_provider.dart';
+import '../../../shared/widgets/task_material_kind_summary.dart';
 import '../providers/production_execution_refresh.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
@@ -2256,33 +2257,7 @@ class _ProductionWorkshopTasksPageState
   Widget _detailMaterialSummary(
     BuildContext context,
     ProductionExecutionWorkbenchSegment task,
-  ) {
-    final theme = Theme.of(context);
-    final dark = theme.brightness == Brightness.dark;
-    return Wrap(
-      spacing: UtenSpacing.s16,
-      runSpacing: UtenSpacing.s4,
-      children: [
-        for (final part in _materialSummaryParts(task))
-          Text(
-            part.$1,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-              color: switch (part.$2) {
-                _MaterialSummaryTone.short => theme.colorScheme.error,
-                _MaterialSummaryTone.drawable =>
-                  dark ? UtenColors.infoOnDark : UtenColors.statusInfo,
-                _MaterialSummaryTone.planning =>
-                  dark ? UtenColors.fuchsiaOnDark : UtenColors.statusFuchsia,
-                _MaterialSummaryTone.muted =>
-                  theme.colorScheme.onSurfaceVariant,
-                _MaterialSummaryTone.plain => null,
-              },
-            ),
-          ),
-      ],
-    );
-  }
+  ) => MaterialKindSummaryText(segments: _materialSummaryParts(task));
 
   Future<void> _openTaskDetail(ProductionExecutionWorkbenchSegment task) async {
     if (_navigating || _loading) return;
@@ -2749,20 +2724,22 @@ class _ProductionWorkshopTasksPageState
       );
 
   /// 「物料」列的分段摘要(ADR-095/096)：已领 a/n 种；缺 k 种(自制子件 j)红；
-  /// 可领 m 种绿；待发 p 种灰(2026-09-20 用户口径「缺X种变红色、可领X种变绿色」)。
+  /// 可领 m 种蓝；待发 p 种灰(2026-09-20 用户口径「缺X种变红色、可领X种变绿色」)。
   /// 零料任务显示「无需物料」。数字只来自服务端逐种事实，不由页面猜。
-  List<(String, _MaterialSummaryTone)> _materialSummaryParts(
+  /// 计数分段与委外任务中心「物料」列共用 [materialKindCountSegments]；内料仓/认料/
+  /// 领料发现等车间独有的前缀与后缀留在这里。
+  List<MaterialKindSegment> _materialSummaryParts(
     ProductionExecutionWorkbenchSegment task,
   ) {
     // ADR-131：内料仓用料状态先说(认完料领料发现门才解除)。
     if (task.needsMaterialBin) {
-      return const [('车间内料仓未开启', _MaterialSummaryTone.short)];
+      return const [('车间内料仓未开启', MaterialKindTone.short)];
     }
     if (task.needsMaterialChoice) {
       return [
         (
           '${AppLocalizations.of(context).wmNeedChoice} · 开工时选用料',
-          _MaterialSummaryTone.planning,
+          MaterialKindTone.planning,
         ),
       ];
     }
@@ -2775,55 +2752,35 @@ class _ProductionWorkshopTasksPageState
           task.materialDiscoveryStatus == 'PENDING'
               ? AppLocalizations.of(context).materialDiscoveryPending
               : AppLocalizations.of(context).materialDiscoveryNeeded,
-          _MaterialSummaryTone.muted,
+          MaterialKindTone.muted,
         ),
       ];
     }
     if (task.zeroMaterial || task.materialKindCount == 0) {
       return fromBin
-          ? const [('车间内料仓供料', _MaterialSummaryTone.plain)]
-          : const [('无需物料', _MaterialSummaryTone.plain)];
+          ? const [('车间内料仓供料', MaterialKindTone.plain)]
+          : const [('无需物料', MaterialKindTone.plain)];
     }
-    final parts = <(String, _MaterialSummaryTone)>[
-      (
-        '已领 ${task.materialIssuedKindCount}/${task.materialKindCount} 种',
-        _MaterialSummaryTone.plain,
+    return [
+      ...materialKindCountSegments(
+        kindCount: task.materialKindCount,
+        issuedKindCount: task.materialIssuedKindCount,
+        shortKindCount: task.materialShortKindCount,
+        shortDetail: task.materialShortMakeKindCount > 0
+            ? '自制子件 ${task.materialShortMakeKindCount}'
+            : null,
+        // ADR-117：缺的料里计划还没下单的，单独用品红点出来(车间可以催计划)。
+        planningGapKindCount: task.materialPlanningGapKindCount,
+        drawableKindCount: task.materialDrawableKindCount,
+        awaitingWarehouseKindCount: task.materialAwaitingWarehouseKindCount,
       ),
+      if (fromBin) ('另有内料仓供料', MaterialKindTone.muted),
     ];
-    if (task.materialShortKindCount > 0) {
-      parts.add((
-        task.materialShortMakeKindCount > 0
-            ? '缺 ${task.materialShortKindCount} 种(自制子件 ${task.materialShortMakeKindCount})'
-            : '缺 ${task.materialShortKindCount} 种',
-        _MaterialSummaryTone.short,
-      ));
-    }
-    // ADR-117：缺的料里计划还没下单的，单独用品红点出来(车间可以催计划)。
-    if (task.materialPlanningGapKindCount > 0) {
-      parts.add((
-        '计划未下单 ${task.materialPlanningGapKindCount} 种',
-        _MaterialSummaryTone.planning,
-      ));
-    }
-    if (task.materialDrawableKindCount > 0) {
-      parts.add((
-        '可领 ${task.materialDrawableKindCount} 种',
-        _MaterialSummaryTone.drawable,
-      ));
-    }
-    if (task.materialAwaitingWarehouseKindCount > 0) {
-      parts.add((
-        '待发 ${task.materialAwaitingWarehouseKindCount} 种',
-        _MaterialSummaryTone.muted,
-      ));
-    }
-    if (fromBin) parts.add(('另有内料仓供料', _MaterialSummaryTone.muted));
-    return parts;
   }
 
   /// 纯文本摘要(列宽测算、排序键、无障碍标签)。
   String _materialSummaryText(ProductionExecutionWorkbenchSegment task) =>
-      _materialSummaryParts(task).map((part) => part.$1).join(' · ');
+      materialKindSummaryText(_materialSummaryParts(task));
 
   /// 「物料」列悬停：逐桶解释 + 已投料可产量。
   String _materialSummaryTooltip(ProductionExecutionWorkbenchSegment task) {
@@ -3668,59 +3625,21 @@ class _ProductionWorkshopTasksPageState
             '点击查看明细并选择可领物料。',
         value: _materialSummaryText,
         measureWidthOf: (context, task, scaler) =>
-            UtenTableCellAction.contentWidthOf(
+            MaterialKindSummaryCell.measureWidth(
               context,
-              _materialSummaryText(task),
-              textScaler: scaler,
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700),
+              _materialSummaryParts(task),
+              scaler,
             ),
         measureWidthScope: 'workshop-material-summary',
-        cellBuilder: (context, task) {
-          final theme = Theme.of(context);
-          final dark = theme.brightness == Brightness.dark;
-          final base = theme.textTheme.bodySmall;
-          Color? toneColor(_MaterialSummaryTone tone) => switch (tone) {
-            // ADR-169 档位收编：浅色取状态实底档色（深档可读），深色取同族亮档；
-            // 缺=红（不能齐套开工）、可领=蓝（与逐料表/词表「去领料=蓝」一致）、
-            // 等计划下单=品红（分类强调）。
-            _MaterialSummaryTone.short =>
-              dark ? UtenColors.errorOnDark : UtenColors.statusDanger,
-            _MaterialSummaryTone.drawable =>
-              dark ? UtenColors.infoOnDark : UtenColors.statusInfo,
-            _MaterialSummaryTone.planning =>
-              dark ? UtenColors.fuchsiaOnDark : UtenColors.statusFuchsia,
-            _MaterialSummaryTone.muted => theme.colorScheme.onSurfaceVariant,
-            _MaterialSummaryTone.plain => null,
-          };
-          final parts = _materialSummaryParts(task);
-          return UtenTableCellAction.rich(
-            key: ValueKey('workshop-material-summary-${task.segmentId}'),
-            label: _materialSummaryText(task),
-            tooltip: _materialSummaryTooltip(task),
-            onPressed: _navigating || _loading
-                ? null
-                : () => _openMaterials(task),
-            textSpan: TextSpan(
-              style: base,
-              children: [
-                for (var index = 0; index < parts.length; index++) ...[
-                  if (index > 0) const TextSpan(text: ' · '),
-                  TextSpan(
-                    text: parts[index].$1,
-                    style: toneColor(parts[index].$2) == null
-                        ? null
-                        : TextStyle(
-                            color: toneColor(parts[index].$2),
-                            fontWeight: FontWeight.w700,
-                          ),
-                  ),
-                ],
-              ],
-            ),
-          );
-        },
+        // ADR-169 档位收编：浅色取状态实底档色（深档可读），深色取同族亮档；
+        // 缺=红（不能齐套开工）、可领=蓝（与逐料表/词表「去领料=蓝」一致）、
+        // 等计划下单=品红（分类强调）。与委外任务中心「物料」列同一组件。
+        cellBuilder: (context, task) => MaterialKindSummaryCell(
+          key: ValueKey('workshop-material-summary-${task.segmentId}'),
+          segments: _materialSummaryParts(task),
+          tooltip: _materialSummaryTooltip(task),
+          onPressed: _navigating || _loading ? null : () => _openMaterials(task),
+        ),
       ),
     // 2026-09-16 用户口径：产品名称 / 编号 / 颜色靠前——先看清是哪个产品，再往右
     // 读物料事实与产出。三列口径仍按全站统一（各占一列）。
@@ -3864,9 +3783,6 @@ class _ProductionWorkshopTasksPageState
       ),
   ];
 }
-
-/// 「物料」列分段的着色档：缺料=红、可领=绿、待发=灰、其余默认。
-enum _MaterialSummaryTone { plain, short, planning, drawable, muted }
 
 /// 等待物料就绪度排序档（2026-09-26 用户口径「越接近可开工越靠上」）：
 /// 物料齐可开工 > 部分齐可开工 > 已备齐去领料 > 部分可领 > 待仓库发料 >

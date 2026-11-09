@@ -231,12 +231,18 @@ abstract final class RouteName {
   static const String operationsSubcontractDrawRequest =
       '/operations/workbench/subcontract/draw-request';
 
-  /// 委外领料页深链：带入要领料的委外订货明细(一次最多 50 个)。
+  /// 委外领料页深链：带入要领料的委外订货明细(一次最多 50 个)。[planItemIds] = 从任务中心
+  /// 「物料」弹窗选中的物料(只对单个委外任务)，领料页只带这些物料。
   static String operationsSubcontractDrawRequestFor(
-    Iterable<String> orderItemIds,
-  ) => Uri(
+    Iterable<String> orderItemIds, {
+    Iterable<String>? planItemIds,
+  }) => Uri(
     path: operationsSubcontractDrawRequest,
-    queryParameters: {'orderItemIds': orderItemIds.join(',')},
+    queryParameters: {
+      'orderItemIds': orderItemIds.join(','),
+      if (planItemIds != null && planItemIds.isNotEmpty)
+        'planItemIds': (planItemIds.toList()..sort()).join(','),
+    },
   ).toString();
 
   /// 委外任务中心「待处理」领料定位深链(可领料通知、进行中「可领料」跳转，

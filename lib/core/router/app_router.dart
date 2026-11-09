@@ -1148,13 +1148,21 @@ GoRouter _createAppRouter(Ref ref, {BusinessWindow? window}) {
               initialKeyword: state.uri.queryParameters['keyword'],
             ),
           ),
-          // 委外领料页(ADR-143 §4.2)：任务中心的子页，?orderItemIds=a,b。
+          // 委外领料页(ADR-143 §4.2)：任务中心的子页，?orderItemIds=a,b；
+          // 从「物料」弹窗进来时另带 &planItemIds=x,y(只领所选物料)。
           DraftAwareGoRoute(
             path: RouteName.operationsSubcontractDrawRequest,
             name: 'operations-subcontract-draw-request',
             builder: (_, state) => SubcontractDrawRequestPage(
               orderItemIds:
                   state.uri.queryParameters['orderItemIds']
+                      ?.split(',')
+                      .map((id) => id.trim())
+                      .where((id) => id.isNotEmpty)
+                      .toList() ??
+                  const [],
+              planItemIds:
+                  state.uri.queryParameters['planItemIds']
                       ?.split(',')
                       .map((id) => id.trim())
                       .where((id) => id.isNotEmpty)

@@ -44,8 +44,8 @@ class SubcontractDrawDeliveryDifferenceTest {
         assertThat(result.facets().get("colorName").getFirst().count()).isEqualTo(201);
         assertThat(result.nullCounts().get("colorName")).isEqualTo(3);
         var sql = ArgumentCaptor.forClass(String.class);
-        verify(fixture.em).createNativeQuery(sql.capture());
-        String facetSql = sql.getValue();
+        verify(fixture.em, atLeastOnce()).createNativeQuery(sql.capture());
+        String facetSql = sql.getAllValues().getFirst();
         String facets = facetSql.substring(facetSql.indexOf("facet_rows AS (") + "facet_rows AS (".length(),
                 facetSql.indexOf("facet_values AS"));
         assertThat(facets).contains("FROM classified CROSS JOIN LATERAL", "draw_header_goods")
@@ -63,7 +63,7 @@ class SubcontractDrawDeliveryDifferenceTest {
         String docNoBucket = bucketEntry(facets, facets.indexOf("('docNo',"));
         assertThat(colorBucket).doesNotContain("draw_exact_colorName");
         assertThat(docNoBucket).contains("draw_exact_colorName");
-        assertThat(sql.getValue()).contains("(NULLIF(color_name, '')) = :draw_exact_colorName", "o.maker_id IN (:readOwners)")
+        assertThat(facetSql).contains("(NULLIF(color_name, '')) = :draw_exact_colorName", "o.maker_id IN (:readOwners)")
                 .doesNotContain("浅灰", "毛坯");
         verify(fixture.query).setParameter("draw_exact_colorName", "浅灰");
         verify(fixture.query).setParameter("pageOffset", 50L);
@@ -93,10 +93,13 @@ class SubcontractDrawDeliveryDifferenceTest {
         assertThat(task.unitName()).isEqualTo("套");
         assertThat(task.shortQty()).isEqualByComparingTo("0");
         var sql = ArgumentCaptor.forClass(String.class);
-        verify(fixture.em).createNativeQuery(sql.capture());
-        assertThat(sql.getValue()).contains(
+        verify(fixture.em, times(2)).createNativeQuery(sql.capture());
+        assertThat(sql.getAllValues().getFirst()).contains(
                 ProcurementDeliveryDifference.sql("oi.qty", "oi.received_qty", "oi.returned_qty") + " AS difference_qty",
                 "page.difference_qty", "o.maker_id IN (:readOwners)");
+        // 2026-11-09「物料」列逐种分桶: 本页行的物料事实一次批量读出, 订货明细 id 走参数绑定。
+        assertThat(sql.getAllValues().get(1)).contains("fn_subcontract_draw_facts(oi.id)", "oi.id IN (:kindItemIds)");
+        verify(fixture.query).setParameter(eq("kindItemIds"), eq(List.of(task.orderItemId())));
         verify(fixture.query).setParameter("readOwners", Set.of(fixture.owner));
     }
 
@@ -113,11 +116,12 @@ class SubcontractDrawDeliveryDifferenceTest {
         fixture.service.tasks(2, 50, "", "", null, List.of(), List.of(), null,
                 "differenceQty", "desc", Map.of("search.differenceQty", "-8..0", "search.goods", "毛坯"));
         var sql = ArgumentCaptor.forClass(String.class);
-        verify(fixture.em).createNativeQuery(sql.capture());
-        assertThat(sql.getValue()).contains("difference_qty BETWEEN :draw_header_differenceQty_lower AND :draw_header_differenceQty_upper",
+        verify(fixture.em, atLeastOnce()).createNativeQuery(sql.capture());
+        String listSql = sql.getAllValues().getFirst();
+        assertThat(listSql).contains("difference_qty BETWEEN :draw_header_differenceQty_lower AND :draw_header_differenceQty_upper",
                 "FROM classified WHERE", "ORDER BY search_rank, difference_qty DESC NULLS LAST",
                 "ORDER BY page.search_rank, page.difference_qty DESC NULLS LAST", "o.maker_id IN (:readOwners)");
-        assertThat(sql.getValue()).doesNotContain("毛坯");
+        assertThat(listSql).doesNotContain("毛坯");
         verify(fixture.query).setParameter("draw_header_differenceQty_lower", new BigDecimal("-8"));
         verify(fixture.query).setParameter("draw_header_differenceQty_upper", BigDecimal.ZERO);
         verify(fixture.query).setParameter("draw_header_goods", "毛坯");

@@ -98,7 +98,8 @@ Map<String, dynamic> _approvedProgress({
           availableQty: 100,
           drawableQty: 0,
           shortQty: 0,
-          state: 'DRAWABLE',
+          // 不缺但此刻不能领：服务端 READY(2026-11-09 与任务详情同一判定)。
+          state: 'READY',
         ),
         _material(
           planItemId: 'plan-b',
@@ -110,7 +111,8 @@ Map<String, dynamic> _approvedProgress({
           availableQty: 40,
           drawableQty: 40,
           shortQty: 60,
-          state: 'SHORT',
+          // 逐种可领：有货可领即 DRAWABLE(还差的部分仍在 shortQty)，读「部分可领」。
+          state: 'DRAWABLE',
           supplySources: [
             {
               'kind': 'PURCHASE',

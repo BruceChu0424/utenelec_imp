@@ -51,17 +51,24 @@ public final class SubcontractDrawAllocator {
     }
 
     /** 一个委外任务(订货明细); materialShareQty = Qm(套数封顶); requestedQty 为 null 时取本批可领。
-     *  directed 非空 = 2026-11-09 按行领料: 数量逐(计划行,仓)给出, qty/materialQty 必须为 null。 */
+     *  directed 非空 = 2026-11-09 按行领料: 数量逐(计划行,仓)给出, qty/materialQty 必须为 null。
+     *  materialDefaults 非空 = 2026-11-09 按物料领料的预览默认量: 只为这些计划行各取其可领上限
+     *  (逐仓专属先于公共), 其余计划行本次不领。 */
     record Task(UUID orderItemId, UUID orderId, BigDecimal materialShareQty,
                 BigDecimal requestedQty, BigDecimal requestedMaterialQty, List<Line> lines,
-                List<DirectedTake> directed) {
+                List<DirectedTake> directed, java.util.Set<UUID> materialDefaults) {
         Task(UUID orderItemId, UUID orderId, BigDecimal materialShareQty, BigDecimal requestedQty, List<Line> lines) {
-            this(orderItemId, orderId, materialShareQty, requestedQty, null, lines, null);
+            this(orderItemId, orderId, materialShareQty, requestedQty, null, lines, null, null);
         }
 
         Task(UUID orderItemId, UUID orderId, BigDecimal materialShareQty, BigDecimal requestedQty,
                 BigDecimal requestedMaterialQty, List<Line> lines) {
-            this(orderItemId, orderId, materialShareQty, requestedQty, requestedMaterialQty, lines, null);
+            this(orderItemId, orderId, materialShareQty, requestedQty, requestedMaterialQty, lines, null, null);
+        }
+
+        Task(UUID orderItemId, UUID orderId, BigDecimal materialShareQty, BigDecimal requestedQty,
+                BigDecimal requestedMaterialQty, List<Line> lines, List<DirectedTake> directed) {
+            this(orderItemId, orderId, materialShareQty, requestedQty, requestedMaterialQty, lines, directed, null);
         }
     }
 
@@ -158,6 +165,10 @@ public final class SubcontractDrawAllocator {
                 results.add(directed);
                 continue;
             }
+            if (task.materialDefaults() != null) {
+                results.add(materialDefaultResult(task, complete, batch, publicUsed, slices));
+                continue;
+            }
             BigDecimal qty = task.requestedQty() == null ? batch : task.requestedQty();
             MaterialResult material = null;
             boolean exceeded = qty.compareTo(batch) > 0;
@@ -194,54 +205,7 @@ public final class SubcontractDrawAllocator {
                 if (need.signum() == 0) {
                     continue;
                 }
-                Map<UUID, BigDecimal> takes = new LinkedHashMap<>();
-                Map<UUID, Stock> takenFrom = new HashMap<>();
-                // 第一轮: 本任务专属批次(跨仓), 不动公共库存。
-                List<Stock> exactFirst = new ArrayList<>(line.stocks());
-                exactFirst.sort(Comparator
-                        .comparing((Stock stock) -> positive(stock.exactQty())).reversed()
-                        .thenComparing(stock -> Objects.toString(stock.warehouseCode(), ""))
-                        .thenComparing(stock -> stock.warehouseId().toString()));
-                for (Stock stock : exactFirst) {
-                    if (need.signum() == 0) {
-                        break;
-                    }
-                    BigDecimal exactTake = need.min(positive(stock.exactQty()));
-                    if (exactTake.signum() <= 0) {
-                        continue;
-                    }
-                    takes.merge(stock.warehouseId(), exactTake, BigDecimal::add);
-                    takenFrom.putIfAbsent(stock.warehouseId(), stock);
-                    need = need.subtract(exactTake);
-                }
-                // 第二轮: 专属不够的部分才占公共库存(扣掉本批前面任务已分走的)。
-                List<Stock> publicNext = new ArrayList<>(line.stocks());
-                publicNext.sort(Comparator
-                        .comparing((Stock stock) -> publicLeft(publicUsed, line, stock)).reversed()
-                        .thenComparing(stock -> Objects.toString(stock.warehouseCode(), ""))
-                        .thenComparing(stock -> stock.warehouseId().toString()));
-                for (Stock stock : publicNext) {
-                    if (need.signum() == 0) {
-                        break;
-                    }
-                    BigDecimal publicTake = need.min(publicLeft(publicUsed, line, stock));
-                    if (publicTake.signum() <= 0) {
-                        continue;
-                    }
-                    publicUsed.merge(new PublicKey(stock.warehouseId(), line.goodsId(), line.colorId()),
-                            publicTake, BigDecimal::add);
-                    takes.merge(stock.warehouseId(), publicTake, BigDecimal::add);
-                    takenFrom.putIfAbsent(stock.warehouseId(), stock);
-                    need = need.subtract(publicTake);
-                }
-                for (Map.Entry<UUID, BigDecimal> take : takes.entrySet()) {
-                    Stock stock = takenFrom.get(take.getKey());
-                    slices.add(new Slice(task.orderItemId(), task.orderId(), line.planItemId(),
-                            line.goodsId(), line.colorId(), stock.warehouseId(), stock.warehouseCode(),
-                            stock.warehouseName(), take.getValue(),
-                            positive(stock.exactQty()).add(positive(stock.publicQty()))));
-                }
-                if (need.signum() > 0) {
+                if (sliceLine(task, line, need, publicUsed, slices).signum() > 0) {
                     // f(complete + S) ≤ covered + avail 由 S ≤ 本批可领保证; 走到这里说明库存事实在
                     // 计算过程中自相矛盾(同一物料的公共可用在不同计划行上读到了不同值)。
                     throw new IllegalStateException("draw allocation could not cover the requested material");
@@ -249,6 +213,85 @@ public final class SubcontractDrawAllocator {
             }
         }
         return new Result(results, slices);
+    }
+
+    /**
+     * 把一条计划行本次要领的量切到各仓: 第一轮在所有有本任务专属批次的仓里先拿专属批次(专属多的仓
+     * 在前), 第二轮才动公共库存(该仓剩余公共可用多的在前, 同量按仓编码); 同一仓两轮合成一段。
+     * 返回没切出去的余量(调用方保证不超过可动用量时为 0)。
+     */
+    private static BigDecimal sliceLine(Task task, Line line, BigDecimal need,
+                                        Map<PublicKey, BigDecimal> publicUsed, List<Slice> slices) {
+        Map<UUID, BigDecimal> takes = new LinkedHashMap<>();
+        Map<UUID, Stock> takenFrom = new HashMap<>();
+        // 第一轮: 本任务专属批次(跨仓), 不动公共库存。
+        List<Stock> exactFirst = new ArrayList<>(line.stocks());
+        exactFirst.sort(Comparator
+                .comparing((Stock stock) -> positive(stock.exactQty())).reversed()
+                .thenComparing(stock -> Objects.toString(stock.warehouseCode(), ""))
+                .thenComparing(stock -> stock.warehouseId().toString()));
+        for (Stock stock : exactFirst) {
+            if (need.signum() == 0) {
+                break;
+            }
+            BigDecimal exactTake = need.min(positive(stock.exactQty()));
+            if (exactTake.signum() <= 0) {
+                continue;
+            }
+            takes.merge(stock.warehouseId(), exactTake, BigDecimal::add);
+            takenFrom.putIfAbsent(stock.warehouseId(), stock);
+            need = need.subtract(exactTake);
+        }
+        // 第二轮: 专属不够的部分才占公共库存(扣掉本批前面任务已分走的)。
+        List<Stock> publicNext = new ArrayList<>(line.stocks());
+        publicNext.sort(Comparator
+                .comparing((Stock stock) -> publicLeft(publicUsed, line, stock)).reversed()
+                .thenComparing(stock -> Objects.toString(stock.warehouseCode(), ""))
+                .thenComparing(stock -> stock.warehouseId().toString()));
+        for (Stock stock : publicNext) {
+            if (need.signum() == 0) {
+                break;
+            }
+            BigDecimal publicTake = need.min(publicLeft(publicUsed, line, stock));
+            if (publicTake.signum() <= 0) {
+                continue;
+            }
+            publicUsed.merge(new PublicKey(stock.warehouseId(), line.goodsId(), line.colorId()),
+                    publicTake, BigDecimal::add);
+            takes.merge(stock.warehouseId(), publicTake, BigDecimal::add);
+            takenFrom.putIfAbsent(stock.warehouseId(), stock);
+            need = need.subtract(publicTake);
+        }
+        for (Map.Entry<UUID, BigDecimal> take : takes.entrySet()) {
+            Stock stock = takenFrom.get(take.getKey());
+            slices.add(new Slice(task.orderItemId(), task.orderId(), line.planItemId(),
+                    line.goodsId(), line.colorId(), stock.warehouseId(), stock.warehouseCode(),
+                    stock.warehouseName(), take.getValue(),
+                    positive(stock.exactQty()).add(positive(stock.publicQty()))));
+        }
+        return need;
+    }
+
+    /**
+     * 按物料领料的预览默认量(2026-11-09): 只为选中的计划行各取其可领上限
+     * {@link #materialMaximum}(扣掉本批前面任务已分走的公共库存), 逐仓切片口径与自动分配相同;
+     * 没选中的计划行本次不领。行内允许不成套, 套数进度 = LEAST(Qm, MIN_i sets(covered_i+本次_i)) − complete。
+     */
+    private static TaskResult materialDefaultResult(Task task, BigDecimal complete, BigDecimal batch,
+                                                    Map<PublicKey, BigDecimal> publicUsed, List<Slice> slices) {
+        BigDecimal reach = task.materialShareQty();
+        for (Line line : task.lines()) {
+            BigDecimal physical = BigDecimal.ZERO;
+            if (task.materialDefaults().contains(line.planItemId())) {
+                physical = materialMaximum(line.neededQty(), line.coveredQty(), available(publicUsed, line));
+                if (physical.signum() > 0) {
+                    sliceLine(task, line, physical, publicUsed, slices);
+                }
+            }
+            reach = reach.min(sets(line.coveredQty().add(physical), line.perUnitQty()));
+        }
+        BigDecimal qty = task.lines().isEmpty() ? BigDecimal.ZERO : reach.subtract(complete).max(BigDecimal.ZERO);
+        return new TaskResult(task.orderItemId(), complete, batch, qty, false, null);
     }
 
     public static BigDecimal materialMaximum(BigDecimal required, BigDecimal covered, BigDecimal available) {

@@ -54,7 +54,8 @@ void main() {
       find.byKey(const ValueKey('workshop-material-dialog-a')),
       findsOneWidget,
     );
-    expect(find.text('任务物料'), findsOneWidget);
+    // 2026-11-09 界面提示规范：不写副标题，任务身份并进标题「任务物料 · 产品 · 工单」。
+    expect(find.textContaining(RegExp(r'^任务物料 · ')), findsOneWidget);
     expect(find.byKey(const Key('workshop-material-continue')), findsNothing);
     expect(server.writes, isEmpty);
     expect(server.previewLoads, 0);

@@ -9,9 +9,9 @@ import '../../../core/formatters/exact_number_text.dart';
 // 两档同红靠文案区分（缺 N 种 / 已备 X/Y 种）。
 import 'package:flutter/material.dart';
 
+import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../core/theme/uten_colors.dart';
-import '../../../shared/formatters/quantity_display.dart';
-import '../../../shared/measurement/document_quantity.dart';
 import '../models/subcontract_draw.dart';
 
 enum SubcontractDrawTone {
@@ -52,6 +52,8 @@ IconData subcontractDrawToneIcon(SubcontractDrawTone tone) => switch (tone) {
 };
 
 /// 状态列文案。[actionable] = 本账号可提交本行领料(可领行才追加「·去领料」)。
+/// 状态说的是整套能不能领(批量领料按套)；各物料的实物数量看「物料」列弹窗，不在状态里
+/// 拼单个数——委外件可能有很多种直属物料，一个数说不清(2026-11-09)。
 String subcontractDrawStatusLabel(
   SubcontractDrawTaskRow row, {
   required bool actionable,
@@ -59,11 +61,7 @@ String subcontractDrawStatusLabel(
   switch (row.status) {
     case SubcontractDrawStatus.drawable:
     case SubcontractDrawStatus.drawablePartial:
-      final material = row.singleMaterial;
-      final qty = material?.drawableQtyText;
-      final label = material != null && qty != null
-          ? '可领 ${formatExactQtyWithUnit(qty, material.unitName)}'
-          : row.status == SubcontractDrawStatus.drawablePartial
+      final label = row.status == SubcontractDrawStatus.drawablePartial
           ? '部分物料可领'
           : '物料可领';
       return actionable ? '$label·去领料' : label;
@@ -77,26 +75,18 @@ String subcontractDrawStatusLabel(
   }
 }
 
-/// 可领与待仓库发同时存在时悬浮提示两者；其余状态说明下一步由谁动手。
+/// 状态悬停说明：可领与待仓库发同时存在时两者都说；其余状态说明下一步由谁动手。
 String subcontractDrawStatusTooltip(SubcontractDrawTaskRow row) {
-  final material = row.singleMaterial;
-  String? positiveQty(String? value) =>
-      material == null || positiveDocumentQuantityText(value ?? '') == null
-      ? null
-      : formatExactQtyWithUnit(value, material.unitName);
-  final pending = positiveQty(material?.pendingQtyText);
-  final short = positiveQty(material?.shortQtyText);
   switch (row.status) {
     case SubcontractDrawStatus.drawable:
     case SubcontractDrawStatus.drawablePartial:
       return [
         subcontractDrawStatusLabel(row, actionable: false),
-        if (pending != null) '另有 $pending 待仓库发料',
-        if (short != null) '备料还差 $short',
-        if (material == null) '各物料的数量见领料明细',
+        if (row.pendingKindCount > 0) '另有 ${row.pendingKindCount} 种物料待仓库发料',
+        '各物料的数量点「物料」列查看',
       ].join('，');
     case SubcontractDrawStatus.drawSubmitted:
-      return pending == null ? '已提交领料，等仓库发出' : '待发 $pending，等仓库发出';
+      return '已提交领料，等仓库发出';
     case SubcontractDrawStatus.waitingPlanning:
       return '备料差额没有采购、生产或委外在途';
     case SubcontractDrawStatus.waitingMaterial:
@@ -105,36 +95,42 @@ String subcontractDrawStatusTooltip(SubcontractDrawTaskRow row) {
   }
 }
 
-/// 物料行状态(领料任务详情与订货单进度共用)。物料本身已齐(DRAWABLE)但本批可领为 0
-/// (被同一任务的其它物料卡住)时计为「已备」(ADR-143 §三.4)。
+/// 物料行状态(任务详情、物料弹窗与订货单进度共用，服务端同一判定只取一个)。
+/// 2026-11-09 起「本次可领」逐种独立(其它物料还缺也能先领到货的物料)，可领优先于缺口；
+/// READY = 不缺但本任务此刻不能领(如已结清)。
 String subcontractDrawMaterialStateLabel(SubcontractDrawMaterial material) =>
     switch (material.state.toUpperCase()) {
       'SENT_FULL' => '已发齐',
+      'DRAWABLE' => material.shortQty > 0 ? '部分可领' : '可领',
       'PENDING' => '待仓库发料',
-      'DRAWABLE' => material.drawableQty > 0 ? '可领' : '已备',
-      'SHORT' => material.drawableQty > 0 ? '部分可领' : '备料未满',
+      'SHORT' => '备料未满',
+      'READY' => '已备',
       'CLOSED' => '已结束领料',
       _ => '—',
     };
 
-/// 物料行「状态」列整格底色（任务详情与订货单进度共用，档位对齐
-/// [subcontractDrawCellColor] 的任务行口径）：可领=绿（就绪可动手）/
-/// 已备=紫（本物料已齐、被同批其它物料卡住——部分齐套，同任务行「部分可领
-/// =紫」）/ 待仓库发料=青（等仓库发料，与等财务的黄档拉开）/ 备料未满=红
-/// （尚未达到含损耗备料上限，仍可能覆盖基础用料）/ 已发齐·已结束领料=灰；未知无色。
+/// 物料行状态档位（ADR-169，与任务行口径对齐）：可领=绿（就绪可动手）/ 部分可领=紫
+/// （到了一部分、还差一些）/ 待仓库发料=青（等仓库发料，与等财务的黄档拉开）/
+/// 备料未满=红（无货可领）/ 已备=紫 / 已发齐·已结束领料=灰；未知无档。
+UtenStatusBadgeType? subcontractDrawMaterialBadgeType(
+  SubcontractDrawMaterial material,
+) => switch (material.state.toUpperCase()) {
+  'SENT_FULL' || 'CLOSED' => UtenStatusBadgeType.neutral,
+  'PENDING' => UtenStatusBadgeType.sky,
+  'DRAWABLE' =>
+    material.shortQty > 0
+        ? UtenStatusBadgeType.violet
+        : UtenStatusBadgeType.success,
+  'SHORT' => UtenStatusBadgeType.danger,
+  'READY' => UtenStatusBadgeType.violet,
+  _ => null,
+};
+
+/// 物料行「状态」列整格底色（与 [subcontractDrawMaterialBadgeType] 同一档位）。
 Color? subcontractDrawMaterialCellColor(SubcontractDrawMaterial material) =>
-    switch (material.state.toUpperCase()) {
-      'SENT_FULL' || 'CLOSED' => UtenColors.statusNeutral,
-      'PENDING' => UtenColors.statusSky,
-      'DRAWABLE' =>
-        material.drawableQty > 0
-            ? UtenColors.statusSuccess
-            : UtenColors.statusViolet,
-      'SHORT' =>
-        material.drawableQty > 0
-            ? UtenColors.statusViolet
-            : UtenColors.statusDanger,
-      _ => null,
+    switch (subcontractDrawMaterialBadgeType(material)) {
+      final type? => utenStatusBadgeCellColor(type),
+      null => null,
     };
 
 /// 物料行「供应来源」列(领料任务详情与订货单进度共用)：服务端只给还缺的开放行带在途来源；

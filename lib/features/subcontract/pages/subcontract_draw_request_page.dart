@@ -8,6 +8,9 @@
 // 「领料数量」直接填在行内(逐仓实物量，支持分批)，委外单号与委外件名称拆成两列。
 // 提交/核对走按行契约(lines)；未填的行与整任务跳过，整行无库存的任务保留一行
 // 「未确定」仓位的 0 行，不静默消失。幂等、断网续传、409 行级标红语义不变。
+// 2026-11-09 任务中心「物料」列(与车间同一个物料弹窗)：选中物料后带 planItemIds 进来，
+// 页面只显示这些物料，默认量 = 每种物料自己的可领上限(整套没齐也能先领到货的物料)；
+// 其余流程(行内改数量、核对库存、提交、分批)完全相同。
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -48,10 +51,15 @@ class SubcontractDrawRequestPage extends ConsumerStatefulWidget {
   const SubcontractDrawRequestPage({
     super.key,
     required this.orderItemIds,
+    this.planItemIds = const [],
     this.repository,
   });
 
   final List<String> orderItemIds;
+
+  /// 从任务中心「物料」弹窗选中的物料(冻结计划行)；只对单个委外任务有效，
+  /// 为空 = 按任务整套领料(批量领料 / 状态列「去领料」)。
+  final List<String> planItemIds;
 
   /// 测试注入；默认取 [subcontractDrawRepositoryProvider]。
   final SubcontractDrawGateway? repository;
@@ -127,6 +135,15 @@ class _SubcontractDrawRequestPageState
     ];
   }
 
+  /// 按物料领料时只显示所选物料；多任务批量领料不带物料(按任务整套)。
+  Set<String>? get _selectedPlanItems {
+    final ids = {
+      for (final id in widget.planItemIds)
+        if (id.trim().isNotEmpty) id.trim(),
+    };
+    return ids.isEmpty || _requestedIds.length != 1 ? null : ids;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -188,8 +205,13 @@ class _SubcontractDrawRequestPageState
           '${SubcontractDrawRepository.batchLimit} 个可领料的委外任务',
         );
       }
+      final planItems = _selectedPlanItems;
       final preview = await _gateway.preview([
-        for (final id in ids) SubcontractDrawRequestItem(orderItemId: id),
+        for (final id in ids)
+          SubcontractDrawRequestItem(
+            orderItemId: id,
+            planItemIds: planItems == null ? null : (planItems.toList()..sort()),
+          ),
       ]);
       if (!_acceptPreview(request)) return;
       // 旧控制器的延迟释放在 _rememberPreview(resetInputs) 里统一做，这里不再重复。
@@ -219,6 +241,7 @@ class _SubcontractDrawRequestPageState
 
   /// 记住一次核对结果。默认量(服务端预填)只在重建输入框时写入控制器；
   /// 重新核对不覆盖手工输入——行的默认值与用户输入一致时本就是同一个数。
+  /// 按物料领料时服务端仍回全部开放物料的候选行，这里只留所选物料。
   void _rememberPreview(SubcontractDrawPreview preview,
       {bool resetInputs = false}) {
     _preview = preview;
@@ -232,11 +255,18 @@ class _SubcontractDrawRequestPageState
       ..addEntries(
         preview.tasks.map((task) => MapEntry(task.orderItemId, task)),
       );
-    _rows = preview.lines;
+    final planItems = _selectedPlanItems;
+    final lines = planItems == null
+        ? preview.lines
+        : [
+            for (final line in preview.lines)
+              if (planItems.contains(line.planItemId)) line,
+          ];
+    _rows = lines;
     _rowDefaults
       ..clear()
       ..addEntries([
-        for (final line in preview.lines)
+        for (final line in lines)
           MapEntry(
             line.identity,
             positiveDocumentQuantityText(
@@ -255,7 +285,7 @@ class _SubcontractDrawRequestPageState
       _inputs
         ..clear()
         ..addEntries([
-          for (final line in preview.lines)
+          for (final line in lines)
             MapEntry(line.identity, TextEditingController(text: _rowDefaults[line.identity])),
         ]);
     }

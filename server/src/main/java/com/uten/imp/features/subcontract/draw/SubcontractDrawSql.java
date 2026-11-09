@@ -15,7 +15,7 @@ public final class SubcontractDrawSql {
     }
 
     /** 订货明细 + 订货单头 + 领料计划 + 显示用主档。别名 oi / o / p / supplier / goods / color / unit。 */
-    static final String ITEM_FROM = """
+    public static final String ITEM_FROM = """
             FROM subcontract_order_items oi
             JOIN subcontract_orders o ON o.id = oi.order_id
             JOIN subcontract_material_plans p ON p.order_id = o.id AND NOT p.is_deleted

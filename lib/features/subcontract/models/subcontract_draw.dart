@@ -6,7 +6,8 @@ import '../../../shared/formatters/exact_decimal.dart';
 // 一行 = 一条已获财务批准、领料计划未结束、仍未领满的委外订货明细(委外任务)。
 // 所有数量(已领 / 待仓库发 / 可领 / 还缺 / 本批可领)都由服务端在一处算好
 // (ADR-143 §三「只在服务端算一次」)；客户端只显示，不做任何加减推算。
-// 任务行保留用于分配的套数；singleMaterial 与物料明细使用物料自己的单位。
+// 任务行保留用于分配的套数；物料按「种」分桶(2026-11-09 任务中心「物料」列)，
+// 物料自己的实物数量只在任务详情/物料弹窗逐行显示，不在任务行上合成一个数。
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/models/historical_receipt_facts.dart';
 import '../../basic_data/models/master_facet.dart';
@@ -87,10 +88,13 @@ class SubcontractDrawTaskRow {
     required this.status,
     required this.deliverDate,
     required this.canDraw,
+    this.closedKindCount = 0,
+    this.sentFullKindCount = 0,
+    this.drawableKindCount = 0,
+    this.pendingKindCount = 0,
     this.planNo,
     this.applicationItemIds = const [],
     this.differenceQtyText,
-    this.singleMaterial,
     this.exactQuantities = const {},
   });
 
@@ -114,7 +118,6 @@ class SubcontractDrawTaskRow {
   /// Server-authored received − returned − ordered, in [unitName].
   /// Missing facts remain unknown; draw and material quantities are independent.
   final String? differenceQtyText;
-  final SubcontractDrawSingleMaterial? singleMaterial;
 
   /// 已领 = 已发齐的完整套数。
   final double drawnQty;
@@ -129,9 +132,16 @@ class SubcontractDrawTaskRow {
   final double shortQty;
   final int materialKindCount;
 
-  /// 已备 = 还缺为 0 的物料种数。
+  /// 已备 = 还缺为 0 的物料种数(状态列「等待物料·已备 a/n 种」)。
   final int readyKindCount;
+
+  /// 逐种分桶(2026-11-09「物料」列，与任务详情物料状态同一判定，每种物料只落一个桶)：
+  /// 缺 = 无货可领也没有待发、还缺 > 0；已结束领料 / 已发齐 / 本次可领 / 待仓库发。
   final int shortKindCount;
+  final int closedKindCount;
+  final int sentFullKindCount;
+  final int drawableKindCount;
+  final int pendingKindCount;
 
   /// 还缺且没有在途供应(未安排)的物料种数。
   final int unplannedShortKindCount;
@@ -169,11 +179,6 @@ class SubcontractDrawTaskRow {
         unitName: _string(json, 'unitName') ?? '',
         orderQty: _double(json, 'orderQty'),
         differenceQtyText: receiptRecordedDecimal(json, 'differenceQty'),
-        singleMaterial: switch (json['singleMaterial']) {
-          final Map<String, dynamic> material =>
-            SubcontractDrawSingleMaterial.fromJson(material),
-          _ => null,
-        },
         drawnQty: _double(json, 'drawnQty'),
         pendingQty: _double(json, 'pendingQty'),
         drawableQty: _double(json, 'drawableQty'),
@@ -182,6 +187,10 @@ class SubcontractDrawTaskRow {
         readyKindCount: _int(json, 'readyKindCount') ?? 0,
         shortKindCount: _int(json, 'shortKindCount') ?? 0,
         unplannedShortKindCount: _int(json, 'unplannedShortKindCount') ?? 0,
+        closedKindCount: _int(json, 'closedKindCount') ?? 0,
+        sentFullKindCount: _int(json, 'sentFullKindCount') ?? 0,
+        drawableKindCount: _int(json, 'drawableKindCount') ?? 0,
+        pendingKindCount: _int(json, 'pendingKindCount') ?? 0,
         status: SubcontractDrawStatus.fromWire(json['status']),
         deliverDate: _string(json, 'deliverDate'),
         canDraw: json['canDraw'] == true,
@@ -190,26 +199,6 @@ class SubcontractDrawTaskRow {
             .map((id) => id.toString())
             .toList(growable: false),
       );
-}
-
-/// Physical quantities for one material line; multiple materials stay separate.
-class SubcontractDrawSingleMaterial {
-  SubcontractDrawSingleMaterial.fromJson(Map<String, dynamic> json)
-    : unitName = _string(json, 'unitName') ?? '',
-      requiredQtyText = receiptRecordedDecimal(json, 'requiredQty'),
-      baseRequiredQtyText = receiptRecordedDecimal(json, 'baseRequiredQty'),
-      lossRequiredQtyText = receiptRecordedDecimal(json, 'lossRequiredQty'),
-      pendingQtyText = receiptRecordedDecimal(json, 'pendingQty'),
-      drawableQtyText = receiptRecordedDecimal(json, 'drawableQty'),
-      shortQtyText = receiptRecordedDecimal(json, 'shortQty');
-
-  final String unitName;
-  final String? requiredQtyText;
-  final String? baseRequiredQtyText;
-  final String? lossRequiredQtyText;
-  final String? pendingQtyText;
-  final String? drawableQtyText;
-  final String? shortQtyText;
 }
 
 /// GET /subcontract/draw-tasks 的完整响应：分页行 + 状态计数 + 账号能力。
@@ -454,12 +443,15 @@ class SubcontractDrawTaskDetail {
   static const withdrawAction = 'WITHDRAW';
   static const closeAction = 'CLOSE';
 
+  /// 本账号能为这条明细按物料领料(任务中心「物料」弹窗的勾选门，服务端给出)。
+  static const drawAction = 'DRAW';
+
   final SubcontractDrawTaskRow task;
   final List<SubcontractDrawMaterial> materials;
   final List<SubcontractDrawPendingDraft> pendingDrafts;
   final String? baseMaterialCoverageQtyText;
 
-  /// 服务端放行的动作：WITHDRAW(撤回未发领料) / CLOSE(结束领料)。
+  /// 服务端放行的动作：DRAW(按物料领料) / WITHDRAW(撤回未发领料) / CLOSE(结束领料)。
   final Set<String> allowedActions;
 
   bool allows(String action) => allowedActions.contains(action);
@@ -491,6 +483,8 @@ class SubcontractDrawTaskDetail {
 /// 领料页提交/预览的一项：委外订货明细 + 本次领料数量(null = 服务端默认本批可领)。
 /// [lines] 非空 = 2026-11-09 按行领料：数量逐(计划行, 仓)给出，qty/materialQty 必须为空；
 /// 空行集合表示该任务本次不领(仍参与预览，服务端回候选行)。
+/// [planItemIds] 非空 = 2026-11-09 按物料领料(任务中心「物料」弹窗选中的物料，只用于预览)：
+/// 服务端只为这些物料出候选行，默认量 = 每种物料自己的可领上限；提交仍逐行给 [lines]。
 class SubcontractDrawRequestItem {
   const SubcontractDrawRequestItem({
     required this.orderItemId,
@@ -498,15 +492,21 @@ class SubcontractDrawRequestItem {
     this.materialQty,
     this.materialPlanItemId,
     this.lines,
+    this.planItemIds,
   }) : assert(qty == null || materialQty == null),
        assert((materialQty == null) == (materialPlanItemId == null)),
-       assert(lines == null || (qty == null && materialQty == null));
+       assert(lines == null || (qty == null && materialQty == null)),
+       assert(
+         planItemIds == null ||
+             (qty == null && materialQty == null && lines == null),
+       );
 
   final String orderItemId;
   final Object? qty;
   final String? materialQty;
   final String? materialPlanItemId;
   final List<SubcontractDrawRequestLine>? lines;
+  final List<String>? planItemIds;
 
   Map<String, dynamic> toJson() => {
     'orderItemId': orderItemId,
@@ -514,6 +514,7 @@ class SubcontractDrawRequestItem {
     'materialQty': ?materialQty,
     'materialPlanItemId': ?materialPlanItemId,
     'lines': ?lines?.map((line) => line.toJson()).toList(),
+    'planItemIds': ?planItemIds,
   };
 }
 

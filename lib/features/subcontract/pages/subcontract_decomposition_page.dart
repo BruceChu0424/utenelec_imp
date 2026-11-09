@@ -82,13 +82,15 @@ import '../../operations_workbench/repositories/operations_workbench_repository.
 import '../../../shared/models/subcontract_short_delivery.dart'
     show subcontractProgressStatusLabel;
 import '../models/subcontract_draw.dart';
-import '../models/subcontract_material_quantity.dart';
 import '../repositories/subcontract_draw_repository.dart';
 import '../repositories/subcontract_kit_repository.dart';
 import '../widgets/subcontract_application_kit_dialog.dart';
 import '../widgets/subcontract_application_detail_dialog.dart';
 import '../widgets/subcontract_draw_status.dart';
 import '../widgets/subcontract_draw_task_detail_dialog.dart';
+import '../widgets/subcontract_material_dialog.dart';
+import '../../../shared/widgets/task_material_kind_summary.dart';
+import '../../../components/inputs/uten_table_cell_action.dart';
 import '../../../shared/widgets/procurement_order_closure_dialog.dart';
 import '../../../shared/widgets/procurement_difference_column.dart';
 import '../../../components/feedback/uten_context_menu.dart';
@@ -1272,7 +1274,12 @@ class _SubcontractDecompositionPageState
   }
 
   /// 进入领料页(一次最多 50 个委外任务)；提交成功返回后清掉已领的勾选并重拉。
-  Future<void> _openDrawRequest(List<String> orderItemIds) async {
+  /// [planItemIds] = 从「物料」弹窗选中的物料(只对单个任务)：领料页只带这些物料，
+  /// 默认量是每种物料自己的可领上限。
+  Future<void> _openDrawRequest(
+    List<String> orderItemIds, {
+    Set<String>? planItemIds,
+  }) async {
     if (orderItemIds.isEmpty || _drawNavigating || !_drawCountReady) return;
     if (orderItemIds.length > SubcontractDrawRepository.batchLimit) {
       context.appWarning(
@@ -1283,7 +1290,10 @@ class _SubcontractDecompositionPageState
     setState(() => _drawNavigating = true);
     try {
       final submitted = await _navigation.push<bool>(
-        RouteName.operationsSubcontractDrawRequestFor(orderItemIds),
+        RouteName.operationsSubcontractDrawRequestFor(
+          orderItemIds,
+          planItemIds: planItemIds,
+        ),
       );
       if (!mounted) return;
       if (submitted == true) {
@@ -1293,6 +1303,30 @@ class _SubcontractDecompositionPageState
     } finally {
       if (mounted) setState(() => _drawNavigating = false);
     }
+  }
+
+  /// 「物料」列：打开与「我的车间任务」同一个任务物料弹窗——看每种物料的仓库库存，
+  /// 勾选可领的物料(可多选、全选可领)后只带这些物料进领料页填数量，可分批领。
+  Future<void> _openMaterials(SubcontractDrawTaskRow row) async {
+    if (_drawNavigating || _drawLoading) return;
+    // 只认读取身份(账号/范围变化才换代)；普通后台刷新不关弹窗。
+    final reader = _readerGeneration;
+    bool current() => mounted && reader == _readerGeneration;
+    Set<String>? selected;
+    setState(() => _drawNavigating = true);
+    try {
+      selected = await showSubcontractMaterialDialog(
+        context,
+        gateway: _drawRepository,
+        row: row,
+        canSubmitDraw: _drawCountReady && (_drawData?.canSubmitDraw ?? false),
+        isCurrent: current,
+      );
+    } finally {
+      if (mounted) setState(() => _drawNavigating = false);
+    }
+    if (!current() || selected == null || selected.isEmpty) return;
+    await _openDrawRequest([row.orderItemId], planItemIds: selected);
   }
 
   Future<void> _openDrawTask(SubcontractDrawTaskRow row) async {
@@ -2406,8 +2440,10 @@ class _SubcontractDecompositionPageState
     return MasterDataTableView<SubcontractPendingRow>(
       expensiveRowMounts: false,
       rowsController: _pendingRows,
+      // .2：2026-11-09「领料数量」列换成「物料」列(键 material)，旧保存布局作废，
+      // 避免老保存序把新列追到表尾。
       tableKey:
-          'features.subcontract.pages.subcontract_decomposition_page.SubcontractDecompositionPageState._buildPendingTable.1',
+          'features.subcontract.pages.subcontract_decomposition_page.SubcontractDecompositionPageState._buildPendingTable.2',
       key: const Key('subcontract-decomposition-pending-table'),
       // primary:true → 表体参与「筛选行折叠 → 表格内滚」联动。
       primary: true,
@@ -2549,13 +2585,33 @@ class _SubcontractDecompositionPageState
             ),
           },
         ),
+        // 2026-11-09 用户口径「跟我的车间任务那里显示一样」：委外件下面可能有很多种
+        // 直属物料，原「领料数量」一个数说不清，改为按种的物料摘要(与车间同一组件)，
+        // 点开同一个任务物料弹窗看库存、多选可领物料去领料，可分批。
         MasterColumnDef(
-          key: 'materialBudgetQty',
-          label: '领料数量',
-          info: '基础用料加损耗。按库存调整后，以确认的领料量为准。多种物料见领料明细。',
-          width: 144,
-          value: _materialBudgetText,
-          cellBuilder: _materialBudgetCell,
+          key: 'material',
+          label: '物料',
+          info:
+              '领料行按种显示直属物料：已领(发齐给委外商) / 缺(仓库没货，红) / 计划未下单(品红) / '
+              '可领(仓库有货，蓝) / 待发(已提交待仓库发出)，每种物料只计一次。点击查看每种物料的'
+              '仓库库存，勾选可领的物料去领料，可分批领。申请行下单后才有领料任务。',
+          width: 230,
+          value: _materialText,
+          measureWidthOf: (context, row, scaler) => switch (row) {
+            SubcontractPendingDrawRow(:final row) =>
+              MaterialKindSummaryCell.measureWidth(
+                context,
+                subcontractMaterialKindSegments(row),
+                scaler,
+              ),
+            SubcontractApplicationRow() => UtenTableCellAction.contentWidthOf(
+              context,
+              _materialText(row),
+              textScaler: scaler,
+            ),
+          },
+          measureWidthScope: 'subcontract-material-summary',
+          cellBuilder: _materialCell,
         ),
         procurementDifferenceColumn<SubcontractPendingRow>(
           context: context,
@@ -2796,7 +2852,8 @@ class _SubcontractDecompositionPageState
     ),
   };
 
-  String _materialBudgetText(SubcontractPendingRow row) => switch (row) {
+  /// 「物料」列文字：领料行 = 逐种摘要；申请行还没有领料任务，只说明去处(不显示数量)。
+  String _materialText(SubcontractPendingRow row) => switch (row) {
     SubcontractApplicationRow(:final task) =>
       task.isDocumentGrouped
           ? '查看明细'
@@ -2805,20 +2862,23 @@ class _SubcontractDecompositionPageState
           : _drawVisible
           ? '见领料任务'
           : '受限',
-    SubcontractPendingDrawRow(:final row) => switch (row.singleMaterial) {
-      final material? when material.requiredQtyText != null =>
-        formatSubcontractMaterialQtyBreakdown(
-          baseQty: material.baseRequiredQtyText,
-          lossQty: material.lossRequiredQtyText,
-          totalQty: material.requiredQtyText,
-          unitName: material.unitName,
-        ),
-      _ => '见领料明细',
-    },
+    SubcontractPendingDrawRow(:final row) => materialKindSummaryText(
+      subcontractMaterialKindSegments(row),
+    ),
   };
 
-  Widget _materialBudgetCell(BuildContext context, SubcontractPendingRow row) {
-    final text = _materialBudgetText(row);
+  Widget _materialCell(BuildContext context, SubcontractPendingRow row) {
+    if (row case SubcontractPendingDrawRow(:final row)) {
+      return MaterialKindSummaryCell(
+        key: ValueKey('subcontract-material-summary-${row.orderItemId}'),
+        segments: subcontractMaterialKindSegments(row),
+        tooltip: subcontractMaterialKindTooltip(row),
+        onPressed: _drawNavigating || _drawLoading
+            ? null
+            : () => _openMaterials(row),
+      );
+    }
+    final text = _materialText(row);
     if (row is! SubcontractApplicationRow ||
         row.task.allocatedQty <= 0 ||
         !_drawVisible) {

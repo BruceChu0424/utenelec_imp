@@ -5,6 +5,8 @@ import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.security.CommercialPriceVisibility;
 import com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy;
 import com.uten.imp.features.subcontract.draw.SubcontractDrawAllocator;
+import com.uten.imp.features.subcontract.draw.SubcontractDrawQueryService;
+import com.uten.imp.features.subcontract.draw.SubcontractDrawSql;
 import com.uten.imp.features.subcontract.draw.SubcontractOpenSupplySources;
 import com.uten.imp.features.subcontract.order.dto.OrderProgressContracts;
 import com.uten.imp.features.subcontract.order.dto.OrderProgressContracts.IssueDoc;
@@ -377,41 +379,38 @@ public class SubcontractOrderProgressService {
      * 还缺的开放行带在途供应来源，与委外任务详情物料表同一读口({@link SubcontractOpenSupplySources})。
      */
     private List<MaterialLine> materials(UUID orderItemId) {
+        // 物料状态与本次可领与委外任务详情物料表同一组函数(2026-11-09 按物料领料, 逐种上限,
+        // 不按整套折算); 任务是否还开放领料按领料任务同一谓词判定。
         List<Object[]> rows = query("""
                 SELECT facts.plan_item_id, facts.line_no, facts.goods_id, g.code, g.name,
                        facts.color_id, c.name, facts.unit_id, u.name,
                        facts.bom_unit_qty, facts.needed_qty, facts.sent_qty, facts.pending_qty,
                        facts.available_qty, facts.usable_qty, facts.line_open,
-                       CASE WHEN facts.line_open AND summary.drawable_qty>0
-                            THEN summary.complete_qty + summary.drawable_qty END AS target_qty,
+                       open_flag.draw_open,
                        CASE WHEN facts.line_open THEN GREATEST(0,
                                 facts.needed_qty - facts.sent_qty - facts.pending_qty
                                 - facts.available_qty)
                             ELSE 0 END AS short_qty,
-                       summary.material_kind_count, summary.material_qty, plan.base_bom_unit_qty
+                       summary.material_qty, plan.base_bom_unit_qty
                 FROM fn_subcontract_draw_facts(:id) facts
                 CROSS JOIN fn_subcontract_draw_summary(:id) summary
+                CROSS JOIN (SELECT EXISTS (SELECT 1 {ITEM_FROM} WHERE {OPEN_ITEM} AND oi.id = :id) AS draw_open) open_flag
                 JOIN subcontract_material_plan_items plan ON plan.id = facts.plan_item_id
                 JOIN goods g ON g.id = facts.goods_id
                 LEFT JOIN colors c ON c.id = facts.color_id
                 LEFT JOIN units u ON u.id = facts.unit_id
                 ORDER BY facts.line_no ASC NULLS LAST, facts.plan_item_id
-                """, orderItemId);
+                """.replace("{ITEM_FROM}", SubcontractDrawSql.ITEM_FROM)
+                .replace("{OPEN_ITEM}", SubcontractDrawSql.OPEN_ITEM_PREDICATE), orderItemId);
         List<MaterialLine> out = new ArrayList<>(rows.size());
         for (Object[] row : rows) {
             BigDecimal required = bd(row[10]);
             BigDecimal sent = bd(row[11]);
             BigDecimal pending = bd(row[12]);
+            BigDecimal available = bd(row[13]);
             boolean open = Boolean.TRUE.equals(row[15]);
-            BigDecimal drawable = BigDecimal.ZERO;
-            if (row[16] != null) {
-                BigDecimal covered = sent.add(pending);
-                BigDecimal available = bd(row[13]);
-                drawable = ((Number) row[18]).intValue() == 1
-                        ? SubcontractDrawAllocator.materialMaximum(required, covered, available)
-                        : SubcontractDrawAllocator.drawMaterialQty(bd(row[16]), bd(row[9]), covered,
-                                available, required, true);
-            }
+            BigDecimal drawable = SubcontractDrawQueryService.materialDrawableQty(
+                    open && Boolean.TRUE.equals(row[16]), required, sent.add(pending), available);
             BigDecimal shortQty = bd(row[17]);
             List<SupplySource> sources = open && shortQty.signum() > 0
                     ? SubcontractOpenSupplySources.read(em, (UUID) row[2], (UUID) row[5]).stream()
@@ -423,24 +422,12 @@ public class SubcontractOrderProgressService {
                     (UUID) row[0], row[1] == null ? null : ((Number) row[1]).intValue(),
                     (UUID) row[2], (String) row[3], (String) row[4],
                     (UUID) row[5], (String) row[6], (UUID) row[7], (String) row[8],
-                    bd(row[9]), required, SubcontractDrawAllocator.materialBaseQuantity(required, bd(row[19]), bd(row[20])),
-                    sent, pending, bd(row[13]), drawable, shortQty, bd(row[14]),
-                    materialState(open, required, sent, pending, shortQty), sources));
+                    bd(row[9]), required, SubcontractDrawAllocator.materialBaseQuantity(required, bd(row[18]), bd(row[19])),
+                    sent, pending, available, drawable, shortQty, bd(row[14]),
+                    SubcontractDrawQueryService.materialState(open, required, sent, pending, drawable, shortQty),
+                    sources));
         }
         return out;
-    }
-
-    /**
-     * 物料状态(与委外任务详情物料表同口径)：已结束领料 > 已发齐 > 有待仓库发的领料 > 还缺 >
-     * 已备(仓库可用已够；其它物料还缺时本批可领可能为 0)。
-     */
-    static String materialState(boolean open, BigDecimal required, BigDecimal sent,
-                                BigDecimal pending, BigDecimal shortQty) {
-        if (!open) return "CLOSED";
-        if (sent.compareTo(required) >= 0) return "SENT_FULL";
-        if (pending.signum() > 0) return "PENDING";
-        if (shortQty.signum() > 0) return "SHORT";
-        return "DRAWABLE";
     }
 
     /** 下单 → 财务审批 → 领料发外 → 加工回厂 → 品质检验 → 仓库确认入仓 → 结案核销。 */

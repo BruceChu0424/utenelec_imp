@@ -34,6 +34,7 @@ import 'package:uten_imp/features/operations_workbench/repositories/operations_w
 import 'package:uten_imp/features/subcontract/models/subcontract_application_kit.dart';
 import 'package:uten_imp/features/subcontract/models/subcontract_draw.dart';
 import 'package:uten_imp/features/subcontract/pages/subcontract_decomposition_page.dart';
+import 'package:uten_imp/shared/widgets/task_material_kind_summary.dart';
 import 'package:uten_imp/features/subcontract/repositories/subcontract_kit_repository.dart';
 import 'package:uten_imp/features/subcontract/widgets/subcontract_application_kit_dialog.dart';
 import 'package:uten_imp/features/subcontract/widgets/subcontract_application_detail_dialog.dart'
@@ -904,7 +905,7 @@ void main() {
       expect(table.items.map(quantity.value), everyElement('10 件'));
       final link =
           table.columns
-                  .singleWhere((column) => column.key == 'materialBudgetQty')
+                  .singleWhere((column) => column.key == 'material')
                   .cellBuilder!(tester.element(finder), table.items.first)
               as InkWell;
       link.onTap!();
@@ -947,7 +948,7 @@ void main() {
       draw.onList = (_) => late.future;
       final link =
           initial.columns
-                  .singleWhere((c) => c.key == 'materialBudgetQty')
+                  .singleWhere((c) => c.key == 'material')
                   .cellBuilder!(tester.element(finder), initial.items.first)
               as InkWell;
       link.onTap!();
@@ -1048,7 +1049,7 @@ void main() {
       );
       final link =
           table.columns
-                  .singleWhere((c) => c.key == 'materialBudgetQty')
+                  .singleWhere((c) => c.key == 'material')
                   .cellBuilder!(tester.element(finder), table.items.first)
               as InkWell;
       link.onTap!();
@@ -1114,7 +1115,7 @@ void main() {
       expect(find.byKey(const Key('subcontract-draw-next')), findsNothing);
       final link =
           table().columns
-                  .singleWhere((c) => c.key == 'materialBudgetQty')
+                  .singleWhere((c) => c.key == 'material')
                   .cellBuilder!(
                 tester.element(
                   find.byKey(
@@ -1190,7 +1191,7 @@ void main() {
       );
       final link =
           table().columns
-                  .singleWhere((c) => c.key == 'materialBudgetQty')
+                  .singleWhere((c) => c.key == 'material')
                   .cellBuilder!(
                 tester.element(
                   find.byKey(
@@ -1264,7 +1265,7 @@ void main() {
       draw.onList = (_) => late.future;
       final link =
           initial.columns
-                  .singleWhere((c) => c.key == 'materialBudgetQty')
+                  .singleWhere((c) => c.key == 'material')
                   .cellBuilder!(
                 tester.element(
                   find.byKey(
@@ -1339,7 +1340,7 @@ void main() {
           .singleWhere((column) => column.key == key)
           .value(applicationRow);
       expect(value('orderQty'), '4 件');
-      for (final key in ['materialBudgetQty']) {
+      for (final key in ['material']) {
         expect(value(key), '见领料任务');
       }
       final context = tester.element(
@@ -1347,7 +1348,7 @@ void main() {
       );
       final link =
           initial.columns
-                  .singleWhere((column) => column.key == 'materialBudgetQty')
+                  .singleWhere((column) => column.key == 'material')
                   .cellBuilder!(context, applicationRow)
               as InkWell;
       link.onTap!();
@@ -2417,6 +2418,8 @@ void main() {
               drawableQty: 60,
               shortQty: 40,
               planNo: 'WL-001',
+              drawableKindCount: 2,
+              shortKindCount: 0,
             ),
             drawRow(
               'item-partial',
@@ -2427,15 +2430,8 @@ void main() {
               orderQty: 10000,
               drawableQty: 9090.909,
               materialKindCount: 1,
-              singleMaterial: const {
-                'unitName': '个',
-                'requiredQtyExact': '11000',
-                'baseRequiredQtyExact': '10000',
-                'lossRequiredQtyExact': '1000',
-                'drawableQtyExact': '10000',
-                'pendingQtyExact': '0',
-                'shortQtyExact': '1000',
-              },
+              drawableKindCount: 1,
+              shortKindCount: 0,
             ),
             drawRow(
               'item-submitted',
@@ -2445,7 +2441,8 @@ void main() {
               pendingQty: 30,
               canDraw: false,
               materialKindCount: 1,
-              singleMaterial: const {'unitName': '个', 'pendingQtyExact': '33'},
+              pendingKindCount: 1,
+              shortKindCount: 0,
             ),
             drawRow(
               'item-planning',
@@ -2453,6 +2450,7 @@ void main() {
               orderBillNo: 'WD-004',
               drawableQty: 0,
               unplannedShortKindCount: 2,
+              shortKindCount: 2,
               canDraw: false,
             ),
             drawRow(
@@ -2461,6 +2459,9 @@ void main() {
               orderBillNo: 'WD-005',
               drawableQty: 0,
               materialKindCount: 3,
+              sentFullKindCount: 1,
+              drawableKindCount: 1,
+              shortKindCount: 1,
               canDraw: false,
             ),
           ],
@@ -2525,12 +2526,14 @@ void main() {
           'draw-item-planning',
           'draw-item-waiting',
         ]);
-        expect(find.byTooltip('待发 33 个，等仓库发出'), findsOneWidget);
+        expect(find.byTooltip('已提交领料，等仓库发出'), findsOneWidget);
         // 状态列文案 + ADR-169 十档整格底色(绿 / 紫 / 青 / 红 / 红——
         // 等计划安排与等待物料都是「不能领」，同红靠文案区分)。
+        // 2026-11-09：状态列说整套能不能领，不再拼单种物料的实物数量。
         expect(find.text('物料可领·去领料'), findsOneWidget);
-        expect(find.text('可领 10000 个·去领料'), findsOneWidget);
+        expect(find.text('部分物料可领·去领料'), findsOneWidget);
         expect(find.textContaining('9090.909'), findsNothing);
+        expect(find.textContaining('10000 个'), findsNothing);
         expect(find.text('已提交领料·待仓库发料'), findsOneWidget);
         expect(find.text('等计划安排·缺 2 种'), findsOneWidget);
         expect(find.text('等待物料·已备 1/3 种'), findsOneWidget);
@@ -2550,14 +2553,25 @@ void main() {
           utenStatusBadgeCellColor(UtenStatusBadgeType.danger),
           utenStatusBadgeCellColor(UtenStatusBadgeType.danger),
         ]);
-        expect(find.byTooltip('可领 10000 个，备料还差 1000 个'), findsOneWidget);
-        final materialBudget = table.columns.singleWhere(
-          (column) => column.key == 'materialBudgetQty',
+        // 2026-11-09「物料」列(替换原「领料数量」)：按种显示，与车间物料列同一口径；
+        // 多种物料不再合成一个数量。
+        expect(table.columns.where((c) => c.key == 'materialBudgetQty'), isEmpty);
+        final material = table.columns.singleWhere(
+          (column) => column.key == 'material',
         );
-        expect(materialBudget.value(table.unpagedItems[1]), '10000 + 1000 个');
-        expect(materialBudget.value(table.unpagedItems.first), '见领料明细');
+        expect(material.value(table.unpagedItems[0]), '已领 0/2 种 · 可领 2 种');
+        expect(material.value(table.unpagedItems[1]), '已领 0/1 种 · 可领 1 种');
+        expect(material.value(table.unpagedItems[2]), '已领 0/1 种 · 待发 1 种');
+        expect(
+          material.value(table.unpagedItems[3]),
+          '已领 0/2 种 · 缺 2 种 · 计划未下单 2 种',
+        );
+        expect(
+          material.value(table.unpagedItems[4]),
+          '已领 1/3 种 · 缺 1 种 · 可领 1 种',
+        );
         for (final label in [
-          '领料数量',
+          '物料',
           '委外件名称',
           '编号',
           '颜色',
@@ -2571,6 +2585,7 @@ void main() {
             reason: label,
           );
         }
+        expect(table.columns.where((column) => column.label == '领料数量'), isEmpty);
         // 2026-10-10：委外商列申请行改由服务端投影下发(V836；未定商是业务
         // 事实仍显示「—」)；领料行数量列内联订货单位，独立「单位」列已删除。
         final supplierColumn = table.columns.singleWhere(
@@ -2613,7 +2628,7 @@ void main() {
           '0 个',
         );
         final applicationRow = table.items.first;
-        expect(materialBudget.value(applicationRow), '下单后领料');
+        expect(material.value(applicationRow), '下单后领料');
         expect(
           table.columns.where((column) => column.key == 'unitName'),
           isEmpty,
@@ -2905,6 +2920,153 @@ void main() {
       },
     );
 
+    // 2026-11-09「物料」列(与「我的车间任务」同一组件)：点摘要 → 任务物料弹窗看每种物料的
+    // 仓库可用 → 只有服务端给了 DRAW 且本次可领 > 0 的物料可勾 → 去领料只带所选物料。
+    testWidgets(
+      'material column opens the shared material dialog and draws only the chosen materials',
+      (tester) async {
+        _desktop(tester, const Size(1700, 1100));
+        final draw = FakeSubcontractDrawGateway(
+          rows: [
+            drawRow(
+              'item-1',
+              status: 'DRAWABLE_PARTIAL',
+              materialKindCount: 3,
+              drawableKindCount: 2,
+              shortKindCount: 0,
+            ),
+          ],
+          count: 1,
+        );
+        draw.details['item-1'] = _detail(
+          'item-1',
+          actions: const [SubcontractDrawTaskDetail.drawAction],
+        );
+        final opened = <List<String>>[];
+        final openedMaterials = <List<String>>[];
+        final router = _router(
+          page: SubcontractDecompositionPage(
+            repository: _Gateway(_data(capability: true)),
+            drawRepository: draw,
+          ),
+          opened: opened,
+          openedMaterials: openedMaterials,
+        );
+        addTearDown(router.dispose);
+        await tester.pumpWidget(
+          _scope(child: MaterialApp.router(routerConfig: router)),
+        );
+        await tester.pumpAndSettle();
+
+        final summary = find.byKey(
+          const ValueKey('subcontract-material-summary-item-1'),
+        );
+        expect(summary, findsOneWidget);
+        expect(
+          tester.widget<MaterialKindSummaryCell>(summary).segments.map(
+            (segment) => segment.$1,
+          ),
+          ['已领 0/3 种', '可领 2 种'],
+        );
+        await tester.tap(summary);
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(const ValueKey('subcontract-material-dialog-item-1')),
+          findsOneWidget,
+        );
+        expect(draw.detailCalls, ['item-1']);
+        // 三种物料：A、B 有货可领(部分可领)，C 不缺但此刻不能领(已备)；仓库可用逐种显示。
+        expect(find.text('物料A'), findsOneWidget);
+        expect(find.text('物料B'), findsOneWidget);
+        expect(find.text('物料C'), findsOneWidget);
+        expect(find.text('80 kg'), findsWidgets, reason: '物料A 仓库可用');
+        expect(find.text('可领 2'), findsOneWidget);
+        expect(
+          tester
+              .widget<Checkbox>(
+                find.byKey(const ValueKey('subcontract-material-select-plan-c')),
+              )
+              .onChanged,
+          isNull,
+          reason: '本次可领为 0 的物料不能勾',
+        );
+        await tester.tap(find.byKey(const Key('subcontract-material-select-all')));
+        await tester.pumpAndSettle();
+        expect(find.text('去领料（2 种）'), findsOneWidget);
+        await tester.tap(
+          find.byKey(const ValueKey('subcontract-material-select-plan-a')),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('subcontract-material-continue')));
+        await tester.pumpAndSettle();
+
+        expect(opened, [
+          ['item-1'],
+        ]);
+        expect(openedMaterials, [
+          ['plan-b'],
+        ], reason: '领料页只带所选物料');
+        expect(find.text('领料页已打开'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets(
+      'material dialog without the server DRAW action stays read-only',
+      (tester) async {
+        _desktop(tester, const Size(1700, 1100));
+        final draw = FakeSubcontractDrawGateway(
+          rows: [drawRow('item-1', drawableKindCount: 2, shortKindCount: 0)],
+          count: 1,
+        );
+        draw.details['item-1'] = _detail('item-1', actions: const []);
+        await tester.pumpWidget(
+          _scope(
+            child: MaterialApp(
+              home: SubcontractDecompositionPage(
+                repository: _Gateway(_data(capability: true)),
+                drawRepository: draw,
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.byKey(const ValueKey('subcontract-material-summary-item-1')),
+        );
+        await tester.pumpAndSettle();
+
+        // 账号有领料能力，但服务端没给 DRAW(如不在写范围)：能看库存，不能勾、不能去领料。
+        for (final plan in ['plan-a', 'plan-b', 'plan-c']) {
+          expect(
+            tester
+                .widget<Checkbox>(
+                  find.byKey(ValueKey('subcontract-material-select-$plan')),
+                )
+                .onChanged,
+            isNull,
+            reason: plan,
+          );
+        }
+        expect(
+          tester
+              .widget<UtenButton>(
+                find.byKey(const Key('subcontract-material-continue')),
+              )
+              .onPressed,
+          isNull,
+        );
+        await tester.tap(find.text('取消'));
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const ValueKey('subcontract-material-dialog-item-1')),
+          findsNothing,
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+
     testWidgets('detail without allowed actions shows no withdraw or close', (
       tester,
     ) async {
@@ -3148,6 +3310,7 @@ GoRouter _router({
   required Widget page,
   required List<List<String>> opened,
   List<List<String>>? openedOrders,
+  List<List<String>>? openedMaterials,
 }) => GoRouter(
   initialLocation: RouteName.operationsSubcontractWorkbench,
   routes: [
@@ -3160,6 +3323,9 @@ GoRouter _router({
       builder: (_, state) {
         opened.add(
           state.uri.queryParameters['orderItemIds']!.split(',').toList(),
+        );
+        openedMaterials?.add(
+          state.uri.queryParameters['planItemIds']?.split(',') ?? const [],
         );
         return const Scaffold(body: Text('领料页已打开'));
       },
@@ -3684,7 +3850,8 @@ SubcontractDrawTaskDetail _detail(
       'availableQty': 80,
       'drawableQty': 80,
       'shortQty': 120,
-      'state': 'SHORT',
+      // 2026-11-09 逐种可领：有货可领即 DRAWABLE(还差的部分仍在 shortQty)，读「部分可领」。
+      'state': 'DRAWABLE',
       'supplySources': <Map<String, dynamic>>[
         <String, dynamic>{
           'kind': 'PURCHASE',
@@ -3709,10 +3876,10 @@ SubcontractDrawTaskDetail _detail(
       'availableQty': 40,
       'drawableQty': 40,
       'shortQty': 60,
-      'state': 'SHORT',
+      'state': 'DRAWABLE',
       'supplySources': <Map<String, dynamic>>[],
     },
-    // 物料本身已齐，但被物料A/B卡住本批可领为 0：读「已备」(ADR-143 §三.4)。
+    // 不缺但此刻不能领(服务端 READY)：读「已备」。
     <String, dynamic>{
       'planItemId': 'plan-c',
       'lineNo': 3,
@@ -3728,7 +3895,7 @@ SubcontractDrawTaskDetail _detail(
       'availableQty': 100,
       'drawableQty': 0,
       'shortQty': 0,
-      'state': 'DRAWABLE',
+      'state': 'READY',
       'supplySources': <Map<String, dynamic>>[],
     },
   ],

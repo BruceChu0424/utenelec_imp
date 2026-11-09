@@ -334,6 +334,40 @@ class SubcontractDrawAllocatorTest {
         assertThat(result.tasks().getFirst().qty()).isEqualByComparingTo("0");
     }
 
+    /**
+     * 2026-11-09 按物料领料的预览默认量: 只给选中的物料各取逐种可领上限(专属先于公共), 其它物料还缺
+     * 不拖累; 没选的物料不分配。任务间公共库存竞争仍按调用顺序扣减。
+     */
+    @Test
+    void materialDefaultsTakeEachSelectedMaterialsOwnMaximumAndRespectPublicCompetition() {
+        UUID goodsA = UUID.randomUUID();
+        UUID a1 = UUID.randomUUID();
+        UUID b1 = UUID.randomUUID();
+        UUID a2 = UUID.randomUUID();
+        // 任务 1: A 需求 100(专属 10 + 公共 50 在仓 1), B 需求 200 一件没有 → 一套也配不出。
+        var first = new SubcontractDrawAllocator.Task(UUID.randomUUID(), UUID.randomUUID(), new BigDecimal("100"),
+                null, null, List.of(
+                        new SubcontractDrawAllocator.Line(a1, goodsA, null, BigDecimal.ONE, new BigDecimal("100"),
+                                BigDecimal.ZERO, List.of(stock(WAREHOUSE, "10", "50"))),
+                        line(b1, "2", "200", "0", stock(WAREHOUSE, "0", "0"))),
+                null, java.util.Set.of(a1));
+        // 任务 2 也选同一种 A(同仓同货): 公共已被分走, 只能领自己的专属 5。
+        var second = new SubcontractDrawAllocator.Task(UUID.randomUUID(), UUID.randomUUID(), new BigDecimal("30"),
+                null, null, List.of(
+                        new SubcontractDrawAllocator.Line(a2, goodsA, null, BigDecimal.ONE, new BigDecimal("30"),
+                                BigDecimal.ZERO, List.of(stock(WAREHOUSE, "5", "50")))),
+                null, java.util.Set.of(a2));
+
+        var result = SubcontractDrawAllocator.allocate(List.of(first, second));
+
+        assertThat(qty(result, a1)).as("A 逐种上限 = MIN(专属10+公共50, 需求100)").isEqualByComparingTo("60");
+        assertThat(qty(result, b1)).as("没选的 B 不分配").isEqualByComparingTo("0");
+        assertThat(result.tasks().getFirst().qty()).as("B 为 0, 套数进度不动").isEqualByComparingTo("0");
+        assertThat(result.tasks().getFirst().exceeded()).isFalse();
+        assertThat(qty(result, a2)).as("公共已被前一任务分走, 只剩自己的专属").isEqualByComparingTo("5");
+        assertThat(result.tasks().get(1).qty()).as("单物料任务的套数进度随实领推进").isEqualByComparingTo("5");
+    }
+
     private static SubcontractDrawAllocator.Task task(String orderQty, String requested,
                                                       SubcontractDrawAllocator.Line... lines) {
         return new SubcontractDrawAllocator.Task(UUID.randomUUID(), UUID.randomUUID(), new BigDecimal(orderQty),

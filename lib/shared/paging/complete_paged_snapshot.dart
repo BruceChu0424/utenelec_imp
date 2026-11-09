@@ -174,9 +174,11 @@ Future<PagedResult<T>> loadCompletePagedResult<T>({
       progressive?.throwIfFailed();
       final knownTotal = result.total >= 0;
       final exactTotal = knownTotal && requireStableTotal;
-      if (batch == 0 && !exactTotal && !fixedSize) {
+      if (batch == 0 && !exactTotal) {
         // Without an exact stable total no offset can be proven: continue
-        // page by page on the first batch's size.
+        // page by page on the first batch's size. This includes fixed plans:
+        // recomputing their size from the rows read so far would turn a short
+        // server page (40 of 100) into an offset-aligned (2, 20) request.
         serverSize = size;
       }
       final hasMore = exactTotal

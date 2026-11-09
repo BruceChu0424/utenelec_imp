@@ -163,6 +163,34 @@ void main() {
     expect(server.requests, [(1, 50), (2, 20), (3, 20)]);
   });
 
+  test(
+    'an unknown-total reader keeps page-by-page continuation on its fixed size',
+    () async {
+      // A server with its own 40-row pages and no exact total (pickers and
+      // column-filter candidates). No offset can be proven, so the read must
+      // continue (2,100),(3,100) — never an offset-aligned (2,20) that points
+      // at other rows.
+      final requests = <(int, int)>[];
+      final result = await loadCompletePagedResult<String>(
+        loadPage: (page, size) async {
+          requests.add((page, size));
+          return PagedResult<String>(
+            items: [for (var i = 0; i < 40; i++) 'row-${(page - 1) * 40 + i}'],
+            page: page,
+            size: size,
+            total: -1,
+            totalPages: 3,
+          );
+        },
+        isCurrent: () => true,
+        idOf: (row) => row,
+        allowUnknownTotal: true,
+      );
+      expect(requests, [(1, 100), (2, 100), (3, 100)]);
+      expect(result.items, [for (var i = 0; i < 120; i++) 'row-$i']);
+    },
+  );
+
   test('a repeated row fails the whole read instead of joining it', () async {
     final server = _OffsetServer(300);
     await expectLater(

@@ -513,6 +513,9 @@ class CoverageTests(unittest.TestCase):
             "#privateSuppliedFilesAreReadOnlyOptionalEvidence": "UTEN_FINANCE_SOURCE_DIR",
             "com.uten.imp.features.finance.report.FinanceTemplateSourceReaderTest"
             "#privateSeptemberWorkbookIncludesAllThreeOriginalSheetsAndHiddenColumns": "FINANCE_REAL_ASSET_FILE",
+            # 2026-11-08 progressive-read measurement probe: opt-in, read-only.
+            "com.uten.imp.features.stock.InstantInventoryProgressiveReadProbeTest"
+            "#oldTwentyRowPagesVersusProgressiveBatches": "UTEN_PROGRESSIVE_PROBE",
         }
         self.assertEqual(expected, runner.METHOD_OPTIONAL_GATES)
         for identity, gate in expected.items():
@@ -628,6 +631,8 @@ class CoverageTests(unittest.TestCase):
         sources.add(java / "businesschain/SalesFinanceInteractiveUatHarnessTest.java")
         sources.add(java / "businesschain/FinanceInteractiveUatHarnessTest.java")
         sources.update((java / "features/admin/systemsetting").glob("MaterialForecast*.java"))
+        # Progressive-read probe: class-level opt-in gate, one gated @Test method.
+        sources.add(java / "features/stock/InstantInventoryProgressiveReadProbeTest.java")
         self.assertTrue(sources)
         environment, properties = {}, {}
         # A bounded source check complements compiled JUnit discovery. Preserve

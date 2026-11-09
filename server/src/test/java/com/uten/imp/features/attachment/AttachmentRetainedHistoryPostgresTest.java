@@ -278,6 +278,18 @@ class AttachmentRetainedHistoryPostgresTest {
         verify(failing,times(2)).recordUse(row.getId());
     }
 
+    @Test void tieringSchedulerReadsHeatFromTheAttachmentRowWithinTheNinetyDayWindow() throws Exception {
+        Attachment hot=create("近期用过".getBytes(StandardCharsets.UTF_8),AttachmentLifecycleState.CLEAN);
+        Attachment stale=create("久未使用".getBytes(StandardCharsets.UTF_8),AttachmentLifecycleState.CLEAN);
+        Attachment never=create("从未使用".getBytes(StandardCharsets.UTF_8),AttachmentLifecycleState.CLEAN);
+        assertThat(new AttachmentUsageRecorder(jdbc).recordUse(hot.getId())).isTrue();
+        jdbc.update("UPDATE attachments SET last_used_at=now()-interval '91 days' WHERE id=?",stale.getId());
+        var active=jdbc.queryForList(InternalStorageTieringScheduler.RECENTLY_USED_SQL,String.class,
+                java.sql.Timestamp.from(Instant.now().minus(java.time.Duration.ofDays(InternalStorageTieringScheduler.RECENT_ACCESS_DAYS))));
+        assertThat(active).contains(hot.getId().toString())
+                .doesNotContain(stale.getId().toString(),never.getId().toString());
+    }
+
     private Instant lastUsed(Attachment row){
         var value=jdbc.queryForObject("SELECT last_used_at FROM attachments WHERE id=?",java.sql.Timestamp.class,row.getId());
         return value==null?null:value.toInstant();

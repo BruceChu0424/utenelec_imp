@@ -33,7 +33,9 @@ class InternalStorageTieringScheduler {
     private static final int MAX_OBJECTS_PER_PASS = 5000;
     private static final long THROTTLE_MILLIS = 50;
     /** Download/preview activity inside this window pins an attachment to the hot root. */
-    private static final long RECENT_ACCESS_DAYS = 90;
+    static final long RECENT_ACCESS_DAYS = 90;
+    /** Attachments whose own last_used_at falls inside the recent window. */
+    static final String RECENTLY_USED_SQL = "SELECT a.id::text FROM attachments a WHERE a.last_used_at >= ?";
 
     private final InternalStorageService storage;
     private final JdbcTemplate jdbc;
@@ -60,8 +62,7 @@ class InternalStorageTieringScheduler {
         // and preview paths via AttachmentUsageRecorder); the audit log is
         // evidence only and is never read for business decisions.
         var activeIds = java.util.Set.copyOf(jdbc.queryForList(
-                "SELECT a.id::text FROM attachments a WHERE a.last_used_at >= ?",
-                String.class, java.sql.Timestamp.from(activeCutoff)));
+                RECENTLY_USED_SQL, String.class, java.sql.Timestamp.from(activeCutoff)));
         // Company-library nodes reference their attachments explicitly and keep
         // them on the hot root regardless of age.
         var candidates = jdbc.queryForList(

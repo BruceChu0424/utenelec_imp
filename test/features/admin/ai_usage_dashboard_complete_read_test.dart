@@ -6,7 +6,15 @@ import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/features/admin/models/ai_usage_dashboard_models.dart';
 import 'package:uten_imp/features/admin/repositories/ai_usage_dashboard_repository.dart';
+import 'package:uten_imp/shared/paging/complete_paged_snapshot.dart'
+    show CompleteReadBatchPlan;
 import 'package:uten_imp/shared/paging/paged_read_intent.dart';
+
+import '../../support/complete_read_plan_batches.dart';
+
+const _people = 501;
+
+final _batches = completeReadPlanBatches(_people);
 
 void main() {
   for (final badSummary in [false, true]) {
@@ -46,21 +54,23 @@ void main() {
       expect(result.people.last.dailyTokenLimit, isNull);
       expect(result.people.last.rowVersion, 13);
       expect(api.reads.first.$2, {'window': 'day', 'includePeople': false});
-      expect(api.reads.skip(1).map((read) => read.$2['page']), [
-        1,
-        2,
-        3,
-        4,
-        5,
-        6,
-      ]);
-      expect(api.reads.skip(1).every((read) => read.$2['size'] == 100), isTrue);
+      expect(
+        api.reads
+            .skip(1)
+            .map(
+              (read) =>
+                  (page: read.$2['page'] as int, size: read.$2['size'] as int),
+            ),
+        _batches,
+      );
     },
   );
 
   test(
     'retiring an incomplete dashboard read prevents subsequent batches',
     () async {
+      // The held continuation must leave at least one more batch to start.
+      expect(_batches.length, greaterThan(2));
       final api = _Api()..second = Completer<Map<String, dynamic>>();
       var current = true;
       final read = PagedReadIntent.scopedRead(
@@ -72,7 +82,7 @@ void main() {
         await Future<void>.delayed(Duration.zero);
       }
       current = false;
-      api.second!.complete(api.page(2));
+      api.second!.complete(api.page(_batches[1].page, _batches[1].size));
       await failure;
       expect(api.reads, hasLength(3));
     },
@@ -92,6 +102,7 @@ void main() {
           ),
         ),
       );
+      // The summary, the first batch and the overlapping continuation.
       expect(api.reads, hasLength(3));
     },
   );
@@ -100,25 +111,31 @@ void main() {
 class _Api extends ApiClient {
   _Api() : super(Dio());
   final reads = <(String, Map<String, dynamic>)>[];
+  // Holds the first continuation batch (the second people request).
   Completer<Map<String, dynamic>>? second;
+  // The first row of the first continuation batch repeats person-0.
   bool overlap = false;
   bool badPage = false, badSummary = false;
+  int _peopleReads = 0;
 
-  Map<String, dynamic> page(int page) => {
+  /// The server's exact slice: people [(page - 1) * size, page * size).
+  Map<String, dynamic> page(int page, int size) => {
     'items': [
       for (
-        var index = (page - 1) * 100;
-        index < page * 100 && index < 501;
+        var index = (page - 1) * size;
+        index < page * size && index < _people;
         index++
       )
         {
-          'userId': overlap && page == 2 && index == 100
+          'userId':
+              overlap &&
+                  index == CompleteReadBatchPlan.progressive.firstBatchSize
               ? 'person-0'
               : 'person-$index',
           'name': '员工$index',
           'code': '$index',
-          'deleted': index == 500,
-          'disabled': index == 500,
+          'deleted': index == _people - 1,
+          'disabled': index == _people - 1,
           'dailyTokenLimit': null,
           'dailyJobLimit': 5,
           'todayTokens': 7,
@@ -128,9 +145,9 @@ class _Api extends ApiClient {
         },
     ],
     'page': page,
-    'size': 100,
-    'total': 501,
-    'totalPages': 6,
+    'size': size,
+    'total': _people,
+    'totalPages': (_people + size - 1) ~/ size,
   };
 
   @override
@@ -141,9 +158,8 @@ class _Api extends ApiClient {
     reads.add((path, {...?query}));
     if (path.endsWith('/people')) {
       if (badPage) return {};
-      final number = query!['page'] as int;
-      if (number == 2 && second != null) return second!.future;
-      return page(number);
+      if (++_peopleReads == 2 && second != null) return second!.future;
+      return page(query!['page'] as int, query['size'] as int);
     }
     return {
       'window': badSummary ? 'day' : query!['window'],

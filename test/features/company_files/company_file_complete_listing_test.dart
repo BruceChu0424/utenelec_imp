@@ -13,6 +13,8 @@ import 'package:uten_imp/features/company_files/repositories/company_file_comple
 import 'package:uten_imp/features/company_files/widgets/company_file_dialogs.dart';
 import 'package:uten_imp/components/layout/uten_pagination.dart';
 
+import '../../support/complete_read_plan_batches.dart';
+
 const _actions = {'view', 'move', 'create', 'upload'};
 CompanyFile _folder(int index) => CompanyFile(
   id: 'folder-$index',
@@ -22,10 +24,21 @@ CompanyFile _folder(int index) => CompanyFile(
   allowedActions: _actions,
 );
 
+/// One directory just past the second aligned batch: its last entry arrives
+/// alone in the final batch.
+const _total = 101;
+
+/// The library API is zero-based: the shared plan's requests one page lower,
+/// (0,50) (1,50) (1,100) for this directory.
+final _batches = [
+  for (final batch in completeReadPlanBatches(_total))
+    (page: batch.page - 1, size: batch.size),
+];
+
 class _Repository extends CompanyFileRepository {
   _Repository()
     : super(ApiClient(Dio(BaseOptions(baseUrl: 'https://library.test/api'))));
-  final pages = <int>[];
+  final reads = <({int page, int size})>[];
   final requests =
       <
         ({
@@ -35,13 +48,16 @@ class _Repository extends CompanyFileRepository {
           Map<String, String?> filters,
         })
       >[];
+  // Holds the first continuation batch (the second request).
   Completer<CompanyFileListing>? continuation;
   bool changeAcl = false;
-  CompanyFileListing response(int page) => CompanyFileListing(
-    entries: List.generate(
-      page == 0 ? 100 : 1,
-      (index) => _folder(page * 100 + index),
-    ),
+
+  /// The server's zero-based slice: entries [page * size, page * size + size).
+  CompanyFileListing response(int page, int size) => CompanyFileListing(
+    entries: [
+      for (var index = page * size; index < (page + 1) * size; index++)
+        if (index < _total) _folder(index),
+    ],
     folder: const CompanyFile(
       id: 'parent',
       name: '原目录',
@@ -51,8 +67,9 @@ class _Repository extends CompanyFileRepository {
     ),
     breadcrumbs: const [CompanyFileBreadcrumb(id: 'parent', name: '原目录')],
     allowedActions: changeAcl && page > 0 ? const {'view'} : _actions,
-    total: 101,
+    total: _total,
     page: page,
+    size: size,
     readScopeVersion: 'scope-a',
   );
   @override
@@ -66,16 +83,17 @@ class _Repository extends CompanyFileRepository {
     int size = 100,
     Map<String, String?> columnFilters = const {},
   }) async {
-    pages.add(page);
+    reads.add((page: page, size: size));
     requests.add((
       parent: parentId,
       search: search,
       trash: trash,
       filters: Map.of(columnFilters),
     ));
-    expect(size, 100);
-    if (page == 1 && continuation != null) return continuation!.future;
-    return response(page);
+    if (reads.length == 2 && continuation != null) {
+      return continuation!.future;
+    }
+    return response(page, size);
   }
 }
 
@@ -91,11 +109,11 @@ void main() {
         trash: true,
         columnFilters: const {'search.name': '图纸'},
       );
-      expect(repo.pages, [0, 1]);
-      expect(result.entries, hasLength(101));
-      expect(result.entries.last.id, 'folder-100');
+      expect(repo.reads, _batches);
+      expect(result.entries, hasLength(_total));
+      expect(result.entries.last.id, 'folder-${_total - 1}');
       expect(result.page, 0);
-      expect(result.total, 101);
+      expect(result.total, _total);
       expect(result.folder?.version, 7);
       expect(result.breadcrumbs.single.id, 'parent');
       expect(result.allowedActions, _actions);
@@ -111,7 +129,10 @@ void main() {
         ),
         isTrue,
       );
-      expect(() => result.entries.add(_folder(102)), throwsUnsupportedError);
+      expect(
+        () => result.entries.add(_folder(_total + 1)),
+        throwsUnsupportedError,
+      );
     },
   );
 
@@ -129,24 +150,30 @@ void main() {
           ),
         ),
       );
+      // The first batch with changed ACL facts retires the whole query.
+      expect(repo.reads, _batches.take(2));
     },
   );
 
   test(
     'late continuation after identity retirement publishes nothing and starts no further read',
     () async {
+      // The held continuation must leave at least one more batch to start.
+      expect(_batches.length, greaterThan(2));
       var current = true;
       final repo = _Repository()
         ..continuation = Completer<CompanyFileListing>();
       final future = repo.readCompleteListing(isCurrent: () => current);
-      while (repo.pages.length < 2) {
+      while (repo.reads.length < 2) {
         await Future<void>.delayed(Duration.zero);
       }
       final assertion = expectLater(future, throwsA(isA<UiWorkCancelled>()));
       current = false;
-      repo.continuation!.complete(repo.response(1));
+      repo.continuation!.complete(
+        repo.response(_batches[1].page, _batches[1].size),
+      );
       await assertion;
-      expect(repo.pages, [0, 1]);
+      expect(repo.reads, _batches.take(2));
     },
   );
 
@@ -181,7 +208,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(repo.pages, [0, 1]);
+      expect(repo.reads, _batches);
       expect(find.byType(UtenPagination), findsNothing);
       final scrollable = find
           .descendant(
@@ -189,15 +216,16 @@ void main() {
             matching: find.byType(Scrollable),
           )
           .first;
+      final last = find.text('完整目录${_total - 1}');
       await tester.scrollUntilVisible(
-        find.text('完整目录100'),
+        last,
         240,
         scrollable: scrollable,
         maxScrolls: 60,
       );
       await tester.pumpAndSettle();
-      expect(find.text('完整目录100'), findsOneWidget);
-      expect(repo.pages, [0, 1]);
+      expect(last, findsOneWidget);
+      expect(repo.reads, _batches);
       expect(tester.takeException(), isNull);
     },
   );

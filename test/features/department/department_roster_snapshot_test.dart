@@ -12,6 +12,8 @@ import 'package:uten_imp/features/employee/models/employee_api_models.dart';
 import 'package:uten_imp/features/employee/repositories/employee_repository.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 
+import '../../support/complete_read_plan_batches.dart';
+
 class _Repository extends Fake implements EmployeeRepository {
   _Repository(int count)
     : rows = List.generate(
@@ -67,7 +69,7 @@ class _Repository extends Fake implements EmployeeRepository {
 
 void main() {
   test(
-    'both complete consumers share all 601 authorized people including the seventh page',
+    'both complete consumers share all 601 authorized people including the final one-person batch',
     () async {
       final repository = _Repository(601);
       final snapshot = await loadDepartmentRosterSnapshot(
@@ -78,14 +80,17 @@ void main() {
       expect(snapshot.employees, repository.rows);
       expect(snapshot.byDepartment['root'], hasLength(300));
       expect(snapshot.byDepartment['child'], hasLength(301));
+      // (1,50) (2,50) (2,100) (2,200) (3,200) (4,200): the 601st person is
+      // alone in the last aligned batch.
+      final complete = completeReadPlanBatches(601);
       expect(
-        repository.calls.map((call) => call.page),
-        orderedEquals([1, 2, 3, 4, 5, 6, 7]),
+        repository.calls.map((call) => (page: call.page, size: call.size)),
+        orderedEquals(complete),
       );
+      expect(601 - (complete.last.page - 1) * complete.last.size, 1);
       expect(
         repository.calls.every(
-          (call) =>
-              call.size == 100 && call.department == 'root' && call.subtree,
+          (call) => call.department == 'root' && call.subtree,
         ),
         isTrue,
       );
@@ -154,7 +159,11 @@ void main() {
         ),
         throwsA(isA<ApiException>()),
       );
-      expect(repository.calls.length, lessThanOrEqualTo(7));
+      // A refused partial result never reads past the complete plan.
+      expect(
+        repository.calls.length,
+        lessThanOrEqualTo(completeReadPlanBatches(601).length),
+      );
     });
   }
 
@@ -198,7 +207,10 @@ void main() {
       expect(table.rows, hasLength(10001));
       expect(table.rows.last[1], '原始姓名龘10000');
       expect(ticks, greaterThan(1));
-      expect(repository.calls, hasLength(101));
+      expect(
+        repository.calls.map((call) => (page: call.page, size: call.size)),
+        orderedEquals(completeReadPlanBatches(10001)),
+      );
     },
   );
 

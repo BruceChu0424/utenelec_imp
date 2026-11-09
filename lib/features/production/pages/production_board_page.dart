@@ -1428,7 +1428,22 @@ class _PlanPanelState extends ConsumerState<_PlanPanel>
   bool get _canManageFlags =>
       ref.read(currentPermissionsProvider).contains(Perm.productionPlanFlags);
 
-  List<PlanProgressRow> get _rows => _page?.items ?? const [];
+  List<PlanProgressRow> get _rows => _currentPage?.items ?? const [];
+
+  /// [_page] counts as the current query's result only while its read is
+  /// current — the predicate the shared table applies to its own rows. A read
+  /// of another query (keyword, workshop, dates, sort) or owner retires the
+  /// previous rows, so they are neither shown while that query loads nor
+  /// after it fails; a failed read's progressive rows are retired the same
+  /// way. A same-query refresh keeps its read, and with it the last complete
+  /// result, also when the refresh fails.
+  PagedResult<PlanProgressRow>? get _currentPage {
+    final page = _page;
+    if (page == null || readWindowBindingOf(page.items)?.isCurrent == false) {
+      return null;
+    }
+    return page;
+  }
 
   /// The cards are the validated prefix of a complete read still in progress.
   bool get _rowsGrowing => readWindowBindingOf(_rows)?.growing == true;
@@ -1505,9 +1520,6 @@ class _PlanPanelState extends ConsumerState<_PlanPanel>
     final to = widget.forcedDateTo ?? (_to == null ? null : _fmtDate(_to!));
     final closed = widget.closed;
     const size = _pageSize;
-    // Progressive plan cards shown by this read: the card list renders them
-    // without the table's retirement, so a failure takes them down here.
-    var partialRows = false;
     try {
       // 汇总和车间选项独立发布，不让它们阻塞计划列表和空态。
       final rows = readScopedPage<PlanProgressRow>(
@@ -1547,7 +1559,6 @@ class _PlanPanelState extends ConsumerState<_PlanPanel>
         ),
         onProgressiveBatch: (partial) {
           if (!current()) return;
-          partialRows = true;
           setState(() => _page = partial);
         },
       );
@@ -1571,8 +1582,9 @@ class _PlanPanelState extends ConsumerState<_PlanPanel>
     } catch (e) {
       if (isRetiredViewRead(e)) return;
       if (!current()) return;
+      // Rows of another query or of this failed read are retired with their
+      // read (see [_currentPage]); the failure and its retry take their place.
       setState(() {
-        if (partialRows) _page = null;
         _error = productionErrorMessage(e, fallback: '加载生产进度失败');
         _loading = false;
       });
@@ -1869,7 +1881,8 @@ class _PlanPanelState extends ConsumerState<_PlanPanel>
 
   /// 总览条（跨全部页的汇总，来自 /progress/summary）。
   Widget _summaryCard(ThemeData theme) {
-    final count = (_summary?['count'] as num?)?.toInt() ?? _page?.total ?? 0;
+    final count =
+        (_summary?['count'] as num?)?.toInt() ?? _currentPage?.total ?? 0;
     final sumQty = (_summary?['sumQty'] as num?)?.toDouble() ?? 0;
     final sumReported = (_summary?['sumReported'] as num?)?.toDouble() ?? 0;
     final sumIn = (_summary?['sumInbound'] as num?)?.toDouble() ?? 0;
@@ -1897,10 +1910,13 @@ class _PlanPanelState extends ConsumerState<_PlanPanel>
   }
 
   Widget _list(ThemeData theme) {
-    if (_loading && _page == null) {
+    final page = _currentPage;
+    // Retired rows of a previous query wait for the current read: never its
+    // result, and never an empty result before that read starts.
+    if (page == null && _error == null && (_loading || _page != null)) {
       return const Center(child: CircularProgressIndicator(strokeWidth: 2.5));
     }
-    if (_error != null && _page == null) {
+    if (_error != null && page == null) {
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,

@@ -61,6 +61,21 @@ abstract class _MaterialAnalysisCandidatesState
   bool _candidateSelected(MaterialAnalysisSalesCandidateLine line) =>
       _sourceQtyControllers.containsKey(line.salesOrderItemId);
 
+  /// The sales candidate rows are a validated prefix of a complete read still
+  /// in progress — the predicate the table applies to its own selection.
+  bool get _candidateRowsGrowing {
+    final rows = _candidateReadRows;
+    return rows != null && readWindowBindingOf(rows)?.growing == true;
+  }
+
+  /// Entries acting on the retained sales selection — the joint analysis and
+  /// the selected-quantity review — wait for the complete candidate result
+  /// while it grows (batch and write actions wait for the complete result).
+  /// The selection and its quantity drafts stay as they are; an analysis of
+  /// manual demands alone does not involve the candidate list.
+  bool get _salesSelectionWaitsForCandidates =>
+      _sourceQtyControllers.isNotEmpty && _candidateRowsGrowing;
+
   /// 各张手工需求单里已选货品的行数(每行 = 一个分析来源)。
   int get _manualGoodsLineCount {
     var count = 0;
@@ -380,6 +395,7 @@ abstract class _MaterialAnalysisCandidatesState
   }
 
   Future<void> _startCandidateAnalysis() async {
+    if (_salesSelectionWaitsForCandidates) return;
     final sources = _candidateSources();
     if (sources == null) return;
     _sources = sources;
@@ -876,7 +892,10 @@ abstract class _MaterialAnalysisCandidatesState
     type: UtenButtonType.danger,
     icon: Icons.insights_outlined,
     isLoading: _previewingAnalysis,
-    onPressed: selectedCount == 0 || _previewingAnalysis
+    onPressed:
+        selectedCount == 0 ||
+            _previewingAnalysis ||
+            _salesSelectionWaitsForCandidates
         ? null
         : _startCandidateAnalysis,
     onDisabledTap: selectedCount == 0
@@ -1056,7 +1075,9 @@ abstract class _MaterialAnalysisCandidatesState
               fontWeight: FontWeight.w700,
             ),
           ),
-          onPressed: _showCompactSelectedSourceEditor,
+          onPressed: _salesSelectionWaitsForCandidates
+              ? null
+              : _showCompactSelectedSourceEditor,
           child: const Text('核对数量'),
         );
         if (constraints.maxWidth < 360) {
@@ -1083,6 +1104,7 @@ abstract class _MaterialAnalysisCandidatesState
   );
 
   Future<void> _showCompactSelectedSourceEditor() async {
+    if (_salesSelectionWaitsForCandidates) return;
     final entries = _sourceQtyControllers.entries.toList(growable: false);
     if (entries.isEmpty) return;
     await showUtenModalBottomSheet<void>(
@@ -1354,13 +1376,15 @@ abstract class _MaterialAnalysisCandidatesState
         }
         // 必填红框与提交校验同一口径(空 / 非数字 / 不大于 0 都算没填好)：
         // 红框出现的时候，点「联合分析」一定会被拦下。
+        // The wide counterpart of the compact quantity review: it waits for
+        // the complete candidates while they grow, the entered value kept.
         return RequiredCellFrame(
           listenable: controller,
           isEmpty: () => _positiveAnalysisQty(controller.text) == null,
           child: TextField(
             key: Key('source-qty-${line.salesOrderItemId}'),
             controller: controller,
-            enabled: !_busy,
+            enabled: !_busy && !_salesSelectionWaitsForCandidates,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             style: Theme.of(context).textTheme.bodyMedium,
             decoration: const UtenInputDecoration(

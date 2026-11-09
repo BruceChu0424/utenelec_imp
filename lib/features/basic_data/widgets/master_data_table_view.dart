@@ -740,6 +740,8 @@ class MasterDataTableView<T> extends StatefulWidget {
   /// 批量业务动作构建器：selectable 时，表头工具条始终显示「已选 N 项 + 清除」；
   /// 本构建器可选，非空时返回的业务按钮统一悬浮在表格右下角，普通视图和全屏路由都会渲染。
   /// 未选中时动作保留位置但灰显并拦截点击，调用方仍应保留空集业务守卫。
+  /// 逐批读取增长期间（行是完整读取的前缀）动作同样保留原位与计数，但由表格
+  /// 统一挡住点按/聚焦/读屏动作并变淡，完整结果到达后恢复；读取失败时整组隐藏。
   final List<Widget> Function(BuildContext context, Set<String> selectedIds)?
   batchActionsBuilder;
 
@@ -7080,7 +7082,16 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
 
     // 已选摘要与业务动作同框（悬浮组首位），选择数与按钮零距离——
     // 全站统一口径：有悬浮批量动作的表格，已选胶囊不再驻表头工具条。
-    final children = [if (_outputSelectable) _buildBatchBar(theme), ...actions];
+    // 逐批读取增长期间（_growing，与禁行勾选/全选/行菜单同一状态）行只是完整
+    // 结果的前缀：业务动作保留原位与已选计数，但不可点、不可聚焦、无读屏点按，
+    // 完整结果到达后恢复（批量与写入等完整结果）。读取失败退休时整组照旧隐藏
+    // （_hasFloatingBatchActions）。门控件常驻，切换不重挂动作的自身状态。
+    final ready = !_growing;
+    final children = [
+      if (_outputSelectable) _buildBatchBar(theme),
+      for (final action in actions)
+        UtenTableActionGate(enabled: ready, child: action),
+    ];
     // 2026-09-11 去掉 0 选中时的 Opacity(0.4)：叠在本就发灰的禁用按钮上会整组
     // 淡到「看不出这里能点」（物料分析、下达采购/委外/自制的用户反馈）。
     // 未选态的可辨识度改由控件自身承担——UtenButton 禁用态是实底+描边+可读灰字，

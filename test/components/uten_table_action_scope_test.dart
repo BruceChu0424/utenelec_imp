@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/inputs/uten_date_range_button.dart';
+import 'package:uten_imp/components/layout/uten_action_overflow.dart';
 import 'package:uten_imp/components/layout/uten_table_action_scope.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
@@ -92,4 +94,81 @@ void main() {
     );
     expect(tester.takeException(), isNull);
   });
+
+  test(
+    'a held table action is still the action it wraps for overflow menus',
+    () {
+      expect(
+        UtenActionOverflow.isAction(
+          UtenTableActionGate(
+            enabled: false,
+            child: UtenButton(onPressed: () {}, child: const Text('批量处理')),
+          ),
+        ),
+        isTrue,
+      );
+      expect(
+        UtenActionOverflow.isAction(
+          const UtenTableActionGate(enabled: true, child: Text('说明')),
+        ),
+        isFalse,
+      );
+    },
+  );
+
+  testWidgets(
+    'a held action stays held inside a compact menu; once ready it acts and '
+    'closes the menu like any menu action',
+    (tester) async {
+      tester.view.physicalSize = const Size(390, 850);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final ready = ValueNotifier(false);
+      addTearDown(ready.dispose);
+      var calls = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Align(
+              alignment: Alignment.topRight,
+              child: ValueListenableBuilder<bool>(
+                valueListenable: ready,
+                builder: (_, enabled, _) => UtenActionOverflow(
+                  forceCompact: true,
+                  children: [
+                    UtenTableActionGate(
+                      enabled: enabled,
+                      child: TextButton(
+                        onPressed: () => calls++,
+                        child: const Text('批量处理'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('更多操作'));
+      await tester.pumpAndSettle();
+      expect(find.text('批量处理').hitTestable(), findsNothing);
+      await tester.tap(find.text('批量处理'), warnIfMissed: false);
+      await tester.pumpAndSettle();
+      expect(calls, 0);
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+
+      ready.value = true;
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('更多操作'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('批量处理'));
+      await tester.pumpAndSettle();
+      expect(calls, 1);
+      expect(find.byKey(const ValueKey('uten-anchored-popup')), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
 }

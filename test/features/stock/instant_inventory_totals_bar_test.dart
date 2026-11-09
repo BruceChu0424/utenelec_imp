@@ -550,10 +550,24 @@ void main() {
     };
     final printed = await tester.runAsync(preview().loader);
     expect(printed, isNotNull);
-    expect(
-      api.inventoryRequests.skip(beforePrint).map((query) => query['page']),
-      [1, 2],
-    );
+    // 2026-11-08 阶梯完整读取：137 行 = 50 → 50 → 100（末批 37 行）；
+    // 首批带合计/分面，续批 includeMetadata=false 只取同口径的行。
+    final printReads = api.inventoryRequests.skip(beforePrint).toList();
+    expect(printReads.map((query) => (query['page'], query['size'])), [
+      (1, 50),
+      (2, 50),
+      (2, 100),
+    ]);
+    expect(printReads.map((query) => query['includeTotals']), [
+      null,
+      false,
+      false,
+    ]);
+    expect(printReads.map((query) => query['includeFacets']), [
+      null,
+      false,
+      false,
+    ]);
     expect(api.inventoryRequests.last['keyword'], '螺丝 M3');
     expect(api.inventoryRequests.last['categoryId'], isNull);
     expect(export().enabled, isTrue);

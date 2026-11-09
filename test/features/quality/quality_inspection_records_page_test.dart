@@ -56,7 +56,7 @@ Future<void> _pumpPage(
 }
 
 void main() {
-  testWidgets('检验201条首续同100批且合并全部record身份', (tester) async {
+  testWidgets('检验201条按阶梯批次读完且合并全部record身份', (tester) async {
     final api = _RecordApi(rowCount: 201);
     await _pumpPage(
       tester,
@@ -69,8 +69,9 @@ void main() {
     );
     expect(table.items, hasLength(201));
     expect(table.items.last.recordId, 'iqc-event-1-200');
-    expect(api.listQueries.map((query) => query['page']), [1, 2, 3]);
-    expect(api.listQueries.every((query) => query['size'] == 100), isTrue);
+    // 2026-11-08 阶梯完整读取：201 行 = 50 → 50 → 100 → 200（末批 1 行）。
+    expect(api.listQueries.map((query) => query['page']), [1, 2, 2, 2]);
+    expect(api.listQueries.map((query) => query['size']), [50, 50, 100, 200]);
     expect(table.totalPages, 1);
     expect(tester.takeException(), isNull);
   });

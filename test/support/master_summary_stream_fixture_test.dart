@@ -99,12 +99,12 @@ void main() {
     expect(request.queryParameters, {'complete': true});
     expect(masterSummaryTestParameters(request)['selectableOnly'], isTrue);
     final frames = masterSummaryStreamTestFrames(rows, request);
-    expect(frames, hasLength(4));
+    expect(frames, hasLength(5));
     expect(
       frames
-          .take(3)
+          .take(4)
           .map((frame) => ((frame['value'] as Map)['items'] as List).length),
-      [100, 100, 1],
+      [50, 50, 100, 1],
     );
     expect(frames.last['total'], 201);
   });

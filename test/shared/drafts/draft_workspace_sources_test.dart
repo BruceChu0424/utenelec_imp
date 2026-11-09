@@ -260,7 +260,7 @@ MasterDataTableView<DraftWorkspaceRow> _table(WidgetTester tester) =>
     tester.widget(find.byType(MasterDataTableView<DraftWorkspaceRow>));
 
 Future<List<T>> _readAllDraftPages<T>(
-  Future<PagedResult<T>> Function(int) fetch,
+  Future<PagedResult<T>> Function(int page, int size) fetch,
 ) async {
   final owner = DraftWorkspaceRead<T>(
     (read) => read.loadPages(fetch, (rows) async => rows),
@@ -752,7 +752,7 @@ void main() {
     'all pages are read even when the first server page is capped',
     () async {
       final requested = <int>[];
-      final rows = await _readAllDraftPages<int>((page) async {
+      final rows = await _readAllDraftPages<int>((page, size) async {
         requested.add(page);
         return PagedResult(
           items: [page],
@@ -772,7 +772,7 @@ void main() {
     () async {
       await expectLater(
         _readAllDraftPages<int>(
-          (page) async => PagedResult(
+          (page, size) async => PagedResult(
             items: page == 1 ? [1] : [],
             page: page,
             size: 1,
@@ -790,7 +790,7 @@ void main() {
     () async {
       await expectLater(
         _readAllDraftPages<int>(
-          (page) async => const PagedResult(
+          (page, size) async => const PagedResult(
             items: [1],
             page: 1,
             size: 1,

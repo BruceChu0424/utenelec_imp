@@ -73,14 +73,30 @@ void main() {
         reason:
             'The visible native action must dispatch before waiting for its read',
       );
-      for (var frame = 0; frame < 150 && api.queries.length < 2; frame++) {
+      for (var frame = 0; frame < 150 && api.queries.length < 4; frame++) {
         await tester.pump(const Duration(milliseconds: 20));
       }
       await tester.pumpAndSettle();
+      // Progressive complete read (2026-11-08): 50, then aligned 50/100/200 —
+      // offsets 0/50/100/200, every payable exactly once.
       expect(api.queries, [
         {
           'page': 1,
-          'size': 200,
+          'size': 50,
+          'supplierId': 'supplier',
+          'currencyId': 'usd',
+          'status': 'OPEN',
+        },
+        {
+          'page': 2,
+          'size': 50,
+          'supplierId': 'supplier',
+          'currencyId': 'usd',
+          'status': 'OPEN',
+        },
+        {
+          'page': 2,
+          'size': 100,
           'supplierId': 'supplier',
           'currencyId': 'usd',
           'status': 'OPEN',
@@ -124,7 +140,7 @@ void main() {
         find.byKey(const ValueKey('supplier-offset-target-incompatible')),
         findsNothing,
       );
-      expect(api.queries, hasLength(2));
+      expect(api.queries, hasLength(4));
       expect(tester.takeException(), isNull);
     },
   );
@@ -142,6 +158,7 @@ class _Api extends ApiClient {
     expectSync(path, '/finance/payables');
     queries.add({...?query});
     final page = query!['page'] as int;
+    final size = query['size'] as int;
     final all = [
       for (var i = 0; i < 205; i++)
         {
@@ -165,11 +182,11 @@ class _Api extends ApiClient {
       },
     ];
     return {
-      'items': all.skip((page - 1) * 200).take(200).toList(),
+      'items': all.skip((page - 1) * size).take(size).toList(),
       'page': page,
-      'size': 200,
+      'size': size,
       'total': all.length,
-      'totalPages': 2,
+      'totalPages': (all.length + size - 1) ~/ size,
       'summary': {'outstandingLocal': '999999.1234'},
     };
   }

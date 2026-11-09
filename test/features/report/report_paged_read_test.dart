@@ -6,8 +6,15 @@ import 'package:uten_imp/components/data_display/paged_list_controller.dart';
 import 'package:uten_imp/features/report/shared/report_metadata_reuse.dart';
 import 'package:uten_imp/features/report/shared/report_paged_read.dart';
 
+// The fake server honors the complete reader's requested (page, size): rows
+// are the exact [(page-1)*size, min(page*size, total)) slice with unique ids,
+// and page/size/total/totalPages are echoed consistently.
+int _querySize(Map<String, dynamic> query) =>
+    (query['size'] as num?)?.toInt() ?? 50;
+
 Map<String, dynamic> _response(
   int page, {
+  int size = 50,
   bool omitted = false,
   String schema = '金额',
   String prefix = 'row',
@@ -17,12 +24,17 @@ Map<String, dynamic> _response(
     {'key': 'amount', 'label': schema, 'type': 'money', 'width': 240},
   ],
   'rows': [
-    for (var index = 0; index < 20 && (page - 1) * 20 + index < total; index++)
+    for (
+      var index = 0;
+      index < size && (page - 1) * size + index < total;
+      index++
+    )
       {'id': '$prefix-$page-$index', 'amount': '999999999999.000001'},
   ],
   'page': page,
+  'size': size,
   'total': omitted ? -1 : total,
-  'totalPages': omitted ? -1 : (total / 20).ceil(),
+  'totalPages': omitted ? -1 : (total / size).ceil(),
   'readScopeVersion': 'scope-v1',
   'statisticsGeneratedAt': omitted ? null : '2026-10-26T00:00:00Z',
   'facets': omitted || total == 0
@@ -62,7 +74,7 @@ void main() {
         readerEpoch: 1,
         isCurrent: () => true,
         fetch: (query) async => {
-          ..._response(query['page'] as int),
+          ..._response(query['page'] as int, size: _querySize(query)),
           'statisticsGeneratedAt': stamp,
         },
       );
@@ -95,21 +107,23 @@ void main() {
           calls.add(page);
           return _response(
             page,
+            size: _querySize(query),
             total: 60,
             omitted: query['includeCount'] == false,
           );
         },
       );
+      // 60 rows read as the progressive ladder (1,50) then (2,50).
       final first = begin(false);
       expect(reader.accept(await first.read(1)), isTrue);
-      expect(calls, [1, 2, 3]);
+      expect(calls, [1, 2]);
       final reuse = begin(true);
       expect(identical(first, reuse), isTrue);
       expect((await reuse.read(99)).items.length, 60);
       await Future<void>.delayed(Duration.zero);
-      expect(calls, [1, 2, 3]);
+      expect(calls, [1, 2]);
       expect(reader.accept(await begin(false).read(1)), isTrue);
-      expect(calls, [1, 2, 3, 1, 2, 3]);
+      expect(calls, [1, 2, 1, 2]);
     },
   );
   test(
@@ -126,8 +140,14 @@ void main() {
         isCurrent: () => true,
         fetch: (query) async {
           final page = query['page'] as int;
+          // 60 rows: the scope changes inside the second internal batch.
           return {
-            ..._response(page, omitted: query['includeCount'] == false),
+            ..._response(
+              page,
+              size: _querySize(query),
+              total: 60,
+              omitted: query['includeCount'] == false,
+            ),
             if (changed && page == 2) 'readScopeVersion': 'changed-scope-v2',
           };
         },
@@ -165,6 +185,8 @@ void main() {
           queries.add(query);
           return _response(
             query['page'] as int,
+            size: _querySize(query),
+            total: 60,
             omitted: query['includeCount'] == false,
           );
         },
@@ -172,9 +194,9 @@ void main() {
       final first = await begin(false).read(1) as ReportPageSnapshot;
       expect(reader.accept(first), isTrue);
       final reused = await begin(true).read(2) as ReportPageSnapshot;
-      expect(reused.snapshot.rows.length, 40);
+      expect(reused.snapshot.rows.length, 60);
       expect(reused.snapshot.rows.first['id'], 'row-1-0');
-      expect(reused.snapshot.rows.last['id'], 'row-2-19');
+      expect(reused.snapshot.rows.last['id'], 'row-2-9');
       expect(reused.snapshot.rows, same(reused.items));
       expect(reused.snapshot.columns.single.label, '金额');
       expect(reused.snapshot.facets['amount']!.single.label, '服务端来源');
@@ -204,6 +226,8 @@ void main() {
           final page = query['page'] as int;
           return _response(
             page,
+            size: _querySize(query),
+            total: 60,
             schema: stable || page == 2 ? '新金额' : '旧金额',
             omitted: query['includeCount'] == false,
           );
@@ -214,7 +238,7 @@ void main() {
       final recovered = await begin().read(1) as ReportPageSnapshot;
       expect(reader.accept(recovered), isTrue);
       expect(recovered.snapshot.columns.single.label, '新金额');
-      expect(recovered.snapshot.rows.length, 40);
+      expect(recovered.snapshot.rows.length, 60);
     },
   );
   test(
@@ -238,18 +262,19 @@ void main() {
             started.complete();
             return held.future;
           }
-          return _response(page);
+          return _response(page, size: _querySize(query), total: 60);
         },
       );
       final first = session.read(1);
       await started.future;
       final adopt = session.read(2);
       expect(secondReads, 1);
-      held.complete(_response(2, omitted: true));
+      // The held second batch answers the requested (2, 50) rows-only read.
+      held.complete(_response(2, total: 60, omitted: true));
       final a = await first as ReportPageSnapshot;
       final b = await adopt as ReportPageSnapshot;
       expect(reader.accept(a), isTrue);
-      expect(b.snapshot.rows.length, 40);
+      expect(b.snapshot.rows.length, 60);
       expect(b.snapshot.meta['pageProof'], 1);
       expect(b.snapshot.totals, isNotEmpty);
       expect(secondReads, 1);
@@ -277,6 +302,8 @@ void main() {
           }
           return _response(
             page,
+            size: _querySize(query),
+            total: 60,
             prefix: 'reader-$epoch',
             omitted: query['includeCount'] == false,
           );
@@ -294,13 +321,16 @@ void main() {
       final fresh = begin(3);
       final current = await fresh.read(1) as ReportPageSnapshot;
       reader.accept(current);
-      held.complete(_response(2, prefix: 'private-old', omitted: true));
+      // The held second batch would have answered a (2, 50) rows-only read.
+      held.complete(
+        _response(2, total: 60, prefix: 'private-old', omitted: true),
+      );
       await rejected;
       expect(current.snapshot.rows.first['id'], 'reader-3-1-0');
       expect(reader.accept(oldSnapshot), isFalse);
       final afterWrite = begin(3);
       expect(identical(fresh, afterWrite), isFalse);
-      expect((await afterWrite.read(1)).items.length, 40);
+      expect((await afterWrite.read(1)).items.length, 60);
     },
   );
   test(
@@ -318,6 +348,7 @@ void main() {
         isCurrent: () => true,
         fetch: (query) async => _response(
           query['page'] as int,
+          size: _querySize(query),
           total: total,
           omitted: query['includeCount'] == false,
         ),

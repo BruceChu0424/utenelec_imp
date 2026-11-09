@@ -57,6 +57,7 @@ class _History implements GoodsQuoteHistoryRepository {
   Future<PagedResult<GoodsQuoteHistoryRow>> list(
     String goodsId, {
     int page = 1,
+    int size = 20,
     Map<String, String?> columns = const {},
     String? sort,
     bool ascending = true,

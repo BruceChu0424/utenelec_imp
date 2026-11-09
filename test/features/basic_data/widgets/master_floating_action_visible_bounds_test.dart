@@ -13,6 +13,8 @@ import 'package:uten_imp/features/basic_data/widgets/master_entity_detail_pane.d
 import 'package:uten_imp/features/basic_data/widgets/master_inline_edit.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
+import 'package:uten_imp/shared/paging/complete_paged_snapshot.dart'
+    show CompleteReadBatchPlan;
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
@@ -20,6 +22,20 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 class _Session extends SessionNotifier {
   @override
   SessionState build() => const SessionState();
+}
+
+/// The (page, size) requests of one complete read under the shared
+/// progressive plan: 50 → 50 → 100 → 200 …, each batch at its exact offset.
+List<(int, int)> _progressiveBatches(int total) {
+  const plan = CompleteReadBatchPlan.progressive;
+  final batches = <(int, int)>[];
+  var offset = 0;
+  do {
+    final size = plan.sizeAt(offset);
+    batches.add((offset ~/ size + 1, size));
+    offset += size;
+  } while (offset < total);
+  return batches;
 }
 
 void main() {
@@ -114,6 +130,9 @@ void main() {
           final preferences = await SharedPreferences.getInstance();
           var creates = 0;
           var reads = 0;
+          const total = 9691;
+          final batches = _progressiveBatches(total);
+          final requests = <(int, int)>[];
           final config = MasterEntityPaneConfig<String, String>(
             noun: '货品',
             icon: Icons.inventory_2_outlined,
@@ -145,21 +164,20 @@ void main() {
             ),
             loadPage: (query) async {
               reads++;
-              expect(query.size, 100);
               final size = query.size!;
+              requests.add((query.page, size));
+              // Each batch is the exact slice at its offset; every row keeps
+              // one unique identity whatever batch carries it.
+              final offset = (query.page - 1) * size;
               return PagedResult<String>(
                 items: [
-                  for (
-                    var i = 0;
-                    i < size && (query.page - 1) * size + i < 9691;
-                    i++
-                  )
-                    '货品${query.page}-$i',
+                  for (var i = offset; i < offset + size && i < total; i++)
+                    '货品${i + 1}',
                 ],
                 page: query.page,
                 size: size,
-                total: 9691,
-                totalPages: (9691 + size - 1) ~/ size,
+                total: total,
+                totalPages: (total + size - 1) ~/ size,
               );
             },
             loadFacets: (_) async =>
@@ -208,11 +226,12 @@ void main() {
           await tester.pumpAndSettle();
           final tableFinder = find.byType(MasterDataTableView<String>);
           MasterDataTableView<String> table() => tester.widget(tableFinder);
-          expect(reads, 97);
-          expect(table().items.length, 9691);
-          expect(table().items.last, '货品97-90');
+          expect(requests, batches);
+          expect(reads, batches.length);
+          expect(table().items.length, total);
+          expect(table().items.last, '货品$total');
           if (selected) {
-            table().onSelectedIdsChanged!({'货品1-0'});
+            table().onSelectedIdsChanged!({'货品1'});
             await tester.pumpAndSettle();
           }
           final add = find.byKey(const ValueKey('master-add-entity'));
@@ -254,7 +273,7 @@ void main() {
           visibleActions('expanded again');
           expect(
             reads,
-            97,
+            batches.length,
             reason:
                 'Scrolling, fullscreen and local selection do not read again',
           );

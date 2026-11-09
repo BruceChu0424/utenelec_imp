@@ -309,7 +309,9 @@ HrReconcilePlanSummaryPage _recordsPage(
       },
   ],
   'page': page,
-  'size': 50,
+  // This server keeps its own one-row page size whatever the reader asks;
+  // the shared reader detects it and completes the record list on it.
+  'size': 1,
   'total': ids.length * totalPages,
   'totalPages': totalPages,
 });

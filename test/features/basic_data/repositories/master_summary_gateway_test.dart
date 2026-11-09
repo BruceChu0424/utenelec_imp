@@ -9,6 +9,29 @@ import 'package:uten_imp/features/basic_data/repositories/mould_repository.dart'
 import 'package:uten_imp/features/basic_data/repositories/goods_repository.dart';
 import 'package:uten_imp/features/basic_data/repositories/master_summary_read.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
+import 'package:uten_imp/shared/paging/complete_paged_snapshot.dart'
+    show CompleteReadBatchPlan;
+import 'package:uten_imp/shared/paging/complete_summary_stream.dart'
+    show kProgressiveSummaryStreamSize;
+
+const _total = 601;
+
+/// The server frames one complete-summary stream with the plan its request
+/// size selects: 100 keeps fixed frames, [kProgressiveSummaryStreamSize] the
+/// 50 → 50 → 100 → 200 … ladder. Each frame is the exact page at its offset.
+List<({int offset, int size})> _summaryFrames(int requestSize) {
+  final plan = requestSize == kProgressiveSummaryStreamSize
+      ? CompleteReadBatchPlan.progressive
+      : const CompleteReadBatchPlan.fixed(100);
+  final frames = <({int offset, int size})>[];
+  var offset = 0;
+  do {
+    final size = plan.sizeAt(offset);
+    frames.add((offset: offset, size: size));
+    offset += size;
+  } while (offset < _total);
+  return frames;
+}
 
 class _Api extends ApiClient {
   _Api() : super(Dio());
@@ -30,13 +53,13 @@ class _Api extends ApiClient {
       peak = active;
     }
     Stream<Map<String, dynamic>> frames() async* {
-      for (var page = 1; page <= 7; page++) {
+      for (final frame in _summaryFrames(size)) {
         internalPages++;
-        yield {'type': 'page', 'value': summaryPage(page, size)};
+        yield {'type': 'page', 'value': summaryPage(frame.offset, frame.size)};
       }
       yield {
         'type': 'complete',
-        'total': 601,
+        'total': _total,
         'readScopeVersion': 'a' * 64,
         'readSnapshotRevision': 'b' * 64,
         'readDataVersion': 'c' * 64,
@@ -50,9 +73,9 @@ class _Api extends ApiClient {
     }
   }
 
-  Map<String, dynamic> summaryPage(int page, int size) => <String, dynamic>{
+  Map<String, dynamic> summaryPage(int offset, int size) => <String, dynamic>{
     'items': <Map<String, dynamic>>[
-      for (var i = (page - 1) * size; i < page * size && i < 601; i++)
+      for (var i = offset; i < offset + size && i < _total; i++)
         <String, dynamic>{
           'id': 'record-$i',
           'code': 'CODE-$i',
@@ -64,10 +87,10 @@ class _Api extends ApiClient {
           'stockQtyDisplayText': '90071992547409.1234567890123456789',
         },
     ],
-    'page': page,
+    'page': offset ~/ size + 1,
     'size': size,
-    'total': 601,
-    'totalPages': 7,
+    'total': _total,
+    'totalPages': (_total + size - 1) ~/ size,
     'readScopeVersion': 'a' * 64,
     'readSnapshotRevision': 'b' * 64,
     'readDataVersion': 'c' * 64,
@@ -81,12 +104,21 @@ Future<void> _check<T>(
   String Function(T) idOf,
 ) async {
   final result = await pending;
-  expect(result.items, hasLength(601));
+  expect(result.items, hasLength(_total));
   expect(idOf(result.items.last), 'record-600');
   expect(api.calls, hasLength(1));
-  expect(api.internalPages, 7);
+  // One HTTP request; the server streams the progressive ladder internally.
   expect(
-    api.calls.every((c) => c.path == path && c.body['size'] == 100),
+    api.internalPages,
+    _summaryFrames(kProgressiveSummaryStreamSize).length,
+  );
+  expect(
+    api.calls.every(
+      (c) =>
+          c.path == path &&
+          c.body['page'] == 1 &&
+          c.body['size'] == kProgressiveSummaryStreamSize,
+    ),
     isTrue,
   );
   expect(api.calls.first.revision, isNull);

@@ -43,7 +43,16 @@ class _Api extends ApiClient {
           query['state'] == 'pending')
         (query['page'] as num?)?.toInt() ?? 1,
   ];
+  List<int> get sizes => [
+    for (final query in readQueries)
+      if (endpoint != ApiEndpoints.salesQuoteFinanceReviewList ||
+          query['state'] == 'pending')
+        (query['size'] as num?)?.toInt() ?? 20,
+  ];
   int pages = 3;
+  // 固定数据集：行号是全局位置，同一行在任何页大小下 id 一致；
+  // total 恒定不随请求 size 漂移（逐批追加读取按此校验快照稳定）。
+  int get totalRows => pages * 100;
   @override
   Future<Map<String, dynamic>> get(
     String path, {
@@ -57,18 +66,19 @@ class _Api extends ApiClient {
     } else {
       countQueries.add({...?query});
     }
+    final last = size == 1 ? 0 : (page * size).clamp(0, totalRows);
     return {
       'page': page,
       'size': size,
-      'total': size == 1 ? 0 : size * pages,
-      'totalPages': size == 1 ? 1 : pages,
+      'total': size == 1 ? 0 : totalRows,
+      'totalPages': size == 1 ? 1 : (totalRows / size).ceil(),
       'summary': {'outstandingLocal': '1.000001', 'pendingLossCases': 1},
       'items': size == 1
           ? <Map<String, dynamic>>[]
           : [
               for (
                 var index = (page - 1) * size + 1;
-                index <= page * size;
+                index <= last;
                 index++
               )
                 {
@@ -226,7 +236,10 @@ void main() {
         );
         MasterDataTableView<dynamic> table() => tester.widget(finder.first);
         expect(table().error, isNull);
-        expect(api.reads, [1, 2, 3], reason: api.readQueries.toString());
+        // 共享逐批追加读取：首批 50，续批按偏移对齐 50 → 100 → 200，
+        // 每批页大小都透传到端点；同一份 300 行快照不重读、不漏读。
+        expect(api.reads, _initialPages, reason: api.readQueries.toString());
+        expect(api.sizes, _initialSizes, reason: api.readQueries.toString());
         if (scenario.endpoint == ApiEndpoints.salesQuoteFinanceReviewList) {
           final counts = api.countQueries
               .where((query) => query['state'] != 'pending')
@@ -240,7 +253,7 @@ void main() {
             isTrue,
           );
         }
-        final batchSize = api.readQueries.first['size'] as int? ?? 20;
+        final initialRows = api.totalRows;
         String lastId(int number) => switch (scenario.endpoint) {
           // The quote endpoint's public wire identity is `id`, which its DTO
           // exposes as quoteId; retain that source instead of the unused alias.
@@ -249,35 +262,35 @@ void main() {
           ApiEndpoints.financeProcurementApprovalTasks => 'case-$number',
           _ => 'row-$number',
         };
-        expect(table().items, hasLength(batchSize * 3));
-        expect(table().items.map(_idOf).toSet(), hasLength(batchSize * 3));
-        expect(_idOf(table().items.last), lastId(batchSize * 3));
+        expect(table().items, hasLength(initialRows));
+        expect(table().items.map(_idOf).toSet(), hasLength(initialRows));
+        expect(_idOf(table().items.last), lastId(initialRows));
         expect(table().currentPage, 1);
         expect(table().totalPages, 1);
         expect(table().expensiveRowMounts, isFalse);
         await tester.drag(finder.first, const Offset(0, -900));
         await tester.pumpAndSettle();
-        expect(api.reads, [1, 2, 3]);
+        expect(api.reads, _initialPages);
         await tester.drag(finder.first, const Offset(0, 900));
         await tester.pumpAndSettle();
         expect(table().currentPage, 1);
-        expect(api.reads, [1, 2, 3]);
+        expect(api.reads, _initialPages);
         expect(
           find.byKey(const ValueKey('master-table-page-next')),
           findsNothing,
         );
-        // A new data revision is read completely, with the original bounded
-        // batch size. Its full tail is already local before any scrolling.
+        // A new data revision is read completely on the same progressive
+        // plan. Its full tail is already local before any scrolling.
         api.pages = 80;
+        final largerRows = api.totalRows;
         final beforeLargerRead = api.reads.length;
         table().onRetry!();
         await tester.pumpAndSettle();
-        expect(api.reads.skip(beforeLargerRead), [
-          for (var p = 1; p <= 80; p++) p,
-        ]);
-        expect(table().items, hasLength(batchSize * 80));
-        expect(table().items.map(_idOf).toSet(), hasLength(batchSize * 80));
-        expect(_idOf(table().items.last), lastId(batchSize * 80));
+        expect(api.reads.skip(beforeLargerRead), _largerReadPages);
+        expect(api.sizes.skip(beforeLargerRead), _largerReadSizes);
+        expect(table().items, hasLength(largerRows));
+        expect(table().items.map(_idOf).toSet(), hasLength(largerRows));
+        expect(_idOf(table().items.last), lastId(largerRows));
         final beforeScroll = api.reads.length;
         await tester.drag(finder.first, const Offset(0, -1800));
         await tester.pumpAndSettle();
@@ -287,10 +300,11 @@ void main() {
         await tester.pumpAndSettle();
         expect(
           api.reads.skip(beforeRefresh),
-          [for (var page = 1; page <= 80; page++) page],
+          _largerReadPages,
           reason: 'explicit refresh revalidates the whole original scope',
         );
-        expect(table().items, hasLength(batchSize * 80));
+        expect(api.sizes.skip(beforeRefresh), _largerReadSizes);
+        expect(table().items, hasLength(largerRows));
         expect(table().currentPage, 1);
         expect(table().totalPages, 1);
         expect(tester.takeException(), isNull);
@@ -298,6 +312,26 @@ void main() {
     );
   }
 }
+
+/// 共享逐批追加读取计划（首批 50，续批按偏移对齐 50 → 100 → 200，之后每批
+/// 200）。300 行：(1,50)(2,50)(2,100)(2,200)。
+const _initialPages = [1, 2, 2, 2];
+const _initialSizes = [50, 50, 100, 200];
+
+/// 8000 行：前四批同上，再以 200 读第 3..40 页。
+final _largerReadPages = [
+  1,
+  2,
+  2,
+  2,
+  for (var page = 3; page <= 40; page++) page,
+];
+final _largerReadSizes = [
+  50,
+  50,
+  100,
+  for (var batch = 0; batch < 39; batch++) 200,
+];
 
 String _idOf(Object? row) => switch (row) {
   ArApLedgerItem(:final id) => id,

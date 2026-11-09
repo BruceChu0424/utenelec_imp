@@ -14,7 +14,7 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 import '../../helpers/badge_summary_fixture.dart';
 
 void main() {
-  testWidgets('研发201条摘要首续同100批，完成后本地列表无额外读取', (tester) async {
+  testWidgets('研发201条摘要按阶梯批次读完，完成后本地列表无额外读取', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1500, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     SharedPreferences.setMockInitialValues({});
@@ -43,10 +43,11 @@ void main() {
     );
     expect(table.items, hasLength(201));
     expect(table.items.last.id, 'rd-200');
-    expect(api.queries.map((query) => query['page']), [1, 2, 3]);
-    expect(api.queries.every((query) => query['size'] == 100), isTrue);
+    // 2026-11-08 阶梯完整读取：201 行 = 50 → 50 → 100 → 200（末批 1 行）。
+    expect(api.queries.map((query) => query['page']), [1, 2, 2, 2]);
+    expect(api.queries.map((query) => query['size']), [50, 50, 100, 200]);
     await tester.pump(const Duration(seconds: 1));
-    expect(api.queries, hasLength(3));
+    expect(api.queries, hasLength(4));
     expect(tester.takeException(), isNull);
   });
   testWidgets('研发完整类别列表连续读取，筛选不裁剪为假空', (tester) async {
@@ -78,7 +79,8 @@ void main() {
         tester.widget(find.byType(MasterDataTableView<RdTaskRow>));
     expect(table().items.map((row) => row.category), ['BOM', 'SAMPLE']);
     expect(table().totalPages, 1);
-    expect(api.queries.every((query) => query['size'] == 100), isTrue);
+    // 默认 2 行：阶梯首批 (1,50) 一次读完。
+    expect(api.queries.map((query) => query['size']), [50]);
     final categoryCodes = {'BOM', 'DESIGN', 'SAMPLE', 'TRIAL', 'ECN', 'OTHER'};
     expect(
       table().facets['category']!.map((bucket) => bucket.value).toSet(),

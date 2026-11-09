@@ -27,7 +27,25 @@ import 'package:uten_imp/features/basic_data/repositories/master_status_reposito
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_entity_detail_pane.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
+import 'package:uten_imp/shared/paging/complete_paged_snapshot.dart'
+    show CompleteReadBatchPlan;
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+
+/// The (page, size) requests of one complete read under the shared
+/// progressive plan: 50 → 50 → 100 → 200 …, each batch at its exact offset.
+List<(int, int)> _progressiveBatches(int total) {
+  const plan = CompleteReadBatchPlan.progressive;
+  final batches = <(int, int)>[];
+  var offset = 0;
+  do {
+    final size = plan.sizeAt(offset);
+    batches.add((offset ~/ size + 1, size));
+    offset += size;
+  } while (offset < total);
+  return batches;
+}
+
+(int, int) _request(MasterPaneQuery query) => (query.page, query.size!);
 
 class _Row {
   const _Row(this.id, this.name, this.status, this.version);
@@ -287,13 +305,17 @@ void main() {
       final local = pane.reveal('p249');
       await tester.pumpAndSettle();
       expect(await local, isTrue);
-      expect(queries, hasLength(3));
+      // The local reveal reads nothing beyond the first complete read.
+      expect(queries.map(_request), _progressiveBatches(250));
       count = 251;
       final fresh = pane.reveal('p250');
       await tester.pumpAndSettle();
       expect(await fresh, isTrue);
-      expect(queries, hasLength(6));
-      expect(queries.every((query) => query.size == 100), isTrue);
+      // A missing identity rereads the whole current query once.
+      expect(queries.map(_request), [
+        ..._progressiveBatches(250),
+        ..._progressiveBatches(251),
+      ]);
       expect(_table(tester).items, hasLength(251));
       expect(tester.takeException(), isNull);
     },
@@ -334,7 +356,7 @@ void main() {
     });
   }
 
-  testWidgets('主档首轮完整读取250条且所有批次固定100，滚动不重查', (tester) async {
+  testWidgets('主档首轮完整读取250条且批次按50→50→100→200阶梯，滚动不重查', (tester) async {
     final data = [
       for (var i = 0; i < 250; i++) _Row('s$i', '整范围$i', '使用', i + 1),
     ];
@@ -352,8 +374,8 @@ void main() {
     expect(table.items, hasLength(250));
     expect(table.totalPages, 1);
     expect(table.currentPage, 1);
-    expect(reads.map((q) => q.page), [1, 2, 3]);
-    expect(reads.every((q) => q.size == 100), isTrue);
+    // (1,50) (2,50) (2,100) (2,200): every batch at its exact offset.
+    expect(reads.map(_request), _progressiveBatches(250));
     final count = reads.length;
     final viewport = find
         .byWidgetPredicate(
@@ -371,21 +393,22 @@ void main() {
   });
 
   testWidgets('主档显式刷新重新读取整个当前查询并更新原行版本', (tester) async {
-    final reads = <int>[];
+    final reads = <(int, int)>[];
     var revision = 1;
     await _pump(
       tester,
       _FakeBatchRepository(),
       _FakeStatusRepository(),
       loadPage: (query) async {
-        reads.add(query.page);
+        reads.add(_request(query));
         return _fullBatch([
           for (var i = 0; i < 130; i++)
             _Row('r$i', '修订$revision-$i', '使用', revision),
         ], query);
       },
     );
-    expect(reads, [1, 2]);
+    final completeRead = _progressiveBatches(130);
+    expect(reads, completeRead);
     revision = 2;
     final pane =
         tester.state(find.byType(MasterEntityDetailPane<_Row, _Row>))
@@ -393,7 +416,7 @@ void main() {
     final refresh = pane.reload();
     await tester.pumpAndSettle();
     await refresh;
-    expect(reads, [1, 2, 1, 2]);
+    expect(reads, [...completeRead, ...completeRead]);
     expect(_table(tester).items, hasLength(130));
     expect(
       _table(
@@ -408,37 +431,42 @@ void main() {
     final data = [
       for (var i = 0; i < 150; i++) _Row('w$i', '等待$i', '使用', i + 1),
     ];
+    final completeRead = _progressiveBatches(data.length);
     final gate = Completer<PagedResult<_Row>>();
-    final reads = <int>[];
+    MasterPaneQuery? gated;
+    final reads = <(int, int)>[];
     await _pump(
       tester,
       _FakeBatchRepository(),
       _FakeStatusRepository(),
       settle: false,
       loadPage: (query) async {
-        reads.add(query.page);
-        return query.page == 2 ? gate.future : _fullBatch(data, query);
+        reads.add(_request(query));
+        // The second internal batch stays in flight.
+        if (_request(query) == completeRead[1] && gated == null) {
+          gated = query;
+          return gate.future;
+        }
+        return _fullBatch(data, query);
       },
     );
     for (var frame = 0; reads.length < 2 && frame < 20; frame++) {
       await tester.pump(const Duration(milliseconds: 1));
     }
-    expect(reads, [1, 2]);
+    expect(reads, completeRead.take(2));
     // 2026-11-07 P4.1：首批已校验即先发布 provisional 行；加载状态未清除，
     // 依赖总计的操作（导出/打印/批量/写入）仍被禁用，首批不是完整列表。
-    expect(_table(tester).items, hasLength(100));
+    expect(_table(tester).items, hasLength(completeRead.first.$2));
     expect(_table(tester).isLoading, isFalse);
     expect(_table(tester).loadingMore, isTrue);
     expect(_table(tester).totalPages, 1);
-    gate.complete(
-      _fullBatch(data, const MasterPaneQuery(categoryId: 'cat-1', page: 2)),
-    );
+    gate.complete(_fullBatch(data, gated!));
     await tester.pumpAndSettle();
     expect(_table(tester).items, hasLength(150));
     expect(_table(tester).isLoading, isFalse);
     expect(_table(tester).loadingMore, isFalse);
     expect(_table(tester).totalPages, 1);
-    expect(reads, [1, 2]);
+    expect(reads, completeRead);
     expect(tester.takeException(), isNull);
   });
 
@@ -446,30 +474,34 @@ void main() {
     final data = [
       for (var i = 0; i < 150; i++) _Row('f$i', '断流$i', '使用', i + 1),
     ];
+    final completeRead = _progressiveBatches(data.length);
     final fail = Completer<PagedResult<_Row>>();
-    final reads = <int>[];
+    final reads = <(int, int)>[];
     await _pump(
       tester,
       _FakeBatchRepository(),
       _FakeStatusRepository(),
       settle: false,
       loadPage: (query) async {
-        reads.add(query.page);
-        return query.page == 2 ? fail.future : _fullBatch(data, query);
+        reads.add(_request(query));
+        // The second internal batch breaks the stream.
+        return _request(query) == completeRead[1]
+            ? fail.future
+            : _fullBatch(data, query);
       },
     );
     for (var frame = 0; reads.length < 2 && frame < 20; frame++) {
       await tester.pump(const Duration(milliseconds: 1));
     }
     // Provisional first batch visible while the stream is still open...
-    expect(_table(tester).items, hasLength(100));
+    expect(_table(tester).items, hasLength(completeRead.first.$2));
     expect(_table(tester).loadingMore, isTrue);
     fail.completeError(ApiException('PRIMARY_UNAVAILABLE', '读取中断'));
     await tester.pumpAndSettle();
     // ...and retired as a whole when the read fails: no half list stays.
     expect(_table(tester).items, isEmpty);
     expect(_table(tester).loadingMore, isFalse);
-    expect(reads, [1, 2]);
+    expect(reads, completeRead.take(2));
     expect(tester.takeException(), isNull);
   });
 
@@ -477,28 +509,34 @@ void main() {
     final data = [
       for (var i = 0; i < 250; i++) _Row('z$i', '已离开$i', '使用', i + 1),
     ];
+    final completeRead = _progressiveBatches(data.length);
     final gate = Completer<PagedResult<_Row>>();
-    final reads = <int>[];
+    MasterPaneQuery? gated;
+    final reads = <(int, int)>[];
     await _pump(
       tester,
       _FakeBatchRepository(),
       _FakeStatusRepository(),
       settle: false,
       loadPage: (query) async {
-        reads.add(query.page);
-        return query.page == 2 ? gate.future : _fullBatch(data, query);
+        reads.add(_request(query));
+        if (_request(query) == completeRead[1] && gated == null) {
+          gated = query;
+          return gate.future;
+        }
+        return _fullBatch(data, query);
       },
     );
     for (var frame = 0; reads.length < 2 && frame < 20; frame++) {
       await tester.pump(const Duration(milliseconds: 1));
     }
-    expect(reads, [1, 2]);
+    expect(reads, completeRead.take(2));
     await tester.pumpWidget(const SizedBox.shrink());
-    gate.complete(
-      _fullBatch(data, const MasterPaneQuery(categoryId: 'cat-1', page: 2)),
-    );
+    // The exact requested batch arrives late: a retired read neither
+    // publishes it nor continues with the following batches.
+    gate.complete(_fullBatch(data, gated!));
     await tester.pumpAndSettle();
-    expect(reads, [1, 2]);
+    expect(reads, completeRead.take(2));
     expect(tester.takeException(), isNull);
   });
 

@@ -13,7 +13,7 @@ void main() {
       final later = Completer<PagedResult<int>>();
       final requested = <int>[];
       final read = DraftWorkspaceRead<int>(
-        (owner) => owner.loadPages((page) {
+        (owner) => owner.loadPages((page, size) {
           requested.add(page);
           return page == 1
               ? Future.value(
@@ -60,7 +60,7 @@ void main() {
       final error = ApiException('OFFLINE', 'offline');
       final read = DraftWorkspaceRead<int>(
         (owner) => owner.loadPages(
-          (page) async => page == 1
+          (page, size) async => page == 1
               ? const PagedResult(
                   items: [1],
                   page: 1,
@@ -89,7 +89,7 @@ void main() {
       final later = Completer<PagedResult<int>>();
       final predicates = <bool Function()>[];
       final read = DraftWorkspaceRead<int>(
-        (owner) => owner.loadPages((page) {
+        (owner) => owner.loadPages((page, size) {
           predicates.add(PagedReadIntent.currentRead!);
           return page == 1
               ? Future.value(
@@ -130,7 +130,7 @@ void main() {
     () async {
       final requested = <int>[];
       final read = DraftWorkspaceRead<int>(
-        (owner) => owner.loadPages((page) async {
+        (owner) => owner.loadPages((page, size) async {
           requested.add(page);
           return PagedResult(
             items: List.generate(100, (index) => (page - 1) * 100 + index),
@@ -161,7 +161,7 @@ void main() {
       () async {
         final read = DraftWorkspaceRead<int>(
           (owner) => owner.loadPages(
-            (requested) async => PagedResult<int>(
+            (requested, size) async => PagedResult<int>(
               items: requested < page ? [1] : [],
               page: requested,
               size: 1,
@@ -185,7 +185,7 @@ void main() {
     () async {
       final read = DraftWorkspaceRead<int>(
         (owner) => owner.loadPages<int>(
-          (page) async => PagedResult(
+          (page, size) async => PagedResult(
             items: const [1],
             page: page,
             size: 1,

@@ -23,7 +23,23 @@ import 'package:uten_imp/shared/stock_inventory/instant_inventory_repository.dar
 import 'package:uten_imp/shared/stock_inventory/instant_inventory_period_button.dart';
 import 'package:uten_imp/components/feedback/uten_date_range_picker.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/paging/complete_paged_snapshot.dart'
+    show CompleteReadBatchPlan;
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
+
+/// The (page, size) requests of one complete read under the shared
+/// progressive plan: 50 → 50 → 100 → 200 …, each batch at its exact offset.
+List<(int, int)> _progressiveBatches(int total) {
+  const plan = CompleteReadBatchPlan.progressive;
+  final batches = <(int, int)>[];
+  var offset = 0;
+  do {
+    final size = plan.sizeAt(offset);
+    batches.add((offset ~/ size + 1, size));
+    offset += size;
+  } while (offset < total);
+  return batches;
+}
 
 final _permissions = NotifierProvider<_Permissions, Set<String>>(
   _Permissions.new,
@@ -229,7 +245,9 @@ void main() {
           return response;
         };
       await _pump(tester, api: api);
-      expect(_table(tester).items, isEmpty);
+      // The failed read withdraws its provisional first batch as a whole:
+      // no row of the duplicate-tainted snapshot stays on screen.
+      expect(find.text('hardware库存货品'), findsNothing);
       expect(_table(tester).error, '库存加载失败，请重试');
       expect(_table(tester).isLoading, isFalse);
       expect(find.byType(UtenBusyOverlay), findsNothing);
@@ -454,7 +472,8 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.byKey(const Key('opened-ledger')), findsNothing);
         expect(harness.api.queries.map((query) => query['page']), [
-          for (var cycle = 0; cycle < visit + 2; cycle++) ...[1, 2, 3],
+          for (var cycle = 0; cycle < visit + 2; cycle++)
+            for (final (page, _) in _progressiveBatches(65)) page,
         ]);
         expect(_table(tester).currentPage, 1);
       }
@@ -481,10 +500,12 @@ void main() {
     final harness = await _pump(tester, api: api);
     final defaults = recentMonthDateRange();
     expect(harness.api.queries, [
-      for (final page in [1, 2, 3])
+      for (final (page, size) in _progressiveBatches(65))
         {
           'page': page,
-          'size': 30,
+          'size': size,
+          // Totals and facets come from the first batch only.
+          if (page != 1) ...{'includeTotals': false, 'includeFacets': false},
           'warehouseId': 'hardware',
           'includeDefective': true,
           'includeLineSide': true,
@@ -493,6 +514,7 @@ void main() {
           'dateTo': inventoryPeriodDate(defaults.end),
         },
     ]);
+    expect(harness.api.queries.map((query) => query['page']), [1, 2]);
     expect(_table(tester).items, hasLength(65));
     expect(_table(tester).items.first.goodsCode, 'M3-001');
     expect(_table(tester).items.last.goodsId, 'goods-65');
@@ -606,16 +628,21 @@ void main() {
     tester,
   ) async {
     final pending = Completer<Map<String, dynamic>>();
+    // The final batch of the 65-row read stays in flight.
+    final (lastPage, lastSize) = _progressiveBatches(65).last;
     final api = _InventoryApi()
-      ..respond = (query) => query['page'] == 3
+      ..respond = (query) => query['page'] == lastPage
           ? pending.future
           : Future.value(_pagedResult(query));
     final harness = await _pump(tester, api: api, settle: false);
-    for (var attempt = 0; attempt < 30 && api.queries.length < 3; attempt++) {
+    for (var attempt = 0; attempt < 30 && api.queries.length < 2; attempt++) {
       await tester.pump(const Duration(milliseconds: 10));
     }
-    expect(harness.api.queries.map((query) => query['page']), [1, 2, 3]);
-    expect(_table(tester).items, isEmpty);
+    expect(harness.api.queries.map((query) => query['page']), [1, 2]);
+    await tester.pump();
+    // Only the validated first batch is shown provisionally; the in-flight
+    // remainder keeps the complete result unaccepted.
+    expect(_table(tester).items, hasLength(_progressiveBatches(65).first.$2));
     harness.container.read(_permissions.notifier).replace(const {});
     await tester.pumpAndSettle();
     expect(
@@ -626,26 +653,19 @@ void main() {
     pending.complete(
       _pagedResult({
         'warehouseId': 'hardware',
-        'page': 3,
-        'size': 30,
+        'page': lastPage,
+        'size': lastSize,
       }, name: '撤权后的旧响应'),
     );
     await tester.pumpAndSettle();
     expect(find.text('撤权后的旧响应'), findsNothing);
-    expect(harness.api.queries, hasLength(3));
+    expect(harness.api.queries, hasLength(2));
     harness.api.respond = (query) async => _pagedResult(query);
     harness.container.read(_permissions.notifier).replace(const {
       Perm.stockView,
     });
     await tester.pumpAndSettle();
-    expect(harness.api.queries.map((query) => query['page']), [
-      1,
-      2,
-      3,
-      1,
-      2,
-      3,
-    ]);
+    expect(harness.api.queries.map((query) => query['page']), [1, 2, 1, 2]);
     expect(_table(tester).currentPage, 1);
     expect(_table(tester).items, hasLength(65));
     expect(_table(tester).items.first.name, 'hardware库存货品');
@@ -686,10 +706,10 @@ void main() {
       const Offset(0, -4000),
     );
     await tester.pumpAndSettle();
-    expect(harness.api.queries.last['page'], 3);
+    expect(harness.api.queries.last['page'], 2);
     expect(harness.api.queries.last['warehouseId'], 'hardware');
     expect(harness.api.queries.last['warehouseRelatedOnly'], isTrue);
-    expect(harness.api.queries.map((query) => query['page']), [1, 2, 3]);
+    expect(harness.api.queries.map((query) => query['page']), [1, 2]);
     expect(harness.api.queries, hasLength(before));
     expect(_table(tester).items, hasLength(65));
     expect(_table(tester).currentPage, 1);
@@ -897,7 +917,7 @@ void main() {
       );
       expect(harness.api.queries.where((query) => query['page'] == 1).last, {
         'page': 1,
-        'size': 30,
+        'size': _progressiveBatches(2).single.$2,
         'warehouseId': 'hardware',
         'includeDefective': true,
         'includeLineSide': true,
@@ -982,7 +1002,7 @@ void main() {
         };
       final harness = await _pump(tester, api: api);
       expect(_table(tester).items, hasLength(65));
-      expect(harness.api.queries.map((query) => query['page']), [1, 2, 3]);
+      expect(harness.api.queries.map((query) => query['page']), [1, 2]);
       final completedRequests = harness.api.queries.length;
       await tester.drag(
         find.byKey(const Key('warehouse-inventory-table')),
@@ -1011,14 +1031,26 @@ void main() {
   testWidgets(
     'print reads all 2500 rows in supported batches with identical filters and no cost facts',
     (tester) async {
+      const printTotal = 2500;
+      // The table read and the print read share one batch ladder, so the
+      // fixture switches to the 2500-row print dataset before printing. Every
+      // (page, size) request gets its exact slice with one unique identity.
+      var servePrintDataset = false;
       final api = _InventoryApi()
         ..respond = (query) async {
           final response = _result(query);
-          if (query['size'] == 100) {
+          if (servePrintDataset) {
+            final page = query['page'] as int;
+            final size = query['size'] as int;
+            final offset = (page - 1) * size;
             response['items'] = [
-              for (var index = 0; index < 100; index++)
+              for (
+                var index = offset;
+                index < printTotal && index < offset + size;
+                index++
+              )
                 {
-                  'goodsId': 'goods-${query['page']}-$index',
+                  'goodsId': 'goods-${index + 1}',
                   'name': '打印库存',
                   'colorId': 'red',
                   'qty': 1,
@@ -1026,8 +1058,8 @@ void main() {
                   'costMasked': true,
                 },
             ];
-            response['total'] = 2500;
-            response['totalPages'] = 25;
+            response['total'] = printTotal;
+            response['totalPages'] = (printTotal / size).ceil();
           }
           return response;
         };
@@ -1039,34 +1071,35 @@ void main() {
       final print = tester.widget<UtenPrintPreviewButton>(
         find.byKey(const Key('warehouse-inventory-print')),
       );
+      servePrintDataset = true;
+      final printStart = harness.api.queries.length;
       // Complete snapshots yield to timer turns between bounded CPU slices.
       final result = (await tester.runAsync(print.loader))!;
-      expect(result.rows, hasLength(2500));
+      expect(result.rows, hasLength(printTotal));
       final selected = (await tester.runAsync(
         () => selectUtenPrintRows(
           result,
           const UtenTableOutputSelection(
-            ids: {'goods-25-99|red'},
+            ids: {'goods-2500|red'},
             rows: [
-              {'goodsId': 'goods-25-99', 'colorId': 'red'},
+              {'goodsId': 'goods-2500', 'colorId': 'red'},
             ],
           ),
         ),
       ))!;
       expect(selected.rows, hasLength(1));
-      expect(selected.factValues!.single['goodsId'], 'goods-25-99');
+      expect(selected.factValues!.single['goodsId'], 'goods-2500');
       expect(selected.factValues!.single['colorId'], 'red');
       expect(result.columnKeys, isNot(contains('costAmount')));
       expect(
         result.factValues!.every((row) => !row.containsKey('costAmount')),
         isTrue,
       );
-      final batches = harness.api.queries
-          .where((query) => query['size'] == 100)
-          .toList();
-      expect(batches.map((query) => query['page']), [
-        for (var page = 1; page <= 25; page++) page,
-      ]);
+      final batches = harness.api.queries.skip(printStart).toList();
+      expect(
+        batches.map((query) => (query['page'], query['size'])),
+        _progressiveBatches(printTotal),
+      );
       expect(
         batches.every(
           (query) =>

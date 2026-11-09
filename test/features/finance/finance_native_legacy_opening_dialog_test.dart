@@ -97,8 +97,15 @@ void main() {
       );
       expect(table.items, hasLength(251));
       expect((table.items.last['reference'] as Map)['allocationNo'], 251);
-      expect(api.sourceQueries.map((query) => query['page']), [1, 2, 3]);
-      expect(api.sourceQueries.every((query) => query['size'] == 100), isTrue);
+      // Progressive complete read (2026-11-08): 50, then aligned 50/100/200 —
+      // offsets 0/50/100/200, every allocation exactly once.
+      expect(api.sourceQueries.map((query) => query['page']), [1, 2, 2, 2]);
+      expect(api.sourceQueries.map((query) => query['size']), [
+        50,
+        50,
+        100,
+        200,
+      ]);
       final legacy = tester.widget<MasterDataTableView<Map<String, dynamic>>>(
         find.byWidgetPredicate(
           (widget) =>

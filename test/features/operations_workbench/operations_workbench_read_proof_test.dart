@@ -9,6 +9,21 @@ import 'package:uten_imp/shared/paging/scoped_paged_read.dart';
 
 import '../../helpers/workbench_read_fixture.dart';
 
+/// The (page, size) requests of one complete read under the shared
+/// progressive plan: 50 → 50 → 100 → 200 …, each batch at its exact offset.
+/// Page 2 repeats with growing sizes, so batches are keyed by both.
+List<(int, int)> _progressiveBatches(int total) {
+  const plan = CompleteReadBatchPlan.progressive;
+  final batches = <(int, int)>[];
+  var offset = 0;
+  do {
+    final size = plan.sizeAt(offset);
+    batches.add((offset ~/ size + 1, size));
+    offset += size;
+  } while (offset < total);
+  return batches;
+}
+
 /// The workbench complete read joins the bounded concurrent pipeline only
 /// through the server's per-batch read proof (V1123 `fulfillment-workbench`).
 void main() {
@@ -78,19 +93,21 @@ void main() {
   test(
     'two continuation batches are in flight and the result keeps server order',
     () async {
-      final pending = <int, Completer<void>>{};
+      // 350 rows: (1,50) (2,50) (2,100) (2,200).
+      final batches = _progressiveBatches(350);
+      final pending = <(int, int), Completer<void>>{};
       var inFlight = 0, peak = 0;
-      final requested = <int>[];
+      final requested = <(int, int)>[];
       final read = loadCompletePagedResult<OperationsWorkbenchTask>(
         isCurrent: () => true,
         maxConcurrentPages: 2,
         idOf: (row) => row.taskId,
         loadPage: (page, size) async {
-          requested.add(page);
+          requested.add((page, size));
           inFlight++;
           peak = peak < inFlight ? inFlight : peak;
-          if (page > 1) {
-            final gate = pending[page] = Completer<void>();
+          if ((page, size) != batches.first) {
+            final gate = pending[(page, size)] = Completer<void>();
             await gate.future;
           }
           inFlight--;
@@ -98,13 +115,14 @@ void main() {
         },
       );
       await pumpEventQueue();
-      expect(requested, [1, 2, 3], reason: 'two tails scheduled at once');
+      expect(requested, batches.take(3), reason: 'two tails scheduled at once');
       // Release out of order; the validator still publishes rows 1..350.
-      pending[3]!.complete();
+      pending[batches[2]]!.complete();
       await pumpEventQueue();
-      pending[2]!.complete();
+      pending[batches[1]]!.complete();
       await pumpEventQueue();
-      pending[4]!.complete();
+      expect(requested, batches);
+      pending[batches[3]]!.complete();
       final result = await read;
       expect(peak, 2);
       expect(result.items, hasLength(350));
@@ -123,19 +141,32 @@ void main() {
   );
 
   test('a batch from a moved data version retires the whole read', () async {
+    // 250 rows: (1,50) (2,50) (2,100) (2,200); the third batch — a concurrent
+    // tail — comes from a moved data version.
+    final moved = _progressiveBatches(250)[2];
+    final requested = <(int, int)>[];
     await expectLater(
       loadCompletePagedResult<OperationsWorkbenchTask>(
         isCurrent: () => true,
         maxConcurrentPages: 2,
         idOf: (row) => row.taskId,
-        loadPage: (page, size) async => parse(
-          pageJson(page, size, 250, revision: page == 3 ? 'r2' : 'r1'),
-        ).toPagedReadSnapshot(),
+        loadPage: (page, size) async {
+          requested.add((page, size));
+          return parse(
+            pageJson(
+              page,
+              size,
+              250,
+              revision: (page, size) == moved ? 'r2' : 'r1',
+            ),
+          ).toPagedReadSnapshot();
+        },
       ),
       throwsA(
         isA<ApiException>().having((e) => e.code, 'code', 'SNAPSHOT_CHANGED'),
       ),
     );
+    expect(requested, contains(moved));
   });
 
   test(

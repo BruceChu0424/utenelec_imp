@@ -25,7 +25,7 @@ class _Source {
         (owner) async {
           final run = ++runs;
           await owner.loadPages<int>(
-            (number) {
+            (number, size) {
               calls.add((run, number));
               return run == 1 && number == 2
                   ? tail.future

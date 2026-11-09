@@ -24,6 +24,8 @@ import 'package:uten_imp/features/subcontract/pages/subcontract_decomposition_pa
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
+import 'package:uten_imp/shared/paging/complete_paged_snapshot.dart'
+    show CompleteReadBatchPlan;
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
@@ -202,10 +204,19 @@ void main() {
           await tester.pump(const Duration(milliseconds: 100));
           await tester.tap(find.text('PLAN-A'));
           await tester.pumpAndSettle();
+          // One complete read of 101 rows in the shared progressive ladder:
+          // (1,50) rows 1-50, (2,50) rows 51-100, (2,100) row 101. The first
+          // batch is held by [first]; every continuation batch is served from
+          // the one held response [rest], all with the same server read proof.
+          final batches = _progressiveBatches(101);
           final first = Completer<OperationsWorkbenchData>();
-          final second = Completer<OperationsWorkbenchData>();
-          fixture.gateway.pageResponses.addAll({1: first, 2: second});
+          final rest = Completer<OperationsWorkbenchData>();
+          fixture.gateway.pageResponses.addAll({
+            batches.first: first,
+            for (final batch in batches.skip(1)) batch: rest,
+          });
           final initialLoads = fixture.gateway.loads;
+          final initialRequests = fixture.gateway.requests.length;
           await tester.tap(find.text('Return to tasks'));
           await tester.pump();
           await tester.pump(const Duration(milliseconds: 400));
@@ -213,28 +224,30 @@ void main() {
           await tester.pump(const Duration(milliseconds: 300));
           await tester.pump();
           expect(fixture.gateway.loads, initialLoads + 1);
-          // One complete read of 101 rows: batch 1 carries rows 1-100, batch 2
-          // the last row; both batches carry the same server read proof.
-          final twoBatches = _twoBatchData(subcontract);
-          first.complete(twoBatches);
+          final complete = _multiBatchData(subcontract);
+          first.complete(complete);
           await tester.pump();
           await tester.pump();
           for (
             var frame = 0;
-            frame < 100 && fixture.gateway.loads < initialLoads + 2;
+            frame < 100 &&
+                fixture.gateway.loads < initialLoads + batches.length;
             frame++
           ) {
             await tester.pump(const Duration(milliseconds: 16));
           }
-          expect(fixture.gateway.loads, initialLoads + 2);
+          // After the validated first batch the remaining batches of the same
+          // snapshot are requested at once (two concurrent continuations).
+          expect(fixture.gateway.loads, initialLoads + batches.length);
+          expect(fixture.gateway.requests.skip(initialRequests), batches);
           expect(find.text('FIRST-NEW'), findsNothing);
           expect(find.text('PLAN-A'), findsOneWidget);
           if (forbidden) {
-            second.completeError(
+            rest.completeError(
               ApiException('FORBIDDEN', 'ACCESS-REMOVED', httpStatus: 403),
             );
           } else {
-            second.complete(twoBatches);
+            rest.complete(complete);
           }
           await tester.pumpAndSettle();
           if (forbidden) {
@@ -425,7 +438,10 @@ class _Gateway implements OperationsWorkbenchGateway {
   final bool subcontract;
   int loads = 0;
   Completer<OperationsWorkbenchData>? next;
-  final pageResponses = <int, Completer<OperationsWorkbenchData>>{};
+  // Held responses keyed by the exact (page, size) batch: the progressive
+  // ladder requests page 2 more than once with different sizes.
+  final pageResponses = <(int, int), Completer<OperationsWorkbenchData>>{};
+  final requests = <(int, int)>[];
 
   @override
   Future<OperationsWorkbenchData> load({
@@ -446,7 +462,8 @@ class _Gateway implements OperationsWorkbenchGateway {
     String? needTo,
   }) async {
     loads++;
-    final pending = next ?? pageResponses.remove(page);
+    requests.add((page, size));
+    final pending = next ?? pageResponses.remove((page, size));
     next = null;
     return pending == null
         ? workbenchPageSlice(_data(subcontract, 'PLAN-A'), page, size)
@@ -454,9 +471,23 @@ class _Gateway implements OperationsWorkbenchGateway {
   }
 }
 
-/// One complete-read result of 101 rows served at the standard batch size 100:
-/// the gateway's slice turns it into batch 1 (rows 1-100) and batch 2 (row 101).
-OperationsWorkbenchData _twoBatchData(bool subcontract) {
+/// The (page, size) requests of one complete read under the shared
+/// progressive plan: 50 → 50 → 100 → 200 …, each batch at its exact offset.
+List<(int, int)> _progressiveBatches(int total) {
+  const plan = CompleteReadBatchPlan.progressive;
+  final batches = <(int, int)>[];
+  var offset = 0;
+  do {
+    final size = plan.sizeAt(offset);
+    batches.add((offset ~/ size + 1, size));
+    offset += size;
+  } while (offset < total);
+  return batches;
+}
+
+/// One complete-read result of 101 rows. The gateway's slice serves it in the
+/// progressive ladder: (1,50) rows 1-50, (2,50) rows 51-100, (2,100) row 101.
+OperationsWorkbenchData _multiBatchData(bool subcontract) {
   final department = subcontract
       ? OperationsWorkbenchDepartment.subcontract
       : OperationsWorkbenchDepartment.purchase;

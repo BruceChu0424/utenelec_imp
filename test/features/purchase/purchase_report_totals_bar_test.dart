@@ -19,6 +19,8 @@ import 'package:uten_imp/components/layout/uten_page_scrollbar_host.dart';
 import 'package:uten_imp/features/purchase/config/purchase_report_config.dart';
 import 'package:uten_imp/features/purchase/pages/purchase_report_table_page.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/paging/complete_paged_snapshot.dart'
+    show CompleteReadBatchPlan;
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 void main() {
@@ -159,8 +161,28 @@ Future<void> _pumpReport(
     hasLength(beforeScrollReads),
     reason: '完整表的末行合计只在本地滚动展示，不发HTTP',
   );
-  expect(api.reportQueries.map((query) => query['page']), <int>[1, 2, 3]);
-  expect(api.reportQueries.map((query) => query['size']), <int>[50, 50, 50]);
+  // One complete read in the shared progressive ladder: (1,50) (2,50) (2,100).
+  final batches = _progressiveBatches(_ReportApi._totalRows);
+  expect(api.reportQueries.map((query) => query['page']), <int>[
+    for (final (page, _) in batches) page,
+  ]);
+  expect(api.reportQueries.map((query) => query['size']), <int>[
+    for (final (_, size) in batches) size,
+  ]);
+}
+
+/// The (page, size) requests of one complete read under the shared
+/// progressive plan: 50 → 50 → 100 → 200 …, each batch at its exact offset.
+List<(int, int)> _progressiveBatches(int total) {
+  const plan = CompleteReadBatchPlan.progressive;
+  final batches = <(int, int)>[];
+  var offset = 0;
+  do {
+    final size = plan.sizeAt(offset);
+    batches.add((offset ~/ size + 1, size));
+    offset += size;
+  } while (offset < total);
+  return batches;
 }
 
 class _ReportApi extends ApiClient {

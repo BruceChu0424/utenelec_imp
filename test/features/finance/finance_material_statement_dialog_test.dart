@@ -78,11 +78,12 @@ void main() {
     expect(table.items, hasLength(251));
     expect(table.items.last['id'], 'history-250');
     expect(table.onPageChange, isNull);
-    expect(api.historyQueries.map((q) => q['page']), [1, 2, 3]);
+    // Progressive complete read (2026-11-08): 50, then aligned 50/100/200 —
+    // offsets 0/50/100/200, every row exactly once.
+    expect(api.historyQueries.map((q) => q['page']), [1, 2, 2, 2]);
+    expect(api.historyQueries.map((q) => q['size']), [50, 50, 100, 200]);
     expect(
-      api.historyQueries.every(
-        (q) => q['contextId'] == _ctx && q['size'] == 100,
-      ),
+      api.historyQueries.every((q) => q['contextId'] == _ctx),
       isTrue,
     );
     final before = api.historyQueries.length;

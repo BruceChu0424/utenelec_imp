@@ -166,7 +166,7 @@ void main() {
       final repo = await _pumpPage(tester);
       expect(repo.slipCalls.first, {'status': 'UNVIEWED', 'page': 1});
       expect(_table(tester).currentPage, 1);
-      expect(repo.slipCalls.map((call) => call['page']), [1, 2, 3]);
+      expect(repo.slipCalls.map((call) => call['page']), [1]);
       expect(_categories(tester).segments.map((segment) => segment.label), [
         '未查看',
         '已查看',
@@ -178,16 +178,17 @@ void main() {
       await _scrollWithoutRead(tester, repo);
       expect(
         repo.slipCalls.where((call) => call['page'] == 2),
-        hasLength(1),
+        hasLength(0),
         reason:
-            'the complete internal second batch is not re-read on scrolling',
+            'the complete first batch already carries the whole list; '
+            'scrolling never re-reads it',
       );
 
       final beforeCategoryChange = repo.slipCalls.length;
       _categories(tester).onSelectionChanged!(PayrollFilter.viewed);
       await tester.pumpAndSettle();
       expect(repo.slipCalls.skip(beforeCategoryChange), [
-        for (final page in [1, 2, 3]) {'status': 'VIEWED', 'page': page},
+        for (final page in [1]) {'status': 'VIEWED', 'page': page},
       ]);
       expect(_table(tester).currentPage, 1);
       expect(_table(tester).items, hasLength(50));
@@ -219,7 +220,7 @@ void main() {
     _table(tester).onFilterChanged('status', 'downloaded');
     await tester.pumpAndSettle();
     expect(repo.slipCalls.skip(beforeFilterChange), [
-      for (final page in [1, 2, 3]) {'status': 'DOWNLOADED', 'page': page},
+      for (final page in [1]) {'status': 'DOWNLOADED', 'page': page},
     ]);
     expect(_table(tester).currentPage, 1);
     expect(_table(tester).items, hasLength(50));
@@ -237,7 +238,7 @@ void main() {
     _table(tester).onFilterChanged('status', null);
     await tester.pumpAndSettle();
     expect(repo.slipCalls.skip(beforeFilterChange), [
-      for (final page in [1, 2, 3]) {'status': 'VIEWED', 'page': page},
+      for (final page in [1]) {'status': 'VIEWED', 'page': page},
     ]);
     expect(_table(tester).currentPage, 1);
     expect(_categories(tester).selected, {PayrollFilter.viewed});
@@ -247,7 +248,7 @@ void main() {
     _table(tester).onFilterChanged('status', 'viewed');
     await tester.pumpAndSettle();
     expect(repo.slipCalls.skip(beforeFilterChange), [
-      for (final page in [1, 2, 3]) {'status': 'VIEWED_ONLY', 'page': page},
+      for (final page in [1]) {'status': 'VIEWED_ONLY', 'page': page},
     ]);
     expect(_table(tester).currentPage, 1);
     expect(_table(tester).items, hasLength(50));
@@ -263,7 +264,7 @@ void main() {
     _categories(tester).onSelectionChanged!(PayrollFilter.published);
     await tester.pumpAndSettle();
     expect(repo.slipCalls.skip(beforeFilterChange), [
-      for (final page in [1, 2, 3]) {'status': 'UNVIEWED', 'page': page},
+      for (final page in [1]) {'status': 'UNVIEWED', 'page': page},
     ]);
     expect(_table(tester).currentPage, 1);
     expect(_table(tester).items, hasLength(50));

@@ -418,7 +418,7 @@ class _ReadApi extends MasterSummaryStreamTestApi {
     final scenario = _cases.singleWhere(
       (item) => path == '/master/${item.kind}/summaries',
     );
-    expect(request['size'], 100);
+    expect(request['size'], kProgressiveSummaryStreamSize);
     return [
       {
         'id': '${scenario.kind}-1',

@@ -23,7 +23,7 @@ void main() {
       final api = _Api();
       await _mount(tester, api);
       expect(api.calls.map((c) => (c['page'], c['size'])), [
-        (1, 100),
+        (1, 50),
         (2, 100),
       ]);
       expect(_table(tester).items, hasLength(125));
@@ -161,7 +161,8 @@ void main() {
       }
       expect(api.calls.map((call) => call['page']), [1, 2]);
       expect(find.text('正在读取申请来源'), findsOneWidget);
-      expect(_table(tester).items, isEmpty);
+      // 第二批未回时表内是已校验的首批增长前缀（不可选），不是空表。
+      expect(_table(tester).items, hasLength(100));
       final oldOwner = api.owners.last;
       epoch.advance();
       await tester.pumpAndSettle();

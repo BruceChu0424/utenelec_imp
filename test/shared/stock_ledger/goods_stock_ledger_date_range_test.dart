@@ -69,7 +69,7 @@ class _LedgerApi extends ApiClient {
 }
 
 void main() {
-  testWidgets('流水201条首续同100批，完整保留最后业务身份', (tester) async {
+  testWidgets('流水201条按50→50→100→200阶梯完整读取，保留最后业务身份', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1400, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     SharedPreferences.setMockInitialValues({});
@@ -97,8 +97,9 @@ void main() {
     );
     expect(table.items, hasLength(201));
     expect(table.items.last.id, 'movement-201');
-    expect(api.queries.map((query) => query['page']), [1, 2, 3]);
-    expect(api.queries.every((query) => query['size'] == 100), isTrue);
+    // 渐进阶梯：首批 50，续批按 offset 对齐 50 → 100 → 200。
+    expect(api.queries.map((query) => query['page']), [1, 2, 2, 2]);
+    expect(api.queries.map((query) => query['size']), [50, 50, 100, 200]);
     expect(table.totalPages, 1);
     expect(tester.takeException(), isNull);
   });

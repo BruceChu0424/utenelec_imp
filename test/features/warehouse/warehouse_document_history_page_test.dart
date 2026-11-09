@@ -81,20 +81,20 @@ void main() {
     expect(
       wastes.queries,
       [
-        for (final page in [1, 2, 3])
-          {
-            'page': page,
-            'size': 20,
-            'keyword': 'same-query',
-            'status': null,
-            'billNo': null,
-            'sourceDocNo': null,
-            'dateFrom': '2026-10-01',
-            'dateTo': '2026-10-12',
-          },
+        {
+          'page': 1,
+          'size': 50,
+          'keyword': 'same-query',
+          'status': null,
+          'billNo': null,
+          'sourceDocNo': null,
+          'dateFrom': '2026-10-01',
+          'dateTo': '2026-10-12',
+        },
       ],
       reason:
-          'Only the new domain complete result is read in bounded equal-size internal batches',
+          'Only the new domain complete result is read; the progressive ladder '
+          'first batch (page 1, size 50) already covers all 41 rows',
     );
     expect(table(type.value).items, hasLength(41));
     expect(table(type.value).items.first.billNo, 'WASTE-1');

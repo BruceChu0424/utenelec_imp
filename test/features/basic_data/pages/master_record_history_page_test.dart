@@ -35,10 +35,11 @@ final _identity = StateProvider<AuthenticatedScope?>(
 );
 
 /// 历史门默认近一个月（2026-11-03 口径）下，无其他筛选时的期望查询。
-Map<String, dynamic> _defaultDatedQuery() {
+/// 完整历史读取按共享阶梯：首批 50 行，续批 200。
+Map<String, dynamic> _defaultDatedQuery({int size = 50}) {
   final range = UtenHistoryTimeValue.lastMonth().range!;
   return {
-    'size': 100,
+    'size': size,
     'dateFrom': ChinaDateTime.formatDate(range.start),
     'dateTo': ChinaDateTime.formatDate(range.end),
   };
@@ -595,7 +596,9 @@ void main() {
       expect(wire.queries.last, containsPair('entityType', 'goods'));
       expect(wire.queries.last, containsPair('recordId', 'object-1'));
       expect(wire.queries.last, containsPair('categoryId', 'cat-original'));
-      expect(wire.queries.last['size'], 100);
+      // The initial complete history read runs the shared ladder: first
+      // batch 50 rows, the cursor continuation 200 rows.
+      expect(wire.queries.map((query) => query['size']), [50, 200]);
       expect(find.byType(UtenFilterToolbar<String>), findsNothing);
       expect(find.byType(UtenSearchBar), findsNothing);
       await _selectHeader(tester, 'action', '删除');
@@ -658,7 +661,7 @@ void main() {
       await _pump(tester, wire);
       expect(wire.queries, [
         _defaultDatedQuery(),
-        {..._defaultDatedQuery(), 'cursor': 'opaque-next-token'},
+        {..._defaultDatedQuery(size: 200), 'cursor': 'opaque-next-token'},
       ]);
       expect(find.text('第一页货品'), findsOneWidget);
       expect(find.text('第二页货品'), findsOneWidget);

@@ -23,7 +23,7 @@ class _Api extends ApiClient {
     required Object body,
     required Future<T> Function(Stream<Map<String, dynamic>>) consume,
   }) async {
-    final plan = CompleteReadBatchPlan.progressive;
+    const plan = CompleteReadBatchPlan.progressive;
     Stream<Map<String, dynamic>> frames() async* {
       var offset = 0;
       do {

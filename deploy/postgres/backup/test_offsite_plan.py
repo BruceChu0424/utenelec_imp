@@ -110,9 +110,15 @@ class ConfigurationTests(unittest.TestCase):
                 PLAN.validate_config(config)
 
     def test_same_machine_ip_or_root_rejected(self):
+        # The receiver may not reuse the source machine or overlap any configured
+        # source root. Derive the repository root from the reviewed example so a
+        # storage relocation (2026-11-10: /srv/uten-backup folded into /data)
+        # keeps exercising the same overlap rule instead of a stale literal.
+        source_repository = configured()["source"]["repositoryRoot"]
+        self.assertTrue(source_repository.startswith("/"))
         for field, value in (("machineId", "1" * 32), ("addresses", ["192.168.10.10"]),
-                             ("repositoryRoot", "/srv/uten-backup/pgbackrest"),
-                             ("repositoryRoot", "/srv/uten-backup/pgbackrest/replica"),
+                             ("repositoryRoot", source_repository),
+                             ("repositoryRoot", source_repository + "/replica"),
                              ("repositoryRoot", "/var/lib")):
             config = configured()
             config["receiver"][field] = value

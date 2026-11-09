@@ -40,7 +40,17 @@ import static org.assertj.core.api.Assertions.*;
 @TestExecutionListeners(listeners=PermissionConfigurationTransferPostgresTest.Cleanup.class,
         mergeMode=TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS)
 class PermissionConfigurationTransferPostgresTest {
-    private static final PostgreSQLContainer DATABASE=new PostgreSQLContainer("postgres:16-alpine");
+    /*
+     * Every commit takes LOCK TABLE ... IN EXCLUSIVE MODE NOWAIT on 19 authorization tables (ADR-187), and the
+     * only concurrent holders these tests may meet are the ones they open on purpose. An autovacuum worker is
+     * not one of them: its VACUUM/ANALYZE holds SHARE UPDATE EXCLUSIVE (heap truncation: ACCESS EXCLUSIVE) on
+     * the grant tables these tests churn, so NOWAIT reported "其他人正在修改账号、组织或权限" at random
+     * (CI run 42530372449: department_permissions in departmentTemplateTracks...; a probe caught the holder as
+     * "autovacuum: VACUUM ANALYZE public.department_permissions"). This private, short-lived fixture database
+     * therefore runs without autovacuum; fsync=off is the container's default command and stays.
+     */
+    private static final PostgreSQLContainer DATABASE=new PostgreSQLContainer("postgres:16-alpine")
+            .withCommand("postgres","-c","fsync=off","-c","autovacuum=off");
     private static final String SECRET=UUID.randomUUID()+"-"+UUID.randomUUID();
     @DynamicPropertySource static void database(DynamicPropertyRegistry p) {
         DATABASE.start();

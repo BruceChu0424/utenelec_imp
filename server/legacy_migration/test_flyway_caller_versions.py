@@ -140,11 +140,23 @@ class StandaloneVersionTests(unittest.TestCase):
         self.assertEqual("", result.stdout)
 
 
+# The read-only mould audit is an operator tool reviewed in the repository
+# checkout. LegacyBootstrapCoordinatorPostgresTest re-runs this module inside a
+# staged /bootstrap tree that only carries the declared bootstrap inputs
+# (migrate.sh, export_legacy.ps1, *.py, *.sql, mapping and crosswalk), so the
+# script is absent there by design. A repository checkout (which has .github)
+# always runs the check, so a missing or renamed script still fails loudly.
+AUDIT_SCRIPT = ROOT / "server/legacy_migration/audit_mould_manufacturers.ps1"
+IN_REPOSITORY_CHECKOUT = (ROOT / ".github").is_dir()
+
+
+@unittest.skipUnless(IN_REPOSITORY_CHECKOUT,
+                     "operator audit script is outside the staged legacy bootstrap input set")
 class ReadOnlyAuditHeadTests(unittest.TestCase):
     def test_mould_audit_reports_the_semantic_head_not_the_last_applied_row(self):
         # A dotted backfill can be the row applied last; the reported migration is the
         # head under the reviewed history ordering, never ORDER BY installed_rank DESC.
-        script = (ROOT / "server/legacy_migration/audit_mould_manufacturers.ps1").read_text(encoding="utf-8")
+        script = AUDIT_SCRIPT.read_text(encoding="utf-8")
         ordering = "ORDER BY string_to_array(version, '.')::numeric[]"
         self.assertIn(ordering, verify_candidate.history_rows_sql())
         self.assertNotIn("installed_rank DESC", script)

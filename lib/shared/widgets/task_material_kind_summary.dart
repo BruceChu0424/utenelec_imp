@@ -19,17 +19,19 @@ enum MaterialKindTone { plain, short, planning, drawable, muted }
 typedef MaterialKindSegment = (String, MaterialKindTone);
 
 /// 逐种分桶的公共分段。[shortDetail] 是「缺」段的括注（如车间的「自制子件 2」）。
+/// [issuedLabel] 是第一段的动词（车间「已领」、委外下单前「备齐」），口径由各业务传入。
 /// 已领一段恒在；其余为 0 的桶不显示。
 List<MaterialKindSegment> materialKindCountSegments({
   required int kindCount,
   required int issuedKindCount,
+  String issuedLabel = '已领',
   int shortKindCount = 0,
   String? shortDetail,
   int planningGapKindCount = 0,
   int drawableKindCount = 0,
   int awaitingWarehouseKindCount = 0,
 }) => [
-  ('已领 $issuedKindCount/$kindCount 种', MaterialKindTone.plain),
+  ('$issuedLabel $issuedKindCount/$kindCount 种', MaterialKindTone.plain),
   if (shortKindCount > 0)
     (
       shortDetail == null

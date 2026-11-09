@@ -93,7 +93,7 @@ class FulfillmentWorkbenchVersionedReadPostgresTest {
         var access = mock(FulfillmentWorkbenchAccessPolicy.class);
         when(access.canAccessWarehouseTasks()).thenReturn(true);
         service = new FulfillmentWorkbenchQueryService(SharedEntityManagerCreator.createSharedEntityManager(factory),
-                access, pages);
+                access, pages, new com.uten.imp.features.subcontract.kit.SubcontractKitService(jdbc, null));
     }
 
     private FulfillmentWorkbenchPage read(String department, String status, int page, boolean metadata) {
@@ -170,7 +170,8 @@ class FulfillmentWorkbenchVersionedReadPostgresTest {
                 Set.of("purchase_order:view"), false, true, false)));
         var drifting = new FulfillmentWorkbenchQueryService(SharedEntityManagerCreator.createSharedEntityManager(factory),
                 mock(FulfillmentWorkbenchAccessPolicy.class),
-                new VersionedSummaryPages(jdbc, authority, current, new ObjectMapper(), manager));
+                new VersionedSummaryPages(jdbc, authority, current, new ObjectMapper(), manager),
+                new com.uten.imp.features.subcontract.kit.SubcontractKitService(jdbc, null));
         assertThatThrownBy(() -> drifting.queryVersioned("PURCHASE", "", "", "", null, null, 1, 100, null,
                 WarehouseTaskScope.ALL, true))
                 .isInstanceOfSatisfying(ApiException.class,

@@ -72,6 +72,19 @@ public class SubcontractKitService {
     public record SelectionLine(UUID applicationItemId, BigDecimal openQty) {
     }
 
+    /**
+     * 一种直属物料在一条申请明细上的备料事实(任务中心「物料」列逐种计数用)。
+     * needed 与「齐套情况」弹窗同一口径 = ceil4(剩余未下单 × 每套用量)。
+     */
+    public record ApplicationKitKindFact(UUID applicationItemId, UUID goodsId, UUID colorId,
+                                         BigDecimal neededQty, BigDecimal exactFreeQty,
+                                         BigDecimal publicFreeQty) {
+    }
+
+    /** 一行(可能归组多条申请明细)按物料种数的备料汇总: 备齐/缺的种数, 每种物料只计一次。 */
+    public record ApplicationKitKindCounts(int kindCount, int readyKindCount, int shortKindCount) {
+    }
+
     /** 一条所选申请明细这次能下的数量: 现有物料够做的套数(按先后共用公共库存)与预填数量。 */
     public record SelectionKit(BigDecimal kitQty, BigDecimal orderableQty) {
     }
@@ -352,6 +365,70 @@ public class SubcontractKitService {
                 (String) head.get("bill_no"), (UUID) head.get("goods_id"), (String) head.get("goods_code"),
                 (String) head.get("goods_name"), (String) head.get("color_name"), (String) head.get("unit_name"),
                 openQty, kitQty, bomMissing ? BigDecimal.ZERO : openQty.min(kitQty), bomMissing, materials);
+    }
+
+    /**
+     * 待分解委外申请明细的逐种备料事实(任务中心「物料」列: 没下单也要看到到齐没有, 2026-11-09
+     * 用户口径「委外要知道物料到齐了才下单, 不然价格是随时变动的」)。一次批量读取剩余未下单与
+     * 逐种直属物料的「现在能用」(专属剩余 + 公共剩余), needed 口径与 {@link #applicationKit} 相同;
+     * 缺 BOM / 剩余 0 的明细不返回行。键 = 申请明细 id。
+     */
+    @Transactional(readOnly = true)
+    public Map<UUID, List<ApplicationKitKindFact>> applicationKitKindFacts(Collection<UUID> applicationItemIds) {
+        if (applicationItemIds == null || applicationItemIds.isEmpty()) return Map.of();
+        String ids = applicationItemIds.stream().filter(Objects::nonNull).distinct().sorted()
+                .map(UUID::toString).collect(java.util.stream.Collectors.joining(","));
+        if (ids.isEmpty()) return Map.of();
+        Map<UUID, List<ApplicationKitKindFact>> result = new LinkedHashMap<>();
+        jdbc.query("""
+                WITH open_quantities AS (
+                    SELECT quantity.application_item_id, quantity.open_qty
+                    FROM fn_subcontract_application_orderable_batch(
+                        CAST(string_to_array(CAST(? AS text), ',') AS uuid[])) quantity
+                )
+                SELECT fact.application_item_id, fact.component_goods_id, fact.color_id,
+                       fact.bom_unit_qty, fact.exact_free_qty, fact.public_free_qty, open.open_qty
+                FROM open_quantities open
+                JOIN fn_subcontract_application_kit_facts_batch(
+                    CAST(string_to_array(CAST(? AS text), ',') AS uuid[]), NULL) fact
+                  ON fact.application_item_id = open.application_item_id
+                WHERE open.open_qty > 0
+                ORDER BY fact.application_item_id, fact.sort_order, fact.edge_id
+                """, rs -> {
+            UUID applicationItemId = rs.getObject(1, UUID.class);
+            BigDecimal needed = ceil4(decimal(rs.getBigDecimal(7)).multiply(decimal(rs.getBigDecimal(4))));
+            result.computeIfAbsent(applicationItemId, ignored -> new ArrayList<>())
+                    .add(new ApplicationKitKindFact(applicationItemId, rs.getObject(2, UUID.class),
+                            rs.getObject(3, UUID.class), needed,
+                            decimal(rs.getBigDecimal(5)), decimal(rs.getBigDecimal(6))));
+        }, ids, ids);
+        return result;
+    }
+
+    /**
+     * 一行(可能归组多条申请明细)的逐种计数: 每种物料需要 = Σ各明细需要, 可用 = Σ各明细专属剩余 +
+     * 公共剩余——同种物料的公共池是共享的, 整行只计一次, 不能按明细重复加; 缺 = 可用不够需要。
+     */
+    public static ApplicationKitKindCounts applicationKitKindCounts(Collection<ApplicationKitKindFact> facts) {
+        if (facts == null || facts.isEmpty()) return new ApplicationKitKindCounts(0, 0, 0);
+        record Kind(UUID goodsId, UUID colorId) {
+        }
+        Map<Kind, BigDecimal> needed = new LinkedHashMap<>();
+        Map<Kind, BigDecimal> exactFree = new LinkedHashMap<>();
+        Map<Kind, BigDecimal> publicFree = new LinkedHashMap<>();
+        for (ApplicationKitKindFact fact : facts) {
+            Kind kind = new Kind(fact.goodsId(), fact.colorId());
+            needed.merge(kind, fact.neededQty(), BigDecimal::add);
+            exactFree.merge(kind, fact.exactFreeQty(), BigDecimal::add);
+            publicFree.merge(kind, fact.publicFreeQty(), BigDecimal::max);
+        }
+        int ready = 0;
+        for (Map.Entry<Kind, BigDecimal> entry : needed.entrySet()) {
+            BigDecimal available = exactFree.getOrDefault(entry.getKey(), BigDecimal.ZERO)
+                    .add(publicFree.getOrDefault(entry.getKey(), BigDecimal.ZERO));
+            if (entry.getValue().subtract(available).max(BigDecimal.ZERO).signum() == 0) ready++;
+        }
+        return new ApplicationKitKindCounts(needed.size(), ready, needed.size() - ready);
     }
 
     /**

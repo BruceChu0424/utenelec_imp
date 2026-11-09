@@ -2666,27 +2666,31 @@ class _SubcontractDecompositionPageState
         // 2026-11-09 用户口径「跟我的车间任务那里显示一样」：委外件下面可能有很多种
         // 直属物料，原「领料数量」一个数说不清，改为按种的物料摘要(与车间同一组件)，
         // 点开同一个任务物料弹窗看库存、多选可领物料去领料，可分批。
+        // 同日修订：申请行没下单也显示直属物料备齐/缺的种数(到齐了再下单)。
         MasterColumnDef(
           key: 'material',
           label: '物料',
           info:
               '领料行按种显示直属物料：已领(发齐给委外商) / 缺(仓库没货，红) / 计划未下单(品红) / '
               '可领(仓库有货，蓝) / 待发(已提交待仓库发出)，每种物料只计一次。点击查看每种物料的'
-              '仓库库存，勾选可领的物料去领料，可分批领。申请行下单后才有领料任务。',
+              '仓库库存，勾选可领的物料去领料，可分批领。申请行显示直属物料备齐/缺的种数'
+              '(备齐 = 现在能用够剩余未下单的全部需要)，下单前就能看到到齐没有；点击看齐套情况。',
           width: 230,
           value: _materialText,
-          measureWidthOf: (context, row, scaler) => switch (row) {
-            SubcontractPendingDrawRow(:final row) =>
-              MaterialKindSummaryCell.measureWidth(
+          measureWidthOf: (context, row, scaler) {
+            final segments = _materialSegments(row);
+            if (segments != null) {
+              return MaterialKindSummaryCell.measureWidth(
                 context,
-                subcontractMaterialKindSegments(row),
+                segments,
                 scaler,
-              ),
-            SubcontractApplicationRow() => UtenTableCellAction.contentWidthOf(
+              );
+            }
+            return UtenTableCellAction.contentWidthOf(
               context,
               _materialText(row),
               textScaler: scaler,
-            ),
+            );
           },
           measureWidthScope: 'subcontract-material-summary',
           cellBuilder: _materialCell,
@@ -2930,20 +2934,46 @@ class _SubcontractDecompositionPageState
     ),
   };
 
-  /// 「物料」列文字：领料行 = 逐种摘要；申请行还没有领料任务，只说明去处(不显示数量)。
-  String _materialText(SubcontractPendingRow row) => switch (row) {
-    SubcontractApplicationRow(:final task) =>
-      task.isDocumentGrouped
-          ? '查看明细'
+  /// 「物料」列分段：领料行 = 发给委外商的逐种摘要；待下单申请行 = 直属物料备齐/缺的
+  /// 种数(2026-11-09 用户口径「没下单也要能看到到齐没有」——委外价格随时变，盯到物料
+  /// 到齐再下单)。其余申请行(缺 BOM / 剩余全部已下单 / 受限)没有分段，用说明文字。
+  List<MaterialKindSegment>? _materialSegments(SubcontractPendingRow row) {
+    switch (row) {
+      case SubcontractPendingDrawRow(:final row):
+        return subcontractMaterialKindSegments(row);
+      case SubcontractApplicationRow(:final task):
+        final kindCount = task.kitKindCount;
+        if (task.isBomMissing ||
+            kindCount == null ||
+            kindCount <= 0 ||
+            task.openQty <= 0) {
+          return null;
+        }
+        return subcontractApplicationKitSegments(
+          kindCount: kindCount,
+          readyKindCount: task.kitReadyKindCount ?? 0,
+          shortKindCount: task.kitShortKindCount ?? 0,
+        );
+    }
+  }
+
+  /// 「物料」列文字：有分段用分段摘要；其余申请行只说明去处(不显示数量)。
+  String _materialText(SubcontractPendingRow row) {
+    final segments = _materialSegments(row);
+    if (segments != null) return materialKindSummaryText(segments);
+    return switch (row) {
+      SubcontractApplicationRow(:final task) => task.isBomMissing
+          ? '缺BOM'
           : task.allocatedQty <= 0
           ? '下单后领料'
           : _drawVisible
           ? '见领料任务'
           : '受限',
-    SubcontractPendingDrawRow(:final row) => materialKindSummaryText(
-      subcontractMaterialKindSegments(row),
-    ),
-  };
+      SubcontractPendingDrawRow(:final row) => materialKindSummaryText(
+        subcontractMaterialKindSegments(row),
+      ),
+    };
+  }
 
   Widget _materialCell(BuildContext context, SubcontractPendingRow row) {
     if (row case SubcontractPendingDrawRow(:final row)) {
@@ -2956,15 +2986,28 @@ class _SubcontractDecompositionPageState
             : () => _openMaterials(row),
       );
     }
+    final task = (row as SubcontractApplicationRow).task;
+    final segments = _materialSegments(row);
+    if (segments != null) {
+      return MaterialKindSummaryCell(
+        key: ValueKey('subcontract-application-material-${task.taskId}'),
+        segments: segments,
+        tooltip: subcontractApplicationKitTooltip(
+          kindCount: task.kitKindCount ?? 0,
+          readyKindCount: task.kitReadyKindCount ?? 0,
+          shortKindCount: task.kitShortKindCount ?? 0,
+        ),
+        // 分段是行级事实照常显示；单据受限/没有明细 id 时不给「齐套情况」入口。
+        onPressed: _canViewKit(task) ? () => _openKit(task) : null,
+      );
+    }
     final text = _materialText(row);
-    if (row is! SubcontractApplicationRow ||
-        row.task.allocatedQty <= 0 ||
-        !_drawVisible) {
+    if (task.allocatedQty <= 0 || !_drawVisible) {
       return _pendingQuantityCell(context, text, false);
     }
     final scope = MasterDataTableCellScope.maybeOf(context);
     return InkWell(
-      onTap: () => _showApplicationDrawTasks(row.task),
+      onTap: () => _showApplicationDrawTasks(task),
       child: Text(
         text,
         maxLines: 1,

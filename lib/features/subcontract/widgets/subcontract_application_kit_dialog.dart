@@ -12,10 +12,39 @@ import '../../../components/feedback/uten_empty.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/formatters/quantity_display.dart';
+import '../../../shared/widgets/task_material_kind_summary.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/subcontract_application_kit.dart';
 import '../repositories/subcontract_kit_repository.dart';
 import 'subcontract_draw_status.dart';
+
+/// 申请行「物料」列分段(2026-11-09 用户口径「没下单也要能看到到齐没有」)：备齐 a/n 种 ·
+/// 缺 k 种(红)。备齐 = 现在能用 ≥ 剩余未下单的全部需要，与「齐套情况」弹窗同一服务端口径。
+List<MaterialKindSegment> subcontractApplicationKitSegments({
+  required int kindCount,
+  required int readyKindCount,
+  required int shortKindCount,
+}) => materialKindCountSegments(
+  kindCount: kindCount,
+  issuedKindCount: readyKindCount,
+  issuedLabel: '备齐',
+  shortKindCount: shortKindCount,
+);
+
+/// 申请行「物料」列悬停：逐桶解释(与车间/领料行物料列同一种说法)。
+String subcontractApplicationKitTooltip({
+  required int kindCount,
+  required int readyKindCount,
+  required int shortKindCount,
+}) {
+  if (kindCount == 0) return '本委外申请没有需要发外的直属物料';
+  return [
+    '共 $kindCount 种直属物料：',
+    '备齐(现在能用够剩余未下单的全部需要) $readyKindCount 种',
+    if (shortKindCount > 0) '还缺 $shortKindCount 种(仓库没货)',
+    '点击看每种物料的库存与占用',
+  ].join('\n');
+}
 
 /// 打开齐套情况弹窗；[applicationItemIds] = 这一行(一张委外申请)的申请明细，
 /// [title] = 委外申请号(弹窗标题用，可空)。

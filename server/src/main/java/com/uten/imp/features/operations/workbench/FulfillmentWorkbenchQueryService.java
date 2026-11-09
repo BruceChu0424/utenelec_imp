@@ -287,18 +287,21 @@ public class FulfillmentWorkbenchQueryService {
     private final EntityManager em;
     private final FulfillmentWorkbenchAccessPolicy accessPolicy;
     private final VersionedSummaryPages versionedPages;
+    private final com.uten.imp.features.subcontract.kit.SubcontractKitService kitService;
 
     @org.springframework.beans.factory.annotation.Autowired
     public FulfillmentWorkbenchQueryService(EntityManager em, FulfillmentWorkbenchAccessPolicy accessPolicy,
-                                            VersionedSummaryPages versionedPages) {
+                                            VersionedSummaryPages versionedPages,
+                                            com.uten.imp.features.subcontract.kit.SubcontractKitService kitService) {
         this.em = em;
         this.accessPolicy = accessPolicy;
         this.versionedPages = versionedPages;
+        this.kitService = kitService;
     }
 
     /** Focused query/export callers without the complete-read owner; {@link #queryVersioned} refuses them. */
     public FulfillmentWorkbenchQueryService(EntityManager em, FulfillmentWorkbenchAccessPolicy accessPolicy) {
-        this(em, accessPolicy, null);
+        this(em, accessPolicy, null, null);
     }
 
     /**
@@ -566,7 +569,10 @@ public class FulfillmentWorkbenchQueryService {
             if (result.isEmpty()) throw new IllegalStateException("Workbench page is missing its aggregate row");
             List<FulfillmentTaskRow> pageItems = result.stream().filter(row -> row[0] != null)
                     .map(FulfillmentWorkbenchQueryService::mapRow).map(this::applyActionAccess).toList();
-            if ("SUBCONTRACT".equals(department)) pageItems = enrichApplicationSources(pageItems);
+            if ("SUBCONTRACT".equals(department)) {
+                pageItems = enrichApplicationSources(pageItems);
+                pageItems = enrichApplicationKitKinds(pageItems);
+            }
             Object[] metadata = result.getFirst();
             int offset = FulfillmentWorkbenchPageRead.METADATA_OFFSET;
             long total = ((Number) metadata[offset]).longValue();
@@ -613,7 +619,10 @@ public class FulfillmentWorkbenchQueryService {
                         .map(FulfillmentWorkbenchQueryService::mapRow)
                         .map(this::applyActionAccess)
                         .toList();
-        if ("SUBCONTRACT".equals(department)) items = enrichApplicationSources(items);
+        if ("SUBCONTRACT".equals(department)) {
+            items = enrichApplicationSources(items);
+            items = enrichApplicationKitKinds(items);
+        }
 
         // Exports need the authorized row projection without table metadata per cursor batch.
         return new FulfillmentWorkbenchPage(items, safePage, safeSize, -1, 0,
@@ -1362,7 +1371,9 @@ public class FulfillmentWorkbenchQueryService {
                 row.length > 46 ? stringArray(row[46]) : List.of(),
                 row.length > 47 && row[47] != null ? decimal(row[47]) : null,
                 row.length > 48 ? (String) row[48] : null,
-                row.length > 49 && row[49] != null ? decimal(row[49]) : null);
+                row.length > 49 && row[49] != null ? decimal(row[49]) : null,
+                // 逐种备料计数不在 SQL 投影里: 分页后由 enrichApplicationKitKinds 批量补。
+                null, null, null);
     }
 
     private static final com.fasterxml.jackson.databind.ObjectMapper LINES_MAPPER =
@@ -1439,6 +1450,56 @@ public class FulfillmentWorkbenchQueryService {
         }
         return items.stream().map(row -> row.withSources(
                 sources.getOrDefault(row.actionDocId(), List.of()))).toList();
+    }
+
+    /**
+     * 待分解委外申请行的直属物料逐种计数(ADR-156 2026-11-09:「物料」列下单前也显示到齐情况)。
+     * 与 {@link #enrichApplicationSources} 同一范式: 分页后对本页申请明细一次批量读取逐种备料事实,
+     * 行级按物料种去重汇总(公共库存整行只计一次)。受限行在 applyActionAccess 已被清空单据身份,
+     * 这里天然跳过; 直接构造(无 kit 服务)的聚焦调用方维持 null 不补。
+     */
+    private List<FulfillmentTaskRow> enrichApplicationKitKinds(List<FulfillmentTaskRow> items) {
+        if (kitService == null) return items;
+        boolean hasTargets = items.stream().anyMatch(row ->
+                "SUBCONTRACT_APPLICATION".equals(row.actionDocType())
+                        && "WAITING_ORDER".equals(row.taskStatus())
+                        && !row.actionItemIds().isEmpty());
+        if (!hasTargets) return items;
+        List<java.util.UUID> itemIds = items.stream()
+                .filter(row -> "SUBCONTRACT_APPLICATION".equals(row.actionDocType())
+                        && "WAITING_ORDER".equals(row.taskStatus()))
+                .flatMap(row -> row.actionItemIds().stream())
+                .map(value -> {
+                    try {
+                        return java.util.UUID.fromString(value);
+                    } catch (IllegalArgumentException invalid) {
+                        return null;
+                    }
+                })
+                .filter(java.util.Objects::nonNull).distinct().toList();
+        Map<java.util.UUID, List<com.uten.imp.features.subcontract.kit.SubcontractKitService.ApplicationKitKindFact>> facts =
+                kitService.applicationKitKindFacts(itemIds);
+        return items.stream().map(row -> {
+            if (!"SUBCONTRACT_APPLICATION".equals(row.actionDocType())
+                    || !"WAITING_ORDER".equals(row.taskStatus())
+                    || row.actionItemIds().isEmpty()) {
+                return row;
+            }
+            List<com.uten.imp.features.subcontract.kit.SubcontractKitService.ApplicationKitKindFact> rowFacts =
+                    row.actionItemIds().stream()
+                            .flatMap(id -> facts.getOrDefault(parseUuid(id), List.of()).stream())
+                            .toList();
+            var counts = com.uten.imp.features.subcontract.kit.SubcontractKitService.applicationKitKindCounts(rowFacts);
+            return row.withKitKinds(counts.kindCount(), counts.readyKindCount(), counts.shortKindCount());
+        }).toList();
+    }
+
+    private static java.util.UUID parseUuid(String value) {
+        try {
+            return value == null ? null : java.util.UUID.fromString(value);
+        } catch (IllegalArgumentException invalid) {
+            return null;
+        }
     }
 
     /** text[] 聚合列（归组行的明细 id 集合）→ 不可变字符串列表；空值回空表。 */
@@ -1522,7 +1583,9 @@ public class FulfillmentWorkbenchQueryService {
                 row.workshopName(), row.workerName(), row.drawBatchNo(), row.lines(),
                 row.rdTaskNo(), restricted ? List.of() : row.bomMissingItemIds(),
                 restricted ? null : row.orderableQty(), restricted ? null : row.supplierName(),
-                restricted ? null : row.differenceQty());
+                restricted ? null : row.differenceQty(),
+                restricted ? null : row.kitKindCount(), restricted ? null : row.kitReadyKindCount(),
+                restricted ? null : row.kitShortKindCount());
     }
 
     private static BigDecimal decimal(Object value) {

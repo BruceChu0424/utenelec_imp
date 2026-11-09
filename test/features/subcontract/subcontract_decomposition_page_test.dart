@@ -2415,8 +2415,18 @@ void main() {
       });
       expect(partial.isKitPartial, isTrue);
       expect(partial.orderableQty, 2.5);
-      // 非申请行服务端下发 null。
-      expect(parse({'orderableQty': null}).orderableQty, isNull);
+      // 2026-11-09 修订：申请行逐种备料计数(备齐/缺的种数)随行下发；非申请行为 null。
+      final counted = parse({
+        'displayStage': 'WAITING_KIT',
+        'orderableQty': 0,
+        'kitKindCount': 3,
+        'kitReadyKindCount': 1,
+        'kitShortKindCount': 2,
+      });
+      expect(counted.kitKindCount, 3);
+      expect(counted.kitReadyKindCount, 1);
+      expect(counted.kitShortKindCount, 2);
+      expect(parse({'kitKindCount': null}).kitKindCount, isNull);
     });
   });
 
@@ -2690,6 +2700,90 @@ void main() {
         );
         expect(find.text('批量领料(0)'), findsOneWidget);
         expect(gateway.queries.last['status'], 'WAITING_ORDER');
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets(
+      'application material column shows ready/short kinds before ordering',
+      (tester) async {
+        // 2026-11-09 用户口径「没下单也要能看到到齐没有」：委外价格随时变，下单前
+        // 盯直属物料到齐情况。申请行「物料」列显示 备齐 a/n 种 · 缺 k 种(与领料行
+        // 同一单元格组件)，点开「齐套情况」看逐种库存与占用；缺 BOM 行没有物料可算。
+        _desktop(tester, const Size(1700, 1000));
+        final draw = FakeSubcontractDrawGateway();
+        final kit = _KitGateway();
+        final gateway = _Gateway(
+          OperationsWorkbenchData(
+            department: OperationsWorkbenchDepartment.subcontract,
+            summary: const OperationsWorkbenchSummary(
+              totalTasks: 2,
+              overdueTasks: 0,
+              openTasks: 2,
+              openQty: 12,
+              statusCounts: {'WAITING_ORDER': 2},
+            ),
+            items: [
+              _task(
+                'task-1',
+                'application-1',
+                'application-item-1',
+                kitKindCount: 3,
+                kitReadyKindCount: 1,
+                kitShortKindCount: 2,
+              ),
+              _task(
+                'task-2',
+                'application-2',
+                'application-item-2',
+                displayStage: 'BOM_MISSING',
+                rdTaskNo: 'RD-9',
+              ),
+            ],
+            page: 1,
+            size: 20,
+            total: 2,
+            totalPages: 1,
+            capabilities: const OperationsWorkbenchCapabilities(),
+          ),
+        );
+        final router = _router(
+          page: SubcontractDecompositionPage(
+            repository: gateway,
+            drawRepository: draw,
+            kitGateway: kit,
+          ),
+          opened: [],
+        );
+        addTearDown(router.dispose);
+        await tester.pumpWidget(
+          _scope(child: MaterialApp.router(routerConfig: router)),
+        );
+        await tester.pumpAndSettle();
+
+        final table = tester.widget<MasterDataTableView<SubcontractPendingRow>>(
+          find.byKey(const Key('subcontract-decomposition-pending-table')),
+        );
+        final material = table.columns.singleWhere(
+          (column) => column.key == 'material',
+        );
+        // 下单前也显示到齐情况：备齐/缺分段，缺红、备齐普通色(与领料行同款)。
+        expect(material.value(table.items[0]), '备齐 1/3 种 · 缺 2 种');
+        expect(find.text('备齐 1/3 种 · 缺 2 种'), findsOneWidget);
+        // 缺 BOM 行没有直属物料可算，不显示种数(状态列另有「通知研发完善」)。
+        expect(material.value(table.items[1]), '缺BOM');
+
+        // 点击申请行物料格 → 同一个「齐套情况」弹窗(ADR-156)，看每种物料的库存与占用。
+        await tester.tap(
+          find.byKey(const Key('subcontract-application-material-task-1')),
+        );
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('subcontract-kit-dialog')), findsOneWidget);
+        expect(kit.calls, ['application-item-1']);
+        expect(find.text('齐套情况 · EA-application-1'), findsOneWidget);
+        await tester.tap(find.byType(UtenCloseButton).last);
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('subcontract-kit-dialog')), findsNothing);
         expect(tester.takeException(), isNull);
       },
     );
@@ -3807,6 +3901,9 @@ OperationsWorkbenchTask _task(
   String? displayStage,
   String? rdTaskNo,
   num? orderableQty,
+  int? kitKindCount,
+  int? kitReadyKindCount,
+  int? kitShortKindCount,
   String? supplierName,
   num allocatedQty = 0,
   String? differenceQtyText,
@@ -3815,6 +3912,9 @@ OperationsWorkbenchTask _task(
   displayStage: displayStage,
   rdTaskNo: rdTaskNo,
   orderableQty: orderableQty,
+  kitKindCount: kitKindCount,
+  kitReadyKindCount: kitReadyKindCount,
+  kitShortKindCount: kitShortKindCount,
   supplierName: supplierName,
   taskId: taskId,
   packageId: 'package-1',

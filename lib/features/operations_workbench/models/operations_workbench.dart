@@ -304,6 +304,9 @@ class OperationsWorkbenchTask {
     this.rdTaskNo,
     this.bomMissingItemIds = const [],
     this.orderableQty,
+    this.kitKindCount,
+    this.kitReadyKindCount,
+    this.kitShortKindCount,
     this.warehouseId,
     this.supplierName,
     this.differenceQtyText,
@@ -368,6 +371,14 @@ class OperationsWorkbenchTask {
   /// 待处理的委外申请行这次能下单的数量(ADR-156)：各明细「剩余未下单」与「现有直属
   /// 物料够做的套数」取小之和，服务端算好；0 = 等物料齐套(锁住)。其它行为 null。
   final num? orderableQty;
+
+  /// 待处理的委外申请行直属物料逐种计数(ADR-156 2026-11-09 修订，「物料」列下单前也
+  /// 显示到齐情况——委外要知道物料到齐了才下单，不然价格是随时变动的)。备齐 = 现在
+  /// 能用 ≥ 剩余未下单的全部需要；缺 = 不够。归组行按物料种去重、公共库存整行只计一次。
+  /// 其它行 / 单据受限为 null；缺 BOM(没有物料可算)为 0。
+  final int? kitKindCount;
+  final int? kitReadyKindCount;
+  final int? kitShortKindCount;
 
   /// 仓库 id（服务端 warehouse_id；仓库 DRAW 段、材料发现等可为 null）。2026-10-10
   /// 起仓库列按它到主档字典解析「主仓 - 子仓」组合名，解析不到回退 [warehouseName]
@@ -499,6 +510,9 @@ class OperationsWorkbenchTask {
               .toList(growable: false) ??
           const [],
       orderableQty: _optionalNumber(json, 'orderableQty'),
+      kitKindCount: _optionalNumber(json, 'kitKindCount')?.toInt(),
+      kitReadyKindCount: _optionalNumber(json, 'kitReadyKindCount')?.toInt(),
+      kitShortKindCount: _optionalNumber(json, 'kitShortKindCount')?.toInt(),
       warehouseId: _optionalString(json, 'warehouseId'),
       supplierName: _optionalString(json, 'supplierName'),
       differenceQtyText: (json['differenceQtyExact'] ?? json['differenceQty'])

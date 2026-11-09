@@ -146,6 +146,10 @@ class SubcontractKitLockEndToEndTest {
         assertEquals("WAITING_KIT", row.displayStage(), "状态列显示等物料齐套");
         assertFalse(row.canCreateOrder(), "锁住的申请不能勾选生成订货单");
         qty("0", row.orderableQty(), "可下单");
+        // 2026-11-09「物料」列逐种计数(没下单也看得到到齐情况): 两种直属物料都缺。
+        assertEquals(2, row.kitKindCount(), "两种直属物料");
+        assertEquals(0, row.kitReadyKindCount(), "一点都没备齐");
+        assertEquals(2, row.kitShortKindCount(), "缺 2 种");
         ApplicationKit kit = applications.kit(application1);
         qty("100", kit.openQty(), "剩余未下单");
         qty("0", kit.kitQty(), "够做套数");
@@ -168,6 +172,10 @@ class SubcontractKitLockEndToEndTest {
         assertEquals("KIT_PARTIAL", row.displayStage());
         assertTrue(row.canCreateOrder(), "够做一部分就解锁");
         qty("40", row.orderableQty(), "可下单 = MIN(100, 40)");
+        // 「物料」列: A 备齐(100 需要全能用)、B 还缺(需要 200 只有 80)——备齐 1/2 种 · 缺 1 种。
+        assertEquals(2, row.kitKindCount());
+        assertEquals(1, row.kitReadyKindCount(), "A 备齐");
+        assertEquals(1, row.kitShortKindCount(), "B 还缺");
         kit = applications.kit(application1);
         qty("40", kit.kitQty(), "够做 40 套");
         qty("100", fact(kit, a).freeQty(), "A 现在能用");

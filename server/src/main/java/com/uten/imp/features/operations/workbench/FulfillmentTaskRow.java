@@ -91,7 +91,16 @@ public record FulfillmentTaskRow(
          * 未定商为 null, 那是业务事实)。其它段恒 null。
          */
         String supplierName,
-        BigDecimal differenceQty) {
+        BigDecimal differenceQty,
+        /**
+         * 待分解委外申请行的直属物料逐种计数(ADR-156 2026-11-09 修订:「物料」列下单前也显示到齐
+         * 情况——委外要知道物料到齐了才下单, 不然价格是随时变动的)。备齐 = 现在能用 ≥ 剩余未下单的
+         * 全部需要, 缺 = 不够; 归组行按物料种去重、公共库存整行只计一次。其它行 / 缺 BOM(没有物料
+         * 可算)时为 0, 单据受限时为 null。
+         */
+        Integer kitKindCount,
+        Integer kitReadyKindCount,
+        Integer kitShortKindCount) {
 
     public String getRequiredQtyExact() {return requiredQty==null?null:requiredQty.toPlainString();}
     public String getAllocatedQtyExact() {return allocatedQty==null?null:allocatedQty.toPlainString();}
@@ -115,7 +124,24 @@ public record FulfillmentTaskRow(
                 workshopName, workerName, drawBatchNo,
                 lines == null ? List.of() : List.copyOf(lines),
                 rdTaskNo, bomMissingItemIds == null ? List.of() : List.copyOf(bomMissingItemIds),
-                orderableQty, supplierName, differenceQty);
+                orderableQty, supplierName, differenceQty, kitKindCount, kitReadyKindCount, kitShortKindCount);
+    }
+
+    /** 附上待分解申请行的直属物料逐种计数(「物料」列下单前的到齐情况, ADR-156 2026-11-09)。 */
+    public FulfillmentTaskRow withKitKinds(
+            Integer kindCount, Integer readyKindCount, Integer shortKindCount) {
+        return new FulfillmentTaskRow(
+                department, taskId, packageId, planId, planNo, warehouseId, warehouseName,
+                goodsId, goodsCode, goodsName, spec, colorId, colorName, unitId, unitName,
+                supplyRoute, requiredQty, allocatedQty, fulfilledQty, supplyPeggedQty, openQty,
+                taskStatus, needDate, expectedDate, exceptionCode, updatedAt,
+                actionDocType, actionDocId, actionDocNo, actionDocItemId, actionDocStatus,
+                actionDocCanView, actionDocCanEdit, actionDocRestricted, goodsCount, openLineCount,
+                actionItemIds, issuedAt, canCreateOrder, displayStage,
+                sources, materialsDefined, productionProductCode, productionProductName, materialRequestNo,
+                workshopName, workerName, drawBatchNo,
+                lines, rdTaskNo, bomMissingItemIds,
+                orderableQty, supplierName, differenceQty, kindCount, readyKindCount, shortKindCount);
     }
 
     /** 按单据归组的行（采购/委外）：一行代表一张申请或订货单的整批明细。 */

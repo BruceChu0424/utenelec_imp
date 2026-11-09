@@ -379,4 +379,29 @@ abstract final class UtenColors {
   static const Color darkTextPrimary = Color(0xFFF1F5F9);
   static const Color darkTextSecondary = Color(0xFFB4C0D3);
   static const Color darkTextTertiary = Color(0xFFA2B0C5);
+
+  // ===== 顶部加载进度通知（整卡背景即进度条，2026-11-09）=====
+  // 柔和薄荷青绿系，与顶部通知卡片同语言（圆角/投影同 UtenTopBannerCard）。
+  // 文案深青灰 + 百分比深青绿，在未填充雾白底与已填充浅薄荷底上都清晰可读。
+  /// 浅色模式：未加载区底（雾白绿）。
+  static const Color loadNoticeTrack = Color(0xFFF4F9F7);
+
+  /// 浅色模式：已加载区底（浅薄荷青绿轻微渐变的起止）。
+  static const Color loadNoticeFillStart = Color(0xFFCEEDE3);
+  static const Color loadNoticeFillEnd = Color(0xFFA9D8C8);
+
+  /// 浅色模式：正文文字（深青灰）与加粗百分比（深青绿）。
+  static const Color loadNoticeText = Color(0xFF25463E);
+  static const Color loadNoticeAccent = Color(0xFF176D59);
+
+  /// 浅色模式：卡片细边框（很淡的灰绿）。
+  static const Color loadNoticeBorder = Color(0xFFDCE9E3);
+
+  /// 深色模式配对：深墨绿轨道 + 苔绿填充 + 浅薄荷字。
+  static const Color loadNoticeTrackDark = Color(0xFF172722);
+  static const Color loadNoticeFillStartDark = Color(0xFF2C594B);
+  static const Color loadNoticeFillEndDark = Color(0xFF3E7A66);
+  static const Color loadNoticeTextDark = Color(0xFFD9EBE4);
+  static const Color loadNoticeAccentDark = Color(0xFF9FDCC6);
+  static const Color loadNoticeBorderDark = Color(0xFF2B4038);
 }

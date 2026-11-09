@@ -29,7 +29,8 @@
 | 阻塞性错误 | 用 `UtenDialog` 确认对话框，**不要**用通知 |
 | 通知中心到达的 important / urgent 事件 | 仍走顶部叠放，分别使用 warning / error 视觉和更长停留时间 |
 | 当前操作必须立即确认、且不是通知到达事件 | 可显式使用 `UtenNotify.alert(...)`；不得由通知到达链默认弹出 |
-| 进度提示（非瞬时反馈） | 使用按钮 loading、`UtenSkeleton` 或主题化进度指示器，**不要**用通知 |
+| 页面表格分批加载的进度展示 | **[TableLoadProgressNotice](TableLoadProgressNotice.md)**（整卡背景即进度条，随完整读取自动出现） |
+| 其他进度提示（非瞬时反馈） | 使用按钮 loading、`UtenSkeleton` 或主题化进度指示器，**不要**用通知 |
 
 > 旧代码里 `ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(...)))`
 > 在 **Phase 1.0+ 已全面迁移** 为 `AppNotification`。新功能禁止再使用底部 SnackBar。

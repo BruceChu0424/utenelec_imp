@@ -1,6 +1,7 @@
 import '../../core/network/api_exception.dart';
 import '../models/paged_result.dart';
 import 'complete_paged_snapshot.dart';
+import 'complete_read_progress.dart';
 import 'paged_query_identity.dart';
 import 'paged_read_intent.dart';
 import 'paged_read_window_binding.dart';
@@ -142,6 +143,9 @@ class VersionedPagedReadSnapshot<RowT, SnapshotT>
 class ScopedPagedRead<T> {
   ScopedPagedRead({this.idOf});
   final Object? Function(T row)? idOf;
+  // Owns the progress tasks this reader starts; retiring the reader cancels
+  // its in-flight progress notice without waiting for the late network reply.
+  final Object _progressOwner = Object();
   Object? _scope;
   bool Function()? _ownerCurrent;
   int _owner = 0;
@@ -158,6 +162,7 @@ class ScopedPagedRead<T> {
   void invalidate() {
     _owner++;
     _request++;
+    CompleteReadProgressReporter.cancelOwner(_progressOwner);
     _session?.invalidate();
     _session = null;
     _scope = null;
@@ -176,6 +181,7 @@ class ScopedPagedRead<T> {
       return;
     }
     _request++;
+    CompleteReadProgressReporter.cancelOwner(_progressOwner);
     _accepted = null;
     _flight = null;
     _session?.beginRead();
@@ -270,6 +276,7 @@ class ScopedPagedRead<T> {
                 idOf: idOf ?? this.idOf,
                 maxConcurrentPages: maxConcurrentPages,
                 plan: plan,
+                progressOwner: _progressOwner,
                 progressiveInterval: progressiveInterval,
                 onProgressiveBatch: sink == null || !sink.claim()
                     ? null

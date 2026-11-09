@@ -26,6 +26,7 @@ import 'core/theme/uten_scroll_behavior.dart';
 import 'core/web_update/app_update_safety_host.dart';
 import 'core/web_update/web_update_branding.dart';
 import 'core/ui/app_notification.dart';
+import 'core/ui/table_load_progress_notice.dart';
 import 'core/ui/connection_recovery_banner.dart';
 import 'features/admin/widgets/impersonation_banner.dart';
 import 'features/auth/services/pending_refresh_revocation_drainer.dart';
@@ -234,8 +235,16 @@ class UtenApp extends ConsumerWidget {
                                       bottom: false,
                                       // 普通通知横幅：瞬时悬浮居中、自动消失。连接横幅
                                       // 不在此处——它占顶下推，见上方 Column。
-                                      child: AppNotificationHost(
-                                        useSafeArea: false,
+                                      // 下方同列挂表格完整读取的加载进度通知，
+                                      // 与普通通知上下堆叠、互不遮挡。
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          AppNotificationHost(
+                                            useSafeArea: false,
+                                          ),
+                                          TableLoadProgressNoticeHost(),
+                                        ],
                                       ),
                                     ),
                                   ),

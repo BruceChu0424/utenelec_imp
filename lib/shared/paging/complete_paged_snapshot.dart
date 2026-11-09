@@ -3,6 +3,7 @@ import 'dart:async';
 import '../../core/network/api_exception.dart';
 import '../../core/performance/ui_work_budget.dart';
 import '../models/paged_result.dart';
+import 'complete_read_progress.dart';
 import 'paged_read_intent.dart';
 import 'paged_query_identity.dart';
 
@@ -92,6 +93,10 @@ Future<PagedResult<T>> loadCompletePagedResult<T>({
   bool unknownPageCountIsHorizon = false,
   bool deduplicateOverlaps = false,
   UiWorkBudget? budget,
+  // The reader identity that owns this complete read (a ScopedPagedRead).
+  // Retiring that owner cancels the progress task at once; direct callers
+  // without an owner still finish through the read's own error path.
+  Object? progressOwner,
 }) async {
   if (batchSize != null && (batchSize < 1 || batchSize > 1000)) {
     throw RangeError.range(batchSize, 1, 1000, 'batchSize');
@@ -136,6 +141,14 @@ Future<PagedResult<T>> loadCompletePagedResult<T>({
           progressiveInterval,
           current,
         );
+  // The top progress notice follows exactly the reads that publish validated
+  // batches to their view (a fresh main-table read); auxiliary complete reads
+  // without a progressive slot never report, and silent rereads of an accepted
+  // result have no batches to publish either.
+  final progress =
+      progressive == null || !CompleteReadProgressReporter.hasListeners
+      ? null
+      : CompleteReadProgressReporter.start(owner: progressOwner);
   final work = budget ?? UiWorkBudget(isCurrent: current);
   final rows = <T>[];
   final identities = <Object, int>{};
@@ -293,6 +306,10 @@ Future<PagedResult<T>> loadCompletePagedResult<T>({
         result.total,
         hasMore || incomplete,
       );
+      progress?.update(
+        loaded: rows.length,
+        total: knownTotal ? result.total : null,
+      );
       if (incomplete) throw _snapshotChanged();
       pipeline?.accepted();
       if (hasMore && progressive != null) {
@@ -322,11 +339,15 @@ Future<PagedResult<T>> loadCompletePagedResult<T>({
           budget: work,
         );
         if (!current()) throw const UiWorkCancelled();
+        progress?.finish(succeeded: true);
         return combined;
       }
     }
     throw const UiWorkCancelled();
   } finally {
+    // finish is idempotent: a succeeded task ignores this, and every failure
+    // or retirement path (UiWorkCancelled included) ends its progress here.
+    progress?.finish(succeeded: false);
     progressive?.close();
     pipeline?.close();
   }

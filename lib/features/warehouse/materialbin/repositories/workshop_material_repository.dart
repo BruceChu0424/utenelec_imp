@@ -312,9 +312,9 @@ class WorkshopMaterialRepository {
         if (keyword != null && keyword.trim().isNotEmpty)
           'keyword': keyword.trim(),
         'page': page < 1 ? 1 : page,
-        // Server page maximum (Pageables.MAX_PAGE_SIZE); complete reads ask
-        // for batches of 50, then aligned up to 200.
-        'size': size.clamp(1, 200),
+        // Server page maximum (Pageables.MAX_PAGE_SIZE) is the shared plan's
+        // largest batch: complete reads ask 50, then aligned up to it.
+        'size': size.clamp(1, CompleteReadBatchPlan.progressive.maxBatchSize),
         ...scope,
       },
     );

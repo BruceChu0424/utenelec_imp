@@ -713,6 +713,15 @@ class _SubcontractDecompositionPageState
       _backgroundRefresh = retainRows && !draft;
       _error = null;
     });
+    // A failed or retired read takes its progressive rows down and restores
+    // what was on screen before (the table keys its read error on _data).
+    var showedProgressive = false;
+    final beforeProgressive = _data;
+    void retireProgressive() {
+      if (showedProgressive) _data = beforeProgressive;
+      showedProgressive = false;
+    }
+
     try {
       final repository = _repository;
       if (listing &&
@@ -779,6 +788,24 @@ class _SubcontractDecompositionPageState
           // Same workbench endpoint and read proof as the operations
           // workbench page: two continuation batches may be in flight.
           maxConcurrentPages: 2,
+          // Rows only: stage counts, selection and the accepted query wait
+          // for the complete result. A retained background batch publishes
+          // both pending lanes together, so it shows no progressive rows.
+          onProgressiveBatch: batch != null
+              ? null
+              : (partial) {
+                  if (!current()) return;
+                  showedProgressive = true;
+                  setState(
+                    () => _data =
+                        (partial
+                                as PagedReadSnapshot<
+                                  OperationsWorkbenchTask,
+                                  OperationsWorkbenchData
+                                >)
+                            .snapshot,
+                  );
+                },
         );
         next =
             (cached
@@ -826,7 +853,12 @@ class _SubcontractDecompositionPageState
         batch.commits.add(accept);
       }
     } catch (error) {
-      if (isRetiredViewRead(error)) return;
+      if (isRetiredViewRead(error)) {
+        if (showedProgressive && mounted && requestId == _requestId) {
+          setState(retireProgressive);
+        }
+        return;
+      }
       if (!mounted ||
           requestId != _requestId ||
           !mapEquals(query, _queryIdentity)) {
@@ -834,6 +866,7 @@ class _SubcontractDecompositionPageState
       }
       setState(() {
         if (batch != null) batch.failed = true;
+        retireProgressive();
         if (error is ApiException &&
             (error.httpStatus == 401 ||
                 error.httpStatus == 403 ||
@@ -976,19 +1009,30 @@ class _SubcontractDecompositionPageState
       _drawError = null;
       if (!retainRows && _acceptedDrawQuery != query) _drawData = null;
     });
+    // Draw rows are pinned outside the table's reader-bound rows, so a failed
+    // or retired read takes its progressive rows down here and restores what
+    // was on screen before.
+    var showedProgressive = false;
+    final beforeProgressive = _drawData;
+    void retireProgressive() {
+      if (showedProgressive) _drawData = beforeProgressive;
+      showedProgressive = false;
+    }
+
     try {
-      Future<SubcontractDrawTaskList> fetch(int page) => repository.list(
-        page: page,
-        size: 100,
-        keyword: keyword,
-        orderId: orderId,
-        orderItemIds: orderItemId == null ? const [] : [orderItemId],
-        applicationItemIds: applicationItemIds,
-        applicationId: applicationId,
-        columnFilters: columnFilters,
-        sort: sort,
-        order: order,
-      );
+      Future<SubcontractDrawTaskList> fetch(int page, [int size = 100]) =>
+          repository.list(
+            page: page,
+            size: size,
+            keyword: keyword,
+            orderId: orderId,
+            orderItemIds: orderItemId == null ? const [] : [orderItemId],
+            applicationItemIds: applicationItemIds,
+            applicationId: applicationId,
+            columnFilters: columnFilters,
+            sort: sort,
+            order: order,
+          );
       final SubcontractDrawTaskList next;
       {
         final cached = await readViewActivity.runRead(
@@ -1010,6 +1054,36 @@ class _SubcontractDecompositionPageState
                 rebuildSnapshot: result.withPage,
               );
             },
+            fetchPageSized: (page, size) async {
+              final result = await fetch(page, size);
+              return PagedReadSnapshot(
+                page: result.page,
+                snapshot: result,
+                rebuildSnapshot: result.withPage,
+              );
+            },
+            // Rows only: selection and the accepted query wait for the
+            // complete result; a retained background batch publishes both
+            // pending lanes together.
+            onProgressiveBatch: batch != null
+                ? null
+                : (partial) {
+                    if (!mounted ||
+                        requestId != _drawRequestId ||
+                        query != _drawQueryIdentity) {
+                      return;
+                    }
+                    showedProgressive = true;
+                    setState(
+                      () => _drawData =
+                          (partial
+                                  as PagedReadSnapshot<
+                                    SubcontractDrawTaskRow,
+                                    SubcontractDrawTaskList
+                                  >)
+                              .snapshot,
+                    );
+                  },
             onPrefetchError: (error) {
               if (!readCurrent() || !pagedReadAccessDenied(error)) return;
               setState(() {
@@ -1062,6 +1136,7 @@ class _SubcontractDecompositionPageState
       if (isRetiredViewRead(error)) {
         if (mounted && requestId == _drawRequestId) {
           setState(() {
+            retireProgressive();
             _drawLoading = false;
             _drawBackgroundRefresh = false;
           });
@@ -1080,6 +1155,7 @@ class _SubcontractDecompositionPageState
           (error.httpStatus == 403 || error.code == 'FORBIDDEN');
       setState(() {
         if (batch != null) batch.failed = true;
+        retireProgressive();
         _drawLoading = false;
         _drawBackgroundRefresh = false;
         if (forbidden) {

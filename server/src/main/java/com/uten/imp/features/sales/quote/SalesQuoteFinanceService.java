@@ -11,6 +11,7 @@ import com.uten.imp.common.util.TaskKeywordSearch;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.common.web.Pageables;
 import com.uten.imp.features.common.taskclaim.TaskClaimService;
 import com.uten.imp.features.sales.SalesDocumentAccessPolicy;
 import com.uten.imp.features.sales.SalesPriceAuthority;
@@ -57,7 +58,7 @@ public class SalesQuoteFinanceService {
     private static final String FINANCE_REJECT = SalesQuoteService.FINANCE_REJECT;
     private static final String FINANCE_REVERSE = SalesQuoteService.FINANCE_REVERSE;
     private static final String TARGET = SalesQuoteFinanceClaimTargetLocks.TARGET_TYPE;
-    private static final int MAX_PAGE_SIZE = 100;
+    private static final int MAX_PAGE_SIZE = Pageables.MAX_PAGE_SIZE;
     private static final String[] SEARCH_FIELDS = {"o.bill_no", "c.name", "seller.full_name", "maker.full_name"};
 
     private final EntityManager em;

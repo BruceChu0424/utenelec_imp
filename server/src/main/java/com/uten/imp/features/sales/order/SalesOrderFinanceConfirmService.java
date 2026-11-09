@@ -8,6 +8,7 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.NativeFacets;
 import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.common.web.Pageables;
 import com.uten.imp.features.admin.workflow.SalesOrderFinanceConfirmerEligibility;
 import com.uten.imp.features.sales.order.dto.SalesOrderFinancePendingDto;
 import com.uten.imp.features.sales.order.dto.SalesOrderFinanceReviewDto;
@@ -159,7 +160,7 @@ public class SalesOrderFinanceConfirmService {
             int page, int size, Boolean rejected, String keyword, Boolean changesOnly,
             String sort, String order, String billNo, boolean confirmed) {
         int p = Math.max(1, page);
-        int sz = Math.min(Math.max(1, size), 100);
+        int sz = Math.min(Math.max(1, size), Pageables.MAX_PAGE_SIZE);
         String rejectedFilter = rejected == null ? ""
                 : rejected ? " AND o.finance_rejected = TRUE" : " AND o.finance_rejected = FALSE";
         String changesFilter = changesOnly == null ? ""

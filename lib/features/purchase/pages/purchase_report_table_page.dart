@@ -89,6 +89,11 @@ class _PurchaseReportTablePageState
   bool _loading = false;
   int _loadGeneration = 0;
 
+  /// Growing rows of the in-flight complete read (progressive prefix). Never
+  /// accepted: totals/export stay on [_data]; the complete result replaces it.
+  ReportData? _partialData;
+  PagedResult<Map<String, dynamic>>? _lastNotifiedPage;
+
   /// 「返回即刷新」登记用的本页路径（build 首次捕获）。
   String? _myLocation;
 
@@ -106,6 +111,7 @@ class _PurchaseReportTablePageState
 
   @override
   void dispose() {
+    _reportPages.removeListener(_onReportPagesChanged);
     _reportRead.dispose();
     _reportPages.dispose();
     super.dispose();
@@ -114,6 +120,7 @@ class _PurchaseReportTablePageState
   @override
   void initState() {
     super.initState();
+    _reportPages.addListener(_onReportPagesChanged);
     // Keep the monotonic reader epoch observed for this page's whole lifetime.
     ref.listenManual(exportContextEpochProvider, (previous, next) {
       if (!mounted || previous == next) return;
@@ -219,6 +226,25 @@ class _PurchaseReportTablePageState
     ...sortQueryParams(_sortKey, _sortAsc),
   };
 
+  /// Progressive prefix of the running complete read: only a page object the
+  /// controller newly published while still loading (never the stale result a
+  /// fresh load keeps until its first batch, never the accepted result) feeds
+  /// [_partialData]. The complete result and failures replace/clear it whole.
+  void _onReportPagesChanged() {
+    if (!mounted) return;
+    final page = _reportPages.page;
+    if (identical(page, _lastNotifiedPage)) return;
+    _lastNotifiedPage = page;
+    final partial =
+        _reportPages.loading &&
+            page is ReportPageSnapshot &&
+            !identical(page.snapshot, _data)
+        ? page.snapshot
+        : null;
+    if (identical(partial, _partialData)) return;
+    setState(() => _partialData = partial);
+  }
+
   Future<void> _load({
     bool background = false,
     bool reuseMetadata = false,
@@ -271,11 +297,17 @@ class _PurchaseReportTablePageState
     Future<PagedResult<Map<String, dynamic>>> fetchPage(int targetPage) =>
         read.read(targetPage);
 
+    // A new read starts from its own batches; a superseded read's prefix never
+    // stands in for the pending query.
+    _partialData = null;
     final pending = _reportPages.load(
       requestedPage,
       silent: background && _data != null,
       fetch: () => fetchPage(requestedPage),
-      fetchPage: fetchPage,
+      // The nested report reader returns the whole result itself (first batch
+      // 50, then aligned up to 200) and publishes each growing prefix through
+      // the controller while the read continues.
+      fetchComplete: () => fetchPage(requestedPage),
       isCurrent: current,
       ownerIsCurrent: queryCurrent,
     );
@@ -287,6 +319,7 @@ class _PurchaseReportTablePageState
     final failure = _reportPages.refreshError ?? _reportPages.error;
     setState(() {
       _loading = false;
+      _partialData = null;
       if (_reportPages.page == null) {
         _data = null;
       } else if (failure == null && _reportRead.accept(_reportPages.page)) {
@@ -460,7 +493,10 @@ class _PurchaseReportTablePageState
   }
 
   Widget _buildTable() {
-    final data = _data ?? _reportMetadata.loadingData;
+    // While the complete read is still running, its validated prefix renders
+    // as growing pending rows; totals/statistics wait for the complete one.
+    final showingPartial = _partialData != null;
+    final data = _partialData ?? _data ?? _reportMetadata.loadingData;
     // 报表列来自服务端元数据：映射后在客户端把状态列（label 为「状态」或
     // 含「状态」，如 审核状态/审批状态/单据状态）排到最前——多个状态列保持
     // 原有相对顺序，其余列原顺序跟后；状态列宽度收紧为声明下限 72
@@ -570,8 +606,10 @@ class _PurchaseReportTablePageState
       // 服务端分页表格：合计由后端在整个结果集上算（reportTotalsBar），
       // 不是对当前这一页求和；后端未声明合计列时返回 null，整条不渲染。
       summaryBar: reportTotalsBar(
-        data.totals,
-        statisticsGeneratedAt: data.statisticsGeneratedAt,
+        showingPartial ? const [] : data.totals,
+        statisticsGeneratedAt: showingPartial
+            ? null
+            : data.statisticsGeneratedAt,
       ),
       currentPage: data.page,
       totalPages: data.totalPages,

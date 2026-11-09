@@ -312,7 +312,9 @@ class WorkshopMaterialRepository {
         if (keyword != null && keyword.trim().isNotEmpty)
           'keyword': keyword.trim(),
         'page': page < 1 ? 1 : page,
-        'size': size.clamp(1, 100),
+        // Server page maximum (Pageables.MAX_PAGE_SIZE); complete reads ask
+        // for batches of 50, then aligned up to 200.
+        'size': size.clamp(1, 200),
         ...scope,
       },
     );

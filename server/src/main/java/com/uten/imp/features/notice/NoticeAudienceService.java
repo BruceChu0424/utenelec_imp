@@ -7,6 +7,7 @@ import com.uten.imp.common.util.TaskKeywordSearch;
 import com.uten.imp.common.util.DepartmentSearchSql;
 import com.uten.imp.common.util.EmployeeCandidateFilter;
 import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.common.web.Pageables;
 import com.uten.imp.features.notice.dto.NoticeAudienceEmployeeDto;
 import com.uten.imp.features.notice.dto.NoticeAudiencePreviewDto;
 import lombok.RequiredArgsConstructor;
@@ -48,7 +49,7 @@ public class NoticeAudienceService {
     @Transactional(readOnly = true)
     public PageResponse<NoticeAudienceEmployeeDto> searchEmployeesPage(String search, int page, int size,
             UUID departmentId, boolean includeSubtree) {
-        int safePage = Math.max(1, page), safeSize = Math.min(100, Math.max(1, size));
+        int safePage = Math.max(1, page), safeSize = Math.min(Pageables.MAX_PAGE_SIZE, Math.max(1, size));
         var read = audienceSearch(search, departmentId, includeSubtree, true);
         long total = jdbc.sql(read.prefix() + "SELECT count(*) " + read.fromWhere())
                 .params(read.parameters()).query(Long.class).single();

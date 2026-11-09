@@ -137,6 +137,17 @@ class _ProductionMaterialAnalysisHistoryPageState
           status: status.isEmpty ? null : status,
           sourceType: sourceType.isEmpty ? null : sourceType,
         ),
+        fetchPageSized: (target, size) => repository.materialAnalysisList(
+          page: target,
+          size: size,
+          keyword: keyword,
+          status: status.isEmpty ? null : status,
+          sourceType: sourceType.isEmpty ? null : sourceType,
+        ),
+        onProgressiveBatch: (partial) {
+          if (!current()) return;
+          setState(() => _page = partial);
+        },
       );
       unawaited(_warmNames(current));
       final result = await rows;

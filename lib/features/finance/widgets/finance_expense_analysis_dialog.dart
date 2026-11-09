@@ -163,6 +163,8 @@ class _ManagerState extends ConsumerState<_Manager>
             isCurrent: () => _current,
             fetchPage: (page) async => _fetchEntries(page, 100),
             fetchPageSized: _fetchEntries,
+            onProgressiveBatch: (partial) =>
+                setState(() => _rows = _items(partial.items)),
           );
           value = {'rows': complete.items};
         } else {

@@ -120,11 +120,13 @@ class ReportMetadataRead {
 
   /// The first refresh page asks for complete metadata. Further pages in that
   /// same load can reuse its private candidate, without caching it prematurely.
-  Map<String, dynamic> queryForPage(int page) {
+  /// [size] is the complete reader's batch size (50 first, then up to 200).
+  Map<String, dynamic> queryForPage(int page, {int? size}) {
     final version = _metadata?.source.readScopeVersion;
     return {
       ..._query.parameters,
       'page': page,
+      'size': ?size,
       if (_reusable && version != null && version.isNotEmpty) ...{
         ...reportRowsOnlyQuery,
         'metadataReuse': true,

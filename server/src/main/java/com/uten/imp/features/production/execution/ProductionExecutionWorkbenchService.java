@@ -11,6 +11,7 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.NativeFacets;
 import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.common.web.Pageables;
 import com.uten.imp.features.production.ProductionDocumentAccessPolicy;
 import com.uten.imp.features.purchase.PurchaseDocumentAccessPolicy;
 import com.uten.imp.security.AuthUser;
@@ -1801,7 +1802,7 @@ public class ProductionExecutionWorkbenchService {
     }
 
     /** 交互页单页上限；导出走 ReportQueryKit 的 500 行批次（{@link #workshopTaskExportBatch}）。 */
-    private static final int INTERACTIVE_PAGE_SIZE = 100;
+    private static final int INTERACTIVE_PAGE_SIZE = Pageables.MAX_PAGE_SIZE;
     static final int EXPORT_BATCH_SIZE = 500;
 
     private static int pages(long total, int size) {

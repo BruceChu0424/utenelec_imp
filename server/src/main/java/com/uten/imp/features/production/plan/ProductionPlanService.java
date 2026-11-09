@@ -1414,7 +1414,7 @@ public class ProductionPlanService {
             boolean closed, String sort, int page, int size,
             String keyword, String workshop, java.time.LocalDate dateFrom, java.time.LocalDate dateTo) {
         int p = Math.max(1, page);
-        int sz = Math.min(Math.max(1, size), 100);
+        int sz = Math.min(Math.max(1, size), Pageables.MAX_PAGE_SIZE);
         String kw = KeywordSearch.phrase(keyword);
         String ws = workshop == null ? "" : workshop.trim();
         var ownerScope = access.nativeReadScope("p.maker_id", "progressOwners");

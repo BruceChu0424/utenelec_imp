@@ -105,6 +105,8 @@ class _MaterialContextPickerState extends ConsumerState<_MaterialContextPicker>
             _fetchPage(page, 100, keyword, acceptedItems),
         fetchPageSized: (page, size) async =>
             _fetchPage(page, size, keyword, acceptedItems),
+        onProgressiveBatch: (partial) =>
+            setState(() => _items = partial.items),
       );
       if (!current()) return;
       setState(() {

@@ -83,6 +83,7 @@ class _DirectoryState extends ConsumerState<_Directory>
         isCurrent: () => _current && generation == _generation,
         fetchPage: (page) async => _fetchPage(page, 100),
         fetchPageSized: _fetchPage,
+        onProgressiveBatch: (partial) => setState(() => _rows = partial.items),
       );
       if (!_current || generation != _generation) return;
       setState(() {

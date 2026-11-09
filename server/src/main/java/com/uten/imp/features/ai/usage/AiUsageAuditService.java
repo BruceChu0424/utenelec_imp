@@ -3,6 +3,7 @@ package com.uten.imp.features.ai.usage;
 import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.web.Pageables;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -40,7 +41,7 @@ public class AiUsageAuditService {
     public AiUsageDtos.Audit query(int days, int page, int size, UUID userId, UUID providerId,
                                   Map<String, String> columnSearch, String sort, String order) {
         var actor = access.require();
-        if (days < 1 || days > 366 || page < 0 || page > 100_000 || size < 1 || size > 100)
+        if (days < 1 || days > 366 || page < 0 || page > 100_000 || size < 1 || size > Pageables.MAX_PAGE_SIZE)
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "请调整查询时间或页数");
         var params = new MapSqlParameterSource("days", days).addValue("user", userId)
                 .addValue("provider", providerId).addValue("limit", size).addValue("offset", (long) page * size);

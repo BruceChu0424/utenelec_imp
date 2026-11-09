@@ -3,19 +3,25 @@ package com.uten.imp.common.web;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 
-/** 分页构造统一入口：对外页码从 1 起，每页 1..100 条。 */
+/**
+ * 分页构造统一入口：对外页码从 1 起，每页 1..{@link #MAX_PAGE_SIZE} 条。
+ * 2026-11-08：客户端完整读取按 {@link CompleteReadBatchPlan#PROGRESSIVE}（首批 50，
+ * 之后对齐增长到 200）分批，单次页上限随之统一为 200；仍是有界内部批量，不是整表上限。
+ */
 public final class Pageables {
+
+    public static final int MAX_PAGE_SIZE = CompleteReadBatchPlan.MAX_BATCH_SIZE;
 
     private Pageables() {}
 
     public static PageRequest of(int page, int size) {
-        return PageRequest.of(Math.max(1, page) - 1, Math.min(Math.max(1, size), 100));
+        return PageRequest.of(Math.max(1, page) - 1, Math.min(Math.max(1, size), MAX_PAGE_SIZE));
     }
 
     public static PageRequest of(int page, int size, Sort sort) {
         return PageRequest.of(
                 Math.max(1, page) - 1,
-                Math.min(Math.max(1, size), 100),
+                Math.min(Math.max(1, size), MAX_PAGE_SIZE),
                 sort);
     }
 

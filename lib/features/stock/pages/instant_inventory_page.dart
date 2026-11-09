@@ -422,6 +422,32 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
           sort: pageSort,
           order: pageOrder,
         ),
+        // 首批 50 行带合计与表头桶；续批(50/100/200 对齐)只取同口径的行与计数。
+        fetchPageSized: (target, size) => pageRepository.instantInventory(
+          page: target,
+          size: size,
+          includeMetadata: target == 1,
+          categoryId: pageCategoryId,
+          warehouseId: pageWarehouseId,
+          includeDefective: pageIncludeDefective,
+          includeLineSide: pageIncludeLineSide,
+          keyword: pageKeyword,
+          includeRelated: pageIncludeRelated,
+          owningWarehouse: pageOwningWarehouse,
+          owningWarehouseNull: pageOwningWarehouseNull,
+          colorId: pageColorId,
+          series: pageSeries,
+          unitId: pageUnitId,
+          dateFrom: pageDateFrom,
+          dateTo: pageDateTo,
+          sort: pageSort,
+          order: pageOrder,
+        ),
+        // 每批到达即追加显示；合计条/打印/导出仍等完整结果(_loading)。
+        onProgressiveBatch: (partial) {
+          if (!mounted || !_loadRequests.isCurrent(generation)) return;
+          setState(() => _page = partial);
+        },
       );
       if (!mounted || !_loadRequests.isCurrent(generation)) return;
       // 「所属仓库」列的名字来自货品字典，先补齐再落表，免得整页先空一拍再跳字。
@@ -623,6 +649,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
         loadPage: (page, size) => repository.instantInventory(
           page: page,
           size: size,
+          includeMetadata: page == 1,
           categoryId: categoryId,
           warehouseId: warehouseId,
           includeDefective: includeDefective,

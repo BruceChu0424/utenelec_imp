@@ -129,6 +129,7 @@ class _InstantInventoryOverviewPageState
   Future<PagedResult<InstantInventoryRow>> _fetch({
     int page = 1,
     int size = 1,
+    bool includeMetadata = true,
     String? attention,
   }) {
     final scope = widget.scope;
@@ -137,6 +138,7 @@ class _InstantInventoryOverviewPageState
         .instantInventory(
           page: page,
           size: size,
+          includeMetadata: includeMetadata,
           categoryId: scope.categoryId,
           warehouseId: scope.warehouseId,
           includeDefective: scope.includeDefective,
@@ -254,14 +256,27 @@ class _InstantInventoryOverviewPageState
       _riskError = null;
       if (!background) _riskPage = null;
     });
+    // 风险明细逐批追加显示；失败或被退休时整体撤下，不留半份明细。
+    var showedProgressive = false;
     try {
       final result = await readViewActivity.runRead(
         current,
         () => loadCompletePagedResult<InstantInventoryRow>(
           isCurrent: current,
           idOf: (row) => row.readIdentity,
-          loadPage: (page, size) =>
-              _fetch(page: page, size: size, attention: risk),
+          loadPage: (page, size) => _fetch(
+            page: page,
+            size: size,
+            includeMetadata: page == 1,
+            attention: risk,
+          ),
+          onProgressiveBatch: background
+              ? null
+              : (partial) {
+                  if (!current()) return;
+                  showedProgressive = true;
+                  setState(() => _riskPage = partial);
+                },
         ),
       );
       if (!current()) return;
@@ -271,11 +286,17 @@ class _InstantInventoryOverviewPageState
       });
     } catch (error) {
       if (isRetiredViewRead(error)) {
-        if (current()) setState(() => _riskLoading = false);
+        if (current()) {
+          setState(() {
+            if (showedProgressive) _riskPage = null;
+            _riskLoading = false;
+          });
+        }
         return;
       }
       if (!mounted || !_riskRequests.isCurrent(generation)) return;
       setState(() {
+        if (showedProgressive) _riskPage = null;
         if (_accessDenied(error)) {
           _riskPage = null;
           _summary = null;

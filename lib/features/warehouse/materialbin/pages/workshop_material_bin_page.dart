@@ -542,6 +542,14 @@ class _WorkshopMaterialBinPageState
       _historyLoading = true;
       _historyError = null;
     });
+    // A failed read takes its progressive rows down and restores what was on
+    // screen before (the table shows its read error only without rows).
+    var showedProgressive = false;
+    final beforeProgressive = _history;
+    void retireProgressive() {
+      if (showedProgressive) _history = beforeProgressive;
+    }
+
     try {
       final pageRepository = _repo;
       final pageView = _view == _viewHistory
@@ -566,6 +574,17 @@ class _WorkshopMaterialBinPageState
           workshopId: pageWorkshopId,
           page: target,
         ),
+        fetchPageSized: (target, size) => pageRepository.requisitions(
+          view: pageView,
+          workshopId: pageWorkshopId,
+          page: target,
+          size: size,
+        ),
+        onProgressiveBatch: (partial) {
+          if (!current()) return;
+          showedProgressive = true;
+          setState(() => _history = partial);
+        },
       );
       if (!current()) return;
       setState(() {
@@ -575,6 +594,7 @@ class _WorkshopMaterialBinPageState
     } on ApiException catch (e) {
       if (current()) {
         setState(() {
+          retireProgressive();
           _historyLoading = false;
           _historyError = e.message;
         });
@@ -582,6 +602,7 @@ class _WorkshopMaterialBinPageState
     } catch (_) {
       if (current()) {
         setState(() {
+          retireProgressive();
           _historyLoading = false;
           _historyError = '加载记录失败, 请重试';
         });

@@ -1364,6 +1364,28 @@ class _ProductionWorkshopTasksPageState
           sort: requestedSort,
           order: requestedOrder,
         ),
+        fetchPageSized: (page, size) => repo.workshopTasks(
+          size: size,
+          page: page,
+          keyword: requestedKeyword,
+          status: requestedStatus,
+          preparationFilter: requestedPreparationFilter,
+          routeFilter: requestedRouteFilter,
+          workshopDepartmentId: requestedWorkshop,
+          dateFrom: from,
+          dateTo: to,
+          analysisNo: requestedAnalysisNo,
+          segmentCode: requestedSegmentCode,
+          sort: requestedSort,
+          order: requestedOrder,
+        ),
+        // Progressive batches only grow the task rows. Draft state, selection
+        // reconciliation, paging fields and the busy flag wait for the
+        // complete result above.
+        onProgressiveBatch: (partial) {
+          if (!mounted || generation != _loadGeneration) return;
+          setState(() => _items = partial.items);
+        },
       );
       // 单号 facets 与列表同上下文（不含单号自身筛选）；失败不阻断列表。
 

@@ -11,6 +11,7 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.NativeFacets;
 import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.common.web.Pageables;
 import com.uten.imp.features.production.ProductionDocumentAccessPolicy;
 import com.uten.imp.features.production.ProductionWorkshopMembership;
 import com.uten.imp.features.production.plan.ProductionPlanMutationFootprintService;
@@ -314,7 +315,7 @@ public class ProductionOverproductionRateService {
         if(planFilter)count.setParameter("planNo",planNo.strip());
         if(segmentFilter)count.setParameter("segmentCode",segmentCode.strip());
         long total=((Number)count.getSingleResult()).longValue();
-        int boundedSize=Math.min(Math.max(size,1),100),boundedPage=Math.max(page,1);
+        int boundedSize=Math.min(Math.max(size,1),Pageables.MAX_PAGE_SIZE),boundedPage=Math.max(page,1);
         var query=em.createNativeQuery(PROJECTION+" WHERE "+predicate+" "+orderBy(sort,order)+" LIMIT :size OFFSET :offset")
                 .setParameter("size",boundedSize).setParameter("offset",(long)(boundedPage-1)*boundedSize);
         readScope.bind(query);

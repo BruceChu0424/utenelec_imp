@@ -8,6 +8,7 @@ import com.uten.imp.common.util.TaskKeywordSearch;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.common.web.Pageables;
 import com.uten.imp.features.master.client.ClientAccessPolicy;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.CurrentAuthorityGuard;
@@ -51,7 +52,7 @@ public class ClientGoodsAliasService {
         UUID owner = requireReadableClient(clientId, scope);
         boolean canDelete = hasClientEdit() && clientAccess.canWrite(clientId, owner, scope);
         int safePage = Math.max(1, page);
-        int safeSize = Math.min(Math.max(1, size), 100);
+        int safeSize = Math.min(Math.max(1, size), Pageables.MAX_PAGE_SIZE);
         String normalized = KeywordSearch.phrase(keyword);
         if (normalized.length() > 100) normalized = normalized.substring(0, 100);
         String filter = " AND " + TaskKeywordSearch.conditionParameter("kw", "a.alias_text", "g.code", "g.name", "g.model");

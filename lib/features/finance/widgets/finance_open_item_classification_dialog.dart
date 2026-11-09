@@ -143,6 +143,8 @@ class _ClassificationDirectoryState
         isCurrent: current,
         fetchPage: (page) async => _fetchPage(page, 100),
         fetchPageSized: _fetchPage,
+        onProgressiveBatch: (partial) =>
+            setState(() => _items = partial.items),
       );
       if (current()) setState(() => _items = result.items);
     } catch (error) {

@@ -44,10 +44,10 @@ class SalesOrderShippablePageTest {
 
         var result = service.shippableLinesPage(new ShippableLineFilter("螺丝 A%_B", client), 2, 1000);
 
-        assertThat(result.getPage()).isEqualTo(2); assertThat(result.getSize()).isEqualTo(100);
-        assertThat(result.getTotal()).isEqualTo(205); assertThat(result.getTotalPages()).isEqualTo(3);
+        assertThat(result.getPage()).isEqualTo(2); assertThat(result.getSize()).isEqualTo(200);
+        assertThat(result.getTotal()).isEqualTo(205); assertThat(result.getTotalPages()).isEqualTo(2);
         assertThat(result.getItems().getFirst().price()).isNull();
-        verify(rows).setParameter("shippableLimit", 100); verify(rows).setParameter("shippableOffset", 100L);
+        verify(rows).setParameter("shippableLimit", 200); verify(rows).setParameter("shippableOffset", 200L);
         for (Query query : List.of(count, rows)) {
             verify(query).setParameter("salesOwners", Set.of(writer, readOnly));
             verify(query).setParameter("shippableClientId", client);

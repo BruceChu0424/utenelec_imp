@@ -122,6 +122,8 @@ class _AdvanceDirectoryState extends ConsumerState<_AdvanceDirectory>
           fetchPage: (page) async => _fetchSettlements(page, 100, id, kind),
           fetchPageSized: (page, size) async =>
               _fetchSettlements(page, size, id, kind),
+          onProgressiveBatch: (partial) =>
+              setState(() => _rows = partial.items),
         );
         return (source: source, complete: complete);
       });

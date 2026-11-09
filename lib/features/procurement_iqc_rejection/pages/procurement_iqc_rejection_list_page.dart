@@ -230,6 +230,23 @@ class _ProcurementIqcRejectionListPageState
                 );
                 return repository.list(pageFilter);
               },
+              fetchPageSized: (page, size) {
+                final pageFilter = ProcurementIqcRejectionFilter(
+                  receiptType: filter.receiptType,
+                  status: filter.status,
+                  keyword: filter.keyword,
+                  page: page,
+                  size: size,
+                  columnSearch: filter.columnSearch,
+                  sort: filter.sort,
+                  ascending: filter.ascending,
+                );
+                return repository.list(pageFilter);
+              },
+              onProgressiveBatch: (partial) {
+                if (!current()) return;
+                setState(() => _result = partial);
+              },
             )
           : const PagedResult<ProcurementIqcRejectionCase>(
               items: [],

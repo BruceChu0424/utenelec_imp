@@ -6,10 +6,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/network/api_exception.dart';
 import '../models/paged_result.dart';
 import '../providers/export_context_epoch_provider.dart';
+import 'complete_paged_snapshot.dart';
 import 'scoped_paged_read.dart';
 import 'paged_query_identity.dart';
 import 'read_view_activity.dart';
 
+export 'complete_paged_snapshot.dart' show CompleteReadBatchPlan;
 export 'read_view_activity.dart' show isRetiredViewRead;
 
 /// Lifecycle adapter for complete query lists. The shared reader owns bounded
@@ -87,6 +89,12 @@ mixin ScopedPagedReadViewMixin<W extends ConsumerStatefulWidget>
   /// repository/source instance. Use maps/lists for nested collections; page
   /// number and the caller's single-page request generation are excluded.
   /// Only actual pagination passes [useCache]; refresh and writes stay fresh.
+  ///
+  /// [fetchPageSized] forwards the reader's batch size to the endpoint (first
+  /// batch 50, then 50/100/200 aligned). [onProgressiveBatch] receives every
+  /// validated accumulated prefix while the read continues: render it as rows
+  /// only, and keep totals/export/batch/write entries waiting for the awaited
+  /// complete result.
   Future<PagedResult<R>> readScopedPage<R>(
     int page, {
     Object slot = 'page',
@@ -100,8 +108,9 @@ mixin ScopedPagedReadViewMixin<W extends ConsumerStatefulWidget>
     bool Function()? isCurrent,
     bool Function()? canPrefetch,
     void Function(Object)? onPrefetchError,
-    void Function(PagedResult<R> provisional)? onProvisionalBatch,
+    void Function(PagedResult<R> partial)? onProgressiveBatch,
     int maxConcurrentPages = 1,
+    CompleteReadBatchPlan? plan,
   }) {
     final key = (R, slot);
     final entry =
@@ -131,10 +140,11 @@ mixin ScopedPagedReadViewMixin<W extends ConsumerStatefulWidget>
             isOwnerCurrent: ownerCurrent,
             useCache: useCache,
             maxConcurrentPages: maxConcurrentPages,
-            onProvisionalBatch: onProvisionalBatch == null
+            plan: plan,
+            onProgressiveBatch: onProgressiveBatch == null
                 ? null
                 : (partial) {
-                    if (current()) onProvisionalBatch(partial);
+                    if (current()) onProgressiveBatch(partial);
                   },
             canPrefetch: () =>
                 current() && (canPrefetch?.call() ?? _scopedViewActive),

@@ -37,7 +37,7 @@ public class FinancePayrollApplicationReferences {
         return readCandidates(id,expected,lease,styleId,auxiliaryId,employeeId,kind,asOf,search,selectedEntry,selectedAllocation,1,100,false);
     }
     @Transactional public Map<String,Object> candidatesPage(UUID id,String expected,UUID lease,UUID styleId,UUID auxiliaryId,UUID employeeId,String kind,LocalDate asOf,String search,UUID selectedEntry,Integer selectedAllocation,int page,int size){
-        return readCandidates(id,expected,lease,styleId,auxiliaryId,employeeId,kind,asOf,search,selectedEntry,selectedAllocation,Math.max(1,page),Math.max(1,Math.min(100,size)),true);
+        return readCandidates(id,expected,lease,styleId,auxiliaryId,employeeId,kind,asOf,search,selectedEntry,selectedAllocation,Math.max(1,page),Math.max(1,Math.min(Pageables.MAX_PAGE_SIZE,size)),true);
     }
     private Map<String,Object> readCandidates(UUID id,String expected,UUID lease,UUID styleId,UUID auxiliaryId,UUID employeeId,String kind,LocalDate asOf,String search,UUID selectedEntry,Integer selectedAllocation,int page,int size,boolean paged){var app=gate(id,expected,lease);var source=payroll.getObject().source((UUID)app.get("source_id"),false);
         if(asOf==null||asOf.isAfter(com.uten.imp.common.time.BusinessTime.today()))throw invalid("请选择明确已到的会计核对日期");if(!Set.of("WAGE_LIABILITY","DEDUCTION","EXISTING_NON_CASH_VOUCHER").contains(kind))throw invalid("工资会计来源用途不正确");

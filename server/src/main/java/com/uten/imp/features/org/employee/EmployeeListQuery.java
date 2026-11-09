@@ -3,6 +3,7 @@ package com.uten.imp.features.org.employee;
 import com.uten.imp.features.org.employee.dto.EmployeeListItem;
 import com.uten.imp.common.util.KeywordSearch;
 import com.uten.imp.common.util.DepartmentSearchSql;
+import com.uten.imp.common.web.Pageables;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -81,7 +82,7 @@ public class EmployeeListQuery {
     public Result query(int page,int requestedSize,String search,Set<String> statuses,
             Collection<UUID> departmentIds,boolean filterDepartments,String sort,String order,java.util.Map<String,String> columns) {
         int safePage = Math.max(1, page);
-        int size = Math.min(Math.max(1, requestedSize), 100);
+        int size = Math.min(Math.max(1, requestedSize), Pageables.MAX_PAGE_SIZE);
         boolean hasSearch = !KeywordSearch.terms(search).isEmpty();
         String prefix = DepartmentSearchSql.prefix(hasSearch);
         String from = FROM + DepartmentSearchSql.joins(hasSearch,"e.department_id");

@@ -291,6 +291,51 @@ class _QualityInspectionRecordsPageState
             rebuildSnapshot: snapshot.withPage,
           );
         },
+        fetchPageSized: (target, size) async {
+          final snapshot = await pageRepository.list(
+            domain: pageDomain,
+            decision: pageDecision,
+            keyword: pageKeyword,
+            dateRange: pageDateRange,
+            sourceType: pageSourceType,
+            effective: pageEffective,
+            disposition: pageDisposition,
+            page: target,
+            size: size,
+            sort: pageSort,
+            order: pageOrder,
+            sourceNo: pageSourceNo,
+            referenceNo: pageReferenceNo,
+            sheetNo: pageSheetNo,
+            columns: pageHeaders.searches,
+          );
+          return PagedReadSnapshot<
+            QualityInspectionRecord,
+            QualityInspectionRecordPage
+          >(
+            page: PagedResult<QualityInspectionRecord>(
+              items: snapshot.items,
+              page: snapshot.page,
+              size: snapshot.size,
+              total: snapshot.total,
+              totalPages: snapshot.totalPages,
+            ),
+            snapshot: snapshot,
+            rebuildSnapshot: snapshot.withPage,
+          );
+        },
+        onProgressiveBatch: (partial) {
+          if (!current()) return;
+          setState(() {
+            _data =
+                (partial
+                        as PagedReadSnapshot<
+                          QualityInspectionRecord,
+                          QualityInspectionRecordPage
+                        >)
+                    .snapshot;
+          });
+        },
       );
       final result =
           (cached

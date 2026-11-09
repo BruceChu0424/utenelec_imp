@@ -352,6 +352,23 @@ class _WorkshopMaterialReportsPageState
               page: page,
               columnQuery: headers,
             ),
+            fetchPageSized: (page, size) => repository.ledger(
+              binId,
+              from: from,
+              to: to,
+              page: page,
+              size: size,
+              columnQuery: headers,
+            ),
+            onProgressiveBatch: (partial) {
+              if (!mounted || request != _dataRequest) return;
+              // The ledger table only renders rows whose accepted query matches
+              // the current identity, so publish that marker with the rows.
+              setState(() {
+                _ledger = partial;
+                _acceptedLedgerQuery = readQuery;
+              });
+            },
           );
           if (mounted && request == _dataRequest) {
             setState(() {

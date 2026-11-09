@@ -174,7 +174,7 @@ class ContainerCascadeHttpValidationTest {
     void permissionWorkspaceQueryBoundsUseTheSameMvcValidationPath() throws Exception {
         var service = mock(PagePermissionWorkspaceService.class);
         var mvc = http(new PagePermissionWorkspaceController(service));
-        for (String query : List.of("page=0", "size=51", "search=" + "x".repeat(101))) {
+        for (String query : List.of("page=0", "size=201", "search=" + "x".repeat(101))) {
             mvc.perform(get("/api/department-staff-permissions/staff?surfaceKey=basic.goods&" + query))
                     .andExpect(status().isUnprocessableContent())
                     .andExpect(jsonPath("$.code").value(ErrorCode.VALIDATION_FAILED.name()));

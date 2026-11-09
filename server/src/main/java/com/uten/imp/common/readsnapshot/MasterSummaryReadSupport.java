@@ -20,7 +20,13 @@ import java.util.Objects;
 /** Complete master summaries share transport proof and validation, never business predicates or DTO calculations. */
 @Service
 public final class MasterSummaryReadSupport {
+    /** The original fixed frame size; existing clients keep requesting it. */
     public static final int READ_BATCH_SIZE = 100;
+    /**
+     * Request size that selects the progressive frame plan (2026-11-08): 50 rows first,
+     * then aligned up to 200 per frame ({@link CompleteReadBatchPlan#PROGRESSIVE}).
+     */
+    public static final int PROGRESSIVE_REQUEST_SIZE = CompleteReadBatchPlan.MAX_BATCH_SIZE;
 
     public record Query<F>(F filter, Integer page, Integer size, String sort, String order) {
         public int requestedPage() { return page == null ? 1 : page; }
@@ -59,15 +65,19 @@ public final class MasterSummaryReadSupport {
     }
 
     /** A single response, one counted cursor and one RR data snapshot. Page
-     * frames are provisional until the final committed authorization/data fence. */
+     * frames are provisional until the final committed authorization/data fence.
+     * Each frame is the exact page the batch plan places at the rows already sent. */
     public <F, T> void streamAuthorized(String domain, String authorizationDomain, String readContract,
             Query<F> query, String revision, Runnable authorize, PageLoader<F, T> loader,
             HttpServletResponse response) throws IOException {
         if (query == null || query.filter() == null || query.requestedPage() != 1
-                || query.requestedSize() != READ_BATCH_SIZE) {
+                || (query.requestedSize() != READ_BATCH_SIZE && query.requestedSize() != PROGRESSIVE_REQUEST_SIZE)) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "完整资料摘要须从首批开始，保留固定内部批量");
         }
         if (entityManager == null) throw new IllegalStateException("Complete master reads require their shared entity manager");
+        var plan = query.requestedSize() == PROGRESSIVE_REQUEST_SIZE
+                ? CompleteReadBatchPlan.PROGRESSIVE : CompleteReadBatchPlan.fixed(READ_BATCH_SIZE);
+        // The proof identity keeps the original fixed size: both frame plans read one query.
         var request = new VersionedSummaryPages.Request(domain, authorizationDomain, identity(domain, readContract, query),
                 "all", 1, READ_BATCH_SIZE, READ_BATCH_SIZE, revision);
         response.setContentType("application/x-ndjson");
@@ -79,9 +89,10 @@ public final class MasterSummaryReadSupport {
                 response.setHeader("X-Uten-Read-Scope-Version", proof.readScopeVersion());
                 try (var cursor = BoundedMasterReadSource.open(entityManager, checkpoint, ignored -> { })) {
                     long seen = 0, expected = -1;
-                    for (int page = 1; ; page++) {
+                    while (true) {
                         checkpoint.run();
-                        var value = payload(loader.load(query.filter(), page, READ_BATCH_SIZE, query.sort(), query.order()), page, READ_BATCH_SIZE);
+                        int size = plan.sizeAt(seen), page = plan.pageAt(seen);
+                        var value = payload(loader.load(query.filter(), page, size, query.sort(), query.order()), page, size);
                         if (expected < 0) expected = value.total();
                         else if (expected != value.total()) throw incomplete();
                         seen = Math.addExact(seen, value.items().size());
@@ -89,7 +100,6 @@ public final class MasterSummaryReadSupport {
                         writeFrame(response, Map.of("type", "page", "value", proof.snapshot(value)));
                         cursor.clearBatch();
                         if (seen == expected) return expected;
-                        if (page == Integer.MAX_VALUE) throw incomplete();
                     }
                 }
             });

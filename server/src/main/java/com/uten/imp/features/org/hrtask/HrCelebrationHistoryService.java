@@ -3,6 +3,7 @@ package com.uten.imp.features.org.hrtask;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.common.web.Pageables;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import lombok.RequiredArgsConstructor;
@@ -56,7 +57,7 @@ public class HrCelebrationHistoryService {
                 || ("birthday".equals(type) && !allowed(actor, "employee:pii:view"))) {
             throw new ApiException(ErrorCode.FORBIDDEN);
         }
-        int size = Math.max(1, Math.min(100, requestedSize));
+        int size = Math.max(1, Math.min(Pageables.MAX_PAGE_SIZE, requestedSize));
         var headers = headers(parameters);
         var bindings = new ArrayList<Object>(List.of(actor.getId(), type, actor.getId()));
         bindings.addAll(headers.arguments());

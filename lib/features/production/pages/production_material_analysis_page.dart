@@ -1336,6 +1336,32 @@ abstract class _MaterialAnalysisPageBase
     });
     try {
       final repository = ref.read(productionPlanRepositoryProvider);
+      Future<PagedReadSnapshot<MaterialAnalysisSalesCandidate,
+              MaterialAnalysisSalesCandidatePage>> fetchCandidates(
+        int target,
+        int size,
+      ) async {
+        final result = await repository.materialAnalysisSalesCandidates(
+          page: target,
+          size: size,
+          keyword: requestedKeyword,
+          sort: requestedSort,
+          order: requestedOrder,
+          orderBillNo: requestedOrderNo,
+        );
+        return PagedReadSnapshot(
+          page: PagedResult(
+            items: result.items,
+            page: result.page,
+            size: result.size,
+            total: result.total,
+            totalPages: result.totalPages,
+          ),
+          snapshot: result,
+          rebuildSnapshot: result.withPage,
+        );
+      }
+
       final cached = await readScopedPage<MaterialAnalysisSalesCandidate>(
         _candidatePageNo,
         slot: 'sales-candidates',
@@ -1355,26 +1381,36 @@ abstract class _MaterialAnalysisPageBase
           _candidateOrderNoFilter,
         ),
         useCache: useCache,
-        fetchPage: (target) async {
-          final result = await repository.materialAnalysisSalesCandidates(
-            page: target,
-            size: _candidatePageSize,
-            keyword: requestedKeyword,
-            sort: requestedSort,
-            order: requestedOrder,
-            orderBillNo: requestedOrderNo,
-          );
-          return PagedReadSnapshot(
-            page: PagedResult(
-              items: result.items,
-              page: result.page,
-              size: result.size,
-              total: result.total,
-              totalPages: result.totalPages,
-            ),
-            snapshot: result,
-            rebuildSnapshot: result.withPage,
-          );
+        fetchPage: (target) => fetchCandidates(target, _candidatePageSize),
+        fetchPageSized: fetchCandidates,
+        // Progressive batches publish only the growing candidate lines (the
+        // same pure projection as the complete result); the page number, the
+        // busy flag and total-dependent actions wait for the final result.
+        onProgressiveBatch: (partial) {
+          if (!mounted ||
+              !readOwnerCurrent() ||
+              !_candidateRequests.isCurrent(request)) {
+            return;
+          }
+          final snapshot =
+              (partial
+                      as PagedReadSnapshot<
+                        MaterialAnalysisSalesCandidate,
+                        MaterialAnalysisSalesCandidatePage
+                      >)
+                  .snapshot;
+          setState(() {
+            _candidatePage = snapshot;
+            _candidateReadRows = projectReadWindowBinding(
+              partial.items,
+              snapshot.lines,
+              project: (orders) => [
+                for (final order in orders)
+                  for (final line in order.lines) line.withOrder(order),
+              ],
+              projectionKey: 'material-analysis-candidate-lines',
+            );
+          });
         },
       );
       final result =

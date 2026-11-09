@@ -8,6 +8,7 @@ import com.uten.imp.common.validation.RequestLimits;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.NativeFacets;
+import com.uten.imp.common.web.Pageables;
 import com.uten.imp.features.production.analysis.MaterialConsumptionMath;
 import com.uten.imp.features.production.analysis.MaterialAnalysisSourceCoverageSql;
 import com.uten.imp.features.production.schedule.dto.PendingPlanRow;
@@ -104,7 +105,7 @@ public class ProductionScheduleService {
             int page, int size, String keyword, LocalDate dateFrom, LocalDate dateTo,
             String sort, String order, String status, String billNo) {
         int p = Math.max(1, page);
-        int sz = Math.min(Math.max(1, size), 100);
+        int sz = Math.min(Math.max(1, size), Pageables.MAX_PAGE_SIZE);
         String kw = KeywordSearch.phrase(keyword);
         String normalizedBillNo = billNo == null ? "" : billNo.trim();
         String billNoFilter = normalizedBillNo.isEmpty()

@@ -70,7 +70,10 @@ public class WebMvcConfig implements WebMvcConfigurer {
                 .addPathPatterns("/api/sales/reports/**", "/api/purchase/reports/**",
                         "/api/subcontract/reports/**", "/api/production/reports/**",
                         "/api/stock/reports/**", "/api/finance/reports/**",
-                        "/api/finance/statement-documents/reviews/*/original-table");
+                        "/api/finance/statement-documents/reviews/*/original-table",
+                        // Progressive complete reads: continuation batches skip the
+                        // first batch's complete-result totals and header buckets.
+                        "/api/stock/instant-inventory", "/api/stock/instant-inventory/attention");
         registry.addInterceptor(new com.uten.imp.common.report.BusinessDocumentReadScopeInterceptor(readScopes,currentUser))
                 .addPathPatterns("/api/expense-claims/**","/api/platform-columns/expense_claim/**","/api/platform-columns/expense_claim_item/**",
                         "/api/finance/asset-opening-groups/summaries","/api/finance/accounting-imports/summaries",

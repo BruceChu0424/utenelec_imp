@@ -31,7 +31,7 @@ public class FinanceOpenItemClassificationService {
     @Transactional(readOnly=true)
     public Map<String,Object> sources(String direction,UUID partyId,UUID currencyId,boolean pendingOnly,int page,int size) {
         read();if(direction==null||!Set.of("AR","AP").contains(direction))throw invalid("请选择应收或应付");
-        int safePage=Math.max(1,page),safeSize=Math.max(1,Math.min(size,100));
+        int safePage=Math.max(1,page),safeSize=Math.max(1,Math.min(size,Pageables.MAX_PAGE_SIZE));
         var args=new ArrayList<Object>();args.add(direction);String where=" WHERE ledger.direction=? AND ledger.status IN(1,-1) AND(ledger.open_item_kind NOT IN('PREPAYMENT','CUSTOMER_PREPAYMENT') OR ledger.legacy_import_run_id IS NOT NULL)";
         if(partyId!=null){where+=" AND "+(direction.equals("AP")?"ledger.supplier_id":"ledger.client_id")+"=?";args.add(partyId);}
         if(currencyId!=null){where+=" AND ledger.currency_id=?";args.add(currencyId);}
@@ -60,7 +60,7 @@ public class FinanceOpenItemClassificationService {
         read();var source=sourceFact(ledgerId);return referencesFor(ledgerId,"AR".equals(source.get("direction")),kind,page,size);
     }
     private Map<String,Object> referencesFor(UUID ledgerId,boolean ar,String kind,int page,int size){
-        int safePage=Math.max(1,page),safeSize=Math.max(1,Math.min(size,100));String select,from,where,order;Object[] ids;
+        int safePage=Math.max(1,page),safeSize=Math.max(1,Math.min(size,Pageables.MAX_PAGE_SIZE));String select,from,where,order;Object[] ids;
         if("cash".equals(kind)){
             String parent=ar?"receipt":"payment",table=ar?"receipts":"payments";
             select="SELECT line.id AS \""+parent+"LineId\",cash.bill_no AS \"billNo\",cash.bill_date AS \"billDate\",classified.id AS \"classificationId\",classified.revision";

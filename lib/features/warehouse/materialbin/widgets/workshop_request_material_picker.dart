@@ -274,6 +274,25 @@ class _RequestMaterialPickerState extends ConsumerState<_RequestMaterialPicker>
           keyword: keyword,
           page: target,
         ),
+        fetchPageSized: (target, size) => repository.requestMaterials(
+          workshop,
+          keyword: keyword,
+          page: target,
+          size: size,
+        ),
+        // Rows only (their boundary keeps the table's scope stable); the
+        // selection waits for the complete result and the settled rows.
+        onProgressiveBatch: (partial) {
+          if (!mounted ||
+              generation != _generation ||
+              boundary != ref.read(sensitiveReadBoundaryProvider)) {
+            return;
+          }
+          setState(() {
+            _page = partial;
+            _loadedBoundary = boundary;
+          });
+        },
       );
       if (mounted &&
           generation == _generation &&

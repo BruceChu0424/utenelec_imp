@@ -339,6 +339,22 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
           order: pageOrder,
           billNo: pageBillNo,
         ),
+        fetchPageSized: (target, size) => pageRepository.progress(
+          page: target,
+          size: size,
+          origin: pageOrigin,
+          stage: pageStage,
+          keyword: pageKeyword,
+          dateFrom: pageDateFrom,
+          dateTo: pageDateTo,
+          sort: pageSort,
+          order: pageOrder,
+          billNo: pageBillNo,
+        ),
+        onProgressiveBatch: (partial) {
+          if (!mounted || version != _requestVersion) return;
+          setState(() => _result = partial);
+        },
       );
       if (!mounted || version != _requestVersion) return;
       WidgetsBinding.instance.addPostFrameCallback((_) {

@@ -132,27 +132,38 @@ class _GoodsPriceFacetPickerState extends ConsumerState<GoodsPriceFacetPicker>
       _search,
     ];
     try {
+      Future<PagedResult<MasterFacetBucket>> readFacets(
+        int target,
+        int size,
+      ) async {
+        final response = await repository.historyFacets(goodsId, {
+          ...parameters,
+          'page': target,
+          'size': size,
+        });
+        if (response['buckets'] is! List ||
+            response['page'] is! int ||
+            response['size'] is! int ||
+            response['total'] is! num ||
+            response['totalPages'] is! int) {
+          throw const FormatException('筛选候选分页信息异常，请重新读取');
+        }
+        return PagedResult<MasterFacetBucket>.fromJson({
+          ...response,
+          'items': response['buckets'],
+        }, MasterFacetBucket.fromJson);
+      }
+
       final cached = await readScopedPage<MasterFacetBucket>(
         page,
         query: pagingQuery(),
         currentQuery: pagingQuery,
         useCache: useCache,
-        fetchPage: (target) async {
-          final response = await repository.historyFacets(goodsId, {
-            ...parameters,
-            'page': target,
-          });
-          if (response['buckets'] is! List ||
-              response['page'] is! int ||
-              response['size'] is! int ||
-              response['total'] is! num ||
-              response['totalPages'] is! int) {
-            throw const FormatException('筛选候选分页信息异常，请重新读取');
-          }
-          return PagedResult<MasterFacetBucket>.fromJson({
-            ...response,
-            'items': response['buckets'],
-          }, MasterFacetBucket.fromJson);
+        fetchPage: (target) => readFacets(target, 100),
+        fetchPageSized: readFacets,
+        onProgressiveBatch: (partial) {
+          if (!accepts() || !_allowed || !mounted) return;
+          setState(() => _rows = partial.items);
         },
       );
       if (!accepts() || !_allowed) return;

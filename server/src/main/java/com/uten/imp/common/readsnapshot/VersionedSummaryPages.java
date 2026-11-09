@@ -203,8 +203,10 @@ public class VersionedSummaryPages {
             String dataVersion=hash("summary-data-v1",request.domain(),
                     Objects.requireNonNull(row.get("business_dataset_id")),Objects.requireNonNull(row.get("business_reset_generation")),
                     Objects.requireNonNull(row.get("epoch")),Objects.requireNonNull(row.get("revision")));
-            String revision=hash("summary-read-v1",request.domain(),request.authorizationDomain(),request.scope(),
-                    request.size(),identityJson.writeValueAsString(request.queryIdentity()),auth,dataVersion);
+            // v2 (2026-11-08): the batch size is transport only. A complete read grows its
+            // aligned batches (50, 50, 100, 200 ...) under one query/authorization/data proof.
+            String revision=hash("summary-read-v2",request.domain(),request.authorizationDomain(),request.scope(),
+                    identityJson.writeValueAsString(request.queryIdentity()),auth,dataVersion);
             return new Stamp(auth,revision,dataVersion);
         } catch(JsonProcessingException invalid) { throw new ApiException(ErrorCode.VALIDATION_FAILED,"读取条件无法确认"); }
     }

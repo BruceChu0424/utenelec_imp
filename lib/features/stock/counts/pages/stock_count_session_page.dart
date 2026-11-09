@@ -437,6 +437,21 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
           sort: pageColumns.sort,
           ascending: pageColumns.ascending,
         ),
+        // No progressive rows here: accepting rows seeds the count editors
+        // and retires added draft rows, so it waits for the complete result.
+        fetchPageSized: (target, size) => pageRepository.candidates(
+          warehouseId: pageWarehouseId,
+          keyword: pageKeyword,
+          includeRelated: pageIncludeRelated,
+          categoryId: pageCategoryId,
+          stockedOnly: pageStockedOnly,
+          sheet: pageSheet,
+          page: target,
+          size: size,
+          columns: pageColumns.searches,
+          sort: pageColumns.sort,
+          ascending: pageColumns.ascending,
+        ),
       );
       if (!isCurrent()) return;
       // 行集与页集同键；编辑缓冲 putIfAbsent 保留已填值。

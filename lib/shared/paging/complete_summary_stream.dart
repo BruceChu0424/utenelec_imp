@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import '../../core/network/api_error.dart';
 import '../../core/network/api_exception.dart';
 import '../../core/performance/ui_work_budget.dart';
+import 'complete_paged_snapshot.dart';
 
 ApiException _invalidStream() =>
     ApiException('INCOMPLETE_READ_PROTOCOL', '完整列表传输未完成或读取凭据无效，请重试');
@@ -34,16 +35,25 @@ Stream<Map<String, dynamic>> decodeSummaryFrames(
   }
 }
 
+/// The request `size` that selects the progressive frame plan (first frame
+/// 50 rows, then aligned up to 200). `100` keeps the original fixed frames.
+const kProgressiveSummaryStreamSize = 200;
+
 /// Adapts one HTTP stream to the existing complete-page validator. Only this
 /// transport changes: row identity, totals, authority and snapshot validation
 /// remain owned by readVersionedSummarySnapshot/loadCompletePagedResult.
+/// Every frame is the exact server page the shared [plan] places at the rows
+/// already received, so client and server agree on each frame boundary.
 class CompleteSummaryStream {
-  CompleteSummaryStream(Stream<Map<String, dynamic>> frames)
-    : _frames = StreamIterator(frames);
+  CompleteSummaryStream(
+    Stream<Map<String, dynamic>> frames, {
+    this.plan = const CompleteReadBatchPlan.fixed(100),
+  }) : _frames = StreamIterator(frames);
 
+  final CompleteReadBatchPlan plan;
   final StreamIterator<Map<String, dynamic>> _frames;
   Map<String, dynamic>? _first;
-  var _nextPage = 1;
+  var _offset = 0;
   var _complete = false;
   var _started = false;
   var _sourceFinished = false;
@@ -77,7 +87,12 @@ class CompleteSummaryStream {
     int size,
     String? revision,
   ) async {
-    if (_complete || page != _nextPage || size != 100) throw _invalidStream();
+    final expectedSize = plan.sizeAt(_offset);
+    if (_complete ||
+        size != expectedSize ||
+        page != _offset ~/ expectedSize + 1) {
+      throw _invalidStream();
+    }
     final frame = await _next();
     final value = frame['value'];
     if (frame['type'] != 'page' || value is! Map<String, dynamic>) {
@@ -93,7 +108,7 @@ class CompleteSummaryStream {
       throw _invalidStream();
     }
     final expectedPages = (total + size - 1) ~/ size;
-    final remaining = total - (page - 1) * size;
+    final remaining = total - _offset;
     final expectedRows = remaining <= 0 ? 0 : remaining.clamp(0, size);
     if (pages != expectedPages || rows.length != expectedRows) {
       throw _invalidStream();
@@ -119,8 +134,8 @@ class CompleteSummaryStream {
     if (revision != null && value['readSnapshotRevision'] != revision) {
       throw ApiException('SNAPSHOT_CHANGED', '列表已变化，请重新读取');
     }
-    _nextPage++;
-    if (page == pages || page == 1 && pages == 0) {
+    _offset += rows.length;
+    if (_offset >= total) {
       final end = await _next();
       if (end['type'] != 'complete') throw _invalidStream();
       if (end['readScopeVersion'] != _first!['readScopeVersion']) {

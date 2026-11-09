@@ -107,6 +107,12 @@ class _IncrementListState
             (ref.read(productionMaterialIncrementRepositoryProvider), _status),
         useCache: useCache,
         fetchPage: (target) => repository.list(status: status, page: target),
+        fetchPageSized: (target, size) =>
+            repository.list(status: status, page: target, size: size),
+        onProgressiveBatch: (partial) {
+          if (!mounted || request != _request) return;
+          setState(() => _data = partial);
+        },
       );
       if (mounted && request == _request) {
         setState(() {

@@ -164,6 +164,20 @@ class _ReportablePlanLineSheetState
           keyword: keyword,
           departmentId: department,
         ),
+        fetchPageSized: (page, size) => repository.reportablePlanLines(
+          executionSegmentId: segment,
+          page: page,
+          size: size,
+          keyword: keyword,
+          departmentId: department,
+        ),
+        onProgressiveBatch: (partial) {
+          if (!mounted || generation != _requestGeneration) return;
+          setState(() {
+            _items = partial.items;
+            _total = partial.total;
+          });
+        },
       );
       if (!mounted || generation != _requestGeneration) return;
       setState(() {

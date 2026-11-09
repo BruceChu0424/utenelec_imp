@@ -133,7 +133,7 @@ class GoodsPriceHistoryTablePostgresTest {
         for(String key:List.of("unitPrice DESC; DROP TABLE goods","comparable","unknown"))assertThatThrownBy(()->table.table(query(Kind.PURCHASE,1,10,key,true,Map.of()))).isInstanceOf(ApiException.class);
         assertThatThrownBy(()->table.table(query(Kind.PURCHASE,1,10,null,false,Map.of("sourceNo) OR TRUE;--","x")))).isInstanceOf(ApiException.class);
         assertThatThrownBy(()->table.table(query(Kind.PURCHASE,1,10,null,false,Map.of("unitPrice","NaN")))).isInstanceOf(ApiException.class);
-        assertThatThrownBy(()->table.table(query(Kind.PURCHASE,1,101,null,false,Map.of()))).isInstanceOf(ApiException.class);
+        assertThatThrownBy(()->table.table(query(Kind.PURCHASE,1,201,null,false,Map.of()))).isInstanceOf(ApiException.class);
         assertThatThrownBy(()->table.table(new TableQuery(context(Kind.PURCHASE),null,BusinessTime.today().plusDays(1),1,50,null,null,Map.of()))).isInstanceOf(ApiException.class);
         doThrow(new ApiException(ErrorCode.FORBIDDEN,"revoked")).when(access).requireHistory(Kind.PURCHASE);clearInvocations(named);
         assertThatThrownBy(()->table.table(query(Kind.PURCHASE,1,10,null,false,Map.of()))).hasMessageContaining("revoked");verifyNoInteractions(named);

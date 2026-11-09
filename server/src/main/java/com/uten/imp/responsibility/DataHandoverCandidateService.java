@@ -7,6 +7,7 @@ import com.uten.imp.common.util.DepartmentSearchSql;
 import com.uten.imp.common.util.EmployeeCandidateFilter;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.web.Pageables;
 import com.uten.imp.responsibility.dto.DataHandoverCandidate;
 import com.uten.imp.responsibility.dto.DataHandoverCandidatePage;
 import jakarta.persistence.EntityManager;
@@ -47,7 +48,7 @@ public class DataHandoverCandidateService {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "候选人搜索词不能超过100个字符");
         }
         int page = Math.max(1, requestedPage);
-        int size = Math.max(1, Math.min(100, requestedSize));
+        int size = Math.max(1, Math.min(Pageables.MAX_PAGE_SIZE, requestedSize));
         boolean target = "target".equals(normalizedRole);
         EmployeeHandoverAuthorization.CandidateScope scope = authorization.candidateScope();
         boolean searched = !KeywordSearch.terms(keyword).isEmpty();

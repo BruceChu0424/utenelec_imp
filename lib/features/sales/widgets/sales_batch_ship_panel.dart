@@ -195,6 +195,25 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet>
             ),
           );
         },
+        fetchPageSized: (target, size) async {
+          final request = await repository.api.captureRequestScope(
+            isCurrent: queryCurrent,
+          );
+          return request.run(
+            () => repository.shippableLinesPage(
+              page: target,
+              size: size,
+              keyword: keyword,
+              clientId: clientId,
+            ),
+          );
+        },
+        // Progressive batches grow only the browsable row list; name warming,
+        // selection reconciliation and the busy flag wait for the final result.
+        onProgressiveBatch: (partial) {
+          if (!current() || !queryCurrent()) return;
+          setState(() => _page = partial);
+        },
       );
       if (!current()) return;
       await scope.run(

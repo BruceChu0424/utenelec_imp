@@ -915,13 +915,13 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
             assertThat(clamped.getPage()).isEqualTo(8);
             assertThat(clamped.getItems()).extracting(ProductionExecutionWorkbenchSegment::segmentId)
                     .containsExactly(new UUID(0, 1));
-            // Exports read the same order in their 500-row batches instead of the 100-row page cap.
+            // Exports read the same order in their 500-row batches instead of the 200-row page cap.
             var export = service.workshopTaskExportBatch(1, 500, null, "PREPARING", null, null, null,
                     null, null, null, null, null, null);
             assertThat(export.getSize()).isEqualTo(500);
             assertThat(export.getItems()).extracting(ProductionExecutionWorkbenchSegment::segmentId)
                     .containsExactlyElementsOf(expected);
-            assertThat(service.workshopTasks(1, 500, null, "PREPARING", null, null, null).getSize()).isEqualTo(100);
+            assertThat(service.workshopTasks(1, 500, null, "PREPARING", null, null, null).getSize()).isEqualTo(200);
             // One statement now serves both bucket columns with the original values and order.
             var facets = service.workshopTaskFacets(null, "PREPARING", null, null, null, null, null);
             assertThat(facets.get("sourcePlan")).isEmpty();

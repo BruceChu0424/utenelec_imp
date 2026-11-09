@@ -8,6 +8,7 @@ import com.uten.imp.application.port.WarehouseTaskScopePort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.util.TaskKeywordSearch;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.web.Pageables;
 import com.uten.imp.features.stock.StockDocAccessPolicy;
 import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialScope;
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalRegistrationService;
@@ -93,7 +94,7 @@ public class WarehouseInboundTaskCenterQueryService {
         var headers = WarehouseTaskHeaderQuery.criteria(com.uten.imp.common.report.NativeReportFacetProducer.selectedScope(filter.columnSearch(),List.of("billNo")), true);
         String base = WarehouseInboundTaskCenterSql.base(access,scope,filter.keyword(),headers.predicate(),source);
         int page = Math.max(1,filter.page());
-        int size = Math.max(1,Math.min(100,filter.size()));
+        int size = Math.max(1,Math.min(Pageables.MAX_PAGE_SIZE,filter.size()));
         MapSqlParameterSource parameters = new MapSqlParameterSource()
                 .addValue("type","ALL").addValue("source",source).addValue("status",status)
                 .addValue("view",filter.view().name())
@@ -286,7 +287,7 @@ public class WarehouseInboundTaskCenterQueryService {
                     """.formatted(ProcurementReceiptProgress.joins("exception.order_type","exception.receipt_id","exception.receipt_item_id"));
             default -> null;
         };
-        int safePage=Math.max(1,linePage),safeSize=Math.max(1,Math.min(100,lineSize));
+        int safePage=Math.max(1,linePage),safeSize=Math.max(1,Math.min(Pageables.MAX_PAGE_SIZE,lineSize));
         long total;
         List<Map<String,Object>> items;
         var headers=WarehousePhysicalDetailHeaders.criteria(columns,"to_jsonb(physical_detail)");

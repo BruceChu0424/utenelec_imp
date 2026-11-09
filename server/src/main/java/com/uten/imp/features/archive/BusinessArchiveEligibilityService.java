@@ -3,6 +3,7 @@ package com.uten.imp.features.archive;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.application.port.ProcurementArchiveEligibilityPort;
+import com.uten.imp.common.web.Pageables;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -467,7 +468,7 @@ public class BusinessArchiveEligibilityService {
     /** 资格登记分页读取（管理端；HTTP 面由控制器统一授权）。 */
     @Transactional(readOnly = true)
     public Map<String, Object> eligibilityPage(String objectFamily, Boolean eligible, int page, int size) {
-        int boundedSize = Math.max(1, Math.min(size, 100));
+        int boundedSize = Math.max(1, Math.min(size, Pageables.MAX_PAGE_SIZE));
         int boundedPage = Math.max(1, page);
         long offset = ((long) boundedPage - 1L) * boundedSize;
         StringBuilder where = new StringBuilder("WHERE object_family = ?");

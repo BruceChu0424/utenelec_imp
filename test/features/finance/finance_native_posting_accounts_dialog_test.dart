@@ -72,14 +72,10 @@ void main() {
       expect(table.items.last['id'], 'version-100');
       expect(table.totalPages, 1);
       expect(table.onPageChange, isNull);
-      expect(api.directoryReads.map((q) => q['size']), everyElement(100));
-      expect(
-        api.directoryReads
-            .map((q) => q['page'])
-            .toList()
-            .sublist(api.directoryReads.length - 2),
-        [1, 2],
-      );
+      // Progressive complete-read ladder (2026-11-08): first batch 50, then
+      // aligned 50/100 batches; the reader never rereads a row.
+      expect(api.directoryReads.map((q) => q['size']), [50, 50, 100]);
+      expect(api.directoryReads.map((q) => q['page']), [1, 2, 2]);
       final reads = api.directoryReads.length;
       await tester.drag(finder, const Offset(0, -6000));
       await tester.pumpAndSettle();

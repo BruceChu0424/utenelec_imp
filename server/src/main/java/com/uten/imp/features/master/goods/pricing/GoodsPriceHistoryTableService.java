@@ -3,6 +3,7 @@ package com.uten.imp.features.master.goods.pricing;
 import com.uten.imp.application.port.MasterReferenceValidationPort;
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.FacetBucket;
+import com.uten.imp.common.web.Pageables;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
@@ -69,7 +70,7 @@ public class GoodsPriceHistoryTableService {
     private record Facets(Map<String,List<FacetBucket>> buckets,Map<String,Long> nulls,Map<String,Long> totals,Map<String,Boolean> more) {}
 
     public TablePage table(TableQuery request) {
-        Prepared p=prepare(request);int size=size(request.size(),50,100),page=page(request.page());
+        Prepared p=prepare(request);int size=size(request.size(),50,Pageables.MAX_PAGE_SIZE),page=page(request.page());
         String sort=request.sort()==null||request.sort().isBlank()?"businessDate":request.sort();column(sort);
         boolean ascending=request.sort()!=null&&!request.sort().isBlank()&&Boolean.TRUE.equals(request.ascending());
         String filter=filters(p,null);

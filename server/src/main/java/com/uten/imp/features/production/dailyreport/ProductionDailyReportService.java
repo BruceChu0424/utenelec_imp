@@ -256,7 +256,7 @@ public class ProductionDailyReportService {
         List<UUID> segmentIds = List.copyOf(new LinkedHashSet<>(requested));
         int page = request.page() == null ? 1 : request.page();
         int size = request.size() == null ? 100 : request.size();
-        if (page < 1 || size < 1 || size > 100) {
+        if (page < 1 || size < 1 || size > Pageables.MAX_PAGE_SIZE) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "草稿范围查询页码或批大小无效");
         }
         Pageables.checkedOffset(page, size);

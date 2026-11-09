@@ -272,6 +272,7 @@ class _ConfirmationDirectoryState extends ConsumerState<_ConfirmationDirectory>
         isCurrent: current,
         fetchPage: (page) async => _fetchPage(page, 100, kind),
         fetchPageSized: (page, size) async => _fetchPage(page, size, kind),
+        onProgressiveBatch: (partial) => setState(() => _rows = partial.items),
       );
       if (current()) setState(() => _rows = data.items);
     } catch (e) {

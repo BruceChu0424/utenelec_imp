@@ -171,6 +171,18 @@ class _ProductionExecutionGroupPanelState
           order: requestedOrder,
           salesOrder: requestedSalesOrder,
         ),
+        fetchPageSized: (page, size) => repo.groups(
+          page: page,
+          size: size,
+          keyword: requestedKeyword,
+          sort: requestedSort,
+          order: requestedOrder,
+          salesOrder: requestedSalesOrder,
+        ),
+        onProgressiveBatch: (partial) {
+          if (!mounted || generation != _loadGeneration) return;
+          setState(() => _items = partial.items);
+        },
       );
       // 关联订单 facets 与列表同上下文（不含单号自身筛选）；失败不阻断列表。
 

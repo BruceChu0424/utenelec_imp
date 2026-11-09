@@ -12,6 +12,7 @@ import com.uten.imp.common.util.DepartmentNameResolver;
 import com.uten.imp.common.util.EmployeeNameResolver;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.web.Pageables;
 import com.uten.imp.features.master.client.ClientAccessPolicy;
 import com.uten.imp.features.master.client.ClientFinancialPolicy;
 import com.uten.imp.features.master.goods.history.GoodsOperationHistoryService;
@@ -471,7 +472,7 @@ public class MasterRecordHistoryService {
       throw bad("不支持的历史动作");
     if (present(filters.sourceType()) && !Set.of("CATEGORY", "BOM", "EXTENSION", "RECORD").contains(filters.sourceType()))
       throw bad("不支持的历史修改范围");
-    int size = Math.max(1, Math.min(100, filters.size()));
+    int size = Math.max(1, Math.min(Pageables.MAX_PAGE_SIZE, filters.size()));
     String prefix =
         categoryId == null
             ? ""

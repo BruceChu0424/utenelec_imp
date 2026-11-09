@@ -2,6 +2,7 @@ package com.uten.imp.features.warehouse.materialbin;
 
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.web.Pageables;
 import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialDtos.MaterialStockOption;
 import com.uten.imp.support.MigratedProjectionSchema;
 import org.junit.jupiter.api.AfterAll;
@@ -195,17 +196,18 @@ class WorkshopMaterialRequestCandidatesPostgresTest {
         UUID familiar = goods("ZZZ", "常用颗粒", kg, "ORDER");
         db.update("INSERT INTO v_workshop_material_bin_ledger VALUES (?,?,NULL)", bin, familiar);
         var seen = new HashSet<UUID>();
-        for (int page = 1; page <= 6; page++) {
+        // 2026-11-08 上限 200：1000 夹到 Pageables.MAX_PAGE_SIZE，508 行分 3 页（200+200+108）不丢行。
+        for (int page = 1; page <= 3; page++) {
             var result = service.requestMaterials(workshop, null, null, page, 1000);
-            assertThat(result.getSize()).isEqualTo(100);
+            assertThat(result.getSize()).isEqualTo(Pageables.MAX_PAGE_SIZE);
             assertThat(result.getPage()).isEqualTo(page);
             assertThat(result.getTotal()).isEqualTo(508);
-            assertThat(result.getTotalPages()).isEqualTo(6);
+            assertThat(result.getTotalPages()).isEqualTo(3);
             if (page == 1) assertThat(result.getItems().getFirst().goodsId()).isEqualTo(familiar);
             for (var row : result.getItems()) assertThat(seen.add(row.goodsId())).isTrue();
         }
         assertThat(seen).hasSize(508);
-        var beyond = service.requestMaterials(workshop, null, null, 7, 100);
+        var beyond = service.requestMaterials(workshop, null, null, 4, 1000);
         assertThat(beyond.getItems()).isEmpty();
         assertThat(beyond.getTotal()).isEqualTo(508);
     }

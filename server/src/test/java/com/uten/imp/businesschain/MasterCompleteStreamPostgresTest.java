@@ -1,6 +1,7 @@
 package com.uten.imp.businesschain;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.uten.imp.common.web.Pageables;
 import com.uten.imp.features.master.goods.Goods;
 import com.uten.imp.features.master.goods.GoodsRepository;
 import org.junit.jupiter.api.*;
@@ -70,8 +71,9 @@ class MasterCompleteStreamPostgresTest extends AuthSessionPostgresTestSupport {
         var bounded=mvc.perform(get("/api/master/goods").param("categoryId",category.toString()).param("size","1000")
                 .header("Authorization","Bearer "+token)).andReturn();
         assertThat(bounded.getResponse().getStatus()).isEqualTo(200);
-        assertThat(json(bounded).path("items").size()).isEqualTo(100);
-        System.out.println("MASTER-COMPLETE-STREAM rows=10001 batches=101 countQueries=1 ordinaryPageCap=100 elapsedMillis="+elapsed);
+        // 2026-11-08 合同：普通页仍夹在 Pageables.MAX_PAGE_SIZE（1000 → 200），完整读取只走流式端点。
+        assertThat(json(bounded).path("items").size()).isEqualTo(Pageables.MAX_PAGE_SIZE);
+        System.out.println("MASTER-COMPLETE-STREAM rows=10001 batches=101 countQueries=1 ordinaryPageCap="+Pageables.MAX_PAGE_SIZE+" elapsedMillis="+elapsed);
     }
 
     @Test void allFiveFlatMastersKeepTheirOriginalFiltersAndSettlementBeyondFiveHundredIsComplete()throws Exception {

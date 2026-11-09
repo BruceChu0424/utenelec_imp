@@ -3,6 +3,7 @@ package com.uten.imp.features.ai.usage;
 import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.web.Pageables;
 import com.uten.imp.features.ai.AiProperties;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.SecurityContextCurrentUser;
@@ -157,7 +158,9 @@ class AiUsageDashboardPostgresTest {
             });
             assertThat(dashboard.peoplePage(window, 99, 100).getTotal()).isEqualTo(501);
             assertThat(dashboard.peoplePage(window, 99, 100).getItems()).isEmpty();
-            assertThat(dashboard.peoplePage(window, 1, 500).getSize()).isEqualTo(100);
+            // 2026-11-08 合同：500 超上限夹到 Pageables.MAX_PAGE_SIZE，不再回到旧 100。
+            assertThat(dashboard.peoplePage(window, 1, 500).getSize())
+                    .isEqualTo(Pageables.MAX_PAGE_SIZE);
             assertThat(dashboard.dashboard(window, false).people()).isEmpty();
             assertThat(dashboard.dashboard(window).people()).hasSize(500);
         }

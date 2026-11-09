@@ -3,6 +3,7 @@ package com.uten.imp.features.ai.usage;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.uten.imp.common.web.Pageables;
 import com.uten.imp.features.ai.AiPlatformPostgresTestSupport;
 import org.junit.jupiter.api.Test;
 
@@ -122,7 +123,8 @@ class AiUsageAuditPostgresTest extends AiPlatformPostgresTestSupport {
         String token = login(actor.loginAccount(),EMPLOYEE_PASSWORD).path("accessToken").asText();
         var denied = mvc.perform(authed(get("/api/admin/ai/usage-audit"),token)).andReturn();
         assertEquals(403,denied.getResponse().getStatus(),body(denied));
-        for (String params : new String[]{"days=0","days=367","page=-1","size=101"}) {
+        // 2026-11-08 上限 200：无效 size 边界钉在新上限+1，仍必须在查询前拒绝。
+        for (String params : new String[]{"days=0","days=367","page=-1","size="+(Pageables.MAX_PAGE_SIZE+1)}) {
             var invalid = mvc.perform(authed(get("/api/admin/ai/usage-audit?"+params),adminToken())).andReturn();
             assertEquals(422,invalid.getResponse().getStatus(),body(invalid));
         }

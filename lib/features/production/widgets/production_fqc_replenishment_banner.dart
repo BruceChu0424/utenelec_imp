@@ -21,6 +21,8 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/paging/paged_read_window_binding.dart'
+    show readWindowBindingOf;
 import '../../../shared/paging/scoped_paged_read.dart';
 import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
 import '../models/production_fqc_replenishment_task.dart';
@@ -486,6 +488,9 @@ class _ProductionFqcReplenishmentBannerState
 
           final result = _result;
           final items = result?.items ?? const [];
+          // A still-growing complete read: rows are a validated prefix and
+          // task commands wait for the complete result.
+          final growing = readWindowBindingOf(items)?.growing == true;
           return FractionallySizedBox(
             heightFactor: 0.9,
             child: Column(
@@ -545,6 +550,7 @@ class _ProductionFqcReplenishmentBannerState
                             busy: _busyAuthorizations.contains(
                               task.authorizationId,
                             ),
+                            writesWaiting: growing,
                             onCreateAnalysis: () async {
                               if (!sheetOwner()) return;
                               final operation = _createAndOpenAnalysis(
@@ -731,6 +737,7 @@ class _MaterialTaskCard extends StatelessWidget {
     required this.onConfirm,
     required this.onOpenDraw,
     required this.onOpenPlan,
+    this.writesWaiting = false,
   });
 
   final ProductionFqcReplenishmentMaterialTask task;
@@ -745,6 +752,10 @@ class _MaterialTaskCard extends StatelessWidget {
   final VoidCallback onConfirm;
   final VoidCallback onOpenDraw;
   final VoidCallback onOpenPlan;
+
+  /// The task list is a still-growing prefix of a complete read: commands
+  /// wait for the complete result (navigation stays available).
+  final bool writesWaiting;
 
   @override
   Widget build(BuildContext context) {
@@ -816,6 +827,7 @@ class _MaterialTaskCard extends StatelessWidget {
   }
 
   List<Widget> _actions(BuildContext context) {
+    final commandsClosed = busy || writesWaiting;
     switch (task.status) {
       case 'AWAITING_ANALYSIS':
         if (canCreateAnalysis) {
@@ -824,7 +836,7 @@ class _MaterialTaskCard extends StatelessWidget {
               size: UtenButtonSize.large,
               icon: Icons.add_task_rounded,
               isLoading: busy,
-              onPressed: busy ? null : onCreateAnalysis,
+              onPressed: commandsClosed ? null : onCreateAnalysis,
               child: const Text('建立补产 BOM 分析'),
             ),
           ];
@@ -847,7 +859,7 @@ class _MaterialTaskCard extends StatelessWidget {
               size: UtenButtonSize.large,
               icon: Icons.playlist_add_check_circle_outlined,
               isLoading: busy,
-              onPressed: busy ? null : onConfirm,
+              onPressed: commandsClosed ? null : onConfirm,
               child: const Text('确认用料并生成领料'),
             )
           else
@@ -860,7 +872,7 @@ class _MaterialTaskCard extends StatelessWidget {
               size: UtenButtonSize.large,
               icon: Icons.refresh_rounded,
               isLoading: busy,
-              onPressed: busy ? null : onConfirm,
+              onPressed: commandsClosed ? null : onConfirm,
               child: const Text('库存补齐后重试确认'),
             ),
           ];

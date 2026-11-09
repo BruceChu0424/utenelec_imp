@@ -35,9 +35,12 @@ class _Api extends ApiClient {
   final workshops = Completer<List<Map<String, dynamic>>>();
   final requests = <String>[];
   final progressQueries = <Map<String, dynamic>>[];
+  final writes = <String>[];
   bool completeProgress = false;
   // A later progress batch waits here, then fails (null: every batch answers).
   Completer<void>? failLaterProgress;
+  // A later progress batch waits here, then answers normally.
+  Completer<void>? holdLaterProgress;
 
   @override
   Future<Map<String, dynamic>> get(
@@ -65,6 +68,9 @@ class _Api extends ApiClient {
         await failLaterProgress!.future;
         throw ApiException('SERVER_ERROR', '生产进度后续批读取失败');
       }
+      if (progressQueries.length > 1 && holdLaterProgress != null) {
+        await holdLaterProgress!.future;
+      }
       return {
         'items': [
           for (var i = (page - 1) * size; i < page * size && i < 251; i++)
@@ -89,9 +95,27 @@ class _Api extends ApiClient {
     if (path == '/production/plans/progress/workshops') return workshops.future;
     return const [];
   }
+
+  @override
+  Future<Map<String, dynamic>> post(
+    String path, {
+    Object? body,
+    Map<String, dynamic>? headers,
+    Map<String, dynamic>? query,
+  }) async {
+    writes.add(path);
+    return const {};
+  }
 }
 
-Future<void> _mount(WidgetTester tester, _Api api) async {
+Future<void> _mount(
+  WidgetTester tester,
+  _Api api, {
+  Set<String> permissions = const {
+    Perm.productionPlanView,
+    Perm.productionMaterialAnalysisCreate,
+  },
+}) async {
   SharedPreferences.setMockInitialValues({});
   final preferences = await SharedPreferences.getInstance();
   await tester.binding.setSurfaceSize(const Size(1400, 1000));
@@ -104,10 +128,7 @@ Future<void> _mount(WidgetTester tester, _Api api) async {
         authenticatedScopeProvider.overrideWithValue(
           const AuthenticatedScope(userId: 'planner'),
         ),
-        currentPermissionsProvider.overrideWithValue(const {
-          Perm.productionPlanView,
-          Perm.productionMaterialAnalysisCreate,
-        }),
+        currentPermissionsProvider.overrideWithValue(permissions),
         isSuperAdminProvider.overrideWithValue(false),
         fixedBadgeSummaryOverride(badgeSummaryFixture()),
       ],
@@ -207,6 +228,58 @@ void main() {
         for (final query in api.progressQueries)
           (page: query['page'] as int, size: query['size'] as int),
       ], completeReadPlanBatches(251).take(2));
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'history plan flags wait for the complete result while progressive cards grow',
+    (tester) async {
+      final api = _Api()
+        ..completeProgress = true
+        ..holdLaterProgress = Completer<void>();
+      await _mount(
+        tester,
+        api,
+        permissions: const {
+          Perm.productionPlanView,
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionPlanFlags,
+        },
+      );
+      await tester.tap(find.text('历史记录'));
+      for (
+        var frame = 0;
+        frame < 200 && api.progressQueries.length < 2;
+        frame++
+      ) {
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      final card = find.byKey(
+        const ValueKey('production-progress-plan-progress-0'),
+      );
+      final flags = find.descendant(
+        of: card,
+        matching: find.byType(PopupMenuButton<String>),
+      );
+      // Growing: the first batch is on screen, its flag writes are not open.
+      expect(card, findsOneWidget);
+      expect(tester.widget<PopupMenuButton<String>>(flags).enabled, isFalse);
+      await tester.tap(flags);
+      await tester.pump();
+      expect(find.text('置顶'), findsNothing);
+      api.holdLaterProgress!.complete();
+      await tester.pumpAndSettle();
+      // Complete: the same card offers its flags again.
+      expect(
+        api.progressQueries,
+        hasLength(completeReadPlanBatches(251).length),
+      );
+      expect(tester.widget<PopupMenuButton<String>>(flags).enabled, isTrue);
+      await tester.tap(flags);
+      await tester.pumpAndSettle();
+      expect(find.text('置顶'), findsOneWidget);
+      expect(api.writes, isEmpty, reason: 'no flag write was replayed');
       expect(tester.takeException(), isNull);
     },
   );

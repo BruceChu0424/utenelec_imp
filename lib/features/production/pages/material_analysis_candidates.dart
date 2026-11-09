@@ -947,7 +947,10 @@ abstract class _MaterialAnalysisCandidatesState
     // A failed or retired complete read withdraws its progressive lines as a
     // whole. The wide table hides them itself; these cards must not keep a
     // half list (or its count) beside the read failure.
-    final withdrawn = readWindowBindingOf(lines)?.isCurrent == false;
+    final binding = readWindowBindingOf(lines);
+    final withdrawn = binding?.isCurrent == false;
+    // Still growing: the cards show the validated prefix, selection waits.
+    final growing = binding?.growing == true;
     return CustomScrollView(
       key: const Key('material-analysis-candidate-mobile-list'),
       slivers: [
@@ -989,7 +992,11 @@ abstract class _MaterialAnalysisCandidatesState
                 if (index.isOdd) {
                   return const SizedBox(height: UtenSpacing.s8);
                 }
-                return _candidateMobileCard(theme, lines[index ~/ 2]);
+                return _candidateMobileCard(
+                  theme,
+                  lines[index ~/ 2],
+                  growing: growing,
+                );
               }, childCount: lines.length * 2 - 1),
             ),
           if (page != null && !withdrawn)
@@ -1378,10 +1385,14 @@ abstract class _MaterialAnalysisCandidatesState
 
   Widget _candidateMobileCard(
     ThemeData theme,
-    MaterialAnalysisSalesCandidateLine line,
-  ) {
+    MaterialAnalysisSalesCandidateLine line, {
+    bool growing = false,
+  }) {
     final selected = _candidateSelected(line);
-    final selectable = _canManage && (line.remainingQty ?? 0) > 0;
+    // While the complete read is still growing, the rows are a validated
+    // prefix: selection waits for the complete result (like the table's
+    // growing state); an existing selection and its quantities stay.
+    final selectable = !growing && _canManage && (line.remainingQty ?? 0) > 0;
     return Card(
       key: ValueKey('material-candidate-card-${line.salesOrderItemId}'),
       margin: EdgeInsets.zero,

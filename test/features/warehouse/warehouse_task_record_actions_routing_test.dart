@@ -16,6 +16,8 @@ import 'package:uten_imp/features/warehouse/widgets/warehouse_task_record_action
 import 'package:uten_imp/features/warehouse/widgets/warehouse_task_physical_detail_dialog.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/user.dart';
+import 'package:uten_imp/shared/paging/complete_paged_snapshot.dart'
+    show CompleteReadBatchPlan;
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/warehouse/warehouse_task_scope.dart';
 
@@ -91,6 +93,7 @@ class _PhysicalDetailApi extends ApiClient {
         },
       ],
       'page': 1,
+      'size': query?['lineSize'],
       'totalPages': 1,
       'total': 1,
     };
@@ -541,10 +544,12 @@ void main() {
           harness.detailApi.calls.single.path,
           '/warehouse/task-center/inbound/FINISHED%3AFINISHED_REGISTRATION%3Aprojection-id/detail',
         );
+        // One complete read of the exact registration batch: a single first
+        // batch of the shared progressive plan, scoped to the source warehouse.
         expect(harness.detailApi.calls.single.query, {
           'scopeWarehouseId': 'warehouse-original',
           'linePage': 1,
-          'lineSize': 100,
+          'lineSize': CompleteReadBatchPlan.progressive.firstBatchSize,
         });
         expect(find.text('REGISTERED-ONLY'), findsOneWidget);
         expect(find.text('撤回本登记批'), findsNothing);
@@ -711,7 +716,10 @@ void main() {
         api.calls.single.path,
         '/warehouse/task-center/inbound/FINISHED%3AFINISHED_REGISTRATION%3Aprojection-id/detail',
       );
-      expect(api.calls.single.query, {'linePage': 1, 'lineSize': 100});
+      expect(api.calls.single.query, {
+        'linePage': 1,
+        'lineSize': CompleteReadBatchPlan.progressive.firstBatchSize,
+      });
       expect(find.text('REGISTERED-ONLY'), findsOneWidget);
       expect(errors, isEmpty);
       expect(container.read(appNotificationProvider), isEmpty);

@@ -2,6 +2,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/paging/complete_paged_snapshot.dart'
+    show CompleteReadBatchPlan;
 import '../../../shared/warehouse/warehouse_task_scope.dart';
 import '../models/warehouse_draw_task.dart';
 
@@ -102,7 +104,9 @@ class ProductionDrawTaskRepository {
       '/operations/workbench/warehouse',
       query: {
         'page': page < 1 ? 1 : page,
-        'size': size.clamp(1, 100),
+        // Server page maximum (Pageables.MAX_PAGE_SIZE) is the shared plan's
+        // largest batch: complete reads ask 50, then aligned up to it.
+        'size': size.clamp(1, CompleteReadBatchPlan.progressive.maxBatchSize),
         if (keyword != null && keyword.trim().isNotEmpty)
           'keyword': keyword.trim(),
         if (status != null && status.isNotEmpty) 'status': status,

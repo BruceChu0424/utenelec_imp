@@ -151,10 +151,13 @@ class _ProductionFqcReplenishmentBannerState
     }
     final targetPage = page ?? _taskRows.visiblePage ?? _page;
     _retryPage = targetPage;
-    setState(() {
+    _updateTaskRead(() {
       _loading = true;
       _error = null;
     });
+    // Progressive rows shown by this read: a failure takes them down as a
+    // whole instead of leaving a half list beside the error.
+    var partialRows = false;
     try {
       final repository = ref.read(productionFqcReplenishmentRepositoryProvider);
       int? authoritativeCount;
@@ -203,7 +206,8 @@ class _ProductionFqcReplenishmentBannerState
             // the authoritative pending count still waits for the result below.
             onProgressiveBatch: (partial) {
               if (!mounted || !_requests.isCurrent(generation)) return;
-              setState(() => _result = partial);
+              partialRows = true;
+              _updateTaskRead(() => _result = partial);
             },
           );
       final pendingCount =
@@ -214,7 +218,7 @@ class _ProductionFqcReplenishmentBannerState
                   >)
               .snapshot;
       if (!mounted || !_requests.isCurrent(generation)) return;
-      setState(() {
+      _updateTaskRead(() {
         _result = result;
         _page = result.page;
         _pendingCount = pendingCount;
@@ -223,18 +227,27 @@ class _ProductionFqcReplenishmentBannerState
     } on ApiException catch (error) {
       if (isRetiredViewRead(error)) return;
       if (!mounted || !_requests.isCurrent(generation)) return;
-      setState(() {
+      _updateTaskRead(() {
+        if (partialRows) _result = null;
         _error = error.message;
         _loading = false;
       });
     } catch (retiredReadError) {
       if (isRetiredViewRead(retiredReadError)) return;
       if (!mounted || !_requests.isCurrent(generation)) return;
-      setState(() {
+      _updateTaskRead(() {
+        if (partialRows) _result = null;
         _error = 'FQC 补产物料任务加载失败，请刷新重试';
         _loading = false;
       });
     }
+  }
+
+  /// The banner and an open task sheet render one read state: progressive
+  /// growth, the complete replacement and a failure reach both.
+  void _updateTaskRead(VoidCallback change) {
+    setState(change);
+    _invalidateTaskSheet?.call();
   }
 
   void _replaceTask(ProductionFqcReplenishmentMaterialTask updated) {

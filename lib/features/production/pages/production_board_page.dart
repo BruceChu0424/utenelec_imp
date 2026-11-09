@@ -1500,6 +1500,9 @@ class _PlanPanelState extends ConsumerState<_PlanPanel>
     final to = widget.forcedDateTo ?? (_to == null ? null : _fmtDate(_to!));
     final closed = widget.closed;
     const size = _pageSize;
+    // Progressive plan cards shown by this read: the card list renders them
+    // without the table's retirement, so a failure takes them down here.
+    var partialRows = false;
     try {
       // 汇总和车间选项独立发布，不让它们阻塞计划列表和空态。
       final rows = readScopedPage<PlanProgressRow>(
@@ -1539,6 +1542,7 @@ class _PlanPanelState extends ConsumerState<_PlanPanel>
         ),
         onProgressiveBatch: (partial) {
           if (!current()) return;
+          partialRows = true;
           setState(() => _page = partial);
         },
       );
@@ -1563,6 +1567,7 @@ class _PlanPanelState extends ConsumerState<_PlanPanel>
       if (isRetiredViewRead(e)) return;
       if (!current()) return;
       setState(() {
+        if (partialRows) _page = null;
         _error = productionErrorMessage(e, fallback: '加载生产进度失败');
         _loading = false;
       });

@@ -2,6 +2,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/paging/complete_paged_snapshot.dart'
+    show CompleteReadBatchPlan;
 import '../../../shared/warehouse/warehouse_task_scope.dart';
 import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../../shared/auth/permissions.dart';
@@ -63,7 +65,12 @@ class WarehouseDocumentHistoryRepository
     String? sourceDocNo,
   }) async {
     final safePage = page < 1 ? 1 : page;
-    final safeSize = size.clamp(1, 100);
+    // Server page maximum (Pageables.MAX_PAGE_SIZE) is the shared plan's
+    // largest batch: complete reads ask 50, then aligned up to it.
+    final safeSize = size.clamp(
+      1,
+      CompleteReadBatchPlan.progressive.maxBatchSize,
+    );
     final query = <String, dynamic>{
       'page': safePage,
       'size': safeSize,

@@ -9,8 +9,17 @@ import 'package:uten_imp/features/production/models/production_exact_quantity.da
 import 'package:uten_imp/features/production/models/production_daily_report.dart';
 import 'package:uten_imp/features/production/repositories/production_daily_report_draft_snapshot.dart';
 import 'package:uten_imp/features/production/repositories/production_repository.dart';
+import 'package:uten_imp/shared/paging/complete_paged_snapshot.dart'
+    show CompleteReadBatchPlan;
+
+import '../../../support/complete_read_plan_batches.dart';
 
 String _task(int index) => 'task-${index.toString().padLeft(4, '0')}';
+
+List<({int page, int size})> _pageRequests(_Api api) => [
+  for (final request in api.requests)
+    (page: request['page'] as int, size: request['size'] as int),
+];
 Map<String, dynamic> _claim(
   String? segment,
   String? qty, {
@@ -37,8 +46,10 @@ class _Api extends ApiClient {
     requests.add(request);
     final ids = (request['executionSegmentIds'] as List).cast<String>();
     expect(ids.length, inInclusiveRange(1, 100));
-    expect(request['size'], 100);
     final page = request['page'] as int, size = request['size'] as int;
+    // 2026-11-08 完整读取合同：每次请求都是共享阶梯计划在自身 offset 上的
+    // 真实页（首批 50，之后 50 → 100 → 200 对齐增长，不超过服务端上限）。
+    expect(size, CompleteReadBatchPlan.progressive.sizeAt((page - 1) * size));
     if (page == failPage) throw ApiException('OFFLINE', 'later batch failed');
     if (malformedBody) return {};
     final rows = <Map<String, dynamic>>[];
@@ -208,26 +219,41 @@ void main() {
         for (var i = 0; i < 1101; i++) 'report-$i': [_claim(_task(i), '1')],
       });
       final result = await _load(api, List.generate(1101, _task));
-      expect(api.requests, hasLength(12));
+      // Every bounded scope group (≤100 identities) starts at page 1 exactly
+      // once; together they cover all 1101 identities in input order.
+      final scopes = [
+        for (final request in api.requests)
+          if (request['page'] == 1)
+            (request['executionSegmentIds'] as List).cast<String>(),
+      ];
       expect(
-        api.requests
-            .expand((r) => (r['executionSegmentIds'] as List).cast<String>())
-            .toList(),
-        List.generate(1101, _task),
+        scopes.map((ids) => ids.length),
+        everyElement(inInclusiveRange(1, 100)),
       );
+      expect(scopes.expand((ids) => ids).toList(), List.generate(1101, _task));
+      // Each group then reads its own drafts completely on the shared ladder.
+      expect(api.requests, [
+        for (final ids in scopes)
+          for (final batch in completeReadPlanBatches(ids.length))
+            {
+              'executionSegmentIds': ids,
+              'page': batch.page,
+              'size': batch.size,
+            },
+      ]);
       expect(result.quantities, hasLength(1101));
       expect(result.reports[_task(1100)]!.single.id, 'report-1100');
       expect(api.oldReads, 0);
     },
   );
   test(
-    'one current task can reach all three real draft pages and source quantities',
+    'one current task can reach every real draft batch and source quantities',
     () async {
       final api = _Api({
         for (var i = 0; i < 201; i++) 'report-$i': [_claim('current', '2.5')],
       });
       final result = await _load(api, ['current']);
-      expect(api.requests.map((r) => r['page']), [1, 2, 3]);
+      expect(_pageRequests(api), completeReadPlanBatches(201));
       expect(result.reports['current'], hasLength(201));
       expect(result.quantities['current'], '502.5');
     },
@@ -277,7 +303,8 @@ void main() {
         for (var i = 0; i < 201; i++) 'report-$i': [_claim('current', '1')],
       })..failPage = 2;
       await expectLater(_load(api, ['current']), throwsA(isA<ApiException>()));
-      expect(api.requests.map((r) => r['page']), [1, 2]);
+      // The second ladder batch (page 2) fails; nothing is read after it.
+      expect(_pageRequests(api), completeReadPlanBatches(201).take(2));
       expect(api.oldReads, 0);
     },
   );

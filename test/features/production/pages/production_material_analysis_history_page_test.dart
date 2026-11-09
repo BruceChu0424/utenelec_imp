@@ -1,9 +1,12 @@
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/components/layout/uten_app_bar.dart';
@@ -11,6 +14,7 @@ import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/features/production/models/production_material_analysis.dart';
 import 'package:uten_imp/features/production/pages/production_material_analysis_history_page.dart';
 import 'package:uten_imp/features/production/repositories/production_repository.dart';
+import '../../../support/complete_read_plan_batches.dart';
 import '../../../support/page_resume_test_bridge.dart';
 
 void main() {
@@ -112,6 +116,104 @@ void main() {
       );
     });
   }
+  testWidgets('375px 后续批读取失败时撤下已逐批显示的分析卡片', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(375, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    tester.view.physicalSize = const Size(375, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final template =
+        (_analysisPage()['items']! as List).single as Map<String, dynamic>;
+    final rows = [
+      for (var index = 0; index < 60; index++)
+        {...template, 'analysisId': 'analysis-$index'},
+    ];
+    final laterBatch = Completer<void>();
+    final batches = <({int page, int size})>[];
+    final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (request, handler) async {
+          final page = request.queryParameters['page'];
+          final size = request.queryParameters['size'];
+          if (page is! int || size is! int) {
+            handler.resolve(
+              Response<dynamic>(
+                requestOptions: request,
+                statusCode: 200,
+                data: const <String, dynamic>{},
+              ),
+            );
+            return;
+          }
+          batches.add((page: page, size: size));
+          if (batches.length > 1) {
+            await laterBatch.future;
+            handler.reject(
+              DioException(
+                requestOptions: request,
+                type: DioExceptionType.connectionError,
+              ),
+            );
+            return;
+          }
+          handler.resolve(
+            Response<dynamic>(
+              requestOptions: request,
+              statusCode: 200,
+              data: {
+                'items': rows.skip((page - 1) * size).take(size).toList(),
+                'page': page,
+                'size': size,
+                'total': rows.length,
+                'totalPages': (rows.length + size - 1) ~/ size,
+              },
+            ),
+          );
+        },
+      ),
+    );
+    final router = GoRouter(
+      initialLocation: RouteName.productionMaterialAnalysisHistory,
+      routes: [
+        GoRoute(
+          path: RouteName.productionMaterialAnalysisHistory,
+          builder: (_, _) => const ProductionMaterialAnalysisHistoryPage(),
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          masterNameServiceProvider.overrideWithValue(_PlanningMainNames()),
+          productionPlanRepositoryProvider.overrideWithValue(
+            ProductionPlanRepository(ApiClient(dio)),
+          ),
+        ],
+        child: PageResumeTestBridge(
+          router: router,
+          child: MaterialApp.router(routerConfig: router),
+        ),
+      ),
+    );
+    for (var frame = 0; frame < 200 && batches.length < 2; frame++) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    // The first validated batch already shows its cards while reading on.
+    final first = find.byKey(const Key('analysis-history-row-analysis-0'));
+    expect(first, findsOneWidget);
+    laterBatch.complete();
+    await tester.pumpAndSettle();
+    // The failed read takes the whole progressive prefix down: the compact
+    // failure with its retry replaces it, never a half list without an error.
+    expect(first, findsNothing);
+    expect(find.byKey(const Key('analysis-history-cards')), findsNothing);
+    expect(find.widgetWithText(UtenButton, '重试'), findsOneWidget);
+    expect(batches, completeReadPlanBatches(rows.length));
+    expect(tester.takeException(), isNull);
+  });
   for (final width in [1200.0, 834.0, 375.0]) {
     testWidgets('分析记录刷新在顶栏且保留查询 $width', (tester) async {
       await tester.binding.setSurfaceSize(Size(width, 900));

@@ -13,6 +13,10 @@ import 'package:uten_imp/features/production/models/production_material_analysis
 import 'package:uten_imp/features/production/repositories/production_fqc_replenishment_repository.dart';
 import 'package:uten_imp/features/production/widgets/production_fqc_replenishment_banner.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/paging/complete_paged_snapshot.dart'
+    show CompleteReadBatchPlan;
+
+import '../../../support/complete_read_plan_batches.dart';
 
 void main() {
   test('planning replenishment endpoint parses PageResponse', () async {
@@ -96,8 +100,13 @@ void main() {
         router: router,
         permissions: const {Perm.productionFqcReplenishmentView},
       );
-      expect(api.requestedPages, [1, 2]);
-      expect(api.requestedSizes, [100, 100]);
+      // The first batch asks for the shared plan's first size; the clamped
+      // server answers one task per page and the reader continues on exactly
+      // that page size instead of skipping or re-reading rows.
+      expect(api.requestedBatches, [
+        completeReadPlanBatches(1).single,
+        (page: 2, size: _ReplenishmentApi.clampedPageSize),
+      ]);
       await tester.tap(find.text('处理待办'));
       await tester.pumpAndSettle();
       final finder = find.byKey(const Key('fqc-replenishment-task-list'));
@@ -124,14 +133,13 @@ void main() {
   );
 
   testWidgets(
-    '251 material tasks reach the tail in three size100 batches and scroll locally',
+    '251 material tasks reach the tail on the progressive batch ladder and scroll locally',
     (tester) async {
       await tester.binding.setSurfaceSize(const Size(720, 1000));
       addTearDown(() => tester.binding.setSurfaceSize(null));
       final api = _ReplenishmentApi(
         status: 'AWAITING_CONFIRMATION',
         totalRows: 251,
-        serverBatchSize: 100,
       );
       final router = _router();
       addTearDown(router.dispose);
@@ -141,8 +149,7 @@ void main() {
         router: router,
         permissions: const {Perm.productionFqcReplenishmentView},
       );
-      expect(api.requestedPages, [1, 2, 3]);
-      expect(api.requestedSizes, [100, 100, 100]);
+      expect(api.requestedBatches, completeReadPlanBatches(251));
       await tester.tap(find.text('处理待办'));
       await tester.pumpAndSettle();
       final list = tester
@@ -159,26 +166,26 @@ void main() {
       expect(find.textContaining('PLAN-251'), findsOneWidget);
       await _scrollTaskList(tester, toEnd: false);
       expect(find.textContaining('PLAN-1'), findsWidgets);
-      expect(api.requestedPages, [1, 2, 3]);
+      expect(api.requestedBatches, completeReadPlanBatches(251));
       expect(find.text('确认用料并生成领料'), findsNothing);
       expect(tester.takeException(), isNull);
     },
   );
 
   testWidgets(
-    'later task failure publishes no partial set and retries the whole query from one',
+    'later task failure withdraws the progressive rows and retries the whole query from one',
     (tester) async {
       await tester.binding.setSurfaceSize(const Size(720, 1000));
       addTearDown(() => tester.binding.setSurfaceSize(null));
       final api = _ReplenishmentApi(
         status: 'AWAITING_CONFIRMATION',
         totalRows: 251,
-        serverBatchSize: 100,
         failFirstPageTwo: true,
         pageTwoGate: Completer<void>(),
       );
       final router = _router();
       addTearDown(router.dispose);
+      final ladder = completeReadPlanBatches(251);
       await _pump(
         tester,
         api: api,
@@ -188,26 +195,40 @@ void main() {
       for (var i = 0; i < 80 && api.requestedPages.length < 2; i++) {
         await tester.pump(const Duration(milliseconds: 5));
       }
-      expect(api.requestedPages, [1, 2]);
-      expect(find.text('处理待办'), findsNothing);
+      expect(api.requestedBatches, ladder.take(2));
+      // 2026-11-08 逐批追加：首批校验通过即展示行入口；待办计数（权威汇总）
+      // 仍等完整结果，续批未到前不出现。
+      expect(find.text('处理待办'), findsOneWidget);
+      expect(find.textContaining('项仍需计划确认'), findsNothing);
+      expect(find.textContaining('当前任务均已发料就绪'), findsNothing);
       expect(find.textContaining('PLAN-1'), findsNothing);
       api.pageTwoGate!.complete();
       await tester.pump();
       await tester.pumpAndSettle();
+      // The failed read takes its progressive rows down as a whole: only the
+      // read failure with its retry remains, never a half list or a forged
+      // "all ready" summary.
       expect(find.text('重试'), findsOneWidget);
       expect(find.text('处理待办'), findsNothing);
+      expect(find.textContaining('当前任务均已发料就绪'), findsNothing);
       api.pageTwoGate = Completer<void>();
       await tester.tap(find.text('重试'));
       for (var i = 0; i < 80 && api.requestedPages.length < 4; i++) {
         await tester.pump(const Duration(milliseconds: 5));
       }
-      expect(api.requestedPages, [1, 2, 1, 2]);
-      expect(find.byType(UtenBusyOverlay), findsOneWidget);
-      expect(find.text('处理待办'), findsNothing);
+      await tester.pump();
+      expect(api.requestedBatches, [...ladder.take(2), ...ladder.take(2)]);
+      // The retry grows its first batch again behind the busy overlay, which
+      // stays up until the complete result arrives.
+      expect(find.byType(UtenBusyOverlayCard), findsOneWidget);
+      expect(find.text('处理待办'), findsOneWidget);
+      expect(find.text('处理待办').hitTestable(), findsNothing);
+      expect(find.textContaining('项仍需计划确认'), findsNothing);
       api.pageTwoGate!.complete();
       await tester.pump();
       await tester.pumpAndSettle();
       expect(find.byType(UtenBusyOverlay), findsNothing);
+      expect(find.text('251 项仍需计划确认、补料或仓库发料；每一步按真实库存事实推进。'), findsOneWidget);
       await tester.tap(find.text('处理待办'));
       await tester.pumpAndSettle();
       final list = tester
@@ -221,9 +242,61 @@ void main() {
       expect(list.items.last.authorizationId, 'authorization-251');
       await _scrollTaskList(tester, toEnd: true);
       expect(find.textContaining('PLAN-251'), findsOneWidget);
-      expect(api.requestedPages, [1, 2, 1, 2, 3]);
-      expect(api.requestedSizes, everyElement(100));
+      expect(api.requestedBatches, [...ladder.take(2), ...ladder]);
       expect(find.text('确认用料并生成领料'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'task sheet opened while rows grow follows the complete result and a later failure',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(720, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      for (final failing in [false, true]) {
+        final api = _ReplenishmentApi(
+          status: 'AWAITING_CONFIRMATION',
+          totalRows: 251,
+          failFirstPageTwo: failing,
+          pageTwoGate: Completer<void>(),
+        );
+        final router = _router();
+        await _pump(
+          tester,
+          api: api,
+          router: router,
+          permissions: const {Perm.productionFqcReplenishmentView},
+        );
+        for (var i = 0; i < 80 && api.requestedPages.length < 2; i++) {
+          await tester.pump(const Duration(milliseconds: 5));
+        }
+        // The first validated batch already offers its rows.
+        await tester.tap(find.text('处理待办'));
+        for (var i = 0; i < 20; i++) {
+          await tester.pump(const Duration(milliseconds: 50));
+        }
+        UtenPagedPickerList<ProductionFqcReplenishmentMaterialTask> list() =>
+            tester.widget(find.byKey(const Key('fqc-replenishment-task-list')));
+        expect(
+          list().items,
+          hasLength(CompleteReadBatchPlan.progressive.firstBatchSize),
+        );
+        api.pageTwoGate!.complete();
+        await tester.pump();
+        await tester.pumpAndSettle();
+        if (failing) {
+          // The open sheet withdraws the progressive prefix with the read.
+          expect(list().items, isEmpty);
+          expect(list().error, isNotNull);
+        } else {
+          // The open sheet shows the complete result, not the first batch.
+          expect(list().items, hasLength(251));
+          expect(list().items.last.authorizationId, 'authorization-251');
+        }
+        expect(api.requestedBatches.first, completeReadPlanBatches(251).first);
+        await tester.pumpWidget(const SizedBox.shrink());
+        router.dispose();
+      }
       expect(tester.takeException(), isNull);
     },
   );
@@ -383,17 +456,20 @@ class _ReplenishmentApi extends ApiClient {
     required this.status,
     this.pages = 1,
     this.totalRows,
-    this.serverBatchSize,
     this.failFirstConfirmation = false,
     this.becomeReadyAfterFirstLoad = false,
     this.failFirstPageTwo = false,
     this.pageTwoGate,
   }) : super(Dio());
 
+  /// A clamped scope ([pages] > 1) answers one task per page whatever size
+  /// was requested; otherwise the server honors the requested batch up to
+  /// its page maximum, like `Pageables.of`.
+  static const clampedPageSize = 1;
+
   final String status;
   final int pages;
   final int? totalRows;
-  final int? serverBatchSize;
   final bool failFirstConfirmation;
   final bool becomeReadyAfterFirstLoad;
   final bool failFirstPageTwo;
@@ -404,6 +480,11 @@ class _ReplenishmentApi extends ApiClient {
   final List<int> requestedPages = [];
   final List<int> requestedSizes = [];
   final List<String> confirmationKeys = [];
+
+  List<({int page, int size})> get requestedBatches => [
+    for (var i = 0; i < requestedPages.length; i++)
+      (page: requestedPages[i], size: requestedSizes[i]),
+  ];
 
   Map<String, dynamic> planningTask({String? analysisId}) => {
     'taskId': 'task-1',
@@ -476,7 +557,12 @@ class _ReplenishmentApi extends ApiClient {
       final requestedSize = (query?['size'] as num?)?.toInt() ?? 40;
       requestedSizes.add(requestedSize);
       final count = totalRows ?? pages;
-      final size = serverBatchSize ?? (pages > 1 ? 1 : requestedSize);
+      final size = pages > 1
+          ? clampedPageSize
+          : requestedSize.clamp(
+              1,
+              CompleteReadBatchPlan.progressive.maxBatchSize,
+            );
       final start = (page - 1) * size;
       if (page == 2 && pageTwoGate != null) await pageTwoGate!.future;
       if (page == 2 && failFirstPageTwo && !_pageTwoFailed) {

@@ -6,6 +6,8 @@ import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/router/permission_by_path.dart';
 import 'package:uten_imp/shared/auth/page_permission_scope.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/paging/complete_paged_snapshot.dart'
+    show CompleteReadBatchPlan;
 import 'package:uten_imp/shared/warehouse/warehouse_task_scope.dart';
 import 'package:uten_imp/features/warehouse/config/warehouse_document_history_config.dart';
 import 'package:uten_imp/features/warehouse/models/warehouse_document_history.dart';
@@ -166,9 +168,11 @@ void main() {
         api.lastPath,
         '/warehouse/document-history/subcontract-material-returns',
       );
+      // Oversized pages clamp to the server page maximum, which is the shared
+      // complete-read plan's largest batch (Pageables.MAX_PAGE_SIZE).
       expect(api.lastQuery, <String, dynamic>{
         'page': 1,
-        'size': 100,
+        'size': CompleteReadBatchPlan.progressive.maxBatchSize,
         'keyword': 'G-001',
         'status': '1',
       });

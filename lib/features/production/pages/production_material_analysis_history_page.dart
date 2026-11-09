@@ -120,6 +120,9 @@ class _ProductionMaterialAnalysisHistoryPageState
       _loading = true;
       _error = null;
     });
+    // Progressive rows shown by this read: the compact cards render them
+    // without the table's retirement, so a failure takes them down here.
+    var partialRows = false;
     try {
       final rows = readScopedPage<MaterialAnalysisListItem>(
         page,
@@ -146,6 +149,7 @@ class _ProductionMaterialAnalysisHistoryPageState
         ),
         onProgressiveBatch: (partial) {
           if (!current()) return;
+          partialRows = true;
           setState(() => _page = partial);
         },
       );
@@ -161,6 +165,7 @@ class _ProductionMaterialAnalysisHistoryPageState
       if (isRetiredViewRead(error)) return;
       if (!current()) return;
       setState(() {
+        if (partialRows) _page = null;
         _loading = false;
         _error = productionErrorMessage(error, fallback: '物料分析记录加载失败，请稍后重试');
       });

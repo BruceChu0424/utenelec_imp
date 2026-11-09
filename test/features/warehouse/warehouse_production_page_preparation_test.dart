@@ -12,8 +12,6 @@ import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/data_write_revision.dart';
 import 'package:uten_imp/core/network/read_scope_revision.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
-import 'package:uten_imp/shared/paging/complete_paged_snapshot.dart'
-    show CompleteReadBatchPlan;
 import 'package:uten_imp/features/production/pages/production_board_page.dart';
 import 'package:uten_imp/features/production/pages/production_workshop_tasks_page.dart';
 import 'package:uten_imp/features/production/repositories/production_execution_workbench_repository.dart';
@@ -30,6 +28,7 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/warehouse/warehouse_task_scope.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
+import '../../support/complete_read_plan_batches.dart';
 
 final _scope = StateProvider((ref) => const WarehouseTaskScope.all());
 final _permissions = StateProvider<Set<String>>((ref) => const {});
@@ -476,12 +475,9 @@ void main() {
       expect(page.items.last.orderItemId, 'item-99999');
       // 50 → 50 → 100 → 200 … over 100 000 rows: 3 + 499 bounded batches,
       // each row read once (offset == (page-1)*size).
-      final expectedSizes = <int>[];
-      for (var offset = 0; offset < 100000;) {
-        final size = CompleteReadBatchPlan.progressive.sizeAt(offset);
-        expectedSizes.add(size);
-        offset += size;
-      }
+      final expectedSizes = [
+        for (final batch in completeReadPlanBatches(100000)) batch.size,
+      ];
       expect(expectedSizes, hasLength(502));
       expect(
         api

@@ -1,4 +1,4 @@
-*.txt -text
-chrome-isolation.json -text
+*.txt -text -diff
+chrome-isolation.json -text -diff
 manifest.json -text
 reproduce_chrome.py -text

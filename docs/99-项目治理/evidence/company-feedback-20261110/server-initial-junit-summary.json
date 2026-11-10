@@ -1,0 +1,415 @@
+{
+  "reports": [
+    {
+      "class": "com.uten.imp.businesschain.CompanyMaterialOrderQuantityEndToEndTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": "307.292",
+      "failed": []
+    },
+    {
+      "class": "com.uten.imp.businesschain.FinanceAccountingContinuationPostgresTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": "105.275",
+      "failed": []
+    },
+    {
+      "class": "com.uten.imp.businesschain.FinanceAuxiliaryPostgresTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": "128.388",
+      "failed": []
+    },
+    {
+      "class": "com.uten.imp.businesschain.FinanceChartImportPostgresTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": "38.381",
+      "failed": []
+    },
+    {
+      "class": "com.uten.imp.businesschain.MasterDirectoryExportPostgresTest",
+      "tests": 15,
+      "failures": 0,
+      "errors": 1,
+      "skipped": 0,
+      "seconds": "1865.067",
+      "failed": [
+        "expandedSettlementAndWarehouseHeadersExportTheirAuthoritativeValues"
+      ]
+    },
+    {
+      "class": "com.uten.imp.businesschain.ProductionPartialReportQuantityEndToEndTest",
+      "tests": 8,
+      "failures": 0,
+      "errors": 2,
+      "skipped": 0,
+      "seconds": "97.357",
+      "failed": [
+        "reportingEightHundredKeepsTwoHundredOpenWithoutExpandingReportQualityOrReceipt",
+        "returnAndReissueOfHalfTheMaterialsCannotMasqueradeAsAFullKit"
+      ]
+    },
+    {
+      "class": "com.uten.imp.businesschain.ProductionQuantityAdversarialEndToEndTest",
+      "tests": 13,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": "223.266",
+      "failed": []
+    },
+    {
+      "class": "com.uten.imp.businesschain.WorkshopPublicSurplusEndToEndTest",
+      "tests": 17,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": "1115.546",
+      "failed": []
+    },
+    {
+      "class": "com.uten.imp.common.export.CompleteResultExportTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": "0.007",
+      "failed": []
+    },
+    {
+      "class": "com.uten.imp.common.export.ExportTableProjectionServiceTest",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": "0.509",
+      "failed": []
+    },
+    {
+      "class": "com.uten.imp.common.export.MasterExportSelectionTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": "2.779",
+      "failed": []
+    },
+    {
+      "class": "com.uten.imp.common.export.MasterExportSourceTest",
+      "tests": 10,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": "1.727",
+      "failed": []
+    },
+    {
+      "class": "com.uten.imp.common.export.PlatformWorkbookSchemaTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": "2.224",
+      "failed": []
+    },
+    {
+      "class": "com.uten.imp.common.export.WorkbookDownloadServiceTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": "0.401",
+      "failed": []
+    },
+    {
+      "class": "com.uten.imp.common.export.XlsxCompleteSourceTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": "20.622",
+      "failed": []
+    },
+    {
+      "class": "com.uten.imp.common.export.XlsxSelectedRowsStreamingTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": "0.543",
+      "failed": []
+    },
+    {
+      "class": "com.uten.imp.common.export.XlsxTableProjectionPrecisionTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": "0.077",
+      "failed": []
+    },
+    {
+      "class": "com.uten.imp.common.finance.ProcurementReturnHeaderAuthorityTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": "0.074",
+      "failed": []
+    },
+    {
+      "class": "com.uten.imp.common.importing.ImportColumnGuardTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": "0.262",
+      "failed": []
+    },
+    {
+      "class": "com.uten.imp.features.auth.SessionWatchServiceTest",
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": "0.344",
+      "failed": []
+    },
+    {
+      "class": "com.uten.imp.features.finance.gl.FinanceAccountingWorkbookParserTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 1,
+      "seconds": "0.207",
+      "failed": []
+    },
+    {
+      "class": "com.uten.imp.features.finance.gl.FinanceChartWorkbookParserTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": "0.767",
+      "failed": []
+    },
+    {
+      "class": "com.uten.imp.features.finance.gl.FinanceExpenseAnalysisPostgresTest",
+      "tests": 14,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": "184.747",
+      "failed": []
+    },
+    {
+      "class": "com.uten.imp.features.finance.gl.FinanceOperatingNoteParserTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": "0.352",
+      "failed": []
+    },
+    {
+      "class": "com.uten.imp.features.finance.statement.FinanceAuxiliaryWorkbookParserTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": "0.397",
+      "failed": []
+    },
+    {
+      "class": "com.uten.imp.features.master.goods.costing.GoodsCostImportRemappingPostgresTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": "6.427",
+      "failed": []
+    },
+    {
+      "class": "com.uten.imp.features.master.goods.costing.GoodsCostWorkbookParserTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": "0.182",
+      "failed": []
+    },
+    {
+      "class": "com.uten.imp.features.master.goods.importing.GoodsBomImportColumnContractTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": "0.358",
+      "failed": []
+    },
+    {
+      "class": "com.uten.imp.features.master.goods.importing.GoodsBomImportNumericPrecisionTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": "0.383",
+      "failed": []
+    },
+    {
+      "class": "com.uten.imp.features.master.goods.importing.GoodsBomImportServiceTest",
+      "tests": 23,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": "1.987",
+      "failed": []
+    },
+    {
+      "class": "com.uten.imp.features.master.goods.importing.GoodsImportColumnContractTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": "0.391",
+      "failed": []
+    },
+    {
+      "class": "com.uten.imp.features.master.goods.importing.GoodsImportCustomerLabelsTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": "0.603",
+      "failed": []
+    },
+    {
+      "class": "com.uten.imp.features.master.goods.importing.GoodsImportPlanSafetyTest",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": "1.087",
+      "failed": []
+    },
+    {
+      "class": "com.uten.imp.features.production.analysis.AggregateMaterialOrderPreviewServiceTest",
+      "tests": 41,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": "2.086",
+      "failed": []
+    },
+    {
+      "class": "com.uten.imp.features.production.analysis.MaterialOrderQuantityCompatibilityTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": "0.007",
+      "failed": []
+    },
+    {
+      "class": "com.uten.imp.features.production.dailyreport.DailyReportExecutionSegmentGuardTest",
+      "tests": 28,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": "0.608",
+      "failed": []
+    },
+    {
+      "class": "com.uten.imp.features.production.dailyreport.ReportablePlanLineQuerySecurityContractTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": "0.005",
+      "failed": []
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionSegmentServiceTest",
+      "tests": 24,
+      "failures": 1,
+      "errors": 2,
+      "skipped": 0,
+      "seconds": "0.943",
+      "failed": [
+        "zeroMaterialSegmentCanStartWithoutDemandRows",
+        "batchStartDeduplicatesAndLocksInUuidOrderBeforeAnyMutation",
+        "plannedWorkshopAndResponsibleEmployeeStartWithoutAnOptionalEndDate"
+      ]
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionWorkshopTaskStageContractTest",
+      "tests": 52,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": "0.166",
+      "failed": []
+    },
+    {
+      "class": "com.uten.imp.features.stock.allocation.ProductionMaterialSettlementServiceTest",
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": "0.334",
+      "failed": []
+    },
+    {
+      "class": "com.uten.imp.features.stock.allocation.ProductionMaterialStockLedgerCancellationPolicyTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": "0.002",
+      "failed": []
+    },
+    {
+      "class": "com.uten.imp.features.stock.allocation.ProductionMaterialStockLedgerRoutingTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": "0.005",
+      "failed": []
+    },
+    {
+      "class": "com.uten.imp.migration.PartialMaterialReportCapacityPostgresTest",
+      "tests": 15,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": "9.802",
+      "failed": []
+    },
+    {
+      "class": "com.uten.imp.security.RemoteRequestBudgetFilterTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": "0.275",
+      "failed": []
+    }
+  ],
+  "summary": {
+    "tests": 392,
+    "failures": 1,
+    "errors": 5,
+    "skipped": 1
+  }
+}

@@ -44,6 +44,7 @@ UtenStatusBadgeType _segmentStatusTier(ProductionExecutionSegmentView segment) {
   if (segment.status == 'WAITING' && !segment.autoPromoteWhenReady) {
     return UtenStatusBadgeType.neutral;
   }
+  if (_partiallyIssuedRunning(segment)) return UtenStatusBadgeType.violet;
   return switch (segment.status) {
     'WAITING' => UtenStatusBadgeType.danger,
     'READY' || 'COMPLETED' => UtenStatusBadgeType.success,
@@ -1786,6 +1787,8 @@ String _segmentStatusText(ProductionExecutionSegmentView segment) =>
     : (segment.status == 'READY' || segment.status == 'DISPATCHED') &&
           segment.materialIssued
     ? '料已发 · 可开工'
+    : _partiallyIssuedRunning(segment)
+    ? ProductionFlowStage.partialMaterialRunningLabel
     : segment.status == 'IN_PROGRESS' && segment.ordinaryRemainingQty > 0
     ? '生产中·可继续报工'
     : segment.status == 'IN_PROGRESS' && segment.fqcReworkAvailableQty > 0
@@ -1818,6 +1821,12 @@ bool _canReportSegment(ProductionExecutionSegmentView segment) =>
         segment.ordinaryRemainingQty > 0.000001 ||
         segment.fqcReworkAvailableQty > 0.000001 ||
         segment.fqcReplacementReadyQty > 0.000001);
+
+bool _partiallyIssuedRunning(ProductionExecutionSegmentView segment) =>
+    segment.status == 'IN_PROGRESS' &&
+    !segment.zeroMaterial &&
+    !segment.materialIssued &&
+    segment.ordinaryRemainingQty > 0;
 
 String _qualityProgressText(ProductionExecutionSegmentView segment) {
   if (segment.reportedQty <= 0 &&

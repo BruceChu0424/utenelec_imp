@@ -325,12 +325,29 @@ class DailyReportExecutionSegmentGuardTest {
     }
 
     @Test
-    void frozenBomCapacityIsNotAnActualProductionCeiling() {
+    void partialMaterialCapacityIsAHardCeilingEvenWithSmallerActualConsumption() {
         Fixture fixture = fixture("IN_PROGRESS", "1000", "40", "DEMANDED", "PARTIAL", true, true, "100");
         assertDoesNotThrow(() -> fixture.guard.validateDraft(UUID.randomUUID(), fixture.workshopId,
+                List.of(fixture.line("60"))));
+        var failure=assertThrows(ApiException.class, () -> fixture.guard.validateDraft(UUID.randomUUID(), fixture.workshopId,
                 List.of(fixture.line("60.0001"))));
-        // Actual material declarations and exact ISSUE settlement are checked by
-        // the report command; this guard owns identity and planned allocation.
+        assertTrue(failure.getMessage().contains("物料配套可报数量 60"));
+    }
+
+    @Test
+    void duplicateRowsAndActualSurplusShareThePhysicalMaterialLimit() {
+        Fixture fixture = fixture("IN_PROGRESS", "1000", "40", "DEMANDED", "PARTIAL", true, true, "100");
+        var extra=fixture.line("30.0001"); extra.setActualSurplus(true);
+        var failure=assertThrows(ApiException.class, () -> fixture.guard.validateDraft(UUID.randomUUID(), fixture.workshopId,
+                List.of(fixture.line("30"), extra)));
+        assertTrue(failure.getMessage().contains("物料配套可报数量 60"));
+    }
+
+    @Test
+    void fullyIssuedOrdinaryWorkRetainsActualOutputAllowance() {
+        Fixture fixture = fixture("IN_PROGRESS", "1000", "40", "DEMANDED", "FULFILLED", true, true, "1000");
+        assertDoesNotThrow(() -> fixture.guard.validateDraft(UUID.randomUUID(), fixture.workshopId,
+                List.of(fixture.line("60.0001"))));
     }
 
     @Test
@@ -444,6 +461,14 @@ class DailyReportExecutionSegmentGuardTest {
         when(demands.getResultList()).thenReturn(demandStatus==null ? List.of() : Collections.singletonList(
                 new Object[]{segmentId,UUID.randomUUID()}));
         Query capacityQuery=scalarQuery(capacity==null?null:new BigDecimal(capacity));
+        when(capacityQuery.getResultList()).thenAnswer(ignored -> ((List<?>) lock.getResultList()).stream()
+                .map(value -> {
+                    Object[] row=(Object[])value;
+                    BigDecimal gross=capacity==null?null:new BigDecimal(capacity);
+                    BigDecimal room=gross==null || gross.compareTo(new BigDecimal(planned))>=0
+                            ? null : gross.subtract(new BigDecimal(existing)).max(BigDecimal.ZERO);
+                    return new Object[]{row[0],room};
+                }).toList());
         Query custodyQuery=scalarQuery(custodyValid);
         when(custodyQuery.getResultList()).thenReturn(Collections.singletonList(new Object[] {segmentId,custodyValid,true}));
         Query segmentLocks=query();
@@ -455,6 +480,7 @@ class DailyReportExecutionSegmentGuardTest {
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
             String sql=invocation.getArgument(0);
             if(sql.contains("SELECT s.id FROM production_execution_segments"))return segmentLocks;
+            if(sql.contains("fn_execution_partial_material_report_room"))return capacityQuery;
             if(sql.contains("fn_execution_material_custody_valid"))return custodyQuery;
             if(sql.contains("fn_execution_material_output_capacity"))return capacityQuery;
             if(sql.contains("FROM production_material_demands"))return demands;

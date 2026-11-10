@@ -455,6 +455,7 @@ class _ProductionDailyReportEditPageState
           'orderQty': row.orderQty,
           'maxReportQty': row.maxReportQty,
           'maxReportQtyExact': row.maxReportQtyText,
+          'materialReportQtyExact': row.materialReportQtyExact,
           'remainingActualSurplusQty': row.remainingActualSurplusQty,
           'remainingActualSurplusQtyExact': row.remainingActualSurplusQtyExact,
           'pendingSupplementQty': row.pendingSupplementQty,
@@ -622,6 +623,9 @@ class _ProductionDailyReportEditPageState
       row.maxReportQty = (item['maxReportQty'] as num?)?.toDouble();
       row.maxReportQtyExact = productionExactQuantityText(
         item['maxReportQtyExact'] ?? item['maxReportQty'],
+      );
+      row.materialReportQtyExact = productionExactQuantityText(
+        item['materialReportQtyExact'],
       );
       row.remainingActualSurplusQty =
           (item['remainingActualSurplusQty'] as num?)?.toDouble();
@@ -1330,6 +1334,7 @@ class _ProductionDailyReportEditPageState
       ..executionSegmentCode = source.executionSegmentCode
       ..executionSegmentVersion = source.executionSegmentVersion
       ..allowActualOverproduction = source.allowActualOverproduction
+      ..materialReportQtyExact = source.materialReportQtyExact
       ..maxReportQty = source.fqcRecoveryRequiresMaterial
           ? 0
           : source.maxReportQty
@@ -1749,6 +1754,7 @@ class _ProductionDailyReportEditPageState
         ..orderQty = source.orderQty
         ..maxReportQty = source.maxReportQty
         ..maxReportQtyExact = source.maxReportQtyText
+        ..materialReportQtyExact = source.materialReportQtyExact
         ..allowActualOverproduction = source.allowActualOverproduction
         ..remainingActualSurplusQty = source.remainingActualSurplusQty
         ..remainingActualSurplusQtyExact = source.remainingActualSurplusQtyText
@@ -1847,6 +1853,7 @@ class _ProductionDailyReportEditPageState
         ..orderQty = null
         ..maxReportQty = null
         ..maxReportQtyExact = null
+        ..materialReportQtyExact = null
         ..remainingActualSurplusQty = null
         ..remainingActualSurplusQtyExact = null
         ..pendingSupplementQty = null
@@ -3408,6 +3415,17 @@ class _ProductionDailyReportEditPageState
         await _grid.revealError(r, columnKey: 'qty');
         return;
       }
+      final materialCap = productionExactQuantityUnits(
+        r.materialReportQtyExact,
+      );
+      if (!r.isFqcRecovery && materialCap != null && qty > materialCap) {
+        context.appError(
+          '第 ${i + 1} 行工单部分领料，完工量超过物料配套可报数量 '
+          '${r.materialReportQtyExact}；请补领物料后继续报工，原输入已保留',
+        );
+        await _grid.revealError(r, columnKey: 'qty');
+        return;
+      }
       // 普通实际超限允许如实记录，由服务端分账冻结；品质恢复与旧固定追加仍守原授权。
       final capText = r.reportQtyCapText;
       final cap = productionExactQuantityUnits(capText);
@@ -3444,6 +3462,43 @@ class _ProductionDailyReportEditPageState
       if (r.fqcRecoveryAuthorizationId != null && r.isFinal) {
         context.appError('第 ${i + 1} 行是 FQC 返工/补产恢复报工，不能勾选完结');
         await _grid.revealError(r);
+        return;
+      }
+    }
+    // This is a physical work-order limit shared by every sales/public row,
+    // independent of the ordinary overproduction allowance and reason field.
+    final materialTotals = <String, BigInt>{};
+    final materialCaps = <String, BigInt>{};
+    for (final row in rows) {
+      final segment = row.executionSegmentId;
+      final capText = row.materialReportQtyExact;
+      if (segment == null || capText == null || row.isFqcRecovery) continue;
+      final cap = productionExactQuantityUnits(capText);
+      if (cap == null) {
+        context.appError('物料配套可报数量缺少精确原文，请重新读取来源；原输入已保留');
+        await _grid.revealError(row, columnKey: 'planNo');
+        return;
+      }
+      materialTotals[segment] =
+          (materialTotals[segment] ?? BigInt.zero) +
+          productionExactQuantityUnits(
+            row.qty.text.trim().replaceFirst(RegExp(r'\.$'), ''),
+          )!;
+      final previous = materialCaps[segment];
+      materialCaps[segment] = previous == null || cap < previous
+          ? cap
+          : previous;
+    }
+    for (final entry in materialTotals.entries) {
+      if (entry.value > materialCaps[entry.key]!) {
+        context.appError(
+          '同一工单部分领料，本次累计完工量超过物料配套可报数量 '
+          '${productionQuantityTextFromUnits(materialCaps[entry.key]!)}；请补领物料后继续报工，原输入已保留',
+        );
+        await _grid.revealError(
+          rows.firstWhere((row) => row.executionSegmentId == entry.key),
+          columnKey: 'qty',
+        );
         return;
       }
     }

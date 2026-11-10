@@ -217,6 +217,7 @@ UtenStatusBadgeType productionFlowBadgeType(ProductionFlowStage stage) =>
       // 生产中=车间自己正在执行（info 蓝）；「他方执行中」的青绿档留给
       // 仓库处理中(pending)与计划详情等统筹视角。
       ProductionFlowTone.active => UtenStatusBadgeType.info,
+      ProductionFlowTone.activePartial => UtenStatusBadgeType.violet,
       ProductionFlowTone.ready => UtenStatusBadgeType.success,
       // 部分已投可开工=紫（部分就绪档，与全领齐的绿分开）。
       ProductionFlowTone.readyPartial => UtenStatusBadgeType.violet,
@@ -274,6 +275,7 @@ UtenStatusBadgeType? _readinessBadgeType(ProductionFlowTone tone) =>
       ProductionFlowTone.waitPlanning => UtenStatusBadgeType.fuchsia,
       ProductionFlowTone.decide => UtenStatusBadgeType.orange,
       ProductionFlowTone.active => null,
+      ProductionFlowTone.activePartial => null,
       ProductionFlowTone.done => null,
     };
 
@@ -292,6 +294,10 @@ Color productionFlowToneColor(ThemeData theme, ProductionFlowTone tone) =>
             ? UtenColors.successOnDark
             : UtenColors.success,
       ProductionFlowTone.active => UtenColors.teal600,
+      ProductionFlowTone.activePartial =>
+        theme.brightness == Brightness.dark
+            ? UtenColors.violetOnDark
+            : UtenColors.violet,
       ProductionFlowTone.ready =>
         theme.brightness == Brightness.dark
             ? UtenColors.successOnDark

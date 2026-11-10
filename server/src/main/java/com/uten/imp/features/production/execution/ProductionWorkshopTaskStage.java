@@ -51,7 +51,10 @@ public final class ProductionWorkshopTaskStage {
             case "READY", "DISPATCHED" -> t.zeroMaterial() ? "无需领料 · 可开工"
                     : t.issued() ? "物料齐套 · 可开工"
                     : t.drawRequested() ? "已提交领料 · 待仓库发料" : "物料齐套 · 去领料";
-            case "IN_PROGRESS" -> continuous ? "持续生产中 · 按实际投料报工" : "生产中 · 可报工";
+            case "IN_PROGRESS" -> !t.zeroMaterial() && t.materialKindCount()>0
+                    && t.materialIssuedKindCount()<t.materialKindCount()
+                    ? "部分领料生产中 · 按配套报工"
+                    : continuous ? "持续生产中 · 按实际投料报工" : "生产中 · 可报工";
             case "COMPLETED" -> "已完工";
             case "CANCELLED" -> "已取消";
             case "REVERSED" -> "已撤回";

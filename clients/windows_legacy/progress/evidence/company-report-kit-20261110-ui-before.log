@@ -1,0 +1,73 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/pages/production_daily_report_exact_segment_test.dart
+00:00 +0: partial issue blocks over-kit reporting before preview and preserves repeated input
+
+Warning: A call to tap() with finder "Found 1 widget with key [<'uten-edit-save'>]: [
+  UtenButton-[<'uten-edit-save'>](dependencies: [Directionality, InheritedCupertinoTheme, MediaQuery, _InheritedTheme, _LocalizationsScope-[GlobalKey#a0d04]]),
+]" derived an Offset (Offset(1734.8, 960.0)) that would not hit test on the specified widget.
+Maybe the widget is actually off-screen, or another widget is obscuring it, or the widget cannot receive pointer events.
+The finder corresponds to this RenderBox: RenderMergeSemantics#34013 relayoutBoundary=up33
+The hit test result at that offset is: HitTestResult(RenderStack#7b895@Offset(1734.8, 878.0), RenderFlex#104fc@Offset(1734.8, 960.0), RenderSemanticsAnnotations#0f7ba@Offset(1734.8, 960.0), RenderRepaintBoundary#1ebe5@Offset(1734.8, 960.0), RenderIgnorePointer#a9e68@Offset(1734.8, 960.0), RenderAnimatedOpacity#c41e8@Offset(1734.8, 960.0), RenderAnimatedOpacity#0bcf1@Offset(1734.8, 960.0), _RenderColoredBox#f6fdd@Offset(1734.8, 960.0), RenderAnimatedOpacity#e1d0c@Offset(1734.8, 960.0), RenderIgnorePointer#decdc@Offset(1734.8, 960.0), RenderAnimatedOpacity#1435a@Offset(1734.8, 960.0), RenderRepaintBoundary#a38d0@Offset(1734.8, 960.0), RenderSemanticsAnnotations#7cd2f@Offset(1734.8, 960.0), RenderOffstage#e209a@Offset(1734.8, 960.0), RenderSemanticsAnnotations#279e5@Offset(1734.8, 960.0), _RenderTheater#1354b@Offset(1734.8, 960.0), RenderAbsorbPointer#a9fb0@Offset(1734.8, 960.0), RenderPointerListener#56d76@Offset(1734.8, 960.0), RenderSemanticsAnnotations#741f3@Offset(1734.8, 960.0), RenderCustomPaint#d60f2@Offset(1734.8, 960.0), RenderSemanticsAnnotations#c0012@Offset(1734.8, 960.0), RenderSemanticsAnnotations#3477a@Offset(1734.8, 960.0), RenderSemanticsAnnotations#d4158@Offset(1734.8, 960.0), RenderTapRegionSurface#779d2@Offset(1734.8, 960.0), RenderSemanticsAnnotations#545f5@Offset(1734.8, 960.0), RenderSemanticsAnnotations#ccace@Offset(1734.8, 960.0), HitTestEntry<HitTestTarget>#3dfef(_ReusableRenderView#9be9f), HitTestEntry<HitTestTarget>#39fc2(<AutomatedTestWidgetsFlutterBinding>))
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2165:25)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1947:12)
+#2      WidgetController.tap (package:flutter_test/src/controller.dart:1080:7)
+#3      registerDailyReportPartialQuantityTests.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/pages/production_daily_report_partial_quantity_cases.dart:37:22)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+#6      StackZoneSpecification._registerCallback.<anonymous closure> (package:stack_trace/src/stack_zone_specification.dart:114:42)
+<asynchronous suspension>
+To silence this warning, pass "warnIfMissed: false" to "tap()".
+To make this warning fatal, set WidgetController.hitTestWarningShouldBeFatal to true.
+
+
+Warning: A call to tap() with finder "Found 1 widget with key [<'uten-edit-save'>]: [
+  UtenButton-[<'uten-edit-save'>](dependencies: [Directionality, InheritedCupertinoTheme, MediaQuery, _InheritedTheme, _LocalizationsScope-[GlobalKey#a0d04]]),
+]" derived an Offset (Offset(1734.8, 960.0)) that would not hit test on the specified widget.
+Maybe the widget is actually off-screen, or another widget is obscuring it, or the widget cannot receive pointer events.
+The finder corresponds to this RenderBox: RenderMergeSemantics#34013 relayoutBoundary=up33
+The hit test result at that offset is: HitTestResult(RenderStack#7b895@Offset(1734.8, 878.0), RenderFlex#104fc@Offset(1734.8, 960.0), RenderSemanticsAnnotations#0f7ba@Offset(1734.8, 960.0), RenderRepaintBoundary#1ebe5@Offset(1734.8, 960.0), RenderIgnorePointer#a9e68@Offset(1734.8, 960.0), RenderAnimatedOpacity#c41e8@Offset(1734.8, 960.0), RenderAnimatedOpacity#0bcf1@Offset(1734.8, 960.0), _RenderColoredBox#f6fdd@Offset(1734.8, 960.0), RenderAnimatedOpacity#e1d0c@Offset(1734.8, 960.0), RenderIgnorePointer#decdc@Offset(1734.8, 960.0), RenderAnimatedOpacity#1435a@Offset(1734.8, 960.0), RenderRepaintBoundary#a38d0@Offset(1734.8, 960.0), RenderSemanticsAnnotations#7cd2f@Offset(1734.8, 960.0), RenderOffstage#e209a@Offset(1734.8, 960.0), RenderSemanticsAnnotations#279e5@Offset(1734.8, 960.0), _RenderTheater#1354b@Offset(1734.8, 960.0), RenderAbsorbPointer#a9fb0@Offset(1734.8, 960.0), RenderPointerListener#56d76@Offset(1734.8, 960.0), RenderSemanticsAnnotations#741f3@Offset(1734.8, 960.0), RenderCustomPaint#d60f2@Offset(1734.8, 960.0), RenderSemanticsAnnotations#c0012@Offset(1734.8, 960.0), RenderSemanticsAnnotations#3477a@Offset(1734.8, 960.0), RenderSemanticsAnnotations#d4158@Offset(1734.8, 960.0), RenderTapRegionSurface#779d2@Offset(1734.8, 960.0), RenderSemanticsAnnotations#545f5@Offset(1734.8, 960.0), RenderSemanticsAnnotations#ccace@Offset(1734.8, 960.0), HitTestEntry<HitTestTarget>#e1b3e(_ReusableRenderView#9be9f), HitTestEntry<HitTestTarget>#8db4e(<AutomatedTestWidgetsFlutterBinding>))
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2165:25)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1947:12)
+#2      WidgetController.tap (package:flutter_test/src/controller.dart:1080:7)
+#3      registerDailyReportPartialQuantityTests.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/pages/production_daily_report_partial_quantity_cases.dart:37:22)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+#6      StackZoneSpecification._registerCallback.<anonymous closure> (package:stack_trace/src/stack_zone_specification.dart:114:42)
+<asynchronous suspension>
+To silence this warning, pass "warnIfMissed: false" to "tap()".
+To make this warning fatal, set WidgetController.hitTestWarningShouldBeFatal to true.
+
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: <0>
+  Actual: <1>
+
+When the exception was thrown, this was the stack:
+#4      registerDailyReportPartialQuantityTests.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/pages/production_daily_report_partial_quantity_cases.dart:40:7)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/pages/production_daily_report_partial_quantity_cases.dart line 40
+The test description was:
+  partial issue blocks over-kit reporting before preview and preserves repeated input
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:14 +0 -1: partial issue blocks over-kit reporting before preview and preserves repeated input [E]
+  Test failed. See exception logs above.
+  The test description was: partial issue blocks over-kit reporting before preview and preserves repeated input
+  
+00:14 +0 -1: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/pages/production_daily_report_exact_segment_test.dart: partial issue blocks over-kit reporting before preview and preserves repeated input

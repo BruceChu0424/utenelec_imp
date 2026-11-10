@@ -164,6 +164,7 @@ public class DailyReportExecutionSegmentGuard {
         }
         Map<UUID, SegmentSnapshot> segments =
                 lockAndValidateIdentity(lines, false);
+        requirePartialMaterialCapacity(reportId, lines, segments);
         for(ReportLine line:lines) {
             SegmentSnapshot segment=segments.get(line.executionSegmentId());
             if(line.finalReport()&&segment!=null&&segment.sourceSegmentId()!=null)
@@ -212,8 +213,8 @@ public class DailyReportExecutionSegmentGuard {
                 throw conflict("内部生产任务尚差 " + remaining.stripTrailingZeros().toPlainString()
                         + "，请在原任务继续分次报工，或先由计划处理剩余生产和父级供给责任；不能用提前完结生成无来源补产");
             }
-            // Actual consumption is validated and settled against exact ISSUE sources.
-            // Frozen BOM output capacity remains a planning hint, not a physical output ceiling.
+            // Exact actual consumption is settled separately. Partial issue also
+            // has a frozen material bottleneck; full issue retains actual-output rules.
         }
         for (Map.Entry<UUID, BigDecimal> entry :
                 salesRequested.entrySet()) {
@@ -233,6 +234,40 @@ public class DailyReportExecutionSegmentGuard {
             }
         }
         return List.copyOf(new TreeSet<>(requested.keySet()));
+    }
+
+    private void requirePartialMaterialCapacity(UUID reportId, List<ReportLine> lines,
+                                               Map<UUID, SegmentSnapshot> segments) {
+        Map<UUID, BigDecimal> requested = new LinkedHashMap<>();
+        for (ReportLine line : lines) {
+            if (line.executionSegmentId() != null && line.recoveryAuthorizationId() == null) {
+                // Count actual-surplus split rows too: changing output ownership
+                // cannot turn the same material into additional physical capacity.
+                requested.merge(line.executionSegmentId(), line.qty(), BigDecimal::add);
+            }
+        }
+        if (requested.isEmpty()) return;
+        // lockAndValidateIdentity already holds every segment and material-demand
+        // lock. This fresh statement sees a preceding report/return commit after
+        // waiting; the function excludes this report for both edit and approval.
+        List<Object[]> facts = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT segment.id, fn_execution_partial_material_report_room(segment.id, CAST(:reportId AS uuid))
+                FROM production_execution_segments segment WHERE segment.id IN (:ids)
+                ORDER BY segment.id
+                """).setParameter("ids", requested.keySet()).setParameter("reportId", reportId));
+        if (facts.size() != requested.size() || !facts.stream().map(row -> (UUID) row[0])
+                .collect(java.util.stream.Collectors.toSet()).equals(requested.keySet())) {
+            throw conflict("报工关联的物料配套数量已变化，请刷新后重试");
+        }
+        for (Object[] row : facts) {
+            BigDecimal room = row[1] == null ? null : decimal(row[1]);
+            if (room != null && requested.get((UUID) row[0]).compareTo(room) > 0) {
+                throw conflict("工单部分领料，本次累计报工超过物料配套可报数量 "
+                        + room.stripTrailingZeros().toPlainString() + "："
+                        + segments.get((UUID) row[0]).segmentCode()
+                        + "；请补齐领料后继续报工，原实际用料仍须如实登记");
+            }
+        }
     }
 
     private Map<UUID, SegmentSnapshot> lockAndValidateIdentity(

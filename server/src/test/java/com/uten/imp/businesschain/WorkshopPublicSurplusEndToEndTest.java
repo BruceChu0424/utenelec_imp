@@ -933,6 +933,11 @@ class WorkshopPublicSurplusEndToEndTest {
     }
 
     private Case createStartedTask(String tag, boolean mixed,String plannedQuantity,boolean secondMaterial) {
+        return createStartedTask(tag,mixed,plannedQuantity,secondMaterial,BigDecimal.ONE);
+    }
+
+    /** Real partial warehouse issue for material-capacity regressions. */
+    private Case createStartedTask(String tag, boolean mixed,String plannedQuantity,boolean secondMaterial,BigDecimal issueFraction) {
         var world = fixture.seedWorld(tag);
         fixture.loginAs(world.superAdminUserId());
         UUID product = UUID.randomUUID();
@@ -981,7 +986,7 @@ class WorkshopPublicSurplusEndToEndTest {
             request.setIdempotencyKey("wps-issue-" + documentId);
             request.setLines(preview.lines().stream().filter(line -> documentId.equals(line.drawId())).map(line -> {
                 var item = new StockDocIssueRequest.Line();
-                item.setItemId(line.drawItemId()); item.setQty(line.qty()); return item;
+                item.setItemId(line.drawItemId()); item.setQty(line.qty().multiply(issueFraction)); return item;
             }).toList());
             stock.approveAndIssue(documentId, request);
         }

@@ -58,7 +58,11 @@ public record ReportablePlanLine(
         BigDecimal remainingActualSurplusQty,
         /** 2026-10-06：本段已批准、尚未续报承接的固定追加量合计（公共超产额度已被它占用）。 */
         BigDecimal pendingSupplementQty,
-        @com.fasterxml.jackson.annotation.JsonIgnore BigDecimal goodsUnitWeightKg) {
+        @com.fasterxml.jackson.annotation.JsonIgnore BigDecimal goodsUnitWeightKg,
+        /** Shared across all sales/public rows of this segment; NULL after complete issue. */
+        BigDecimal materialReportQty) {
+    @com.fasterxml.jackson.annotation.JsonProperty(value="materialReportQtyExact", access=com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    public String materialReportQtyExact() { return exact(materialReportQty); }
     @com.fasterxml.jackson.annotation.JsonProperty(value="maxReportQtyExact", access=com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
     public String maxReportQtyExact() { return maxReportQty == null ? null : maxReportQty.toPlainString(); }
     @com.fasterxml.jackson.annotation.JsonProperty(value="unitRateExact", access=com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)

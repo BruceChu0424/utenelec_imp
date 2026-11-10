@@ -1,0 +1,6 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/pages/production_daily_report_exact_segment_test.dart
+00:00 +0: partial issue blocks over-kit reporting before preview and preserves repeated input
+00:07 +1: 1000 task saves the entered 800 with the exact source and no final flag: actualOutput=false
+00:11 +2: 1000 task saves the entered 800 with the exact source and no final flag: actualOutput=true
+00:14 +3: All tests passed!

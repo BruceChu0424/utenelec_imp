@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "evidenceId": "E-IMPORT-COLUMNS-20261110",
+  "sourceCommit": "c56f8921f8ef4fdfee3a60010b4be4fe396548dc",
+  "sourceHashMode": "UTF8 CRLF normalized LF, no BOM",
+  "sourceSha256": {
+    "server/src/main/java/com/uten/imp/common/export/XlsxExportService.java": "29a9d0d98ebcfa3aa0290842b4253b41224492deba50f87bbe498bbe19857f82",
+    "server/src/main/java/com/uten/imp/common/files/document/SpreadsheetEvidenceReader.java": "07e3c6ba15e91f25d29953165c4ceaec30a171e2e92af6dfc268e266ebc15ff6",
+    "server/src/main/java/com/uten/imp/common/files/document/SpreadsheetImportVisibility.java": "933ba69fcde9cd87e44f06d624c214cb73feb7513b35da3d380558c2d6857d6c",
+    "server/src/main/java/com/uten/imp/common/importing/ImportColumnGuard.java": "6ab65bdc2d68f8ccb9edf6bdd8347b04b84942f0b518e3337c9f8da592283789",
+    "server/src/main/java/com/uten/imp/common/importing/PlatformWorkbookSchema.java": "5f5cdcf6a64fd96d536fd24ad200987603a9871eb792dd875da1302bed6d2379",
+    "server/src/main/java/com/uten/imp/features/finance/gl/FinanceAccountingImportService.java": "cbb023e1627c53cbaef9832faf26b7ae3faf1cc7f9bba51a46f9f2c8e9d65331",
+    "server/src/main/java/com/uten/imp/features/finance/gl/FinanceAccountingWorkbookParser.java": "446d51e989ca17bbe3da00306d2f1c916f549fed47c9ec17376a31e12c90765e",
+    "server/src/main/java/com/uten/imp/features/finance/gl/FinanceChartContracts.java": "e6f4bc7817729426a8feca799a06f7f7a0778975274df100334ca90bab7180a3",
+    "server/src/main/java/com/uten/imp/features/finance/gl/FinanceChartService.java": "82934d52ebc06200275e32299e470e487b7ecd91dbbc89efd20b46331e0039be",
+    "server/src/main/java/com/uten/imp/features/finance/gl/FinanceChartWorkbookParser.java": "dac3c34770b8d7da361b49af2781d38a867c483c175fae497524dad025291cfc",
+    "server/src/main/java/com/uten/imp/features/finance/gl/FinanceExpenseAnalysisContracts.java": "c723bfafa1bb1c6ca71b9e6703c1f2c4c1fbaac8eaf2ff3f898aaff76974599b",
+    "server/src/main/java/com/uten/imp/features/finance/gl/FinanceExpenseAnalysisService.java": "7b7b545ad7a13ffd4bf70bd450a8caa1301d97848c91cac5c6dd15b8eb76eb24",
+    "server/src/main/java/com/uten/imp/features/finance/gl/FinanceOperatingNoteParser.java": "b0ac2c758f7a901e380eefaafbfa5eaae171493e99029e5b9e9ef0fae5a946ef",
+    "server/src/main/java/com/uten/imp/features/finance/statement/FinanceAuxiliaryImportService.java": "c885b759b3665a6200aa6e074c8b3ad209fe9771efcc7a49b6e9adeff9a062cf",
+    "server/src/main/java/com/uten/imp/features/finance/statement/FinanceAuxiliaryWorkbookParser.java": "cd0e0b15a79fe56aa3c0d5a5b886f98e357f04350df9d25e8b329287d3a2e455",
+    "server/src/main/java/com/uten/imp/features/master/goods/costing/GoodsCostImportContracts.java": "90b197d4b459e686adca9d1f71c489bc24b40d71b7e1cc8ef7091197db8a4201",
+    "server/src/main/java/com/uten/imp/features/master/goods/costing/GoodsCostImportService.java": "dc22e238ee215b4b909630c56ad44d6e46123f5620da3e93b85ab03eda0c051c",
+    "server/src/main/java/com/uten/imp/features/master/goods/costing/GoodsCostWorkbookParser.java": "46f4f964e780306991801cc460cc06d9f740594aeddd12c68cf4674255e3f4d0",
+    "server/src/main/java/com/uten/imp/features/master/goods/importing/GoodsBomImportService.java": "5e8350ff051fde1c873fee138ed135119969a93217c82ff4ce9d65dbba96726f",
+    "server/src/main/java/com/uten/imp/features/master/goods/importing/GoodsImportService.java": "c579088c88d8ad6ef36cf3f457bfed3e748c14f7ea67d1133704b298df2bd905",
+    "server/src/test/java/com/uten/imp/common/export/PlatformWorkbookSchemaTest.java": "2bcdc8489adf83c63285d472d555c3b924f4c0ff47602250d7ad9b1f0f1835f1",
+    "server/src/test/java/com/uten/imp/common/importing/ImportColumnGuardTest.java": "9a1a3a980e4de0732e731ef94de59d4f52c1aa69b73ae2507a82724bb8b44128",
+    "server/src/test/java/com/uten/imp/features/finance/gl/FinanceOperatingNoteParserTest.java": "e5251b861013bc2fba778deee8c7d6c47ffb1065cfec9f619e5b6c2931739bb2",
+    "server/src/test/java/com/uten/imp/features/finance/statement/FinanceAuxiliaryWorkbookParserTest.java": "a4bc4472318f58828453185e5576a97670f54027c9938fb25e89db77df4f744d",
+    "server/src/test/java/com/uten/imp/features/master/goods/costing/GoodsCostWorkbookParserTest.java": "632356ef991e7cbddc654a7ebf7069046c4c8e8e9f44508c4903eb563afac437",
+    "server/src/test/java/com/uten/imp/features/master/goods/importing/GoodsBomImportColumnContractTest.java": "6c5febc282f9972a8e308ea3c87e8d4e0c1c22f6cfc4278f6e8413ea555c5020",
+    "server/src/test/java/com/uten/imp/features/master/goods/importing/GoodsBomImportServiceTest.java": "952629cbf1116ee591f12a126a09965510eecc11cbb1e02fd5361748eedf4ece",
+    "server/src/test/java/com/uten/imp/features/master/goods/importing/GoodsImportColumnContractTest.java": "660755f08bcdfd7bf2f936f422dfd324a1f8d3340e6d695d81c1cb0da55e9447",
+    "server/src/test/java/com/uten/imp/features/master/goods/importing/GoodsImportCustomerLabelsTest.java": "c522fbdceb8af1bb0f864b01455d8156332698c84e3dcf34c4e99bc5c446b89c"
+  },
+  "rawLogSha256": {
+    "after-fix.txt": "5be79408cd86e61a4b22abd208f03d4497ed6b5a217de57c5b098724d5747dda",
+    "before-fix.txt": "bf690e4b4cd74b0b36dd6ae2b55f33c6ee41ff6abf4af2530e66526d6fd27c2a",
+    "first-integration.txt": "e7c3cc3a5159c9e33a6358210c49f4a94602e304c0170f727fde86c44deccd10",
+    "schema-classpath.txt": "defbf2b9c9afeb82113a94a525975d528b12a59781041342bcb53b79eb7f0108",
+    "schema-deduplicated.txt": "5623bfc11cd89afc24dbaf0102254ef6a1f8317be715920511dfef9d12bbbcbd",
+    "schema-javac.txt": "aef64bd15b7294804e0d92bc42fcc2cd7d3c256afb4a2d27fbea396fbff72731",
+    "schema-test-javac.txt": "aef64bd15b7294804e0d92bc42fcc2cd7d3c256afb4a2d27fbea396fbff72731",
+    "second-integration.txt": "97f5fcd4780906f16c459d203065caa27af8fa5e4835bf2a179efe6e5ea11f18"
+  },
+  "validation": {
+    "deduplicatedSchema": "5 tests passed against e49ce2bc9; targeted javac of schema/helper + real Maven surefire; classpath build retained",
+    "finalCleanCombination": "root integration owns exact final source clean regression, pending at this receipt",
+    "firstIntegration": "52 tests, 1 failure and 2 errors, 1 optional private-source skipped; old expectations adjusted",
+    "secondIntegration": "87 tests, 1 failure and 1 error, 1 skipped; duplicate directory issue and early fixed-width guard corrected",
+    "before": "7 tests, 3 real failures",
+    "afterFix": "88 tests, zero failures/errors, 1 optional private-source skip; candidate 7d6ef2caa, before columnSets format and legacy-retirement followups"
+  },
+  "limitations": [
+    "no automatic custom value writeback",
+    "unmarked legacy single-column impersonation cannot be reliably inferred",
+    "same-bytes safe rereview lineage not implemented",
+    "immutable source rows never rewritten; old completed receipts retained",
+    "company files/deployment and target hardware not tested"
+  ]
+}

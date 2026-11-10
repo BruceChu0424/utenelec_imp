@@ -6782,10 +6782,11 @@
         "更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。"
       ],
       "evidence": [
-        "clients/windows_legacy/progress/evidence/finance-entry-ui-20261103.json"
+        "clients/windows_legacy/progress/evidence/finance-entry-ui-20261103.json",
+        "docs/99-项目治理/2026-11-10-截图标注修复核对.md"
       ],
-      "notes": "尚未迁移；先做动作/合同审计。\n2026-11-03 财务录入与公共表格增量：费用/收入项目同源新增及即时回显、备注末列、正常字号汇总、完整查询文本候选、表格工具栏日期及历史门控。来源、权限、精确金额、草稿及未知提交保留；完整调用清单见finance-entry-ui-20261103证据。 本任务WPF同责业务仍未迁移或未完成原DoD，不开放占位写入口，不据Flutter/后端验证提升完成状态。 完整ERP、Win7目标机与正式分发未验收；原状态、负责人、DoD及历史证据保留。",
-      "lastUpdated": "2026-11-04T00:26:38.999360+00:00"
+      "notes": "尚未迁移；先做动作/合同审计。\n2026-11-03 财务录入与公共表格增量：费用/收入项目同源新增及即时回显、备注末列、正常字号汇总、完整查询文本候选、表格工具栏日期及历史门控。来源、权限、精确金额、草稿及未知提交保留；完整调用清单见finance-entry-ui-20261103证据。 本任务WPF同责业务仍未迁移或未完成原DoD，不开放占位写入口，不据Flutter/后端验证提升完成状态。 完整ERP、Win7目标机与正式分发未验收；原状态、负责人、DoD及历史证据保留。\n尚未迁移；先做动作/合同审计。2026-11-10 截图修复新增 RECEIVABLE_SUMMARY 精确16列表头、期间应收计算及渐进完整读取；原 BALANCE 六列保留。后续原生迁移须共用服务端合同、查询和导出作用域，不自行重算金额；本次未新增 WPF 实现或验收。",
+      "lastUpdated": "2026-11-10T13:08:50.886424+00:00"
     },
     {
       "id": "W7-BIZ-059",
@@ -7213,10 +7214,11 @@
         "更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。"
       ],
       "evidence": [
-        "clients/windows_legacy/progress/evidence/category-prefetch-sweep-20261103.json"
+        "clients/windows_legacy/progress/evidence/category-prefetch-sweep-20261103.json",
+        "docs/99-项目治理/2026-11-10-截图标注修复核对.md"
       ],
-      "notes": "尚未迁移；先做动作/合同审计。\n2026-11-03 同类任务页面预加载扩查：前端同口径徽章/有界首屏交接已按当前源码处理；WPF 对应业务仍未迁移，不因 Dart 或公共测试提高状态。后续接入须遵守完整查询、源实例/身份/权限/写修订隔离、全 App 两条物理投机预算及原历史/期间/能力闸门；详见本轮 evidence。",
-      "lastUpdated": "2026-11-03T18:00:29.441325+00:00"
+      "notes": "尚未迁移；先做动作/合同审计。\n2026-11-03 同类任务页面预加载扩查：前端同口径徽章/有界首屏交接已按当前源码处理；WPF 对应业务仍未迁移，不因 Dart 或公共测试提高状态。后续接入须遵守完整查询、源实例/身份/权限/写修订隔离、全 App 两条物理投机预算及原历史/期间/能力闸门；详见本轮 evidence。\n尚未迁移；先做动作/合同审计。2026-11-10 审批队列新增 itemSummaries：按冻结单位身份显示订货/采购数量和原币单件价格，待审与历史共用读取；读取上限统一1000，业务写入上限不变。后续原生迁移须保留多单位、多单价、精度及未知事实，不均价、不跨单位相加；本次未新增 WPF 实现或验收。",
+      "lastUpdated": "2026-11-10T13:08:51.610754+00:00"
     },
     {
       "id": "W7-BIZ-069",
@@ -13912,12 +13914,11 @@
         "未迁移项明确记录：WPF 端无同步导出生成进度协议（服务端进度端点）与 UtenProgressRing 圆环组件——按需后续补。"
       ],
       "evidence": [
-        "clients/windows_legacy/Uten.Legacy.Desktop/Controls/UtenBusyDialog.cs（ShowProgress/Report/Stage）",
-        "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitExportWindow.cs DownloadAsync（下载全程持弹窗+取消传输令牌）",
-        "clients/windows_legacy/Uten.Legacy.Desktop/MainWindow.xaml.cs OnCheckUpdate（确定进度 received/SizeBytes+幂等 Dispose 收尾）",
-        "本机 dotnet msbuild：85 个错误全为 XAML 生成名缺失（既有环境限制），本次新增符号零错误"
+        "clients/windows_legacy/Uten.Legacy.Desktop/Controls/UtenBusyDialog.cs",
+        "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitExportWindow.cs",
+        "clients/windows_legacy/Uten.Legacy.Desktop/MainWindow.xaml.cs"
       ],
-      "notes": "2026-11-09 随 Flutter「导出/下载/批量操作统一进度弹窗」批次实施；Flutter 侧组件 docs/02-组件库/通用进度弹窗.md。状态 implemented：代码就位，Win7 真机 UAT 未完成，不据此开放任何已支持组合。",
+      "notes": "2026-11-09 随 Flutter「导出/下载/批量操作统一进度弹窗」批次实施；Flutter 侧组件 docs/02-组件库/通用进度弹窗.md。状态 implemented：代码就位，Win7 真机 UAT 未完成，不据此开放任何已支持组合。\n2026-11-10 台账路径校正：原 evidence 混入符号说明和未附日志的构建描述，移到本备注保留；源码路径只证明入口存在，原 implemented/未完成验收状态不变。原记录：clients/windows_legacy/Uten.Legacy.Desktop/Controls/UtenBusyDialog.cs（ShowProgress/Report/Stage）；clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitExportWindow.cs DownloadAsync（下载全程持弹窗+取消传输令牌）；clients/windows_legacy/Uten.Legacy.Desktop/MainWindow.xaml.cs OnCheckUpdate（确定进度 received/SizeBytes+幂等 Dispose 收尾）；本机 dotnet msbuild：85 个错误全为 XAML 生成名缺失（既有环境限制），本次新增符号零错误",
       "lastUpdated": "2026-11-09"
     }
   ]

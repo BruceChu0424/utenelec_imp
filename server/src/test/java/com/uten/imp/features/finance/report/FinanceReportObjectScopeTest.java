@@ -230,6 +230,8 @@ class FinanceReportObjectScopeTest {
         FinanceReportService service = fixture.service();
         List<Executable> companyEntries = List.of(
                 () -> service.arApOverview(null, null, null, null, null, null, 1, 50),
+                () -> service.arApOverview(LocalDate.of(2026,11,1),LocalDate.of(2026,11,10),"ALL",null,"CLIENT",null,
+                        1,50,Map.of(),null,null,"RECEIVABLE_SUMMARY"),
                 () -> service.arApPartyLocations("customer", 1, 100),
                 () -> service.arApDetail("AR", null, null, null,
                         null, null, null, Map.of(), 1, 50, null, null),

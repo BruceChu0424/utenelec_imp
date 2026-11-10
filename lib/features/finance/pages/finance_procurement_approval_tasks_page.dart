@@ -1191,6 +1191,13 @@ class _FinanceProcurementApprovalTasksPageState
           (task.lineCount ?? 0) > 0 ? task.lineCount.toString() : '—',
     ),
     MasterColumnDef(
+      key: 'quantitySummary',
+      label: '订货/采购数量',
+      width: 160,
+      info: '委外显示订货数量，采购显示采购数量；按审批明细的原单位分别汇总，赠品另见明细。',
+      value: (task) => task.quantitySummaryText,
+    ),
+    MasterColumnDef(
       key: 'tolerance',
       label: '允许超收 / 损耗',
       width: 120,
@@ -1201,6 +1208,14 @@ class _FinanceProcurementApprovalTasksPageState
     ),
     // ADR-128：订货金额按订货币种金额后自动带单位（2026-10-10 后缀口径），
     // 折合人民币另列；金额链（金额/汇率/折合）红字加粗逐行核对。
+    MasterColumnDef(
+      key: 'unitPriceSummary',
+      label: '单件价格',
+      width: 170,
+      info: '审批提交时的原币单价，按原单位分别显示；多种单价逐项保留，完整明细可打开审核详情核对。',
+      emphasized: true,
+      value: (task) => task.unitPriceSummaryText,
+    ),
     MasterColumnDef(
       key: 'totalOriginal',
       label: '订货金额',

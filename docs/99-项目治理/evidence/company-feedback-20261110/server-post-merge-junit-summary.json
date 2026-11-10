@@ -1,0 +1,352 @@
+{
+  "reports": [
+    {
+      "class": "com.uten.imp.common.production.ProductionMaterialKitProofsTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "cases": [
+        {
+          "name": "directLotRequestUsesItsTargetSegmentInsideTheAlreadyLockedGraph",
+          "passed": true
+        },
+        {
+          "name": "stockAndDirectTargetsAreUnionedAndCheckedBeforeAnyCapture",
+          "passed": true
+        },
+        {
+          "name": "anUnlinkedSourceRejectsTheWholeCheckpointBatchWithoutAddingLocksOrFacts",
+          "passed": true
+        }
+      ]
+    },
+    {
+      "class": "com.uten.imp.features.admin.serverstatus.ServerStatusProbeTest",
+      "tests": 22,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "cases": [
+        {
+          "name": "scheduledMethodNamesComeFromDeclaringClassAndLambdasAreIgnored",
+          "passed": true
+        },
+        {
+          "name": "slowLaneFailureIsReportedAsUnknownUntilTheNextSlowSample",
+          "passed": true
+        },
+        {
+          "name": "jobsFromTheRegistryAreSortedAndOnlyFailingOrStaleOnesBecomeAlerts",
+          "passed": true
+        },
+        {
+          "name": "slowLaneRunsEveryFourthSampleAndAttachmentsAtMostEveryFiveMinutes",
+          "passed": true
+        },
+        {
+          "name": "stoppedEventsAddToUnresolvedCountWithoutChangingPendingAge",
+          "passed": true
+        },
+        {
+          "name": "auditRetentionWarnsWhenNeverSucceededStaleOrNotScheduledButNotWhenFresh",
+          "passed": true
+        },
+        {
+          "name": "auditRetentionThatIsNotScheduledHereStillWarnsFromTheStoredEvidence",
+          "passed": true
+        },
+        {
+          "name": "rollingWindowForgetsReadingsOlderThanItsSlots",
+          "passed": true
+        },
+        {
+          "name": "attachmentVolumeSumsStoredSizeAndReportsUnknownOnTimeout",
+          "passed": true
+        },
+        {
+          "name": "multiplePoolsRequireCompleteSamplesAndDoNotInventMissingIdleOrWaitingCounts",
+          "passed": true
+        },
+        {
+          "name": "threadCountUsesConfiguredThresholdsAndNeverInventsZero",
+          "passed": true
+        },
+        {
+          "name": "staleTaskAlertNamesTheTaskInPlainWordsAndExplainsItself",
+          "passed": true
+        },
+        {
+          "name": "outboxBacklogWarnsByCountOrAgeAndReadsBothOutboxes",
+          "passed": true
+        },
+        {
+          "name": "twoSecondPollerLateBySevenSecondsIsStillNormalAndNamedInPlainWords",
+          "passed": true
+        },
+        {
+          "name": "idlePoolReallyHasZeroActiveWithoutClaimingThereAreNoDatabaseConnections",
+          "passed": true
+        },
+        {
+          "name": "jobStatusCoversNeverRanRunningFailedStaleAndHealthy",
+          "passed": true
+        },
+        {
+          "name": "stoppedBusinessEventsRemainVisibleWhenNoWorkIsPending",
+          "passed": true
+        },
+        {
+          "name": "recentErrorsAreTheDeltaOverTheRollingWindowNotTheLifetimeTotal",
+          "passed": true
+        },
+        {
+          "name": "onlineSessionsCountDistinctLiveSessionsForEmployeesAndVisitors",
+          "passed": true
+        },
+        {
+          "name": "missingOrMismatchedActivePoolMetricsNeverBecomeHealthyZero",
+          "passed": true
+        },
+        {
+          "name": "tasksQueuedBehindAStuckOneAreNormalAndOnlyTheStuckOneAlerts",
+          "passed": true
+        },
+        {
+          "name": "registryTracksStartEndDurationAndConsecutiveFailures",
+          "passed": true
+        }
+      ]
+    },
+    {
+      "class": "com.uten.imp.features.admin.serverstatus.ServerStatusTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "cases": [
+        {
+          "name": "aDirectoryOrUnrecognizedReportIsNotBackupSuccess",
+          "passed": true
+        },
+        {
+          "name": "unavailableAndThresholdBoundariesNeverLookHealthy",
+          "passed": true
+        },
+        {
+          "name": "backupAgeAndFailedLatestAttemptHaveIndependentWarnings",
+          "passed": true
+        },
+        {
+          "name": "linuxFileCacheIsNotMisreportedAsExhaustedMemory",
+          "passed": true
+        },
+        {
+          "name": "staleOrFailedSamplingDoesNotKeepOldGreenNumbers",
+          "passed": true
+        },
+        {
+          "name": "repeatedHttpReadsReuseOneBackgroundSample",
+          "passed": true
+        }
+      ]
+    },
+    {
+      "class": "com.uten.imp.features.admin.serverstatus.ServerStorageServiceTest",
+      "tests": 13,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "cases": [
+        {
+          "name": "readOnlyReceiptPollingUsesSameOwnerAndNeverCallsDelete",
+          "passed": true
+        },
+        {
+          "name": "cleanupRequestUsesAuthenticatedActorAndSameDurableRequestIdentifier",
+          "passed": true
+        },
+        {
+          "name": "invalidHelperProtocolKeepsRealDatabaseAndUploadMeasurements",
+          "passed": true
+        },
+        {
+          "name": "malformedCleanupAcknowledgementRemainsUncertainWhileReceiptReadsNeverClaimAMutation",
+          "passed": true
+        },
+        {
+          "name": "legacyUploadCategoryAndResourcesRemainSeparateTypedReadonlyProjections",
+          "passed": true
+        },
+        {
+          "name": "malformedHelperPageDoesNotBecomeAnEmptyHealthyList",
+          "passed": true
+        },
+        {
+          "name": "helperCapabilitiesCannotForgeALocalPlatformLimitationOrLeakUnreviewedReasons",
+          "passed": true
+        },
+        {
+          "name": "impersonatedAndForcedPasswordAccountsCannotMutate",
+          "passed": true
+        },
+        {
+          "name": "typedProjectionDiscardsPrivateHelperFieldsAndBindsCleanupCapabilityToCurrentUser",
+          "passed": true
+        },
+        {
+          "name": "volumeMountAndPhysicalReconciliationSurviveTypedProjection",
+          "passed": true
+        },
+        {
+          "name": "unavailableHostStillReturnsRealHeapAndUnknownStorageAndDatabase",
+          "passed": true
+        },
+        {
+          "name": "monitorCannotPreviewAndVisitorCannotReadEvenWithGrant",
+          "passed": true
+        },
+        {
+          "name": "invalidResourceIdsAndPageLimitsNeverReachRootHelper",
+          "passed": true
+        }
+      ]
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionSegmentServiceTest",
+      "tests": 24,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "cases": [
+        {
+          "name": "batchStartSafelyReplaysEveryPreviouslyCommittedItem",
+          "passed": true
+        },
+        {
+          "name": "successfulAssignmentLearnsWorkshopSelection",
+          "passed": true
+        },
+        {
+          "name": "startSucceedsAfterEveryMaterialDemandIsFulfilled",
+          "passed": true
+        },
+        {
+          "name": "batchStartPreflightsEveryItemBeforeTheFirstStatusUpdate",
+          "passed": true
+        },
+        {
+          "name": "batchStartRejectsTheSameIdempotencyKeyWithDifferentVersion",
+          "passed": true
+        },
+        {
+          "name": "zeroMaterialSegmentCanStartWithoutDemandRows",
+          "passed": true
+        },
+        {
+          "name": "confirmRouteResolvesTheArrivalProgressCardBeforeKitPromotion",
+          "passed": true
+        },
+        {
+          "name": "materialRecheckCannotOverrideAnExplicitManualDefer",
+          "passed": true
+        },
+        {
+          "name": "readySegmentStartRequiresCompleteAssignmentBeforeStarting",
+          "passed": true
+        },
+        {
+          "name": "objectScopeDenialStopsBeforeReplayAndMutation",
+          "passed": true
+        },
+        {
+          "name": "materialRecheckUsesInventoryLocksBeforeSegmentAndRecordsReadyVersion",
+          "passed": true
+        },
+        {
+          "name": "staleExpectedVersionIsRejectedBeforeMutation",
+          "passed": true
+        },
+        {
+          "name": "unchangedWorkshopAssignmentDoesNotLearnAgain",
+          "passed": true
+        },
+        {
+          "name": "startRejectsWhenNoMaterialDemandHasBeenIssued",
+          "passed": true
+        },
+        {
+          "name": "assignmentReplayDoesNotLearnWorkshopAgain",
+          "passed": true
+        },
+        {
+          "name": "confirmRouteBatchResolvesTheArrivalCardWithoutKitPromotion",
+          "passed": true
+        },
+        {
+          "name": "waitingSegmentCannotStartDirectly",
+          "passed": true
+        },
+        {
+          "name": "explicitDeferReleaseRechecksKitAndRecordsFinalVersion",
+          "passed": true
+        },
+        {
+          "name": "batchStartDeduplicatesAndLocksInUuidOrderBeforeAnyMutation",
+          "passed": true
+        },
+        {
+          "name": "batchStartRejectsAmbiguousDuplicatesBeforeLocking",
+          "passed": true
+        },
+        {
+          "name": "startRejectsWhenOnlyPartOfTheMaterialDemandsAreFulfilled",
+          "passed": true
+        },
+        {
+          "name": "plannedWorkshopAndResponsibleEmployeeStartWithoutAnOptionalEndDate",
+          "passed": true
+        },
+        {
+          "name": "nonSplittableSourceCannotBeConfirmedAsIndependentBatch",
+          "passed": true
+        },
+        {
+          "name": "illegalStatusTransitionIsRejected",
+          "passed": true
+        }
+      ]
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchProjectionTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "cases": [
+        {
+          "name": "fullMaterialIssueDoesNotRetireAnAuthorizedTasksCommands",
+          "passed": true
+        },
+        {
+          "name": "materialLimitScopeAndTotalAreIndependentTailColumns",
+          "passed": true
+        },
+        {
+          "name": "projectionDriftFailsExplicitlyBeforePublishingAFalseCount",
+          "passed": true
+        },
+        {
+          "name": "partialMaterialIssueDoesNotAuthorizeAnotherWorkshopsTask",
+          "passed": true
+        }
+      ]
+    }
+  ],
+  "totals": {
+    "tests": 72,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  }
+}

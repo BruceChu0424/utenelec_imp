@@ -1,0 +1,265 @@
+{
+  "schemaVersion": 1,
+  "dateLocal": "2026-11-10",
+  "timezone": "America/Denver",
+  "completedChecksUtc": "2026-11-10T23:05:51.144275+00:00",
+  "baseline": "86dffb9db",
+  "productTrees": {
+    "server/src/main": "6faf0318ae6f730e1122809a1e4be6203917477f",
+    "lib": "6fc8bcd43b1c77de625905d3e108f9c76f4ef2ef",
+    "contracts": "16863638d94de56aeaca6aaa804657f1172e8e90"
+  },
+  "parallelPreserved": [
+    "d73f86e1e",
+    "45bf87fc9"
+  ],
+  "parallelSourcePreservation": {
+    "rootValidatedSource": "a5c51f8c4",
+    "parallelPreservationSource": "45bf87fc9",
+    "ourProductAndTestFiles": 74,
+    "parallelProductAndTestFiles": 17,
+    "overlap": [],
+    "allBothSidesCodeBlobsPreservedExactly": true,
+    "protectedNativeTasksPreserved": 373,
+    "mergedHistoryLines": 524
+  },
+  "nativeSemanticMerge": {
+    "base": "d73f86e1e",
+    "preservationCheckpoint": "45bf87fc904ff75246ea79a7abba826be5f91898",
+    "workPackages": 373,
+    "protectedFields": [
+      "status",
+      "owner",
+      "definitionOfDone",
+      "dependencies",
+      "nativeTargets"
+    ],
+    "protectedFieldsUnchanged": true,
+    "rootNoteEvidenceIds": [
+      "W7-BIZ-025",
+      "W7-BIZ-031",
+      "W7-BIZ-034",
+      "W7-BIZ-035",
+      "W7-BIZ-038",
+      "W7-BIZ-066",
+      "W7-BIZ-072",
+      "W7-BIZ-094",
+      "W7-BIZ-095",
+      "W7-BIZ-102",
+      "W7-BIZ-107",
+      "W7-BIZ-108",
+      "W7-BIZ-110",
+      "W7-BIZ-115",
+      "W7-BIZ-122",
+      "W7-BIZ-125",
+      "W7-BIZ-156",
+      "W7-BIZ-159",
+      "W7-BIZ-216"
+    ],
+    "mainNoteEvidenceIds": [
+      "W7-BIZ-013",
+      "W7-BIZ-014",
+      "W7-BIZ-084",
+      "W7-BIZ-085"
+    ],
+    "historyBase": 498,
+    "historyRootTail": 19,
+    "historyMainTail": 7,
+    "historyMerged": 524,
+    "sourceFingerprints": "Regenerate from combined owning source, do not select a side."
+  },
+  "validations": {
+    "businessFinal": {
+      "source": {
+        "sha": "a5c51f8c43e09ab67b182110cb0c87500a082a20",
+        "fingerprint": "8ef67d14e915e336cf30d4b3fdc73f8de8a5f1273de4ec4ae3bea0c47626be07"
+      },
+      "classes": 14,
+      "tests": 73,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "importDelta": {
+      "source": {
+        "sha": "4c66bbffa99f3f9cb1f695fc5bd8b2e6d6201cef",
+        "fingerprint": "18c4dd99031a1da194b0dcabfb5c29dd3c8336c69048d93f4fd7a3c349dab9cf"
+      },
+      "classes": 8,
+      "tests": 45,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "postMergeJava": {
+      "classes": 6,
+      "tests": 72,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "postMergeFlutter": {
+      "passed": 606,
+      "exitCode": 0
+    },
+    "chrome": {
+      "passed": 34,
+      "sdkUnchanged": true,
+      "syntheticApi": true
+    },
+    "analyze": "No issues found",
+    "linuxStorage": {
+      "passed": 41,
+      "skipped": 0,
+      "temporaryFixturesOnly": true
+    }
+  },
+  "initialLongRun": {
+    "classes": 44,
+    "tests": 392,
+    "passed": 385,
+    "failures": 1,
+    "errors": 5,
+    "skipped": 1,
+    "notCancelled": true,
+    "rawFailureLogRetained": true,
+    "nonPassedCasesRevalidated": [
+      {
+        "class": "com.uten.imp.businesschain.MasterDirectoryExportPostgresTest",
+        "method": "expandedSettlementAndWarehouseHeadersExportTheirAuthoritativeValues",
+        "revalidatedPassed": true
+      },
+      {
+        "class": "com.uten.imp.businesschain.ProductionPartialReportQuantityEndToEndTest",
+        "method": "reportingEightHundredKeepsTwoHundredOpenWithoutExpandingReportQualityOrReceipt",
+        "revalidatedPassed": true
+      },
+      {
+        "class": "com.uten.imp.businesschain.ProductionPartialReportQuantityEndToEndTest",
+        "method": "returnAndReissueOfHalfTheMaterialsCannotMasqueradeAsAFullKit",
+        "revalidatedPassed": true
+      },
+      {
+        "class": "com.uten.imp.features.production.execution.ProductionExecutionSegmentServiceTest",
+        "method": "zeroMaterialSegmentCanStartWithoutDemandRows",
+        "revalidatedPassed": true
+      },
+      {
+        "class": "com.uten.imp.features.production.execution.ProductionExecutionSegmentServiceTest",
+        "method": "batchStartDeduplicatesAndLocksInUuidOrderBeforeAnyMutation",
+        "revalidatedPassed": true
+      },
+      {
+        "class": "com.uten.imp.features.production.execution.ProductionExecutionSegmentServiceTest",
+        "method": "plannedWorkshopAndResponsibleEmployeeStartWithoutAnOptionalEndDate",
+        "revalidatedPassed": true
+      }
+    ],
+    "optionalSkip": "FinanceAccountingWorkbookParserTest.privateSuppliedFilesAreReadOnlyOptionalEvidence; UTEN_FINANCE_SOURCE_DIR not provided"
+  },
+  "stress": {
+    "realPostgresSourceRows": 100000,
+    "batches": 1000,
+    "peakManaged": 103,
+    "sourceMillis": 6257,
+    "sourceBatchP95Millis": 8.7911,
+    "sourceBatchP99Millis": 13.2992,
+    "fixturePreparationMillis": 1792924,
+    "excelFileRows": 1048600,
+    "excelContinuationVerified": true,
+    "schemaContinuationFixtureSheets": 40,
+    "schemaPlatformColumns": 32
+  },
+  "localMain": {
+    "mergeObserved": false,
+    "reason": "All acceptance gates completed; final local branch update follows this record."
+  },
+  "notImplemented": [
+    "per-issue personnel association; feasibility only",
+    "complete writable custom-column round trip",
+    "reliable identity recovery for old unmarked single-column aliases",
+    "same-bytes immutable legacy-preview lineage upgrade"
+  ],
+  "limits": [
+    "Conservative material cap when old chronology cannot prove prior full kit",
+    "Browser uses synthetic API; real PostgreSQL chains are separate",
+    "Company original case1 rejection cannot be uniquely inferred from screenshot",
+    "No company deployment, push, formal package, full cloud CI or Win7 hardware acceptance"
+  ],
+  "evidenceSha256": {
+    ".gitattributes": "1c2fdfa11f279d34e4d6da100f6b8eea029f98b773f777ffde54c73c789e501d",
+    "analyze-final-combined.log": "c52daa9210d413a1381cde0fa73805e662fc18de8f1549383f0e15bf8d28a519",
+    "analyze-final.log": "018f98cdffbfb262bfe92b3208245a7c0936db829b7b811d4fdf73e9b09683d9",
+    "analyze-initial-owned-sdk-and-lints.log": "a2e9661587ec6484c62ede75bbb1f3142768bea468cf15ee3dfe3552d2abc4d6",
+    "chrome-combined-34.log": "24deed4dbaad70e42f1e94988300d39d301393fdf7e8288828c7a151174206a4",
+    "chrome-receipt.json": "0d137a85413a06ceee0bda5175ca6a9a8bcfeb70b7aa7895d6fd6866047d4179",
+    "chrome-stderr.log": "643ca00db20d5d5e516ab56f1a206d4f12359acd0366a351fc253923a09e2e5a",
+    "combined-registry-check.log": "c7d2a9e9c6cfb797ddb9c1650693b629bb836b27d834dd1f7c057b3b8afe0aa9",
+    "combined-source-preservation.json": "0bb008612bac858d8a6b4352b95ffc2c7a733003ec60ea59c9a89624fd6572b2",
+    "export-before-contract-and-fixture-failures.log": "2a3234c2b43f84d5b291f0cbba5cb6ae17ad4b19a7bb511ba24514e66da083d5",
+    "export-vm-81.log": "03595b62bb759d9fb4e126001a48b709b5b38067d7861650ae88d49b5efcd46a",
+    "export-warehouse-missing-columns-before.log": "5ee6dd16b0e549108d901ff0bc2c061e183d690d292f0dcfdb4b207a56062ada",
+    "flutter-combined-382.log": "df59ff2119f334b38af2bd2a7f500b62614242459e12d7c4aeb30150da0d50cc",
+    "flutter-final-combined-606.log": "9478d7157e59dcaca4ca5c3fc5a35bf98ec8761283a2b3f6b089113d50c0260d",
+    "flutter-final-delta-38.log": "338c12a3e2befee4b133da664f99ee9fb4380ca19bb0ae4f6e52f7a69a9ca015",
+    "governance-semantic-merge.json": "669dd2d5f94ab4c1387121134806126ec16a6a06c68d788a20c8ca7df9e13ee3",
+    "master-initial-fixture-report.log": "e2f2ced479be71ef8897d460bbe1f5c57f198fe0ce9d28b93c0cfdb2bba4f0ee",
+    "parallel-preservation.json": "d7dff61aa052b15e05b95061694ce988b016036c9f98b36c94f00f1df449556a",
+    "server-initial-392.log": "2b3d044eca3fc96d5df8d3e98677efc26fe26c6572b818de36638899cc79a0f9",
+    "server-initial-junit-summary.json": "4eee59451b089ecafdba96389c7fd500a6ab5a6af2dbcfba0efc4fb0ada52d15",
+    "server-initial-result.json": "a4169c3be35760ed977d1d96906f9e54cf211f537601a4bee750ce993185eaee",
+    "server-post-merge-72.log": "5978a7fb431baaa8a93e003209af23a8daa6a8c6082ee99944e103e9ca837f8c",
+    "server-post-merge-junit-summary.json": "465a70ae51174acef16428b43cae5e1f1b3a5a561f21a7249a47d25ee5518528",
+    "server-source-before.json": "3e9277eeba78cbc44127c11675a80bf8fd5dc3908c384bd662f3de6709a296e8",
+    "status-colour-corrected-fixture.log": "629e28f9d9f3e4981b095b598f06188aa31870e653190e572bd388ff0e54814b",
+    "status-colour-initial-fixture-failure.log": "cd79768d2e2bf146cae1c2b94ff1aa78027cbda031bac7422749a600e678555a",
+    "wpf-final-check.log": "c7d2a9e9c6cfb797ddb9c1650693b629bb836b27d834dd1f7c057b3b8afe0aa9",
+    "wpf-preservation.json": "912cda766ce52934824ca7b64ef2781bdc37168c2239e7cd49d4fdea7140ccc9",
+    "master-header-early/.gitattributes": "2ae94554fb4ff4bfd910ff72f3006462aee3a3dbf64ba02103dfa9e624c119ac",
+    "master-header-early/result.log": "80e605c746fd1bab8583f08458f27445068d1daac7df85af355aea69f2284fb6",
+    "server-initial-reports/com.uten.imp.businesschain.CompanyMaterialOrderQuantityEndToEndTest.log": "8f313e5e7a0c1ff8a68e78923247abef239d0b6e6cc69d36e5a1b0ba10d2fc2d",
+    "server-initial-reports/com.uten.imp.businesschain.FinanceAccountingContinuationPostgresTest.log": "7c7a70448da3a3a700f2bf56fed7c8b02100bf341f0067082e849006fded3ca9",
+    "server-initial-reports/com.uten.imp.businesschain.FinanceAuxiliaryPostgresTest.log": "06e7edf851e22246c189ffc82671ab645b7bc0aecad65b4bb461f88f1c492f68",
+    "server-initial-reports/com.uten.imp.businesschain.FinanceChartImportPostgresTest.log": "334c2f3682e0062d47099817b30459ec038c2abdf3bc30d04a91a8af1501dd8e",
+    "server-initial-reports/com.uten.imp.businesschain.MasterDirectoryExportPostgresTest.log": "e2f2ced479be71ef8897d460bbe1f5c57f198fe0ce9d28b93c0cfdb2bba4f0ee",
+    "server-initial-reports/com.uten.imp.businesschain.ProductionPartialReportQuantityEndToEndTest.log": "2b8da462864746d93690445819a397f1e99d39b28316277c4ef067b7298c49ec",
+    "server-initial-reports/com.uten.imp.businesschain.ProductionQuantityAdversarialEndToEndTest.log": "0dcfb4f41f9d2f1d72a0f3627c9dcab632e761f47222f90a91bfddd7caa8b2b9",
+    "server-initial-reports/com.uten.imp.businesschain.WorkshopPublicSurplusEndToEndTest.log": "5d2253f4f2f335ca6fa20483c604155f29a9925116e47458eba641eb2c1ba346",
+    "server-initial-reports/com.uten.imp.common.export.CompleteResultExportTest.log": "16dfee8d01b229ca1d90868b8094f3d5731c92946364b27e6f967fa6127478fd",
+    "server-initial-reports/com.uten.imp.common.export.ExportTableProjectionServiceTest.log": "185dd298768234c43ff1cc0cff69d349324890a5694f979adaf0a9638a91e363",
+    "server-initial-reports/com.uten.imp.common.export.MasterExportSelectionTest.log": "ba39e7820747949af258c807233ef3bcf86a879cb3a9592ccc02cfb54cd0058f",
+    "server-initial-reports/com.uten.imp.common.export.MasterExportSourceTest.log": "f11b19d428a9cec799bd5b315d0ad009544a9d0b03fd822be7e506e913d01f59",
+    "server-initial-reports/com.uten.imp.common.export.PlatformWorkbookSchemaTest.log": "35958a6894b2ff54b8a57ebc5f9e2be6de15cb8ca3b1ca5a0dd646c420800418",
+    "server-initial-reports/com.uten.imp.common.export.WorkbookDownloadServiceTest.log": "7a9c1674d5140bad07177f959352f2d0594157da0665eb0a4851c0a3c7b4b91b",
+    "server-initial-reports/com.uten.imp.common.export.XlsxCompleteSourceTest.log": "3433ac1500694b895ed73ead0c565543d3fdee25a93f7613a4c46cfbaabc304d",
+    "server-initial-reports/com.uten.imp.common.export.XlsxSelectedRowsStreamingTest.log": "dcaf3035c7d682deeecda82ab57e1d27077540c3be7bc01b7cd57b02e44bf6df",
+    "server-initial-reports/com.uten.imp.common.export.XlsxTableProjectionPrecisionTest.log": "eacee5dd83da9881d4217ae0a900427adc83b3221523aa9e957be810c04306de",
+    "server-initial-reports/com.uten.imp.common.finance.ProcurementReturnHeaderAuthorityTest.log": "b821f4292d3f334feeba6827174426f146c08b2843ddc64eb2b4fc06c1a1fb61",
+    "server-initial-reports/com.uten.imp.common.importing.ImportColumnGuardTest.log": "c1aec0ad4d0defed99d1f95966d5ea78b3d5f66f368847c1e5b52a897e26b77e",
+    "server-initial-reports/com.uten.imp.features.auth.SessionWatchServiceTest.log": "f703eb92744e6a703d1b6338eb36437d17303b00e894de6f60c652ab59328f83",
+    "server-initial-reports/com.uten.imp.features.finance.gl.FinanceAccountingWorkbookParserTest.log": "44e6452abb9090ee8c40b334baf1149c2a0bc987ef2d7537967c09c021f53b26",
+    "server-initial-reports/com.uten.imp.features.finance.gl.FinanceChartWorkbookParserTest.log": "904e373ce9b46916379d7f78e0348657a7e9c047a2bec32b161255d44dca6d95",
+    "server-initial-reports/com.uten.imp.features.finance.gl.FinanceExpenseAnalysisPostgresTest.log": "f37f7cdac57c16b639a168bf9bbdc5bc0a32d88a124d2c77e716f4f22aa9680b",
+    "server-initial-reports/com.uten.imp.features.finance.gl.FinanceOperatingNoteParserTest.log": "da6b80d4d0ec44ca3798e56a51bc29328661d2ea1b2017dddd50bb2513a5bc55",
+    "server-initial-reports/com.uten.imp.features.finance.statement.FinanceAuxiliaryWorkbookParserTest.log": "ec05a8109505b71558dd8cad4581973b25ce08157fa52098a80d7d24a6425cb8",
+    "server-initial-reports/com.uten.imp.features.master.goods.costing.GoodsCostImportRemappingPostgresTest.log": "633e52b07259441fddfc7f33b4a3fe217ee580cd519ff566e3046ebec4c97ce1",
+    "server-initial-reports/com.uten.imp.features.master.goods.costing.GoodsCostWorkbookParserTest.log": "4b0628f5098298ac3c63e2cb9e830b6211dc463e0f29e3ce67598aa51de233f8",
+    "server-initial-reports/com.uten.imp.features.master.goods.importing.GoodsBomImportColumnContractTest.log": "6a261614d8f64915512b0f68a1fc7dc79a9401dc285b2f28268d3d58c7dfcee8",
+    "server-initial-reports/com.uten.imp.features.master.goods.importing.GoodsBomImportNumericPrecisionTest.log": "c5e6a4427cab5675c6d4aa5a2470f1ca9d389895d9b29a9d9b67ff3cb898db03",
+    "server-initial-reports/com.uten.imp.features.master.goods.importing.GoodsBomImportServiceTest.log": "8d6acab128ec83498be6ed57c2638fa8d59e4533b2c6465b092d1e91570bf439",
+    "server-initial-reports/com.uten.imp.features.master.goods.importing.GoodsImportColumnContractTest.log": "87ceef096baf7b48bc828e9fccdff01c0358c0700ad811294508ea9d512415d8",
+    "server-initial-reports/com.uten.imp.features.master.goods.importing.GoodsImportCustomerLabelsTest.log": "ae13040f89adcf93d761b8623059f3fdb0b239e7058fabca9062457eac8b3480",
+    "server-initial-reports/com.uten.imp.features.master.goods.importing.GoodsImportPlanSafetyTest.log": "7ec2292ecc8d031f539cd5e7685be954c21b82206979b3e16039e086edcb34f7",
+    "server-initial-reports/com.uten.imp.features.production.analysis.AggregateMaterialOrderPreviewServiceTest.log": "a314d7272dd50eb996e2596c3b85e25e77694fa4deb3502b9d0c853f033f4e3e",
+    "server-initial-reports/com.uten.imp.features.production.analysis.MaterialOrderQuantityCompatibilityTest.log": "b0e883ad3ccdfb64417ba49ff770543851506622ccaa3f2136876749834799fe",
+    "server-initial-reports/com.uten.imp.features.production.dailyreport.DailyReportExecutionSegmentGuardTest.log": "cbd5fe3d001f828d78d1b01cd0aa0211722102b4a1f67efe92b6868d7a4ed9f3",
+    "server-initial-reports/com.uten.imp.features.production.dailyreport.ReportablePlanLineQuerySecurityContractTest.log": "bb5562c9d662f9ea532ef3be4802cc40f17e6449d759a5deb1d3e7b72087c047",
+    "server-initial-reports/com.uten.imp.features.production.execution.ProductionExecutionSegmentServiceTest.log": "5423e99a5aba5e94c72ba93776c124a81e00c98ef55b1a8e35e4a14581ad2379",
+    "server-initial-reports/com.uten.imp.features.production.execution.ProductionWorkshopTaskStageContractTest.log": "3e1f81cd3a4cb6a49425262480d2ccb52fe9a22bf044c15084a39dd9eabdcf07",
+    "server-initial-reports/com.uten.imp.features.stock.allocation.ProductionMaterialSettlementServiceTest.log": "83b7d79e2a9f10a24275e8d8c7264ad1f6fcaa02afc582fe4aa8971ae3c2e38a",
+    "server-initial-reports/com.uten.imp.features.stock.allocation.ProductionMaterialStockLedgerCancellationPolicyTest.log": "eb1a7af0619a2b376cadd9330cbe901ac4b326f0a64209029ec9e30be640ad78",
+    "server-initial-reports/com.uten.imp.features.stock.allocation.ProductionMaterialStockLedgerRoutingTest.log": "a678c7da4cb273bc4328def8b6412c1e509eb036a0a9f9c781e12dbdbdcdba68",
+    "server-initial-reports/com.uten.imp.migration.PartialMaterialReportCapacityPostgresTest.log": "44a31db20809c5db1d02b22ffa813cd0b3f2157d8135cb818171756b09bad867",
+    "server-initial-reports/com.uten.imp.security.RemoteRequestBudgetFilterTest.log": "db2e90e7d181c076c6078fd578bb3cca7453ad2253579451f4f1b16bf18eb2dd"
+  }
+}

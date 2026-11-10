@@ -1,0 +1,56 @@
+[INFO] Scanning for projects...
+[INFO] 
+[INFO] ----------------------< com.uten:uten-imp-server >----------------------
+[INFO] Building uten-imp-server 0.1.0
+[INFO]   from pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- clean:3.5.0:clean (refresh-migration-resources) @ uten-imp-server ---
+[INFO] 
+[INFO] --- resources:3.5.0:resources (default-resources) @ uten-imp-server ---
+[INFO] Copying 1 resource from ..\contracts\windows-payload-binding to target-company-post-merge\classes\contracts\windows-payload-binding
+[INFO] Copying 1 resource from ..\contracts\windows-engine-safety to target-company-post-merge\classes\contracts\windows-engine-safety
+[INFO] Copying 1084 resources from src\main\resources to target-company-post-merge\classes
+[INFO] Copying 1 resource from ..\assets\fonts to target-company-post-merge\classes\fonts
+[INFO] Copying 295 resources from ..\docs to target-company-post-merge\classes\ai-knowledge
+[INFO] 
+[INFO] --- compiler:3.15.0:compile (default-compile) @ uten-imp-server ---
+[INFO] Recompiling the module because of changed source code.
+[INFO] Compiling 3272 source files with javac [debug deprecation parameters release 21] to target-company-post-merge\classes
+[INFO] 
+[INFO] --- resources:3.5.0:testResources (default-testResources) @ uten-imp-server ---
+[INFO] Copying 64 resources from src\test\resources to target-company-post-merge\test-classes
+[INFO] 
+[INFO] --- compiler:3.15.0:testCompile (default-testCompile) @ uten-imp-server ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 2747 source files with javac [debug deprecation parameters release 21] to target-company-post-merge\test-classes
+[INFO] 
+[INFO] --- surefire:3.5.6:test (default-test) @ uten-imp-server ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running com.uten.imp.common.production.ProductionMaterialKitProofsTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 3.128 s -- in com.uten.imp.common.production.ProductionMaterialKitProofsTest
+[INFO] Running com.uten.imp.features.admin.serverstatus.ServerStatusProbeTest
+[INFO] Tests run: 22, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 2.550 s -- in com.uten.imp.features.admin.serverstatus.ServerStatusProbeTest
+[INFO] Running com.uten.imp.features.admin.serverstatus.ServerStatusTest
+[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.627 s -- in com.uten.imp.features.admin.serverstatus.ServerStatusTest
+[INFO] Running com.uten.imp.features.admin.serverstatus.ServerStorageServiceTest
+[INFO] Tests run: 13, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 2.096 s -- in com.uten.imp.features.admin.serverstatus.ServerStorageServiceTest
+[INFO] Running com.uten.imp.features.production.execution.ProductionExecutionSegmentServiceTest
+[INFO] Tests run: 24, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 2.428 s -- in com.uten.imp.features.production.execution.ProductionExecutionSegmentServiceTest
+[INFO] Running com.uten.imp.features.production.execution.ProductionExecutionWorkbenchProjectionTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.143 s -- in com.uten.imp.features.production.execution.ProductionExecutionWorkbenchProjectionTest
+[INFO] 
+[INFO] Results:
+[INFO] 
+[INFO] Tests run: 72, Failures: 0, Errors: 0, Skipped: 0
+[INFO] 
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD SUCCESS
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  09:22 min
+[INFO] Finished at: 2026-11-10T16:00:42-07:00
+[INFO] ------------------------------------------------------------------------

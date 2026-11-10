@@ -1,0 +1,10 @@
+{
+  "rootValidatedSource": "a5c51f8c4",
+  "parallelPreservationSource": "45bf87fc9",
+  "ourProductAndTestFiles": 74,
+  "parallelProductAndTestFiles": 17,
+  "overlap": [],
+  "allBothSidesCodeBlobsPreservedExactly": true,
+  "protectedNativeTasksPreserved": 373,
+  "mergedHistoryLines": 524
+}

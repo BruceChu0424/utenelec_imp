@@ -1,0 +1,45 @@
+{
+  "base": "d73f86e1e",
+  "preservationCheckpoint": "45bf87fc904ff75246ea79a7abba826be5f91898",
+  "workPackages": 373,
+  "protectedFields": [
+    "status",
+    "owner",
+    "definitionOfDone",
+    "dependencies",
+    "nativeTargets"
+  ],
+  "protectedFieldsUnchanged": true,
+  "rootNoteEvidenceIds": [
+    "W7-BIZ-025",
+    "W7-BIZ-031",
+    "W7-BIZ-034",
+    "W7-BIZ-035",
+    "W7-BIZ-038",
+    "W7-BIZ-066",
+    "W7-BIZ-072",
+    "W7-BIZ-094",
+    "W7-BIZ-095",
+    "W7-BIZ-102",
+    "W7-BIZ-107",
+    "W7-BIZ-108",
+    "W7-BIZ-110",
+    "W7-BIZ-115",
+    "W7-BIZ-122",
+    "W7-BIZ-125",
+    "W7-BIZ-156",
+    "W7-BIZ-159",
+    "W7-BIZ-216"
+  ],
+  "mainNoteEvidenceIds": [
+    "W7-BIZ-013",
+    "W7-BIZ-014",
+    "W7-BIZ-084",
+    "W7-BIZ-085"
+  ],
+  "historyBase": 498,
+  "historyRootTail": 19,
+  "historyMainTail": 7,
+  "historyMerged": 524,
+  "sourceFingerprints": "Regenerate from combined owning source, do not select a side."
+}

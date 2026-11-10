@@ -621,10 +621,9 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
 
   Future<void> _pickGoods(PurchaseGridRow row) async {
     if (row.sourceLocked) return;
-    final picked = await ref.read(purchaseGridGoodsPickerProvider)(
-      context,
-      ref,
-    );
+    final picked = await ref.read(
+      purchaseGridGoodsPickerProvider(PurchaseDocType.order),
+    )(context, ref);
     if (!mounted ||
         !formDraftIdentityIsCurrent ||
         picked.isEmpty ||

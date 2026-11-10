@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
+import 'package:uten_imp/components/layout/uten_picker_confirm_bar.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/network/api_endpoints.dart';
@@ -15,6 +16,9 @@ import 'package:uten_imp/features/purchase/pages/purchase_order_edit_page.dart';
 import 'package:uten_imp/features/purchase/widgets/purchase_goods_picker.dart';
 import 'package:uten_imp/features/purchase/widgets/purchase_grid_columns.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
+import 'package:uten_imp/shared/auth/document_scope_capability.dart';
+
+import '../../support/document_scope_capability_overrides.dart';
 
 const _goods = [
   GoodsListItem(
@@ -51,6 +55,9 @@ class _Api extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
+    if (path.endsWith('/existing-return')) {
+      return const {'id': 'existing-return', 'status': 0, 'items': <Object>[]};
+    }
     if (path.endsWith('/last-terms')) {
       final ids = (query!['goodsIds'] as String).split(',').toSet();
       termsQueries.add(ids);
@@ -88,6 +95,18 @@ class _Api extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
+    if (path == ApiEndpoints.businessReferenceGoodsCategories) {
+      return [
+        for (final (id, name, legacy) in [
+          ('raw', '原材料', 2113),
+          ('aux', '辅料', 2480),
+          ('finished', '成品', 1),
+          ('uncategorized', '未分类', -1),
+          ('custom', '自定义采购件', 987654),
+        ])
+          {'id': id, 'code': id, 'name': name, 'legacyId': legacy},
+      ];
+    }
     if (path == '${ApiEndpoints.suppliers}/lookup') {
       final ids = (query!['ids'] as String).split(',').toSet();
       supplierLookupIds.add(ids);
@@ -130,7 +149,7 @@ class _Api extends ApiClient {
 Future<_Api> _pump(
   WidgetTester tester,
   Widget page,
-  PurchaseGridGoodsPicker picker,
+  PurchaseGridGoodsPicker? picker,
 ) async {
   await tester.binding.setSurfaceSize(const Size(1700, 1050));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -141,7 +160,11 @@ Future<_Api> _pump(
         apiBaseUrlProvider.overrideWithValue('https://example.invalid/api'),
         apiClientProvider.overrideWithValue(api),
         sessionProvider.overrideWith(_Session.new),
-        purchaseGridGoodsPickerProvider.overrideWithValue(picker),
+        writeAllDocumentScope(DocumentDataScope.purchase),
+        if (picker != null)
+          purchaseGridGoodsPickerProvider(
+            page is PurchaseDocEditPage ? page.docType : PurchaseDocType.order,
+          ).overrideWithValue(picker),
       ],
       child: MaterialApp(home: page),
     ),
@@ -169,6 +192,36 @@ Future<void> _pick(WidgetTester tester) async {
 }
 
 void main() {
+  for (final id in <String?>[null, 'existing-return']) {
+    testWidgets('采购退货${id == null ? '新建' : '编辑'}实际选择器反复开关均显示全部分类', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        PurchaseDocEditPage(docType: PurchaseDocType.returnDoc, id: id),
+        null,
+      );
+      final row = _grid(tester).controller.rows.single..qty.text = '7.125';
+      for (var attempt = 0; attempt < 3; attempt++) {
+        await tester.tap(_goodsCell(row));
+        await tester.pumpAndSettle();
+        for (final name in ['原材料', '辅料', '成品', '未分类', '自定义采购件']) {
+          expect(find.text(name), findsOneWidget);
+        }
+        await tester.tap(
+          find.descendant(
+            of: find.byType(UtenPickerConfirmBar),
+            matching: find.text('取消'),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(row.qty.text, '7.125');
+        expect(row.goods, isNull);
+      }
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets('订货一次多选逐行带单位库位、采购价与条款，新增各行自动勾选', (tester) async {
     int opened = 0;
     final api = await _pump(tester, const PurchaseOrderEditPage(), (

@@ -21,8 +21,14 @@ class ProcurementReturnHeaderAuthorityTest {
     @Test
     void absentReceiptIdentityListFailsBeforeAnyDatabaseAccess() {
         EntityManager em = mock(EntityManager.class);
-        assertThatThrownBy(() -> ProcurementReturnHeaderAuthority.derive(em, "PURCHASE", null))
-                .isInstanceOf(ApiException.class).hasMessageContaining("唯一关联来源收货明细");
+        for (String family : List.of("PURCHASE", "SUBCONTRACT")) {
+            assertThatThrownBy(() -> ProcurementReturnHeaderAuthority.derive(em, family, null))
+                    .isInstanceOf(ApiException.class).hasMessageContaining("唯一关联来源收货明细");
+            for (List<UUID> invalid : List.of(List.<UUID>of(), java.util.Collections.<UUID>singletonList(null))) {
+                assertThatThrownBy(() -> ProcurementReturnHeaderAuthority.derive(em, family, invalid))
+                        .isInstanceOf(ApiException.class).hasMessageContaining("唯一关联来源收货明细");
+            }
+        }
         org.mockito.Mockito.verifyNoInteractions(em);
     }
 

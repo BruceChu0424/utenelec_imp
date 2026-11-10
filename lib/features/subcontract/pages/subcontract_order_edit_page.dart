@@ -61,7 +61,6 @@ import '../../../core/utils/china_datetime.dart';
 import '../../../core/utils/currency_display.dart';
 import '../../basic_data/models/reference_method_option.dart';
 import '../../basic_data/repositories/reference_method_repository.dart';
-import '../../basic_data/widgets/uten_goods_picker.dart';
 import '../../basic_data/models/goods_node.dart' show GoodsListItem;
 import '../../basic_data/widgets/uten_supplier_picker.dart';
 import '../../../shared/auth/document_scope_capability.dart';
@@ -610,7 +609,7 @@ class _SubcontractOrderEditPageState
     final picked = await ref.read(subcontractGridGoodsPickerProvider)(
       context,
       ref,
-      UtenGoodsPickerScope.sellable,
+      subcontractGoodsPickerScope(SubcontractDocType.order),
     );
     if (!mounted ||
         !formDraftIdentityIsCurrent ||

@@ -53,10 +53,7 @@ public class GoodsCostImportService {
             files.checkLegacy("GOODS_COST_IMPORT_REPLAY",bytes);
             Preview previous=decode(old.getFirst());
             if(previous.columnContractVersion()!=com.uten.imp.common.importing.ImportColumnGuard.VERSION){
-                Preview verified=GoodsCostWorkbookParser.parse(previous.id(),previous.sourceName(),hash,bytes);
-                db.update("UPDATE goods_cost_imports SET preview=CAST(:preview AS jsonb) WHERE id=:id",
-                        new MapSqlParameterSource().addValue("preview",encode(verified)).addValue("id",previous.id()));
-                return verified;
+                throw conflict("原成本文件及旧检测结果是不可改写证据；请将原Excel另存为新文件后重新检测，原来源和匹配记录保留");
             }
             return previous;
         }

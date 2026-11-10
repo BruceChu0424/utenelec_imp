@@ -454,11 +454,13 @@ public class FinanceChartService {
         var previous=manualOperation(request);
         if(previous!=null){var receipt=originalReceipt(request,IMPORT_REVIEW,"POST",path,original,previous);
             if("CANCELLED_UNWRITTEN".equals(receipt.get("outcome")))throw conflict("原重新审阅请求已停止，请核对原回执后另行发起");return receipt;}
-        var source=importRow(parent,true);verifyImportFile(source);
+        var source=importRow(parent,true);
+        if(decode((String)source.get("preview"),Preview.class).columnContractVersion()!=com.uten.imp.common.importing.ImportColumnGuard.VERSION)
+            throw conflict("原科目文件及旧检测结果是不可改写证据；请将原Excel另存为新文件后重新检测，原谱系和回执保留");
+        verifyImportFile(source);
         var raw=tree(metadataEnvelope((String)source.get("preview"))).deepCopy();
         if(!raw.isObject()||!raw.path("rows").isArray())throw conflict("原科目文件预览不完整，不能重建源行");
         UUID id=UUID.randomUUID();((com.fasterxml.jackson.databind.node.ObjectNode)raw).put("importId",id.toString());
-        ((com.fasterxml.jackson.databind.node.ObjectNode)raw).put("columnContractVersion",com.uten.imp.common.importing.ImportColumnGuard.VERSION);
         Map<String,Long> versions=new HashMap<>();db.query("SELECT code,row_version FROM finance_chart_codes",rs->{versions.put(rs.getString(1),rs.getLong(2));});
         for(JsonNode row:raw.path("rows")){
             if(!row.isObject()||!row.path("code").isTextual())throw conflict("原科目源行身份不完整，不能猜补");

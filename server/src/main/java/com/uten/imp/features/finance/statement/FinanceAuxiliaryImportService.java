@@ -74,8 +74,7 @@ public class FinanceAuxiliaryImportService {
         if(!previous.isEmpty()){
             files.checkLegacy("FINANCE_AUXILIARY_COMPARE_REPLAY",bytes);Preview original=imported(previous.getFirst());
             if(!original.directoryApplied()&&original.columnContractVersion()!=com.uten.imp.common.importing.ImportColumnGuard.VERSION){
-                Preview verified=new Preview(original.importId(),receivable,book,currencyId,from,to,name,hash,resolved.rows(),resolved.issues(),false,FinanceAuxiliaryReports.columns(receivable),mapping);
-                db.update("UPDATE finance_statement_source_reviews SET preview=?::jsonb WHERE id=? AND directory_applied_at IS NULL",encode(verified),original.importId());
+                throw invalid("原辅助文件及旧检测结果是不可改写证据；请将原Excel另存为新文件后重新检测，原来源和回执保留");
             }
             if(requestId!=null){intake.complete(requestId,FinanceDocumentIntakeOperations.Family.AUXILIARY_STATEMENT_PREVIEW,payload,previous.getFirst());}return imported(previous.getFirst());
         }

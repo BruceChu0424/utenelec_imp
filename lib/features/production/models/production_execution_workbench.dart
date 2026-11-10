@@ -255,6 +255,7 @@ class ProductionExecutionWorkbenchSegment {
     this.materialKindCount = 0,
     this.materialIssuedKindCount = 0,
     this.materialPartialIssuedKindCount = 0,
+    this.partialMaterialReportLimited,
     this.materialAwaitingWarehouseKindCount = 0,
     this.materialDrawableKindCount = 0,
     this.materialLineSidePendingKindCount = 0,
@@ -431,6 +432,9 @@ class ProductionExecutionWorkbenchSegment {
 
   /// 实领了一部分、尚未领足的种数（说明用，不与其它桶互斥）。
   final int materialPartialIssuedKindCount;
+
+  /// Authoritative distinction from complete issue followed by return/loss.
+  final bool? partialMaterialReportLimited;
   final int materialAwaitingWarehouseKindCount;
   final int materialDrawableKindCount;
   final int materialLineSidePendingKindCount;
@@ -650,6 +654,7 @@ class ProductionExecutionWorkbenchSegment {
         (json['materialShortMakeKindCount'] as num?)?.toInt() ?? 0,
     materialSupportedOutputQty:
         (json['materialSupportedOutputQty'] as num?)?.toDouble() ?? 0,
+    partialMaterialReportLimited: json['partialMaterialReportLimited'] as bool?,
     materialPreparedOutputQty:
         (json['materialPreparedOutputQty'] as num?)?.toDouble() ?? 0,
     materialPlanningGapKindCount:

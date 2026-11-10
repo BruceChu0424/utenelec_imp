@@ -886,6 +886,7 @@ class ProductionExecutionSegmentView {
     this.materialDemandCount = 0,
     this.fullyIssuedDemandCount = 0,
     this.materialIssued = false,
+    this.partialMaterialReportLimited,
     this.drawRequested = false,
     this.canRequestDraw = false,
     this.canSplitBatch = false,
@@ -956,6 +957,7 @@ class ProductionExecutionSegmentView {
   final int materialDemandCount;
   final int fullyIssuedDemandCount;
   final bool materialIssued;
+  final bool? partialMaterialReportLimited;
   final bool drawRequested;
   final bool canRequestDraw;
   final bool canSplitBatch;
@@ -1021,6 +1023,8 @@ class ProductionExecutionSegmentView {
       fullyIssuedDemandCount:
           (json['fullyIssuedDemandCount'] as num?)?.toInt() ?? 0,
       materialIssued: json['materialIssued'] == true,
+      partialMaterialReportLimited:
+          json['partialMaterialReportLimited'] as bool?,
       drawRequested: json['drawRequested'] == true,
       canRequestDraw: json['canRequestDraw'] == true,
       canSplitBatch: json['canSplitBatch'] == true,

@@ -1825,7 +1825,7 @@ bool _canReportSegment(ProductionExecutionSegmentView segment) =>
 bool _partiallyIssuedRunning(ProductionExecutionSegmentView segment) =>
     segment.status == 'IN_PROGRESS' &&
     !segment.zeroMaterial &&
-    !segment.materialIssued &&
+    (segment.partialMaterialReportLimited ?? !segment.materialIssued) &&
     segment.ordinaryRemainingQty > 0;
 
 String _qualityProgressText(ProductionExecutionSegmentView segment) {

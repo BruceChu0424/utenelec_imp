@@ -815,6 +815,44 @@
         "allowedOverproductionRate": 0.1
       },
       "label": "持续生产中 · 按实际投料报工"
+    },
+    {
+      "name": "complete_issue_then_return_preserves_actual_output",
+      "task": {
+        "segmentId": "00000000-0000-0000-0000-000000000001",
+        "plannedQty": 10000,
+        "reportedQty": 0,
+        "remainingReportQty": 10000,
+        "segmentStatus": "IN_PROGRESS",
+        "startRoute": "CONTINUOUS",
+        "materialKindCount": 3,
+        "materialIssuedKindCount": 2,
+        "materialPartialIssuedKindCount": 1,
+        "materialSupportedOutputQty": 5000,
+        "overproductionPolicyApplies": true,
+        "allowedOverproductionRate": 0.1,
+        "partialMaterialReportLimited": false
+      },
+      "label": "持续生产中 · 按实际投料报工"
+    },
+    {
+      "name": "complete_issue_reversed_becomes_partial_again",
+      "task": {
+        "segmentId": "00000000-0000-0000-0000-000000000001",
+        "plannedQty": 10000,
+        "reportedQty": 0,
+        "remainingReportQty": 10000,
+        "segmentStatus": "IN_PROGRESS",
+        "startRoute": "CONTINUOUS",
+        "materialKindCount": 3,
+        "materialIssuedKindCount": 2,
+        "materialPartialIssuedKindCount": 1,
+        "materialSupportedOutputQty": 5000,
+        "overproductionPolicyApplies": true,
+        "allowedOverproductionRate": 0.1,
+        "partialMaterialReportLimited": true
+      },
+      "label": "部分领料生产中 · 按配套报工"
     }
   ]
 }

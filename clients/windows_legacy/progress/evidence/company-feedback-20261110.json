@@ -1,0 +1,24 @@
+{
+  "id": "E-COMPANY-FEEDBACK-20261110",
+  "baseline": "86dffb9db",
+  "integratedParallelSource": "d73f86e1e",
+  "ledger": "docs/99-项目治理/2026-11-10-公司测试五类问题与自定义列回环.md",
+  "groups": {
+    "真实表头与完整导出": ["W7-BIZ-031", "W7-BIZ-035", "W7-BIZ-038"],
+    "核对下单与认领后精确覆盖量": ["W7-BIZ-094", "W7-BIZ-095", "W7-BIZ-107", "W7-BIZ-108"],
+    "当前配套报工与状态合同": ["W7-BIZ-102", "W7-BIZ-110", "W7-BIZ-115"],
+    "采购委外退货选择范围": ["W7-BIZ-122", "W7-BIZ-125", "W7-BIZ-156", "W7-BIZ-159"],
+    "导出来源与结构化导入列保护": ["W7-BIZ-025", "W7-BIZ-034", "W7-BIZ-216", "W7-BIZ-066", "W7-BIZ-072"]
+  },
+  "supportedFlutterContract": ["Web", "Existing Flutter desktop"],
+  "newNativeBusinessEntry": false,
+  "nativeTaskStatusElevated": false,
+  "fullErpAcceptance": false,
+  "win7TargetAcceptance": false,
+  "companyDeployment": false,
+  "formalPackaging": false,
+  "personnelAssociationImplemented": false,
+  "customColumnWritebackImplemented": false,
+  "historicalBoundary": "Only currently verifiable capacity or trustworthy full-kit evidence is accepted; unordered old multi-event history is not fabricated.",
+  "validationStatus": "Final integrated server and preventive delta checks are running; final receipt owns their results."
+}

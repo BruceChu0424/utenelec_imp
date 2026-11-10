@@ -1012,6 +1012,8 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
       key: 'mouldType',
       label: '模具类型',
       columnSearchEnabled: false,
+      // Historical display placeholder has no authoritative export field.
+      exportable: false,
       width: 120,
       value: (_) => null,
     ),

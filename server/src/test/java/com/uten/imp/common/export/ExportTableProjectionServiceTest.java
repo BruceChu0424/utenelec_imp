@@ -14,6 +14,17 @@ class ExportTableProjectionServiceTest {
     private final PlatformColumnService platform=mock(PlatformColumnService.class);
     private final ExportTableProjectionService service=new ExportTableProjectionService(platform);
     private TableColumnProjection.Column column(String key,String name){return new TableColumnProjection.Column(key,name,120d,"money",null);}
+    @Test void warehouseWorkshopSelectorExportsTheAuthoritativeDisplayNameAndNeverBroadensOtherSchemas() {
+        var columns=List.of(new ExportColumn("workshopDepartmentName","车间","text"));
+        var projection=new TableColumnProjection("master.warehouses","master_warehouse",
+                List.of(column("workshopDepartmentId","车间")));
+        var result=service.project(columns,List.of(Map.of("workshopDepartmentName","铜柱车间")),projection,"master_warehouse");
+        assertThat(result.columns()).extracting(ExportColumn::key).containsExactly("workshopDepartmentName");
+        assertThat(result.rows().getFirst()).containsEntry("workshopDepartmentName","铜柱车间");
+        assertThatThrownBy(()->service.project(List.of(new ExportColumn("name","名称","text")),List.of(),projection,"master_goods"))
+                .isInstanceOf(ApiException.class);
+        verifyNoInteractions(platform);
+    }
     @Test void visibleOrderLabelsAndAliasesComeFromCurrentHeaderWithoutRestoringHiddenColumns() {
         var columns=List.of(new ExportColumn("name","名称","text"),new ExportColumn("colorName","颜色","text"),new ExportColumn("qty","数量","number"));
         var projection=new TableColumnProjection("test","view_master",List.of(column("qty","本次数量"),column("colorLegacyId","颜色")));

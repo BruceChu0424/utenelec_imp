@@ -124,6 +124,8 @@ public class WarehouseService {
                 new ExportColumn("parentName", "上级仓库", ExportColumn.TEXT),
                 new ExportColumn("defective", "仓库用途", ExportColumn.TEXT),
                 new ExportColumn("location", "位置", ExportColumn.TEXT),
+                new ExportColumn("remark", "备注", ExportColumn.TEXT),
+                new ExportColumn("workshopDepartmentName", "车间", ExportColumn.TEXT),
                 new ExportColumn("accountable", "核算", ExportColumn.TEXT),
                 new ExportColumn("keepers", "负责人", ExportColumn.TEXT),
                 new ExportColumn("status", "状态", ExportColumn.TEXT));
@@ -135,6 +137,8 @@ public class WarehouseService {
                     row.put("parentName", w.getParentName() == null ? "—" : w.getParentName());
                     row.put("defective", useLabel(w.isDefective()));
                     row.put("location", w.getLocation());
+                    row.put("remark", w.getRemark());
+                    row.put("workshopDepartmentName", w.getWorkshopDepartmentName());
                     row.put("accountable", w.isAccountable() ? "是" : "否");
                     row.put("keepers", keepersByWarehouse.getOrDefault(w.getId(), "—"));
                     row.put("status", w.getStatus());

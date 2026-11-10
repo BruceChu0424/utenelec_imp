@@ -73,6 +73,62 @@ class MasterDirectoryExportPostgresTest extends AuthSessionPostgresTestSupport {
         assertCaller(report);
     }
     @Test void repairedAccountCallerPreservesEveryOriginalAssertion()throws Exception { assertCaller("account"); }
+    @Test void expandedSettlementAndWarehouseHeadersExportTheirAuthoritativeValues() throws Exception {
+        String token="HDR"+UUID.randomUUID().toString().replace("-","").substring(0,10);
+        UUID method=seed("settlement_method",token,1).ids().getFirst();
+        jdbc.update("UPDATE settlement_methods SET terms_base='STATEMENT_END',due_rule='FIXED_DAY_OF_MONTH',default_due_days=0,fixed_day_of_month=15,months_ahead=2 WHERE id=?",method);
+        exporter("settlement_method");
+        var terms=master.read(request("settlement_method",Map.of("keyword",token)));
+        assertThat(terms.columns()).extracting(ExportColumn::key)
+                .contains("defaultDueDays","fixedDayOfMonth","monthsAhead");
+        assertThat(terms.rows().getFirst()).containsEntry("defaultDueDays",0)
+                .containsEntry("fixedDayOfMonth",15).containsEntry("monthsAhead",2);
+        UUID warehouse=seed("warehouse",token,1).ids().getFirst();
+        jdbc.update("UPDATE warehouses SET remark=? WHERE id=?","完整备注龘",warehouse);
+        exporter("warehouse");
+        var source=master.read(request("warehouse",Map.of("keyword",token)));
+        assertThat(source.rows().getFirst()).containsEntry("remark","完整备注龘")
+                .containsEntry("workshopDepartmentName",null);
+        var projection=new TableColumnProjection("master.warehouses","master_warehouse",
+                List.of(new TableColumnProjection.Column("remark",null,120d,"text",null),
+                        new TableColumnProjection.Column("workshopDepartmentId",null,120d,"text",null)));
+        var result=context.getBean(ExportTableProjectionService.class)
+                .project(source.columns(),source.rows(),projection,"master_warehouse");
+        assertThat(result.columns()).extracting(ExportColumn::key)
+                .containsExactly("remark","workshopDepartmentName");
+    }
+    @Test void mouldWorkbookKeepsAll1626RowsAndExactSelectedScopeWithoutTheDisplayPlaceholder() throws Exception {
+        String token="MOULD"+UUID.randomUUID().toString().replace("-","").substring(0,10);
+        Seed seed=seed("mould",token,1626);
+        exporter("mould");
+        var columns=List.of("status","code","name","qty","tqty","place","manufacturer","mstatus","remark")
+                .stream().map(key->new TableColumnProjection.Column(key,null,120d,"text",null)).toList();
+        var projection=new TableColumnProjection("master.mould","master_mould",columns);
+        var source=context.getBean(XlsxExportService.class);
+        for(boolean selected:List.of(false,true)) {
+            List<UUID> ids=selected?seed.ids().subList(201,1502):seed.ids();
+            var parameters=new LinkedHashMap<String,String>();
+            parameters.put("filter",objectMapper.writeValueAsString(Map.of("keyword",token)));
+            if(selected)parameters.put("selectedIds",objectMapper.writeValueAsString(ids));
+            var request=new ReportExportRequest(UUID.randomUUID(),"master","mould",parameters,null,null,projection);
+            var result=source.buildSource(()->master.read(request),projection,"master_mould");
+            assertThat(result.payload().total()).isEqualTo(ids.size());
+            try(var workbook=org.apache.poi.ss.usermodel.WorkbookFactory.create(new java.io.ByteArrayInputStream(result.bytes()))) {
+                var sheet=workbook.getSheetAt(0);
+                assertThat(sheet.getLastRowNum()).isEqualTo(ids.size());
+                assertThat(sheet.getRow(0).getLastCellNum()).isEqualTo((short)9);
+                assertThat(sheet.getRow(ids.size()).getCell(1).getStringCellValue())
+                        .isEqualTo("MX-"+token+"-"+String.format("%06d",selected?1501:1625));
+            }
+        }
+        // The fix belongs to the client declaration; unknown columns must still
+        // fail closed rather than silently widening or weakening projection.
+        var invalid=new TableColumnProjection("master.mould","master_mould",
+                List.of(new TableColumnProjection.Column("mouldType",null,120d,"text",null)));
+        var original=request("mould",Map.of("keyword",token));
+        assertThatThrownBy(()->source.buildSource(()->master.read(original),invalid,"master_mould"))
+                .isInstanceOf(com.uten.imp.common.web.ApiException.class).hasMessageContaining("mouldType");
+    }
     private void assertCaller(String report)throws Exception{
         String token="MX"+UUID.randomUUID().toString().replace("-","").substring(0,10);
         Seed seed=seed(report,token,251);

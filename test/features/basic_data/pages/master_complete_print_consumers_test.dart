@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -22,6 +23,7 @@ import 'package:uten_imp/features/basic_data/pages/supplier_category_page.dart';
 import 'package:uten_imp/features/basic_data/pages/unit_page.dart';
 import 'package:uten_imp/features/basic_data/pages/warehouse_page.dart';
 import 'package:uten_imp/features/basic_data/pages/settlement_method_page.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/shared/drafts/form_draft_store.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/user.dart';
@@ -30,6 +32,7 @@ import 'package:uten_imp/shared/paging/complete_paged_snapshot.dart'
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/shared/platform_tables/table_column_projection.dart';
 
 import '../../../shared/drafts/memory_form_draft_storage.dart';
 
@@ -57,6 +60,7 @@ const _permissions = {
   'warehouse:view',
   'stock:view',
   'settlement_method:view',
+  'mould:export',
 };
 
 class _Session extends SessionNotifier {
@@ -73,12 +77,37 @@ class _Session extends SessionNotifier {
 }
 
 class _Fixture {
-  _Fixture(this.domain) {
+  _Fixture(this.domain, {this.total = 601}) {
     final dio = Dio(BaseOptions(baseUrl: 'https://synthetic.invalid/api'));
     dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (request, handler) async {
           final path = request.path;
+          if (path == '/report-export-jobs/capabilities') {
+            handler.resolve(
+              Response<dynamic>(
+                requestOptions: request,
+                statusCode: 200,
+                data: {'available': true, 'selectionVersion': 1},
+              ),
+            );
+            return;
+          }
+          if (path == '/report-export-jobs' && request.method == 'POST') {
+            exports.add(Map<String, dynamic>.from(request.data as Map));
+            handler.reject(
+              DioException(
+                requestOptions: request,
+                type: DioExceptionType.badResponse,
+                response: Response<dynamic>(
+                  requestOptions: request,
+                  statusCode: 409,
+                  data: {'code': 'FIXTURE_CAPTURE', 'message': '已记录导出请求'},
+                ),
+              ),
+            );
+            return;
+          }
           Object value = <String, dynamic>{};
           final root = domain == 'settlement_methods'
               ? '/master/reference-methods/settlement-admin'
@@ -138,9 +167,12 @@ class _Fixture {
         },
       ),
     );
-    api = ApiClient(dio);
+    api = _FixtureApi(dio, this);
   }
   final String domain;
+  final int total;
+  final exports = <Map<String, dynamic>>[];
+  final projection = TableColumnProjectionController();
   late final ApiClient api;
   final calls = <({int page, int size})>[];
   Completer<void>? holdSecond;
@@ -154,7 +186,7 @@ class _Fixture {
     'childCount': 0,
   };
   late final rows = List.generate(
-    601,
+    total,
     (index) => <String, dynamic>{
       'id': '10000000-0000-4000-8000-${index.toString().padLeft(12, '0')}',
       'code': domain == 'warehouses' && index == 0 ? '001' : 'CODE$index',
@@ -175,6 +207,45 @@ class _Fixture {
       'fullName': '合成原名龘$index',
     },
   );
+}
+
+class _FixtureApi extends ApiClient {
+  _FixtureApi(super.dio, this.fixture);
+  final _Fixture fixture;
+  @override
+  Future<T> postSummaryStream<T>(
+    String path, {
+    required Object body,
+    required Future<T> Function(Stream<Map<String, dynamic>>) consume,
+  }) => consume(_frames());
+
+  Stream<Map<String, dynamic>> _frames() async* {
+    var offset = 0;
+    while (offset < fixture.rows.length) {
+      final size = CompleteReadBatchPlan.progressive.sizeAt(offset);
+      yield {
+        'type': 'page',
+        'value': {
+          'items': fixture.rows.skip(offset).take(size).toList(),
+          'page': offset ~/ size + 1,
+          'size': size,
+          'total': fixture.rows.length,
+          'totalPages': (fixture.rows.length / size).ceil(),
+          'readScopeVersion': 'a' * 64,
+          'readSnapshotRevision': 'b' * 64,
+          'readDataVersion': 'c' * 64,
+        },
+      };
+      offset += size;
+    }
+    yield {
+      'type': 'complete',
+      'total': fixture.rows.length,
+      'readScopeVersion': 'a' * 64,
+      'readSnapshotRevision': 'b' * 64,
+      'readDataVersion': 'c' * 64,
+    };
+  }
 }
 
 Widget _page(String domain) => switch (domain) {
@@ -213,7 +284,10 @@ Future<ProviderContainer> _pump(WidgetTester tester, _Fixture fixture) async {
         locale: const Locale('zh'),
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
-        home: _page(fixture.domain),
+        home: TableColumnProjectionScope(
+          controller: fixture.projection,
+          child: _page(fixture.domain),
+        ),
       ),
     ),
   );
@@ -224,6 +298,121 @@ Future<ProviderContainer> _pump(WidgetTester tester, _Fixture fixture) async {
 }
 
 void main() {
+  for (final selected in [false, true]) {
+    testWidgets(
+      'mould actual export sends all 1626 identities with selected=$selected',
+      (tester) async {
+        final fixture = _Fixture('moulds', total: 1626);
+        await _pump(tester, fixture);
+        if (selected) {
+          // The first checkbox is the real header selection control. It selects
+          // the complete loaded scope, including rows outside the viewport.
+          await tester.tap(
+            find
+                .descendant(
+                  of: find.byWidgetPredicate(
+                    (widget) => widget is MasterDataTableView,
+                  ),
+                  matching: find.byType(Checkbox),
+                )
+                .first,
+          );
+          await tester.pumpAndSettle();
+          expect(
+            fixture.projection.resolve()!.outputSelection.ids,
+            hasLength(1626),
+          );
+        }
+        await tester.tap(find.text('导出模具'));
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.byKey(
+            ValueKey(selected ? 'table-output-selected' : 'table-output-all'),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('直接下载'));
+        await tester.pumpAndSettle();
+        final request = fixture.exports.single;
+        expect(request['report'], 'mould');
+        final parameters = request['parameters'] as Map;
+        expect(parameters, isNot(contains('page')));
+        expect(parameters, isNot(contains('size')));
+        if (selected) {
+          expect(
+            (jsonDecode(parameters['selectedIds'] as String) as List).toSet(),
+            fixture.rows.map((row) => row['id']).toSet(),
+          );
+        } else {
+          expect(parameters, isNot(contains('selectedIds')));
+        }
+        final columns =
+            ((request['columnProjection'] as Map)['columns'] as List)
+                .map((column) => (column as Map)['key'])
+                .toList();
+        expect(columns, isNot(contains('mouldType')));
+        expect(columns, containsAll(['code', 'name', 'manufacturer']));
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+  // Actual page consumers must only publish columns their owning export
+  // service can resolve. Keep this check at the page boundary: a common button
+  // test alone cannot detect an incorrectly declared placeholder column.
+  const exportColumns = {
+    'goods':
+        'goodsId bomRef code name categoryPath clientGoodsName nameEn colorName series owningWarehouseName owningWorkshopName model cNumber spec paper mouldCode mouldName rearInsertCode unitName material sourceType price currencyId discount stockQty minOrderQty orderMultipleQty goods color unit colorLegacyId unitLegacyId owningWarehouse owningWorkshop source',
+    'clients':
+        'code name fullName nameEn defaultSettlementMethodName clientXz tday region placeId ownerEmployeeName legalPerson linkman mobile phone phone2 fax postcode address bank bankAccount taxId credit creditFloor website goods',
+    'suppliers':
+        'name description priceStyle tday lossRate place ownerEmployeeName legalPerson linkman mobile phone phone2 fax postcode address bank bankAccount taxId website shipVia shipAddress goods',
+    'accounts':
+        'code name accountType currencyName bankAccountNo balanceCurrent status goods currencyId',
+    'currencies': 'code name exchangeRate status goods',
+    'colors': 'code name status remark goods',
+    'units': 'code name status goods',
+    'moulds':
+        'code name qty tqty categoryName place mstatus manufacturer remark status goods',
+    'warehouses':
+        'code name parentName defective location remark workshopDepartmentName workshopDepartmentId accountable keepers status goods parent',
+    'settlement_methods':
+        'code name status systemRole termsBase dueRule defaultDueDays fixedDayOfMonth monthsAhead terms goods',
+  };
+  for (final domain in _domains) {
+    testWidgets(
+      '$domain actual export header has no unsupported display columns',
+      (tester) async {
+        final fixture = _Fixture(domain);
+        await _pump(tester, fixture);
+        if (domain == 'warehouses') {
+          await tester.tap(find.text('表格视图'));
+          await tester.pumpAndSettle();
+        }
+        final projection = fixture.projection.resolve();
+        expect(projection, isNotNull);
+        final keys = projection!.columns
+            .where((column) => column.exportable)
+            .map((column) => column.key)
+            .toSet();
+        final allowed = exportColumns[domain]!.split(' ').toSet();
+        expect(
+          keys.difference(allowed),
+          isEmpty,
+          reason:
+              '$domain published a column absent from its server export schema',
+        );
+        expect(keys, contains('name'));
+        if (domain == 'moulds') {
+          expect(
+            projection.columns.map((column) => column.key),
+            contains('mouldType'),
+          );
+          expect(keys, isNot(contains('mouldType')));
+        }
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
   for (final domain in _domains) {
     testWidgets(
       '$domain actual page prints every authorized server page beyond 500',

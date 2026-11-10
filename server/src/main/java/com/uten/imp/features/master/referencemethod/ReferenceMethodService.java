@@ -209,6 +209,9 @@ public class ReferenceMethodService {
                 new ExportColumn("systemRole", "系统角色", ExportColumn.TEXT),
                 new ExportColumn("termsBase", "到期基准", ExportColumn.TEXT),
                 new ExportColumn("dueRule", "到期规则", ExportColumn.TEXT),
+                new ExportColumn("defaultDueDays", "默认天数", ExportColumn.NUMBER),
+                new ExportColumn("fixedDayOfMonth", "固定日", ExportColumn.NUMBER),
+                new ExportColumn("monthsAhead", "跨月数", ExportColumn.NUMBER),
                 new ExportColumn("terms", "账期口径", ExportColumn.TEXT));
         return com.uten.imp.common.export.MasterExportSource.exportEntities(em, cols,
                 (page,size) -> settlementAdminPage(f,page,size), m -> {
@@ -225,6 +228,9 @@ public class ReferenceMethodService {
             } : "—");
             row.put("termsBase", termsBaseLabel(m.termsBase()));
             row.put("dueRule", dueRuleLabel(m.dueRule()));
+            row.put("defaultDueDays", m.defaultDueDays());
+            row.put("fixedDayOfMonth", m.fixedDayOfMonth());
+            row.put("monthsAhead", m.monthsAhead());
             row.put("terms", termsSummary(m));
             return row;
         });

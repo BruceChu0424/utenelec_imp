@@ -716,6 +716,12 @@ class _ProductionFinishedArrivalRegistrationPageState
           UtenConfirmationFact(
             label: '本次登记',
             value: '${rows.length} 行 · $warehouseCount 个仓库',
+            info: [
+              stockInFirst
+                  ? '按库位整批上架送检，合格自动转正入库，不合格不增加库存。'
+                  : '先整批送检，放行后按实物点收入库，短收先扣实际超产。',
+              '本次库位将带入该仓下次登记。',
+            ].join('\n'),
           ),
           UtenConfirmationFact(
             label: '报工数量',
@@ -730,13 +736,7 @@ class _ProductionFinishedArrivalRegistrationPageState
             ),
           ),
         ],
-        consequences: [
-          stockInFirst
-              ? '按库位整批上架送检，合格自动转正入库，不合格不增加库存。'
-              : '先整批送检，放行后按实物点收入库，短收先扣实际超产。',
-          '本次库位将带入该仓下次登记。',
-          if (excludedCount > 0) '有 $excludedCount 行未勾选，仍留待登记。',
-        ],
+        consequences: [if (excludedCount > 0) '有 $excludedCount 行未勾选，仍留待登记。'],
       ),
     );
     if (confirmed != true || !mounted) return;

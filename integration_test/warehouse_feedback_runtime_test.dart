@@ -15,9 +15,11 @@ import '../test/features/production/pages/production_draw_request_page_test.dart
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
-  group('quality-runtime', quality.main);
   group('scope-runtime', scope.main);
   group('arrival-runtime', arrival.main);
   group('count-runtime', count.main);
   group('draw-runtime', draw.main);
+  // Exercise IQC after other pages, matching the persistent engine frame zone
+  // that exposed cross-error-zone listener registration in the shared dialog.
+  group('quality-runtime', quality.main);
 }

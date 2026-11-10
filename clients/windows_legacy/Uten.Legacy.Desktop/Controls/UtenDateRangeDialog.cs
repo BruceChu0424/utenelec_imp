@@ -14,7 +14,6 @@ namespace Uten.Legacy.Desktop.Controls
         private readonly DateTime firstDate, lastDate;
         private readonly Button previous = new Button(), monthTitle = new Button(), next = new Button();
         private readonly StackPanel calendar = new StackPanel();
-        private readonly TextBlock selection = new TextBlock { VerticalAlignment = VerticalAlignment.Center };
         private readonly CheckBox unlimitedStart = new CheckBox { Content = "不限开始" }, unlimitedEnd = new CheckBox { Content = "不限结束" };
         private readonly Button confirm;
         private DateTime displayedMonth;
@@ -54,8 +53,11 @@ namespace Uten.Legacy.Desktop.Controls
             next.Click += (sender, args) => { if (next.IsEnabled) { displayedMonth = displayedMonth.AddMonths(1); Render(); } };
             monthTitle.Click += (sender, args) => { choosingMonth = !choosingMonth; Render(); };
             Body.Children.Add(calendar);
-            var summary = new WrapPanel { Margin = new Thickness(0, Space("S8"), 0, 0) };
-            summary.Children.Add(selection); Body.Children.Add(summary);
+            HeadingText.SetResourceReference(TextBlock.FontSizeProperty, "Uten.FontSize.Heading");
+            HeadingText.SetResourceReference(TextBlock.ForegroundProperty, "Uten.PrimaryBrush");
+            HeadingText.FontWeight = FontWeights.Bold;
+            HeadingText.TextWrapping = TextWrapping.Wrap;
+            System.Windows.Automation.AutomationProperties.SetName(this, "选择日期范围");
             var openBounds = new WrapPanel { Margin = new Thickness(0, Space("S8"), 0, 0) };
             unlimitedStart.Margin = new Thickness(0, 0, Space("S16"), 0);
             openBounds.Children.Add(unlimitedStart); openBounds.Children.Add(unlimitedEnd); Body.Children.Add(openBounds);
@@ -87,9 +89,9 @@ namespace Uten.Legacy.Desktop.Controls
         }
         private void UpdateSelection()
         {
-            string left = unlimitedStart.IsChecked == true ? "不限" : start?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "开始日期";
-            string right = unlimitedEnd.IsChecked == true ? "不限" : (end ?? start)?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "结束日期";
-            selection.Text = left + " 至 " + right;
+            string left = unlimitedStart.IsChecked == true ? "不限" : start?.ToString("yyyy/MM/dd", CultureInfo.InvariantCulture) ?? "开始日期";
+            string right = unlimitedEnd.IsChecked == true ? "不限" : (end ?? start)?.ToString("yyyy/MM/dd", CultureInfo.InvariantCulture) ?? "结束日期";
+            SetHeading(left + " - " + right);
             if (confirm != null) confirm.IsEnabled = CanConfirm();
         }
         private void SelectDay(DateTime day)

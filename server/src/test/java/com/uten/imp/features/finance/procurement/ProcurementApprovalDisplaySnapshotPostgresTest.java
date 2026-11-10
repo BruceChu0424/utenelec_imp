@@ -38,6 +38,52 @@ class ProcurementApprovalDisplaySnapshotPostgresTest {
     private final ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
 
     @Test
+    void pendingAndHistoryRespectTheSharedThousandRowReadCapWithoutLosingRowsAfterTwoHundred() {
+        try (var postgres = new PostgreSQLContainer("postgres:16-alpine")) {
+            postgres.start();
+            JdbcTemplate jdbc = new JdbcTemplate(new DriverManagerDataSource(
+                    postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword()));
+            schema(jdbc);
+            jdbc.execute("ALTER TABLE procurement_order_approval_cases ADD COLUMN display_snapshot jsonb");
+            jdbc.execute("""
+                    INSERT INTO procurement_order_approval_cases
+                      (id,order_type,order_id,bill_no_snapshot,amount_snapshot,submission_snapshot,
+                       display_snapshot,attempt,version,status)
+                    SELECT md5(state.status || seq.n)::uuid,
+                           CASE WHEN seq.n % 2 = 0 THEN 'PURCHASE' ELSE 'SUBCONTRACT' END,
+                           md5('order-' || state.status || seq.n)::uuid,
+                           'BULK-' || state.status || '-' || lpad(seq.n::text,4,'0'), 0,
+                           '{"totalOriginal":"0","exchangeRate":"1","items":[]}'::jsonb,
+                           '{"currencyName":"人民币","items":[]}'::jsonb,1,1,state.status
+                    FROM unnest(ARRAY['PENDING','APPROVED']) AS state(status)
+                    CROSS JOIN generate_series(1,450) AS seq(n)
+                    """);
+            ProcurementFinanceApprovalService service = new ProcurementFinanceApprovalService(
+                    List.of(), jdbc, mapper, mock(BusinessEventPublisher.class),
+                    mock(WorkflowReviewerEligibility.class), mock(ProcurementApprovalProjectionQuery.class),
+                    mock(SecurityContextCurrentUser.class), mock(TxSessionVars.class),
+                    mock(com.uten.imp.features.notice.ChainNoticeService.class),
+                    mock(com.uten.imp.application.port.TaskClaimMutationGuardPort.class),
+                    mock(com.uten.imp.common.concurrency.ProcurementMutationLocks.class),
+                    mock(PartyOpenBalancePort.class));
+            for (String status : List.of("PENDING", "HISTORY")) {
+                var first = service.tasks(1, 300, null, null, "billNo", "asc", null, status);
+                var second = service.tasks(2, 300, null, null, "billNo", "asc", null, status);
+                assertThat(first.getSize()).isEqualTo(300);
+                assertThat(first.getTotal()).isEqualTo(450);
+                assertThat(first.getTotalPages()).isEqualTo(2);
+                assertThat(first.getItems()).hasSize(300);
+                assertThat(second.getItems()).hasSize(150);
+                assertThat(java.util.stream.Stream.concat(first.getItems().stream(), second.getItems().stream())
+                        .map(ProcurementApprovalContracts.ApprovalTask::caseId).distinct()).hasSize(450);
+                var clamped = service.tasks(1, 1010, null, null, null, null, null, status);
+                assertThat(clamped.getSize()).isEqualTo(com.uten.imp.common.web.Pageables.MAX_PAGE_SIZE);
+                assertThat(clamped.getItems()).hasSize(450);
+            }
+        }
+    }
+
+    @Test
     void bothSubmittersFreezeExtrasAndSourcesWithoutChangingCanonicalHash() throws Exception {
         try (var postgres = new PostgreSQLContainer("postgres:16-alpine")) {
             postgres.start();
@@ -115,6 +161,7 @@ class ProcurementApprovalDisplaySnapshotPostgresTest {
                 UUID second = new ProcurementApprovalReconfirmationService(mapper, jdbc, mock(BusinessEventPublisher.class), user)
                         .openReconfirmationCase(changed, 1);
                 JsonNode current = display(jdbc, second);
+                jdbc.update("UPDATE units SET name='后来单位名' WHERE id=?", unit);
                 assertThat(display(jdbc, first)).isEqualTo(frozen);
                 assertThat(current.path("remark").isNull()).isTrue();
                 assertThat(current.path("items").get(0).path("remark").isNull()).isTrue();
@@ -147,6 +194,14 @@ class ProcurementApprovalDisplaySnapshotPostgresTest {
                     // COALESCE(display_snapshot, submission_snapshot)——委外 allowedLossPct
                     // 只在展示快照(提交快照 items 无此键)，此前列表恒 null 被前端写成「不允许」。
                     assertThat(task.goodsSummary()).isEqualTo("提交时货品");
+                    assertThat(task.itemSummaries()).singleElement().satisfies(summary -> {
+                        assertThat(summary.unitId()).isEqualTo(unit);
+                        assertThat(summary.unitName()).isEqualTo("公斤");
+                        assertThat(summary.quantity()).isEqualByComparingTo("12");
+                        assertThat(summary.unitPrices()).singleElement()
+                                .satisfies(price -> assertThat(price).isEqualByComparingTo("2"));
+                        assertThat(summary.missingPrice()).isFalse();
+                    });
                     if (type.equals("SUBCONTRACT")) {
                         assertThat(task.toleranceMin()).isEqualByComparingTo("3.75");
                         assertThat(task.toleranceMax()).isEqualByComparingTo("3.75");
@@ -154,6 +209,14 @@ class ProcurementApprovalDisplaySnapshotPostgresTest {
                         assertThat(task.toleranceMin()).isNull();
                         assertThat(task.toleranceMax()).isNull();
                     }
+                });
+                var historyTasks = service.tasks(1, 20, type, null, null, null, null, "HISTORY").getItems();
+                assertThat(historyTasks).singleElement().satisfies(task -> {
+                    assertThat(task.caseId()).isEqualTo(first);
+                    assertThat(task.itemSummaries()).singleElement().satisfies(summary -> {
+                        assertThat(summary.unitName()).isEqualTo("公斤");
+                        assertThat(summary.quantity()).isEqualByComparingTo("10");
+                    });
                 });
                 assertThatThrownBy(() -> jdbc.update("UPDATE procurement_order_approval_cases SET display_snapshot='{}'::jsonb WHERE id=?", first))
                         .hasRootCauseInstanceOf(org.postgresql.util.PSQLException.class);
@@ -214,7 +277,7 @@ class ProcurementApprovalDisplaySnapshotPostgresTest {
         jdbc.execute("ALTER TABLE procurement_order_qty_change_logs ADD FOREIGN KEY(case_id) REFERENCES procurement_order_approval_cases(id)");
         for (String prefix : List.of("purchase", "subcontract")) {
             String source = prefix.equals("purchase") ? "request" : "application";
-            jdbc.execute("CREATE TABLE " + prefix + "_orders(id uuid,supplier_id uuid,warehouse_id uuid,currency_id uuid,settlement_method_id uuid,purchaser_id uuid,maker_id uuid,remark text,deliver_date date,status smallint DEFAULT 0,is_deleted boolean DEFAULT FALSE,bill_no text,termination_case_id uuid,legacy_id integer)");
+            jdbc.execute("CREATE TABLE " + prefix + "_orders(id uuid,supplier_id uuid,warehouse_id uuid,currency_id uuid,settlement_method_id uuid,purchaser_id uuid,maker_id uuid,remark text,deliver_date date,status smallint DEFAULT 0,is_deleted boolean DEFAULT FALSE,is_closed boolean DEFAULT FALSE,bill_no text,termination_case_id uuid,legacy_id integer)");
             String extra = prefix.equals("purchase") ? "gift_qty numeric(18,4)" : "allowed_loss_pct numeric(5,2)";
             jdbc.execute("CREATE TABLE " + prefix + "_order_items(id uuid,order_id uuid,line_no int,goods_id uuid,color_id uuid,unit_id uuid,goods_code_snapshot text,goods_name_snapshot text,weight numeric(18,4)," + extra + ",remark text,source_doc_no text,is_deleted boolean DEFAULT FALSE)");
             jdbc.execute("CREATE TABLE " + prefix + "_order_item_sources(order_item_id uuid," + source + "_item_id uuid,alloc_qty numeric,line_no int)");

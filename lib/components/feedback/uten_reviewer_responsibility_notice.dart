@@ -26,8 +26,8 @@ class UtenReviewerResponsibilityNotice extends ConsumerWidget {
   final String? description;
   final bool compact;
 
-  /// Title-row identity with adjacent accessible disclosure, without a separate
-  /// explanation block. Existing notice/dialog callers keep their layout.
+  /// Both modes share the same identity and accessible inline disclosure.
+  /// This mode omits the bordered notice surface for use beside a title.
   final bool inline;
 
   @override
@@ -43,91 +43,50 @@ class UtenReviewerResponsibilityNotice extends ConsumerWidget {
         ? code
         : '当前登录员工';
     final detail = description ?? '确认后，系统将以此登录员工记录$actionLabel责任。';
-    // compact 只收紧留白；显式传入的责任文案必须可见（不能只剩 Semantics 标签）。
-    final showDetail = !compact || description != null;
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
-
-    if (inline) {
-      return Semantics(
-        container: true,
-        label: '审核员 $currentActor。$detail',
-        child: Row(
-          key: const Key('reviewer-responsibility-notice'),
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(width: UtenSpacing.s8),
-            Icon(
-              Icons.gpp_maybe_outlined,
-              size: UtenSpacing.s20,
-              color: colors.error,
-            ),
-            const SizedBox(width: UtenSpacing.s4),
-            Flexible(
-              child: Text(
-                '审核员：$currentActor',
-                style: theme.textTheme.labelLarge?.copyWith(
-                  color: colors.error,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ),
-            UtenFieldHintIcon(info: detail, dense: true),
-          ],
+    Widget identity() => Row(
+      key: const Key('reviewer-responsibility-notice'),
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (inline) const SizedBox(width: UtenSpacing.s8),
+        Icon(
+          Icons.gpp_maybe_outlined,
+          size: inline || compact ? UtenSpacing.s20 : UtenSpacing.s24,
+          color: colors.error,
         ),
-      );
-    }
+        const SizedBox(width: UtenSpacing.s4),
+        Flexible(
+          child: Text(
+            '$reviewerLabel：$currentActor',
+            style: theme.textTheme.labelLarge?.copyWith(
+              color: colors.error,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+        UtenFieldHintIcon(info: detail, dense: true),
+      ],
+    );
 
     return Semantics(
       container: true,
       label: '$reviewerLabel $currentActor。$detail',
-      child: Container(
-        key: const Key('reviewer-responsibility-notice'),
-        width: double.infinity,
-        padding: EdgeInsets.symmetric(
-          horizontal: UtenSpacing.s12,
-          vertical: compact ? UtenSpacing.s8 : UtenSpacing.s12,
-        ),
-        decoration: BoxDecoration(
-          color: colors.errorContainer.withValues(alpha: 0.45),
-          borderRadius: UtenRadius.mdAll,
-          border: Border.all(color: colors.error.withValues(alpha: 0.55)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Wrap(
-              spacing: UtenSpacing.s8,
-              runSpacing: UtenSpacing.s4,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                Icon(
-                  Icons.gpp_maybe_outlined,
-                  size: compact ? UtenSpacing.s20 : UtenSpacing.s24,
-                  color: colors.error,
-                ),
-                Text(
-                  '$reviewerLabel：$currentActor',
-                  style: theme.textTheme.labelLarge?.copyWith(
-                    color: colors.error,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ],
-            ),
-            if (showDetail) ...[
-              const SizedBox(height: UtenSpacing.s4),
-              Text(
-                detail,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: colors.onErrorContainer,
-                ),
+      child: inline
+          ? identity()
+          : Container(
+              width: double.infinity,
+              padding: EdgeInsets.symmetric(
+                horizontal: UtenSpacing.s12,
+                vertical: compact ? UtenSpacing.s8 : UtenSpacing.s12,
               ),
-            ],
-          ],
-        ),
-      ),
+              decoration: BoxDecoration(
+                color: colors.errorContainer.withValues(alpha: 0.45),
+                borderRadius: UtenRadius.mdAll,
+                border: Border.all(color: colors.error.withValues(alpha: 0.55)),
+              ),
+              child: identity(),
+            ),
     );
   }
 }

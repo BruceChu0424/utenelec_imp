@@ -388,12 +388,9 @@ class _ProductionPlanDetailPageState
           UtenConfirmationFact(
             label: '计划单',
             value: _detail?.billNo ?? widget.id,
+            info:
+                '审核与下达同时生效，任一步失败则整单不生效。缺料工单先备料，齐套后才预留物料并生成领料单；无下层物料的工单直接下达，跳过领料。',
           ),
-        ],
-        consequences: const [
-          '审核与下达同时生效，任一步失败则整单不生效。',
-          '缺料工单先备料，齐套后才预留物料并生成领料单。',
-          '无下层物料的工单直接下达，跳过领料。',
         ],
       ),
       afterSuccess: _showLatestPlanningResultAfterApproval,

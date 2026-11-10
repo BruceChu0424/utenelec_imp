@@ -28,6 +28,7 @@ import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_progress_dialog.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
+import '../../../components/feedback/uten_confirmation_summary.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
@@ -659,12 +660,17 @@ class _FinanceSalesOrderConfirmationPageState
                   children: [
                     const UtenReviewerResponsibilityNotice(
                       actionLabel: '销售订单批量财务确认',
-                      description: '本次确认要么全部生效、要么全部不生效；有一笔订单有问题，整批都不会通过。',
                     ),
                     const SizedBox(height: UtenSpacing.s12),
-                    const Text(
-                      '确认只放行计划部可见与排产，不代表已收款，也不会在此建立正式应收。'
-                      '请确认下列订单已逐笔核对金额、客户应收和发运策略：',
+                    const UtenConfirmationSummary(
+                      facts: [
+                        UtenConfirmationFact(
+                          label: '本次确认',
+                          value: '放行计划部可见与排产',
+                          info: '不代表已收款，也不会在此建立正式应收。',
+                        ),
+                      ],
+                      consequences: ['本次确认要么全部生效、要么全部不生效；有一笔订单有问题，整批都不会通过。'],
                     ),
                     const SizedBox(height: UtenSpacing.s12),
                     ConstrainedBox(

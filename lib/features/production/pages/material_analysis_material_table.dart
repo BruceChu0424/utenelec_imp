@@ -7694,15 +7694,6 @@ abstract class _MaterialAnalysisMaterialTableState
     final kinds = <String>{
       for (final group in pending.keys) _aggregateKeyOf(group.representative),
     }.length;
-    final analysis = _analysis;
-    final hasParentMaterials =
-        analysis != null &&
-        pending.keys.any(
-          (group) =>
-              (_draftRoute(group) == MaterialSupplyRoute.make ||
-                  _draftRoute(group) == MaterialSupplyRoute.subcontract) &&
-              _hasProductionBomChildren(group.representative, analysis),
-        );
     final routeLine = [
       for (final label in const ['下达车间', '下达委外', '下达采购'])
         if (routeKinds[label] != null)
@@ -7747,11 +7738,6 @@ abstract class _MaterialAnalysisMaterialTableState
                   fontSize: 13,
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
-              ),
-            if (hasParentMaterials)
-              TextSpan(
-                text: '\n\n未选中的下层物料会在下单后重新核对。仍需补充时，会提醒你继续下单。',
-                style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
               ),
             if (warnings.isNotEmpty)
               TextSpan(

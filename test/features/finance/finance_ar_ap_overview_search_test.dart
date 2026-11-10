@@ -21,6 +21,8 @@ import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/core/theme/dark_theme.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/components/buttons/uten_export_button.dart';
+import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
+import 'package:uten_imp/components/print/uten_print_preview.dart';
 import 'package:uten_imp/features/report/shared/report_filter_prefs.dart';
 import 'package:uten_imp/features/basic_data/models/product_category_node.dart';
 import 'package:uten_imp/features/basic_data/repositories/client_category_repository.dart';
@@ -48,6 +50,322 @@ void main() {
     await (FontLoader(
       'NotoSansSC',
     )..addFont(rootBundle.load('assets/fonts/NotoSansSC.ttf'))).load();
+  });
+
+  testWidgets(
+    'default customer report keeps the old 16 headers and exports the same scope',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final api = _OverviewApi();
+      final capture = GlobalKey();
+      await _pumpPage(
+        tester,
+        prefs: prefs,
+        api: api,
+        initialPrefs: const ReportFilterPrefs(),
+        capture: capture,
+      );
+      expect(
+        api.reportQueries.last,
+        containsPair('layout', 'RECEIVABLE_SUMMARY'),
+      );
+      expect(api.reportQueries.last, containsPair('categoryType', 'CLIENT'));
+      expect(_tree(tester).selectedIds, {'__client_root__'});
+      expect(
+        _table(tester).columns.map((column) => column.label),
+        _summaryLabels,
+      );
+      expect(_table(tester).tableKey, endsWith('.receivableSummary.v1'));
+      expect(
+        _table(
+          tester,
+        ).columns.singleWhere((column) => column.key == 'materialAmount').info,
+        contains('待核验'),
+      );
+      final export = tester.widget<UtenExportButton>(
+        find.byType(UtenExportButton),
+      );
+      expect(export.queryParams, containsPair('layout', 'RECEIVABLE_SUMMARY'));
+      expect(export.queryParams, containsPair('categoryType', 'CLIENT'));
+      expect(export.filename, '应收款汇总表');
+      if (const bool.fromEnvironment('UI_CAPTURE')) {
+        await _captureOverview(tester, capture, 'summary-16-columns');
+      }
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'customer summary search retains its schema and searches beyond selected category',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final api = _OverviewApi();
+      await _pumpPage(
+        tester,
+        prefs: prefs,
+        api: api,
+        initialPrefs: const ReportFilterPrefs(
+          docType: 'CLIENT',
+          extra: {'categoryId': 'overseas'},
+        ),
+      );
+      expect(api.reportQueries.last['categoryId'], 'overseas');
+      await tester.enterText(_searchField(), 'C-003');
+      await tester.pump(const Duration(milliseconds: 350));
+      await tester.pumpAndSettle();
+      _expectGlobal(api.reportQueries.last, 'C-003');
+      expect(api.reportQueries.last['layout'], 'RECEIVABLE_SUMMARY');
+      expect(
+        _table(tester).columns.map((column) => column.label),
+        _summaryLabels,
+      );
+      expect(
+        _tree(tester).visibleFilterIds,
+        isNot(contains('domestic-supplier')),
+      );
+      final export = tester.widget<UtenExportButton>(
+        find.byType(UtenExportButton),
+      );
+      expect(export.queryParams['layout'], 'RECEIVABLE_SUMMARY');
+      expect(
+        export.bodyParams['sensitiveFilter'],
+        containsPair('keyword', 'C-003'),
+      );
+      await tester.enterText(_searchField(), '');
+      await tester.pumpAndSettle();
+      expect(api.reportQueries.last['categoryId'], 'overseas');
+      expect(_tree(tester).selectedIds, {'overseas'});
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'schema switches retire old results and clear incompatible column criteria',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final api = _OverviewApi();
+      await _pumpPage(
+        tester,
+        prefs: prefs,
+        api: api,
+        initialPrefs: const ReportFilterPrefs(),
+      );
+      _table(tester).onFilterChanged('search.creditFloor', '100');
+      await tester.pumpAndSettle();
+      _table(tester).onSortChange!('balance', false);
+      await tester.pumpAndSettle();
+      api.holdNextReport();
+      _table(tester).onSortChange!('balance', true);
+      await tester.pump();
+      expect(api.heldReport, isNotNull);
+      _tree(tester).onNodeTap!(_tree(tester).nodes.last);
+      await tester.pumpAndSettle();
+      expect(api.reportQueries.last['layout'], 'BALANCE');
+      expect(api.reportQueries.last['categoryType'], 'SUPPLIER');
+      expect(api.reportQueries.last, isNot(contains('f.search.creditFloor')));
+      expect(api.reportQueries.last, isNot(contains('sort')));
+      expect(_table(tester).tableKey, isNot(endsWith('.receivableSummary.v1')));
+      api.completeHeldReport('stale-summary-after-supplier-switch');
+      await tester.pumpAndSettle();
+      expect(find.text('stale-summary-after-supplier-switch'), findsNothing);
+      expect(_table(tester).columns.map((column) => column.label), ['往来单位']);
+      _tree(tester).onNodeTap!(_tree(tester).nodes.first);
+      await tester.pumpAndSettle();
+      expect(api.reportQueries.last['layout'], 'RECEIVABLE_SUMMARY');
+      expect(
+        _table(tester).columns.map((column) => column.label),
+        _summaryLabels,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'old customer preferences migrate incompatible sort and display to summary',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final api = _OverviewApi();
+      await _pumpPage(
+        tester,
+        prefs: prefs,
+        api: api,
+        initialPrefs: const ReportFilterPrefs(
+          docType: 'CLIENT',
+          sortKey: 'receivable',
+          extra: {'displayMode': 'ANY'},
+        ),
+      );
+      expect(api.reportQueries.last['layout'], 'RECEIVABLE_SUMMARY');
+      expect(api.reportQueries.last['displayMode'], 'AR_ONLY');
+      expect(api.reportQueries.last, isNot(contains('sort')));
+      await tester.tap(find.byKey(const ValueKey('finance-ar-ap-layout')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('往来余额').last);
+      await tester.pumpAndSettle();
+      expect(api.reportQueries.last['layout'], 'BALANCE');
+      expect(api.reportQueries.last, isNot(contains('categoryType')));
+      final context = tester.element(find.byType(FinanceArApOverviewPage));
+      final saved = ProviderScope.containerOf(
+        context,
+      ).read(financeArApOverviewReportPrefsProvider);
+      expect(saved.extra['layout'], 'BALANCE');
+      expect(saved.docType, isNull);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    '2500 customer rows append progressively and enable output only when complete',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final api = _OverviewApi()
+        ..largeSummaryTotal = 2500
+        ..largeSummaryGate = Completer<void>();
+      await _pumpPage(
+        tester,
+        prefs: prefs,
+        api: api,
+        initialPrefs: const ReportFilterPrefs(),
+        settle: false,
+      );
+      for (var i = 0; i < 20; i++) {
+        await tester.pump(const Duration(milliseconds: 20));
+      }
+      expect(_table(tester).items, hasLength(50));
+      expect(_table(tester).loadingMore, isTrue);
+      expect(find.byType(UtenBusyOverlay), findsNothing);
+      expect(
+        tester.widget<UtenExportButton>(find.byType(UtenExportButton)).enabled,
+        isFalse,
+      );
+      expect(
+        tester
+            .widget<UtenPrintPreviewButton>(find.byType(UtenPrintPreviewButton))
+            .enabled,
+        isFalse,
+      );
+      final tableState = tester.state(
+        find.byType(MasterDataTableView<Map<String, dynamic>>),
+      );
+      api.largeSummaryGate!.complete();
+      await tester.pumpAndSettle();
+      final rows = _table(tester).items;
+      expect(rows, hasLength(2500));
+      expect(rows.map((row) => row['id']).toSet(), hasLength(2500));
+      expect(rows.first['id'], 'summary-client-0');
+      expect(rows.last['id'], 'summary-client-2499');
+      expect(api.reportQueries.map((query) => query['size']), contains(1000));
+      expect(
+        tester.state(find.byType(MasterDataTableView<Map<String, dynamic>>)),
+        same(tableState),
+      );
+      expect(
+        tester.widget<UtenExportButton>(find.byType(UtenExportButton)).enabled,
+        isTrue,
+      );
+      expect(_table(tester).loadingMore, isFalse);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'rapid layout changes and search retire a growing customer prefix during debounce',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final api = _OverviewApi()
+        ..largeSummaryTotal = 1500
+        ..largeSummaryGate = Completer<void>();
+      await _pumpPage(
+        tester,
+        prefs: prefs,
+        api: api,
+        initialPrefs: const ReportFilterPrefs(),
+        settle: false,
+      );
+      for (var i = 0; i < 20; i++) {
+        await tester.pump(const Duration(milliseconds: 20));
+      }
+      expect(_table(tester).items, hasLength(50));
+      _tree(tester).onNodeTap!(_tree(tester).nodes.last);
+      await tester.pumpAndSettle();
+      expect(api.reportQueries.last['layout'], 'BALANCE');
+      _tree(tester).onNodeTap!(_tree(tester).nodes.first);
+      for (var i = 0; i < 20; i++) {
+        await tester.pump(const Duration(milliseconds: 20));
+      }
+      expect(_table(tester).items, hasLength(50));
+      await tester.enterText(_searchField(), 'C-003');
+      await tester.pump();
+      expect(
+        find.text('summary-row-0'),
+        findsNothing,
+        reason: 'retire before the search debounce fires',
+      );
+      for (final table
+          in tester.widgetList<MasterDataTableView<Map<String, dynamic>>>(
+            find.byType(MasterDataTableView<Map<String, dynamic>>),
+          )) {
+        expect(
+          table.items,
+          isEmpty,
+          reason: 'no old prefix may survive in a retained shell',
+        );
+      }
+      for (final export in tester.widgetList<UtenExportButton>(
+        find.byType(UtenExportButton),
+      )) {
+        expect(
+          export.enabled,
+          isFalse,
+          reason: 'a retired prefix is never an output scope',
+        );
+      }
+      expect(find.text('共 1500'), findsNothing);
+      final readsBeforeRelease = api.reportQueries.length;
+      api.largeSummaryGate!.complete();
+      await tester.pump(const Duration(milliseconds: 350));
+      await tester.pumpAndSettle();
+      expect(api.reportQueries.length, readsBeforeRelease + 1);
+      expect(api.reportQueries.last['keyword'], 'C-003');
+      expect(_table(tester).items.single['partyName'], 'latest-C-003');
+      expect(find.text('summary-row-0'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('a failed growing read withdraws every partial customer row', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    final api = _OverviewApi()
+      ..largeSummaryTotal = 1500
+      ..largeSummaryGate = Completer<void>();
+    await _pumpPage(
+      tester,
+      prefs: prefs,
+      api: api,
+      initialPrefs: const ReportFilterPrefs(),
+      settle: false,
+    );
+    for (var i = 0; i < 20; i++) {
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+    expect(_table(tester).items, hasLength(50));
+    api.largeSummaryGate!.completeError(
+      StateError('interrupted summary transport'),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('summary-row-0'), findsNothing);
+    expect(find.byType(UtenExportButton), findsNothing);
+    expect(find.text('重试'), findsWidgets);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets(
@@ -425,11 +743,16 @@ void main() {
           scale: variant.scale,
           dark: variant.dark,
           capture: capture,
+          initialPrefs: const ReportFilterPrefs(),
         );
         expect(tester.takeException(), isNull, reason: '$variant');
         expect(find.textContaining('应收应付 ·'), findsNothing);
         expect(find.byType(FinanceDateRangeFilter), findsOneWidget);
-        expect(_table(tester).toolbarLeadingActions, hasLength(3));
+        expect(_table(tester).toolbarLeadingActions, hasLength(4));
+        expect(
+          _table(tester).columns.map((column) => column.label),
+          _summaryLabels,
+        );
         if (variant.size.width >= 840) {
           expect(_tree(tester).flatLevelColors, isTrue);
         }
@@ -446,6 +769,21 @@ void main() {
         await tester.ensureVisible(mode);
         await tester.pumpAndSettle();
         expect(mode.hitTestable(), findsOneWidget);
+        expect(
+          tester
+              .widget<UtenDropdownField>(mode)
+              .items
+              .map((item) => item.value),
+          ['ALL', 'AR_ONLY'],
+        );
+        expect(
+          tester
+              .widget<UtenDropdownField>(
+                find.byKey(const ValueKey('finance-ar-ap-layout')),
+              )
+              .value,
+          'RECEIVABLE_SUMMARY',
+        );
         await tester.tap(mode);
         await tester.pumpAndSettle();
         if (const bool.fromEnvironment('UI_CAPTURE')) {
@@ -456,7 +794,7 @@ void main() {
           );
         }
         await tester.scrollUntilVisible(
-          find.text('只应付≠0'),
+          find.text('只应收≠0'),
           100,
           scrollable: find
               .descendant(
@@ -465,13 +803,38 @@ void main() {
               )
               .last,
         );
-        await tester.tap(find.text('只应付≠0').last);
+        await tester.tap(find.text('只应收≠0').last);
         await tester.pumpAndSettle();
-        expect(api.reportQueries.last['displayMode'], 'AP_ONLY');
+        expect(api.reportQueries.last['displayMode'], 'AR_ONLY');
         final count = find.text('共 1');
         await tester.ensureVisible(count);
         await tester.pumpAndSettle();
         expect(count.hitTestable(), findsOneWidget);
+        await _pickOverviewOption(tester, 'finance-ar-ap-layout', '往来余额');
+        expect(api.reportQueries.last['layout'], 'BALANCE');
+        expect(_table(tester).columns.map((column) => column.label), ['往来单位']);
+        final balanceMode = tester.widget<UtenDropdownField>(
+          find.byKey(const ValueKey('finance-ar-ap-display-mode')),
+        );
+        expect(balanceMode.items.map((item) => item.value), [
+          'ALL',
+          'ANY',
+          'AR_ONLY',
+          'AP_ONLY',
+        ]);
+        await _pickOverviewOption(
+          tester,
+          'finance-ar-ap-display-mode',
+          '只应付≠0',
+        );
+        expect(api.reportQueries.last['displayMode'], 'AP_ONLY');
+        await _pickOverviewOption(tester, 'finance-ar-ap-layout', '应收款汇总表');
+        expect(api.reportQueries.last['layout'], 'RECEIVABLE_SUMMARY');
+        expect(api.reportQueries.last['displayMode'], 'ALL');
+        expect(
+          _table(tester).columns.map((column) => column.label),
+          _summaryLabels,
+        );
         expect(tester.takeException(), isNull, reason: '$variant filters');
         if (const bool.fromEnvironment('UI_CAPTURE')) {
           await _captureOverview(
@@ -746,11 +1109,39 @@ void _expectGlobal(Map<String, dynamic> query, String keyword) {
   expect(query, isNot(contains('categoryId')));
 }
 
+Future<void> _pickOverviewOption(
+  WidgetTester tester,
+  String key,
+  String label,
+) async {
+  final trigger = find.byKey(ValueKey(key));
+  await tester.ensureVisible(trigger);
+  await tester.pumpAndSettle();
+  await tester.tap(trigger);
+  await tester.pumpAndSettle();
+  await tester.scrollUntilVisible(
+    find.text(label),
+    100,
+    scrollable: find
+        .descendant(
+          of: find.byType(UtenDropdownResizeFrame),
+          matching: find.byType(Scrollable),
+        )
+        .last,
+  );
+  await tester.tap(find.text(label).last);
+  await tester.pumpAndSettle();
+}
+
 Future<void> _pumpPage(
   WidgetTester tester, {
   required SharedPreferences prefs,
   required _OverviewApi api,
-  ReportFilterPrefs initialPrefs = const ReportFilterPrefs(),
+  // These original regressions exercise the cross-party balance view. Default
+  // summary behavior has separate cases above and never relies on this fixture.
+  ReportFilterPrefs initialPrefs = const ReportFilterPrefs(
+    extra: {'layout': 'BALANCE'},
+  ),
   GoRouter? router,
   Size size = const Size(1600, 1000),
   double scale = 1,
@@ -758,6 +1149,7 @@ Future<void> _pumpPage(
   GlobalKey? capture,
   bool readFinanceDetail = false,
   ValueNotifier<bool>? active,
+  bool settle = true,
 }) async {
   tester.view.devicePixelRatio = 1;
   tester.view.physicalSize = size;
@@ -822,7 +1214,7 @@ Future<void> _pumpPage(
       ),
     ),
   );
-  await tester.pumpAndSettle();
+  if (settle) await tester.pumpAndSettle();
 }
 
 Future<void> _captureOverview(
@@ -882,13 +1274,16 @@ class _OverviewApi extends ApiClient {
 
   bool _holdNextReport = false;
   Completer<Map<String, dynamic>>? heldReport;
+  Map<String, dynamic>? _heldQuery;
+  int largeSummaryTotal = 0;
+  Completer<void>? largeSummaryGate;
 
   void holdNextReport() => _holdNextReport = true;
 
   void completeHeldReport(String label) {
     final held = heldReport;
     if (held == null || held.isCompleted) return;
-    held.complete(_report(label));
+    held.complete(_forLayout(_heldQuery ?? const {}, _report(label)));
   }
 
   @override
@@ -1012,13 +1407,47 @@ class _OverviewApi extends ApiClient {
         _holdNextReport = false;
         final held = Completer<Map<String, dynamic>>();
         heldReport = held;
+        _heldQuery = q;
         return held.future;
       }
       final keyword = q['keyword']?.toString();
+      if (largeSummaryTotal > 0 &&
+          q['layout'] == 'RECEIVABLE_SUMMARY' &&
+          keyword == null) {
+        final page = (q['page'] as num?)?.toInt() ?? 1;
+        final size = (q['size'] as num?)?.toInt() ?? 50;
+        final offset = (page - 1) * size;
+        if (offset == 50 && largeSummaryGate != null) {
+          await largeSummaryGate!.future;
+        }
+        return _forLayout(q, {
+          'rows': [
+            for (
+              var index = offset;
+              index < offset + size && index < largeSummaryTotal;
+              index++
+            )
+              {
+                'id': 'summary-client-$index',
+                'partyCode': 'C-$index',
+                'partyName': 'summary-row-$index',
+                'balance': '$index.01',
+              },
+          ],
+          'page': page,
+          'size': size,
+          'total': largeSummaryTotal,
+          'totalPages': (largeSummaryTotal + size - 1) ~/ size,
+          'readScopeVersion': 'summary-stress-v1',
+          'statisticsGeneratedAt': '2026-11-10T00:00:00Z',
+        });
+      }
       if (delayFirstSearch && keyword == 'C-002') {
         await Future<void>.delayed(const Duration(milliseconds: 500));
       }
-      if (keyword == 'NO-SUCH-PARTY') return _reportRows(const []);
+      if (keyword == 'NO-SUCH-PARTY') {
+        return _forLayout(q, _reportRows(const []));
+      }
       if (keyword == 'C-002' && !delayFirstSearch) {
         // One fixed four-row source in the server's exact-before-near order;
         // every batch is the exact page of the requested size.
@@ -1072,7 +1501,7 @@ class _OverviewApi extends ApiClient {
           : keyword == 'C-002'
           ? 'stale-C-002'
           : 'latest-$keyword';
-      return _report(label);
+      return _forLayout(q, _report(label));
     }
     if (path == '/user/preferences') {
       return const <String, dynamic>{'preferences': <String, dynamic>{}};
@@ -1085,6 +1514,84 @@ class _OverviewApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async => const [];
+}
+
+const _summaryKeys = [
+  'partyCode',
+  'partyName',
+  'partyFull',
+  'sellerName',
+  'director',
+  'region',
+  'district',
+  'creditFloor',
+  'prevBalance',
+  'shippedAmount',
+  'receivedAmount',
+  'returnAmount',
+  'offsetAmount',
+  'balance',
+  'overFloor',
+  'materialAmount',
+];
+const _summaryLabels = [
+  '客户编号',
+  '客户简称',
+  '客户全称',
+  '业务员',
+  '总监',
+  '区域',
+  '所属地区',
+  '铺底额',
+  '上月余额',
+  '发货金额',
+  '回款金额',
+  '退货金额',
+  '货款冲销',
+  '应收余额',
+  '超出铺底额',
+  '物料金额',
+];
+
+Map<String, dynamic> _forLayout(
+  Map<String, dynamic> query,
+  Map<String, dynamic> response,
+) {
+  if (query['layout'] != 'RECEIVABLE_SUMMARY') return response;
+  return {
+    ...response,
+    'columns': [
+      for (var index = 0; index < _summaryKeys.length; index++)
+        {
+          'key': _summaryKeys[index],
+          'label': _summaryLabels[index],
+          'type': index < 7 ? 'text' : 'money',
+          'width': index == 2 ? 230 : 120,
+          if (index >= 7) 'unitLabel': '元',
+        },
+    ],
+    'rows': [
+      for (final row in response['rows'] as List)
+        {
+          'partyCode': 'C-001',
+          'partyFull': '示例客户全称',
+          'sellerName': '张龙',
+          'director': '黄连芳',
+          'region': '内销南区',
+          'district': '四川省',
+          'creditFloor': 9000,
+          'prevBalance': 8000,
+          'shippedAmount': 1000,
+          'receivedAmount': 200,
+          'returnAmount': -100,
+          'offsetAmount': 0,
+          'balance': 8700,
+          'overFloor': -300,
+          'materialAmount': null,
+          ...Map<String, dynamic>.from(row as Map),
+        },
+    ],
+  };
 }
 
 Map<String, dynamic> _report(String partyName) => <String, dynamic>{

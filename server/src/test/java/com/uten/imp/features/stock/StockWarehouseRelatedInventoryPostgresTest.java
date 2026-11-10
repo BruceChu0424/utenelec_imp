@@ -110,6 +110,35 @@ class StockWarehouseRelatedInventoryPostgresTest {
                 .andExpect(status().isOk()).andExpect(jsonPath("total").value(1));
     }
 
+    @Test void unifiedSearchReturnsStableCategoryIdentityWithTheSameStockScopeAndQuantities() {
+        World world=world();
+        UUID category=jdbc.queryForObject("SELECT category_id FROM goods WHERE id=:id",
+                new MapSqlParameterSource("id",world.stocked()),UUID.class);
+        String code=jdbc.queryForObject("SELECT code FROM goods WHERE id=:id",
+                new MapSqlParameterSource("id",world.stocked()),String.class);
+        for(String keyword:List.of(code,"库存实物")) {
+            var response=service.instantInventory(null,world.parent(),false,false,keyword,
+                    null,null,null,null,null,null,1,20,"name","asc",false,true);
+            assertThat(response.getTotal()).isEqualTo(2);
+            assertThat(response.getItems()).allSatisfy(row->{
+                assertThat(row.getGoodsId()).isEqualTo(world.stocked());
+                assertThat(row.getCategoryId()).isEqualTo(category);
+            });
+            assertThat(response.getItems().stream().filter(row->world.red().equals(row.getColorId())).findFirst())
+                    .hasValueSatisfying(row->{
+                        assertThat(row.getQty()).isEqualByComparingTo("15");
+                        assertThat(row.getReservedQty()).isEqualByComparingTo("0");
+                        assertThat(row.getAvailableQty()).isEqualByComparingTo("15");
+                        assertThat(new com.fasterxml.jackson.databind.ObjectMapper().valueToTree(row)
+                                .path("categoryId").asText()).isEqualTo(category.toString());
+                    });
+        }
+        var categorySearch=service.instantInventory(null,world.parent(),false,false,"分类A",
+                null,null,null,null,null,null,1,20,"name","asc",false,true);
+        assertThat(categorySearch.getTotal()).isEqualTo(5);
+        assertThat(categorySearch.getItems()).allSatisfy(row->assertThat(row.getCategoryId()).isEqualTo(category));
+    }
+
     @Test void explicitNonaccountableLineSideDefectiveLeafStillShowsItsRealStockAndEmptyWarehouseStaysEmpty() {
         UUID parent=warehouse(null),leaf=warehouse(parent),empty=warehouse(null),unit=UUID.randomUUID();
         UUID category=UUID.randomUUID();

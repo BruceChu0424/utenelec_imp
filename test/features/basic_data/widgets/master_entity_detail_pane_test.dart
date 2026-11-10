@@ -12,6 +12,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/buttons/uten_close_button.dart';
+import 'package:uten_imp/components/buttons/uten_export_button.dart';
+import 'package:uten_imp/components/print/uten_print_preview.dart';
 import 'package:uten_imp/components/feedback/uten_context_menu.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
@@ -148,6 +150,8 @@ Future<_Counters> _pump(
   Future<_Row> Function(String)? loadDetail,
   bool supportsReferencedHide = false,
   bool settle = true,
+  MasterPaneExport? export,
+  String? categoryId = 'cat-1',
   void Function(MasterEntityPaneController<_Row, _Row> pane)? onPane,
 }) async {
   final counters = _Counters();
@@ -202,6 +206,7 @@ Future<_Counters> _pump(
     canDelete: true,
     supportsReferencedHide: supportsReferencedHide,
     canStatus: true,
+    export: export,
     loadDetail: (id) async {
       counters.detailCalls++;
       return loadDetail == null ? _rows.first : await loadDetail(id);
@@ -219,6 +224,7 @@ Future<_Counters> _pump(
           Perm.goodsView,
           Perm.goodsStatus,
           Perm.goodsDelete,
+          Perm.goodsExport,
         }),
         isSuperAdminProvider.overrideWithValue(false),
         sharedPreferencesProvider.overrideWithValue(preferences),
@@ -232,7 +238,7 @@ Future<_Counters> _pump(
         home: Scaffold(
           body: MasterEntityDetailPane<_Row, _Row>(
             config: config,
-            categoryId: 'cat-1',
+            categoryId: categoryId,
             externalKeyword: null,
           ),
         ),
@@ -271,6 +277,78 @@ Future<void> _statusAction(WidgetTester tester, UtenMenuItem entry) async {
 }
 
 void main() {
+  for (final title in ['货品资料', '客户资料', '供应商资料', '模具资料']) {
+    for (final categoryBrowsing in [true, false]) {
+      testWidgets('$title输出默认名遵循当前${categoryBrowsing ? '分类' : '全局'}范围', (
+        tester,
+      ) async {
+        await _pump(
+          tester,
+          _FakeBatchRepository(),
+          _FakeStatusRepository(),
+          categoryId: categoryBrowsing ? 'cat-1' : null,
+          export: MasterPaneExport(
+            title: title,
+            endpoint: '/master/goods/export',
+            permission: Perm.goodsExport,
+            label: '导出资料',
+          ),
+        );
+        final expected = categoryBrowsing ? '成品类' : title;
+        // Toolbar overflow may defer mounting an action until its menu opens;
+        // inspect the actual shared table's configured actions in either mode.
+        final actions = _table(tester).toolbarLeadingActions!;
+        final button = actions.whereType<UtenExportButton>().single;
+        final print = actions.whereType<UtenPrintPreviewButton>().single;
+        expect(button.filename, expected);
+        expect(print.exportFilename, expected);
+        final prepared = await button.prepareExport!();
+        expect(prepared!.filename, expected);
+        expect(
+          button.queryParams['categoryId'],
+          categoryBrowsing ? 'cat-1' : null,
+        );
+        expect(prepared.stillCurrent!(), isTrue);
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
+
+  testWidgets('从分类表格操作打开导出，显示分类默认名并保留手工文件名', (tester) async {
+    await _pump(
+      tester,
+      _FakeBatchRepository(),
+      _FakeStatusRepository(),
+      export: const MasterPaneExport(
+        title: '货品资料',
+        endpoint: '/master/goods/export',
+        permission: Perm.goodsExport,
+        label: '导出资料',
+      ),
+    );
+    if (find.byType(UtenExportButton).evaluate().isEmpty) {
+      final overflow = find.byKey(
+        const ValueKey('master-table-action-overflow'),
+      );
+      await tester.ensureVisible(overflow);
+      await tester.tap(overflow);
+      await tester.pumpAndSettle();
+    }
+    await tester.tap(find.text('导出资料'));
+    await tester.pumpAndSettle();
+    final filename = find.byKey(const Key('uten-export-filename'));
+    expect(tester.widget<TextField>(filename).controller!.text, '成品类');
+    expect(find.text('导出范围'), findsNothing);
+    expect(find.byKey(const ValueKey('table-output-all')), findsOneWidget);
+    await tester.enterText(filename, '客户指定文件名');
+    await tester.tap(find.text('设置密码'));
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(filename).controller!.text, '客户指定文件名');
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
     'reveal uses the complete local result and only refreshes when the identity is missing',
     (tester) async {

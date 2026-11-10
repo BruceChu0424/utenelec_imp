@@ -9,7 +9,7 @@ import 'package:uten_imp/shared/paging/scoped_paged_read.dart'
 //
 // 布局镜像「货品资料」：左分类树（UtenCategoryTreeView，客户类别 + 供应商类别两棵子树，
 //   点击父类展示含子类的全部往来单位、点击自动展开/缩回）+ 右 Excel 风格表格
-//   （MasterDataTableView：往来单位/应收金额/应付金额/电话/联系地址，表头 autofilter + 翻页）。
+//   （MasterDataTableView：默认按老系统16列表头显示应收款汇总；往来余额保留客户/供应商总览）。
 // 顶部筛选：起止日期 / 显示方式（全部·应收≠0或应付≠0·只应收≠0·只应付≠0）/ 搜索。
 //
 // 后端 GET /api/finance/reports/ar-ap/overview?dateFrom&dateTo&displayMode&keyword&categoryType&categoryId
@@ -68,6 +68,8 @@ import '../../basic_data/widgets/uten_category_tree_view.dart';
 
 const _clientRootId = '__client_root__';
 const _supplierRootId = '__supplier_root__';
+const _receivableSummaryLayout = 'RECEIVABLE_SUMMARY';
+const _balanceLayout = 'BALANCE';
 
 class FinanceArApOverviewPage extends ConsumerStatefulWidget {
   const FinanceArApOverviewPage({super.key});
@@ -91,8 +93,13 @@ class _FinanceArApOverviewPageState
   String? _treeError;
 
   // 当前选中的分类导航：(categoryType, categoryId)。null/null = 全部。
-  String? _categoryType;
+  String? _categoryType = 'CLIENT';
   String? _categoryId;
+  String _layout = _receivableSummaryLayout;
+  bool get _isReceivableSummary => _layout == _receivableSummaryLayout;
+  String get _reportTitle => _isReceivableSummary ? '应收款汇总表' : '往来余额';
+  String get _searchHint =>
+      _isReceivableSummary ? '搜索分类/客户名称或编号' : '搜索分类/往来单位名称或编号';
 
   DateTime _from = defaultReportFrom();
   DateTime _to = ChinaDateTime.today();
@@ -121,6 +128,7 @@ class _FinanceArApOverviewPageState
   bool _sortAsc = true;
 
   ReportData? _data;
+  ReportData? _partialData;
   final _reportMetadata = ReportMetadataReuse();
   final _tableRows = MasterDataTableRowsController<Map<String, dynamic>>();
   Object? _acceptedReadQuery;
@@ -132,6 +140,7 @@ class _FinanceArApOverviewPageState
   List<ReportColumn> _lastColumns = const [];
 
   bool _loading = false;
+  bool _manualRefreshing = false;
 
   /// 用户是否已动手改过筛选（服务端偏好同步晚到时，已动手则不回灌，避免覆盖在输状态）。
   bool _dirty = false;
@@ -152,11 +161,15 @@ class _FinanceArApOverviewPageState
         ++_treeGeneration;
         _reportRead.invalidate();
         _data = null;
+        _partialData = null;
         _lastColumns = const [];
         _clientTree = const [];
         _supplierTree = const [];
-        _categoryType = null;
+        _categoryType = 'CLIENT';
         _categoryId = null;
+        _layout = _receivableSummaryLayout;
+        _sortKey = null;
+        _sortAsc = true;
         _keyword = '';
         _filters.clear();
         _lastColumnSearchKeys = const {};
@@ -196,7 +209,13 @@ class _FinanceArApOverviewPageState
   void _applyPrefs(ReportFilterPrefs p) {
     if (p.isEmpty) return;
     setState(() {
-      _categoryType = p.docType;
+      final savedLayout = p.extra['layout'];
+      _setLayout(
+        savedLayout == _balanceLayout || p.docType == 'SUPPLIER'
+            ? _balanceLayout
+            : _receivableSummaryLayout,
+      );
+      _categoryType = _isReceivableSummary ? 'CLIENT' : p.docType;
       _categoryId = p.extra['categoryId']?.toString();
       final dm = p.extra['displayMode']?.toString();
       if (dm != null &&
@@ -207,6 +226,12 @@ class _FinanceArApOverviewPageState
       // 的过时日期范围把新数据滤空（销售报表已踩此坑，见 sales_report_page.dart）。
       _sortKey = p.sortKey;
       _sortAsc = p.sortAsc;
+      if (_isReceivableSummary) {
+        // Old preferences describe the balance schema. New summary preferences
+        // already use the server-owned columns and need no second key catalog.
+        if (savedLayout != _receivableSummaryLayout) _sortKey = null;
+        _normalizeSummaryDisplayMode();
+      }
     });
   }
 
@@ -218,6 +243,7 @@ class _FinanceArApOverviewPageState
     extra: {
       if (_categoryId != null) 'categoryId': _categoryId,
       'displayMode': _displayMode,
+      'layout': _layout,
     },
   );
 
@@ -238,6 +264,59 @@ class _FinanceArApOverviewPageState
         .read(financeArApOverviewReportPrefsProvider.notifier)
         .update(_snapshot());
   }
+
+  void _normalizeSummaryDisplayMode() {
+    if (_displayMode == 'ANY') _displayMode = 'AR_ONLY';
+    if (_displayMode == 'AP_ONLY') _displayMode = 'ALL';
+  }
+
+  /// Columns, filters and saved widths belong to one schema. Retire every
+  /// receipt from the previous schema before publishing the next one.
+  void _setLayout(String layout) {
+    if (_layout == layout) return;
+    _layout = layout;
+    ++_reportRequestGeneration;
+    _reportRead.invalidate();
+    _data = null;
+    _partialData = null;
+    _lastColumns = const [];
+    _lastColumnSearchKeys = const {};
+    _acceptedReadQuery = null;
+    _noUnifiedSearchMatches = false;
+    _reportError = null;
+    _filters.clear();
+    _sortKey = null;
+    _sortAsc = true;
+    _page = 1;
+    if (_isReceivableSummary) _normalizeSummaryDisplayMode();
+  }
+
+  Future<void> _onLayoutChanged(String? layout) async {
+    if (layout == null || layout == _layout) return;
+    setState(() {
+      _setLayout(layout);
+      _categoryType = _isReceivableSummary ? 'CLIENT' : null;
+      _categoryId = null;
+    });
+    _persistPrefs();
+    if (_searchQuery.isNotEmpty) {
+      await _runUnifiedSearch(_searchQuery, ++_searchRequestGeneration);
+    } else {
+      await _load();
+    }
+  }
+
+  Future<void> _withReadWait(Future<void> Function() action) async {
+    if (_manualRefreshing) return;
+    setState(() => _manualRefreshing = true);
+    try {
+      await action();
+    } finally {
+      if (mounted) setState(() => _manualRefreshing = false);
+    }
+  }
+
+  Future<void> _retryReport() => _withReadWait(_load);
 
   Future<void> _loadTree() async {
     final generation = ++_treeGeneration;
@@ -330,6 +409,11 @@ class _FinanceArApOverviewPageState
       id = node.id;
     }
     setState(() {
+      if (type != null) {
+        _setLayout(
+          type == 'CLIENT' ? _receivableSummaryLayout : _balanceLayout,
+        );
+      }
       _categoryType = type;
       _categoryId = id;
       _keyword = '';
@@ -386,6 +470,7 @@ class _FinanceArApOverviewPageState
       _page = 1;
       _searchError = null;
       _noUnifiedSearchMatches = false;
+      _partialData = null;
       // 旧报表请求已失效，其完成分支不会再清 loading。先保留旧数据并结束
       // 旧 loading；防抖结束后报表按新全局口径独立加载。
       _loading = false;
@@ -450,6 +535,7 @@ class _FinanceArApOverviewPageState
             if (raw is! Map) continue;
             final partyType = raw['partyType']?.toString();
             if (partyType != 'CLIENT' && partyType != 'SUPPLIER') continue;
+            if (_isReceivableSummary && partyType != 'CLIENT') continue;
             final categoryId = raw['categoryId']?.toString().trim();
             categoryIds.add(
               categoryId == null || categoryId.isEmpty ? null : categoryId,
@@ -475,7 +561,7 @@ class _FinanceArApOverviewPageState
         return;
       }
       final resolution = resolveHierarchySearch<ProductCategoryNode>(
-        roots: _forest,
+        roots: _isReceivableSummary ? [_forest.first] : _forest,
         query: query,
         contentCategoryIds: categoryIds,
       );
@@ -501,6 +587,7 @@ class _FinanceArApOverviewPageState
     'dateFrom': _fmt(_from),
     'dateTo': _fmt(_to),
     'displayMode': _displayMode,
+    'layout': _layout,
     if (_keyword.isNotEmpty) 'keyword': _keyword,
     if (_effectiveCategoryType != null) 'categoryType': _effectiveCategoryType,
     if (_effectiveCategoryId != null) 'categoryId': _effectiveCategoryId,
@@ -518,6 +605,7 @@ class _FinanceArApOverviewPageState
         readEpoch == ref.read(exportContextEpochProvider);
     setState(() {
       _loading = true;
+      _partialData = null;
       _reportError = null;
     });
     final api = ref.read(apiClientProvider);
@@ -562,6 +650,7 @@ class _FinanceArApOverviewPageState
           context.appError(error.message);
           setState(() {
             _data = null;
+            _partialData = null;
             _lastColumns = const [];
             _lastColumnSearchKeys = const {};
             _acceptedReadQuery = null;
@@ -569,16 +658,26 @@ class _FinanceArApOverviewPageState
           });
         },
       );
+      // Reuse the shared complete reader's validated, throttled prefix. It
+      // remains pending until accept below, with no second batching policy.
+      final progressive = PagedReadProgressiveSink((partial) {
+        if (!current() || partial is! ReportPageSnapshot) return;
+        setState(() => _partialData = partial.snapshot);
+      });
       final snapshot =
-          await readViewActivity.runRead(
-                current,
-                () => read.read(requestedPage),
-                slot: 'report',
+          await PagedReadIntent.progressiveRead(
+                progressive,
+                () => readViewActivity.runRead(
+                  current,
+                  () => read.read(requestedPage),
+                  slot: 'report',
+                ),
               )
               as ReportPageSnapshot;
       if (!mounted || !current() || !_reportRead.accept(snapshot)) return;
       setState(() {
         _data = snapshot.snapshot;
+        _partialData = null;
         _page = snapshot.page;
         _acceptedReadQuery = readIdentity;
         _lastColumns = _data!.columns;
@@ -589,12 +688,18 @@ class _FinanceArApOverviewPageState
       });
     } catch (e) {
       if (isRetiredViewRead(e)) {
-        if (mounted && current()) setState(() => _loading = false);
+        if (mounted && current()) {
+          setState(() {
+            _loading = false;
+            _partialData = null;
+          });
+        }
         return;
       }
       if (!mounted || !current()) return;
       context.appError(humanErrorMessage(e) ?? '应收应付没有加载出来，请稍后重试');
       setState(() {
+        _partialData = null;
         if (pagedReadAccessDenied(e)) {
           _reportRead.invalidate();
           _data = null;
@@ -653,6 +758,7 @@ class _FinanceArApOverviewPageState
     'dateFrom': _fmt(_from),
     'dateTo': _fmt(_to),
     'displayMode': _displayMode,
+    'layout': _layout,
     if (_keyword.isNotEmpty) 'keyword': _keyword,
     if (_effectiveCategoryType != null) 'categoryType': _effectiveCategoryType,
     if (_effectiveCategoryId != null) 'categoryId': _effectiveCategoryId,
@@ -736,7 +842,7 @@ class _FinanceArApOverviewPageState
             key: const ValueKey('finance-ar-ap-unified-search'),
             controller: _treeSearchController,
             isQueryPending: _isQueryPending,
-            hint: '搜索分类/往来单位名称或编号',
+            hint: _searchHint,
             onSubmitted: (_) => _queueUnifiedSearch(immediate: true),
           ),
         ),
@@ -761,7 +867,7 @@ class _FinanceArApOverviewPageState
               ),
               const SizedBox(height: 12),
               OutlinedButton.icon(
-                onPressed: _loadTree,
+                onPressed: () => _withReadWait(_loadTree),
                 icon: const Icon(Icons.refresh_rounded, size: 18),
                 label: const Text('重试'),
               ),
@@ -787,7 +893,7 @@ class _FinanceArApOverviewPageState
               key: const ValueKey('finance-ar-ap-compact-search'),
               controller: _searchController,
               isQueryPending: _isQueryPending,
-              hint: '搜索分类/往来单位名称或编号',
+              hint: _searchHint,
               onSubmitted: (_) => _queueUnifiedSearch(immediate: true),
             ),
           ),
@@ -807,16 +913,16 @@ class _FinanceArApOverviewPageState
           UtenRefreshButton(
             busy: _loading || _treeLoading,
             // 整页刷新：分类树 + 台账（与 initState 同口径）。
-            onRefresh: () async {
+            onRefresh: () => _withReadWait(() async {
               await Future.wait([_loadTree(), _load()]);
-            },
+            }),
           ),
         ],
       ),
       body: Stack(
         children: [
           SafeArea(child: body),
-          if (_loading)
+          if (_manualRefreshing)
             const UtenBusyOverlay(title: '正在查询报表', showDoNotLeaveHint: false),
         ],
       ),
@@ -833,6 +939,24 @@ class _FinanceArApOverviewPageState
   }
 
   List<Widget> _buildFilters() => [
+    UtenFilterFieldTheme(
+      child: SizedBox(
+        width: 200,
+        child: UtenDropdownField(
+          key: const ValueKey('finance-ar-ap-layout'),
+          label: '报表视图',
+          value: _layout,
+          allowClear: false,
+          searchable: false,
+          menuMatchContentWidth: true,
+          items: const [
+            UtenDropdownItem(value: _receivableSummaryLayout, label: '应收款汇总表'),
+            UtenDropdownItem(value: _balanceLayout, label: '往来余额'),
+          ],
+          onChanged: _onLayoutChanged,
+        ),
+      ),
+    ),
     FinanceDateRangeFilter(
       from: _from,
       to: _to,
@@ -854,11 +978,13 @@ class _FinanceArApOverviewPageState
           label: '显示范围',
           searchable: false,
           menuMatchContentWidth: true,
-          items: const [
-            UtenDropdownItem(value: 'ALL', label: '全部显示'),
-            UtenDropdownItem(value: 'ANY', label: '应收≠0或应付≠0'),
-            UtenDropdownItem(value: 'AR_ONLY', label: '只应收≠0'),
-            UtenDropdownItem(value: 'AP_ONLY', label: '只应付≠0'),
+          items: [
+            const UtenDropdownItem(value: 'ALL', label: '全部显示'),
+            if (!_isReceivableSummary)
+              const UtenDropdownItem(value: 'ANY', label: '应收≠0或应付≠0'),
+            const UtenDropdownItem(value: 'AR_ONLY', label: '只应收≠0'),
+            if (!_isReceivableSummary)
+              const UtenDropdownItem(value: 'AP_ONLY', label: '只应付≠0'),
           ],
           onChanged: (value) {
             if (value == null) return;
@@ -868,7 +994,7 @@ class _FinanceArApOverviewPageState
         ),
       ),
     ),
-    if (_data != null)
+    if (_acceptedQueryCurrent)
       Text(
         '共 ${_data!.total}',
         style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -893,7 +1019,8 @@ class _FinanceArApOverviewPageState
   Widget _buildTable() {
     final data = _acceptedQueryCurrent
         ? _data
-        : (_data?.pendingQuery() ??
+        : (_partialData ??
+              _data?.pendingQuery() ??
               (_loading ? _reportMetadata.loadingData : null));
     // 元数据未知时也先显示公共表壳；真实列确认后复用其布局。
     if (data == null && _lastColumns.isEmpty) {
@@ -922,7 +1049,7 @@ class _FinanceArApOverviewPageState
                 ),
                 const SizedBox(height: 12),
                 OutlinedButton.icon(
-                  onPressed: _load,
+                  onPressed: _retryReport,
                   icon: const Icon(Icons.refresh_rounded, size: 18),
                   label: const Text('重试'),
                 ),
@@ -941,7 +1068,7 @@ class _FinanceArApOverviewPageState
                     const Text('请重新查询'),
                     const SizedBox(height: 12),
                     OutlinedButton.icon(
-                      onPressed: _load,
+                      onPressed: _retryReport,
                       icon: const Icon(Icons.refresh_rounded, size: 18),
                       label: const Text('查询'),
                     ),
@@ -955,6 +1082,15 @@ class _FinanceArApOverviewPageState
           (c) => MasterColumnDef<Map<String, dynamic>>(
             key: c.key,
             label: c.label,
+            info: _isReceivableSummary
+                ? switch (c.key) {
+                    'prevBalance' => '所选开始日期之前的应收余额；日期范围按本次查询计算。',
+                    'balance' => '截至所选结束日期的本币应收余额，以服务端正式账务和已核验期初为准。',
+                    'overFloor' => '应收余额减铺底额，可为负数；不跨客户相抵计算合计。',
+                    'materialAmount' => '期末仍欠的物料款；缺少已核验分类或清偿来源时保留待核验。',
+                    _ => null,
+                  }
+                : null,
             width: (c.width ?? 120).toDouble(),
             type: c.type,
             facetCandidatesUseKeyword: true,
@@ -974,10 +1110,11 @@ class _FinanceArApOverviewPageState
         )
         .toList();
     return MasterDataTableView<Map<String, dynamic>>(
+      key: ValueKey(_layout),
       rowsController: _tableRows,
       expensiveRowMounts: false,
       tableKey:
-          'features.finance.pages.finance_ar_ap_overview_page.FinanceArApOverviewPageState._buildTable.1',
+          'features.finance.pages.finance_ar_ap_overview_page.FinanceArApOverviewPageState._buildTable.1${_isReceivableSummary ? '.receivableSummary.v1' : ''}',
       columns: columns,
       serverColumnSearchKeys: data?.columnSearchKeys ?? _lastColumnSearchKeys,
       facetPageLoaders: financeReportFacetLoaders(
@@ -998,12 +1135,15 @@ class _FinanceArApOverviewPageState
         report: 'ar-ap/overview',
         query: _exportQuery,
       ),
-      headerFilterScopeDescription: '按往来单位汇总本币余额后筛选；合计覆盖当前条件的全部单位',
+      headerFilterScopeDescription: _isReceivableSummary
+          ? '按客户汇总所选期间的本币发生额与期末余额后筛选；合计覆盖当前条件的全部客户'
+          : '按往来单位汇总本币余额后筛选；合计覆盖当前条件的全部单位',
       items: data?.rows ?? const [],
       toolbarLeadingActions: _buildFilters(),
       toolbarActions: [
         UtenPrintPreviewButton(
-          title: '应收应付',
+          enabled: _acceptedQueryCurrent && !_loading,
+          title: _reportTitle,
           subtitle: '日期 ${_fmt(_from)} ~ ${_fmt(_to)}（全部筛选结果）',
           loader: _printLoader,
           exportEndpoint: '/finance/reports/export',
@@ -1011,27 +1151,29 @@ class _FinanceArApOverviewPageState
           exportReport: _exportReport,
           exportQuery: ReportContactQuery(_exportQuery).query,
           exportBody: ReportContactQuery(_exportQuery).exportBody,
-          exportFilename: '应收应付',
+          exportFilename: _reportTitle,
           type: UtenButtonType.primary,
           size: UtenButtonSize.large,
         ),
         UtenExportButton(
+          enabled: _acceptedQueryCurrent && !_loading,
           endpoint: '/finance/reports/export',
           requiredPermission: Perm.financeReportExport,
           report: _exportReport,
           queryParams: ReportContactQuery(_exportQuery).query,
           bodyParams: ReportContactQuery(_exportQuery).exportBody,
-          filename: '应收应付',
+          filename: _reportTitle,
           type: UtenButtonType.primary,
           size: UtenButtonSize.large,
         ),
       ],
       facets: {
         ...?data?.facets,
-        'partyType': const [
-          MasterFacetBucket(value: '客户', label: '客户', count: 0),
-          MasterFacetBucket(value: '供应商', label: '供应商', count: 0),
-        ],
+        if (!_isReceivableSummary)
+          'partyType': const [
+            MasterFacetBucket(value: '客户', label: '客户', count: 0),
+            MasterFacetBucket(value: '供应商', label: '供应商', count: 0),
+          ],
       },
       nullCounts: const {},
       filters: _filters,
@@ -1039,9 +1181,10 @@ class _FinanceArApOverviewPageState
       sortColumn: _sortKey,
       sortAscending: _sortAsc,
       onSortChange: _onSortChange,
-      isLoading: _loading,
+      isLoading: _loading && (data?.rows.isEmpty ?? true),
+      loadingMore: _loading && (data?.rows.isNotEmpty ?? false),
       error: _acceptedQueryCurrent ? null : _reportError,
-      onRetry: _load,
+      onRetry: _retryReport,
       emptyMessage: _noUnifiedSearchMatches && _filters.isEmpty
           ? '未找到匹配「$_searchQuery」的分类或往来单位'
           : '暂无应收应付数据',
@@ -1049,6 +1192,7 @@ class _FinanceArApOverviewPageState
       totalPages: data?.totalPages ?? 1,
       paginationScope: (
         _reportRead.snapshotRevision,
+        _layout,
         _effectiveCategoryType,
         _effectiveCategoryId,
         _from,

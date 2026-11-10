@@ -168,6 +168,38 @@ public class FinanceReportService {
                 dateFrom, dateTo, displayMode, keyword, categoryType, categoryId, page, size, filters, sort, order);
     }
 
+    /** Explicit presentation keeps the existing balance API compatible for other consumers. */
+    @Transactional(readOnly = true)
+    public ReportTableResponse arApOverview(LocalDate dateFrom,LocalDate dateTo,String displayMode,
+            String keyword,String categoryType,UUID categoryId,int page,int size,
+            Map<String,String> filters,String sort,String order,String layout) {
+        requireCompanyWideReportAccess();
+        return arApOverviewAuthorized(dateFrom,dateTo,displayMode,keyword,categoryType,categoryId,page,size,
+                filters,sort,order,layout);
+    }
+
+    private ReportTableResponse arApOverviewAuthorized(LocalDate dateFrom,LocalDate dateTo,String displayMode,
+            String keyword,String categoryType,UUID categoryId,int page,int size,
+            Map<String,String> filters,String sort,String order,String layout) {
+        if(layout==null||layout.isBlank()||"BALANCE".equals(layout))
+            return arApOverviewAuthorized(dateFrom,dateTo,displayMode,keyword,categoryType,categoryId,page,size,filters,sort,order);
+        if(!"RECEIVABLE_SUMMARY".equals(layout))throw new ApiException(ErrorCode.VALIDATION_FAILED,"应收应付表格样式无效");
+        if(categoryType!=null&&!"CLIENT".equalsIgnoreCase(categoryType))
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,"应收款汇总表仅适用于客户类别");
+        if(dateFrom==null||dateTo==null||dateFrom.isAfter(dateTo))
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,"请选择完整且先后正确的核对期间");
+        String mode=displayMode==null||displayMode.isBlank()?"ALL":displayMode;
+        if(!java.util.Set.of("ALL","ANY","AR_ONLY","AP_ONLY").contains(mode))
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,"应收应付显示方式无效");
+        var options=new FinanceReportColumnOptions(filters,sort,order);
+        FinancePartySummaryTemplate.requireOptions(true,options);
+        if("settlement".equals(sort)||options.filters().keySet().stream().anyMatch(key->key.equals("settlement")||key.equals("search.settlement"))
+                ||FinanceReportColumnCandidates.current()!=null&&"settlement".equals(FinanceReportColumnCandidates.current().column()))
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,"当前应收款汇总表不包含结算期限列");
+        return FinancePartySummaryTemplate.receivableOverview(receivableSummaryAuthorized(keyword,dateFrom,dateTo,page,size,
+                options.filters(),sort,order,new ReceivableOverviewScope(categoryId,mode)));
+    }
+
     private ReportTableResponse arApOverviewAuthorized(
             LocalDate dateFrom, LocalDate dateTo, String displayMode,
             String keyword, String categoryType, UUID categoryId, int page, int size) {
@@ -634,7 +666,27 @@ public class FinanceReportService {
 
     private ReportTableResponse receivableSummaryAuthorized(String keyword,LocalDate from,LocalDate to,int page,int size,
             Map<String,String> headers,String sort,String order) {
-        assertOpeningWindowReplayable("AR", keyword, from, to);
+        return receivableSummaryAuthorized(keyword,from,to,page,size,headers,sort,order,null);
+    }
+
+    private record ReceivableOverviewScope(UUID categoryId,String displayMode) { }
+
+    /** Party membership is identical for history guards and the completed overview projection. */
+    private static ReportQueryKit.WhereBuilder.Built receivableOverviewParties(
+            String keyword,ReceivableOverviewScope overview,String alias) {
+        var search=new FinanceWhereBuilder("");
+        search.add("COALESCE("+alias+".is_deleted,false)=false",null,null);
+        search.search(keyword,parameter->"("+alias+".name ILIKE "+parameter+" ESCAPE '\\' OR "+alias+".code ILIKE "+parameter+" ESCAPE '\\' OR "
+                +CategoryKeywordSearch.nativeBranch("client_categories",alias+".category_id",
+                    "(name ILIKE "+parameter+" ESCAPE '\\' OR code ILIKE "+parameter+" ESCAPE '\\')")+")",alias+".name",alias+".code");
+        if(overview.categoryId()!=null)search.add(alias+".category_id IN (WITH RECURSIVE d AS (SELECT id FROM client_categories WHERE id=:overviewCategoryId "
+                +"UNION ALL SELECT cc.id FROM client_categories cc JOIN d ON cc.parent_id=d.id) SELECT id FROM d)","overviewCategoryId",overview.categoryId());
+        return search.build(null);
+    }
+
+    private ReportTableResponse receivableSummaryAuthorized(String keyword,LocalDate from,LocalDate to,int page,int size,
+            Map<String,String> headers,String sort,String order,ReceivableOverviewScope overview) {
+        assertOpeningWindowReplayable("AR", keyword, from, to,overview);
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("partyCode", "客户编号", 110),
                 ReportColumn.text("partyName", "客户简称", 160),
@@ -662,7 +714,8 @@ public class FinanceReportService {
                 ReportColumn.money("overFloor", "超出铺底额"),
                 // 财务确认：期末仍欠的物料款。缺分类/清偿依据时保留未知。
                 ReportColumn.money("materialAmount", "物料金额"),
-                ReportColumn.number("unverifiedOriginalCount", "币种/原币待核验项数").totaled("合计待核验项数"));
+                ReportColumn.number("unverifiedOriginalCount", "币种/原币待核验项数").totaled("合计待核验项数"),
+                ReportColumn.text("__partyId", ""));
         // 已证明的迁入期初取不可变余额；当前立帐仍取原额（按 bill_date 归期）。有引用明细的收款按行拆成：
         // 实际到账、费用冲销、汇兑差额、按开账汇率冲减应收；无明细的历史/预收单保留头表事实。
         // 不能用累计 amount_settled 做期间发生额。外币下的恒等式是：
@@ -760,9 +813,9 @@ public class FinanceReportService {
                     CASE WHEN p.unknown_total OR co.unknown_total THEN NULL ELSE COALESCE(p.total_posted,0)-COALESCE(co.total_applied,0) END AS "balance",
                     CASE WHEN p.unknown_total OR co.unknown_total THEN NULL ELSE COALESCE(p.total_posted,0)-COALESCE(co.total_applied,0)-COALESCE(c.credit_floor,0) END AS "overFloor",
                     material.material_local AS "materialAmount",
-                    COALESCE(p.unverified_original,0) AS "unverifiedOriginalCount"
+                    COALESCE(p.unverified_original,0) AS "unverifiedOriginalCount",c.id AS "__partyId"
                 FROM clients c
-                JOIN posting p ON p.client_id=c.id
+                %s posting p ON p.client_id=c.id
                 LEFT JOIN coll co ON co.client_id=c.id
                 LEFT JOIN material_balance material ON material.client_id=c.id
                 LEFT JOIN client_director_v d ON d.client_id=c.id
@@ -772,7 +825,18 @@ public class FinanceReportService {
                           AND em_sel.legacy_id = CASE
                               WHEN BTRIM(COALESCE(c.emp_id,'')) ~ '^[0-9]{1,9}$'
                               THEN BTRIM(c.emp_id)::int ELSE NULL END))
-                """;
+                """.formatted(overview==null?"JOIN":"LEFT JOIN");
+        if(overview!=null) {
+            var where=receivableOverviewParties(keyword,overview,"c");
+            String source=FinanceProjectedReportTable.aliasProjection(core+" WHERE TRUE "+where.sql(),cols,"receivable_overview");
+            if("AP_ONLY".equals(overview.displayMode()))source="SELECT * FROM ("+source+") overview_rows WHERE FALSE";
+            else if(!"ALL".equals(overview.displayMode()))source="SELECT * FROM ("+source+") overview_rows WHERE \"balance\" IS NULL OR \"balance\"<>0";
+            return FinanceProjectedReportTable.query(em,cols,source,query->{
+                query.setParameter("from",from);query.setParameter("to",to);
+                where.params().forEach(query::setParameter);
+            },"report.\"partyName\",report.\"partyCode\",report.\"__partyId\"",headers,java.util.Set.of(),page,size,
+                    sort,order,false,reportTotalSpecs(cols,cols));
+        }
         return executeRawPaged(cols, core, keyword, from, to, page, size, "c", documentScope,headers,sort,order);
     }
 
@@ -971,10 +1035,16 @@ public class FinanceReportService {
     }
 
     private void assertOpeningWindowReplayable(String direction, String keyword, LocalDate from, LocalDate to) {
-        assertCashBookKnown(direction, null, keyword, to);
+        assertOpeningWindowReplayable(direction,keyword,from,to,null);
+    }
+
+    private void assertOpeningWindowReplayable(String direction,String keyword,LocalDate from,LocalDate to,
+            ReceivableOverviewScope overview) {
+        assertCashBookKnown(direction, null, keyword, to,overview);
         String party = "AR".equals(direction) ? "clients" : "suppliers";
         String partyColumn = "AR".equals(direction) ? "client_id" : "supplier_id";
-        String keywordCondition = KeywordSearch.terms(keyword).isEmpty() ? "" :
+        var parties=overview==null?null:receivableOverviewParties(keyword,overview,"party");
+        String keywordCondition = parties!=null?parties.sql():KeywordSearch.terms(keyword).isEmpty() ? "" :
                 " AND (" + KeywordSearch.nativeCondition(keyword, "kw", "party.name", "party.code") + ")";
         var query = em.createNativeQuery("SELECT count(*) FROM ar_ap_ledger ledger "
                 + LegacyOpeningBalanceSql.PROOF_JOIN + " JOIN " + party + " party ON party.id=ledger." + partyColumn
@@ -982,6 +1052,7 @@ public class FinanceReportService {
                 + "((ledger.status=1 AND NOT ledger.is_deleted) OR (ledger.status=-1 AND ledger.is_deleted AND ledger.deleted_at IS NOT NULL)) AND "
                 + LegacyOpeningBalanceSql.unreplayableCondition("from", false) + keywordCondition);
         bindRaw(query, keyword, from, to);
+        if(parties!=null)parties.params().forEach(query::setParameter);
         query.setParameter("direction", direction);
         if (((Number) query.getSingleResult()).longValue() > 0) {
             throw new ApiException(ErrorCode.CONFLICT,
@@ -990,11 +1061,18 @@ public class FinanceReportService {
     }
 
     private void assertCashBookKnown(String direction,UUID partyId,String keyword,LocalDate to) {
+        assertCashBookKnown(direction,partyId,keyword,to,null);
+    }
+
+    private void assertCashBookKnown(String direction,UUID partyId,String keyword,LocalDate to,
+            ReceivableOverviewScope overview) {
         boolean receipt="AR".equals(direction);
         String table=receipt?"finance_receipts":"finance_payments", party=receipt?"clients":"suppliers";
         String column=receipt?"client_id":"supplier_id";
         String filter=partyId==null?"":" AND cash."+column+"=:pid";
-        if(!KeywordSearch.terms(keyword).isEmpty())filter+=" AND (" + KeywordSearch.nativeCondition(keyword,"kw","party.name","party.code") + ")";
+        var parties=overview==null?null:receivableOverviewParties(keyword,overview,"party");
+        if(parties!=null)filter+=parties.sql();
+        else if(!KeywordSearch.terms(keyword).isEmpty())filter+=" AND (" + KeywordSearch.nativeCondition(keyword,"kw","party.name","party.code") + ")";
         var query=em.createNativeQuery("SELECT count(*) FROM "+table+" cash JOIN "+party+" party ON party.id=cash."+column
                 +" WHERE cash.status IN(1,-1) AND NOT COALESCE(cash.is_deleted,false) AND cash.legacy_id IS NULL"
                 +" AND (CAST(:to AS date) IS NULL OR cash.bill_date<=:to) AND "
@@ -1002,6 +1080,7 @@ public class FinanceReportService {
                 +(receipt?"":" OR "+com.uten.imp.features.finance.SupplierAdvanceReplaySql.unknown("cash"))+")"+filter).setParameter("to",to);
         if(partyId!=null)query.setParameter("pid",partyId);
         KeywordSearch.bindNative(query, keyword, "kw");
+        if(parties!=null)parties.params().forEach(query::setParameter);
         if(((Number)query.getSingleResult()).longValue()>0)throw new ApiException(ErrorCode.CONFLICT,
                 "历史收付款核销的本币账面金额尚未核验，不能把未知冲减当成零重建余额");
     }
@@ -2712,7 +2791,7 @@ public class FinanceReportService {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,"所选原件只适用于其原对账单，不能套用其他报表");
         BiFunction<Integer, Integer, ReportTableResponse> loader = statementReviewId!=null?
                 (pg,sz)->statementDocuments.getObject().originalTableFor(report.substring("statements/".length()),statementReviewId,dateFrom,dateTo,partyId,currencyId,pg,sz,materialContextId,report.equals("statements/other-receivable")?allMaterialContexts:null):switch (report) {
-            case "ar-ap/overview"    -> (pg, sz) -> arApOverviewAuthorized(dateFrom, dateTo, displayMode, keyword, categoryType, categoryId, pg, sz, facets, sort, order);
+            case "ar-ap/overview"    -> (pg, sz) -> arApOverviewAuthorized(dateFrom, dateTo, displayMode, keyword, categoryType, categoryId, pg, sz, facets, sort, order,p==null?null:p.get("layout"));
             case "ar-ap/detail"      -> (pg, sz) -> arApDetailAuthorized(direction, billNo, partyId, settled, dateFrom, dateTo, keyword, facets, pg, sz, sort, order);
             case "ar-ap/order-plan"  -> (pg, sz) -> salesOrderReceivablePlanAuthorized(billNo, clientId, dateFrom, dateTo, keyword, pg, sz, sort, order,facets);
             case "ar-ap/summary"     -> (pg, sz) -> arApSummaryAuthorized(direction, dateFrom, dateTo, keyword, pg, sz,facets,sort,order);

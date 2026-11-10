@@ -36,13 +36,35 @@ import '../repositories/production_material_repository.dart';
 final _quantityTypingPattern = RegExp(r'^\d*\.?\d*$');
 
 const _dailySourceIconSize = 16.0;
+const _dailySourceDefaultWidth = 280.0;
 
 // Use the same geometry for the two rendered trailing actions and column fit.
 // TextButton.icon leaves up to 8px between its leading icon and text.
 double _dailySourceChromeWidthOf(BuildContext context) =>
     2 * UtenEditableGridCellSpec.heightOf(context) +
     _dailySourceIconSize +
-    UtenSpacing.s8;
+    UtenSpacing.s8 +
+    UtenEditableGridCellSpec.contentPadding.horizontal;
+
+// Saved widths must reserve the source code as well as all three actions.
+// The grid uses this same text measurer and scaler for its automatic fit.
+double _dailySourceMinimumWidthOf(BuildContext context) {
+  final contentWidth = utenTableCellTextWidth(
+    'ZX2026110700012345',
+    style: DefaultTextStyle.of(
+      context,
+    ).style.merge(Theme.of(context).textTheme.bodyMedium),
+    textScaler: MediaQuery.textScalerOf(context),
+  );
+  final required =
+      _dailySourceChromeWidthOf(context) +
+      UtenEditableGridCellSpec.contentPadding.horizontal +
+      contentWidth +
+      UtenSpacing.s8;
+  return required > _dailySourceDefaultWidth
+      ? required
+      : _dailySourceDefaultWidth;
+}
 
 Widget _dailySourceIconButton(
   BuildContext context, {
@@ -1872,16 +1894,13 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
     EditableGridColumn<DailyGridRow>(
       key: 'planNo',
       label: '来源子任务',
-      width: 200,
+      width: _dailySourceDefaultWidth,
       textOf: (row) =>
           row.isSubRow ? '' : (row.executionSegmentCode ?? row.planNo.text),
       listenableOf: (row) => row.planNo,
       chromeWidthOf: _dailySourceChromeWidthOf,
       // Saved narrow widths still need room for the buttons and a text slot.
-      minimumWidthOf: (context) =>
-          _dailySourceChromeWidthOf(context) +
-          UtenEditableGridCellSpec.contentPadding.horizontal +
-          UtenSpacing.s8 * 3,
+      minimumWidthOf: _dailySourceMinimumWidthOf,
       cellBuilder: (context, row) => row.isSubRow
           ? const SizedBox.shrink()
           : ValueListenableBuilder<TextEditingValue>(

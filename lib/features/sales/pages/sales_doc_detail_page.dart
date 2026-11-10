@@ -866,14 +866,15 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
   Future<void> _approve() async => _doAction(
     // 销售订单审核只让订单进入库存预留与履约链，不在此形成正式应收；
     // V294 闸门：审核后自动转发财务审核，财务确认通过前计划部不可见、不排产。
-    _cfg.type == SalesDocType.order
-        ? '审核通过后订单将生效并形成库存预留，随后提交销售负责人审核，负责人批准后转交财务；财务确认通过后计划部才可见并排产。确认审核？'
-        : _cfg.type.isShipment && _detail?.financeAudit != 1
+    _cfg.type.isShipment && _detail?.financeAudit != 1
         ? '该出货单尚未完成财务审核；所有客户都必须先由财务放行，再由仓库确认出库。确认继续审核？'
-        : '审核后将驱动下游(库存/应收)，确认审核？',
+        : '单据 ${_detail?.billNo ?? widget.id}',
     (repo) => repo.approve(widget.id),
     _cfg.type == SalesDocType.order ? '已提交销售负责人审核' : '已审核',
     reviewerResponsibility: true,
+    reviewerDescription: _cfg.type == SalesDocType.order
+        ? '订单审核后生效并形成库存预留，再经销售负责人批准、财务确认后排产。系统记录当前审核员及本次决定责任。'
+        : null,
   );
   Future<void> _reverse() async => _doAction(
     documentUnapprovalConfirmation,
@@ -1280,6 +1281,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
     Future<Object?> Function(SalesRepository) fn,
     String ok, {
     bool reviewerResponsibility = false,
+    String? reviewerDescription,
   }) async {
     if (!nativeReadCanWrite) return;
     final ownsNative = captureNativeOwnership();
@@ -1289,7 +1291,11 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
       return;
     }
     final c = reviewerResponsibility
-        ? await showNativeReadReviewerConfirm(context, message: confirm)
+        ? await showNativeReadReviewerConfirm(
+            context,
+            message: confirm,
+            responsibilityDescription: reviewerDescription,
+          )
         : await showDialog<bool>(
             context: context,
             builder: (ctx) => trackNativeReadDialog(

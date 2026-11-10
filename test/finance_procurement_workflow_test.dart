@@ -8,6 +8,46 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 
 void main() {
   test(
+    'approval summaries preserve exact quantities, units and distinct prices',
+    () {
+      final task = FinanceProcurementApprovalTask.fromJson(const {
+        'currencyName': '人民币',
+        'itemSummaries': [
+          {
+            'unitId': 'piece',
+            'unitName': '个',
+            'quantity': '9007199254740995.124',
+            'unitPrices': ['0', '0.01234567'],
+            'missingPrice': false,
+          },
+          {
+            'unitId': 'kg',
+            'unitName': '公斤',
+            'quantity': '3.14159',
+            'unitPrices': ['12.000001'],
+            'missingPrice': true,
+          },
+        ],
+      });
+      expect(task.quantitySummaryText, '9007199254740995.124 个；3.14159 公斤');
+      expect(
+        task.unitPriceSummaryText,
+        '0.00 元/个；0.01234567 元/个；12.000001 元/公斤；未记录单价/公斤',
+      );
+      final legacy = FinanceProcurementApprovalTask.fromJson(const {});
+      expect(legacy.quantitySummaryText, '—');
+      expect(legacy.unitPriceSummaryText, '—');
+      final unknown = FinanceProcurementApprovalTask.fromJson(const {
+        'itemSummaries': [
+          {'quantity': null, 'unitPrices': <String>[], 'missingPrice': true},
+        ],
+      });
+      expect(unknown.quantitySummaryText, '未记录 单位未记录');
+      expect(unknown.unitPriceSummaryText, '未记录单价/单位未记录');
+    },
+  );
+
+  test(
     'financial tax is exact, permits zero and rejects invalid values before HTTP',
     () async {
       final requests = <RequestOptions>[];

@@ -8,6 +8,33 @@ import 'package:uten_imp/shared/providers/session_provider.dart';
 
 void main() {
   testWidgets(
+    'boxed responsibility uses the same adjacent hint as inline identity',
+    (tester) async {
+      const detail = '当前审核员承担本次放行责任';
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [sessionProvider.overrideWith(_ReviewerSession.new)],
+          child: const MaterialApp(
+            home: Scaffold(
+              body: UtenReviewerResponsibilityNotice(
+                actionLabel: '财务确认',
+                description: detail,
+              ),
+            ),
+          ),
+        ),
+      );
+      expect(find.text('审核员：张三(QA001)'), findsOneWidget);
+      expect(find.text(detail), findsNothing);
+      expect(find.byType(UtenFieldHintIcon), findsOneWidget);
+      await tester.tap(find.byType(UtenFieldHintIcon));
+      await tester.pumpAndSettle();
+      expect(find.text(detail), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
     'inline reviewer identity stays beside its title with accessible responsibility disclosure at large text',
     (tester) async {
       tester.view.physicalSize = const Size(360, 640);

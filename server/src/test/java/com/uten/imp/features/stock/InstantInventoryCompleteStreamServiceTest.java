@@ -56,7 +56,8 @@ class InstantInventoryCompleteStreamServiceTest {
         TransactionSynchronizationManager.setCurrentTransactionIsolationLevel(Connection.TRANSACTION_REPEATABLE_READ);
         when(pages.readWithProof(any(), any(), any())).thenAnswer(call -> {
             call.getArgument(1, Runnable.class).run();
-            return proof.snapshot(call.getArgument(2, BiFunction.class).apply(proof, (Runnable) () -> { }));
+            BiFunction<VersionedSummaryPages.ReadProof, Runnable, ?> project = call.getArgument(2);
+            return proof.snapshot(project.apply(proof, () -> { }));
         });
     }
 
@@ -74,10 +75,12 @@ class InstantInventoryCompleteStreamServiceTest {
 
     /** Rows are placeholders; the stream owns frame shape, not business mapping. */
     private static InstantInventoryRow row(int index) {
-        return new InstantInventoryRow(UUID.nameUUIDFromBytes(("row" + index).getBytes()),
+        var row = new InstantInventoryRow(UUID.nameUUIDFromBytes(("row" + index).getBytes()),
                 null, null, null, null, "name-" + index, null, null, null, null,
                 null, BigDecimal.ZERO, null, null, "code-" + index, null, null,
                 null, null, false, false, null, null, false);
+        row.setCategoryId(UUID.nameUUIDFromBytes("category".getBytes()));
+        return row;
     }
 
     private void serve(int total) {
@@ -144,6 +147,16 @@ class InstantInventoryCompleteStreamServiceTest {
         assertThat(frames.get(0).get("value").get("items")).isEmpty();
         assertThat(frames.get(1).get("type").asText()).isEqualTo("complete");
         assertThat(frames.get(1).get("total").asLong()).isZero();
+    }
+
+    @Test void categoryIdentityIsPreservedInTheExistingSingleScanStream() throws Exception {
+        serve(1);
+        var response = new MockHttpServletResponse();
+        service.stream(request(1000, null), null, response);
+        var frames = frames(response);
+        assertThat(frames.getFirst().path("value").path("items").get(0).path("categoryId").asText())
+                .isEqualTo(UUID.nameUUIDFromBytes("category".getBytes()).toString());
+        assertThat(frames.getLast().path("type").asText()).isEqualTo("complete");
     }
 
     @Test void shortFailingReadWritesOneErrorFrame() throws Exception {

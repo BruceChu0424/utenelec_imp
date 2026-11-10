@@ -167,9 +167,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：`clients/windows_legacy/progress/evidence/business-auxiliary-references-20261101.json`；`clients/windows_legacy/progress/evidence/internal-feedback-20261104.json`；`clients/windows_legacy/progress/contracts/subcontract-actual-receipt-v2.json`。
+证据：`clients/windows_legacy/progress/evidence/business-auxiliary-references-20261101.json`；`clients/windows_legacy/progress/evidence/internal-feedback-20261104.json`；`clients/windows_legacy/progress/contracts/subcontract-actual-receipt-v2.json`；`docs/99-项目治理/2026-11-10-截图批注补齐与本地主链整合.md`。
 
-接续/限制：尚未迁移；2026-10-31修复权限/读取范围更新后名称服务重建造成空仓库快照；原生须按当前身份加载真实仓库标记，区分错误/空结果并支持重试；见2026-10-31仓库选仓与车间任务导出记录。；2026-11-01 业务辅助选择改用已有业务动作授权的最小引用，人员仅工号、姓名、部门、职位；本次未实施或验收此WPF任务的原生增量，既有状态与DoD保留。见业务辅助引用证据及治理记录。；2026-11-05 内部测试反馈（E-INTERNAL-FEEDBACK-20261104）：采购/委外到货须共用单重与总重精确换算，按本行实物数含赠品与本行单位，包装换算不重复乘，循环比值只作近似显示不改原总重；单重末列/原重量位置及草稿保留。收货人候选/回显走WAREHOUSE_ARRIVAL_RECEIVER业务目的，不要求employee:view，姓名/工号晚回显不丢刚选人员，需回归取消/权限变化/未知提交。 WPF本项保持todo，原owner/DoD/依赖/nativeTargets保留，Flutter/后端检查不构成本项或Win7验收。；2026-11-06 E-SUBCONTRACT-ACTUAL-RECEIPT-V2：损耗为最大供料预算，成品目标不减；1000目标/10%供料1100时实际1000～1100正常。回厂实收由人员填写，基础用料、实际损耗、退料及余料分开，历史v1切片保留；分析与私有补单遵循服务端同源精确合同。Web/Flutter已实施的源与共享样例见subcontract-actual-receipt-v2合同；本原生业务未迁移，原status/owner/依赖/DoD保持，不开放占位写入。Win7目标机及完整ERP未验收。；2026-11-06 任务徽章与物料准备回归。原生采购及委外到货登记仍待迁移。单重列紧接实称重量，原布局偏好按版本迁移。本轮未验收本原生业务或 Win7 真机。。
+接续/限制：尚未迁移；2026-10-31修复权限/读取范围更新后名称服务重建造成空仓库快照；原生须按当前身份加载真实仓库标记，区分错误/空结果并支持重试；见2026-10-31仓库选仓与车间任务导出记录。；2026-11-01 业务辅助选择改用已有业务动作授权的最小引用，人员仅工号、姓名、部门、职位；本次未实施或验收此WPF任务的原生增量，既有状态与DoD保留。见业务辅助引用证据及治理记录。；2026-11-05 内部测试反馈（E-INTERNAL-FEEDBACK-20261104）：采购/委外到货须共用单重与总重精确换算，按本行实物数含赠品与本行单位，包装换算不重复乘，循环比值只作近似显示不改原总重；单重末列/原重量位置及草稿保留。收货人候选/回显走WAREHOUSE_ARRIVAL_RECEIVER业务目的，不要求employee:view，姓名/工号晚回显不丢刚选人员，需回归取消/权限变化/未知提交。 WPF本项保持todo，原owner/DoD/依赖/nativeTargets保留，Flutter/后端检查不构成本项或Win7验收。；2026-11-06 E-SUBCONTRACT-ACTUAL-RECEIPT-V2：损耗为最大供料预算，成品目标不减；1000目标/10%供料1100时实际1000～1100正常。回厂实收由人员填写，基础用料、实际损耗、退料及余料分开，历史v1切片保留；分析与私有补单遵循服务端同源精确合同。Web/Flutter已实施的源与共享样例见subcontract-actual-receipt-v2合同；本原生业务未迁移，原status/owner/依赖/DoD保持，不开放占位写入。Win7目标机及完整ERP未验收。；2026-11-06 任务徽章与物料准备回归。原生采购及委外到货登记仍待迁移。单重列紧接实称重量，原布局偏好按版本迁移。本轮未验收本原生业务或 Win7 真机。；2026-11-10 补交11图：本页同责确认弹窗去重复流程段落，必要说明用事实标签旁提示icon；保留审核身份、数量精度、真实放行/跨仓/赠品收费/隐藏选择及未知提交合同；原生业务状态不提升。。
 
 ## W7-BIZ-223
 
@@ -240,9 +240,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：`clients/windows_legacy/progress/evidence/internal-feedback-20261104.json`。
+证据：`clients/windows_legacy/progress/evidence/internal-feedback-20261104.json`；`docs/99-项目治理/2026-11-10-截图批注补齐与本地主链整合.md`。
 
-接续/限制：尚未迁移；先做动作/合同审计。；2026-11-05 内部测试反馈（E-INTERNAL-FEEDBACK-20261104）：自制/塑胶成品到货须接同一单重/总重控制器与精确草稿契约，实物数量含赠品、本行单位与包装只换算一次，反算近似不覆盖权威总重，新增单重置末、原重量列保留。实际仓库入库/收货人业务权限与异步回显继续按源合同办理，不因共享后端假定原生入口已迁移。 WPF本项保持todo，原owner/DoD/依赖/nativeTargets保留，Flutter/后端检查不构成本项或Win7验收。；2026-11-06 任务徽章与物料准备回归。原生产成品登记仍待迁移。单重列紧接实称重量，与其它到货登记共用布局合同。本轮未验收本原生业务或 Win7 真机。。
+接续/限制：尚未迁移；先做动作/合同审计。；2026-11-05 内部测试反馈（E-INTERNAL-FEEDBACK-20261104）：自制/塑胶成品到货须接同一单重/总重控制器与精确草稿契约，实物数量含赠品、本行单位与包装只换算一次，反算近似不覆盖权威总重，新增单重置末、原重量列保留。实际仓库入库/收货人业务权限与异步回显继续按源合同办理，不因共享后端假定原生入口已迁移。 WPF本项保持todo，原owner/DoD/依赖/nativeTargets保留，Flutter/后端检查不构成本项或Win7验收。；2026-11-06 任务徽章与物料准备回归。原生产成品登记仍待迁移。单重列紧接实称重量，与其它到货登记共用布局合同。本轮未验收本原生业务或 Win7 真机。；2026-11-10 补交11图：本页同责确认弹窗去重复流程段落，必要说明用事实标签旁提示icon；保留审核身份、数量精度、真实放行/跨仓/赠品收费/隐藏选择及未知提交合同；原生业务状态不提升。。
 
 ## W7-BIZ-181
 
@@ -714,9 +714,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：`clients/windows_legacy/progress/evidence/warehouse-inbound-progress-20261102.json`；`clients/windows_legacy/progress/contracts/subcontract-actual-receipt-v2.json`。
+证据：`clients/windows_legacy/progress/evidence/warehouse-inbound-progress-20261102.json`；`clients/windows_legacy/progress/contracts/subcontract-actual-receipt-v2.json`；`docs/99-项目治理/2026-11-10-截图批注补齐与本地主链整合.md`。
 
-接续/限制：尚未迁移；先做动作/合同审计。；2026-11-02 采购/委外新增精确已入库、合格待入库、剩余待退进度及双击原办理/退回导航合同；WPF 本入口仍未迁移，状态/DoD不变，接入时保留原owner/权限/版本与未知提交保护。见入库退回进度实施记录。；2026-11-06 E-SUBCONTRACT-ACTUAL-RECEIPT-V2：采购/委外到货登记与IQC合格入库确认共用数量摘要，合法精确原量完整换行显示；按实际回厂、合格入库更新需求与库存，不以供料预算代实收。Exact原文、权限、草稿及未知提交保留；原生此入口仍未迁移，原status/owner/依赖/DoD不变，Win7目标机/完整ERP未验收。。
+接续/限制：尚未迁移；先做动作/合同审计。；2026-11-02 采购/委外新增精确已入库、合格待入库、剩余待退进度及双击原办理/退回导航合同；WPF 本入口仍未迁移，状态/DoD不变，接入时保留原owner/权限/版本与未知提交保护。见入库退回进度实施记录。；2026-11-06 E-SUBCONTRACT-ACTUAL-RECEIPT-V2：采购/委外到货登记与IQC合格入库确认共用数量摘要，合法精确原量完整换行显示；按实际回厂、合格入库更新需求与库存，不以供料预算代实收。Exact原文、权限、草稿及未知提交保留；原生此入口仍未迁移，原status/owner/依赖/DoD不变，Win7目标机/完整ERP未验收。；2026-11-10 补交11图：本页同责确认弹窗去重复流程段落，必要说明用事实标签旁提示icon；保留审核身份、数量精度、真实放行/跨仓/赠品收费/隐藏选择及未知提交合同；原生业务状态不提升。。
 
 ## W7-BIZ-201
 

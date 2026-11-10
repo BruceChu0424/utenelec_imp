@@ -444,7 +444,7 @@ public class ProcurementFinanceApprovalService {
             int page, int size, String orderType, String keyword,
             String sort, String order, String billNo, String status) {
         int safePage = Math.max(1, page);
-        int safeSize = Math.max(1, Math.min(size, 200));
+        int safeSize = Math.max(1, Math.min(size, com.uten.imp.common.web.Pageables.MAX_PAGE_SIZE));
         // 类型分段（全部/采购/委外）：空 = 全部；非法值 fail-closed。
         String normalizedType = normalizeOrderType(orderType);
         String normalizedKeyword = normalizeKeyword(keyword);
@@ -460,11 +460,11 @@ public class ProcurementFinanceApprovalService {
             TaskKeywordSearch.appendRank(params, normalizedKeyword, TASK_SEARCH_FIELDS.length);
         }
         params.add(safeSize);
-        params.add((safePage - 1) * safeSize);
+        params.add(((long) safePage - 1) * safeSize);
         List<String> allowedActions = currentReviewerActions();
         // V835 折合本币：财务已定值(finance_total_local)优先，未定回落提交快照值
         // (amount_snapshot)——待审 case 的 finance_total_local 恒为空，口径向前兼容。
-        List<ApprovalTask> items = jdbc.query("""
+        List<ApprovalTask> items = jdbc.query(("""
                 SELECT c.id AS case_id,
                        c.order_type, c.status,c.request_type,
                        c.submission_snapshot #>> '{closureRequest,executionMode}' AS closure_execution_mode,
@@ -506,7 +506,8 @@ public class ProcurementFinanceApprovalService {
                        (SELECT min((elem ->> 'allowedLossPct')::numeric)
                           FROM jsonb_array_elements(COALESCE(c.display_snapshot, c.submission_snapshot) -> 'items') elem) AS tolerance_min_subcontract,
                        (SELECT max((elem ->> 'allowedLossPct')::numeric)
-                          FROM jsonb_array_elements(COALESCE(c.display_snapshot, c.submission_snapshot) -> 'items') elem) AS tolerance_max_subcontract
+                          FROM jsonb_array_elements(COALESCE(c.display_snapshot, c.submission_snapshot) -> 'items') elem) AS tolerance_max_subcontract,
+                       """ + TASK_COMMERCIAL_ITEMS_SQL + """
                 FROM %2$s c
                 LEFT JOIN %3$s po
                   ON c.order_type = 'PURCHASE' AND po.id = c.order_id
@@ -520,7 +521,7 @@ public class ProcurementFinanceApprovalService {
                   ON submitter.id = c.submitted_by_employee_id
                 LEFT JOIN currencies currency
                   ON currency.id = CAST(c.submission_snapshot ->> 'currencyId' AS uuid)
-                WHERE """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("procurement_order_qty_change_logs"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("procurement_order_approval_cases"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("purchase_orders"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("subcontract_orders")) + queueStatusFilter(normalizedStatus) + filters.sql() + ordering + """
+                WHERE """).formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("procurement_order_qty_change_logs"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("procurement_order_approval_cases"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("purchase_orders"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("subcontract_orders")) + queueStatusFilter(normalizedStatus) + filters.sql() + ordering + """
                 LIMIT ? OFFSET ?
                 """,
                 (rs, rowNum) -> {
@@ -558,7 +559,8 @@ public class ProcurementFinanceApprovalService {
                             ? rs.getBigDecimal("tolerance_max_purchase")
                             : rs.getBigDecimal("tolerance_max_subcontract"),
                         "PENDING".equals(rs.getString("status")) && "ORDER".equals(rs.getString("request_type")) ? allowedActions : List.of(),
-                        rs.getString("status"),rs.getString("request_type"),rs.getString("closure_execution_mode"));
+                        rs.getString("status"),rs.getString("request_type"),rs.getString("closure_execution_mode"),
+                        ProcurementApprovalTaskSummary.fromSnapshotItems(rs.getString("commercial_items"), objectMapper));
                 },
                 params.toArray());
         int totalPages = total == 0
@@ -567,6 +569,20 @@ public class ProcurementFinanceApprovalService {
         return new PageResponse<>(
                 items, safePage, safeSize, total, totalPages);
     }
+
+    // A single list query reads frozen line facts; legacy labels follow the review fallback.
+    static final String TASK_COMMERCIAL_ITEMS_SQL = """
+            (SELECT jsonb_agg(jsonb_build_object(
+                        'unitId', elem ->> 'unitId',
+                        'unitName', CASE WHEN c.display_snapshot IS NOT NULL
+                            THEN elem ->> 'unitName' ELSE summary_unit.name END,
+                        'quantity', elem ->> 'qty',
+                        'price', elem ->> 'price') ORDER BY ord)::text
+               FROM jsonb_array_elements(COALESCE(c.display_snapshot, c.submission_snapshot) -> 'items')
+                    WITH ORDINALITY AS summary_item(elem, ord)
+               LEFT JOIN units summary_unit ON summary_unit.id = NULLIF(elem ->> 'unitId', '')::uuid
+            ) AS commercial_items
+            """;
 
     /** 待审任务过滤基座（2026-09-25 单号列统一）：类型/关键字/订货单号等值筛选的
      *  WHERE 片段与参数。列表 / 计数 / facets 三处共用同一份文本。 */

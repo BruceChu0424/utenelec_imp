@@ -430,6 +430,7 @@ class _WarehouseQualityResultDetailPageState
             label: '本次入库',
             value:
                 '${items.length} 条放行明细 · ${items.map((item) => item.warehouseId).toSet().length} 个仓库',
+            info: '按本次确认的库位增加可用库存，并推进对应生产供给。',
           ),
           UtenConfirmationFact(
             label: '实收数量',
@@ -443,8 +444,25 @@ class _WarehouseQualityResultDetailPageState
               ),
             ),
           ),
+          if (selected.any((draft) => draft.slice.quantityTranche == 'GIFT'))
+            for (final tranche
+                in selected.map((draft) => draft.slice.quantityTranche).toSet())
+              UtenConfirmationFact(
+                label:
+                    '${selected.firstWhere((draft) => draft.slice.quantityTranche == tranche).slice.quantityTrancheLabel}数量',
+                value: exactMeasurementTotalsText(
+                  selected
+                      .where((draft) => draft.slice.quantityTranche == tranche)
+                      .map(
+                        (draft) => ExactMeasuredAmount(
+                          value: draft.quantity.text.trim(),
+                          unitId: draft.slice.unitId,
+                          unitName: draft.slice.unitName,
+                        ),
+                      ),
+                ),
+              ),
         ],
-        consequences: const ['按本次确认的库位增加可用库存，并推进对应生产供给。'],
       ),
     );
     requestScope.checkCurrent();

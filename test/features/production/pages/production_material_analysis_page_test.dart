@@ -5009,6 +5009,13 @@ void main() {
     await tester.tap(submit);
     await tester.pumpAndSettle();
     expect(find.text('本次下单是否使用可用数量抵扣？'), findsNothing);
+    final confirmationBody = tester
+        .widget<Text>(find.byKey(const Key('material-submit-confirm-body')))
+        .textSpan!
+        .toPlainText();
+    expect(confirmationBody, contains('共 1 种'));
+    expect(confirmationBody, contains('采购'));
+    expect(confirmationBody, isNot(contains('未选中的下层物料')));
     final methodField = find.byKey(
       const ValueKey(
         'material-analysis-order-method-NODE|buy-child-action|buy-child',
@@ -9260,7 +9267,7 @@ void main() {
         );
       }
 
-      // Both real category groups use the shared outline and desktop36 role.
+      // Both real category groups share the table action height and outline.
       // The preserved legacy item keys now identify their complete labels.
       final setupRequestCount = harness.requests.length;
       final setupPosts = harness.requests
@@ -9279,7 +9286,12 @@ void main() {
       final theme = Theme.of(tester.element(all));
       final hit = find.ancestor(of: all, matching: find.byType(InkWell)).first;
       expect(tester.widget<Text>(all).data, '全部 BOM 3');
-      expect(tester.getSize(hit).height, UtenFilterRow.minHeight);
+      final fullscreen = find
+          .ancestor(of: find.text('全屏'), matching: find.byType(UtenButton))
+          .first;
+      final fullscreenRect = tester.getRect(fullscreen);
+      expect(tester.getSize(hit).height, fullscreenRect.height);
+      expect(tester.getRect(hit).top, closeTo(fullscreenRect.top, 0.5));
       expect(
         tester
             .widget<Material>(
@@ -9336,8 +9348,15 @@ void main() {
                   .first,
             )
             .height,
-        UtenFilterRow.minHeight,
+        fullscreenRect.height,
       );
+      final layoutHit = find
+          .ancestor(
+            of: find.byKey(const ValueKey('material-bom-layout-product')),
+            matching: find.byType(InkWell),
+          )
+          .first;
+      expect(tester.getRect(layoutHit).top, closeTo(fullscreenRect.top, 0.5));
 
       // 布局切换组：按产品看/按物料汇总 左右各一条竖分割线。
       final group = find.byKey(const Key('material-bom-layout-switch-group'));
@@ -12538,6 +12557,10 @@ String? _lastNotice(WidgetTester tester) {
 /// 点「提交采购/委外」按钮后弹总结确认对话框（品种数+合计；数量编辑
 /// 已前移到表格行内）；测试默认全量提交，直接点确认。
 Future<void> _confirmSupplyQuantityDialog(WidgetTester tester) async {
+  expect(
+    find.textContaining('未选中的下层物料会在下单后重新核对', findRichText: true),
+    findsNothing,
+  );
   final confirm = find.descendant(
     of: find.byType(AlertDialog),
     matching: find.text('确认下单'),

@@ -186,6 +186,47 @@ void main() {
 
       Future<void> inspect(String mode) async {
         expect(tester.takeException(), isNull);
+        final selection = find.byKey(const Key('uten-date-selection'));
+        expect(
+          tester.widget<Semantics>(selection).properties.label,
+          '2026/03/01 - 2026/03/25',
+          reason: 'the accessible date stays complete after visual fitting',
+        );
+        final valueBounds = tester.getRect(selection);
+        final values = find.descendant(
+          of: selection,
+          matching: find.byType(Text),
+        );
+        expect(values.evaluate().length, inInclusiveRange(1, 2));
+        for (var index = 0; index < values.evaluate().length; index++) {
+          final value = values.at(index);
+          final text = tester.widget<Text>(value);
+          expect(text.maxLines, 1);
+          expect(text.softWrap, isFalse);
+          expect(
+            text.data,
+            anyOf('2026/03/01 - 2026/03/25', '2026/03/01 -', '2026/03/25'),
+          );
+          final paragraph = tester.renderObject<RenderParagraph>(
+            find.descendant(of: value, matching: find.byType(RichText)),
+          );
+          expect(paragraph.didExceedMaxLines, isFalse);
+          expect(
+            tester.getRect(value).right,
+            lessThanOrEqualTo(valueBounds.right + 0.5),
+          );
+          if (scenario.name == 'small-large-text') {
+            final effectiveFont =
+                paragraph.textScaler.scale(text.style!.fontSize!) *
+                paragraph.getTransformTo(null).getMaxScaleOnAxis();
+            expect(
+              effectiveFont,
+              greaterThan(14 * scenario.scale * 1.1),
+              reason:
+                  'fitted dates remain prominent above the original body size',
+            );
+          }
+        }
         if (const bool.fromEnvironment('UI_CAPTURE')) {
           await tester.runAsync(() async {
             final boundary =

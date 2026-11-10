@@ -6,6 +6,9 @@ import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/feedback/uten_progress_dialog.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
+import 'package:uten_imp/core/theme/dark_theme.dart';
+
+import '../../support/dialog_fixture_capture.dart';
 
 final _zh = lookupAppLocalizations(const Locale('zh'));
 
@@ -96,6 +99,76 @@ Future<_Launch> _open(
 }
 
 void main() {
+  if (dialogFixtureCaptureEnabled) {
+    setUpAll(loadDialogFixtureFonts);
+    for (final scenario in [
+      (name: 'light-wide', size: const Size(1000, 800), dark: false),
+      (name: 'dark-wide', size: const Size(1000, 800), dark: true),
+      (name: 'dark-narrow', size: const Size(390, 844), dark: true),
+    ]) {
+      testWidgets('capture clear shared progress ${scenario.name}', (
+        tester,
+      ) async {
+        await tester.binding.setSurfaceSize(scenario.size);
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        final driver = _Driver();
+        await tester.pumpWidget(
+          dialogFixtureBoundary(
+            MaterialApp(
+              debugShowCheckedModeBanner: false,
+              locale: const Locale('zh'),
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+              theme: scenario.dark ? buildDarkTheme() : buildLightTheme(),
+              home: Builder(
+                builder: (context) => Scaffold(
+                  body: TextButton(
+                    onPressed: () => showUtenProgress<String>(
+                      context,
+                      title: '正在导出表格',
+                      action: driver.call,
+                    ),
+                    child: const Text('打开'),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.tap(find.text('打开'));
+        await tester.pump();
+        await tester.pump();
+        driver.session!.count(2700, 31948, status: '正在读取数据');
+        await tester.pump(const Duration(milliseconds: 600));
+        expect(tester.getSize(find.byType(UtenProgressBar)).height, 12);
+        await captureDialogFixture(
+          tester,
+          'progress-${scenario.name}',
+          outputDirectory: 'build/common-visual-review',
+        );
+        driver.completer.complete('done');
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
+
+  testWidgets(
+    'shared progress bar stays clearly visible in unknown and counted stages',
+    (tester) async {
+      final driver = _Driver();
+      final launch = await _open(tester, driver);
+      expect(tester.getSize(find.byType(UtenProgressBar)).height, 12);
+      driver.session!.count(1, 10);
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(tester.getSize(find.byType(UtenProgressBar)).height, 12);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      driver.completer.complete('done');
+      await tester.pumpAndSettle();
+      expect(await launch.result, 'done');
+    },
+  );
+
   testWidgets('percent mode shows figure, detail, elapsed and cancel; '
       'never a spinner', (tester) async {
     final driver = _Driver();
@@ -216,6 +289,82 @@ void main() {
     expect(find.text('正在导出货品资料'), findsNothing);
     expect(launch.error, isA<StateError>());
   });
+
+  for (final synchronous in [false, true]) {
+    testWidgets(
+      'cross error-zone frame returns ${synchronous ? 'synchronous' : 'asynchronous'} original failure to the caller exactly once',
+      (tester) async {
+        final failure = StateError('request rejected');
+        final escaped = <Object>[];
+        late Completer<void> release;
+        late Zone callerZone;
+        Zone? actionZone;
+        Zone? resultZone;
+        Object? received;
+        var calls = 0;
+        await tester.pumpWidget(
+          _app(
+            Builder(
+              builder: (context) => TextButton(
+                onPressed: () => runZonedGuarded<void>(() {
+                  callerZone = Zone.current;
+                  showUtenProgress<String>(
+                    context,
+                    title: '跨错误域请求',
+                    action: (progress) {
+                      calls++;
+                      actionZone = Zone.current;
+                      if (synchronous) throw failure;
+                      release = Completer<void>();
+                      return release.future.then<String>((_) => throw failure);
+                    },
+                  ).then<void>(
+                    (_) {},
+                    onError: (Object error, StackTrace stack) {
+                      received = error;
+                      resultZone = Zone.current;
+                    },
+                  );
+                }, (error, stack) => escaped.add(error)),
+                child: const Text('start cross-zone request'),
+              ),
+            ),
+          ),
+        );
+        await tester.tap(find.text('start cross-zone request'));
+        await tester.pump();
+        await tester.pump();
+        expect(calls, 1);
+        expect(actionZone, same(callerZone));
+        if (!synchronous) release.complete();
+        // Do not use pumpAndSettle here: the broken listener leaves an animated
+        // dialog open. A bounded frame window must expose that regression.
+        for (var frame = 0; frame < 6; frame++) {
+          await tester.pump(const Duration(milliseconds: 100));
+        }
+        try {
+          expect(
+            escaped,
+            isEmpty,
+            reason:
+                'the request failure must reach its caller, not escape its error zone',
+          );
+          expect(received, same(failure));
+          expect(resultZone, same(callerZone));
+          expect(
+            calls,
+            1,
+            reason: 'handling a failed response cannot replay the command',
+          );
+          expect(find.text('跨错误域请求'), findsNothing);
+          expect(tester.takeException(), isNull);
+        } finally {
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.pump();
+        }
+      },
+    );
+  }
 
   testWidgets('long waits show a reassurance line', (tester) async {
     final driver = _Driver();

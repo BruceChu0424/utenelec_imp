@@ -74,9 +74,9 @@ public class AttachmentService implements AttachmentAccessPort {
 
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(AttachmentService.class);
 
-    /** 冷热分层的访问热度写入口；手工构造（测试）时为空即不记。 */
+    /** 冷热分层的访问热度事件出口；手工构造（测试）时为空即不记。 */
     @org.springframework.beans.factory.annotation.Autowired
-    private AttachmentUsageRecorder usageRecorder;
+    private org.springframework.context.ApplicationEventPublisher events;
 
     @Override
     @Transactional(readOnly = true)
@@ -525,16 +525,12 @@ public class AttachmentService implements AttachmentAccessPort {
     }
 
     /**
-     * 下载/预览已通过授权并写好审计后推进附件的最近使用时间（冷热分层热度）。
-     * 独立短事务、按天节流；任何失败只记日志，绝不让下载失败或重放。
+     * 下载/预览已通过授权并写好审计后，以领域事件跟进附件的最近使用时间（冷热分层热度）。
+     * 发布即返回：监听器独立短事务、按天节流并吞掉失败，下载/预览保持只读语义。
      */
     private void recordUse(UUID attachmentId) {
-        if (usageRecorder == null) return;
-        try {
-            usageRecorder.recordUse(attachmentId);
-        } catch (RuntimeException failure) {
-            log.warn("Attachment usage heat not recorded for {}: {}", attachmentId, failure.getMessage());
-        }
+        if (events == null) return;
+        events.publishEvent(new AttachmentAccessedEvent(attachmentId));
     }
 
     private void auditDownloadOrClose(InputStream input, AuthUser user, String action, UUID attachmentId) {

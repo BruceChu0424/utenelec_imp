@@ -224,7 +224,11 @@ class AttachmentRetainedHistoryPostgresTest {
     }
 
     @Test void downloadAndPreviewAdvanceUsageHeatOnTheAttachmentRowOncePerDayWithoutAuditNoise() throws Exception {
-        ReflectionTestUtils.setField(service,"usageRecorder",new AttachmentUsageRecorder(jdbc));
+        var recorder=new AttachmentUsageRecorder(jdbc);
+        ReflectionTestUtils.setField(service,"events",
+                (org.springframework.context.ApplicationEventPublisher)event -> {
+                    if (event instanceof AttachmentAccessedEvent accessed) recorder.onAccessed(accessed);
+                });
         byte[] bytes="常用合同 冷热分层热度".getBytes(StandardCharsets.UTF_8);
         Attachment row=create(bytes,AttachmentLifecycleState.CLEAN);
         assertThat(lastUsed(row)).isNull();
@@ -269,13 +273,18 @@ class AttachmentRetainedHistoryPostgresTest {
         assertThat(new AttachmentUsageRecorder(jdbc).recordUse(retained.getId())).isFalse();
         assertThat(lastUsed(retained)).isNull();
 
-        // A failing heat write never fails or replays the download itself.
-        var failing=mock(AttachmentUsageRecorder.class);
-        when(failing.recordUse(any())).thenThrow(new org.springframework.dao.QueryTimeoutException("heat write timed out"));
-        ReflectionTestUtils.setField(service,"usageRecorder",failing);
+        // A failing heat write never fails or replays the download itself; the
+        // listener swallows the failure exactly as the inline path used to.
+        var failingJdbc=mock(org.springframework.jdbc.core.JdbcTemplate.class);
+        when(failingJdbc.update(anyString(),any(Object[].class))).thenThrow(new org.springframework.dao.QueryTimeoutException("heat write timed out"));
+        var failing=new AttachmentUsageRecorder(failingJdbc);
+        ReflectionTestUtils.setField(service,"events",
+                (org.springframework.context.ApplicationEventPublisher)event -> {
+                    if (event instanceof AttachmentAccessedEvent accessed) failing.onAccessed(accessed);
+                });
         try(var input=service.openRaw(row.getStorageKey()).stream()){assertThat(input.readAllBytes()).isEqualTo(bytes);}
         assertThat(service.downloadGrant(row.getId())).isNotNull();
-        verify(failing,times(2)).recordUse(row.getId());
+        verify(failingJdbc,times(2)).update(anyString(),any(Object[].class));
     }
 
     @Test void tieringSchedulerReadsHeatFromTheAttachmentRowWithinTheNinetyDayWindow() throws Exception {

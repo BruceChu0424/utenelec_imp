@@ -41,6 +41,21 @@ public class AttachmentUsageRecorder {
         this.jdbc = jdbc;
     }
 
+    /**
+     * 下载/预览通过授权并写好审计后经 {@link AttachmentAccessedEvent} 跟进热度；
+     * 取用入口保持只读语义，与热度写入解耦（发布即返回，监听器内吞掉一切失败）。
+     */
+    @org.springframework.context.event.EventListener
+    public void onAccessed(AttachmentAccessedEvent event) {
+        try {
+            recordUse(event.attachmentId());
+        } catch (RuntimeException failure) {
+            org.slf4j.LoggerFactory.getLogger(AttachmentUsageRecorder.class)
+                    .warn("Attachment usage heat not recorded for {}: {}",
+                            event.attachmentId(), failure.getMessage());
+        }
+    }
+
     /** @return 是否真的推进了（节流、行被锁或附件不可用时为 false）。 */
     @Transactional(propagation = Propagation.REQUIRES_NEW, timeout = 5)
     public boolean recordUse(UUID attachmentId) {

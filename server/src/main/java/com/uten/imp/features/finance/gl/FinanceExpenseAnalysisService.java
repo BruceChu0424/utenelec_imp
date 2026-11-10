@@ -206,7 +206,7 @@ public class FinanceExpenseAnalysisService {
         if(!previous.isEmpty()){
             files.checkLegacy("FINANCE_EXPENSE_NOTES_REPLAY",bytes);var original=importedNotes(previous.getFirst());
             if(!original.applied()&&original.columnContractVersion()!=com.uten.imp.common.importing.ImportColumnGuard.VERSION){
-                throw invalid("原备注文件及旧检测结果是不可改写证据；请将原Excel另存为新文件后重新检测，原来源和回执保留");
+                throw invalid(com.uten.imp.common.importing.ImportColumnGuard.retiredPreviewMessage());
             }
             return original;
         }

@@ -69,7 +69,7 @@ public class FinanceAccountingImportService {
             // Completed/submitted intent remains immutable. Only an explicit new preview
             // may validate a legacy PREVIEW against its complete original workbook.
             if(previous.status().equals("PREVIEW")&&previous.source().columnContractVersion()!=com.uten.imp.common.importing.ImportColumnGuard.VERSION){
-                throw conflict("原账套文件及旧检测结果是不可改写证据；请将原Excel另存为新文件后重新检测，原批次和回执保留");
+                throw conflict(com.uten.imp.common.importing.ImportColumnGuard.retiredPreviewMessage());
             }
             return get(old.getFirst());
         }

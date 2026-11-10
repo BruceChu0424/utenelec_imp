@@ -53,7 +53,7 @@ public class GoodsCostImportService {
             files.checkLegacy("GOODS_COST_IMPORT_REPLAY",bytes);
             Preview previous=decode(old.getFirst());
             if(previous.columnContractVersion()!=com.uten.imp.common.importing.ImportColumnGuard.VERSION){
-                throw conflict("原成本文件及旧检测结果是不可改写证据；请将原Excel另存为新文件后重新检测，原来源和匹配记录保留");
+                throw conflict(com.uten.imp.common.importing.ImportColumnGuard.retiredPreviewMessage());
             }
             return previous;
         }

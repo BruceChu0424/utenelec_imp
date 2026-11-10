@@ -7,7 +7,7 @@ import 'package:uten_imp/shared/paging/scoped_paged_read_view_mixin.dart';
 // 编辑模式复用货品资料的草稿与编辑器，只修改主档库位号、归属仓库。
 // - 口径不变：分类「全部」= 不过滤，选任意层级 = 该分类子树聚合，零货品分类
 //   自动隐藏；仓库「全部」= 参与核算仓库聚合，选主仓 = 自身 + 全部子仓聚合；
-// - 右侧工具栏：货品搜索 + 仓库字段 + 库存范围开关 + 共 N 项；
+// - 左侧统一搜索分类/货品；右侧工具栏保留仓库字段、库存范围开关与完整结果计数；
 // - 表格 = 统一 MasterDataTableView：货品识别、库存数量/重量与待处理量在前，
 //   期间进出/结存、成本价/金额按业务日期范围由服务端计算，未选日期显示提示。
 //   成本列受 goods:cost:view 独立授权；页面、打印、导出共用口径。
@@ -19,12 +19,14 @@ import 'package:uten_imp/shared/paging/scoped_paged_read_view_mixin.dart';
 //   显示「未称」(绝不当 0); 表格工具条「重量单位: 自动▾」切显示单位 (用户级偏好, 与流水/
 //   分析页共用)。合计「合计库存重量 ≈3.52 t (另有 12 项未称)」由服务端算好。
 //   导出文件的重量列用固定单位 (自动档按千克), 表头带单位, 不混单位。
-// 性能：后端一次聚合分页（LIMIT/OFFSET + 排序白名单），前端不拉全量，万级数据秒开。
+// 主表完整读取走同一 RR 快照内的单扫描 NDJSON，分页只作为其他读取方的兜底。
 import 'dart:async';
 import '../../../shared/stock_inventory/instant_inventory_period_button.dart';
 
 import 'package:flutter/material.dart';
 import '../../../components/inputs/uten_filter_chip.dart';
+import '../../../components/inputs/uten_search_bar.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -54,6 +56,8 @@ import '../../../shared/auth/permissions.dart';
 import '../../../shared/auth/read_owner_fence.dart';
 import '../../../shared/auth/sensitive_write.dart';
 import '../../../shared/hierarchy/uten_tree_path.dart';
+import '../../../shared/hierarchy/category_tree_search.dart';
+import '../../../shared/widgets/uten_hierarchy_search_header.dart';
 import '../../../shared/measurement/weight_prefs.dart';
 import '../../../shared/measurement/widgets/weight_text.dart';
 import '../../../shared/models/paged_result.dart';
@@ -137,8 +141,11 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
   bool _includeRelated = false;
   int _queryContextVersion = 0;
 
-  // 搜索直接查询库存结果，不再拉取分类定位提示。
+  // Same shared goods search policy as the goods master. Tree paths use the
+  // authorized inventory response, without a second master-data request.
   String _searchQuery = '';
+  Set<String>? _visibleCategoryIds;
+  bool _clearingSearchCategory = false;
   bool _acceptPendingSearch = false;
   Timer? _searchDebounce;
   final _searchRequests = LatestRequestGuard();
@@ -146,6 +153,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
 
   // 库存表格分页态。
   PagedResult<InstantInventoryRow>? _page;
+  bool _pageIsPartial = false;
   String _pageSummaryScopeLabel = '';
   int _pageNum = 1;
   bool _loading = false;
@@ -212,6 +220,8 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
     _loadRequests.begin();
     _searchDebounce?.cancel();
     _page = null;
+    _pageIsPartial = false;
+    _visibleCategoryIds = null;
     _tree = null;
     _error = null;
     _treeError = null;
@@ -328,6 +338,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
       setState(() {
         _tree = pruneCategoriesWithoutGoods(tree);
         _treeError = null;
+        _updateSearchTreePaths(_page?.items ?? const []);
       });
     } on ApiException catch (e) {
       if (!ownerCurrent() || !inlineAcceptsRead(boundary)) return;
@@ -342,7 +353,10 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
     _queryContextVersion++;
     final generation = _loadRequests.begin();
     setState(() {
+      if (_pageIsPartial) _page = null;
+      _pageIsPartial = false;
       _loading = true;
+      _summaryStale = true;
       _error = null;
       _pageNum = page;
     });
@@ -367,6 +381,9 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
         page,
         idOf: (row) => row.readIdentity,
         slot: '_load',
+        // Input changes retire the in-flight transport before debounce commits
+        // the next keyword; completed rows still keep their query ownership.
+        isCurrent: () => mounted && _loadRequests.isCurrent(generation),
         query: [
           pageRepository,
           pageCategoryId,
@@ -465,7 +482,11 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
         // 每批到达即追加显示；合计条/打印/导出仍等完整结果(_loading)。
         onProgressiveBatch: (partial) {
           if (!mounted || !_loadRequests.isCurrent(generation)) return;
-          setState(() => _page = partial);
+          setState(() {
+            _page = partial;
+            _pageIsPartial = true;
+            _updateSearchTreePaths(partial.items);
+          });
         },
       );
       if (!mounted || !_loadRequests.isCurrent(generation)) return;
@@ -473,15 +494,27 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
       if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() {
         _page = r;
+        _pageIsPartial = false;
+        _updateSearchTreePaths(r.items);
         _pageSummaryScopeLabel = _summaryScopeLabel;
         _summaryStale = false;
       });
     } on ApiException catch (e) {
       if (!mounted || !_loadRequests.isCurrent(generation)) return;
-      setState(() => _error = e.message);
-    } catch (_) {
+      setState(() {
+        if (_pageIsPartial) _page = null;
+        _pageIsPartial = false;
+        _updateSearchTreePaths(const []);
+        _error = e.message;
+      });
+    } catch (error) {
       if (!mounted || !_loadRequests.isCurrent(generation)) return;
-      setState(() => _error = '加载失败'); // TODO(l10n): 补 arb
+      setState(() {
+        if (_pageIsPartial) _page = null;
+        _pageIsPartial = false;
+        _updateSearchTreePaths(const []);
+        _error = isRetiredViewRead(error) ? null : '加载失败'; // TODO(l10n): 补 arb
+      });
     } finally {
       if (mounted && _loadRequests.isCurrent(generation)) {
         setState(() => _loading = false);
@@ -509,7 +542,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
   bool get _summaryLoading => _loading || _acceptPendingSearch;
   bool get _summaryHasError => _error != null;
   bool get _resultsReady =>
-      _page != null && !_summaryLoading && !_summaryHasError;
+      _page != null && !_summaryStale && !_summaryLoading && !_summaryHasError;
 
   String get _categoryScopeLabel => _effectiveCategoryId == null
       ? '全部分类'
@@ -725,13 +758,19 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
       );
 
   void _onSearchInput(String raw) {
+    final q = raw.trim();
+    if (q == _searchQuery) return;
     _queryContextVersion++;
     _searchDebounce?.cancel();
     _searchRequests.begin();
     _loadRequests.begin();
-    final q = raw.trim();
     setState(() {
+      if (_pageIsPartial) _page = null;
+      _pageIsPartial = false;
       _searchQuery = q;
+      _visibleCategoryIds = q.isEmpty
+          ? null
+          : categoryHits<ProductCategoryNode>(_tree ?? const [], q);
       // 保留旧结果直到新查询落地（keepPreviousData 口径）：此前这里先把 _page
       // 置 null，防抖/网络期间表格立刻闪「暂无库存」空态，数据回来再跳一次。
       if (q.isEmpty) {
@@ -768,6 +807,122 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
     await _load(1);
   }
 
+  void _updateSearchTreePaths(Iterable<InstantInventoryRow> rows) {
+    if (_searchQuery.isNotEmpty &&
+        !_acceptPendingSearch &&
+        rows.any((row) => row.categoryId?.isNotEmpty != true)) {
+      // A real matching row can be uncategorized, or come from an older API.
+      // Keep the directory available instead of claiming there are no matches.
+      _visibleCategoryIds = null;
+      return;
+    }
+    _visibleCategoryIds = _searchQuery.isEmpty
+        ? null
+        : resolveHierarchySearch<ProductCategoryNode>(
+            roots: _tree ?? const [],
+            query: _searchQuery,
+            contentCategoryIds: _acceptPendingSearch
+                ? const <String>[]
+                : rows.map((row) => row.categoryId),
+          ).visibleIds;
+  }
+
+  Set<String>? get _treeVisibleCategoryIds {
+    final ids = _visibleCategoryIds;
+    if (ids == null || _searchCategoryId == null) return ids;
+    final visible = <String>{...ids};
+    // The same shared ancestor rule as the goods master keeps a selected
+    // search scope visible even when a replacement term matches no rows there.
+    addAncestors<ProductCategoryNode>(
+      _tree ?? const [],
+      _searchCategoryId!,
+      visible,
+    );
+    return visible;
+  }
+
+  Future<void> _clearSearchCategory() async {
+    if (_searchCategoryId == null ||
+        _searchQuery.isEmpty ||
+        _clearingSearchCategory ||
+        inlineEdit.active) {
+      return;
+    }
+    setState(() {
+      _clearingSearchCategory = true;
+      _searchCategoryId = null;
+    });
+    try {
+      await UtenBusyOverlay.run(
+        context,
+        title: '正在查询库存',
+        action: _restartSearch,
+      );
+    } finally {
+      if (mounted) setState(() => _clearingSearchCategory = false);
+    }
+  }
+
+  Widget _buildUnifiedSearch() => ExcludeFocus(
+    excluding: inlineEdit.active,
+    child: IgnorePointer(
+      ignoring: inlineEdit.active,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          UtenHierarchySearchHeader(
+            search: UtenSearchBar(
+              key: const Key('instant-inventory-search'),
+              initialValue: _searchQuery,
+              hint: _canViewCategories ? '搜索分类/货品名称、英文名称或编号' : '搜索货品名称、英文名称或编号',
+              onInputChanged: _onSearchInput,
+              onChanged: _onSearchChanged,
+              onSubmitted: _onSearchChanged,
+            ),
+            trailing: _searchQuery.isNotEmpty && _searchCategoryId != null
+                ? IconButton.filledTonal(
+                    key: const Key('instant-inventory-clear-search-category'),
+                    tooltip:
+                        '搜索范围：${utenTreeSelectionPath<ProductCategoryNode>(_tree ?? const [], _searchCategoryId) ?? '所选分类'}；清除分类范围，搜索全部分类',
+                    constraints: BoxConstraints(
+                      minWidth: UtenControlMetrics.minimumHitExtent(
+                        context,
+                        desktop: 36,
+                      ),
+                      minHeight: UtenControlMetrics.minimumHitExtent(
+                        context,
+                        desktop: 36,
+                      ),
+                    ),
+                    style: IconButton.styleFrom(
+                      shape: const RoundedRectangleBorder(
+                        borderRadius: UtenRadius.controlAll,
+                      ),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    padding: EdgeInsets.zero,
+                    onPressed: _clearingSearchCategory
+                        ? null
+                        : _clearSearchCategory,
+                    icon: const Icon(Icons.filter_alt_off_outlined, size: 18),
+                  )
+                : null,
+          ),
+          if (_searchQuery.isNotEmpty)
+            GoodsRelatedSearchControl(
+              value: _includeRelated,
+              onChanged: (value) {
+                setState(() => _includeRelated = value);
+                _restartSearch();
+              },
+            ),
+        ],
+      ),
+    ),
+  );
+
   void _selectCategory(String? id) {
     if (id == _effectiveCategoryId) return;
     if (_searchQuery.isNotEmpty) {
@@ -786,7 +941,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
     _load(1);
   }
 
-  void _restartSearch() {
+  Future<void> _restartSearch() {
     _searchDebounce?.cancel();
     _searchRequests.begin();
     _loadRequests.begin();
@@ -798,7 +953,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
       _pageNum = 1;
       _error = null;
     });
-    _applySearch(_searchQuery);
+    return _applySearch(_searchQuery);
   }
 
   void _reloadAfterFilterChange() {
@@ -835,6 +990,13 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              Padding(
+                padding: const EdgeInsets.only(
+                  top: UtenSpacing.s8,
+                  bottom: UtenSpacing.s8,
+                ),
+                child: _buildUnifiedSearch(),
+              ),
               if (_treeError != null)
                 TextButton(
                   onPressed: _loadTree,
@@ -846,13 +1008,18 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
                 child: UtenCategoryTreeView<ProductCategoryNode>(
                   key: const Key('instant-inventory-category-tree'),
                   nodes: _tree ?? const [],
+                  showSearch: false,
+                  visibleFilterIds: _treeVisibleCategoryIds,
+                  externalSearchQuery: _searchQuery.isEmpty
+                      ? null
+                      : _searchQuery,
+                  externalSearchLoading:
+                      _searchQuery.isNotEmpty && _summaryLoading,
+                  externalSearchError: _searchQuery.isEmpty ? null : _error,
                   selectedIds: {?_effectiveCategoryId},
                   flatLevelColors: true,
                   expandOnRowTap: true,
                   initiallyCollapsedNames: const {'未分类'},
-                  searchFieldKey: const Key(
-                    'instant-inventory-category-search',
-                  ),
                   onNodeTap: (node) => _selectCategory(
                     node.id == _effectiveCategoryId ? null : node.id,
                   ),
@@ -866,7 +1033,18 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
   }
 
   Widget _buildInventoryLayout() {
-    if (!_canViewCategories) return _buildTablePane();
+    if (!_canViewCategories) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
+            child: _buildUnifiedSearch(),
+          ),
+          Expanded(child: _buildTablePane()),
+        ],
+      );
+    }
     return UtenSplitView(
       persistenceKey: 'stock.instantInventory',
       initialLeadingWidth: 240,
@@ -879,6 +1057,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
           : _categoryScopeLabel,
       selectedLeadingKey: _effectiveCategoryId,
       openLeadingButtonKey: const Key('instant-inventory-open-categories'),
+      compactHeader: _buildUnifiedSearch(),
       leading: _buildCategoryPane(),
       trailing: _buildTablePane(),
     );
@@ -928,11 +1107,6 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 UtenFilterToolbar<String?>(
-                  searchKey: const Key('instant-inventory-search'),
-                  searchHint: '搜索货品名称 / 编号 / 型号',
-                  initialSearchValue: _searchQuery,
-                  onSearchInputChanged: _onSearchInput,
-                  onSearchSubmitted: _onSearchChanged,
                   trailing: Wrap(
                     spacing: UtenSpacing.s12,
                     runSpacing: UtenSpacing.s8,
@@ -991,23 +1165,16 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
                                 },
                         ),
                       ),
-                      Text(
-                        '共 $total 项', // TODO(l10n): 补 arb
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
+                      if (_resultsReady)
+                        Text(
+                          '共 $total 项', // TODO(l10n): 补 arb
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
                         ),
-                      ),
                     ],
                   ),
                 ),
-                if (_searchQuery.isNotEmpty)
-                  GoodsRelatedSearchControl(
-                    value: _includeRelated,
-                    onChanged: (value) {
-                      setState(() => _includeRelated = value);
-                      _restartSearch();
-                    },
-                  ),
               ],
             ),
           ),
@@ -1127,8 +1294,8 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
                   ),
                 );
               },
-        isLoading: _loading && _page == null,
-        loadingMore: _loading && _page != null,
+        isLoading: _summaryLoading && _page == null,
+        loadingMore: _summaryLoading && _page != null,
         error: _error,
         onRetry: () => inlineNavigate(() => _load(_refreshPage)),
         emptyMessage: '暂无库存', // TODO(l10n): 补 arb

@@ -35,7 +35,6 @@ import '../feedback/uten_dialog.dart';
 import '../feedback/uten_dialog_modules.dart';
 import '../feedback/uten_progress_dialog.dart';
 import '../data_display/uten_table_output_scope.dart';
-import '../inputs/uten_field_hint_icon.dart';
 import '../feedback/uten_busy_overlay.dart';
 
 /// A business export may select a template or a group of files before the
@@ -804,16 +803,10 @@ class _ExportFileDialogState extends State<_ExportFileDialog> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (widget.showScope) ...[
-            UtenDialogField(
-              label: const Row(
-                children: [
-                  Text('导出范围'),
-                  UtenFieldHintIcon(
-                    info: '全部结果包含当前分类、搜索和表头筛选下的完整记录；仅已选保留当前勾选的记录。',
-                    dense: true,
-                  ),
-                ],
-              ),
+            Semantics(
+              container: true,
+              label: '导出范围',
+              hint: '全部结果包含当前分类、搜索和表头筛选下的完整记录；仅已选保留当前勾选的记录。',
               child: UtenTableOutputScopeField(
                 value: _scope,
                 selectedCount: widget.selectedCount,

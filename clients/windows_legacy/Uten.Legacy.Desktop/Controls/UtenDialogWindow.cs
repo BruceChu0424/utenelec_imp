@@ -23,6 +23,8 @@ namespace Uten.Legacy.Desktop.Controls
         protected WrapPanel Actions { get; private set; }
         protected TextBlock StatusLabel { get; private set; }
         protected Button CloseButton { get; private set; }
+        /// <summary>Lets specialized dialogs style the existing heading without duplicating chrome.</summary>
+        protected TextBlock HeadingText { get { return heading; } }
 
         public UtenDialogWindow(Window owner, string title, double width = 560)
         {

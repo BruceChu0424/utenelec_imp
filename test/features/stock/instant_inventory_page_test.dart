@@ -1,4 +1,5 @@
 import 'package:uten_imp/core/utils/date_range_defaults.dart';
+import 'dart:async';
 // 即时库存复用货品资料的分类分栏；点分类立即应用，窄屏选后返回正文。
 // 搜索默认跨分类平铺，清空后恢复原浏览分类。
 import 'package:dio/dio.dart';
@@ -8,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_export_button.dart';
 import 'package:uten_imp/components/layout/uten_split_view.dart';
+import 'package:uten_imp/components/layout/uten_filter_toolbar.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/theme/dark_theme.dart';
@@ -23,6 +25,8 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/stock_inventory/instant_inventory_period_button.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/shared/paging/complete_paged_snapshot.dart';
+import 'package:uten_imp/shared/paging/paged_read_intent.dart';
 
 import '../../support/audit_screenshot_support.dart';
 
@@ -391,6 +395,233 @@ void main() {
       await tester.tap(find.byKey(const Key('warehouse-picker-confirm')));
       await tester.pumpAndSettle();
       expect(stock.lastWarehouseId, isNull);
+    },
+  );
+
+  testWidgets(
+    'one left search uses authoritative category IDs and keeps export scope global',
+    (tester) async {
+      final stock = _RecordingStockRepository(
+        rows: const [
+          InstantInventoryRow(
+            goodsId: 'goods-from-socket',
+            categoryId: 'socket',
+            categoryName: '同名分类不可用来推导身份',
+            name: 'HV-001',
+            goodsCode: 'HV-001',
+          ),
+        ],
+      );
+      await pumpPage(tester, stock: stock);
+      expect(
+        find.byKey(const Key('instant-inventory-category-search')),
+        findsNothing,
+      );
+      expect(find.byKey(const Key('instant-inventory-search')), findsOneWidget);
+      final toolbar = tester.widget<UtenFilterToolbar<String?>>(
+        find.byType(UtenFilterToolbar<String?>),
+      );
+      expect(toolbar.searchHint, isNull);
+      expect(
+        tester.getRect(_searchBar()).right,
+        lessThan(
+          tester
+              .getRect(find.byType(MasterDataTableView<InstantInventoryRow>))
+              .left,
+        ),
+      );
+      await tester.tap(_categoryText('原材料'));
+      await tester.pumpAndSettle();
+      await tester.enterText(_searchEditable(), 'HV-001');
+      await tester.pump(const Duration(milliseconds: 350));
+      await tester.pumpAndSettle();
+      final tree = tester.widget<UtenCategoryTreeView<ProductCategoryNode>>(
+        find.byKey(const Key('instant-inventory-category-tree')),
+      );
+      expect(tree.showSearch, isFalse);
+      expect(tree.visibleFilterIds, {
+        'goods-root',
+        'finished',
+        'connectors',
+        'socket',
+      });
+      expect(tree.selectedIds, isEmpty);
+      expect(stock.lastCategoryId, isNull);
+      expect(stock.lastKeyword, 'HV-001');
+      final export = tester.widget<UtenExportButton>(
+        find.byType(UtenExportButton),
+      );
+      expect(export.queryParams['keyword'], 'HV-001');
+      expect(export.queryParams, isNot(contains('categoryId')));
+      await tester.enterText(_searchEditable(), '');
+      await tester.pumpAndSettle();
+      expect(stock.lastCategoryId, 'raw');
+      expect(stock.lastKeyword, isNull);
+      expect(_categoryText('原材料'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'selected search scope remains visible after a new term and can be cleared inline',
+    (tester) async {
+      const raw = InstantInventoryRow(
+        goodsId: 'raw-goods',
+        categoryId: 'raw',
+        name: 'A-001',
+      );
+      const socket = InstantInventoryRow(
+        goodsId: 'socket-goods',
+        categoryId: 'socket',
+        name: 'B-001',
+      );
+      final stock = _RecordingStockRepository(
+        rowsForQuery: (category, keyword) => keyword == 'A-001'
+            ? const [raw]
+            : keyword == 'B-001'
+            ? (category == null ? const [socket] : const [])
+            : const [raw, socket],
+      );
+      if (_capture) {
+        await loadAuditScreenshotFonts(tester);
+        await pumpPage(tester, stock: stock, capture: true);
+      } else {
+        await pumpPage(tester, stock: stock);
+      }
+      await tester.enterText(_searchEditable(), 'A-001');
+      await tester.pump(const Duration(milliseconds: 350));
+      await tester.pumpAndSettle();
+      await tester.tap(_categoryText('原材料'));
+      await tester.pumpAndSettle();
+      expect(stock.lastCategoryId, 'raw');
+      await tester.enterText(_searchEditable(), 'B-001');
+      await tester.pump(const Duration(milliseconds: 350));
+      await tester.pumpAndSettle();
+      final tree = tester.widget<UtenCategoryTreeView<ProductCategoryNode>>(
+        find.byKey(const Key('instant-inventory-category-tree')),
+      );
+      expect(tree.selectedIds, {'raw'});
+      expect(tree.visibleFilterIds, containsAll({'goods-root', 'raw'}));
+      expect(_categoryText('原材料').hitTestable(), findsOneWidget);
+      final clear = find.byKey(
+        const Key('instant-inventory-clear-search-category'),
+      );
+      expect(clear.hitTestable(), findsOneWidget);
+      expect(tester.widget<IconButton>(clear).tooltip, contains('原材料'));
+      expect(stock.lastKeyword, 'B-001');
+      expect(stock.lastCategoryId, 'raw');
+      if (_capture) {
+        await saveAuditScreenshot(
+          tester,
+          _captureKey,
+          'instant-inventory-selected-search-scope',
+        );
+      }
+      final before = stock.calls;
+      await tester.tap(clear);
+      await tester.pumpAndSettle();
+      expect(stock.calls, before + 1);
+      expect(stock.lastKeyword, 'B-001');
+      expect(stock.lastCategoryId, isNull);
+      final table = tester.widget<MasterDataTableView<InstantInventoryRow>>(
+        find.byType(MasterDataTableView<InstantInventoryRow>),
+      );
+      expect(table.items.single.goodsId, 'socket-goods');
+      expect(clear, findsNothing);
+      expect(
+        tester.widget<EditableText>(_searchEditable()).controller.text,
+        'B-001',
+      );
+      final export = tester.widget<UtenExportButton>(
+        find.byType(UtenExportButton),
+      );
+      expect(export.queryParams['keyword'], 'B-001');
+      expect(export.queryParams, isNot(contains('categoryId')));
+      if (_capture) {
+        await saveAuditScreenshot(
+          tester,
+          _captureKey,
+          'instant-inventory-cleared-search-scope',
+        );
+      }
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'new search withdraws growing stream immediately and never publishes its late tail',
+    (tester) async {
+      final stock = _StreamingSearchStockRepository();
+      await pumpPage(tester, stock: stock);
+      await tester.enterText(_searchEditable(), 'old');
+      await tester.pump(const Duration(milliseconds: 350));
+      for (var tick = 0; tick < 20; tick++) {
+        await tester.pump(const Duration(milliseconds: 20));
+      }
+      MasterDataTableView<InstantInventoryRow> table() =>
+          tester.widget(find.byType(MasterDataTableView<InstantInventoryRow>));
+      expect(table().items, hasLength(50));
+      expect(table().loadingMore, isTrue);
+      expect(
+        tester.widget<UtenExportButton>(find.byType(UtenExportButton)).enabled,
+        isFalse,
+      );
+      await tester.enterText(_searchEditable(), 'new');
+      await tester.pump();
+      expect(table().items, isEmpty, reason: 'retire before search debounce');
+      expect(
+        table().isLoading,
+        isTrue,
+        reason: 'pending input must keep rows gated',
+      );
+      stock.searchApi.oldTail.complete();
+      await tester.pump(const Duration(milliseconds: 350));
+      await tester.pumpAndSettle();
+      expect(table().items, hasLength(1500));
+      expect(
+        table().items.map((row) => row.readIdentity).toSet(),
+        hasLength(1500),
+      );
+      expect(
+        table().items.every((row) => row.name!.startsWith('new-')),
+        isTrue,
+      );
+      expect(stock.searchApi.keywords, [null, 'old', 'new']);
+      expect(stock.searchApi.oldTailPublished, isFalse);
+      expect(stock.searchApi.paths.toSet(), {
+        '/stock/instant-inventory/summaries',
+      });
+      final export = tester.widget<UtenExportButton>(
+        find.byType(UtenExportButton),
+      );
+      expect(export.enabled, isTrue);
+      expect(export.queryParams['keyword'], 'new');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'interrupted unified search removes all its partial rows and keeps output disabled',
+    (tester) async {
+      final stock = _StreamingSearchStockRepository();
+      await pumpPage(tester, stock: stock);
+      await tester.enterText(_searchEditable(), 'old');
+      await tester.pump(const Duration(milliseconds: 350));
+      for (var tick = 0; tick < 20; tick++) {
+        await tester.pump(const Duration(milliseconds: 20));
+      }
+      stock.searchApi.oldTail.completeError(StateError('stream interrupted'));
+      await tester.pumpAndSettle();
+      final table = tester.widget<MasterDataTableView<InstantInventoryRow>>(
+        find.byType(MasterDataTableView<InstantInventoryRow>),
+      );
+      expect(table.items, isEmpty);
+      expect(table.error, isNotNull);
+      expect(
+        tester.widget<UtenExportButton>(find.byType(UtenExportButton)).enabled,
+        isFalse,
+      );
+      expect(tester.takeException(), isNull);
     },
   );
 
@@ -854,10 +1085,16 @@ class _InventoryApi extends ApiClient {
 }
 
 class _RecordingStockRepository extends StockQueryRepository {
-  _RecordingStockRepository({this.rows = const <InstantInventoryRow>[]})
-    : super(_InventoryApi());
+  _RecordingStockRepository({
+    this.rows = const <InstantInventoryRow>[],
+    this.streamApi,
+    this.rowsForQuery,
+  }) : super(streamApi ?? _InventoryApi());
 
   final List<InstantInventoryRow> rows;
+  final ApiClient? streamApi;
+  final List<InstantInventoryRow> Function(String? category, String? keyword)?
+  rowsForQuery;
 
   int calls = 0;
   String? lastCategoryId;
@@ -905,15 +1142,105 @@ class _RecordingStockRepository extends StockQueryRepository {
     lastUnitId = unitId;
     lastDateFrom = dateFrom;
     lastDateTo = dateTo;
+    if (streamApi != null) {
+      return super.completeStream(
+        categoryId: categoryId,
+        warehouseId: warehouseId,
+        includeDefective: includeDefective,
+        includeLineSide: includeLineSide,
+        warehouseRelatedOnly: warehouseRelatedOnly,
+        keyword: keyword,
+        includeRelated: includeRelated,
+        owningWarehouse: owningWarehouse,
+        owningWarehouseNull: owningWarehouseNull,
+        colorId: colorId,
+        series: series,
+        unitId: unitId,
+        attention: attention,
+        dateFrom: dateFrom,
+        dateTo: dateTo,
+        sort: sort,
+        order: order,
+      );
+    }
+    final items = rowsForQuery?.call(categoryId, keyword) ?? rows;
     return Future.value(
       PagedResult<InstantInventoryRow>(
-        items: rows,
+        items: items,
         page: 1,
         size: 20,
-        total: rows.length,
+        total: items.length,
         totalPages: 1,
       ),
     );
+  }
+}
+
+class _StreamingSearchStockRepository extends _RecordingStockRepository {
+  _StreamingSearchStockRepository() : this._(_StreamingSearchApi());
+  _StreamingSearchStockRepository._(this.searchApi)
+    : super(streamApi: searchApi);
+  final _StreamingSearchApi searchApi;
+}
+
+class _StreamingSearchApi extends _InventoryApi {
+  final oldTail = Completer<void>();
+  final keywords = <String?>[];
+  final paths = <String>[];
+  bool oldTailPublished = false;
+
+  @override
+  Future<T> postSummaryStream<T>(
+    String path, {
+    required Object body,
+    required Future<T> Function(Stream<Map<String, dynamic>>) consume,
+  }) async {
+    final query = Map<String, dynamic>.from((body as Map)['filter'] as Map);
+    final keyword = query['keyword'] as String?;
+    keywords.add(keyword);
+    paths.add(path);
+    final current = PagedReadIntent.currentRead;
+    final total = keyword == null ? 1 : 1500;
+    final proof = <String, dynamic>{
+      'readScopeVersion': 'a' * 64,
+      'readSnapshotRevision': 'b' * 64,
+      'readDataVersion': 'c' * 64,
+    };
+    Stream<Map<String, dynamic>> frames() async* {
+      const plan = CompleteReadBatchPlan.progressive;
+      var offset = 0;
+      while (offset < total) {
+        if (keyword == 'old' && offset > 0) await oldTail.future;
+        if (!(current?.call() ?? true)) return;
+        if (keyword == 'old' && offset > 0) oldTailPublished = true;
+        final size = plan.sizeAt(offset);
+        final count = (total - offset).clamp(0, size);
+        yield {
+          'type': 'page',
+          'value': {
+            'items': [
+              for (var row = offset; row < offset + count; row++)
+                {
+                  'goodsId': '${keyword ?? 'initial'}-$row',
+                  'categoryId': keyword == 'old' ? 'raw' : 'socket',
+                  'name': '${keyword ?? 'initial'}-$row',
+                  'qty': 0.0001,
+                  'unitName': '个',
+                },
+            ],
+            'page': offset ~/ size + 1,
+            'size': size,
+            'total': total,
+            'totalPages': (total + size - 1) ~/ size,
+            ...proof,
+          },
+        };
+        offset += count;
+      }
+      yield {'type': 'complete', 'total': total, ...proof};
+    }
+
+    return consume(frames());
   }
 }
 

@@ -5,10 +5,102 @@ import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/inputs/uten_date_range_button.dart';
 import 'package:uten_imp/components/layout/uten_action_overflow.dart';
 import 'package:uten_imp/components/layout/uten_table_action_scope.dart';
+import 'package:uten_imp/components/layout/uten_segment_row.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 
 void main() {
+  for (final (platform, scale) in [
+    (TargetPlatform.windows, 1.0),
+    (TargetPlatform.windows, 2.0),
+    (TargetPlatform.android, 1.0),
+    (TargetPlatform.android, 2.0),
+  ]) {
+    testWidgets(
+      'toolbar segments align with buttons on ${platform.name} at $scale',
+      (tester) async {
+        tester.view.physicalSize = const Size(1200, 800);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        Widget segments(String name) => UtenSegmentRow<bool>(
+          key: ValueKey(name),
+          showSelectedIcon: false,
+          segments: const [
+            ButtonSegment(value: false, label: Text('按产品看')),
+            ButtonSegment(value: true, label: Text('按物料汇总')),
+          ],
+          selected: const {false},
+          compactLabel: '视图',
+          onSelectionChanged: (_) {},
+        );
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: ThemeData(platform: platform),
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(
+                context,
+              ).copyWith(textScaler: TextScaler.linear(scale)),
+              child: child!,
+            ),
+            home: Scaffold(
+              body: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  segments('outside-segments'),
+                  UtenTableActionScope(
+                    child: Row(
+                      children: [
+                        UtenButton(
+                          key: const ValueKey('matching-fullscreen'),
+                          onPressed: () {},
+                          child: const Text('全屏'),
+                        ),
+                        segments('toolbar-segments'),
+                      ],
+                    ),
+                  ),
+                  UtenTableActionScope(
+                    child: SizedBox(
+                      width: 110,
+                      child: segments('compact-toolbar-segments'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final action = tester.getRect(
+          find.byKey(const ValueKey('matching-fullscreen')),
+        );
+        final group = tester.getRect(
+          find.byKey(const ValueKey('toolbar-segments')),
+        );
+        expect(group.height, action.height);
+        expect(group.top, action.top);
+        if (scale == 1) {
+          expect(
+            tester
+                .getSize(find.byKey(const ValueKey('outside-segments')))
+                .height,
+            platform == TargetPlatform.windows ? 36 : 48,
+          );
+        }
+        final compact = find.descendant(
+          of: find.byKey(const ValueKey('compact-toolbar-segments')),
+          matching: find.byType(OutlinedButton),
+        );
+        expect(compact, findsOneWidget);
+        expect(
+          tester.getSize(compact).height,
+          greaterThanOrEqualTo(action.height),
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   testWidgets('表格动作统一40高，日期只显示入口，格内小按钮保留36高', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1200, 800));
     tester.view.physicalSize = const Size(1200, 800);

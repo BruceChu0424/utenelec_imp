@@ -12,6 +12,16 @@ final class FinancePartySummaryTemplate {
     private static final String[] AR={"partyCode","partyName","partyFull","sellerName","director","region","district","settlement","creditFloor","prevBalance","shippedAmount","receivedAmount","returnAmount","offsetAmount","balance","overFloor","materialAmount"};
     private static final String[] AP={"partyCode","partyName","partyFull","settlement","prevBalance","goodsAmount","goodsPaidAmount","returnAmount","goodsOffsetAmount","goodsBalance","mouldAmount","mouldPaidAmount","mouldOffsetAmount","mouldBalance","totalBalance"};
     private static final Set<String> AP_KNOWN=Set.of("partyCode","partyName","partyFull","settlement","prevBalance","totalBalance");
+    /** The category-tree screen follows the supplied legacy screenshot, which omits settlement. */
+    static ReportTableResponse receivableOverview(ReportTableResponse source) {
+        var template=present(true,source);
+        var columns=template.columns().stream().filter(column->!column.key().equals("settlement")).toList();
+        var keys=columns.stream().map(ReportColumn::key).collect(java.util.stream.Collectors.toSet());
+        var searchable=new LinkedHashSet<>(template.columnSearchKeys());searchable.retainAll(keys);
+        return new ReportTableResponse(columns,template.rows(),template.facets(),template.page(),template.size(),
+                template.total(),template.totalPages(),template.totals(),template.readScopeVersion(),
+                template.statisticsGeneratedAt(),searchable).withDocumentMetadata(template.documentMetadata());
+    }
     static void requireOptions(boolean ar,FinanceReportColumnOptions options) {
         Set<String> keys=ar?Set.of(AR):AP_KNOWN;
         if(options.sort()!=null&&!options.sort().isBlank()&&!keys.contains(options.sort()))throw invalid("该原表列尚无已分类事实，不能排序");

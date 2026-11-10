@@ -8,6 +8,7 @@ import '../../../shared/business_columns/business_column.dart';
 
 import '../../../shared/formatters/exact_decimal.dart';
 import '../../../shared/formatters/money_display.dart';
+import '../../../shared/formatters/quantity_display.dart';
 import '../../../shared/models/party_open_balance.dart';
 
 enum FinanceProcurementOrderType { purchase, subcontract, unknown }
@@ -56,6 +57,7 @@ class FinanceProcurementApprovalTask {
     this.changeCount = 0,
     this.requestType = 'ORDER',
     this.executionMode,
+    this.itemSummaries = const [],
   });
 
   final String caseId;
@@ -97,6 +99,16 @@ class FinanceProcurementApprovalTask {
   final int changeCount;
   final String requestType;
   final String? executionMode;
+  final List<FinanceProcurementTaskItemSummary> itemSummaries;
+
+  /// The server groups only compatible frozen units; missing facts stay unknown.
+  String get quantitySummaryText => itemSummaries.isEmpty
+      ? '—'
+      : itemSummaries.map((item) => item.quantityText).join('；');
+
+  String get unitPriceSummaryText => itemSummaries.isEmpty
+      ? '—'
+      : itemSummaries.map((item) => item.unitPriceText(currencyName)).join('；');
   bool get isClosureRequest =>
       requestType == 'CLOSE' || requestType == 'CLOSE_AND_REORDER';
   bool get isDirectClosure => isClosureRequest && executionMode == 'DIRECT';
@@ -230,8 +242,60 @@ class FinanceProcurementApprovalTask {
       changeCount: _firstInt([json['changeCount']]) ?? 0,
       requestType: _string(json['requestType']) ?? 'ORDER',
       executionMode: _string(json['executionMode']),
+      itemSummaries: switch (json['itemSummaries']) {
+        final List<dynamic> values =>
+          values
+              .map(_map)
+              .whereType<Map<String, dynamic>>()
+              .map(FinanceProcurementTaskItemSummary.fromJson)
+              .toList(growable: false),
+        _ => const [],
+      },
     );
   }
+}
+
+class FinanceProcurementTaskItemSummary {
+  const FinanceProcurementTaskItemSummary({
+    this.unitId,
+    this.unitName,
+    this.quantity,
+    this.unitPrices = const [],
+    this.missingPrice = false,
+  });
+
+  final String? unitId;
+  final String? unitName;
+  final String? quantity;
+  final List<String> unitPrices;
+  final bool missingPrice;
+
+  String get _unitLabel => unitName ?? '单位未记录';
+
+  String get quantityText => quantity == null
+      ? '未记录 $_unitLabel'
+      : formatExactQtyWithUnit(quantity, _unitLabel);
+
+  String unitPriceText(String? currencyName) => [
+    for (final price in unitPrices)
+      '${financeMoneyWithUnitSuffix(price, currencyName: currencyName)}/$_unitLabel',
+    if (missingPrice) '未记录单价/$_unitLabel',
+    if (unitPrices.isEmpty && !missingPrice) '—',
+  ].join('；');
+
+  factory FinanceProcurementTaskItemSummary.fromJson(
+    Map<String, dynamic> json,
+  ) => FinanceProcurementTaskItemSummary(
+    unitId: _string(json['unitId']),
+    unitName: _string(json['unitName']),
+    quantity: _string(json['quantity']),
+    unitPrices: switch (json['unitPrices']) {
+      final List<dynamic> values =>
+        values.map(_string).whereType<String>().toList(growable: false),
+      _ => const [],
+    },
+    missingPrice: json['missingPrice'] == true,
+  );
 }
 
 class FinanceProcurementDecisionItem {

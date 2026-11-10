@@ -18,6 +18,8 @@ import 'package:uten_imp/features/finance/repositories/finance_procurement_workf
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
+import 'package:uten_imp/shared/platform_tables/platform_table_controller.dart';
+import 'package:uten_imp/shared/platform_tables/platform_table_layout.dart';
 import 'package:uten_imp/shared/repositories/task_claim_repository.dart';
 import 'package:uten_imp/shared/badges/badge_registry.dart';
 import '../../helpers/finance_claim_fixture.dart';
@@ -32,9 +34,10 @@ class _FakeWorkflowRepo implements FinanceProcurementWorkflowRepository {
     String? keyword,
     String status = 'PENDING',
   }) async => const []; // 2026-09-25 单号列统一：页面 facets 静默降级。
-  _FakeWorkflowRepo(this.items);
+  _FakeWorkflowRepo(this.items, {this.honorPaging = false});
 
   final List<FinanceProcurementApprovalTask> items;
+  final bool honorPaging;
   final List<List<FinanceProcurementDecisionItem>> approvedBatches = [];
   final List<({List<FinanceProcurementDecisionItem> items, String reason})>
   rejectedBatches = [];
@@ -42,6 +45,7 @@ class _FakeWorkflowRepo implements FinanceProcurementWorkflowRepository {
   FinanceProcurementOrderType? lastOrderType;
   Object? reviewError;
   int taskReads = 0;
+  final List<int> readSizes = [];
   Completer<FinanceProcurementApprovalPage>? blockedRead;
   Object? taskError;
 
@@ -57,6 +61,7 @@ class _FakeWorkflowRepo implements FinanceProcurementWorkflowRepository {
     String status = 'PENDING',
   }) async {
     taskReads++;
+    readSizes.add(size);
     lastKeyword = keyword;
     lastOrderType = orderType;
     if (blockedRead case final blocked?) return blocked.future;
@@ -75,11 +80,13 @@ class _FakeWorkflowRepo implements FinanceProcurementWorkflowRepository {
         )
         .toList();
     return FinanceProcurementApprovalPage(
-      items: filtered,
+      items: honorPaging
+          ? filtered.skip((page - 1) * size).take(size).toList()
+          : filtered,
       page: page,
       size: size,
       total: filtered.length,
-      totalPages: 1,
+      totalPages: honorPaging ? (filtered.length + size - 1) ~/ size : 1,
     );
   }
 
@@ -146,6 +153,7 @@ FinanceProcurementApprovalTask _task({
   List<String> allowedActions = const ['APPROVE', 'REJECT'],
   int changeCount = 0,
   String status = 'PENDING',
+  List<Map<String, dynamic>> itemSummaries = const [],
 }) => FinanceProcurementApprovalTask.fromJson({
   'caseId': caseId,
   'orderId': orderId,
@@ -164,6 +172,7 @@ FinanceProcurementApprovalTask _task({
   'version': 3,
   'allowedActions': allowedActions,
   'changeCount': changeCount,
+  'itemSummaries': itemSummaries,
 });
 
 Future<GoRouter> _pumpPage(
@@ -262,6 +271,40 @@ Future<GoRouter> _pumpPage(
 }
 
 void main() {
+  testWidgets(
+    'complete approval list appends every row beyond the old 200-row cap',
+    (tester) async {
+      final repository = _FakeWorkflowRepo([
+          for (var index = 0; index < 1450; index++)
+          _task(
+            caseId: 'case-$index',
+            orderId: 'order-$index',
+            orderType: index.isEven ? 'PURCHASE' : 'SUBCONTRACT',
+            billNo: 'BULK-${index.toString().padLeft(4, '0')}',
+            itemSummaries: [
+              {
+                'unitId': 'piece',
+                'unitName': '个',
+                'quantity': '${index + 1}.0001',
+                'unitPrices': ['0.01234567'],
+                'missingPrice': false,
+              },
+            ],
+          ),
+      ], honorPaging: true);
+      await _pumpPage(tester, repository);
+      final table = tester
+          .widget<MasterDataTableView<FinanceProcurementApprovalTask>>(
+            find.byKey(const Key('finance-approval-task-table')),
+          );
+      expect(table.items, hasLength(1450));
+      expect(table.items.map((task) => task.caseId).toSet(), hasLength(1450));
+      expect(table.items.last.quantitySummaryText, '1450.0001 个');
+      expect(repository.readSizes, [50, 50, 100, 200, 200, 200, 200, 1000]);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets(
     'slow bill-number query clears prior approval rows and selection',
     (tester) async {
@@ -457,12 +500,37 @@ void main() {
             orderId: 'p1',
             orderType: 'PURCHASE',
             billNo: 'CD202610120001',
+            itemSummaries: const [
+              {
+                'unitId': 'piece',
+                'unitName': '个',
+                'quantity': '1200.5',
+                'unitPrices': ['0.12', '0.125'],
+                'missingPrice': false,
+              },
+              {
+                'unitId': 'kg',
+                'unitName': '公斤',
+                'quantity': '3.14159',
+                'unitPrices': ['5.000001'],
+                'missingPrice': false,
+              },
+            ],
           ),
           _task(
             caseId: 'subcontract',
             orderId: 's1',
             orderType: 'SUBCONTRACT',
             billNo: 'WT202610120002',
+            itemSummaries: const [
+              {
+                'unitId': 'piece',
+                'unitName': '个',
+                'quantity': '10000',
+                'unitPrices': ['0.08'],
+                'missingPrice': false,
+              },
+            ],
           ),
           _task(
             caseId: 'changed',
@@ -488,6 +556,51 @@ void main() {
             );
         final status = table.columns.first;
         expect(table.items, hasLength(3));
+        final quantities = table.columns.firstWhere(
+          (column) => column.key == 'quantitySummary',
+        );
+        final prices = table.columns.firstWhere(
+          (column) => column.key == 'unitPriceSummary',
+        );
+        expect(quantities.label, '订货/采购数量');
+        expect(quantities.info, contains('原单位'));
+        expect(quantities.value(table.items.first), '1200.5 个；3.14159 公斤');
+        expect(prices.label, '单件价格');
+        expect(
+          prices.value(table.items.first),
+          '0.12 美元/个；0.125 美元/个；5.000001 美元/公斤',
+        );
+        expect(prices.value(table.items[1]), '0.08 元/个');
+        if (scenario.width == 1440 && !scenario.dark) {
+          final keys = table.columns.map((column) => column.key).toList();
+          final controller =
+              PlatformTableController<FinanceProcurementApprovalTask>()
+                ..layout = PlatformTableLayout(
+                  order: keys
+                      .where(
+                        (key) => key != quantities.key && key != prices.key,
+                      )
+                      .toList(),
+                  hidden: const {'attempt'},
+                  widths: const {'supplierName': 260},
+                );
+          addTearDown(controller.dispose);
+          final restored = controller.localLayout(
+            keys,
+            defaultHidden: const {},
+            insertNewColumnsAtDeclaredPosition: true,
+          );
+          expect(
+            restored.order.indexOf(quantities.key),
+            restored.order.indexOf('lineCount') + 1,
+          );
+          expect(
+            restored.order.indexOf(prices.key),
+            restored.order.indexOf('tolerance') + 1,
+          );
+          expect(restored.hidden, {'attempt'});
+          expect(restored.widths['supplierName'], 260);
+        }
         expect(
           find.byKey(const Key('finance-approval-type-segments')),
           findsNothing,

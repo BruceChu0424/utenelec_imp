@@ -132,7 +132,20 @@ public final class ProcurementApprovalContracts {
             @JsonSerialize(using = ExactDecimalText.class) BigDecimal toleranceMin,
             @JsonSerialize(using = ExactDecimalText.class) BigDecimal toleranceMax,
             List<String> allowedActions,
-            String status,String requestType,String executionMode) {
+            String status,String requestType,String executionMode,
+            List<TaskItemSummary> itemSummaries) {
+        public ApprovalTask {
+            itemSummaries = itemSummaries == null ? List.of() : List.copyOf(itemSummaries);
+        }
+        public ApprovalTask(UUID caseId,String orderType,UUID orderId,String billNo,BigDecimal amount,BigDecimal totalOriginal,
+                String currencyName,String supplierName,String warehouseName,LocalDate expectedDate,int attempt,long version,
+                UUID submittedByEmployeeId,String submittedByName,OffsetDateTime submittedAt,long changeCount,BigDecimal exchangeRate,
+                int lineCount,String goodsSummary,BigDecimal toleranceMin,BigDecimal toleranceMax,List<String> allowedActions,
+                String status,String requestType,String executionMode) {
+            this(caseId,orderType,orderId,billNo,amount,totalOriginal,currencyName,supplierName,warehouseName,expectedDate,attempt,
+                    version,submittedByEmployeeId,submittedByName,submittedAt,changeCount,exchangeRate,lineCount,goodsSummary,
+                    toleranceMin,toleranceMax,allowedActions,status,requestType,executionMode,List.of());
+        }
         public ApprovalTask(UUID caseId,String orderType,UUID orderId,String billNo,BigDecimal amount,BigDecimal totalOriginal,
                 String currencyName,String supplierName,String warehouseName,LocalDate expectedDate,int attempt,long version,
                 UUID submittedByEmployeeId,String submittedByName,OffsetDateTime submittedAt,long changeCount,BigDecimal exchangeRate,
@@ -148,6 +161,18 @@ public final class ProcurementApprovalContracts {
             this(caseId,orderType,orderId,billNo,amount,totalOriginal,currencyName,supplierName,warehouseName,expectedDate,attempt,
                     version,submittedByEmployeeId,submittedByName,submittedAt,changeCount,exchangeRate,lineCount,goodsSummary,
                     toleranceMin,toleranceMax,allowedActions,status,"ORDER");
+        }
+    }
+
+    /** 同一审批展示快照的数量/单价摘要；不同单位不相加，单价不以整单金额倒算。 */
+    public record TaskItemSummary(
+            UUID unitId,
+            String unitName,
+            @JsonSerialize(using = ExactDecimalText.class) BigDecimal quantity,
+            @JsonSerialize(contentUsing = ExactDecimalText.class) List<BigDecimal> unitPrices,
+            boolean missingPrice) {
+        public TaskItemSummary {
+            unitPrices = List.copyOf(unitPrices);
         }
     }
 

@@ -307,3 +307,23 @@
 证据：尚未登记，不得推定通过。
 
 接续/限制：按依赖与DoD继续，完成后登记证据。
+
+## W7-FLOW-019
+
+- [ ] **统一进度弹窗：UtenBusyDialog 确定进度模式与 Flutter 端同步** — 源码已实现/待整合验证
+
+影响：`shared`；负责人：bruce；依赖：W7-CORE-011, W7-CORE-012, W7-CORE-013, W7-CORE-014。
+
+源入口：`clients/windows_legacy/Uten.Legacy.Desktop/Controls/UtenBusyDialog.cs`；`clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitExportWindow.cs`；`clients/windows_legacy/Uten.Legacy.Desktop/MainWindow.xaml.cs`；`clients/windows_legacy/Uten.Legacy.Desktop/Features/Downloads/SoftwareDownloadsView.cs`；`lib/components/feedback/uten_progress_dialog.dart`。
+
+完成条件：
+
+1. UtenBusyDialog 新增 ShowProgress 确定进度模式与 Report/Stage 汇报；总量未知走扫动条+详情，不伪造百分比；样式走 Uten.PrimaryBrush/Uten.Space 资源。
+2. 单位导出下载、更新下载两流程接入；安装包下载页既有内联进度（Uten 资源样式+取消）确认合规不改。
+3. 已提交业务请求不提供误导性取消；单请求型与 Flutter 端 cancellable:false 同口径。
+4. C# 级编译验证（本机 dotnet msbuild 无法生成 XAML codegen，过滤 XAML 名错误后本次改动零错误）；Win7 真机验收未做。
+5. 未迁移项明确记录：WPF 端无同步导出生成进度协议（服务端进度端点）与 UtenProgressRing 圆环组件——按需后续补。
+
+证据：`clients/windows_legacy/Uten.Legacy.Desktop/Controls/UtenBusyDialog.cs`；`clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitExportWindow.cs`；`clients/windows_legacy/Uten.Legacy.Desktop/MainWindow.xaml.cs`；`docs/99-项目治理/2026-11-10-截图批注补齐与本地主链整合.md`。
+
+接续/限制：2026-11-09 随 Flutter「导出/下载/批量操作统一进度弹窗」批次实施；Flutter 侧组件 docs/02-组件库/通用进度弹窗.md。状态 implemented：代码就位，Win7 真机 UAT 未完成，不据此开放任何已支持组合。；2026-11-10 台账路径校正：原 evidence 混入符号说明和未附日志的构建描述，移到本备注保留；源码路径只证明入口存在，原 implemented/未完成验收状态不变。原记录：clients/windows_legacy/Uten.Legacy.Desktop/Controls/UtenBusyDialog.cs（ShowProgress/Report/Stage）；clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitExportWindow.cs DownloadAsync（下载全程持弹窗+取消传输令牌）；clients/windows_legacy/Uten.Legacy.Desktop/MainWindow.xaml.cs OnCheckUpdate（确定进度 received/SizeBytes+幂等 Dispose 收尾）；本机 dotnet msbuild：85 个错误全为 XAML 生成名缺失（既有环境限制），本次新增符号零错误；2026-11-10 补交11图：Flutter与既有WPF公共进度条统一同源S12高度；保留进度/未知总量/取消合同。源码及本机编译不等于Win7业务验收。。

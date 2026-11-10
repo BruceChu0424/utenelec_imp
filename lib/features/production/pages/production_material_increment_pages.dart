@@ -306,9 +306,9 @@ class _IncrementDetailState
             UtenConfirmationFact(
               label: '本次追加',
               value: '${detail.text('deltaQty')} ${detail.text('unitName')}',
+              info: '批准后增加材料领用额度，仓库仍需实际发料。',
             ),
           ],
-          consequences: const ['批准后增加材料领用额度，仓库仍需实际发料。'],
         ),
       );
       if (confirmed != true || !mounted) return;

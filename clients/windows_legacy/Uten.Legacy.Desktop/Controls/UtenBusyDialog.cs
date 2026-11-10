@@ -33,7 +33,8 @@ namespace Uten.Legacy.Desktop.Controls
             internal BusyWindow(Window owner, string title, Action cancel, bool determinate) : base(owner, title, 360)
             {
                 this.cancel = cancel;
-                bar = new ProgressBar { IsIndeterminate = !determinate, Height = 4, Minimum = 0, Maximum = 1000 };
+                bar = new ProgressBar { IsIndeterminate = !determinate, Minimum = 0, Maximum = 1000 };
+                bar.SetResourceReference(HeightProperty, "Uten.Space.S12");
                 bar.SetResourceReference(ForegroundProperty, "Uten.PrimaryBrush");
                 Body.Children.Add(bar);
                 detail = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, Space("S8"), 0, 0), Visibility = Visibility.Collapsed };

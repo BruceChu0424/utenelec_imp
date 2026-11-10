@@ -406,7 +406,6 @@ class _RateDetailState
               value: productionRateText(detail.requestedRate),
             ),
           ],
-          consequences: const ['审批通过后，申请比例生效。'],
         ),
       );
       if (confirmed != true || !mounted) return;

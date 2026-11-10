@@ -1684,6 +1684,14 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
     if (export == null) {
       return _c.toolbarBeforeExportActions?.call(this) ?? const [];
     }
+    // The category name belongs to the same effective query as the rows. A
+    // global search has no category, so it retains the master title instead.
+    final categoryName = widget.categoryId == _category?.id
+        ? _category?.name.trim()
+        : null;
+    final filename = categoryName?.isNotEmpty == true
+        ? categoryName!
+        : export.title;
     return [
       UtenPrintPreviewButton(
         enabled: !_queryPending && _error == null && !_loading && !_listLoading,
@@ -1695,7 +1703,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
         exportReport: '',
         exportQuery: _exportQuery,
         exportBody: _exportBody,
-        exportFilename: export.title,
+        exportFilename: filename,
         type: UtenButtonType.primary,
         size: UtenButtonSize.large,
       ),
@@ -1705,6 +1713,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
         prepareExport: () async {
           final version = _queryVersion;
           return UtenExportSelection(
+            filename: filename,
             stillCurrent: () =>
                 mounted && version == _queryVersion && !_queryPending,
           );
@@ -1714,7 +1723,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
         report: '',
         queryParams: _exportQuery,
         bodyParams: _exportBody,
-        filename: export.title,
+        filename: filename,
         label: export.label,
         type: UtenButtonType.primary,
         size: UtenButtonSize.large,

@@ -83,6 +83,9 @@ public class FinanceReportController {
         var parameters = FinanceReportHeaderRequest.current();
         FinanceReportHeaderRequest.requireBodyOnly(parameters);
         var filters = FinanceReportHeaderRequest.filters(parameters);
+        if (parameters.containsKey("layout"))
+            return service.arApOverview(dateFrom,dateTo,displayMode,keyword,categoryType,categoryId,page,size,
+                    filters,parameters.get("sort"),parameters.get("order"),parameters.get("layout"));
         return filters.isEmpty() && !parameters.containsKey("sort")
                 ? service.arApOverview(dateFrom, dateTo, displayMode, keyword, categoryType, categoryId, page, size)
                 : service.arApOverview(dateFrom, dateTo, displayMode, keyword, categoryType, categoryId, page, size,
@@ -104,6 +107,10 @@ public class FinanceReportController {
             @RequestParam(defaultValue = "50") int size,
             @Valid @RequestBody com.uten.imp.common.web.ContactSensitiveFilter body) {
         var parameters = FinanceReportHeaderRequest.withContactBody(FinanceReportHeaderRequest.current(),body);
+        if (parameters.containsKey("layout"))
+            return service.arApOverview(dateFrom,dateTo,displayMode,parameters.getOrDefault("keyword",keyword),
+                    categoryType,categoryId,page,size,FinanceReportHeaderRequest.filters(parameters),
+                    parameters.get("sort"),parameters.get("order"),parameters.get("layout"));
         return service.arApOverview(dateFrom,dateTo,displayMode,
                 parameters.getOrDefault("keyword",keyword),categoryType,categoryId,page,size,
                 FinanceReportHeaderRequest.filters(parameters),parameters.get("sort"),parameters.get("order"));

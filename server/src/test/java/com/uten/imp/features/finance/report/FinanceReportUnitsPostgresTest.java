@@ -83,6 +83,78 @@ class FinanceReportUnitsPostgresTest {
     }
     @AfterAll static void stop(){PG.stop();}
 
+    @Test void receivableOverviewKeepsLegacySixteenHeadersAndCompleteCategoryFactsAcrossPagesAndExport() {
+        String word="截图核对"+UUID.randomUUID().toString().substring(0,8);
+        UUID root=UUID.randomUUID(),leaf=UUID.randomUUID(),debt=UUID.randomUUID(),zero=UUID.randomUUID(),outside=UUID.randomUUID();
+        db.update("INSERT INTO client_categories(id,name,code) VALUES(?,?,?)",root,word,word);
+        db.update("INSERT INTO client_categories(id,parent_id,name,code) VALUES(?,?,'子分类',?)",leaf,root,"L-"+leaf);
+        for(UUID client:List.of(debt,zero,outside))db.update("INSERT INTO clients(id,code,name,full_name,category_id,credit_floor,is_deleted) VALUES(?,?,?,'客户全称',?,150,false)",
+                client,"OV-"+client,client.equals(zero)?"乙零余额":"甲有余额",client.equals(outside)?null:leaf);
+        db.update("""
+                INSERT INTO ar_ap_ledger(id,client_id,direction,status,bill_no,bill_date,source_doc_type,
+                    amount_original,amount_original_local,amount_balance,amount_balance_original,currency_id,is_deleted,open_item_kind)
+                VALUES(gen_random_uuid(),?,'AR',1,?,?,'SALES_SHIPMENT',100.1256,100.1256,100.1256,100.1256,?,false,'RECEIVABLE')
+                """,debt,"OV-"+debt,DATE,CURRENCY);
+        var first=reports.arApOverview(DATE,DATE,"ALL",word,"CLIENT",root,1,1,Map.of(),"partyCode","asc","RECEIVABLE_SUMMARY");
+        var second=reports.arApOverview(DATE,DATE,"ALL",word,"CLIENT",root,2,1,Map.of(),"partyCode","asc","RECEIVABLE_SUMMARY");
+        assertThat(first.columns()).extracting(ReportColumn::label).containsExactly("客户编号","客户简称","客户全称","业务员","总监","区域","所属地区",
+                "铺底额","上月余额","发货金额","回款金额","退货金额","货款冲销","应收余额","超出铺底额","物料金额");
+        assertThat(first.total()).isEqualTo(2);assertThat(second.total()).isEqualTo(2);
+        assertThat(List.of(first.rows().getFirst().get("__partyId"),second.rows().getFirst().get("__partyId")))
+                .containsExactlyInAnyOrder(debt.toString(),zero.toString());
+        var source=reports.receivableSummary("OV-"+debt,DATE,DATE,1,50).rows().getFirst();
+        var nonzero=reports.arApOverview(DATE,DATE,"AR_ONLY",word,null,null,1,50,Map.of(),null,null,"RECEIVABLE_SUMMARY");
+        assertThat(nonzero.total()).isEqualTo(1);var row=nonzero.rows().getFirst();
+        for(String key:List.of("prevBalance","shippedAmount","receivedAmount","returnAmount","offsetAmount","balance","overFloor","materialAmount"))
+            assertThat(row.get(key)).as(key).isEqualTo(source.get(key));
+        assertThat((BigDecimal)row.get("balance")).isEqualByComparingTo("100.1256");
+        assertThat((BigDecimal)row.get("overFloor")).isEqualByComparingTo("-49.8744");
+        assertThat(row.get("materialAmount")).isNull();
+        assertThat(first.totals()).anySatisfy(total->{assertThat(total.key()).isEqualTo("balance");assertThat(total.groups().getFirst().value()).isEqualByComparingTo("100.1256");});
+        var filtered=reports.arApOverview(DATE,DATE,"ALL",word,"CLIENT",root,1,1,Map.of("search.balance",">=100"),"balance","desc","RECEIVABLE_SUMMARY");
+        assertThat(filtered.total()).isEqualTo(1);assertThat(filtered.rows().getFirst().get("__partyId")).isEqualTo(debt.toString());
+        var exported=reports.export("ar-ap/overview",Map.of("layout","RECEIVABLE_SUMMARY","dateFrom",DATE.toString(),"dateTo",DATE.toString(),
+                "categoryType","CLIENT","categoryId",root.toString(),"displayMode","ALL"),"partyCode","asc");
+        assertThat(exported.columns()).hasSize(16);assertThat(exported.rows()).hasSize(2);
+        assertThat(exported.rows()).extracting(value->value.get("__partyId")).containsExactlyInAnyOrder(debt.toString(),zero.toString());
+        assertThat(reports.arApOverview(DATE,DATE,"AP_ONLY",word,null,null,1,50,Map.of(),null,null,"RECEIVABLE_SUMMARY").total()).isZero();
+    }
+
+    @Test void categoryKeywordCannotBypassHistoricalOpeningProof() {
+        String word="期初核验"+UUID.randomUUID().toString().substring(0,8);UUID category=UUID.randomUUID(),client=UUID.randomUUID();
+        db.update("INSERT INTO client_categories(id,name,code) VALUES(?,?,?)",category,word,word);
+        db.update("INSERT INTO clients(id,code,name,category_id,is_deleted) VALUES(?,?,'名称不含分类词',?,false)",client,"PROOF-"+client,category);
+        db.update("""
+                INSERT INTO ar_ap_ledger(id,client_id,direction,status,bill_no,bill_date,source_doc_type,legacy_id,
+                    amount_original,amount_original_local,amount_balance,currency_id,is_deleted,open_item_kind)
+                VALUES(gen_random_uuid(),?,'AR',1,?,?,'SALES_SHIPMENT',123456,100,100,100,?,false,'RECEIVABLE')
+                """,client,"PROOF-"+client,DATE.minusDays(1),CURRENCY);
+        try {
+            org.assertj.core.api.Assertions.assertThatThrownBy(()->reports.arApOverview(DATE,DATE,"ALL",word,null,null,1,50,Map.of(),null,null,"RECEIVABLE_SUMMARY"))
+                    .isInstanceOf(com.uten.imp.common.web.ApiException.class).hasMessageContaining("历史本币期初");
+        } finally {
+            db.update("DELETE FROM ar_ap_ledger WHERE client_id=?",client);
+            db.update("DELETE FROM clients WHERE id=?",client);
+            db.update("DELETE FROM client_categories WHERE id=?",category);
+        }
+    }
+
+    @Test void receivableOverviewCompleteReadKeepsAll1001ClientsAndStableIdentities() {
+        String word="完整应收"+UUID.randomUUID().toString().substring(0,8);
+        db.update("INSERT INTO clients(id,code,name,is_deleted) SELECT md5(?||n)::uuid,?||lpad(n::text,4,'0'),?,false FROM generate_series(1,1001)n",
+                word,word,word);
+        var expected=db.queryForList("SELECT id::text FROM clients WHERE name=? ORDER BY name,code,id",String.class,word);
+        var actual=new java.util.ArrayList<String>();
+        try(var ignored=ReportReadPlan.open(ReportReadPlan.ROWS_ONLY)) {
+            for(int page=1;page<=3;page++) {
+                var result=reports.arApOverview(DATE,DATE,"ALL",word,"CLIENT",null,page,400,Map.of(),null,null,"RECEIVABLE_SUMMARY");
+                assertThat(result.total()).isEqualTo(-1);assertThat(result.totals()).isEmpty();
+                actual.addAll(result.rows().stream().map(row->row.get("__partyId").toString()).toList());
+            }
+        }
+        assertThat(actual).containsExactlyElementsOf(expected);assertThat(actual.stream().distinct()).hasSize(1001);
+    }
+
     @Test void overviewHeadersApplyToCompletePartyAggregatesAndTheSameExportAndTotals() {
         db.update("UPDATE clients SET phone='020-12345678',address='华南 工业园' WHERE id=?",CLIENT);
         for (int amount : new int[]{10,20}) db.update("""

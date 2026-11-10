@@ -28,8 +28,10 @@ import 'package:flutter/material.dart';
 import '../feedback/uten_dialog.dart';
 
 import '../../core/theme/uten_tokens.dart';
+import '../../core/responsive/scale.dart';
 import '../feedback/uten_segment_badge_label.dart';
 import 'uten_fit_or_compact.dart';
+import 'uten_table_action_scope.dart';
 
 /// 自适应分段行：每格宽度跟随自身内容，整条按内容总宽收缩。
 class UtenSegmentRow<T> extends StatelessWidget {
@@ -100,6 +102,18 @@ class UtenSegmentRow<T> extends StatelessWidget {
   Widget _wrapSegment(ButtonSegment<T> segment, Widget child) =>
       segmentWrapper?.call(segment, child) ?? child;
 
+  double _minimumHeightOf(BuildContext context) {
+    final inToolbar = UtenTableActionScope.contains(context);
+    final roleHeight =
+        inToolbar && minCellHeight < UtenTableToolbar.controlHeight
+        ? UtenTableToolbar.controlHeight
+        : minCellHeight;
+    return UtenControlMetrics.controlHeight(
+      context,
+      desktop: inToolbar ? context.scaled(roleHeight) : roleHeight,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
@@ -130,7 +144,7 @@ class UtenSegmentRow<T> extends StatelessWidget {
                   showSelectedIcon: showSelectedIcon,
                   selectedIcon: selectedIcon,
                   minCellWidth: minCellWidth,
-                  minCellHeight: minCellHeight,
+                  minCellHeight: _minimumHeightOf(context),
                   onPressed: canChange
                       ? () => _handlePressed(segments[i].value)
                       : null,
@@ -170,9 +184,10 @@ class UtenSegmentRow<T> extends StatelessWidget {
     final button = OutlinedButton(
       onPressed: enabled ? () => _showCategories(context) : null,
       style: OutlinedButton.styleFrom(
+        visualDensity: VisualDensity.standard,
         minimumSize: Size(
           UtenFilterRow.minimumWidthOf(context),
-          UtenFilterRow.heightOf(context),
+          _minimumHeightOf(context),
         ),
         padding: UtenFilterRow.contentPadding,
         shape: const RoundedRectangleBorder(

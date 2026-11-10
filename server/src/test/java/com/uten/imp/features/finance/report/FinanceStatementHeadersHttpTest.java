@@ -57,6 +57,20 @@ class FinanceStatementHeadersHttpTest {
                 parameters.get("f.search.phone").equals("1234 5678")&&parameters.get("f.search.receivable").equals(">=25")),
                 isNull(),isNull());
     }
+    @Test void receivableLayoutAndPrivateKeywordReachTheSameGetAndPostReadContract() throws Exception {
+        when(service.arApOverview(any(),any(),any(),any(),any(),any(),eq(1),eq(50),anyMap(),any(),any(),eq("RECEIVABLE_SUMMARY")))
+                .thenReturn(new ReportTableResponse(List.of(),List.of(),Map.of(),1,50,0,0));
+        var mvc=MockMvcBuilders.standaloneSetup(controller()).build();
+        mvc.perform(get("/api/finance/reports/ar-ap/overview").param("layout","RECEIVABLE_SUMMARY")
+                .param("categoryType","CLIENT")).andExpect(status().isOk());
+        verify(service).arApOverview(isNull(),isNull(),isNull(),isNull(),eq("CLIENT"),isNull(),eq(1),eq(50),
+                eq(Map.of()),isNull(),isNull(),eq("RECEIVABLE_SUMMARY"));
+        mvc.perform(post("/api/finance/reports/ar-ap/overview/search").param("layout","RECEIVABLE_SUMMARY")
+                .param("f.search.balance",">0").contentType(MediaType.APPLICATION_JSON).content("{\"keyword\":\"客户名称\"}"))
+                .andExpect(status().isOk());
+        verify(service).arApOverview(isNull(),isNull(),isNull(),eq("客户名称"),isNull(),isNull(),eq(1),eq(50),
+                eq(Map.of("search.balance",">0")),isNull(),isNull(),eq("RECEIVABLE_SUMMARY"));
+    }
     @Test void contactSearchCannotEnterTheGetUrl() {
         var mvc=MockMvcBuilders.standaloneSetup(controller()).build();
         assertThatThrownBy(()->mvc.perform(get("/api/finance/reports/ar-ap/overview").param("f.search.phone","1234")))

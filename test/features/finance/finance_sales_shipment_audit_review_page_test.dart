@@ -410,7 +410,21 @@ void main() {
     await tester.ensureVisible(approve);
     await tester.tap(approve);
     await tester.pumpAndSettle();
-    expect(find.textContaining('系统将记录当前审核员并承担本次放行责任'), findsOneWidget);
+    expect(
+      find.textContaining(RegExp('本次放行.*仓库作业'), findRichText: true),
+      findsOneWidget,
+    );
+    final responsibilityHint = find.byWidgetPredicate(
+      (widget) =>
+          widget is UtenFieldHintIcon &&
+          (widget.info?.contains('记录客户发货审核责任') ?? false),
+    );
+    expect(responsibilityHint, findsOneWidget);
+    await tester.tap(responsibilityHint);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('记录客户发货审核责任'), findsOneWidget);
+    Tooltip.dismissAllToolTips();
+    await tester.pumpAndSettle();
     expect(
       api.postPaths.where((path) => path.endsWith('/finance-audit')),
       isEmpty,

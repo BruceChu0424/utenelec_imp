@@ -99,6 +99,8 @@ public class InstantInventoryRow {
     @Setter private BigDecimal reservedQty;
     /** Physical quantity left after those reservations, before business-specific issue rules. */
     @Setter private BigDecimal availableQty;
+    /** Stable category identity; tree search never resolves a UUID from a display name. */
+    @Setter private UUID categoryId;
 
     public InstantInventoryRow(UUID goodsId, UUID colorId, String categoryName, String model, String cNumber,
                                String name, String spec, String colorName, String unitName, String remark,
@@ -111,7 +113,7 @@ public class InstantInventoryRow {
                 weight, qty, costAmount, moreQty, goodsCode, series, stockPlace, pendingQty, pendingStockInQty,
                 weightEstimated, weightUnknown, unitWeightKg, weightTier, costMasked,
                 owningWarehouseId, owningWarehouseName, defectiveQty, null, null, false, null, true,
-                false, null, null, null, null, null, null, null);
+                false, null, null, null, null, null, null, null, null);
     }
 
     /** Preserve the existing constructor used by stock clients and read-side tests. */

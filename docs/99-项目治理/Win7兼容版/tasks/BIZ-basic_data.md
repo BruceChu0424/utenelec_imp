@@ -117,9 +117,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：`clients/windows_legacy/progress/evidence/staff-feedback-20261103.json`；`clients/windows_legacy/progress/evidence/party-master-hidden-20261103.json`；`clients/windows_legacy/progress/contracts/party-master-hidden.json`。
+证据：`clients/windows_legacy/progress/evidence/staff-feedback-20261103.json`；`clients/windows_legacy/progress/evidence/party-master-hidden-20261103.json`；`clients/windows_legacy/progress/contracts/party-master-hidden.json`；`docs/99-项目治理/2026-11-10-截图批注补齐与本地主链整合.md`。
 
-接续/限制：2026-11-03：客户默认货运策略改为只读原记录，新订单固定允许分批，不再参与客户预填。WPF 客户分类编辑尚未迁移，保持 todo。；2026-11-03 客户/供应商资料删除确认仅设置 is_hidden，主档与新业务选择隐藏；is_deleted/status/UUID、旧单据及既有往来保留。引用提醒按 confirmationRequired 给“去查看/仍然删除”，重提只含确认子集并保留版本；权限/版本失败不得强制。负责人“未分配”用同源 Uten.Error 红色。原生页面及相关业务选择/历史筛选尚未迁移，保持 todo，不开放占位写入口；接入合同见 clients/windows_legacy/progress/contracts/party-master-hidden.json。。
+接续/限制：2026-11-03：客户默认货运策略改为只读原记录，新订单固定允许分批，不再参与客户预填。WPF 客户分类编辑尚未迁移，保持 todo。；2026-11-03 客户/供应商资料删除确认仅设置 is_hidden，主档与新业务选择隐藏；is_deleted/status/UUID、旧单据及既有往来保留。引用提醒按 confirmationRequired 给“去查看/仍然删除”，重提只含确认子集并保留版本；权限/版本失败不得强制。负责人“未分配”用同源 Uten.Error 红色。原生页面及相关业务选择/历史筛选尚未迁移，保持 todo，不开放占位写入口；接入合同见 clients/windows_legacy/progress/contracts/party-master-hidden.json。；2026-11-10 补交11图：分类主档共用导出弹窗去冗余范围标题，默认文件名取实际分类名；原生同责分类导出尚未迁移，平面单位主档不冒用分类规则。。
 
 ## W7-BIZ-023
 
@@ -333,9 +333,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：`clients/windows_legacy/progress/evidence/mould-bom-sync-20261031.json`；`clients/windows_legacy/progress/evidence/business-auxiliary-references-20261101.json`；`clients/windows_legacy/progress/evidence/platform-search-20261103.json`；`clients/windows_legacy/progress/evidence/platform-search-integration-20261104.json`；`clients/windows_legacy/progress/evidence/table-output-selection-20261105.json`。
+证据：`clients/windows_legacy/progress/evidence/mould-bom-sync-20261031.json`；`clients/windows_legacy/progress/evidence/business-auxiliary-references-20261101.json`；`clients/windows_legacy/progress/evidence/platform-search-20261103.json`；`clients/windows_legacy/progress/evidence/platform-search-integration-20261104.json`；`clients/windows_legacy/progress/evidence/table-output-selection-20261105.json`；`docs/99-项目治理/2026-11-10-截图批注补齐与本地主链整合.md`。
 
-接续/限制：尚未迁移；先做动作/合同审计。；2026-10-31 read-only company/old-backup audit confirms original summary text is preserved as keeper while manufacturer is blank. Native mould workspace remains unported. Retain raw text, supplier UUID ambiguity and approved data-recovery boundary. See E-MOULD-BOM-WINDOWS-20261031.；2026-10-31 user confirmed summary is manufacturer/mould supplier. V972 and offline import now recover/preserve original text; company read-only preflight: 1300 eligible, zero conflicts. Production was not written. WPF mould page remains unported.；2026-11-01 业务辅助选择改用已有业务动作授权的最小引用，人员仅工号、姓名、部门、职位；本次未实施或验收此WPF任务的原生增量，既有状态与DoD保留。见业务辅助引用证据及治理记录。；2026-11-04 搜索契约及c8eb95cb1合成双架构读取/草稿fixture证据追加；仅证明当前读取增量，原status、owner、DoD和依赖保留，未声明原生业务迁移、Win7真机或正式交付完成。；2026-11-05图2：服务端已有mould后台流式全量导出数据集；公共主档selectedIds增加当前筛选/权限交集及精确核对，未删除同步500行安全预算。原生模具主档/导出/打印仍未迁移，后端合同不代表原生入口完成。见E-TABLE-OUTPUT-SELECTION-20261105。。
+接续/限制：尚未迁移；先做动作/合同审计。；2026-10-31 read-only company/old-backup audit confirms original summary text is preserved as keeper while manufacturer is blank. Native mould workspace remains unported. Retain raw text, supplier UUID ambiguity and approved data-recovery boundary. See E-MOULD-BOM-WINDOWS-20261031.；2026-10-31 user confirmed summary is manufacturer/mould supplier. V972 and offline import now recover/preserve original text; company read-only preflight: 1300 eligible, zero conflicts. Production was not written. WPF mould page remains unported.；2026-11-01 业务辅助选择改用已有业务动作授权的最小引用，人员仅工号、姓名、部门、职位；本次未实施或验收此WPF任务的原生增量，既有状态与DoD保留。见业务辅助引用证据及治理记录。；2026-11-04 搜索契约及c8eb95cb1合成双架构读取/草稿fixture证据追加；仅证明当前读取增量，原status、owner、DoD和依赖保留，未声明原生业务迁移、Win7真机或正式交付完成。；2026-11-05图2：服务端已有mould后台流式全量导出数据集；公共主档selectedIds增加当前筛选/权限交集及精确核对，未删除同步500行安全预算。原生模具主档/导出/打印仍未迁移，后端合同不代表原生入口完成。见E-TABLE-OUTPUT-SELECTION-20261105。；2026-11-10 补交11图：分类主档共用导出弹窗去冗余范围标题，默认文件名取实际分类名；原生同责分类导出尚未迁移，平面单位主档不冒用分类规则。。
 
 ## W7-BIZ-032
 
@@ -405,9 +405,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：`clients/windows_legacy/progress/evidence/mould-bom-sync-20261031.json`；`clients/windows_legacy/progress/evidence/goods-bom-comparison-20261101.json`；`docs/99-项目治理/2026-11-02-货品表格保存后退出编辑.md`；`clients/windows_legacy/progress/evidence/goods-currency-selection-20261103.json`；`clients/windows_legacy/progress/evidence/platform-search-20261103.json`；`clients/windows_legacy/progress/evidence/platform-search-integration-20261104.json`；`clients/windows_legacy/progress/evidence/platform-search-followup-20261104.json`；`clients/windows_legacy/progress/evidence/table-output-selection-20261105.json`；`clients/windows_legacy/progress/evidence/platform-loading-20261105.json`；`clients/windows_legacy/progress/evidence/platform-loading-main3068-20261105.json`；`clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106.json`；`clients/windows_legacy/progress/evidence/complete-master-stream-20261106.json`。
+证据：`clients/windows_legacy/progress/evidence/mould-bom-sync-20261031.json`；`clients/windows_legacy/progress/evidence/goods-bom-comparison-20261101.json`；`docs/99-项目治理/2026-11-02-货品表格保存后退出编辑.md`；`clients/windows_legacy/progress/evidence/goods-currency-selection-20261103.json`；`clients/windows_legacy/progress/evidence/platform-search-20261103.json`；`clients/windows_legacy/progress/evidence/platform-search-integration-20261104.json`；`clients/windows_legacy/progress/evidence/platform-search-followup-20261104.json`；`clients/windows_legacy/progress/evidence/table-output-selection-20261105.json`；`clients/windows_legacy/progress/evidence/platform-loading-20261105.json`；`clients/windows_legacy/progress/evidence/platform-loading-main3068-20261105.json`；`clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106.json`；`clients/windows_legacy/progress/evidence/complete-master-stream-20261106.json`；`docs/99-项目治理/2026-11-10-截图批注补齐与本地主链整合.md`。
 
-接续/限制：货品完整列表已改一次NDJSON HTTP读取，服务端100行帧，complete及EOF后经公共快照校验才发布；x86/x64 Debug/Release编译及PE、本机10001行虚拟滚动/取消/退休验证通过。仅候选本机证据，货品完整业务及Win7真机仍未完成。。
+接续/限制：货品完整列表已改一次NDJSON HTTP读取，服务端100行帧，complete及EOF后经公共快照校验才发布；x86/x64 Debug/Release编译及PE、本机10001行虚拟滚动/取消/退休验证通过。仅候选本机证据，货品完整业务及Win7真机仍未完成。；2026-11-06 历史货品组件粘贴按服务端授权来源核对原数量及有符号历史金额，普通新增或修改继续执行非负约束。原生写入迁移状态保持。；2026-11-10 补交11图：分类主档共用导出弹窗去冗余范围标题，默认文件名取实际分类名；原生同责分类导出尚未迁移，平面单位主档不冒用分类规则。。
 
 ## W7-BIZ-035
 
@@ -453,9 +453,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：`clients/windows_legacy/progress/evidence/party-master-hidden-20261103.json`；`clients/windows_legacy/progress/contracts/party-master-hidden.json`。
+证据：`clients/windows_legacy/progress/evidence/party-master-hidden-20261103.json`；`clients/windows_legacy/progress/contracts/party-master-hidden.json`；`docs/99-项目治理/2026-11-10-截图批注补齐与本地主链整合.md`。
 
-接续/限制：尚未迁移；先做动作/合同审计。；2026-11-03 客户/供应商资料删除确认仅设置 is_hidden，主档与新业务选择隐藏；is_deleted/status/UUID、旧单据及既有往来保留。引用提醒按 confirmationRequired 给“去查看/仍然删除”，重提只含确认子集并保留版本；权限/版本失败不得强制。负责人“未分配”用同源 Uten.Error 红色。原生页面及相关业务选择/历史筛选尚未迁移，保持 todo，不开放占位写入口；接入合同见 clients/windows_legacy/progress/contracts/party-master-hidden.json。。
+接续/限制：尚未迁移；先做动作/合同审计。；2026-11-03 客户/供应商资料删除确认仅设置 is_hidden，主档与新业务选择隐藏；is_deleted/status/UUID、旧单据及既有往来保留。引用提醒按 confirmationRequired 给“去查看/仍然删除”，重提只含确认子集并保留版本；权限/版本失败不得强制。负责人“未分配”用同源 Uten.Error 红色。原生页面及相关业务选择/历史筛选尚未迁移，保持 todo，不开放占位写入口；接入合同见 clients/windows_legacy/progress/contracts/party-master-hidden.json。；2026-11-10 补交11图：分类主档共用导出弹窗去冗余范围标题，默认文件名取实际分类名；原生同责分类导出尚未迁移，平面单位主档不冒用分类规则。。
 
 ## W7-BIZ-037
 

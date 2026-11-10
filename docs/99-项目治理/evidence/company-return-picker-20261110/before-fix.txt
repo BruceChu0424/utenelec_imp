@@ -1,0 +1,31 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/subcontract/subcontract_goods_multi_picker_test.dart
+00:00 +0: returnDoc多选保留选择范围和手填金额，新增行不捏造上游来源
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: UtenGoodsPickerScope:<UtenGoodsPickerScope.all>
+  Actual: UtenGoodsPickerScope:<UtenGoodsPickerScope.sellable>
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/subcontract/subcontract_goods_multi_picker_test.dart:99:7)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/subcontract/subcontract_goods_multi_picker_test.dart line 99
+The test description was:
+  returnDoc多选保留选择范围和手填金额，新增行不捏造上游来源
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:07 +0 -1: returnDoc多选保留选择范围和手填金额，新增行不捏造上游来源 [E]
+  Test failed. See exception logs above.
+  The test description was: returnDoc多选保留选择范围和手填金额，新增行不捏造上游来源
+  
+00:07 +0 -1: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/subcontract/subcontract_goods_multi_picker_test.dart: returnDoc多选保留选择范围和手填金额，新增行不捏造上游来源

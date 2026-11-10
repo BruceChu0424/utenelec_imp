@@ -1,0 +1,26 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/subcontract/subcontract_goods_multi_picker_test.dart
+00:00 +0: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/subcontract/subcontract_goods_multi_picker_test.dart: 委外退货新建实际选择器反复开关均显示全部分类
+00:07 +1: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/purchase/purchase_goods_multi_pick_test.dart: 采购退货新建实际选择器反复开关均显示全部分类
+00:07 +2: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/subcontract/subcontract_goods_multi_picker_test.dart: 委外退货编辑实际选择器反复开关均显示全部分类
+00:10 +3: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/purchase/purchase_goods_multi_pick_test.dart: 采购退货编辑实际选择器反复开关均显示全部分类
+00:11 +4: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/subcontract/subcontract_goods_multi_picker_test.dart: 委外订货一次带入多件并全选，逐件主档条款和默认价格保持有效
+00:12 +5: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/purchase/purchase_goods_multi_pick_test.dart: 订货一次多选逐行带单位库位、采购价与条款，新增各行自动勾选
+00:13 +6: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/subcontract/subcontract_goods_multi_picker_test.dart: inquiry多选保留选择范围和手填金额，新增行不捏造上游来源
+00:14 +7: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/purchase/purchase_goods_multi_pick_test.dart: request手工行多选保留原数量价格，额外行不复制上游身份
+00:15 +8: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/purchase/purchase_goods_multi_pick_test.dart: request手工行多选保留原数量价格，额外行不复制上游身份
+00:15 +9: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/subcontract/subcontract_goods_multi_picker_test.dart: receipt多选保留选择范围和手填金额，新增行不捏造上游来源
+00:16 +10: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/purchase/purchase_goods_multi_pick_test.dart: receipt手工行多选保留原数量价格，额外行不复制上游身份
+00:16 +11: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/subcontract/subcontract_goods_multi_picker_test.dart: materialIssue多选保留选择范围和手填金额，新增行不捏造上游来源
+00:17 +12: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/purchase/purchase_goods_multi_pick_test.dart: returnDoc手工行多选保留原数量价格，额外行不复制上游身份
+00:18 +13: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/subcontract/subcontract_goods_multi_picker_test.dart: returnDoc多选保留选择范围和手填金额，新增行不捏造上游来源
+00:19 +14: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/purchase/purchase_goods_multi_pick_test.dart: 取消多选不改原行，重复货品保持独立交给既有保存复核
+00:20 +15: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/purchase/purchase_goods_multi_pick_test.dart: 取消多选不改原行，重复货品保持独立交给既有保存复核
+00:21 +16: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/purchase/purchase_goods_multi_pick_test.dart: 取消多选不改原行，重复货品保持独立交给既有保存复核
+00:21 +17: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/subcontract/subcontract_goods_multi_picker_test.dart: 委外退货取消或原行退休后晚返回不清空原输入或追加货品
+00:22 +18: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/purchase/purchase_goods_multi_pick_test.dart: 多选等待期间当前行被删除，返回后不写入已释放行
+00:23 +19: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/subcontract/subcontract_goods_multi_picker_test.dart: 委外退货来源行保持锁定，不能换成其他分类货品
+00:23 +20: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/purchase/purchase_goods_multi_pick_test.dart: 上游来源锁定行仍不能换货或打开多选
+00:24 +21: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/subcontract/subcontract_goods_multi_picker_test.dart: 取消选择不清空当前行
+00:24 +22: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/subcontract/subcontract_goods_multi_picker_test.dart: 来自上游的锁定行不能通过多选改换货品
+00:26 +23: All tests passed!

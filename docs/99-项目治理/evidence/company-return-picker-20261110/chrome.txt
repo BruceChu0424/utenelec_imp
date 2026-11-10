@@ -1,0 +1,9 @@
+["D:\\Software\\Flutter\\flutter\\bin\\cache\\dart-sdk\\bin\\dart.exe", "--packages=D:\\Projects\\uten_imp_worktrees\\company-return-picker-20261110\\build\\return-picker-web-tools\\70d8797d63b94893\\package_config.json", "D:\\Projects\\uten_imp_worktrees\\company-return-picker-20261110\\build\\return-picker-web-tools\\70d8797d63b94893\\flutter_tools_private.snapshot", "test", "--no-pub", "--platform", "chrome", "--reporter", "expanded", "test/features/subcontract/subcontract_goods_multi_picker_test.dart", "test/features/purchase/purchase_goods_multi_pick_test.dart", "--name", "实际选择器反复开关均显示全部分类"]
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/subcontract/subcontract_goods_multi_picker_test.dart
+00:00 +0: test\features\subcontract\subcontract_goods_multi_picker_test.dart: 委外退货新建实际选择器反复开关均显示全部分类
+00:18 +1: test\features\subcontract\subcontract_goods_multi_picker_test.dart: 委外退货编辑实际选择器反复开关均显示全部分类
+00:29 +2: loading D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/purchase/purchase_goods_multi_pick_test.dart
+00:36 +2: test\features\purchase\purchase_goods_multi_pick_test.dart: 采购退货新建实际选择器反复开关均显示全部分类
+00:45 +3: test\features\purchase\purchase_goods_multi_pick_test.dart: 采购退货编辑实际选择器反复开关均显示全部分类
+00:50 +4: All tests passed!

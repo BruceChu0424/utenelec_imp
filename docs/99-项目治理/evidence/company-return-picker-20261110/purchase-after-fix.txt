@@ -1,0 +1,31 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/purchase/purchase_goods_multi_pick_test.dart
+00:00 +0: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/purchase/purchase_goods_multi_pick_test.dart: 订货一次多选逐行带单位库位、采购价与条款，新增各行自动勾选
+00:07 +1: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/purchase/purchase_goods_multi_pick_test.dart: 订货一次多选逐行带单位库位、采购价与条款，新增各行自动勾选
+00:08 +2: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/purchase/purchase_order_over_receipt_test.dart: 采购新建旧布局恢复：宿主=false 平台=true 超收紧跟数量
+00:09 +3: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/purchase/purchase_goods_multi_pick_test.dart: request手工行多选保留原数量价格，额外行不复制上游身份
+00:11 +4: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/purchase/purchase_order_over_receipt_test.dart: 采购新建旧布局恢复：宿主=true 平台=true 超收紧跟数量
+00:11 +5: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/purchase/purchase_goods_multi_pick_test.dart: receipt手工行多选保留原数量价格，额外行不复制上游身份
+00:13 +6: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/purchase/purchase_goods_multi_pick_test.dart: receipt手工行多选保留原数量价格，额外行不复制上游身份
+00:13 +7: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/purchase/purchase_order_over_receipt_test.dart: 采购新建旧平台固定边界不拆开数量与超收 [allowedOverReceiptPct]
+00:14 +8: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/purchase/purchase_goods_multi_pick_test.dart: returnDoc手工行多选保留原数量价格，额外行不复制上游身份
+00:16 +9: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/purchase/purchase_order_over_receipt_test.dart: 采购新建平台布局迟到也迁移超收列
+00:16 +10: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/purchase/purchase_goods_multi_pick_test.dart: 取消多选不改原行，重复货品保持独立交给既有保存复核
+00:16 +11: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/purchase/purchase_goods_multi_pick_test.dart: 取消多选不改原行，重复货品保持独立交给既有保存复核
+00:16 +12: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/purchase/purchase_goods_multi_pick_test.dart: 取消多选不改原行，重复货品保持独立交给既有保存复核
+00:16 +13: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/purchase/purchase_goods_multi_pick_test.dart: 取消多选不改原行，重复货品保持独立交给既有保存复核
+00:16 +14: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/purchase/purchase_goods_multi_pick_test.dart: 取消多选不改原行，重复货品保持独立交给既有保存复核
+00:16 +15: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/purchase/purchase_goods_multi_pick_test.dart: 取消多选不改原行，重复货品保持独立交给既有保存复核
+00:16 +16: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/purchase/purchase_goods_multi_pick_test.dart: 取消多选不改原行，重复货品保持独立交给既有保存复核
+00:16 +17: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/purchase/purchase_goods_multi_pick_test.dart: 取消多选不改原行，重复货品保持独立交给既有保存复核
+00:16 +18: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/purchase/purchase_goods_multi_pick_test.dart: 取消多选不改原行，重复货品保持独立交给既有保存复核
+00:19 +19: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/purchase/purchase_goods_multi_pick_test.dart: 取消多选不改原行，重复货品保持独立交给既有保存复核
+00:20 +20: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/purchase/purchase_order_over_receipt_test.dart: 新建：清空预填的比例(不允许超收)后再加行，不会被主档记忆填回去
+00:22 +21: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/purchase/purchase_order_over_receipt_test.dart: 新建：清空预填的比例(不允许超收)后再加行，不会被主档记忆填回去
+00:23 +22: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/purchase/purchase_goods_multi_pick_test.dart: 上游来源锁定行仍不能换货或打开多选
+00:24 +23: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/purchase/purchase_order_over_receipt_test.dart: 新建：换货品清掉旧货品带入的比例，换回去重新预填
+00:25 +24: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/purchase/purchase_order_over_receipt_test.dart: 编辑既有单：比例为空的行加行后仍为空，保存不提交比例
+00:29 +25: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/purchase/purchase_order_over_receipt_test.dart: 编辑既有单：回显比例，改成三位小数保持完整提交
+00:31 +26: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/purchase/purchase_order_over_receipt_test.dart: 编辑既有单：留空不提交比例(服务端按 0%)
+00:32 +27: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/purchase/purchase_order_over_receipt_test.dart: 允许超收超过 100 拦住不提交并说明
+00:34 +28: All tests passed!

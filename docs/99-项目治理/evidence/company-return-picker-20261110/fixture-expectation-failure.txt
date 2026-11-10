@@ -1,0 +1,72 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/subcontract/subcontract_goods_multi_picker_test.dart
+00:00 +0: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/subcontract/subcontract_goods_multi_picker_test.dart: 委外订货一次带入多件并全选，逐件主档条款和默认价格保持有效
+00:06 +0: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/basic_data/widgets/uten_goods_picker_test.dart: 全部分类范围保留原料辅料历史和自定义分类，搜索可选原料并确认
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: (bool, bool):<(true, false)>
+  Actual: (bool, bool):<(true, true)>
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/basic_data/widgets/uten_goods_picker_test.dart:54:5)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/basic_data/widgets/uten_goods_picker_test.dart line 54
+The test description was:
+  全部分类范围保留原料辅料历史和自定义分类，搜索可选原料并确认
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:06 +0 -1: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/subcontract/subcontract_goods_multi_picker_test.dart: 委外订货一次带入多件并全选，逐件主档条款和默认价格保持有效
+00:06 +0 -1: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/basic_data/widgets/uten_goods_picker_test.dart: 全部分类范围保留原料辅料历史和自定义分类，搜索可选原料并确认 [E]
+  Test failed. See exception logs above.
+  The test description was: 全部分类范围保留原料辅料历史和自定义分类，搜索可选原料并确认
+  
+Warning: At least one test in this suite creates an HttpClient. When running a test suite that uses
+TestWidgetsFlutterBinding, all HTTP requests will return status code 400, and no network request
+will actually be made. Any test expecting a real network connection and status code will fail.
+To test code that needs an HttpClient, provide your own HttpClient implementation to the code under
+test, so that your test can consistently provide a testable response to the code under test.
+00:07 +1 -1: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/basic_data/widgets/uten_goods_picker_test.dart: completed same-query Enter refreshes category locations after an external category move
+00:07 +2 -1: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/subcontract/subcontract_goods_multi_picker_test.dart: inquiry多选保留选择范围和手填金额，新增行不捏造上游来源
+00:09 +3 -1: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/subcontract/subcontract_goods_multi_picker_test.dart: inquiry多选保留选择范围和手填金额，新增行不捏造上游来源
+00:09 +4 -1: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/basic_data/widgets/uten_goods_picker_test.dart: fresh authorized rows can be selected and confirmed while auxiliary location is pending
+00:10 +5 -1: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/subcontract/subcontract_goods_multi_picker_test.dart: application多选保留选择范围和手填金额，新增行不捏造上游来源
+00:10 +6 -1: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/basic_data/widgets/uten_goods_picker_test.dart: cached rows cannot be confirmed before their category metadata gate finishes
+00:12 +7 -1: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/subcontract/subcontract_goods_multi_picker_test.dart: receipt多选保留选择范围和手填金额，新增行不捏造上游来源
+00:13 +8 -1: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/basic_data/widgets/uten_goods_picker_test.dart: clearing raw input cannot confirm an earlier selection during debounce
+00:14 +9 -1: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/subcontract/subcontract_goods_multi_picker_test.dart: materialIssue多选保留选择范围和手填金额，新增行不捏造上游来源
+00:14 +10 -1: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/basic_data/widgets/uten_goods_picker_test.dart: denied auxiliary category location still retires fresh selected rows
+00:15 +11 -1: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/subcontract/subcontract_goods_multi_picker_test.dart: returnDoc多选保留选择范围和手填金额，新增行不捏造上游来源
+00:17 +12 -1: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/subcontract/subcontract_goods_multi_picker_test.dart: returnDoc多选保留选择范围和手填金额，新增行不捏造上游来源
+00:17 +13 -1: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/basic_data/widgets/uten_goods_picker_test.dart: default goods picker cannot reopen a stale tree after permission ABA
+00:17 +14 -1: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/subcontract/subcontract_goods_multi_picker_test.dart: materialReturn多选保留选择范围和手填金额，新增行不捏造上游来源
+00:18 +15 -1: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/subcontract/subcontract_goods_multi_picker_test.dart: materialReturn多选保留选择范围和手填金额，新增行不捏造上游来源
+00:19 +16 -1: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/basic_data/widgets/uten_goods_picker_test.dart: 点击侧边阴影取消多选，不提交勾选且再次打开没有旧选择
+00:20 +17 -1: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/subcontract/subcontract_goods_multi_picker_test.dart: waste多选保留选择范围和手填金额，新增行不捏造上游来源
+00:20 +18 -1: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/basic_data/widgets/uten_goods_picker_test.dart: 整范围读取完成后本地滚动与多选不再加载其他批次
+00:22 +19 -1: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/basic_data/widgets/uten_goods_picker_test.dart: 整范围读取完成后本地滚动与多选不再加载其他批次
+00:22 +20 -1: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/subcontract/subcontract_goods_multi_picker_test.dart: 委外退货来源行保持锁定，不能换成其他分类货品
+00:24 +21 -1: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/subcontract/subcontract_goods_multi_picker_test.dart: 委外退货来源行保持锁定，不能换成其他分类货品
+00:24 +22 -1: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/basic_data/widgets/uten_goods_picker_test.dart: 表头筛选下拉带候选桶：分类浏览与搜索态都按当前范围取 facets
+00:26 +23 -1: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/subcontract/subcontract_goods_multi_picker_test.dart: 取消选择不清空当前行
+00:26 +24 -1: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/basic_data/widgets/uten_goods_picker_test.dart: 统一搜索受 picker scope 限定并定位所有命中分类
+00:28 +25 -1: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/subcontract/subcontract_goods_multi_picker_test.dart: 来自上游的锁定行不能通过多选改换货品
+00:29 +26 -1: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/subcontract/subcontract_goods_multi_picker_test.dart: 来自上游的锁定行不能通过多选改换货品
+00:29 +27 -1: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/basic_data/widgets/uten_goods_picker_test.dart: 旧后端忽略 scope 时客户端拒绝展示范围外货品
+00:30 +28 -1: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/basic_data/widgets/uten_goods_picker_test.dart: 服务端空结果不回退整类列表，显式分类范围保留关键词
+00:31 +29 -1: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/basic_data/widgets/uten_goods_picker_test.dart: 整范围搜索汇总全部分类且滚动不再查询定位
+00:32 +30 -1: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/basic_data/widgets/uten_goods_picker_test.dart: 旧慢请求晚返回不会覆盖较新的搜索结果
+00:33 +31 -1: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/basic_data/widgets/uten_goods_picker_test.dart: 定位未完成时点分类使旧全局响应失效，关键词继续带分类范围
+00:34 +32 -1: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/basic_data/widgets/uten_goods_picker_test.dart: 输入防抖期间点分类立即查询该范围，旧防抖不重复发起
+00:35 +33 -1: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/basic_data/widgets/uten_goods_picker_test.dart: 单根提升 + 无缩进层级色 + 可拖分割线
+00:36 +34 -1: D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/basic_data/widgets/uten_goods_picker_test.dart: 多选：底部「已选 N 项」滑层可逐项取消选择
+00:39 +35 -1: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/company-return-picker-20261110/test/features/basic_data/widgets/uten_goods_picker_test.dart: 全部分类范围保留原料辅料历史和自定义分类，搜索可选原料并确认

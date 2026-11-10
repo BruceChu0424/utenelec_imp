@@ -10,6 +10,8 @@ import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/network/read_scope_revision.dart';
 import 'package:uten_imp/core/network/server_config.dart';
+import 'package:uten_imp/core/ui/table_load_progress_notice.dart';
+import 'package:uten_imp/shared/paging/complete_read_progress.dart';
 import 'package:uten_imp/features/basic_data/models/goods_node.dart';
 import 'package:uten_imp/features/basic_data/models/product_category_node.dart';
 import 'package:uten_imp/features/basic_data/pages/product_category_page.dart';
@@ -495,6 +497,104 @@ void registerGoodsCompleteFirstOpenTests() {
           ),
           hasLength(2),
         );
+        expect(api.businessWrites, 0);
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets(
+      'Goods real page drives the top load progress notice (card appears mid-load, completes, auto-dismisses)',
+      (tester) async {
+        final api = _GoodsApi();
+        // 卡住 normal 第 2 批，让整页读取在「首批已到、总量已知」的半途停留，
+        // 跨过 600ms 出现门槛——对应真机大数据集的加载中段。
+        const _Batch held = (page: 2, size: 50);
+        api.hold.add(('normal', 1, held));
+        final events = <String>[];
+        void onEvent(CompleteReadProgressEvent e) =>
+            events.add('${e.phase.name}(${e.loaded}/${e.total})');
+        CompleteReadProgressReporter.addListener(onEvent);
+        addTearDown(() => CompleteReadProgressReporter.removeListener(onEvent));
+        SharedPreferences.setMockInitialValues({});
+        final preferences = await SharedPreferences.getInstance();
+        await setUtenTestSurfaceSize(tester, const Size(1600, 1000));
+        addTearDown(() => setUtenTestSurfaceSize(tester, null));
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              apiClientProvider.overrideWithValue(api),
+              apiBaseUrlProvider.overrideWithValue('https://goods.fixture/api'),
+              sharedPreferencesProvider.overrideWithValue(preferences),
+              currentPermissionsProvider.overrideWithValue({
+                Perm.goodsView,
+                Perm.materialCategoryView,
+              }),
+              isSuperAdminProvider.overrideWithValue(false),
+              authenticatedScopeProvider.overrideWithValue(
+                const AuthenticatedScope(userId: 'goods-reader'),
+              ),
+              productCategoryRepositoryProvider.overrideWithValue(
+                _Categories(),
+              ),
+              goodsRepositoryProvider.overrideWithValue(
+                DioGoodsRepository(api),
+              ),
+            ],
+            child: const MaterialApp(
+              locale: Locale('zh'),
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+              home: Stack(
+                children: [
+                  ProductCategoryPage(),
+                  Positioned(
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    child: TableLoadProgressNoticeHost(),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('货品总类'));
+        await tester.pump();
+        // 首批 50 行已到（总量 10001），第 2 批被闸门挂住。fake 事件环里
+        // 每个零延迟跳步要一拍 pump：逐步推进直到真实 batch 事件到达，再等
+        // 过 600ms 出现门槛。
+        await pumpUntil(
+          tester,
+          () => events.any((e) => e.contains('batch')),
+          reason: 'No validated batch reached the progress reporter',
+          timeout: const Duration(seconds: 10),
+        );
+        await tester.pump(
+          tableLoadNoticeShowDelay + const Duration(milliseconds: 50),
+        );
+        expect(
+          find.textContaining('正在加载数据'),
+          findsOneWidget,
+          reason: '真实货品页的完整读取必须驱动顶部进度卡（读取 >600ms 时显示）',
+        );
+        expect(find.byTooltip('关闭加载提示'), findsOneWidget, reason: '红色关闭按钮与卡片同在');
+        // 放行：剩余批次读完，完整结果到达 → 完成态 → 自动收起。
+        api.release('normal', 1, held);
+        await pumpUntil(
+          tester,
+          () =>
+              _table.evaluate().length == 1 &&
+              _view(tester).items.length == 10001,
+          reason: 'Complete result did not reach the real page',
+          timeout: const Duration(seconds: 10),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+        expect(find.textContaining('数据加载完成：100%'), findsOneWidget);
+        await tester.pump(tableLoadNoticeDoneHold);
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(find.textContaining('数据加载完成'), findsNothing);
         expect(api.businessWrites, 0);
         expect(tester.takeException(), isNull);
       },

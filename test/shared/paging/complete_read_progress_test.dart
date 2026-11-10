@@ -224,6 +224,56 @@ void main() {
   );
 
   test(
+    'cursor history read reports indeterminate progress (total=null)',
+    () async {
+      final events = <CompleteReadProgressEvent>[];
+      CompleteReadProgressReporter.addListener(events.add);
+      await loadCompleteCursorSnapshot<String, PagedResult<String>, int>(
+        loadPage: (cursor, size) async {
+          final start = cursor ?? 0;
+          return PagedResult<String>(
+            items: [
+              for (var i = start; i < start + size && i < 450; i++) 'row-$i',
+            ],
+            page: start ~/ size + 1,
+            size: size,
+            total: 450,
+            totalPages: (450 + size - 1) ~/ size,
+            readScopeVersion: 'scope-a',
+          );
+        },
+        rowsOf: (page) => page.items,
+        nextCursorOf: (page) =>
+            page.items.isEmpty || page.items.last == 'row-449'
+            ? null
+            : int.parse(page.items.last.split('-')[1]) + 1,
+        rebuildSnapshot: (first, rows) => first.withRows(
+          rows,
+          page: 1,
+          size: rows.length,
+          total: rows.length,
+          totalPages: 1,
+        ),
+        isCurrent: () => true,
+        idOf: (row) => row,
+        onBatch: (rows, hasMore) {},
+      );
+      CompleteReadProgressReporter.removeListener(events.add);
+      expect(events.first.phase, CompleteReadProgressPhase.started);
+      final batches = events
+          .where((e) => e.phase == CompleteReadProgressPhase.batch)
+          .toList();
+      expect(batches.map((e) => e.loaded), [50, 250, 450]);
+      expect(
+        batches.every((e) => e.total == null),
+        isTrue,
+        reason: '游标无总量语义：一律不定进度，不编造百分比',
+      );
+      expect(events.last.phase, CompleteReadProgressPhase.succeeded);
+    },
+  );
+
+  test(
     'silent reread of an accepted result creates no new progress task',
     () async {
       final events = <CompleteReadProgressEvent>[];

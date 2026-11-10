@@ -451,39 +451,102 @@ Future<S> loadCompleteCursorSnapshot<R, S, C>({
   bool logicalCurrent() => isCurrent() && (parent?.call() ?? true);
   bool current() => logicalCurrent() && (activity?.call() ?? true);
   final work = budget ?? UiWorkBudget(isCurrent: current);
+  // Cursor history has no total semantics: the top notice follows these reads
+  // with an indeterminate sweep (total=null), never a made-up percentage.
+  final progress = onBatch == null || !CompleteReadProgressReporter.hasListeners
+      ? null
+      : CompleteReadProgressReporter.start();
   final rows = <R>[];
   final identities = <Object>{};
   final cursors = <PagedReadQueryKey>{};
+  try {
+    return await _cursorBatches(
+      loadPage: loadPage,
+      rowsOf: rowsOf,
+      nextCursorOf: nextCursorOf,
+      logicalCurrent: logicalCurrent,
+      current: current,
+      work: work,
+      plan: plan,
+      progress: progress,
+      bootstrapAllowed: bootstrapAllowed,
+      onBatch: onBatch,
+      idOf: idOf,
+      revisionOf: revisionOf,
+      deduplicateOverlaps: deduplicateOverlaps,
+      rebuildSnapshot: rebuildSnapshot,
+      state: _CursorReadState<R, S, C>(
+        rows: rows,
+        identities: identities,
+        cursors: cursors,
+      ),
+    );
+  } finally {
+    // finish is idempotent: a succeeded task ignores this; every failure or
+    // retirement ends its progress here.
+    progress?.finish(succeeded: false);
+  }
+}
+
+/// 可变读取状态：主函数与批处理助手共享同一份行/身份/游标集合。
+class _CursorReadState<R, S, C> {
+  _CursorReadState({
+    required this.rows,
+    required this.identities,
+    required this.cursors,
+  });
+  final List<R> rows;
+  final Set<Object> identities;
+  final Set<PagedReadQueryKey> cursors;
   C? cursor;
-  late S first;
-  var hasFirst = false;
+  S? first;
+  bool hasFirst = false;
   Object? firstRevision;
+}
+
+Future<S> _cursorBatches<R, S, C>({
+  required Future<S> Function(C? cursor, int size) loadPage,
+  required List<R> Function(S response) rowsOf,
+  required C? Function(S response) nextCursorOf,
+  required bool Function() logicalCurrent,
+  required bool Function() current,
+  required UiWorkBudget work,
+  required CompleteReadBatchPlan plan,
+  required CompleteReadProgressHandle? progress,
+  required bool bootstrapAllowed,
+  required void Function(List<R> rows, bool hasMore)? onBatch,
+  required Object? Function(R row)? idOf,
+  required Object? Function(S response)? revisionOf,
+  required bool deduplicateOverlaps,
+  required S Function(S first, List<R> rows) rebuildSnapshot,
+  required _CursorReadState<R, S, C> state,
+}) async {
   while (logicalCurrent()) {
-    if (!current() && !(!hasFirst && bootstrapAllowed)) {
+    if (!current() && !(!state.hasFirst && bootstrapAllowed)) {
       throw const UiWorkCancelled();
     }
     if (current()) work.ensureCurrent();
-    final size = hasFirst ? plan.maxBatchSize : plan.firstBatchSize;
+    final size = state.hasFirst ? plan.maxBatchSize : plan.firstBatchSize;
     final response = await PagedReadIntent.scopedRead(
       logicalCurrent,
-      () => loadPage(cursor, size),
-      bootstrap: !hasFirst,
+      () => loadPage(state.cursor, size),
+      bootstrap: !state.hasFirst,
     );
     if (!current()) throw const UiWorkCancelled();
-    if (!hasFirst) {
-      first = response;
-      hasFirst = true;
-      firstRevision = freezePagedReadQuery(revisionOf?.call(response));
+    if (!state.hasFirst) {
+      state.first = response;
+      state.hasFirst = true;
+      state.firstRevision = freezePagedReadQuery(revisionOf?.call(response));
     } else if (revisionOf != null &&
-        !samePagedReadQuery(firstRevision, revisionOf(response))) {
+        !samePagedReadQuery(state.firstRevision, revisionOf(response))) {
       throw ApiException('SNAPSHOT_CHANGED', '历史读取范围已变化，请刷新后重新核对');
     }
     final batch = rowsOf(response);
     final next = nextCursorOf(response);
     if (next != null &&
         (batch.isEmpty ||
-            samePagedReadQuery(next, cursor) ||
-            !cursors.add(PagedReadQueryKey(next)))) {
+            samePagedReadQuery(next, state.cursor) ||
+            !state.cursors.add(PagedReadQueryKey(next)))) {
       throw ApiException('INVALID_PAGINATION', '历史游标未前进，请刷新后重新读取完整记录');
     }
     for (final row in batch) {
@@ -492,7 +555,7 @@ Future<S> loadCompleteCursorSnapshot<R, S, C>({
         if (identity == null || identity == '') {
           throw ApiException('SNAPSHOT_CHANGED', '历史记录身份缺失或重复，请刷新后重新核对');
         }
-        if (!identities.add(identity)) {
+        if (!state.identities.add(identity)) {
           if (!deduplicateOverlaps) {
             throw ApiException('SNAPSHOT_CHANGED', '历史记录身份缺失或重复，请刷新后重新核对');
           }
@@ -501,18 +564,24 @@ Future<S> loadCompleteCursorSnapshot<R, S, C>({
           continue;
         }
       }
-      rows.add(row);
+      state.rows.add(row);
       await work.checkpoint();
       if (!current()) throw const UiWorkCancelled();
     }
     if (!current()) throw const UiWorkCancelled();
-    onBatch?.call(List<R>.unmodifiable(rows), next != null);
+    onBatch?.call(List<R>.unmodifiable(state.rows), next != null);
+    // total 省缺即 null：游标读取无总量语义，卡片走不定进度。
+    progress?.update(loaded: state.rows.length);
     if (next == null) {
-      final combined = rebuildSnapshot(first, List<R>.unmodifiable(rows));
+      final combined = rebuildSnapshot(
+        state.first as S,
+        List<R>.unmodifiable(state.rows),
+      );
       if (!current()) throw const UiWorkCancelled();
+      progress?.finish(succeeded: true);
       return combined;
     }
-    cursor = next;
+    state.cursor = next;
   }
   throw const UiWorkCancelled();
 }

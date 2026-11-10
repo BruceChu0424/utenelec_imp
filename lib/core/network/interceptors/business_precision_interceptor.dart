@@ -10,6 +10,7 @@ import '../authenticated_request_scope.dart';
 import '../business_precision.dart';
 import '../business_precision_coordinator.dart';
 import '../request_reload_semantics.dart';
+import '../rejected_request_replay.dart';
 
 class _PrecisionBinding {
   _PrecisionBinding(
@@ -166,6 +167,11 @@ class BusinessPrecisionInterceptor extends Interceptor {
       }
       if (!await _current(options, binding)) {
         throw AuthenticatedRequestScope.changed();
+      }
+      if (consumeDefiniteRejectionForReplay(options)) {
+        // Restore only the rejected attempt. An earlier unknown submission
+        // remains unknown and cannot be converted into permission to retry.
+        await binding.transport.rejected(binding.fingerprint);
       }
       await binding.transport.dispatch(
         binding.fingerprint,

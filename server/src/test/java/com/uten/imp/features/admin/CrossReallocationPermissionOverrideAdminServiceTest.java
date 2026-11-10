@@ -1,7 +1,6 @@
 package com.uten.imp.features.admin;
 
 import com.uten.imp.common.web.ApiException;
-import com.uten.imp.features.auth.model.RefreshTokenRepository;
 import com.uten.imp.features.auth.model.UserAccount;
 import com.uten.imp.features.org.employee.Employee;
 import com.uten.imp.features.rbac.Permission;
@@ -48,8 +47,6 @@ class CrossReallocationPermissionOverrideAdminServiceTest {
     @Mock
     private AdminUserSupport support;
     @Mock
-    private RefreshTokenRepository refreshTokenRepo;
-    @Mock
     private AdminAccountLifecycleLock accountLifecycle;
 
     @ParameterizedTest
@@ -81,7 +78,7 @@ class CrossReallocationPermissionOverrideAdminServiceTest {
         PermissionOverrideAdminService service =
                 new PermissionOverrideAdminService(
                         overrideRepo, permissionRepo, tx, support,
-                        refreshTokenRepo, accountLifecycle,
+                        accountLifecycle,
                         mock(com.uten.imp.features.auth.PermissionResolver.class),
                         mock(DepartmentPermissionAdminService.class),
                         mock(PermissionChangeAudit.class));
@@ -107,11 +104,10 @@ class CrossReallocationPermissionOverrideAdminServiceTest {
         assertThat(row.getSourceActorUserId())
                 .isEqualTo(actorUserId);
         InOrder order = inOrder(
-                accountLifecycle, overrideRepo, refreshTokenRepo);
+                accountLifecycle, overrideRepo);
         order.verify(accountLifecycle).lock(userId);
         order.verify(overrideRepo).findAllByUserIdForUpdate(userId);
         order.verify(overrideRepo).saveAllAndFlush(saved.getValue());
-        verify(refreshTokenRepo, never()).revokeAllByUserId(any());
     }
 
     @Test
@@ -143,7 +139,7 @@ class CrossReallocationPermissionOverrideAdminServiceTest {
         PermissionOverrideAdminService service =
                 new PermissionOverrideAdminService(
                         overrideRepo, permissionRepo, tx, support,
-                        refreshTokenRepo, accountLifecycle,
+                        accountLifecycle,
                         mock(com.uten.imp.features.auth.PermissionResolver.class),
                         mock(DepartmentPermissionAdminService.class),
                         mock(PermissionChangeAudit.class));
@@ -154,7 +150,6 @@ class CrossReallocationPermissionOverrideAdminServiceTest {
         assertThat(existing.getRowVersion()).isEqualTo(8L);
         assertThat(existing.getSourceActorUserId()).isEqualTo(actorUserId);
         verify(overrideRepo).saveAllAndFlush(List.of(existing));
-        verify(refreshTokenRepo, never()).revokeAllByUserId(any());
         verify(accountLifecycle, never()).requireCurrentEmployee(any());
     }
 
@@ -179,7 +174,7 @@ class CrossReallocationPermissionOverrideAdminServiceTest {
         PermissionOverrideAdminService service =
                 new PermissionOverrideAdminService(
                         overrideRepo, permissionRepo, tx, support,
-                        refreshTokenRepo, accountLifecycle,
+                        accountLifecycle,
                         mock(com.uten.imp.features.auth.PermissionResolver.class),
                         mock(DepartmentPermissionAdminService.class),
                         mock(PermissionChangeAudit.class));

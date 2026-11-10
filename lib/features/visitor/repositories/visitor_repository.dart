@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
+import '../../../core/network/api_exception.dart';
 import '../../../core/security/secure_storage.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../core/utils/china_datetime.dart';
@@ -28,15 +29,23 @@ class VisitorLoginResult {
   final String name;
   final String? avatarSeed;
 
-  factory VisitorLoginResult.fromJson(Map<String, dynamic> j) =>
-      VisitorLoginResult(
-        accessToken: (j['accessToken'] ?? '').toString(),
-        refreshToken: (j['refreshToken'] ?? '').toString(),
-        visitorId: (j['visitorId'] ?? '').toString(),
-        visitorNo: (j['visitorNo'] ?? '').toString(),
-        name: (j['name'] ?? '').toString(),
-        avatarSeed: j['avatarSeed'] as String?,
-      );
+  factory VisitorLoginResult.fromJson(Map<String, dynamic> j) {
+    final access = j['accessToken'], refresh = j['refreshToken'];
+    if (access is! String ||
+        access.isEmpty ||
+        refresh is! String ||
+        refresh.isEmpty) {
+      throw const FormatException('访客登录凭据不完整，请重新登录');
+    }
+    return VisitorLoginResult(
+      accessToken: access,
+      refreshToken: refresh,
+      visitorId: (j['visitorId'] ?? '').toString(),
+      visitorNo: (j['visitorNo'] ?? '').toString(),
+      name: (j['name'] ?? '').toString(),
+      avatarSeed: j['avatarSeed'] as String?,
+    );
+  }
 }
 
 class VisitorApplicationDetail {
@@ -66,7 +75,7 @@ abstract class VisitorRepository {
   /// 冷启动会话校验：令牌/账号有效返回当前资料，401（刷新也被拒）抛
   /// ApiException，由会话层结束本地恢复的会话。
   Future<Visitor> me();
-  Future<void> logout();
+  Future<void> logout({VisitorTokenSnapshot? owner});
   Future<PagedResult<VisitorApplication>> myApplications({
     String? status,
     int page = 1,
@@ -101,15 +110,18 @@ class DioVisitorRepository implements VisitorRepository {
 
   @override
   Future<VisitorLoginResult> login(String phone, String code) async {
+    final intent = await _storage.beginVisitorLoginIntent();
     final r = await _api.post(
       ApiEndpoints.visitorLogin,
       body: {'phone': phone, 'code': code},
     );
     final res = VisitorLoginResult.fromJson(r);
-    await _storage.saveVisitorTokens(
+    final accepted = await _storage.completeVisitorLoginIfUnchanged(
+      expected: intent,
       accessToken: res.accessToken,
       refreshToken: res.refreshToken,
     );
+    if (!accepted) throw ApiException('SESSION_CHANGED', '登录状态已变化，请核对当前访问身份');
     return res;
   }
 
@@ -120,8 +132,10 @@ class DioVisitorRepository implements VisitorRepository {
   }
 
   @override
-  Future<void> logout() async {
-    final refresh = await _storage.getVisitorRefreshToken();
+  Future<void> logout({VisitorTokenSnapshot? owner}) async {
+    final captured = owner ?? await _storage.getVisitorTokenSnapshot();
+    final retired = await _storage.retireVisitorSessionIfCurrent(captured);
+    final refresh = (retired ?? captured).refreshToken;
     if (refresh != null && refresh.isNotEmpty) {
       try {
         await _api.post(
@@ -130,7 +144,6 @@ class DioVisitorRepository implements VisitorRepository {
         );
       } catch (_) {}
     }
-    await _storage.clearVisitorTokens();
   }
 
   @override

@@ -19,10 +19,16 @@ class _Storage extends SecureStorage {
   Object? readError;
 
   @override
-  Future<String?> getVisitorAccessToken() {
+  Future<VisitorTokenSnapshot> getVisitorTokenSnapshot() async {
     reads++;
-    if (readError case final error?) return Future.error(error);
-    return gate?.future ?? Future.value('stored-token');
+    if (readError case final error?) throw error;
+    final token = await (gate?.future ?? Future.value('stored-token'));
+    return VisitorTokenSnapshot(
+      accessToken: token,
+      refreshToken: 'refresh',
+      generation: 1,
+      sessionLineage: 'test-owner',
+    );
   }
 }
 
@@ -37,7 +43,7 @@ class _Repository implements VisitorRepository {
       loginGate.future;
 
   @override
-  Future<void> logout() => logoutGate.future;
+  Future<void> logout({VisitorTokenSnapshot? owner}) => logoutGate.future;
 
   @override
   Future<Visitor> me() {
@@ -128,7 +134,10 @@ void main() {
     container.read(visitorSessionProvider);
     await _flush();
     expect(container.read(visitorSessionProvider).visitor, _visitor);
-    VisitorSessionEventBus.instance.expire();
+    VisitorSessionEventBus.instance.expire(
+      sessionLineage: 'test-owner',
+      intentGeneration: 0,
+    );
     await _flush();
     expect(container.read(visitorSessionProvider).isLoggedIn, isFalse);
   });
@@ -160,7 +169,10 @@ void main() {
         container.read(visitorSessionProvider);
         await _flush();
         container.dispose();
-        VisitorSessionEventBus.instance.expire();
+        VisitorSessionEventBus.instance.expire(
+          sessionLineage: 'test-owner',
+          intentGeneration: 0,
+        );
         await _flush();
       }, (error, _) => errors.add(error));
       expect(errors, isEmpty);

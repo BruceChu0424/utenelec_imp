@@ -420,6 +420,23 @@ jobs:
           path: build/flutter-ci-reports/
           if-no-files-found: error
           retention-days: 14
+      - name: Check real Fetch cancellation, deadlines and response bodies
+        id: fetch_contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          CHROME_EXECUTABLE="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)"
+          export CHROME_EXECUTABLE
+          test -x "$CHROME_EXECUTABLE"
+          dart tool/verify_auth_web_transport.dart build/web-fetch-contract
+      - name: Preserve browser transport contract results
+        if: always() && steps.fetch_contract.outcome != 'skipped'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: web-fetch-contract
+          path: build/web-fetch-contract/results.json
+          if-no-files-found: error
+          retention-days: 14
 
   frontend-build:
     name: Flutter / production Web build

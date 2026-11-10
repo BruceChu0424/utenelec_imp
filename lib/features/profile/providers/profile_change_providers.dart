@@ -1,3 +1,5 @@
+import '../../../shared/providers/sensitive_read_boundary_provider.dart';
+import '../../../shared/paging/shared_read_provider_owner.dart';
 // 个人信息修改 Provider。
 // 文档：docs/03-页面/我的页.md
 
@@ -24,9 +26,12 @@ import 'profile_column_queries.dart';
 final myEmployeeProfileProvider = FutureProvider.autoDispose<EmployeeProfile?>((
   ref,
 ) {
-  ref.watch(masterDataSessionKeyProvider);
-  ref.watch(authenticatedScopeProvider);
-  return ref.watch(employeeRepositoryProvider).getMe();
+  final readBoundary = ref.watch(sensitiveReadBoundaryProvider);
+  return runSharedProviderRead(ref, () async {
+    ref.watch(masterDataSessionKeyProvider);
+    ref.watch(authenticatedScopeProvider);
+    return ref.watch(employeeRepositoryProvider).getMe();
+  }, isCurrent: () => ref.read(sensitiveReadBoundaryProvider) == readBoundary);
 });
 
 /// 员工自查列表（按状态过滤 + 分页；status null = 全部）。
@@ -170,9 +175,19 @@ final myProfileChangeTableProvider = FutureProvider.autoDispose
 /// 员工自查单批详情。
 final myProfileChangeDetailProvider = FutureProvider.autoDispose
     .family<ProfileChangeBatch, String>((ref, batchId) {
-      ref.watch(masterDataSessionKeyProvider);
-      ref.watch(authenticatedScopeProvider);
-      return ref.watch(profileChangeRepositoryProvider).myBatchDetail(batchId);
+      final readBoundary = ref.watch(sensitiveReadBoundaryProvider);
+      return runSharedProviderRead(
+        ref,
+        () async {
+          ref.watch(masterDataSessionKeyProvider);
+          ref.watch(authenticatedScopeProvider);
+          return ref
+              .watch(profileChangeRepositoryProvider)
+              .myBatchDetail(batchId);
+        },
+        isCurrent: () =>
+            ref.read(sensitiveReadBoundaryProvider) == readBoundary,
+      );
     });
 
 /// HR 队列（按状态过滤 + 分页；status null = pending）。
@@ -185,11 +200,19 @@ final hrProfileChangesProvider = FutureProvider.autoDispose
       ProfileChangePage<HrProfileChangeListItem>,
       ({String? status, int page})
     >((ref, key) {
-      ref.watch(masterDataSessionKeyProvider);
-      ref.watch(authenticatedScopeProvider);
-      return ref
-          .watch(profileChangeRepositoryProvider)
-          .hrList(page: key.page, status: key.status);
+      final readBoundary = ref.watch(sensitiveReadBoundaryProvider);
+      return runSharedProviderRead(
+        ref,
+        () async {
+          ref.watch(masterDataSessionKeyProvider);
+          ref.watch(authenticatedScopeProvider);
+          return ref
+              .watch(profileChangeRepositoryProvider)
+              .hrList(page: key.page, status: key.status);
+        },
+        isCurrent: () =>
+            ref.read(sensitiveReadBoundaryProvider) == readBoundary,
+      );
     });
 
 /// Employee-detail preview: query the employee before pagination; global page
@@ -199,11 +222,19 @@ final hrProfileEmployeePendingProvider = FutureProvider.autoDispose
       ref,
       employeeId,
     ) {
-      ref.watch(masterDataSessionKeyProvider);
-      ref.watch(authenticatedScopeProvider);
-      return ref
-          .watch(profileChangeRepositoryProvider)
-          .hrList(employeeId: employeeId, status: 'pending', size: 3);
+      final readBoundary = ref.watch(sensitiveReadBoundaryProvider);
+      return runSharedProviderRead(
+        ref,
+        () async {
+          ref.watch(masterDataSessionKeyProvider);
+          ref.watch(authenticatedScopeProvider);
+          return ref
+              .watch(profileChangeRepositoryProvider)
+              .hrList(employeeId: employeeId, status: 'pending', size: 3);
+        },
+        isCurrent: () =>
+            ref.read(sensitiveReadBoundaryProvider) == readBoundary,
+      );
     });
 
 /// HR 队列页专用（2026-09-10）：key 增 departmentId——表头「部门」筛选下推后端
@@ -290,17 +321,35 @@ final hrProfileChangeQueueProvider = FutureProvider.autoDispose
 /// HR 队列表头筛选桶（部门），按当前分段状态取后端聚合（全量，非当前页）。
 final hrProfileChangeFacetsProvider = FutureProvider.autoDispose
     .family<Map<String, List<MasterFacetBucket>>, String?>((ref, status) {
-      ref.watch(masterDataSessionKeyProvider);
-      ref.watch(authenticatedScopeProvider);
-      return ref
-          .watch(profileChangeRepositoryProvider)
-          .hrFacets(status: status);
+      final readBoundary = ref.watch(sensitiveReadBoundaryProvider);
+      return runSharedProviderRead(
+        ref,
+        () async {
+          ref.watch(masterDataSessionKeyProvider);
+          ref.watch(authenticatedScopeProvider);
+          return ref
+              .watch(profileChangeRepositoryProvider)
+              .hrFacets(status: status);
+        },
+        isCurrent: () =>
+            ref.read(sensitiveReadBoundaryProvider) == readBoundary,
+      );
     });
 
 /// HR 单批详情。
 final hrProfileChangeDetailProvider = FutureProvider.autoDispose
     .family<ProfileChangeBatch, String>((ref, batchId) {
-      ref.watch(masterDataSessionKeyProvider);
-      ref.watch(authenticatedScopeProvider);
-      return ref.watch(profileChangeRepositoryProvider).hrBatchDetail(batchId);
+      final readBoundary = ref.watch(sensitiveReadBoundaryProvider);
+      return runSharedProviderRead(
+        ref,
+        () async {
+          ref.watch(masterDataSessionKeyProvider);
+          ref.watch(authenticatedScopeProvider);
+          return ref
+              .watch(profileChangeRepositoryProvider)
+              .hrBatchDetail(batchId);
+        },
+        isCurrent: () =>
+            ref.read(sensitiveReadBoundaryProvider) == readBoundary,
+      );
     });

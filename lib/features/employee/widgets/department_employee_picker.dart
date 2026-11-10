@@ -1,3 +1,4 @@
+import '../../../shared/paging/shared_read_provider_owner.dart';
 // 部门树 + 员工选择器：先选部门（未展开的分类树），点部门列出该部门（含子部门）的人员，
 // 也可直接搜索姓名/工号跨部门找人。左树 + 右重点字段表格。
 //
@@ -60,7 +61,10 @@ Future<UtenEmployeePickerItem?> showUtenDepartmentEmployeePicker(
   try {
     List<DepartmentNode> tree;
     try {
-      tree = await ref.read(employeePickerDepartmentTreeProvider.future);
+      tree = await readSharedWidgetFuture(
+        ref,
+        employeePickerDepartmentTreeProvider.future,
+      );
     } catch (caughtError) {
       if (context.mounted && current()) {
         context.appApiError(caughtError, fallback: '部门树加载失败，请稍后重试');

@@ -2,6 +2,8 @@ package com.uten.imp.security;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.config.props.DeploymentProperties;
+import io.micrometer.core.instrument.Clock;
+import io.micrometer.core.instrument.simple.SimpleConfig;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
@@ -17,6 +19,77 @@ import static org.mockito.Mockito.when;
 import static org.mockito.ArgumentMatchers.any;
 
 class RemoteRequestBudgetFilterTest {
+    @Test
+    void failedTimerStartDoesNotConsumeTheSharedRequestBudget() throws Exception {
+        assertInstrumentationFailureReturnsCapacity(true);
+    }
+
+    @Test
+    void failedTimerStopDoesNotConsumeTheSharedRequestBudget() throws Exception {
+        assertInstrumentationFailureReturnsCapacity(false);
+    }
+
+    private void assertInstrumentationFailureReturnsCapacity(boolean failAtStart) throws Exception {
+        var deployment = new DeploymentProperties();
+        deployment.setRemoteMaxConcurrentRequests(1);
+        var origins = mock(TrustedRequestOriginPolicy.class);
+        when(origins.isRemoteRequest()).thenReturn(true);
+        var clock = new FailingClock();
+        var registry = new SimpleMeterRegistry(SimpleConfig.DEFAULT, clock);
+        try {
+            var filter = new RemoteRequestBudgetFilter(origins, new ObjectMapper().findAndRegisterModules(),
+                    deployment, registry);
+            for (int attempt = 0; attempt < 20; attempt++) {
+                clock.fail = failAtStart;
+                try {
+                    assertSame(clock.failure, assertThrows(IllegalStateException.class, () ->
+                            filter.doFilter(request(), new MockHttpServletResponse(), (req, res) -> {
+                                assertFalse(failAtStart, "a failed timer start must retain the existing early failure behavior");
+                                clock.fail = true;
+                            })));
+                } finally { clock.fail = false; }
+                var recovered = new MockHttpServletResponse();
+                boolean[] reached = {false};
+                filter.doFilter(request(), recovered, (req, res) -> reached[0] = true);
+                assertTrue(reached[0], "instrumentation failure must not strand a shared permit on attempt " + attempt);
+                assertEquals(200, recovered.getStatus());
+            }
+        } finally { registry.close(); }
+    }
+
+    @Test
+    void businessExceptionReturnsCapacityAndIsNotReplayed() throws Exception {
+        var deployment = new DeploymentProperties();
+        deployment.setRemoteMaxConcurrentRequests(1);
+        var origins = mock(TrustedRequestOriginPolicy.class);
+        when(origins.isRemoteRequest()).thenReturn(true);
+        var registry = new SimpleMeterRegistry();
+        try {
+            var filter = new RemoteRequestBudgetFilter(origins, new ObjectMapper().findAndRegisterModules(),
+                    deployment, registry);
+            var failure = new jakarta.servlet.ServletException("fixture business failure");
+            int[] executions = {0};
+            assertSame(failure, assertThrows(jakarta.servlet.ServletException.class, () ->
+                    filter.doFilter(request(), new MockHttpServletResponse(), (req, res) -> {
+                        executions[0]++;
+                        throw failure;
+                    })));
+            assertEquals(1, executions[0]);
+            filter.doFilter(request(), new MockHttpServletResponse(), (req, res) -> executions[0]++);
+            assertEquals(2, executions[0], "the next independent request must be admitted exactly once");
+        } finally { registry.close(); }
+    }
+
+    private static final class FailingClock implements Clock {
+        private final IllegalStateException failure = new IllegalStateException("fixture timer failure");
+        private boolean fail;
+        @Override public long wallTime() { return System.currentTimeMillis(); }
+        @Override public long monotonicTime() {
+            if (fail) throw failure;
+            return System.nanoTime();
+        }
+    }
+
     @Test
     void remoteOverloadCannotQueueOrStarveOfficeRequestsAndPermitIsReturned() throws Exception {
         var deployment = new DeploymentProperties();

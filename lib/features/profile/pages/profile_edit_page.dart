@@ -1,3 +1,4 @@
+import '../../../shared/paging/shared_read_provider_owner.dart';
 // ProfileEditPage - 员工自助编辑个人信息
 // 文档：docs/03-页面/我的页.md（§编辑）
 //
@@ -117,7 +118,10 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
     });
     try {
       // 复用查看页同源 provider：从「我的」页进入时命中缓存，零额外请求。
-      final p = await ref.read(myEmployeeProfileProvider.future);
+      final p = await readSharedWidgetFuture(
+        ref,
+        myEmployeeProfileProvider.future,
+      );
       if (!mounted) return;
       if (p == null) {
         setState(() {

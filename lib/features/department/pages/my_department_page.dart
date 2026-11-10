@@ -1,3 +1,4 @@
+import '../../../shared/paging/shared_read_provider_owner.dart';
 import 'package:uten_imp/components/feedback/uten_modal_bottom_sheet.dart';
 // MyDepartmentPage - 我的部门（全页面，镜像「部门管理」页布局）
 // 文档：docs/03-页面/我的页.md（§我的部门）
@@ -171,11 +172,17 @@ class _MyDepartmentPageState extends ConsumerState<MyDepartmentPage> {
     ref.invalidate(myDepartmentTreeProvider);
     ref.invalidate(myDepartmentRosterProvider);
     try {
-      final tree = await ref.read(myDepartmentTreeProvider.future);
+      final tree = await readSharedWidgetFuture(
+        ref,
+        myDepartmentTreeProvider.future,
+      );
       if (!mounted || tree.isEmpty) return;
       final selected =
           _findNode(tree, _selectedId ?? tree.first.id) ?? tree.first;
-      await ref.read(myDepartmentRosterProvider(selected.id).future);
+      await readSharedWidgetFuture(
+        ref,
+        myDepartmentRosterProvider(selected.id).future,
+      );
     } catch (_) {
       // Each provider renders its own error and retry state in the page.
     }

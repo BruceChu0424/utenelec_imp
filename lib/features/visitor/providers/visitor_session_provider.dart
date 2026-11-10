@@ -30,15 +30,24 @@ class VisitorSessionState {
 
 class VisitorSessionNotifier extends Notifier<VisitorSessionState> {
   int _lifecycle = 0;
+  int _intent = 0;
+  String? _ownerLineage;
+  int? _ownerIntent;
 
   @override
   VisitorSessionState build() {
     final lifecycle = ++_lifecycle;
     Future.microtask(() => _restore(lifecycle));
     final expiration = VisitorSessionEventBus.instance.onSessionExpired.listen((
-      _,
+      notice,
     ) {
-      if (_current(lifecycle)) state = const VisitorSessionState();
+      if (_current(lifecycle) &&
+          notice.sessionLineage == _ownerLineage &&
+          notice.intentGeneration == _ownerIntent) {
+        _ownerLineage = null;
+        _ownerIntent = null;
+        state = const VisitorSessionState();
+      }
     });
     ref.onDispose(() {
       _lifecycle++;
@@ -54,48 +63,73 @@ class VisitorSessionNotifier extends Notifier<VisitorSessionState> {
 
   Future<void> _restore(int lifecycle) async {
     if (!_current(lifecycle)) return;
+    final intent = _intent;
+    bool current() => _current(lifecycle) && intent == _intent;
     final storage = _storage;
-    final String? token;
+    final VisitorTokenSnapshot owner;
     try {
-      token = await storage.getVisitorAccessToken();
+      owner = await storage.getVisitorTokenSnapshot();
     } catch (_) {
       return;
     }
-    if (!_current(lifecycle) || token == null || token.isEmpty) return;
+    if (!current() || !owner.hasAccessToken) return;
     final repo = _repo;
     try {
       // 服务端校验：令牌过期先走拦截器刷新，刷新被拒会清存储并广播过期；
       // 成功则用服务器资料激活会话（姓名等可能已在别处更新）。
       final me = await repo.me();
-      if (!_current(lifecycle)) return;
+      if (!current()) return;
+      final latest = await storage.getVisitorTokenSnapshot();
+      if (!current() ||
+          !owner.isSameSession(latest) ||
+          !latest.hasAccessToken) {
+        return;
+      }
+      _ownerLineage = latest.sessionLineage;
+      _ownerIntent = latest.intentGeneration;
       state = VisitorSessionState(
         status: VisitorAuthStatus.active,
         visitor: me,
       );
       return;
     } on ApiException catch (e) {
-      if (!_current(lifecycle)) return;
+      if (!current()) return;
       // 401/403/404：令牌或账号已失效（拦截器已处理过期广播），结束恢复。
       final definitive =
-          e.httpStatus == 401 ||
-          e.httpStatus == 403 ||
-          e.code == 'UNAUTHORIZED' ||
-          e.code == 'FORBIDDEN';
+          e.hasResponseCode &&
+          const {'UNAUTHORIZED', 'FORBIDDEN'}.contains(e.code) &&
+          (e.httpStatus == 401 || e.httpStatus == 403);
       if (definitive) {
-        await storage.clearVisitorTokens();
+        try {
+          if (current()) await storage.clearVisitorTokensIfUnchanged(owner);
+        } catch (_) {
+          /* Storage failure cannot retire another owner. */
+        }
         return;
       }
+      if (e.code == 'SESSION_CHANGED') return;
       // 其它业务错误按临时失败处理，降级本地解码。
     } catch (_) {
       // 网络不可用等：降级本地解码，离线访客不被误登出。
     }
-    if (!_current(lifecycle)) return;
-    final v = _decodeVisitor(token);
+    if (!current()) return;
+    final VisitorTokenSnapshot latest;
+    try {
+      latest = await storage.getVisitorTokenSnapshot();
+    } catch (_) {
+      return;
+    }
+    if (!current() || !owner.isSameSession(latest) || !latest.hasAccessToken) {
+      return;
+    }
+    final v = _decodeVisitor(latest.accessToken!);
     if (v != null) {
+      _ownerLineage = latest.sessionLineage;
+      _ownerIntent = latest.intentGeneration;
       state = VisitorSessionState(status: VisitorAuthStatus.active, visitor: v);
     } else {
       // 本地令牌已损坏：清掉避免每次冷启动都走无效恢复。
-      await storage.clearVisitorTokens();
+      await storage.clearVisitorTokensIfUnchanged(latest);
     }
   }
 
@@ -103,8 +137,23 @@ class VisitorSessionNotifier extends Notifier<VisitorSessionState> {
 
   Future<void> login(String phone, String code) async {
     final lifecycle = _lifecycle;
+    final intent = ++_intent;
+    final storage = _storage;
+    // An explicit new login retires the old credential owner immediately.
+    // A failed new login must not leave the old visitor displayed as active.
+    _ownerLineage = null;
+    _ownerIntent = null;
+    state = const VisitorSessionState();
     final res = await _repo.login(phone, code);
-    if (!_current(lifecycle)) return;
+    if (!_current(lifecycle) || intent != _intent) return;
+    final owner = await storage.getVisitorTokenSnapshot();
+    if (!_current(lifecycle) ||
+        intent != _intent ||
+        owner.accessToken != res.accessToken) {
+      return;
+    }
+    _ownerLineage = owner.sessionLineage;
+    _ownerIntent = owner.intentGeneration;
     state = VisitorSessionState(
       status: VisitorAuthStatus.active,
       visitor: Visitor(
@@ -118,8 +167,20 @@ class VisitorSessionNotifier extends Notifier<VisitorSessionState> {
 
   Future<void> logout() async {
     final lifecycle = _lifecycle;
-    await _repo.logout();
-    if (!_current(lifecycle)) return;
+    final intent = ++_intent;
+    final storage = _storage;
+    final owner = await storage.getVisitorTokenSnapshot();
+    if (!_current(lifecycle) || intent != _intent) return;
+    await _repo.logout(owner: owner);
+    if (!_current(lifecycle) || intent != _intent) return;
+    final latest = await storage.getVisitorTokenSnapshot();
+    if (!_current(lifecycle) ||
+        intent != _intent ||
+        latest.hasAccessToken && !owner.isSameSession(latest)) {
+      return;
+    }
+    _ownerLineage = null;
+    _ownerIntent = null;
     state = const VisitorSessionState();
   }
 

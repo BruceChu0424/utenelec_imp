@@ -1,0 +1,11 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/page_read_priority_contract_test.dart
+00:00 +0: a scheduler rejects duplicate installation
+00:00 +1: consumed responses and identity refusals release transport capacity
+00:00 +2: local preflight refusal never owns a read permit
+00:00 +3: replacement options retain the original admission lease
+00:00 +4: session wait cannot occupy the only foreground read slot
+00:00 +5: active cancellation returns exactly its own permit
+00:00 +6: slow optional reads leave capacity for rows and counts, preserving queries
+00:00 +7: queued cancellation and changed identity cannot dispatch or leak a permit
+00:00 +8: All tests passed!

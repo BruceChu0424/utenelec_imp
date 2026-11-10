@@ -224,6 +224,7 @@ Dio _staffDio(SecureStorage storage, _Responder responder) {
   final dio = factory();
   dio.interceptors.add(
     AuthInterceptor(
+      replay: dio.fetch<dynamic>,
       storage: storage,
       baseUrl: 'https://erp.example.test/api',
       dioFactory: factory,
@@ -242,6 +243,7 @@ Dio _visitorDio(SecureStorage storage, _Responder responder) {
   final dio = factory();
   dio.interceptors.add(
     VisitorAuthInterceptor(
+      replay: dio.fetch<dynamic>,
       storage: storage,
       baseUrl: 'https://erp.example.test/api',
       dioFactory: factory,

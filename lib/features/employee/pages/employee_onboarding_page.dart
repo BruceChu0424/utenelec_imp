@@ -1,3 +1,4 @@
+import '../../../shared/paging/shared_read_provider_owner.dart';
 // 入职办理页（真实后端）：5 步向导 → 后端原子建 employee+敏感+薪资+合同+轨迹+紧急联系人+
 // 教育经历+账号。工号提交时自动生成（6位数字，分配后固定）；登录账号 = 手机号；初始密码 = 证件号后六位，
 // 不足六位时系统随机生成(只显示一次、限时有效、首登强制改)。身份证号仍严格校验并说出具体哪里不对。
@@ -1044,8 +1045,10 @@ class _EmployeeOnboardingPageState extends ConsumerState<EmployeeOnboardingPage>
             ? _departmentId
             : null,
         includeSubtree: true,
-        loadDepartments: () =>
-            ref.read(employeePickerDepartmentTreeProvider.future),
+        loadDepartments: () => readSharedWidgetFuture(
+          ref,
+          employeePickerDepartmentTreeProvider.future,
+        ),
       );
 
   // ---------------------------------------------------------------------

@@ -36,12 +36,45 @@ import 'package:uten_imp/features/dashboard/widgets/workbench_module_area.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/badges/badge_registry.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/shared/paging/paged_read_intent.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   final sampledAt = DateTime.utc(2026, 9, 8, 12);
+
+  testWidgets(
+    'background retirement releases the pending status owner and resumes without its result',
+    (tester) async {
+      final first = Completer<ServerStatusSnapshot>();
+      bool Function()? firstOwner;
+      var calls = 0;
+      final repository = _Repository(() {
+        if (++calls == 1) {
+          firstOwner = PagedReadIntent.currentRead;
+          return first.future;
+        }
+        return Future.value(_sample(sampledAt.add(const Duration(seconds: 1))));
+      });
+      final container = await _pump(tester, repository, settle: false);
+      await tester.pump();
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      await tester.pump();
+      expect(firstOwner?.call(), isFalse);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(calls, 2);
+      first.complete(_sample(sampledAt));
+      await tester.pumpAndSettle();
+      expect(
+        container.read(serverStatusSnapshotCacheProvider)!.sampledAt,
+        sampledAt.add(const Duration(seconds: 1)),
+      );
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
 
   setUpAll(() async {
     final loader = FontLoader('NotoSansSC')
@@ -371,6 +404,13 @@ void main() {
             isSuperAdminProvider.overrideWithValue(false),
             workbenchLayoutProvider.overrideWith(_Layout.new),
             serverStatusRepositoryProvider.overrideWithValue(repository),
+            serverStorageRepositoryProvider.overrideWithValue(
+              _StorageRepository(
+                () async => ServerStorageSummary.fromJson(const {
+                  'capabilities': {'available': false},
+                }),
+              ),
+            ),
           ],
           child: MaterialApp.router(
             routerConfig: router,
@@ -443,6 +483,9 @@ void main() {
       await withClock(Clock(() => now), () async {
         final first = Completer<ServerStatusSnapshot>();
         final second = Completer<ServerStatusSnapshot>();
+        final third = Completer<ServerStatusSnapshot>();
+        final retired = Completer<ServerStatusSnapshot>();
+        bool Function()? secondOwner;
         final repository = _Repository(() => first.future);
         await _pump(tester, repository, settle: false);
         expect(repository.calls, 1);
@@ -462,19 +505,28 @@ void main() {
         expect(repository.calls, 1);
         first.complete(_sample(now));
         await tester.pumpAndSettle();
-        repository.handler = () => second.future;
+        repository.handler = () {
+          secondOwner = PagedReadIntent.currentRead;
+          return Future.any([second.future, retired.future]);
+        };
         now = now.add(const Duration(seconds: 15));
         await tester.pump(const Duration(seconds: 15));
         expect(repository.calls, 2);
         tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+        expect(secondOwner?.call(), isFalse);
+        // The real ApiClient aborts this transport when its owner retires.
+        retired.completeError(ApiException('REQUEST_STALE', 'fixture retired'));
         now = now.add(const Duration(seconds: 45));
         await tester.pump(const Duration(seconds: 45));
+        expect(repository.active, 0);
+        repository.handler = () => third.future;
         tester.binding.handleAppLifecycleStateChanged(
           AppLifecycleState.resumed,
         );
         await tester.pump();
-        expect(repository.calls, 2);
+        expect(repository.calls, 3);
         second.complete(_sample(now));
+        third.complete(_sample(now));
         await tester.pumpAndSettle();
         repository.handler = () async => _sample(now);
         final navigator = Navigator.of(
@@ -490,14 +542,14 @@ void main() {
         await tester.pumpAndSettle();
         now = now.add(const Duration(seconds: 45));
         await tester.pump(const Duration(seconds: 45));
-        expect(repository.calls, 2);
+        expect(repository.calls, 3);
         navigator.pop();
         await tester.pumpAndSettle();
-        expect(repository.calls, 3);
+        expect(repository.calls, 4);
         expect(repository.peak, 1);
         await tester.pumpWidget(const SizedBox.shrink());
         await tester.pump(const Duration(seconds: 60));
-        expect(repository.calls, 3);
+        expect(repository.calls, 4);
         expect(tester.takeException(), isNull);
       });
     },

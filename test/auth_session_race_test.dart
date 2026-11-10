@@ -195,6 +195,7 @@ Dio _staffDio(SecureStorage storage, _Responder responder) {
   final dio = clientFactory();
   dio.interceptors.add(
     AuthInterceptor(
+      replay: dio.fetch<dynamic>,
       storage: storage,
       baseUrl: 'https://erp.example.cn/api',
       dioFactory: clientFactory,

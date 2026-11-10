@@ -15,6 +15,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/ui/opportunistic_dialog_coordinator.dart';
+import '../../../core/network/authenticated_request_scope.dart';
 
 import '../models/notice.dart';
 import '../providers/notice_providers.dart';
@@ -108,10 +109,13 @@ class _ReviewPendingLoginGateState
       final repository = ref.read(noticeRepositoryProvider);
       // 审核待办与人工通知并行拉取；任一失败整体重试（不能让打卡提醒因一次
       // 抖动被静默吞掉）。
-      final results = await Future.wait<List<Notice>>([
-        repository.pendingReviews(),
-        repository.pendingPopups(),
-      ]);
+      final results = await AuthenticatedRequestScope.sharedRead(
+        () => mounted && generation == _generation && widget.enabled,
+        () => Future.wait<List<Notice>>([
+          repository.pendingReviews(),
+          repository.pendingPopups(),
+        ]),
+      );
       final pending = results[0];
       final manual = results[1];
       if (!mounted ||

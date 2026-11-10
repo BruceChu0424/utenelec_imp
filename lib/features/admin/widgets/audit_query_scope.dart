@@ -1,3 +1,4 @@
+import '../../../shared/paging/shared_read_provider_owner.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import '../../../components/layout/uten_section_header.dart';
@@ -721,7 +722,10 @@ class _AuditActorPickerState extends ConsumerState<AuditActorPicker>
   static const _visitorDepartment = 'audit-external-visitors';
 
   Future<List<DepartmentNode>> _departments() async => [
-    ...await ref.read(employeePickerDepartmentTreeProvider.future),
+    ...await readSharedWidgetFuture(
+      ref,
+      employeePickerDepartmentTreeProvider.future,
+    ),
     DepartmentNode(
       id: _visitorDepartment,
       code: 'AUDIT_VISITORS',

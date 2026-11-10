@@ -1,13 +1,14 @@
-// 访客鉴权拦截器：注入 visitor Bearer token；401 单飞刷新（/visitor/auth/refresh）；失败触发访客会话失效。
-import 'dart:async';
-
+// Visitor refresh has the same immutable-owner rule as staff recovery, while
+// retaining its separate credentials, endpoint and expiration event stream.
 import 'package:dio/dio.dart';
-
 import '../../security/secure_storage.dart';
+import '../../security/auth_refresh_lock.dart';
 import '../api_endpoints.dart';
+import '../api_exception.dart';
 import '../company_tls.dart';
 import '../network_policy.dart';
 import '../owned_dio.dart';
+import '../rejected_request_replay.dart';
 import '../visitor_session_event_bus.dart';
 import 'token_refresh_result.dart';
 
@@ -15,152 +16,226 @@ class VisitorAuthInterceptor extends Interceptor {
   VisitorAuthInterceptor({
     required this.storage,
     required this.baseUrl,
-    // Each call transfers a fresh client's ownership to this interceptor.
+    required this.replay,
     Dio Function()? dioFactory,
   }) : _dioFactory =
            dioFactory ?? (() => createCompanyDio(buildApiBaseOptions(baseUrl)));
-
   final SecureStorage storage;
   final String baseUrl;
   final Dio Function() _dioFactory;
+  final Future<Response<dynamic>> Function(RequestOptions) replay;
+  static const _ownerKey = 'uten.visitor.requestOwner';
+  final _refreshing = <(String?, int), Future<TokenRefreshResult>>{};
 
-  Completer<TokenRefreshResult>? _refreshing;
-  Future<void>? _expiring;
+  bool _public(String path) => path.contains('/visitor/auth/');
 
   @override
   void onRequest(
     RequestOptions options,
     RequestInterceptorHandler handler,
   ) async {
-    final token = await storage.getVisitorAccessToken();
-    if (token != null && token.isNotEmpty) {
-      options.headers['Authorization'] = 'Bearer $token';
+    if (_public(options.path)) {
+      options.headers.remove('Authorization');
+      handler.next(options);
+      return;
     }
-    handler.next(options);
+    try {
+      final current = await storage.getVisitorTokenSnapshot();
+      final owner =
+          options.extra.putIfAbsent(_ownerKey, () => current)
+              as VisitorTokenSnapshot;
+      if (!owner.isSameSession(current) ||
+          options.extra['retried'] == true &&
+              options.headers['Authorization'] !=
+                  (current.hasAccessToken
+                      ? 'Bearer ${current.accessToken}'
+                      : null)) {
+        handler.reject(_changed(options));
+        return;
+      }
+      options.headers.remove('Authorization');
+      if (current.hasAccessToken) {
+        options.headers['Authorization'] = 'Bearer ${current.accessToken}';
+      }
+      handler.next(options);
+    } catch (error, stack) {
+      handler.reject(
+        DioException(requestOptions: options, error: error, stackTrace: stack),
+      );
+    }
+  }
+
+  @override
+  void onResponse(
+    Response<dynamic> response,
+    ResponseInterceptorHandler handler,
+  ) async {
+    if (_public(response.requestOptions.path)) {
+      handler.next(response);
+      return;
+    }
+    try {
+      final owner =
+          response.requestOptions.extra[_ownerKey] as VisitorTokenSnapshot?;
+      final current = await storage.getVisitorTokenSnapshot();
+      if (owner == null || !owner.isSameSession(current)) {
+        handler.reject(_changed(response.requestOptions));
+      } else {
+        handler.next(response);
+      }
+    } catch (error, stack) {
+      handler.reject(
+        DioException(
+          requestOptions: response.requestOptions,
+          error: error,
+          stackTrace: stack,
+        ),
+      );
+    }
   }
 
   @override
   void onError(DioException err, ErrorInterceptorHandler handler) async {
-    final status = err.response?.statusCode;
-    final path = err.requestOptions.path;
-    // 访客登录/刷新接口本身的 401 不触发刷新（避免失败登录误清令牌）
-    if (status != 401 || path.contains('/visitor/auth/')) {
+    final options = err.requestOptions;
+    if (err.response?.statusCode != 401 ||
+        _public(options.path) ||
+        options.extra['retried'] == true) {
       handler.next(err);
       return;
     }
-    if (err.requestOptions.extra['retried'] == true) {
-      handler.next(err);
-      return;
-    }
-    final refreshResult = await _refresh();
-    if (refreshResult.disposition == TokenRefreshDisposition.rejected) {
-      await _expire();
-      handler.next(refreshResult.error ?? err);
-      return;
-    }
-    if (refreshResult.disposition == TokenRefreshDisposition.unavailable) {
-      handler.next(refreshResult.error ?? err);
-      return;
-    }
-    final newToken = refreshResult.token!;
     try {
-      final opts = err.requestOptions
-        ..extra['retried'] = true
-        ..headers['Authorization'] = 'Bearer $newToken';
-      final resp = await withOwnedDio(
-        _dioFactory,
-        (dio) => dio.fetch<dynamic>(opts),
-      );
-      handler.resolve(resp);
-    } on DioException catch (retryError) {
-      handler.next(retryError);
-    } catch (error, stackTrace) {
-      handler.next(
-        DioException(
-          requestOptions: err.requestOptions,
-          error: error,
-          stackTrace: stackTrace,
-        ),
-      );
-    }
-  }
-
-  Future<TokenRefreshResult> _refresh() async {
-    if (_refreshing != null) return _refreshing!.future;
-    final c = Completer<TokenRefreshResult>();
-    _refreshing = c;
-    try {
-      final refresh = await storage.getVisitorRefreshToken();
-      if (refresh == null || refresh.isEmpty) {
-        const result = TokenRefreshResult.rejected();
-        c.complete(result);
-        return result;
+      final owner = options.extra[_ownerKey] as VisitorTokenSnapshot?;
+      final current = await storage.getVisitorTokenSnapshot();
+      if (owner == null || !owner.isSameSession(current)) {
+        handler.next(_changed(options));
+        return;
       }
-      final resp = await withOwnedDio(
-        _dioFactory,
-        (dio) => dio.post<dynamic>(
-          ApiEndpoints.visitorRefresh,
-          data: {'refreshToken': refresh},
-        ),
-      );
-      final data = resp.data;
-      final body = data is Map<String, dynamic> ? data : null;
-      final access = body?['accessToken'] as String?;
-      final newRefresh = body?['refreshToken'] as String?;
-      if (access != null && access.isNotEmpty) {
-        await storage.saveVisitorTokens(
-          accessToken: access,
-          refreshToken: newRefresh,
-        );
-        final result = TokenRefreshResult.refreshed(access);
-        c.complete(result);
-        return result;
+      // A sibling already rotated this owner's credentials. A delayed 401 must
+      // neither refresh a new owner nor spend the rotated refresh token again.
+      final result =
+          current.hasAccessToken &&
+              options.headers['Authorization'] !=
+                  'Bearer ${current.accessToken}'
+          ? TokenRefreshResult.refreshed(current.accessToken!)
+          : await _refresh(current);
+      if (result.disposition == TokenRefreshDisposition.rejected) {
+        if (current.sessionLineage == null) {
+          handler.next(result.error ?? err);
+          return;
+        }
+        if (await storage.clearVisitorTokensIfUnchanged(current)) {
+          VisitorSessionEventBus.instance.expire(
+            sessionLineage: current.sessionLineage!,
+            intentGeneration: current.intentGeneration,
+          );
+          handler.next(result.error ?? err);
+        } else {
+          handler.next(_changed(options));
+        }
+        return;
       }
-      final error = invalidRefreshResponse(resp);
-      final result = TokenRefreshResult.unavailable(error);
-      c.complete(result);
-      return result;
+      if (result.disposition != TokenRefreshDisposition.refreshed) {
+        handler.next(result.error ?? err);
+        return;
+      }
+      final latest = await storage.getVisitorTokenSnapshot();
+      if (!owner.isSameSession(latest) || !latest.hasAccessToken) {
+        handler.next(_changed(options));
+        return;
+      }
+      options.extra['retried'] = true;
+      options.headers['Authorization'] = 'Bearer ${latest.accessToken}';
+      markDefiniteRejectionForReplay(options);
+      final response = await replay(options);
+      if (!owner.isSameSession(await storage.getVisitorTokenSnapshot())) {
+        handler.next(_changed(options));
+        return;
+      }
+      handler.resolve(response);
     } on DioException catch (error) {
-      final result = isDefinitiveRefreshRejection(error.response)
-          ? TokenRefreshResult.rejected(error)
-          : TokenRefreshResult.unavailable(error);
-      c.complete(result);
-      return result;
-    } catch (error, stackTrace) {
-      final result = TokenRefreshResult.unavailable(
-        DioException(
-          requestOptions: RequestOptions(path: ApiEndpoints.visitorRefresh),
-          error: error,
-          stackTrace: stackTrace,
-        ),
+      handler.next(error);
+    } catch (error, stack) {
+      handler.next(
+        DioException(requestOptions: options, error: error, stackTrace: stack),
       );
-      c.complete(result);
-      return result;
-    } finally {
-      _refreshing = null;
     }
   }
 
-  Future<void> _expire() {
-    final active = _expiring;
-    if (active != null) return active;
-
-    final expiration = _clearAndPublishExpiration();
-    _expiring = expiration;
-    return expiration.whenComplete(() {
-      if (identical(_expiring, expiration)) {
-        _expiring = null;
-      }
+  Future<TokenRefreshResult> _refresh(VisitorTokenSnapshot owner) {
+    final key = (owner.sessionLineage, owner.generation);
+    return _refreshing.putIfAbsent(key, () {
+      late final Future<TokenRefreshResult> operation;
+      // Visitor records are shared across browser tabs. Serialize rotation for
+      // this exact owner using the existing platform Web Lock / lease contract;
+      // another owner can recover independently of a retired pending refresh.
+      operation =
+          AuthRefreshLock.runScoped(
+            'visitor-refresh:$baseUrl:${owner.sessionLineage}:${owner.intentGeneration}',
+            () => _refreshOwned(owner),
+            requireWebLocks: true,
+          ).whenComplete(() {
+            if (identical(_refreshing[key], operation)) _refreshing.remove(key);
+          });
+      return operation;
     });
   }
 
-  Future<void> _clearAndPublishExpiration() async {
+  Future<TokenRefreshResult> _refreshOwned(VisitorTokenSnapshot owner) async {
+    final options = RequestOptions(path: ApiEndpoints.visitorRefresh);
     try {
-      await storage.clearVisitorTokens();
-    } catch (_) {
-      // 即使平台安全存储异常，也必须让内存访客会话立即失效。
-    } finally {
-      VisitorSessionEventBus.instance.expire();
+      final before = await storage.getVisitorTokenSnapshot();
+      if (!before.isSameSession(owner)) {
+        return TokenRefreshResult.unavailable(_changed(options));
+      }
+      if (!before.isSameRecord(owner)) return _latestResult(owner, options);
+      if (!owner.hasRefreshToken) return const TokenRefreshResult.rejected();
+      final response = await withOwnedDio(
+        _dioFactory,
+        (client) => client.post<dynamic>(
+          ApiEndpoints.visitorRefresh,
+          data: {'refreshToken': owner.refreshToken},
+        ),
+      );
+      final body = response.data;
+      final access = body is Map ? body['accessToken'] : null;
+      final refresh = body is Map ? body['refreshToken'] : null;
+      if (access is! String ||
+          access.isEmpty ||
+          refresh != null && (refresh is! String || refresh.isEmpty)) {
+        return TokenRefreshResult.unavailable(invalidRefreshResponse(response));
+      }
+      if (!await storage.saveVisitorTokensIfUnchanged(
+        expected: owner,
+        accessToken: access,
+        refreshToken: refresh as String?,
+      )) {
+        return _latestResult(owner, options);
+      }
+      return _latestResult(owner, options);
+    } on DioException catch (error) {
+      return isDefinitiveRefreshRejection(error.response)
+          ? TokenRefreshResult.rejected(error)
+          : TokenRefreshResult.unavailable(error);
+    } catch (error, stack) {
+      return TokenRefreshResult.unavailable(
+        DioException(requestOptions: options, error: error, stackTrace: stack),
+      );
     }
   }
+
+  Future<TokenRefreshResult> _latestResult(
+    VisitorTokenSnapshot owner,
+    RequestOptions options,
+  ) async {
+    final latest = await storage.getVisitorTokenSnapshot();
+    if (!owner.isSameSession(latest) || !latest.hasAccessToken) {
+      return TokenRefreshResult.unavailable(_changed(options));
+    }
+    return TokenRefreshResult.refreshed(latest.accessToken!);
+  }
+
+  static DioException _changed(RequestOptions options) => DioException(
+    requestOptions: options,
+    error: ApiException('SESSION_CHANGED', '访问身份已变化，请重新进入页面'),
+  );
 }

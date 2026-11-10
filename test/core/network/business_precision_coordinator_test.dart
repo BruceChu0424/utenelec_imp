@@ -12,6 +12,32 @@ const requirement = BusinessPrecisionRequirement(
 );
 void main() {
   test(
+    'a retired owner throwing completes its caller and does not poison the queue',
+    () async {
+      final coordinator = BusinessPrecisionCoordinator();
+      coordinator.register(
+        (_) async => const BusinessPrecisionChoice(4, 'DOWN'),
+      );
+      await expectLater(
+        coordinator
+            .ask(
+              requirement,
+              isCurrent: () => throw StateError('owner disposed'),
+            )
+            .timeout(const Duration(milliseconds: 200)),
+        throwsStateError,
+      );
+      expect(
+        (await coordinator
+                .ask(requirement, isCurrent: () => true)
+                .timeout(const Duration(milliseconds: 200)))
+            ?.scale,
+        4,
+      );
+    },
+  );
+
+  test(
     'retiring an active dialog completes its queued reads and does not block a new identity',
     () async {
       final coordinator = BusinessPrecisionCoordinator();

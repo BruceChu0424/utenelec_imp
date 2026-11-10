@@ -7,6 +7,7 @@ import '../../../core/network/server_config.dart';
 import '../../../core/runtime/client_runtime_profile.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/authenticated_scope_provider.dart';
+import '../../../shared/paging/shared_read_provider_owner.dart';
 import '../models/website_management.dart';
 import '../repositories/website_management_repository.dart';
 
@@ -37,28 +38,28 @@ final websiteManagementProvider =
       if (owner == null || !permissions.contains(Perm.websiteView)) {
         throw AuthenticatedRequestScope.changed();
       }
-      var current = true;
-      ref.onDispose(() => current = false);
       final api = ref.watch(apiClientProvider);
       final repository = ref.watch(websiteManagementRepositoryProvider);
       final scope = await api.captureRequestScope(
         isCurrent: () =>
-            current &&
+            ref.mounted &&
             ref.read(authenticatedScopeProvider) == owner &&
             ref.read(apiBaseUrlProvider) == endpoint &&
             ref.read(currentPermissionsProvider).contains(Perm.websiteView),
       );
-      return scope.run(() async {
-        final info = await repository.load();
-        await scope.verify();
-        try {
-          final check = await repository.check();
+      return scope.run(
+        () => runSharedProviderRead(ref, () async {
+          final info = await repository.load();
           await scope.verify();
-          return WebsiteManagementSnapshot(info, check: check);
-        } catch (error) {
-          if (isSessionBoundaryError(error)) rethrow;
-          await scope.verify();
-          return WebsiteManagementSnapshot(info, checkError: error);
-        }
-      });
+          try {
+            final check = await repository.check();
+            await scope.verify();
+            return WebsiteManagementSnapshot(info, check: check);
+          } catch (error) {
+            if (isSessionBoundaryError(error)) rethrow;
+            await scope.verify();
+            return WebsiteManagementSnapshot(info, checkError: error);
+          }
+        }),
+      );
     });

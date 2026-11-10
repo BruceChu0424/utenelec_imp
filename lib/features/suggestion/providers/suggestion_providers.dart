@@ -1,3 +1,5 @@
+import '../../../shared/providers/sensitive_read_boundary_provider.dart';
+import '../../../shared/paging/shared_read_provider_owner.dart';
 // 建议 Provider
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -239,7 +241,15 @@ class SuggestionListNotifier extends AsyncNotifier<PagedResult<Suggestion>> {
 
 final suggestionDetailProvider = FutureProvider.autoDispose
     .family<Suggestion?, String>((ref, id) async {
-      return ref.watch(suggestionRepositoryProvider).getById(id);
+      final readBoundary = ref.watch(sensitiveReadBoundaryProvider);
+      return runSharedProviderRead(
+        ref,
+        () async {
+          return ref.watch(suggestionRepositoryProvider).getById(id);
+        },
+        isCurrent: () =>
+            ref.read(sensitiveReadBoundaryProvider) == readBoundary,
+      );
     });
 
 Future<void> toggleSuggestionLike(WidgetRef ref, String id) async {

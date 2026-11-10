@@ -21,6 +21,16 @@ final noticeRepositoryProvider = Provider<NoticeRepository>((ref) {
   return DioNoticeRepository(ref.watch(apiClientProvider));
 });
 
+Future<T> _readNotice<T>(Ref ref, Future<T> Function(NoticeRepository) read) {
+  final identity = ref.watch(authenticatedScopeProvider);
+  final repository = ref.watch(noticeRepositoryProvider);
+  return runSharedProviderRead(
+    ref,
+    () => read(repository),
+    isCurrent: () => identity == ref.read(authenticatedScopeProvider),
+  );
+}
+
 /// 筛选：全部 / 仅未读 / 重要（人事序列部门发布且未读）
 enum NoticeFilter { all, unread, important }
 
@@ -47,32 +57,28 @@ class NoticeListNotifier extends AsyncNotifier<List<Notice>> {
   @override
   Future<List<Notice>> build() async {
     final filter = ref.watch(noticeFilterProvider);
-    final repo = ref.watch(noticeRepositoryProvider);
     // 已读清理由 NoticeRouteReadBridge 在路由落点驱动（精确路由 + 页面事件集），
     // 列表加载不再维护内存路由档案（2026-09-18 重写：无状态、不丢登记）。
-    return repo.list(
-      onlyUnread: filter == NoticeFilter.unread,
-      importantOnly: filter == NoticeFilter.important,
+    return _readNotice(
+      ref,
+      (repository) => repository.list(
+        onlyUnread: filter == NoticeFilter.unread,
+        importantOnly: filter == NoticeFilter.important,
+      ),
     );
   }
 
   Future<void> refresh() async {
-    state = const AsyncLoading();
-    state = await AsyncValue.guard(() {
-      final filter = ref.read(noticeFilterProvider);
-      return ref
-          .read(noticeRepositoryProvider)
-          .list(
-            onlyUnread: filter == NoticeFilter.unread,
-            importantOnly: filter == NoticeFilter.important,
-          );
-    });
+    // Re-enter the same owned build. A previous manual refresh must never
+    // overwrite a newer filter/session result after its await completes.
+    ref.invalidateSelf();
+    await future.then<void>((_) {}, onError: (Object _, StackTrace _) {});
   }
 }
 
 final noticeDetailProvider = FutureProvider.autoDispose.family<Notice?, String>(
   (ref, id) async {
-    return ref.watch(noticeRepositoryProvider).getById(id);
+    return _readNotice(ref, (repository) => repository.getById(id));
   },
 );
 
@@ -90,15 +96,22 @@ class CelebrationSettingsNotifier
     extends AsyncNotifier<NoticeCelebrationSettings> {
   @override
   Future<NoticeCelebrationSettings> build() {
-    return ref.watch(noticeRepositoryProvider).getCelebrationSettings();
+    return _readNotice(
+      ref,
+      (repository) => repository.getCelebrationSettings(),
+    );
   }
 
   /// 翻转「自动发送」开关；成功后以服务端返回值更新本地状态（失败抛给调用方）。
   Future<void> setAutoEnabled(bool enabled) async {
+    final owner = ref;
+    final identity = ref.read(authenticatedScopeProvider);
     final latest = await ref
         .read(noticeRepositoryProvider)
         .setCelebrationAutoEnabled(enabled);
-    state = AsyncData(latest);
+    if (owner.mounted && identity == owner.read(authenticatedScopeProvider)) {
+      state = AsyncData(latest);
+    }
   }
 }
 
@@ -300,7 +313,7 @@ final noticeBlessingsProvider = FutureProvider.autoDispose
 /// 服务端按 birth/hire date + 今日庆典通知判定；不含任何日期原值（PII 安全）。
 final myCelebrationTodayProvider =
     FutureProvider.autoDispose<List<MyCelebrationToday>>((ref) async {
-      return ref.watch(noticeRepositoryProvider).myCelebrationToday();
+      return _readNotice(ref, (repository) => repository.myCelebrationToday());
     });
 
 /// 「点击收到」回执。来源卡片可能随未读列表刷新销毁，异步后用稳定容器刷新。

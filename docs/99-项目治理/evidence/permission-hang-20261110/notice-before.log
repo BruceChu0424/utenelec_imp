@@ -1,0 +1,104 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/notice/providers/notice_read_ownership_test.dart
+00:00 +0: notice list releases a pending read after its final consumer leaves
+00:00 +0 -1: notice list releases a pending read after its final consumer leaves [E]
+  Expected: [true]
+    Actual: [false]
+     Which: at location [0] is <false> instead of <true>
+  
+  package:matcher                                                      expect
+  package:flutter_test/src/widget_tester.dart 473:18                   expect
+  test\features\notice\providers\notice_read_ownership_test.dart 39:9  main.<fn>
+  
+00:00 +0 -1: notice detail releases a pending read after its final consumer leaves
+00:00 +0 -2: notice detail releases a pending read after its final consumer leaves [E]
+  Expected: [true]
+    Actual: [false]
+     Which: at location [0] is <false> instead of <true>
+  
+  package:matcher                                                      expect
+  package:flutter_test/src/widget_tester.dart 473:18                   expect
+  test\features\notice\providers\notice_read_ownership_test.dart 39:9  main.<fn>
+  
+00:00 +0 -2: today celebration releases a pending read after its final consumer leaves
+00:00 +0 -3: today celebration releases a pending read after its final consumer leaves [E]
+  Expected: [true]
+    Actual: [false]
+     Which: at location [0] is <false> instead of <true>
+  
+  package:matcher                                                      expect
+  package:flutter_test/src/widget_tester.dart 473:18                   expect
+  test\features\notice\providers\notice_read_ownership_test.dart 39:9  main.<fn>
+  
+00:00 +0 -3: celebration settings releases a pending read after its final consumer leaves
+00:00 +0 -4: celebration settings releases a pending read after its final consumer leaves [E]
+  Expected: [true]
+    Actual: [false]
+     Which: at location [0] is <false> instead of <true>
+  
+  package:matcher                                                      expect
+  package:flutter_test/src/widget_tester.dart 473:18                   expect
+  test\features\notice\providers\notice_read_ownership_test.dart 39:9  main.<fn>
+  
+00:00 +0 -4: permission templates releases a pending read after its final consumer leaves
+00:00 +0 -5: permission templates releases a pending read after its final consumer leaves [E]
+  Expected: [true]
+    Actual: [false]
+     Which: at location [0] is <false> instead of <true>
+  
+  package:matcher                                                      expect
+  package:flutter_test/src/widget_tester.dart 473:18                   expect
+  test\features\notice\providers\notice_read_ownership_test.dart 39:9  main.<fn>
+  
+00:01 +0 -5: permission bindings releases a pending read after its final consumer leaves
+00:01 +0 -6: permission bindings releases a pending read after its final consumer leaves [E]
+  Expected: [true]
+    Actual: [false]
+     Which: at location [0] is <false> instead of <true>
+  
+  package:matcher                                                      expect
+  package:flutter_test/src/widget_tester.dart 473:18                   expect
+  test\features\notice\providers\notice_read_ownership_test.dart 39:9  main.<fn>
+  
+00:01 +0 -6: notice refresh cannot replace a newer filter result
+00:01 +0 -7: notice refresh cannot replace a newer filter result [E]
+  Expected: 'current'
+    Actual: 'retired'
+     Which: is different.
+            Expected: current
+              Actual: retired
+                      ^
+             Differ at offset 0
+  
+  package:matcher                                                      expect
+  package:flutter_test/src/widget_tester.dart 473:18                   expect
+  test\features\notice\providers\notice_read_ownership_test.dart 66:5  main.<fn>
+  
+00:01 +0 -7: shared notice detail does not inherit a departing consumer fence
+00:01 +0 -8: shared notice detail does not inherit a departing consumer fence [E]
+  Expected: [false]
+    Actual: [true]
+     Which: at location [0] is <true> instead of <false>
+  
+  package:matcher                                                      expect
+  package:flutter_test/src/widget_tester.dart 473:18                   expect
+  test\features\notice\providers\notice_read_ownership_test.dart 91:7  main.<fn>
+  
+00:01 +0 -8: unread index cancels a retired identity and permits its successor to sync
+00:01 +0 -9: unread index cancels a retired identity and permits its successor to sync [E]
+  Expected: [true, false]
+    Actual: [false, false]
+     Which: at location [0] is <false> instead of <true>
+  
+  package:matcher                                                       expect
+  package:flutter_test/src/widget_tester.dart 473:18                    expect
+  test\features\notice\providers\notice_read_ownership_test.dart 113:7  main.<fn>
+  
+00:01 +0 -9: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/notice/providers/notice_read_ownership_test.dart: celebration settings releases a pending read after its final consumer leaves
+  D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/notice/providers/notice_read_ownership_test.dart: notice detail releases a pending read after its final consumer leaves
+  D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/notice/providers/notice_read_ownership_test.dart: notice list releases a pending read after its final consumer leaves
+  D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/notice/providers/notice_read_ownership_test.dart: notice refresh cannot replace a newer filter result
+  ... and 5 more

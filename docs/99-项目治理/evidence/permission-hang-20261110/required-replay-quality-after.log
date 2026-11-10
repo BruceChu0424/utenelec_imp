@@ -1,0 +1,28 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/quality/quality_batch_session_fence_test.dart
+00:00 +0: unscoped GET retry cannot promote expired impersonation to staff
+00:00 +1: unscoped POST retry cannot promote expired impersonation to staff
+00:00 +2: a fresh unscoped request also refuses an expired impersonation record
+00:00 +3: explicit staff management remains reachable with expired impersonation
+00:00 +4: an operation-scoped management request refuses expired impersonation
+00:00 +5: a failed identity read finishes even while the other storage read is pending
+00:00 +6: a storage failure during 401 step 2 completes with a session boundary error
+00:00 +7: a storage failure during 401 step 3 completes with a session boundary error
+00:00 +8: a changed session response cannot continue the old quality batch
+00:00 +9: switching after a valid report submission stops before the FQC command
+00:00 +10: same-lineage refresh permits the remaining FQC command
+00:00 +11: a intent-only boundary preserves ack and cannot rebind this batch on retry
+00:00 +12: a same-account-login boundary preserves ack and cannot rebind this batch on retry
+00:00 +13: a enter-imp boundary preserves ack and cannot rebind this batch on retry
+00:00 +14: a switch-imp boundary preserves ack and cannot rebind this batch on retry
+00:00 +15: a exit-imp boundary preserves ack and cannot rebind this batch on retry
+00:00 +16: session-state read failure stops this attempt, then retries the original report
+00:00 +17: an ordinary 409 fails the whole report; a concurrent identity boundary takes precedence
+00:00 +18: initial capture cannot adopt a new intent during its storage read
+00:00 +19: session change during asynchronous audit cannot dispatch with new credentials
+00:00 +20: page change during asynchronous audit cannot dispatch with new credentials
+00:00 +21: server change during asynchronous audit cannot dispatch with new credentials
+00:00 +22: an identity switch while AuthInterceptor reads storage is checked again before the header is sent
+00:00 +23: 401 replay rechecks the original binding after its own asynchronous audit
+00:00 +24: an existing logical request cannot be repinned from staff to impersonation
+00:00 +25: All tests passed!

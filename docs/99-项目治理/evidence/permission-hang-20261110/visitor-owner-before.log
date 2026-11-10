@@ -1,0 +1,48 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/visitor_auth_owner_race_test.dart
+00:00 +0: late visitor A refresh 200 cannot replace or expire visitor B
+00:00 +0 -1: late visitor A refresh 200 cannot replace or expire visitor B [E]
+  Expected: 'access-B'
+    Actual: 'access-A-rotated'
+     Which: is different.
+            Expected: access-B
+              Actual: access-A-rotated
+                             ^
+             Differ at offset 7
+  
+  package:matcher                                           expect
+  package:flutter_test/src/widget_tester.dart 473:18        expect
+  test\core\network\visitor_auth_owner_race_test.dart 28:9  main.<fn>
+  
+00:00 +0 -1: late visitor A refresh 401 cannot replace or expire visitor B
+00:00 +0 -2: late visitor A refresh 401 cannot replace or expire visitor B [E]
+  Expected: 'access-B'
+    Actual: <null>
+     Which: not an <Instance of 'String'>
+  
+  package:matcher                                           expect
+  package:flutter_test/src/widget_tester.dart 473:18        expect
+  test\core\network\visitor_auth_owner_race_test.dart 28:9  main.<fn>
+  
+00:00 +0 -2: a delayed A 401 cannot refresh or replay as newly signed-in B
+00:00 +0 -3: a delayed A 401 cannot refresh or replay as newly signed-in B [E]
+  Expected: <Instance of 'DioException'>
+    Actual: Response<dynamic>:<{"applied":true}>
+     Which: is not an instance of 'DioException'
+  
+  package:matcher                                           expect
+  package:flutter_test/src/widget_tester.dart 473:18        expect
+  test\core\network\visitor_auth_owner_race_test.dart 50:7  main.<fn>
+  
+00:00 +0 -3: new owner does not join the retired owners refresh singleflight
+00:02 +0 -4: new owner does not join the retired owners refresh singleflight [E]
+  Bad state: Expected owner request did not dispatch
+  test\core\network\visitor_auth_owner_race_test.dart 174:7  _until
+  
+00:02 +0 -4: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/visitor_auth_owner_race_test.dart: a delayed A 401 cannot refresh or replay as newly signed-in B
+  D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/visitor_auth_owner_race_test.dart: late visitor A refresh 200 cannot replace or expire visitor B
+  D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/visitor_auth_owner_race_test.dart: late visitor A refresh 401 cannot replace or expire visitor B
+  D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/visitor_auth_owner_race_test.dart: new owner does not join the retired owners refresh singleflight

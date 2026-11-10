@@ -1,0 +1,455 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_response_lineage_fence_test.dart
+00:00 +0: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_response_lineage_fence_test.dart: delayed GET response from an old account is rejected after login replacement
+00:00 +1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_response_lineage_fence_test.dart: delayed POST response from an old account is rejected after login replacement
+00:00 +2: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_response_lineage_fence_test.dart: same-lineage refresh does not discard an in-flight response
+00:00 +3: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_interceptor_backend_issuer_race_test.dart: a new independent backend never receives the old access token
+00:00 +4: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_interceptor_backend_issuer_race_test.dart: proactive refresh cannot send an old issuer refresh token to a clone
+00:00 +5: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_interceptor_backend_issuer_race_test.dart: the explicitly compiled company LAN and cloud relay keep one valid session
+  Skip: Run this file with API_BASE_URL and CLOUD_API_BASE_URL defines to verify the trusted relay pair
+00:00 +5 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_session_race_test.dart: AuthInterceptor generation races 错峰到达的旧 401 复用新 access 且不再次刷新
+00:00 +6 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_session_race_test.dart: AuthInterceptor generation races 两个拦截器共享存储时只允许一次 refresh
+00:01 +7 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_session_race_test.dart: AuthInterceptor generation races old request is never replayed across a replacement lineage
+00:01 +8 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_interceptor_test.dart: AuthInterceptor paged impersonation target reads and minimal tree use admin credentials without changing adjacent routes
+00:01 +9 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_interceptor_test.dart: AuthInterceptor refresh 401 明确失效时清理令牌并只发布一次失效事件
+00:01 +10 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_interceptor_test.dart: AuthInterceptor 被顶号(SESSION_REPLACED)时结束事件携带服务端的设备说明
+00:01 +11 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_interceptor_test.dart: AuthInterceptor 本地缺少 refresh token 时直接失效且不调用刷新接口
+00:01 +12 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_interceptor_test.dart: AuthInterceptor refresh 403 属于瞬态失败，不清理会话
+00:01 +13 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_interceptor_test.dart: AuthInterceptor refresh 429 属于瞬态失败，不清理会话
+00:01 +14 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_interceptor_test.dart: AuthInterceptor refresh 500 属于瞬态失败，不清理会话
+00:01 +15 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_interceptor_test.dart: AuthInterceptor refresh 503 属于瞬态失败，不清理会话
+00:01 +16 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_interceptor_test.dart: AuthInterceptor refresh 超时不清理会话，并把真实网络错误交给调用方
+00:01 +17 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_interceptor_test.dart: AuthInterceptor 刷新成功后重放返回 401 时保留新会话
+00:01 +18 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_interceptor_test.dart: AuthInterceptor 刷新成功后重放返回 403 时保留新会话
+00:01 +19 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_interceptor_test.dart: AuthInterceptor 刷新成功后重放返回 500 时保留新会话
+00:01 +20 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_interceptor_test.dart: AuthInterceptor 刷新成功后使用新令牌重放并返回业务响应
+00:01 +21 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_interceptor_test.dart: AuthInterceptor 并发 401 共用一次 refresh 请求
+00:01 +22 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_interceptor_test.dart: AuthInterceptor refresh 200 但响应结构损坏时保留原会话
+00:01 +23 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_interceptor_test.dart: AuthInterceptor 已标记为鉴权重放的 401 不重复刷新，也不直接销毁会话
+00:01 +24 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_interceptor_test.dart: AuthInterceptor public auth exchanges never inherit stored authorization
+00:01 +25 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_interceptor_test.dart: AuthInterceptor public auth exchanges bypass unavailable storage and strip stale authorization
+00:01 +26 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_interceptor_test.dart: VisitorAuthInterceptor 访客 refresh 503 时保留令牌且不发布失效事件
+00:01 +27 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_interceptor_test.dart: VisitorAuthInterceptor 访客 refresh 401 时清理令牌并发布失效事件
+00:01 +28 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_interceptor_test.dart: AuthInterceptor proactive refresh isNearExpiry counts the token lifetime from first sight
+00:01 +29 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_interceptor_test.dart: AuthInterceptor proactive refresh a near-expiry token is refreshed before the request, with no 401
+00:01 +30 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_interceptor_actual_target_test.dart: authenticated redirect cannot escape the API prefix
+00:01 +31 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_interceptor_actual_target_test.dart: authenticated redirect cannot escape the API host
+00:01 +32 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_interceptor_actual_target_test.dart: /auth/login refuses a credential-exchange redirect
+00:01 +33 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_interceptor_actual_target_test.dart: /auth/change-password refuses a credential-exchange redirect
+00:01 +34 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_interceptor_actual_target_test.dart: /auth/refresh refuses a credential-exchange redirect
+00:01 +35 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_interceptor_actual_target_test.dart: /auth/logout refuses a credential-exchange redirect
+00:01 +36 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_interceptor_actual_target_test.dart: 401 refresh transport refuses a redirect and keeps its original record
+00:01 +37 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_interceptor_actual_target_test.dart: 401 replay cannot redirect its newly rotated bearer outside the API
+00:01 +38 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_interceptor_actual_target_test.dart: absolute HTTP target cannot bypass the configured endpoint with an explicit bearer
+00:01 +39 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_interceptor_actual_target_test.dart: an explicit bearer from a different session never reaches the transport
+00:01 +40 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_interceptor_actual_target_test.dart: repository refresh checks the actual ApiClient URL before dispatch
+00:01 +41 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_interceptor_actual_target_test.dart: 401 refresh factory cannot dispatch to a different actual API
+00:02 +42 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/business_precision_interceptor_test.dart: unknown mutation permits authoritative reads while keeping changed writes fenced
+00:02 +43 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/business_precision_interceptor_test.dart: real auth owner admits sign-in while business precision still fences financial requests
+00:02 +44 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/business_precision_interceptor_test.dart: credential exchanges bypass business precision without retaining or replaying credentials
+00:02 +45 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/business_precision_interceptor_test.dart: explicit rejected DOWN4 can ask same purpose for DOWN5 and conserve last source
+00:02 +46 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/business_precision_interceptor_test.dart: selectionRejected after possible commit cannot reopen choice
+00:02 +47 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/business_precision_interceptor_test.dart: explicit no-write choice replays the exact detached body and query
+00:02 +48 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/business_precision_interceptor_test.dart: cancellation preserves input and never replays
+00:02 +49 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/business_precision_interceptor_test.dart: missing proof or gateway status 422 never prompts
+00:02 +50 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/business_precision_interceptor_test.dart: missing proof or gateway status 500 never prompts
+00:02 +51 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/business_precision_interceptor_test.dart: a repeated accepted key cannot create an endless prompt loop
+00:02 +52 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/business_precision_interceptor_test.dart: eight-round budget retains choices and resumes the same current operation
+00:02 +53 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/business_precision_interceptor_test.dart: unknown outcome restores original headers and rejects changed bodies without another prompt
+00:02 +54 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/business_precision_interceptor_test.dart: interrupted no-write dialog is a known unwritten checkpoint with no selected default
+00:02 +55 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/business_precision_interceptor_test.dart: read choice is scoped to one captured operation, never a global default
+00:02 +56 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/page_read_auth_refresh_regression_test.dart: 30 permission epoch changes preserve 1 concurrent reads
+00:02 +57 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/page_read_auth_refresh_regression_test.dart: 30 permission epoch changes preserve 1 concurrent reads
+00:02 +58 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/page_read_auth_refresh_regression_test.dart: 30 permission epoch changes preserve 1 concurrent reads
+00:02 +59 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/page_read_auth_refresh_regression_test.dart: 30 permission epoch changes preserve 1 concurrent reads
+00:03 +60 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/page_read_auth_refresh_regression_test.dart: 30 permission epoch changes preserve 1 concurrent reads
+00:03 +61 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/owned_dio_test.dart: staff refresh-failed releases every temporary client
+00:03 +62 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/page_read_auth_refresh_regression_test.dart: 30 permission epoch changes preserve 8 concurrent reads
+00:03 +63 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/page_read_auth_refresh_regression_test.dart: 30 permission epoch changes preserve 8 concurrent reads
+00:03 +64 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/page_read_auth_refresh_regression_test.dart: 30 permission epoch changes preserve 8 concurrent reads
+00:03 +65 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/page_read_auth_refresh_regression_test.dart: 30 permission epoch changes preserve 8 concurrent reads
+00:03 +66 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/page_read_auth_refresh_regression_test.dart: 30 permission epoch changes preserve 8 concurrent reads
+00:03 +67 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/page_read_auth_refresh_regression_test.dart: 30 permission epoch changes preserve 8 concurrent reads
+00:03 +68 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/page_read_auth_refresh_regression_test.dart: 30 permission epoch changes preserve 8 concurrent reads
+00:03 +69 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/page_read_auth_refresh_regression_test.dart: 30 permission epoch changes preserve 8 concurrent reads
+00:03 +70 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/page_read_auth_refresh_regression_test.dart: 30 permission epoch changes preserve 8 concurrent reads
+00:03 +71 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/page_read_auth_refresh_regression_test.dart: 30 permission epoch changes preserve 8 concurrent reads
+00:04 +72 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/page_read_auth_refresh_regression_test.dart: 30 permission epoch changes preserve 8 concurrent reads
+00:04 +73 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/page_read_auth_refresh_regression_test.dart: 30 permission epoch changes preserve 8 concurrent reads
+00:04 +74 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/page_read_auth_refresh_regression_test.dart: 30 permission epoch changes preserve 8 concurrent reads
+00:04 +75 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/page_read_auth_refresh_regression_test.dart: 30 permission epoch changes preserve 8 concurrent reads
+00:04 +76 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/page_read_auth_refresh_regression_test.dart: 30 permission epoch changes preserve 8 concurrent reads
+00:04 +77 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/page_read_auth_refresh_regression_test.dart: 30 permission epoch changes preserve 8 concurrent reads
+00:04 +78 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/page_read_auth_refresh_regression_test.dart: 30 permission epoch changes preserve 8 concurrent reads
+00:04 +79 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/page_read_auth_refresh_regression_test.dart: 30 permission epoch changes preserve 8 concurrent reads
+00:04 +80 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/page_read_auth_refresh_regression_test.dart: 30 permission epoch changes preserve 8 concurrent reads
+00:04 +81 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/auth/sensitive_write_test.dart: synchronous session intent fences capture before the visible boundary changes
+00:05 +82 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/auth/sensitive_write_test.dart: synchronous session intent fences capture before the visible boundary changes
+00:05 +83 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/auth/sensitive_write_test.dart: synchronous session intent fences capture before the visible boundary changes
+00:05 +84 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/auth/sensitive_write_test.dart: synchronous session intent fences capture before the visible boundary changes
+00:05 +85 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/auth/sensitive_write_test.dart: synchronous session intent fences capture before the visible boundary changes
+00:05 +86 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/auth/sensitive_write_test.dart: synchronous session intent fences capture before the visible boundary changes
+00:05 +87 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/auth/sensitive_write_test.dart: synchronous session intent fences capture before the visible boundary changes
+00:05 +88 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/auth/sensitive_write_test.dart: synchronous session intent fences capture before the visible boundary changes
+00:05 +89 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/auth/sensitive_write_test.dart: synchronous session intent fences capture before the visible boundary changes
+00:05 +90 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/auth/sensitive_write_test.dart: synchronous session intent fences capture before the visible boundary changes
+00:05 +91 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/auth/sensitive_write_test.dart: synchronous session intent fences capture before the visible boundary changes
+00:05 +92 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/auth/sensitive_write_test.dart: synchronous session intent fences capture before the visible boundary changes
+00:05 +93 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/auth/sensitive_write_test.dart: synchronous session intent fences capture before the visible boundary changes
+00:05 +94 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/auth/sensitive_write_test.dart: synchronous session intent fences capture before the visible boundary changes
+00:05 +95 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/auth/sensitive_write_test.dart: synchronous session intent fences capture before the visible boundary changes
+00:05 +96 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/auth/sensitive_write_test.dart: synchronous session intent fences capture before the visible boundary changes
+00:05 +97 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/auth/sensitive_write_test.dart: synchronous session intent fences capture before the visible boundary changes
+00:05 +98 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/auth/sensitive_write_test.dart: synchronous session intent fences capture before the visible boundary changes
+00:05 +99 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/auth/sensitive_write_test.dart: synchronous session intent fences capture before the visible boundary changes
+00:05 +100 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/auth/sensitive_write_test.dart: synchronous session intent fences capture before the visible boundary changes
+00:05 +101 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/auth/sensitive_write_test.dart: synchronous session intent fences capture before the visible boundary changes
+00:05 +102 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/auth/sensitive_write_test.dart: synchronous session intent fences capture before the visible boundary changes
+00:05 +103 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/auth/sensitive_write_test.dart: synchronous session intent fences capture before the visible boundary changes
+00:05 +104 ~1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/auth/sensitive_write_test.dart: synchronous session intent fences capture before the visible boundary changes
+00:05 +104 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/auth/sensitive_write_test.dart: synchronous session intent fences capture before the visible boundary changes
+00:05 +104 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/quality/quality_batch_session_fence_test.dart: 401 replay rechecks the original binding after its own asynchronous audit [E]
+  Expected: throws <Instance of 'ApiException'> with `code`: 'SESSION_CHANGED'
+    Actual: <Instance of 'Future<void>'>
+     Which: threw ApiException:<ApiException(UNAUTHORIZED): expired>
+            stack package:uten_imp/core/network/api_client.dart 432:7                 ApiClient.post.<fn>
+                  ===== asynchronous gap ===========================
+                  package:matcher                                                     expectLater
+                  package:flutter_test/src/widget_tester.dart 507:8                   expectLater
+                  test\features\quality\quality_batch_session_fence_test.dart 542:25  main.<fn>
+                  
+            which has `code` with value 'UNAUTHORIZED' which is different.
+                  Expected: SESSION_CH ...
+                    Actual: UNAUTHORIZ ...
+                            ^
+                   Differ at offset 0
+  
+  package:matcher                                                     expectLater
+  package:flutter_test/src/widget_tester.dart 507:8                   expectLater
+  test\features\quality\quality_batch_session_fence_test.dart 542:25  main.<fn>
+  
+00:05 +105 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/auth/sensitive_write_test.dart: real auth queue retains original patch authority: other-user
+00:05 +106 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/auth/sensitive_write_test.dart: real auth queue retains original patch authority: A-B-A
+00:05 +107 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/auth/sensitive_write_test.dart: real auth queue retains original patch authority: permission
+00:05 +108 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/auth/sensitive_write_test.dart: real auth queue retains original patch authority: read-only
+00:05 +109 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/auth/sensitive_write_test.dart: real auth queue retains original patch authority: read-scope
+00:05 +110 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/auth/sensitive_write_test.dart: real auth queue retains original patch authority: read-scope-A-B-A
+00:06 +111 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/auth/sensitive_write_test.dart: real auth queue retains original patch authority: unchanged
+00:20 +112 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/session_kick_notice_host_test.dart: 刚打开登录页收到旧凭据被替换事件不弹窗
+00:21 +113 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_command_request_scope_test.dart: draw releases its input lock after capture failure and retains the draft
+00:21 +114 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_command_request_scope_test.dart: draw releases its input lock after capture failure and retains the draft
+00:22 +115 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_command_request_scope_test.dart: draw releases its input lock after capture failure and retains the draft
+00:22 +116 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_command_request_scope_test.dart: draw releases its input lock after capture failure and retains the draft
+00:22 +117 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_command_request_scope_test.dart: draw releases its input lock after capture failure and retains the draft
+00:22 +118 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_command_request_scope_test.dart: draw releases its input lock after capture failure and retains the draft
+00:22 +119 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_command_request_scope_test.dart: draw releases its input lock after capture failure and retains the draft
+00:22 +120 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_command_request_scope_test.dart: draw releases its input lock after capture failure and retains the draft
+00:22 +121 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_command_request_scope_test.dart: draw releases its input lock after capture failure and retains the draft
+00:22 +122 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_command_request_scope_test.dart: draw releases its input lock after capture failure and retains the draft
+00:22 +123 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_command_request_scope_test.dart: draw releases its input lock after capture failure and retains the draft
+00:22 +124 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_command_request_scope_test.dart: draw releases its input lock after capture failure and retains the draft
+00:22 +125 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_command_request_scope_test.dart: draw releases its input lock after capture failure and retains the draft
+00:22 +126 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_command_request_scope_test.dart: draw releases its input lock after capture failure and retains the draft
+00:22 +127 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_command_request_scope_test.dart: draw releases its input lock after capture failure and retains the draft
+00:23 +128 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_command_request_scope_test.dart: draw releases its input lock after capture failure and retains the draft
+00:24 +129 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart: preStock unknown replay rejection 400 preserves original command until successful proof
+00:24 +130 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_command_request_scope_test.dart: draw locks synchronously while capturing identity and ignores a second click
+00:25 +131 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_command_request_scope_test.dart: draw locks synchronously while capturing identity and ignores a second click
+00:25 +132 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart: preStock unknown replay rejection 409 preserves original command until successful proof
+00:26 +133 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart: preStock unknown replay rejection 409 preserves original command until successful proof
+00:26 +134 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_command_request_scope_test.dart: draw binds one identity across real device-audit await: impersonation
+00:26 +135 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart: quality unknown replay rejection 400 preserves original command until successful proof
+00:27 +136 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart: quality unknown replay rejection 400 preserves original command until successful proof
+00:28 +137 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_command_request_scope_test.dart: draw binds one identity across real device-audit await: unchanged
+00:28 +138 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart: quality unknown replay rejection 403 preserves original command until successful proof
+00:29 +139 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart: quality unknown replay rejection 403 preserves original command until successful proof
+00:29 +140 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_command_request_scope_test.dart: finished locks synchronously while capturing identity and ignores a second click
+00:30 +141 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart: quality unknown replay rejection 409 preserves original command until successful proof
+00:30 +142 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_command_request_scope_test.dart: finished binds one identity across real device-audit await: same-login
+00:31 +143 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart: batch unknown replay rejection 400 preserves original command until successful proof
+00:31 +144 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart: batch unknown replay rejection 400 preserves original command until successful proof
+00:32 +145 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart: batch unknown replay rejection 400 preserves original command until successful proof
+00:33 +146 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart: batch unknown replay rejection 400 preserves original command until successful proof
+00:33 +147 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_command_request_scope_test.dart: arrival releases its input lock after capture failure and retains the draft
+00:34 +148 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart: batch unknown replay rejection 403 preserves original command until successful proof
+00:34 +149 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_command_request_scope_test.dart: arrival locks synchronously while capturing identity and ignores a second click
+00:35 +149 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/quality/quality_batch_session_fence_test.dart: 401 replay rechecks the original binding after its own asynchronous audit [E]
+  TimeoutException after 0:00:30.000000: Test timed out after 30 seconds. See https://pub.dev/packages/test#timeouts
+  dart:isolate  _RawReceivePort._handleMessage
+  
+00:35 +150 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_command_request_scope_test.dart: arrival locks synchronously while capturing identity and ignores a second click
+00:35 +151 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart: batch unknown replay rejection 409 preserves original command until successful proof
+00:36 +152 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_command_request_scope_test.dart: arrival binds one identity across real device-audit await: same-login
+00:36 +153 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart: quality batch conflict dialog does not reload old source with new identity
+00:36 +154 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_command_request_scope_test.dart: arrival binds one identity across real device-audit await: impersonation
+00:37 +155 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart: arrival permission withdrawal in audit queue blocks write and restored permission cannot revive editor
+00:38 +156 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart: arrival permission withdrawal in audit queue blocks write and restored permission cannot revive editor
+登记到货失败: ApiException(SESSION_CHANGED): 页面、服务器或登录身份已变化，请重新进入并核对原报告
+#0      ApiClient.post.<anonymous closure> (package:uten_imp/core/network/api_client.dart:432:7)
+<asynchronous suspension>
+#1      ApiMutationReloadSafety.track (package:uten_imp/core/network/api_mutation_reload_safety.dart:43:14)
+<asynchronous suspension>
+#2      DioProcurementInboundRepository.registerArrivals (package:uten_imp/features/warehouse/repositories/procurement_inbound_repository.dart:325:18)
+<asynchronous suspension>
+#3      FormDraftMixin.runFormDraftSubmission (package:uten_imp/shared/drafts/form_draft_mixin.dart:1015:14)
+<asynchronous suspension>
+#4      registerArrivalConfirmingShortDelivery (package:uten_imp/features/warehouse/widgets/subcontract_short_delivery_confirm_dialog.dart:74:12)
+<asynchronous suspension>
+#5      _InboundArrivalRegistrationPageState._registerOnce (package:uten_imp/features/warehouse/pages/inbound_arrival_registration_page.dart:1139:19)
+<asynchronous suspension>
+#6      _InboundArrivalRegistrationPageState._register (package:uten_imp/features/warehouse/pages/inbound_arrival_registration_page.dart:1053:11)
+<asynchronous suspension>
+#7      _InboundArrivalRegistrationPageState._saveWithScope (package:uten_imp/features/warehouse/pages/inbound_arrival_registration_page.dart:1036:5)
+<asynchronous suspension>
+#8      _InboundArrivalRegistrationPageState._save (package:uten_imp/features/warehouse/pages/inbound_arrival_registration_page.dart:842:7)
+<asynchronous suspension>
+
+00:38 +157 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_command_request_scope_test.dart: arrival binds one identity across real device-audit await: unchanged
+00:39 +158 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_command_request_scope_test.dart: arrival binds one identity across real device-audit await: unchanged
+00:39 +159 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart: quality permission withdrawal in audit queue blocks write and restored permission cannot revive editor
+00:40 +160 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_command_request_scope_test.dart: preStock releases its input lock after capture failure and retains the draft
+00:40 +161 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart: batch permission withdrawal in audit queue blocks write and restored permission cannot revive editor
+00:40 +162 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_command_request_scope_test.dart: preStock locks synchronously while capturing identity and ignores a second click
+00:41 +163 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart: sales permission withdrawal in audit queue blocks write and restored permission cannot revive editor
+00:41 +164 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_command_request_scope_test.dart: preStock binds one identity across real device-audit await: same-login
+00:42 +165 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart: salesBatch permission withdrawal in audit queue blocks write and restored permission cannot revive editor
+00:42 +166 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_command_request_scope_test.dart: preStock binds one identity across real device-audit await: impersonation
+00:42 +167 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_command_request_scope_test.dart: preStock binds one identity across real device-audit await: impersonation
+00:43 +168 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart: arrival original unknown recovery retains body across real auth queue change=false
+00:43 +169 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart: arrival original unknown recovery retains body across real auth queue change=false
+00:44 +170 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart: arrival original unknown recovery retains body across real auth queue change=false
+登记到货失败: ApiException(NETWORK_TIMEOUT): 服务器未及时响应，请先核对操作结果
+#0      ApiClient.post.<anonymous closure> (package:uten_imp/core/network/api_client.dart:432:7)
+<asynchronous suspension>
+#1      ApiMutationReloadSafety.track (package:uten_imp/core/network/api_mutation_reload_safety.dart:43:14)
+<asynchronous suspension>
+#2      DioProcurementInboundRepository.registerArrivals (package:uten_imp/features/warehouse/repositories/procurement_inbound_repository.dart:325:18)
+<asynchronous suspension>
+#3      FormDraftMixin.runFormDraftSubmission (package:uten_imp/shared/drafts/form_draft_mixin.dart:1015:14)
+<asynchronous suspension>
+#4      registerArrivalConfirmingShortDelivery (package:uten_imp/features/warehouse/widgets/subcontract_short_delivery_confirm_dialog.dart:74:12)
+<asynchronous suspension>
+#5      _InboundArrivalRegistrationPageState._registerOnce (package:uten_imp/features/warehouse/pages/inbound_arrival_registration_page.dart:1139:19)
+<asynchronous suspension>
+#6      _InboundArrivalRegistrationPageState._register (package:uten_imp/features/warehouse/pages/inbound_arrival_registration_page.dart:1053:11)
+<asynchronous suspension>
+#7      _InboundArrivalRegistrationPageState._saveWithScope (package:uten_imp/features/warehouse/pages/inbound_arrival_registration_page.dart:1036:5)
+<asynchronous suspension>
+#8      _InboundArrivalRegistrationPageState._save (package:uten_imp/features/warehouse/pages/inbound_arrival_registration_page.dart:842:7)
+<asynchronous suspension>
+
+登记到货失败: ApiException(CONFLICT): 测试固定拒绝，不写业务数据
+#0      ApiClient.post.<anonymous closure> (package:uten_imp/core/network/api_client.dart:432:7)
+<asynchronous suspension>
+#1      ApiMutationReloadSafety.track (package:uten_imp/core/network/api_mutation_reload_safety.dart:43:14)
+<asynchronous suspension>
+#2      DioProcurementInboundRepository.registerArrivals (package:uten_imp/features/warehouse/repositories/procurement_inbound_repository.dart:325:18)
+<asynchronous suspension>
+#3      FormDraftMixin.runFormDraftSubmission (package:uten_imp/shared/drafts/form_draft_mixin.dart:1015:14)
+<asynchronous suspension>
+#4      registerArrivalConfirmingShortDelivery (package:uten_imp/features/warehouse/widgets/subcontract_short_delivery_confirm_dialog.dart:74:12)
+<asynchronous suspension>
+#5      _InboundArrivalRegistrationPageState._registerOnce (package:uten_imp/features/warehouse/pages/inbound_arrival_registration_page.dart:1139:19)
+<asynchronous suspension>
+#6      _InboundArrivalRegistrationPageState._register (package:uten_imp/features/warehouse/pages/inbound_arrival_registration_page.dart:1053:11)
+<asynchronous suspension>
+#7      _InboundArrivalRegistrationPageState._saveWithScope (package:uten_imp/features/warehouse/pages/inbound_arrival_registration_page.dart:1036:5)
+<asynchronous suspension>
+#8      _InboundArrivalRegistrationPageState._save (package:uten_imp/features/warehouse/pages/inbound_arrival_registration_page.dart:842:7)
+<asynchronous suspension>
+
+00:44 +171 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_command_request_scope_test.dart: reverseArrival releases its input lock after capture failure and retains the draft
+00:45 +172 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart: arrival original unknown recovery retains body across real auth queue change=true
+登记到货失败: ApiException(NETWORK_TIMEOUT): 服务器未及时响应，请先核对操作结果
+#0      ApiClient.post.<anonymous closure> (package:uten_imp/core/network/api_client.dart:432:7)
+<asynchronous suspension>
+#1      ApiMutationReloadSafety.track (package:uten_imp/core/network/api_mutation_reload_safety.dart:43:14)
+<asynchronous suspension>
+#2      DioProcurementInboundRepository.registerArrivals (package:uten_imp/features/warehouse/repositories/procurement_inbound_repository.dart:325:18)
+<asynchronous suspension>
+#3      FormDraftMixin.runFormDraftSubmission (package:uten_imp/shared/drafts/form_draft_mixin.dart:1015:14)
+<asynchronous suspension>
+#4      registerArrivalConfirmingShortDelivery (package:uten_imp/features/warehouse/widgets/subcontract_short_delivery_confirm_dialog.dart:74:12)
+<asynchronous suspension>
+#5      _InboundArrivalRegistrationPageState._registerOnce (package:uten_imp/features/warehouse/pages/inbound_arrival_registration_page.dart:1139:19)
+<asynchronous suspension>
+#6      _InboundArrivalRegistrationPageState._register (package:uten_imp/features/warehouse/pages/inbound_arrival_registration_page.dart:1053:11)
+<asynchronous suspension>
+#7      _InboundArrivalRegistrationPageState._saveWithScope (package:uten_imp/features/warehouse/pages/inbound_arrival_registration_page.dart:1036:5)
+<asynchronous suspension>
+#8      _InboundArrivalRegistrationPageState._save (package:uten_imp/features/warehouse/pages/inbound_arrival_registration_page.dart:842:7)
+<asynchronous suspension>
+
+登记到货失败: ApiException(SESSION_CHANGED): 页面、服务器或登录身份已变化，请重新进入并核对原报告
+#0      ApiClient.post.<anonymous closure> (package:uten_imp/core/network/api_client.dart:432:7)
+<asynchronous suspension>
+#1      ApiMutationReloadSafety.track (package:uten_imp/core/network/api_mutation_reload_safety.dart:43:14)
+<asynchronous suspension>
+#2      DioProcurementInboundRepository.registerArrivals (package:uten_imp/features/warehouse/repositories/procurement_inbound_repository.dart:325:18)
+<asynchronous suspension>
+#3      FormDraftMixin.runFormDraftSubmission (package:uten_imp/shared/drafts/form_draft_mixin.dart:1015:14)
+<asynchronous suspension>
+#4      registerArrivalConfirmingShortDelivery (package:uten_imp/features/warehouse/widgets/subcontract_short_delivery_confirm_dialog.dart:74:12)
+<asynchronous suspension>
+#5      _InboundArrivalRegistrationPageState._registerOnce (package:uten_imp/features/warehouse/pages/inbound_arrival_registration_page.dart:1139:19)
+<asynchronous suspension>
+#6      _InboundArrivalRegistrationPageState._register (package:uten_imp/features/warehouse/pages/inbound_arrival_registration_page.dart:1053:11)
+<asynchronous suspension>
+#7      _InboundArrivalRegistrationPageState._saveWithScope (package:uten_imp/features/warehouse/pages/inbound_arrival_registration_page.dart:1036:5)
+<asynchronous suspension>
+#8      _InboundArrivalRegistrationPageState._save (package:uten_imp/features/warehouse/pages/inbound_arrival_registration_page.dart:842:7)
+<asynchronous suspension>
+
+00:46 +173 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_command_request_scope_test.dart: reverseArrival locks synchronously while capturing identity and ignores a second click
+00:46 +174 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart: preStock original unknown recovery retains body across real auth queue change=false
+00:47 +175 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_command_request_scope_test.dart: reverseArrival binds one identity across real device-audit await: same-login
+00:47 +176 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart: preStock original unknown recovery retains body across real auth queue change=true
+00:47 +177 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_command_request_scope_test.dart: reverseArrival binds one identity across real device-audit await: impersonation
+00:48 +178 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart: quality original unknown recovery retains body across real auth queue change=false
+00:48 +179 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_command_request_scope_test.dart: reverseArrival binds one identity across real device-audit await: permission
+00:48 +180 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart: quality original unknown recovery retains body across real auth queue change=true
+00:49 +181 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_command_request_scope_test.dart: reverseArrival binds one identity across real device-audit await: unchanged
+00:49 +182 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart: batch original unknown recovery retains body across real auth queue change=false
+00:50 +183 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_command_request_scope_test.dart: create releases its input lock after capture failure and retains the draft
+00:50 +184 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart: batch original unknown recovery retains body across real auth queue change=true
+00:51 +185 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_command_request_scope_test.dart: create locks synchronously while capturing identity and ignores a second click
+00:51 +186 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart: sales original unknown recovery retains body across real auth queue change=false
+00:51 +187 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_command_request_scope_test.dart: create binds one identity across real device-audit await: same-login
+00:52 +188 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart: sales original unknown recovery retains body across real auth queue change=true
+00:52 +189 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_command_request_scope_test.dart: create binds one identity across real device-audit await: impersonation
+00:53 +190 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart: salesBatch original unknown recovery retains body across real auth queue change=false
+00:53 +191 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_command_request_scope_test.dart: create binds one identity across real device-audit await: permission
+00:54 +192 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart: salesBatch original unknown recovery retains body across real auth queue change=true
+00:54 +193 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_command_request_scope_test.dart: create binds one identity across real device-audit await: unchanged
+00:54 +194 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_command_request_scope_test.dart: create binds one identity across real device-audit await: unchanged
+00:55 +195 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_command_request_scope_test.dart: create binds one identity across real device-audit await: unchanged
+00:55 +196 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart: arrival keeps original identity through secondary confirmation SUBCONTRACT_SHORT_DELIVERY_UNACKNOWLEDGED
+00:56 +197 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart: arrival keeps original identity through secondary confirmation SUBCONTRACT_SHORT_DELIVERY_UNACKNOWLEDGED
+登记到货失败: ApiException(SESSION_CHANGED): 页面、服务器或登录身份已变化，请重新进入并核对原报告
+#0      AuthenticatedRequestScope.checkCurrent (package:uten_imp/core/network/authenticated_request_scope.dart:159:7)
+#1      _InboundArrivalRegistrationPageState._registerOnce.<anonymous closure>.<anonymous closure> (package:uten_imp/features/warehouse/pages/inbound_arrival_registration_page.dart:1144:24)
+#2      _rootRun (dart:async/zone_root.dart:35:13)
+#3      _CustomZone.run (dart:async/zone.dart:726:19)
+#4      _runZoned (dart:async/zone_api.dart:166:6)
+#5      runZoned (dart:async/zone_api.dart:92:10)
+#6      BusinessPrecisionTransport.run (package:uten_imp/core/network/business_precision.dart:91:7)
+#7      FormDraftMixin.runFormDraftSubmission (package:uten_imp/shared/drafts/form_draft_mixin.dart:1015:40)
+<asynchronous suspension>
+#8      _InboundArrivalRegistrationPageState._registerOnce (package:uten_imp/features/warehouse/pages/inbound_arrival_registration_page.dart:1139:19)
+<asynchronous suspension>
+#9      _InboundArrivalRegistrationPageState._register (package:uten_imp/features/warehouse/pages/inbound_arrival_registration_page.dart:1053:11)
+<asynchronous suspension>
+#10     _InboundArrivalRegistrationPageState._saveWithScope (package:uten_imp/features/warehouse/pages/inbound_arrival_registration_page.dart:1036:5)
+<asynchronous suspension>
+#11     _InboundArrivalRegistrationPageState._save (package:uten_imp/features/warehouse/pages/inbound_arrival_registration_page.dart:842:7)
+<asynchronous suspension>
+
+00:56 +198 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_command_request_scope_test.dart: update locks synchronously while capturing identity and ignores a second click
+00:56 +199 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart: arrival keeps original identity through secondary confirmation ARRIVAL_SOURCE_AMBIGUOUS
+00:57 +200 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart: arrival keeps original identity through secondary confirmation ARRIVAL_SOURCE_AMBIGUOUS
+登记到货失败: ApiException(SESSION_CHANGED): 页面、服务器或登录身份已变化，请重新进入并核对原报告
+#0      AuthenticatedRequestScope.checkCurrent (package:uten_imp/core/network/authenticated_request_scope.dart:159:7)
+#1      _InboundArrivalRegistrationPageState._register (package:uten_imp/features/warehouse/pages/inbound_arrival_registration_page.dart:1069:24)
+<asynchronous suspension>
+#2      _InboundArrivalRegistrationPageState._saveWithScope (package:uten_imp/features/warehouse/pages/inbound_arrival_registration_page.dart:1036:5)
+<asynchronous suspension>
+#3      _InboundArrivalRegistrationPageState._save (package:uten_imp/features/warehouse/pages/inbound_arrival_registration_page.dart:842:7)
+<asynchronous suspension>
+
+00:57 +201 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_command_request_scope_test.dart: update binds one identity across real device-audit await: impersonation
+00:57 +202 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart: arrival real DeviceAudit to Auth queue keeps original identity change=false
+登记到货失败: ApiException(CONFLICT): 测试固定拒绝，不写业务数据
+#0      ApiClient.post.<anonymous closure> (package:uten_imp/core/network/api_client.dart:432:7)
+<asynchronous suspension>
+#1      ApiMutationReloadSafety.track (package:uten_imp/core/network/api_mutation_reload_safety.dart:43:14)
+<asynchronous suspension>
+#2      DioProcurementInboundRepository.registerArrivals (package:uten_imp/features/warehouse/repositories/procurement_inbound_repository.dart:325:18)
+<asynchronous suspension>
+#3      FormDraftMixin.runFormDraftSubmission (package:uten_imp/shared/drafts/form_draft_mixin.dart:1015:14)
+<asynchronous suspension>
+#4      registerArrivalConfirmingShortDelivery (package:uten_imp/features/warehouse/widgets/subcontract_short_delivery_confirm_dialog.dart:74:12)
+<asynchronous suspension>
+#5      _InboundArrivalRegistrationPageState._registerOnce (package:uten_imp/features/warehouse/pages/inbound_arrival_registration_page.dart:1139:19)
+<asynchronous suspension>
+#6      _InboundArrivalRegistrationPageState._register (package:uten_imp/features/warehouse/pages/inbound_arrival_registration_page.dart:1053:11)
+<asynchronous suspension>
+#7      _InboundArrivalRegistrationPageState._saveWithScope (package:uten_imp/features/warehouse/pages/inbound_arrival_registration_page.dart:1036:5)
+<asynchronous suspension>
+#8      _InboundArrivalRegistrationPageState._save (package:uten_imp/features/warehouse/pages/inbound_arrival_registration_page.dart:842:7)
+<asynchronous suspension>
+
+00:58 +203 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_command_request_scope_test.dart: update binds one identity across real device-audit await: permission
+00:58 +204 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart: arrival real DeviceAudit to Auth queue keeps original identity change=true
+00:58 +205 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart: arrival real DeviceAudit to Auth queue keeps original identity change=true
+登记到货失败: ApiException(SESSION_CHANGED): 页面、服务器或登录身份已变化，请重新进入并核对原报告
+#0      ApiClient.post.<anonymous closure> (package:uten_imp/core/network/api_client.dart:432:7)
+<asynchronous suspension>
+#1      ApiMutationReloadSafety.track (package:uten_imp/core/network/api_mutation_reload_safety.dart:43:14)
+<asynchronous suspension>
+#2      DioProcurementInboundRepository.registerArrivals (package:uten_imp/features/warehouse/repositories/procurement_inbound_repository.dart:325:18)
+<asynchronous suspension>
+#3      FormDraftMixin.runFormDraftSubmission (package:uten_imp/shared/drafts/form_draft_mixin.dart:1015:14)
+<asynchronous suspension>
+#4      registerArrivalConfirmingShortDelivery (package:uten_imp/features/warehouse/widgets/subcontract_short_delivery_confirm_dialog.dart:74:12)
+<asynchronous suspension>
+#5      _InboundArrivalRegistrationPageState._registerOnce (package:uten_imp/features/warehouse/pages/inbound_arrival_registration_page.dart:1139:19)
+<asynchronous suspension>
+#6      _InboundArrivalRegistrationPageState._register (package:uten_imp/features/warehouse/pages/inbound_arrival_registration_page.dart:1053:11)
+<asynchronous suspension>
+#7      _InboundArrivalRegistrationPageState._saveWithScope (package:uten_imp/features/warehouse/pages/inbound_arrival_registration_page.dart:1036:5)
+<asynchronous suspension>
+#8      _InboundArrivalRegistrationPageState._save (package:uten_imp/features/warehouse/pages/inbound_arrival_registration_page.dart:842:7)
+<asynchronous suspension>
+
+00:58 +206 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_command_request_scope_test.dart: finished confirmation cannot acquire a later same-account login
+00:59 +207 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart: arrival captures intent before late secure read and locks repeated entry
+00:59 +208 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart: arrival captures intent before late secure read and locks repeated entry
+00:59 +209 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_command_request_scope_test.dart: preStock confirmation cannot acquire a later same-account login
+01:00 +210 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_command_request_scope_test.dart: preStock confirmation cannot acquire a later same-account login
+01:00 +211 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart: preStock real DeviceAudit to Auth queue keeps original identity change=true
+01:00 +212 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_command_request_scope_test.dart: reverseArrival confirmation cannot acquire a later same-account login
+01:00 +213 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart: preStock captures intent before late secure read and locks repeated entry
+01:00 +214 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart: quality real DeviceAudit to Auth queue keeps original identity change=false
+01:01 +215 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart: quality real DeviceAudit to Auth queue keeps original identity change=true
+01:01 +216 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart: quality captures intent before late secure read and locks repeated entry
+01:02 +217 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart: batch real DeviceAudit to Auth queue keeps original identity change=false
+01:02 +218 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart: batch real DeviceAudit to Auth queue keeps original identity change=true
+01:03 +219 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart: batch captures intent before late secure read and locks repeated entry
+
+Warning: A call to tap() with finder "Found 1 widget with key [<'warehouse-quality-batch-confirm'>]: [
+  UtenButton-[<'warehouse-quality-batch-confirm'>](dependencies: [Directionality, InheritedCupertinoTheme, MediaQuery, _InheritedTheme, _LocalizationsScope-[GlobalKey#d2f9e]]),
+]" derived an Offset (Offset(1661.6, 1358.0)) that would not hit test on the specified widget.
+Maybe the widget is actually off-screen, or another widget is obscuring it, or the widget cannot receive pointer events.
+The finder corresponds to this RenderBox: RenderMergeSemantics#1b1d3 relayoutBoundary=up32 NEEDS-PAINT
+The hit test result at that offset is: HitTestResult(RenderPointerListener#16698@Offset(1661.6, 1358.0), RenderCustomPaint#acc20@Offset(1661.6, 1358.0), RenderSemanticsAnnotations#2ea08@Offset(1661.6, 1358.0), RenderSemanticsAnnotations#e6126@Offset(1661.6, 1358.0), RenderSemanticsAnnotations#5d6d0@Offset(1661.6, 1358.0), RenderTapRegionSurface#9abf8@Offset(1661.6, 1358.0), RenderSemanticsAnnotations#2cff8@Offset(1661.6, 1358.0), RenderSemanticsAnnotations#3a002@Offset(1661.6, 1358.0), HitTestEntry<HitTestTarget>#3f181(_ReusableRenderView#91b91), HitTestEntry<HitTestTarget>#cbb1c(<AutomatedTestWidgetsFlutterBinding>))
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2165:25)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1947:12)
+#2      WidgetController.tap (package:flutter_test/src/controller.dart:1080:7)
+#3      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart:866:22)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+#6      StackZoneSpecification._registerCallback.<anonymous closure> (package:stack_trace/src/stack_zone_specification.dart:114:42)
+<asynchronous suspension>
+To silence this warning, pass "warnIfMissed: false" to "tap()".
+To make this warning fatal, set WidgetController.hitTestWarningShouldBeFatal to true.
+
+01:03 +220 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart: sales real DeviceAudit to Auth queue keeps original identity change=false
+01:04 +221 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart: sales real DeviceAudit to Auth queue keeps original identity change=true
+01:04 +222 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart: sales captures intent before late secure read and locks repeated entry
+01:05 +223 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart: salesBatch real DeviceAudit to Auth queue keeps original identity change=false
+01:05 +224 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart: salesBatch real DeviceAudit to Auth queue keeps original identity change=true
+01:06 +225 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart: salesBatch captures intent before late secure read and locks repeated entry
+01:06 +226 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart: materialReturn real DeviceAudit to Auth queue keeps original identity change=false
+01:07 +227 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart: materialReturn real DeviceAudit to Auth queue keeps original identity change=true
+01:07 +228 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart: materialReturn captures intent before late secure read and locks repeated entry
+01:07 +229 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart: arrival intent change during confirmation cannot use new credentials
+01:07 +230 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart: quality intent change during confirmation cannot use new credentials
+01:08 +231 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart: sales intent change during confirmation cannot use new credentials
+01:09 +232 ~1 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/warehouse/warehouse_quality_command_request_scope_test.dart: salesBatch intent change during confirmation cannot use new credentials
+01:10 +233 ~1 -1: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/quality/quality_batch_session_fence_test.dart: 401 replay rechecks the original binding after its own asynchronous audit

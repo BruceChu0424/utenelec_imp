@@ -12,6 +12,7 @@ import '../company_tls.dart';
 import '../authenticated_request_scope.dart';
 import '../network_policy.dart';
 import '../owned_dio.dart';
+import '../rejected_request_replay.dart';
 import '../session_event_bus.dart';
 import 'token_refresh_result.dart';
 
@@ -21,6 +22,7 @@ class AuthInterceptor extends Interceptor {
     required this.baseUrl,
     // Each call transfers a fresh client's ownership to this interceptor.
     Dio Function()? dioFactory,
+    required this.replay,
     AuthRefreshLock? refreshLock,
     AuthBackendRealmPolicy? realmPolicy,
   }) : _dioFactory =
@@ -32,6 +34,11 @@ class AuthInterceptor extends Interceptor {
   final SecureStorage storage;
   final String baseUrl;
   final Dio Function() _dioFactory;
+
+  /// Production replays through its original pipeline so successful recovery
+  /// retains read-scope, precision, diagnostics and write-revision completion.
+  /// Credential refresh itself always uses the separately owned client.
+  final Future<Response<dynamic>> Function(RequestOptions) replay;
   final AuthRefreshLock _refreshLock;
   final AuthBackendRealmPolicy _realmPolicy;
 
@@ -446,14 +453,8 @@ class AuthInterceptor extends Interceptor {
       final opts = err.requestOptions
         ..extra['retried'] = true
         ..headers['Authorization'] = 'Bearer ${latest.accessToken!}';
-      final response = await withOwnedDio(_dioFactory, (retryDio) {
-        // The factory may include asynchronous device-audit work. Re-run the
-        // immutable request fence after it, immediately before replay dispatch.
-        if (!retryDio.interceptors.contains(this)) {
-          retryDio.interceptors.add(this);
-        }
-        return retryDio.fetch<dynamic>(opts);
-      });
+      markDefiniteRejectionForReplay(opts);
+      final response = await replay(opts);
       if (!await _requestSessionMatches(opts)) {
         handler.next(_sessionChangedError(opts));
         return;

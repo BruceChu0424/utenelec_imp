@@ -196,31 +196,42 @@ class _FetchApiRequests implements HttpClientAdapter {
       abort.abort();
       rethrow;
     }
+    var responseClosed = false;
+    var readerReleased = false;
+    void releaseReader() {
+      if (readerReleased) return;
+      readerReleased = true;
+      reader.releaseLock();
+    }
+
     Stream<Uint8List> chunks() async* {
       var finished = false;
       try {
         while (true) {
+          if (cancelled || responseClosed) return;
           final pending = reader.read().toDart;
           final next = await (budget?.waitFor(pending) ?? pending);
           if (next.done) {
             finished = true;
             break;
           }
-          if (cancelled) {
-            throw DioException.requestCancelled(
-              requestOptions: options,
-              reason: 'API request cancelled',
-            );
-          }
+          if (cancelled || responseClosed) return;
           yield (next.value as JSUint8Array).toDart;
         }
       } catch (_) {
+        // Dio owns the public cancellation/receive-timeout result and closes
+        // this source before cancelling its subscription. If an async* body
+        // rethrows the resulting Fetch AbortError while read() is pending, Dart
+        // rejects subscription.cancel() instead of sending a stream error; Dio
+        // does not await that cleanup Future. A retired reader therefore ends
+        // normally here. Live readers still propagate real failures below.
+        if (cancelled || responseClosed) return;
         if (budget?.hasExpired == true) throw budget!.error;
         rethrow;
       } finally {
         _release(abort);
         if (!finished) abort.abort();
-        reader.releaseLock();
+        releaseReader();
       }
     }
 
@@ -230,8 +241,12 @@ class _FetchApiRequests implements HttpClientAdapter {
       statusMessage: response.statusText,
       headers: responseHeaders,
       onClose: () {
+        responseClosed = true;
         _release(abort);
         abort.abort();
+        // A caller can close a streamed response before listening. Its async*
+        // finally would never run, so retire the acquired reader here as well.
+        releaseReader();
       },
     );
   }

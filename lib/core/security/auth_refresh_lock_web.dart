@@ -14,19 +14,44 @@ import '../async/serial_task_queue.dart';
 /// renewable localStorage lease. The lock/lease contains only random ownership
 /// metadata and expiry timestamps; credentials are never copied into it.
 ///
-/// 会话记录自 ADR-061 起按标签页隔离，本锁不再承担「跨标签页会话协调」，
-/// 只保留互斥语义（同一标签页内的登录/登出/刷新串行化，跨标签页退化为
-/// 短临界区的全局互斥，无害）。
+/// 员工会话自 ADR-061 起按标签页隔离，可沿用有界租约回退。保留源码中的访客
+/// 凭据仍为同源共享记录，必须指定 requireWebLocks；缺少浏览器原生锁时明确失败，
+/// 不把可被后台冻结打断的租约当作共享凭据的原子互斥保证。
 class AuthRefreshLock {
-  factory AuthRefreshLock(String scope) =>
-      _locks.putIfAbsent(scope, () => AuthRefreshLock._(scope));
+  factory AuthRefreshLock(String scope, {bool requireWebLocks = false}) =>
+      _locks.putIfAbsent((
+        scope,
+        requireWebLocks,
+      ), () => AuthRefreshLock._(scope, requireWebLocks));
 
-  AuthRefreshLock._(String scope)
+  AuthRefreshLock._(String scope, this._requireWebLocks)
     : _scopeHash = _stableHash(scope),
       _owner = _randomOwner();
 
-  static final Map<String, AuthRefreshLock> _locks =
-      <String, AuthRefreshLock>{};
+  static final _locks = <(String, bool), AuthRefreshLock>{};
+  static final _scoped = <(String, bool), _ScopedRefreshLock>{};
+
+  /// Dynamic session scopes cannot accumulate in the fixed-owner cache. Keep
+  /// their lock alive while either running or queued callers still own it.
+  static Future<T> runScoped<T>(
+    String scope,
+    Future<T> Function() action, {
+    bool requireWebLocks = false,
+  }) async {
+    final key = (scope, requireWebLocks);
+    final entry = _scoped.putIfAbsent(
+      key,
+      () => _ScopedRefreshLock(AuthRefreshLock._(scope, requireWebLocks)),
+    );
+    entry.users++;
+    try {
+      return await entry.lock.synchronized(action);
+    } finally {
+      if (--entry.users == 0 && identical(_scoped[key], entry)) {
+        _scoped.remove(key);
+      }
+    }
+  }
 
   // The fallback lease must outlive the API policy's worst normal refresh
   // window (15s connect + 45s receive) and ordinary background-tab throttling.
@@ -39,6 +64,7 @@ class AuthRefreshLock {
 
   final String _scopeHash;
   final String _owner;
+  final bool _requireWebLocks;
   final _operations = SerialTaskQueue();
 
   String get _lockName => 'uten-auth-refresh-$_scopeHash';
@@ -48,6 +74,11 @@ class AuthRefreshLock {
       _operations.run(() async {
         if (web.window.navigator.has('locks')) {
           return await _withWebLock(action);
+        }
+        // A lease may be stolen while its owner tab is frozen. Shared visitor
+        // credentials require browser-owned mutual exclusion instead.
+        if (_requireWebLocks) {
+          throw UnsupportedError('浏览器不支持安全的访客会话协调，请更新浏览器');
         }
         return await _withLease(action);
       });
@@ -182,6 +213,12 @@ class AuthRefreshLock {
         '${random.nextInt(0x7fffffff).toRadixString(36)}-'
         '${random.nextInt(0x7fffffff).toRadixString(36)}';
   }
+}
+
+class _ScopedRefreshLock {
+  _ScopedRefreshLock(this.lock);
+  final AuthRefreshLock lock;
+  int users = 0;
 }
 
 String _stableHash(String value) {

@@ -1,3 +1,4 @@
+import '../../../shared/paging/shared_read_provider_owner.dart';
 // AdminDepartmentPermView - 按部门配置动态权限目录。
 //
 // 部门配置保留完整权限点，使用搜索、状态筛选、默认折叠和整组批量操作降低
@@ -116,7 +117,10 @@ class _AdminDepartmentPermViewState
     final id = widget.initialDepartmentId;
     if (id == null || id.isEmpty) return;
     try {
-      final tree = await ref.read(adminDepartmentTreeProvider.future);
+      final tree = await readSharedWidgetFuture(
+        ref,
+        adminDepartmentTreeProvider.future,
+      );
       final selection = buildDeptSelectionMap(tree)[id];
       if (!mounted || selection == null || _dept != null) return;
       setState(() {

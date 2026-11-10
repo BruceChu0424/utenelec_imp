@@ -1,0 +1,356 @@
+{
+  "exceptions": [
+    {
+      "exceptionId": 1,
+      "text": "Uncaught",
+      "lineNumber": 6698,
+      "columnNumber": 18,
+      "scriptId": "7",
+      "url": "http://127.0.0.1:61312/main.dart.js",
+      "stackTrace": {
+        "callFrames": [
+          {
+            "functionName": "caS",
+            "scriptId": "7",
+            "url": "http://127.0.0.1:61312/main.dart.js",
+            "lineNumber": 6698,
+            "columnNumber": 18
+          },
+          {
+            "functionName": "pF",
+            "scriptId": "7",
+            "url": "http://127.0.0.1:61312/main.dart.js",
+            "lineNumber": 6839,
+            "columnNumber": 2
+          },
+          {
+            "functionName": "$0",
+            "scriptId": "7",
+            "url": "http://127.0.0.1:61312/main.dart.js",
+            "lineNumber": 62398,
+            "columnNumber": 7
+          },
+          {
+            "functionName": "clc",
+            "scriptId": "7",
+            "url": "http://127.0.0.1:61312/main.dart.js",
+            "lineNumber": 5470,
+            "columnNumber": 4
+          },
+          {
+            "functionName": "clW",
+            "scriptId": "7",
+            "url": "http://127.0.0.1:61312/main.dart.js",
+            "lineNumber": 5472,
+            "columnNumber": 6
+          },
+          {
+            "functionName": "$1",
+            "scriptId": "7",
+            "url": "http://127.0.0.1:61312/main.dart.js",
+            "lineNumber": 61123,
+            "columnNumber": 2
+          }
+        ]
+      },
+      "exception": {
+        "type": "object",
+        "subtype": "error",
+        "className": "Error",
+        "description": "Error",
+        "objectId": "-8535691850489650489.2.1",
+        "preview": {
+          "type": "object",
+          "subtype": "error",
+          "description": "Error",
+          "overflow": false,
+          "properties": [
+            {
+              "name": "dartException",
+              "type": "object",
+              "value": "AbortError: signal is aborted without reason\n    at bd3.$1 (http://127.0.0.1:61312/main.dart.js:150…",
+              "subtype": "error"
+            },
+            {
+              "name": "name",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "stack",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "message",
+              "type": "accessor"
+            }
+          ]
+        }
+      },
+      "executionContextId": 2
+    },
+    {
+      "exceptionId": 2,
+      "text": "Uncaught",
+      "lineNumber": 6698,
+      "columnNumber": 18,
+      "scriptId": "7",
+      "url": "http://127.0.0.1:61312/main.dart.js",
+      "stackTrace": {
+        "callFrames": [
+          {
+            "functionName": "caS",
+            "scriptId": "7",
+            "url": "http://127.0.0.1:61312/main.dart.js",
+            "lineNumber": 6698,
+            "columnNumber": 18
+          },
+          {
+            "functionName": "pF",
+            "scriptId": "7",
+            "url": "http://127.0.0.1:61312/main.dart.js",
+            "lineNumber": 6839,
+            "columnNumber": 2
+          },
+          {
+            "functionName": "$0",
+            "scriptId": "7",
+            "url": "http://127.0.0.1:61312/main.dart.js",
+            "lineNumber": 62398,
+            "columnNumber": 7
+          },
+          {
+            "functionName": "clc",
+            "scriptId": "7",
+            "url": "http://127.0.0.1:61312/main.dart.js",
+            "lineNumber": 5470,
+            "columnNumber": 4
+          },
+          {
+            "functionName": "clW",
+            "scriptId": "7",
+            "url": "http://127.0.0.1:61312/main.dart.js",
+            "lineNumber": 5472,
+            "columnNumber": 6
+          },
+          {
+            "functionName": "$1",
+            "scriptId": "7",
+            "url": "http://127.0.0.1:61312/main.dart.js",
+            "lineNumber": 61123,
+            "columnNumber": 2
+          }
+        ]
+      },
+      "exception": {
+        "type": "object",
+        "subtype": "error",
+        "className": "Error",
+        "description": "Error",
+        "objectId": "-8535691850489650489.2.5",
+        "preview": {
+          "type": "object",
+          "subtype": "error",
+          "description": "Error",
+          "overflow": false,
+          "properties": [
+            {
+              "name": "dartException",
+              "type": "object",
+              "value": "AbortError: signal is aborted without reason\n    at bd3.$1 (http://127.0.0.1:61312/main.dart.js:150…",
+              "subtype": "error"
+            },
+            {
+              "name": "name",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "stack",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "name": "message",
+              "type": "accessor"
+            }
+          ]
+        }
+      },
+      "executionContextId": 2
+    }
+  ],
+  "exceptionProperties": [
+    {
+      "result": [
+        {
+          "name": "dartException",
+          "value": {
+            "type": "object",
+            "subtype": "error",
+            "className": "DOMException",
+            "description": "AbortError: signal is aborted without reason\n    at bd3.$1 (http://127.0.0.1:61312/main.dart.js:150046:3)\n    at Object.bGy (http://127.0.0.1:61312/main.dart.js:5544:19)\n    at adM.<anonymous> (http://127.0.0.1:61312/main.dart.js:176835:10)\n    at ajX.yy (http://127.0.0.1:61312/main.dart.js:62270:12)\n    at be9.$0 (http://127.0.0.1:61312/main.dart.js:61659:11)\n    at Object.CV (http://127.0.0.1:61312/main.dart.js:5439:40)\n    at Object.CV (http://127.0.0.1:61312/main.dart.js:5420:3)\n    at aj.u6 (http://127.0.0.1:61312/main.dart.js:61565:3)\n    at be1.$0 (http://127.0.0.1:61312/main.dart.js:61622:13)\n    at Object.bGw (http://127.0.0.1:61312/main.dart.js:5541:9)",
+            "objectId": "-8535691850489650489.2.2"
+          },
+          "writable": true,
+          "configurable": true,
+          "enumerable": true,
+          "isOwn": true
+        },
+        {
+          "name": "name",
+          "value": {
+            "type": "string",
+            "value": ""
+          },
+          "writable": true,
+          "configurable": true,
+          "enumerable": true,
+          "isOwn": true
+        },
+        {
+          "name": "stack",
+          "value": {
+            "type": "string",
+            "value": ""
+          },
+          "writable": false,
+          "configurable": true,
+          "enumerable": false,
+          "isOwn": true
+        },
+        {
+          "name": "message",
+          "get": {
+            "type": "function",
+            "className": "Function",
+            "description": "cqY(){return J.bS(this.dartException)}",
+            "objectId": "-8535691850489650489.2.3"
+          },
+          "set": {
+            "type": "undefined"
+          },
+          "configurable": false,
+          "enumerable": false,
+          "isOwn": true
+        }
+      ],
+      "internalProperties": [
+        {
+          "name": "[[Prototype]]",
+          "value": {
+            "type": "object",
+            "className": "Object",
+            "description": "Object",
+            "objectId": "-8535691850489650489.2.4"
+          }
+        }
+      ]
+    },
+    {
+      "result": [
+        {
+          "name": "dartException",
+          "value": {
+            "type": "object",
+            "subtype": "error",
+            "className": "DOMException",
+            "description": "AbortError: signal is aborted without reason\n    at bd3.$1 (http://127.0.0.1:61312/main.dart.js:150046:3)\n    at Object.bGy (http://127.0.0.1:61312/main.dart.js:5544:19)\n    at adM.<anonymous> (http://127.0.0.1:61312/main.dart.js:176835:10)\n    at ajX.yy (http://127.0.0.1:61312/main.dart.js:62270:12)\n    at be9.$0 (http://127.0.0.1:61312/main.dart.js:61659:11)\n    at Object.CV (http://127.0.0.1:61312/main.dart.js:5439:40)\n    at Object.CV (http://127.0.0.1:61312/main.dart.js:5420:3)\n    at aj.u6 (http://127.0.0.1:61312/main.dart.js:61565:3)\n    at be1.$0 (http://127.0.0.1:61312/main.dart.js:61622:13)\n    at Object.bGw (http://127.0.0.1:61312/main.dart.js:5541:9)",
+            "objectId": "-8535691850489650489.2.6"
+          },
+          "writable": true,
+          "configurable": true,
+          "enumerable": true,
+          "isOwn": true
+        },
+        {
+          "name": "name",
+          "value": {
+            "type": "string",
+            "value": ""
+          },
+          "writable": true,
+          "configurable": true,
+          "enumerable": true,
+          "isOwn": true
+        },
+        {
+          "name": "stack",
+          "value": {
+            "type": "string",
+            "value": ""
+          },
+          "writable": false,
+          "configurable": true,
+          "enumerable": false,
+          "isOwn": true
+        },
+        {
+          "name": "message",
+          "get": {
+            "type": "function",
+            "className": "Function",
+            "description": "cqY(){return J.bS(this.dartException)}",
+            "objectId": "-8535691850489650489.2.7"
+          },
+          "set": {
+            "type": "undefined"
+          },
+          "configurable": false,
+          "enumerable": false,
+          "isOwn": true
+        }
+      ],
+      "internalProperties": [
+        {
+          "name": "[[Prototype]]",
+          "value": {
+            "type": "object",
+            "className": "Object",
+            "description": "Object",
+            "objectId": "-8535691850489650489.2.8"
+          }
+        }
+      ]
+    }
+  ],
+  "consoleEvents": [
+    {
+      "type": "debug",
+      "args": [
+        {
+          "type": "string",
+          "value": "Injecting <script> tag. Using callback."
+        }
+      ],
+      "executionContextId": 2,
+      "timestamp": 1794341142503.766,
+      "stackTrace": {
+        "callFrames": [
+          {
+            "functionName": "_loadJSEntrypoint",
+            "scriptId": "6",
+            "url": "http://127.0.0.1:61312/flutter_bootstrap.js",
+            "lineNumber": 0,
+            "columnNumber": 2477
+          },
+          {
+            "functionName": "load",
+            "scriptId": "6",
+            "url": "http://127.0.0.1:61312/flutter_bootstrap.js",
+            "lineNumber": 0,
+            "columnNumber": 2004
+          },
+          {
+            "functionName": "load",
+            "scriptId": "6",
+            "url": "http://127.0.0.1:61312/flutter_bootstrap.js",
+            "lineNumber": 29,
+            "columnNumber": 1466
+          }
+        ]
+      }
+    }
+  ]
+}

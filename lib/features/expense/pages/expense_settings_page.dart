@@ -1,3 +1,4 @@
+import '../../../shared/paging/shared_read_provider_owner.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -71,7 +72,10 @@ class _ExpenseSettingsPageState extends ConsumerState<ExpenseSettingsPage> {
           version: _loaded!.version,
         ),
       );
-      final refreshed = await ref.read(expenseSettingsProvider.future);
+      final refreshed = await readSharedWidgetFuture(
+        ref,
+        expenseSettingsProvider.future,
+      );
       if (!mounted) return;
       setState(() => _loaded = refreshed);
       context.appSuccess(AppLocalizations.of(context).expenseFlowSettingsSaved);
@@ -86,7 +90,7 @@ class _ExpenseSettingsPageState extends ConsumerState<ExpenseSettingsPage> {
     _loaded = null;
     ref.invalidate(expenseSettingsProvider);
     try {
-      await ref.read(expenseSettingsProvider.future);
+      await readSharedWidgetFuture(ref, expenseSettingsProvider.future);
     } catch (error) {
       if (mounted) context.appApiError(error);
     }

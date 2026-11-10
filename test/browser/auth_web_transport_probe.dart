@@ -11,6 +11,10 @@ import 'package:uten_imp/core/network/file_upload_contract.dart';
 
 @JS('utenFetchAbortCount')
 external JSNumber _abortCount(JSString path);
+@JS('utenUnhandledErrors')
+external JSArray<JSString> get _unhandledErrors;
+@JS('utenUnopenedBodyLocked')
+external JSBoolean _unopenedBodyLocked();
 
 Future<void> main() async {
   final results = <Map<String, Object?>>[];
@@ -454,6 +458,69 @@ Future<void> main() async {
         _expect(error.type == DioExceptionType.connectionError);
         final stats = await dio.get<Map<String, dynamic>>('/stats');
         _expect(stats.data!['outsideRequests'] == 0);
+      },
+    );
+    await check(
+      'rapid ordinary response-body cancellations retire every reader',
+      () async {
+        for (var iteration = 0; iteration < 24; iteration++) {
+          final cancel = CancelToken();
+          final response = await dio.get<ResponseBody>(
+            '/slow-body',
+            cancelToken: cancel,
+            options: Options(responseType: ResponseType.stream),
+          );
+          final subscription = response.data!.stream.listen(
+            (_) {},
+            onError: (Object _, StackTrace _) {},
+          );
+          await Future<void>.delayed(Duration.zero);
+          cancel.cancel('retire synthetic reader');
+          await subscription.cancel();
+        }
+      },
+    );
+    await check(
+      'unopened adapter response releases its browser reader on close',
+      () async {
+        final body = await dio.httpClientAdapter.fetch(
+          RequestOptions(
+            path: '${web.window.location.origin}/api/pre-listen',
+            followRedirects: false,
+          ),
+          null,
+          null,
+        );
+        _expect(_unopenedBodyLocked().toDart);
+        // This is an adapter contract test: exercise the same internal close
+        // callback Dio uses when it abandons a response before stream delivery.
+        // ignore: invalid_use_of_internal_member
+        body.close();
+        _expect(!_unopenedBodyLocked().toDart);
+        _expect((await body.stream.toList()).isEmpty);
+      },
+    );
+    await check(
+      'a live truncated body cannot succeed as a partial byte response',
+      () async {
+        final error = await _error(
+          dio.get<List<int>>(
+            '/truncated-body',
+            options: Options(responseType: ResponseType.bytes),
+          ),
+        );
+        _expect(error.type != DioExceptionType.cancel);
+      },
+    );
+    await check(
+      'expected cancellation and deadlines leave no unhandled browser errors',
+      () async {
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+        final errors = _unhandledErrors.toDart
+            .map((error) => error.toDart)
+            .toList();
+        observations['unhandledErrors'] = errors;
+        _expect(errors.isEmpty);
       },
     );
   } finally {

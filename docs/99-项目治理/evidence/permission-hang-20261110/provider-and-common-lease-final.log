@@ -1,0 +1,94 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/provider_http_owner_inventory_test.dart
+00:00 +0: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/provider_http_owner_inventory_test.dart: scoped list shared owner: my profile changes
+00:00 +1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/provider_http_owner_inventory_test.dart: scoped list shared owner: my profile table
+00:01 +2: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/scoped_paged_read_provider_test.dart: snapshot and API failures stay terminal until an explicit fresh read
+00:01 +3: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/provider_http_owner_inventory_test.dart: scoped list shared owner: HR profile queue
+00:01 +4: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/scoped_paged_read_provider_test.dart: the first provider result contains the complete query and idle frames issue no reads
+00:01 +5: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/scoped_paged_read_provider_test.dart: the first provider result contains the complete query and idle frames issue no reads
+00:01 +6: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/scoped_paged_read_provider_test.dart: the first provider result contains the complete query and idle frames issue no reads
+00:02 +7: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/scoped_paged_read_provider_test.dart: the first provider result contains the complete query and idle frames issue no reads
+00:02 +8: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/scoped_paged_read_provider_test.dart: the first provider result contains the complete query and idle frames issue no reads
+00:02 +9: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/provider_http_owner_inventory_test.dart: an awaiting bootstrap retires on identity change without adopting the successor future
+00:02 +10: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/scoped_paged_read_provider_test.dart: explicit refresh obtains one new complete result and keeps no stale navigation intent
+00:02 +11: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/provider_http_owner_inventory_test.dart: retiring one awaited consumer preserves another consumer of the shared future
+00:02 +12: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/scoped_paged_read_provider_test.dart: provider epoch replacement rejects a held old response and only shows the new owner snapshot
+00:02 +13: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/provider_http_owner_inventory_test.dart: widget disposal releases its read lease and the suspended await finishes
+00:03 +14: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/provider_http_owner_inventory_test.dart: direct future consumers keep a shared bootstrap read alive until completion
+00:03 +15: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/provider_http_owner_inventory_test.dart: retained document counts survive a brief departure but retire on invalidation
+00:04 +16: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/provider_http_owner_inventory_test.dart: HR summary refresh retires the previous shared request
+00:04 +17: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/provider_http_owner_inventory_test.dart: employee picker department tree: final consumer retires bounded HTTP
+00:04 +18: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/provider_http_owner_inventory_test.dart: business application detail: final consumer retires bounded HTTP
+00:04 +19: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/provider_http_owner_inventory_test.dart: business application counts: final consumer retires bounded HTTP
+00:04 +20: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/provider_http_owner_inventory_test.dart: expense settings: final consumer retires bounded HTTP
+00:05 +21: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/provider_http_owner_inventory_test.dart: expense mine facets: final consumer retires bounded HTTP
+00:05 +22: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/provider_http_owner_inventory_test.dart: expense detail: final consumer retires bounded HTTP
+00:05 +23: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/provider_http_owner_inventory_test.dart: expense history detail: final consumer retires bounded HTTP
+00:05 +24: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/provider_http_owner_inventory_test.dart: expense queue summary: final consumer retires bounded HTTP
+00:05 +25: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/read_view_activity_test.dart: explicit return waits for foreground before creating a fresh read
+00:06 +26: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/read_view_activity_test.dart: explicit return waits for foreground before creating a fresh read
+00:06 +27: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/read_view_activity_test.dart: explicit return waits for foreground before creating a fresh read
+00:06 +28: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/read_view_activity_test.dart: explicit return waits for foreground before creating a fresh read
+00:06 +29: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/read_view_activity_test.dart: explicit return waits for foreground before creating a fresh read
+00:06 +30: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/read_view_activity_test.dart: explicit return waits for foreground before creating a fresh read
+00:07 +31: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/read_view_activity_test.dart: explicit return waits for foreground before creating a fresh read
+00:07 +32: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/read_view_activity_test.dart: explicit return waits for foreground before creating a fresh read
+00:07 +33: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/provider_http_owner_inventory_test.dart: my profile change detail: final consumer retires bounded HTTP
+00:07 +34: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/provider_http_owner_inventory_test.dart: my profile change detail: final consumer retires bounded HTTP
+00:07 +35: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/provider_http_owner_inventory_test.dart: my profile change detail: final consumer retires bounded HTTP
+00:07 +36: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/read_view_activity_test.dart: foreground pulse cannot wake an explicit return while hidden again
+00:07 +37: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/provider_http_owner_inventory_test.dart: HR profile preview: final consumer retires bounded HTTP
+00:07 +38: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/provider_http_owner_inventory_test.dart: HR profile preview: final consumer retires bounded HTTP
+00:07 +39: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/read_view_activity_test.dart: retained mixin: held batch2 retires under an opaque GoRouter cover; return reads fresh
+00:07 +40: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/read_view_activity_test.dart: retained mixin: held batch2 retires under an opaque GoRouter cover; return reads fresh
+00:07 +41: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/read_view_activity_test.dart: retained mixin: held batch2 retires under an opaque GoRouter cover; return reads fresh
+00:08 +42: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/read_view_activity_test.dart: retained mixin: held batch2 retires under an opaque GoRouter cover; return reads fresh
+00:08 +43: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/read_view_activity_test.dart: retained mixin: held batch2 retires under an opaque GoRouter cover; return reads fresh
+00:08 +44: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/read_view_activity_test.dart: retained mixin: held batch2 retires under an opaque GoRouter cover; return reads fresh
+00:08 +45: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/provider_http_owner_inventory_test.dart: FQC decision capability: final consumer retires bounded HTTP
+00:08 +46: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/read_view_activity_test.dart: retained mixin: TickerMode cover-return ABA cannot revive the held old read
+00:08 +47: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/provider_http_owner_inventory_test.dart: suggestion detail: final consumer retires bounded HTTP
+00:08 +48: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/read_view_activity_test.dart: retained provider: bound inactive retained consumer stops its complete tail
+00:09 +49: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/provider_http_owner_inventory_test.dart: visitor approval facets: final consumer retires bounded HTTP
+00:09 +50: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/read_view_activity_test.dart: queued resume: a return queued during a failed refresh still gets its fresh read
+00:09 +51: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/read_view_activity_test.dart: queued resume: a return queued during a failed refresh still gets its fresh read
+00:09 +52: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/read_view_activity_test.dart: queued resume: a return queued during a failed refresh still gets its fresh read
+00:09 +53: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/provider_http_owner_inventory_test.dart: website inquiry detail: final consumer retires bounded HTTP
+00:09 +54: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/read_view_activity_test.dart: GUARD shared provider: one covered binding cannot cancel another active consumer
+00:09 +55: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/provider_http_owner_inventory_test.dart: dashboard overview: final consumer retires bounded HTTP
+00:09 +56: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/read_view_activity_test.dart: GUARD PopupRoute: a modal/fullscreen-style dialog must not retire its live owner
+00:10 +57: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/read_view_activity_test.dart: GUARD PopupRoute: a modal/fullscreen-style dialog must not retire its live owner
+00:10 +58: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/provider_http_owner_inventory_test.dart: a remaining shared department consumer keeps its HTTP despite the initiating page leaving
+00:10 +59: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/provider_http_owner_inventory_test.dart: a remaining shared department consumer keeps its HTTP despite the initiating page leaving
+00:10 +60: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/read_view_activity_test.dart: GUARD 403: confirmed loss of access still retires accepted private rows
+00:10 +61: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/read_view_activity_test.dart: EDGE real Dio: received403 while covered stays403 and retires accepted rows
+00:10 +62: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/read_view_activity_test.dart: EDGE read before inactive bind allows only bounded bootstrap transport and no progress
+00:10 +63: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/read_view_activity_test.dart: EDGE bound inactive admission makes no request and resumes once after return
+00:10 +64: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/read_view_activity_test.dart: first list read recovers after scope replacement, manual=false
+00:11 +65: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/read_view_activity_test.dart: first list read recovers after scope replacement, manual=true
+00:11 +66: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/read_view_activity_test.dart: EDGE mapping yield cover prevents hidden progress or next batch:cursor=false
+00:11 +67: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/read_view_activity_test.dart: EDGE mapping yield cover prevents hidden progress or next batch:cursor=true
+00:11 +68: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/read_view_activity_test.dart: EDGE background demand continues shared full read while UI hides
+00:11 +69: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/read_view_activity_test.dart: EDGE last background release retires tail when all UI is inactive
+00:11 +70: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/read_view_activity_test.dart: EDGE obsolete A finally cannot erase current B resume demand
+00:11 +71: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/read_view_activity_test.dart: EDGE inactive new admission keeps fresh demand after old intent cleared
+00:11 +72: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/read_view_activity_test.dart: EDGE retired activity rejects a newly started HTTP read before dispatch
+00:11 +73: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/read_view_activity_test.dart: EDGE nested bootstrap cannot bypass a retired outer activity fence
+00:11 +74: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/read_view_activity_test.dart: EDGE a query-changed binding cannot cancel the other current query consumer
+00:11 +75: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/read_view_activity_test.dart: EDGE late background demand cannot revive an old retired ticket
+00:11 +76: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/read_view_activity_test.dart: EDGE independent slots preserve each current resume demand
+00:11 +77: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/read_view_activity_test.dart: EDGE a new input waiting for debounce owns its refresh instead of old fallback
+00:11 +78: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/read_view_activity_test.dart: EDGE shared producer survives its first foreground consumer leaving
+00:12 +79: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/read_view_activity_test.dart: EDGE UI return while background demand lives still schedules one fresh foreground read
+00:13 +80: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/scoped_paged_read_view_mixin_test.dart: a view receives all internal batches once and local reuse never fetches another page
+00:14 +81: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/scoped_paged_read_view_mixin_test.dart: a view receives all internal batches once and local reuse never fetches another page
+00:14 +82: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/scoped_paged_read_view_mixin_test.dart: a view receives all internal batches once and local reuse never fetches another page
+00:14 +83: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/scoped_paged_read_view_mixin_test.dart: a view receives all internal batches once and local reuse never fetches another page
+00:15 +84: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/scoped_paged_read_view_mixin_test.dart: different typed slots and query identities cannot reuse another accepted result
+00:15 +85: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/scoped_paged_read_view_mixin_test.dart: owner ABA retires a held middle batch and prevents it from finishing the old read
+00:15 +86: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/scoped_paged_read_view_mixin_test.dart: an access rejection retires accepted private data and reports the original cause exactly once
+00:16 +87: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/scoped_paged_refresh_owner_test.dart: refreshing an accepted empty result carries pending proof until revalidated
+00:17 +88: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/scoped_paged_refresh_owner_test.dart: same-query refresh preserves complete rendering proof through failure and explicit retry
+00:17 +89: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/scoped_paged_refresh_owner_test.dart: rapid refresh cancels a held old batch and never fetches its later batch
+00:17 +90: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/scoped_paged_refresh_owner_test.dart: query, owner ABA and access denial never reuse the old proof
+00:17 +91: All tests passed!

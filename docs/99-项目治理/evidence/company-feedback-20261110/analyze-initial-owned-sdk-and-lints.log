@@ -1,0 +1,32 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+Analyzing company-feedback-20261110...                          
+
+   info - Statements in an if should be enclosed in a block. Try wrapping the statement in a block - lib\features\production\pages\material_analysis_aggregate_submission.dart:333:17 - curly_braces_in_flow_control_structures
+   info - Use 'const' for final variables initialized to a constant value. Try replacing 'final' with 'const' - test\shared\paging\complete_read_progress_test.dart:269:7 - prefer_const_declarations
+warning - The URI '../analysis_options.yaml' included in 'D:\Projects\uten_imp_worktrees\company-feedback-20261110\tmp\flutter-tools-feedback\bin\analysis_options.yaml' can't be found when analyzing 'D:\Projects\uten_imp_worktrees\company-feedback-20261110\tmp\flutter-tools-feedback' - tmp\flutter-tools-feedback\bin\analysis_options.yaml:1:10 - include_file_not_found
+   info - Unclosed instance of 'Sink'. Try invoking 'close' in the function in which the 'Sink' was created - tmp\flutter-tools-feedback\lib\src\android\android_device.dart:169:20 - close_sinks
+   info - Unclosed instance of 'Sink'. Try invoking 'close' in the function in which the 'Sink' was created - tmp\flutter-tools-feedback\lib\src\base\io.dart:241:14 - close_sinks
+   info - Unclosed instance of 'Sink'. Try invoking 'close' in the function in which the 'Sink' was created - tmp\flutter-tools-feedback\lib\src\base\io.dart:259:14 - close_sinks
+   info - Unclosed instance of 'Sink'. Try invoking 'close' in the function in which the 'Sink' was created - tmp\flutter-tools-feedback\lib\src\base\net.dart:54:22 - close_sinks
+   info - Use the null-aware marker '?' rather than a null check via an 'if'. Try using '?' - tmp\flutter-tools-feedback\lib\src\build_info.dart:390:7 - use_null_aware_elements
+   info - Use the null-aware marker '?' rather than a null check via an 'if'. Try using '?' - tmp\flutter-tools-feedback\lib\src\build_info.dart:399:7 - use_null_aware_elements
+   info - Unclosed instance of 'Sink'. Try invoking 'close' in the function in which the 'Sink' was created - tmp\flutter-tools-feedback\lib\src\commands\symbolize.dart:170:23 - close_sinks
+   info - Unclosed instance of 'Sink'. Try invoking 'close' in the function in which the 'Sink' was created - tmp\flutter-tools-feedback\lib\src\commands\symbolize.dart:178:13 - close_sinks
+   info - Invalid use of a private type in a public API. Try making the private type public, or making the API that uses the private type also be private - tmp\flutter-tools-feedback\lib\src\daemon.dart:89:3 - library_private_types_in_public_api
+   info - Unclosed instance of 'Sink'. Try invoking 'close' in the function in which the 'Sink' was created - tmp\flutter-tools-feedback\lib\src\daemon.dart:191:11 - close_sinks
+   info - Invalid use of a private type in a public API. Try making the private type public, or making the API that uses the private type also be private - tmp\flutter-tools-feedback\lib\src\debug_adapters\error_formatter.dart:59:19 - library_private_types_in_public_api
+   info - 'enableAuthCodes' is deprecated and shouldn't be used. DAP never spawns DDS now, this `enableAuthCodes` does nothing. Try replacing the use of the deprecated member with the replacement - tmp\flutter-tools-feedback\lib\src\debug_adapters\flutter_base_adapter.dart:29:5 - deprecated_member_use
+   info - Invalid use of a private type in a public API. Try making the private type public, or making the API that uses the private type also be private - tmp\flutter-tools-feedback\lib\src\ios\core_devices.dart:1036:14 - library_private_types_in_public_api
+   info - Invalid use of a private type in a public API. Try making the private type public, or making the API that uses the private type also be private - tmp\flutter-tools-feedback\lib\src\ios\core_devices.dart:1039:9 - library_private_types_in_public_api
+   info - Invalid use of a private type in a public API. Try making the private type public, or making the API that uses the private type also be private - tmp\flutter-tools-feedback\lib\src\ios\core_devices.dart:1044:9 - library_private_types_in_public_api
+   info - Invalid use of a private type in a public API. Try making the private type public, or making the API that uses the private type also be private - tmp\flutter-tools-feedback\lib\src\ios\devices.dart:1649:3 - library_private_types_in_public_api
+   info - Unclosed instance of 'Sink'. Try invoking 'close' in the function in which the 'Sink' was created - tmp\flutter-tools-feedback\lib\src\proxied_devices\devices.dart:1018:13 - close_sinks
+   info - Library names are not necessary. Remove the library name - tmp\flutter-tools-feedback\lib\src\reporting\reporting.dart:5:9 - unnecessary_library_name
+   info - Unclosed instance of 'Sink'. Try invoking 'close' in the function in which the 'Sink' was created - tmp\flutter-tools-feedback\lib\src\test\flutter_platform.dart:428:11 - close_sinks
+   info - Unclosed instance of 'Sink'. Try invoking 'close' in the function in which the 'Sink' was created - tmp\flutter-tools-feedback\lib\src\test\flutter_platform.dart:429:11 - close_sinks
+   info - Unclosed instance of 'Sink'. Try invoking 'close' in the function in which the 'Sink' was created - tmp\flutter-tools-feedback\lib\src\test\flutter_platform.dart:431:11 - close_sinks
+   info - Unnecessary use of double quotes. Try using single quotes unless the string contains single quotes - tmp\flutter-tools-feedback\lib\src\test\flutter_web_platform.dart:101:15 - prefer_single_quotes
+   info - Use the null-aware marker '?' rather than a null check via an 'if'. Try using '?' - tmp\flutter-tools-feedback\lib\src\web_template.dart:140:7 - use_null_aware_elements
+   info - Use the null-aware marker '?' rather than a null check via an 'if'. Try using '?' - tmp\flutter-tools-feedback\lib\src\web_template.dart:141:7 - use_null_aware_elements
+
+27 issues found. (ran in 231.7s)

@@ -1,0 +1,35 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/company-feedback-20261110/test/features/production/pages/production_workshop_tasks_readiness_test.dart
+00:00 +0: running task table visibly distinguishes partial kits from fully issued work
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following StateError was thrown running a test:
+Bad state: No element
+
+When the exception was thrown, this was the stack:
+#0      Iterable.first (dart:core/iterable.dart:663:7)
+#1      _FirstFinderMixin.filter (package:flutter_test/src/finders.dart:1383:28)
+#3      Iterable.single (dart:core/iterable.dart:694:13)
+#4      WidgetController.widget (package:flutter_test/src/controller.dart:828:30)
+#5      main.<anonymous closure>.badge (file:///D:/Projects/uten_imp_worktrees/company-feedback-20261110/test/features/production/pages/production_workshop_tasks_readiness_test.dart:72:52)
+#6      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/company-feedback-20261110/test/features/production/pages/production_workshop_tasks_readiness_test.dart:77:14)
+<asynchronous suspension>
+#7      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#8      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided 2 frames from dart:async-patch and package:stack_trace)
+
+The test description was:
+  running task table visibly distinguishes partial kits from fully issued work
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:04 +0 -1: running task table visibly distinguishes partial kits from fully issued work [E]
+  Test failed. See exception logs above.
+  The test description was: running task table visibly distinguishes partial kits from fully issued work
+  
+00:04 +0 -1: preparing rows sort closest-to-startable first
+00:05 +1 -1: AI snapshot lists each readiness colour with its status, meaning and row count
+00:06 +2 -1: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/company-feedback-20261110/test/features/production/pages/production_workshop_tasks_readiness_test.dart: running task table visibly distinguishes partial kits from fully issued work

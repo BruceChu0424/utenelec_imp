@@ -67,7 +67,7 @@ void main() {
       await tester.pumpAndSettle();
       await selectFilterSegment(tester, '生产中');
       await tester.pumpAndSettle();
-      final partial = find.textContaining('部分领料生产中');
+      final partial = find.textContaining('按配套限量报工');
       final complete = find.textContaining('持续生产中');
       expect(partial, findsNWidgets(3));
       expect(complete, findsOneWidget);

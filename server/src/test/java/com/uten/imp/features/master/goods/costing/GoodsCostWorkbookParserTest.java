@@ -9,6 +9,29 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.*;
 
 class GoodsCostWorkbookParserTest {
+    @Test void hiddenCostInputsCannotDisappearBeforeColumnValidation() throws Exception {
+        for(String hidden:java.util.List.of("column","row","sheet","empty-cache-formula")) {
+            try(var wb=new XSSFWorkbook();var out=new ByteArrayOutputStream()) {
+                var sheet=wb.createSheet("成本");var header=sheet.createRow(0);var row=sheet.createRow(1);
+                String[] labels={"材料名称","用量","单价","运输费用"};String[] values={"铜料","1","2","99"};
+                for(int index=0;index<labels.length;index++){header.createCell(index).setCellValue(labels[index]);row.createCell(index).setCellValue(values[index]);}
+                if(hidden.equals("row"))row.setZeroHeight(true);
+                else if(hidden.equals("sheet")){wb.createSheet("可见");wb.setSheetHidden(0,true);}
+                else {sheet.setColumnHidden(3,true);if(hidden.equals("empty-cache-formula"))row.getCell(3).setCellFormula("IF(1=1,\"\",\"\")");}
+                wb.write(out);
+                assertThatThrownBy(()->GoodsCostWorkbookParser.parse(UUID.randomUUID(),"source.xlsx","a".repeat(64),out.toByteArray()))
+                        .isInstanceOf(com.uten.imp.common.web.ApiException.class).hasMessageContaining("隐藏");
+            }
+        }
+    }
+    @Test void hiddenStyledEmptyTailIsNotAdoptedOrMistakenForData() throws Exception {
+        try(var wb=new XSSFWorkbook();var out=new ByteArrayOutputStream()) {
+            var sheet=wb.createSheet("成本");headers(sheet,0);var row=sheet.createRow(1);
+            row.createCell(0).setCellValue("原料");row.createCell(1).setCellValue(1);
+            row.createCell(6).setCellStyle(wb.createCellStyle());sheet.setColumnHidden(6,true);wb.write(out);
+            assertThat(GoodsCostWorkbookParser.parse(UUID.randomUUID(),"source.xlsx","a".repeat(64),out.toByteArray()).blocks()).hasSize(1);
+        }
+    }
     @Test void duplicateAndPopulatedCustomColumnsRequireExplicitHandling() throws Exception {
         for(String extra:java.util.List.of("单价","自定义备注")) {
             try(var wb=new XSSFWorkbook();var out=new ByteArrayOutputStream()) {

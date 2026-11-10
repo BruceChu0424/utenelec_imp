@@ -66,6 +66,8 @@ public final class ScheduledTaskCatalog {
                     "每天 03:41 低峰滚动核对一段货品的月度汇总与出入库流水是否一致, 只告警不修复。")),
             Map.entry("BusinessOutboxPayloadTieringScheduler.tierDeliveredPayloads", new Entry("事件载荷分层",
                     "每天 03:53 把送达超过 90 天的业务事件完整载荷无损转入历史层, 热表只留防重身份, 查询与防重语义不变。")),
+            Map.entry("InternalStorageTieringScheduler.tierAgedAttachments", new Entry("附件冷存搬运",
+                    "每天 03:35 把超龄且非公司文件库引用的附件从固态热盘搬到冷存区, 按最近使用时间保护常用文件, 原件随时可自动调回。")),
             Map.entry("BusinessArchiveEligibilityScheduler.scan", new Entry("归档资格扫描",
                     "每天 03:57 低峰扫描已结清满一定期限的采购订单, 登记可完整打包归档的候选与阻碍原因, 只登记不搬移不删除。")),
             Map.entry("ReportExportWorker.poll", new Entry("报表导出处理",

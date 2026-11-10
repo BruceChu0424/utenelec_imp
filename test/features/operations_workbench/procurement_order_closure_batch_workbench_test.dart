@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/layout/uten_floating_action_group.dart';
+import 'package:uten_imp/components/layout/uten_table_action_scope.dart';
 import 'package:uten_imp/components/data_display/uten_selection_summary_pill.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
@@ -328,7 +329,11 @@ void main() {
       find.byType(UtenFloatingActionGroup),
     );
     expect(group.children.first, isA<UtenSelectionSummaryPill>());
-    expect(group.children.last, isA<Text>());
+    // 逐批读取增长期间统一由 UtenTableActionGate 冻结批量动作(4024a79e0)：
+    // 动作仍在最右，只是外包一层门控件，顺序语义不变。
+    final gatedAction = group.children.last;
+    expect(gatedAction, isA<UtenTableActionGate>());
+    expect((gatedAction as UtenTableActionGate).child, isA<Text>());
   });
   for (final subcontract in [false, true]) {
     testWidgets(
@@ -708,10 +713,10 @@ void main() {
             find.byType(UtenFloatingActionGroup),
           );
           expect(group.children.first, isA<UtenSelectionSummaryPill>());
-          final actionChild = group.children
-              .whereType<ProcurementOrderClosureSelectionAction>()
-              .single;
-          expect(group.children.indexOf(actionChild), 1);
+          // 动作外包 UtenTableActionGate(逐批增长期门控)后仍排在胶囊右侧第一位。
+          final gated = group.children.whereType<UtenTableActionGate>().single;
+          expect(group.children.indexOf(gated), 1);
+          expect(gated.child, isA<ProcurementOrderClosureSelectionAction>());
           expect(tester.getRect(_action).bottom, greaterThan(600));
           expect(tester.getRect(_action).top, greaterThanOrEqualTo(0));
           expect(tester.getRect(_action).left, greaterThanOrEqualTo(0));

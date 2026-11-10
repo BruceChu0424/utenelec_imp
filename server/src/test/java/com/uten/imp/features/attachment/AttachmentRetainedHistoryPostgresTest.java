@@ -225,10 +225,7 @@ class AttachmentRetainedHistoryPostgresTest {
 
     @Test void downloadAndPreviewAdvanceUsageHeatOnTheAttachmentRowOncePerDayWithoutAuditNoise() throws Exception {
         var recorder=new AttachmentUsageRecorder(jdbc);
-        ReflectionTestUtils.setField(service,"events",
-                (org.springframework.context.ApplicationEventPublisher)event -> {
-                    if (event instanceof AttachmentAccessedEvent accessed) recorder.onAccessed(accessed);
-                });
+        ReflectionTestUtils.setField(service,"events",publisherFor(recorder));
         byte[] bytes="常用合同 冷热分层热度".getBytes(StandardCharsets.UTF_8);
         Attachment row=create(bytes,AttachmentLifecycleState.CLEAN);
         assertThat(lastUsed(row)).isNull();
@@ -278,10 +275,7 @@ class AttachmentRetainedHistoryPostgresTest {
         var failingJdbc=mock(org.springframework.jdbc.core.JdbcTemplate.class);
         when(failingJdbc.update(anyString(),any(Object[].class))).thenThrow(new org.springframework.dao.QueryTimeoutException("heat write timed out"));
         var failing=new AttachmentUsageRecorder(failingJdbc);
-        ReflectionTestUtils.setField(service,"events",
-                (org.springframework.context.ApplicationEventPublisher)event -> {
-                    if (event instanceof AttachmentAccessedEvent accessed) failing.onAccessed(accessed);
-                });
+        ReflectionTestUtils.setField(service,"events",publisherFor(failing));
         try(var input=service.openRaw(row.getStorageKey()).stream()){assertThat(input.readAllBytes()).isEqualTo(bytes);}
         assertThat(service.downloadGrant(row.getId())).isNotNull();
         verify(failingJdbc,times(2)).update(anyString(),any(Object[].class));
@@ -297,6 +291,18 @@ class AttachmentRetainedHistoryPostgresTest {
                 java.sql.Timestamp.from(Instant.now().minus(java.time.Duration.ofDays(InternalStorageTieringScheduler.RECENT_ACCESS_DAYS))));
         assertThat(active).contains(hot.getId().toString())
                 .doesNotContain(stale.getId().toString(),never.getId().toString());
+    }
+
+    /** 具名实现（避免匿名/lambda 实现多态接口触发 confusing-method-signature）。 */
+    private static final class HeatPublisher implements org.springframework.context.ApplicationEventPublisher {
+        private final AttachmentUsageRecorder recorder;
+        HeatPublisher(AttachmentUsageRecorder recorder) { this.recorder = recorder; }
+        @Override public void publishEvent(Object event) {
+            if (event instanceof AttachmentAccessedEvent accessed) recorder.onAccessed(accessed);
+        }
+    }
+    private static HeatPublisher publisherFor(AttachmentUsageRecorder recorder) {
+        return new HeatPublisher(recorder);
     }
 
     private Instant lastUsed(Attachment row){

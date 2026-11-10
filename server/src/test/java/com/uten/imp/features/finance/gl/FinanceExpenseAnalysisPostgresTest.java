@@ -140,7 +140,7 @@ class FinanceExpenseAnalysisPostgresTest {
             assertThat(db.queryForObject("SELECT remark FROM finance_operating_report_notes",String.class)).isEqualTo("原备注\n保留换行");
         } finally {org.springframework.security.core.context.SecurityContextHolder.clearContext();}
     }
-    @Test void legacyNotePreviewsCannotWriteButTheirCompletedReceiptStillReplaysBeforeTheNewGate() throws Exception {
+    @Test void legacyNotePreviewsCannotWriteAndConfirmedNotesReplayAfterPeriodLocks() throws Exception {
         UUID actor=UUID.randomUUID();var user=mock(com.uten.imp.security.SecurityContextCurrentUser.class);when(user.requireId()).thenReturn(actor);
         var access=mock(com.uten.imp.features.finance.FinanceDocumentAccessPolicy.class);when(access.scope()).thenReturn(new com.uten.imp.security.OwnerVisibility.OwnerScope(true,Set.of()));
         var json=new com.fasterxml.jackson.databind.ObjectMapper();
@@ -159,13 +159,19 @@ class FinanceExpenseAnalysisPostgresTest {
                 var request=new FinanceExpenseAnalysisContracts.ImportApply(id);
                 assertThatThrownBy(()->tx.execute(status->service.applyNotes(request))).hasMessageContaining("重新检测");
                 assertThat(db.queryForObject("SELECT count(*) FROM finance_operating_report_notes",Integer.class)).isZero();
-                Map<String,Object> receipt=Map.of("importId",id.toString(),"period","2026-09","count",0,"state","APPLIED");
-                // The projection fixture records a historical completed zero-write result;
-                // the original literal preview stays legacy and is never rewritten.
-                db.update("UPDATE finance_expense_note_imports SET applied_at=now(),applied_result=?::jsonb WHERE id=?",json.writeValueAsString(receipt),id);
-                assertThat(tx.execute(status->service.applyNotes(request))).isEqualTo(receipt);
-                assertThat(db.queryForObject("SELECT count(*) FROM finance_operating_report_notes",Integer.class)).isZero();
             }
+            UUID safe=UUID.randomUUID();String hash=safe.toString().replace("-","").repeat(2);
+            var preview=new FinanceExpenseAnalysisContracts.NoteImportPreview(safe,"2026-09","confirmed.xlsx",hash,
+                    List.of(new FinanceExpenseAnalysisContracts.NoteImportRow(2,"OP_RENT","合成分类","合成分项","合成项目","已提交真实备注","",-1)),List.of(),false);
+            db.update("INSERT INTO finance_expense_note_imports(id,actor_id,period,source_name,sha256,storage_provider,storage_key,storage_size,preview) VALUES(?,?,'2026-09','confirmed.xlsx',?,'local',?,1,?::jsonb)",safe,actor,hash,safe.toString(),json.writeValueAsString(preview));
+            var command=new FinanceExpenseAnalysisContracts.ImportApply(safe);
+            tx.execute(status->service.applyNotes(command)); // The client loses this committed response.
+            String originalReceipt=db.queryForObject("SELECT applied_result::text FROM finance_expense_note_imports WHERE id=?",String.class,safe);
+            tx.executeWithoutResult(status->service.savePolicy(new FinanceExpenseAnalysisContracts.PolicyInput("2026-09",-1,true,"已核对部门性质并排除资本化重复",true,"")));
+            com.fasterxml.jackson.databind.JsonNode replay=json.valueToTree(tx.execute(status->service.applyNotes(command)));
+            assertThat(replay).isEqualTo(json.readTree(originalReceipt));
+            assertThat(db.queryForObject("SELECT count(*) FROM finance_operating_report_notes",Integer.class)).isEqualTo(1);
+            assertThat(db.queryForObject("SELECT remark FROM finance_operating_report_notes",String.class)).isEqualTo("已提交真实备注");
             when(user.requireId()).thenReturn(UUID.randomUUID());
             UUID existing=db.queryForObject("SELECT id FROM finance_expense_note_imports ORDER BY id LIMIT 1",UUID.class);
             assertThatThrownBy(()->tx.execute(status->service.applyNotes(new FinanceExpenseAnalysisContracts.ImportApply(existing))))

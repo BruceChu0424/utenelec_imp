@@ -1,0 +1,32 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/warehouse/warehouse_task_scope_test.dart
+00:00 +0: same-owner selected warehouse stale response preserves counts and then recovers
+00:00 +1: selected warehouse stale response cannot reuse a previous identity boundary
+00:00 +2: selected warehouse stale response cannot reuse a previous permission boundary
+00:00 +3: selected warehouse stale response cannot reuse a previous revision boundary
+00:00 +4: same-owner scope refresh keeps badges across rapid rechecks and confirmed removal
+00:00 +5: all-warehouse browsing preserves the keeper role and physical badge selection
+00:00 +6: warehouse participation is an explicit server capability
+00:00 +7: refreshing or failed warehouse scopes cannot reuse old authorization
+00:00 +8: warehouse selector keeps its theme border at 390.0 in Brightness.dark with large text
+00:02 +9: warehouse selector keeps its theme border at 760.0 in Brightness.dark with large text
+00:02 +10: warehouse selector keeps its theme border at 1500.0 in Brightness.dark with large text
+00:02 +11: warehouse selector keeps its theme border at 390.0 in Brightness.light with large text
+00:02 +12: warehouse selector keeps its theme border at 760.0 in Brightness.light with large text
+00:02 +13: warehouse selector keeps its theme border at 1500.0 in Brightness.light with large text
+00:03 +14: embedded parent and child categories share one compact gap and keep IDs
+00:03 +15: supervisor picks any warehouse from the side panel
+00:04 +16: keeper of several warehouses switches only among them
+00:05 +17: keeper of one warehouse can explicitly filter that warehouse
+00:06 +18: an account without visible warehouses has no selector
+00:06 +19: ordinary warehouse staff can filter within visible warehouses
+00:06 +20: parent warehouse filter makes visible descendants explicit
+00:07 +21: failed scope read exposes an inline retry
+00:07 +22: READ_SCOPE_CHANGED retires the version and the scope refetches once by itself
+00:07 +23: the scope selector leaves its retry state once the read version is retired
+00:07 +24: refreshing a selected scope never briefly expands to the default
+00:07 +25: a remembered warehouse outside the current scope falls back
+00:07 +26: legacy ADR-115 preferences fall back to the default scope
+00:07 +27: views outside a task center send no scope parameter
+00:07 +28: window resume retries a failed warehouse scope only
+00:07 +29: All tests passed!

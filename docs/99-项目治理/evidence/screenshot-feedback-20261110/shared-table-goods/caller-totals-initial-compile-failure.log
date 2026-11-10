@@ -1,0 +1,154 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/expense/expense_invoice_section_test.dart
+lib/components/data_display/uten_totals_summary_bar.dart:128:27: Error: The getter 'BoxHeightStyle' isn't defined for the type '_RenderTotalsRuns'.
+ - '_RenderTotalsRuns' is from 'package:uten_imp/components/data_display/uten_totals_summary_bar.dart' ('lib/components/data_display/uten_totals_summary_bar.dart').
+Try correcting the name to the name of an existing getter, or defining a getter or field named 'BoxHeightStyle'.
+          boxHeightStyle: BoxHeightStyle.max,
+                          ^^^^^^^^^^^^^^
+00:00 +0 -1: loading D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/expense/expense_invoice_section_test.dart [E]
+  Failed to load "D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/expense/expense_invoice_section_test.dart":
+  Compilation failed for testPath=D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/expense/expense_invoice_section_test.dart: lib/components/data_display/uten_totals_summary_bar.dart:128:27: Error: The getter 'BoxHeightStyle' isn't defined for the type '_RenderTotalsRuns'.
+   - '_RenderTotalsRuns' is from 'package:uten_imp/components/data_display/uten_totals_summary_bar.dart' ('lib/components/data_display/uten_totals_summary_bar.dart').
+  Try correcting the name to the name of an existing getter, or defining a getter or field named 'BoxHeightStyle'.
+            boxHeightStyle: BoxHeightStyle.max,
+                            ^^^^^^^^^^^^^^
+  .
+  Error: The Dart compiler exited unexpectedly.
+  package:flutter_tools/src/base/common.dart 34:3  throwToolExit
+  package:flutter_tools/src/compile.dart 1009:11   DefaultResidentCompiler._compile.<fn>
+  dart:async/zone_root.dart 48:47                  _rootRunUnary
+  dart:async/zone.dart 733:19                      _CustomZone.runUnary
+  dart:async/future_impl.dart 948:45               Future._propagateToListeners.handleValueCallback
+  dart:async/future_impl.dart 977:13               Future._propagateToListeners
+  dart:async/future_impl.dart 862:9                Future._propagateToListeners
+  dart:async/future_impl.dart 720:5                Future._completeWithValue
+  dart:async/future_impl.dart 804:7                Future._asyncCompleteWithValue.<fn>
+  dart:async/zone_root.dart 35:13                  _rootRun
+  dart:async/zone.dart 726:19                      _CustomZone.run
+  dart:async/zone.dart 625:7                       _CustomZone.runGuarded
+  dart:async/zone.dart 666:23                      _CustomZone.bindCallbackGuarded.<fn>
+  dart:async/schedule_microtask.dart 40:35         _microtaskLoop
+  dart:async/schedule_microtask.dart 49:5          _startMicrotaskLoop
+  dart:isolate-patch/isolate_patch.dart 127:13     _runPendingImmediateCallback
+  dart:isolate-patch/isolate_patch.dart 193:5      _RawReceivePort._handleMessage
+  
+lib/components/data_display/uten_totals_summary_bar.dart:128:27: Error: The getter 'BoxHeightStyle' isn't defined for the type '_RenderTotalsRuns'.
+ - '_RenderTotalsRuns' is from 'package:uten_imp/components/data_display/uten_totals_summary_bar.dart' ('lib/components/data_display/uten_totals_summary_bar.dart').
+Try correcting the name to the name of an existing getter, or defining a getter or field named 'BoxHeightStyle'.
+          boxHeightStyle: BoxHeightStyle.max,
+                          ^^^^^^^^^^^^^^
+00:00 +0 -2: loading D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_payable_statement_adjustment_dialog_test.dart [E]
+  Failed to load "D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_payable_statement_adjustment_dialog_test.dart":
+  Compilation failed for testPath=D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_payable_statement_adjustment_dialog_test.dart: lib/components/data_display/uten_totals_summary_bar.dart:128:27: Error: The getter 'BoxHeightStyle' isn't defined for the type '_RenderTotalsRuns'.
+   - '_RenderTotalsRuns' is from 'package:uten_imp/components/data_display/uten_totals_summary_bar.dart' ('lib/components/data_display/uten_totals_summary_bar.dart').
+  Try correcting the name to the name of an existing getter, or defining a getter or field named 'BoxHeightStyle'.
+            boxHeightStyle: BoxHeightStyle.max,
+                            ^^^^^^^^^^^^^^
+  .
+00:00 +0 -2: loading D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/expense/expense_invoice_section_test.dart [E]
+  Error: The Dart compiler exited unexpectedly.
+  package:flutter_tools/src/base/common.dart 34:3  throwToolExit
+  package:flutter_tools/src/compile.dart 1009:11   DefaultResidentCompiler._compile.<fn>
+  dart:async/zone_root.dart 48:47                  _rootRunUnary
+  dart:async/zone.dart 733:19                      _CustomZone.runUnary
+  dart:async/future_impl.dart 948:45               Future._propagateToListeners.handleValueCallback
+  dart:async/future_impl.dart 977:13               Future._propagateToListeners
+  dart:async/future_impl.dart 862:9                Future._propagateToListeners
+  dart:async/future_impl.dart 720:5                Future._completeWithValue
+  dart:async/future_impl.dart 804:7                Future._asyncCompleteWithValue.<fn>
+  dart:async/zone_root.dart 35:13                  _rootRun
+  dart:async/zone.dart 726:19                      _CustomZone.run
+  dart:async/zone.dart 625:7                       _CustomZone.runGuarded
+  dart:async/zone.dart 666:23                      _CustomZone.bindCallbackGuarded.<fn>
+  dart:async/schedule_microtask.dart 40:35         _microtaskLoop
+  dart:async/schedule_microtask.dart 49:5          _startMicrotaskLoop
+  dart:isolate-patch/isolate_patch.dart 127:13     _runPendingImmediateCallback
+  dart:isolate-patch/isolate_patch.dart 193:5      _RawReceivePort._handleMessage
+  
+lib/components/data_display/uten_totals_summary_bar.dart:128:27: Error: The getter 'BoxHeightStyle' isn't defined for the type '_RenderTotalsRuns'.
+ - '_RenderTotalsRuns' is from 'package:uten_imp/components/data_display/uten_totals_summary_bar.dart' ('lib/components/data_display/uten_totals_summary_bar.dart').
+Try correcting the name to the name of an existing getter, or defining a getter or field named 'BoxHeightStyle'.
+          boxHeightStyle: BoxHeightStyle.max,
+                          ^^^^^^^^^^^^^^
+00:00 +0 -3: loading D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/production/start_confirmation_sheet_test.dart [E]
+  Failed to load "D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/production/start_confirmation_sheet_test.dart":
+  Compilation failed for testPath=D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/production/start_confirmation_sheet_test.dart: lib/components/data_display/uten_totals_summary_bar.dart:128:27: Error: The getter 'BoxHeightStyle' isn't defined for the type '_RenderTotalsRuns'.
+   - '_RenderTotalsRuns' is from 'package:uten_imp/components/data_display/uten_totals_summary_bar.dart' ('lib/components/data_display/uten_totals_summary_bar.dart').
+  Try correcting the name to the name of an existing getter, or defining a getter or field named 'BoxHeightStyle'.
+            boxHeightStyle: BoxHeightStyle.max,
+                            ^^^^^^^^^^^^^^
+  .
+00:00 +0 -3: loading D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/expense/expense_invoice_section_test.dart [E]
+  Error: The Dart compiler exited unexpectedly.
+  package:flutter_tools/src/base/common.dart 34:3  throwToolExit
+  package:flutter_tools/src/compile.dart 1009:11   DefaultResidentCompiler._compile.<fn>
+  dart:async/zone_root.dart 48:47                  _rootRunUnary
+  dart:async/zone.dart 733:19                      _CustomZone.runUnary
+  dart:async/future_impl.dart 948:45               Future._propagateToListeners.handleValueCallback
+  dart:async/future_impl.dart 977:13               Future._propagateToListeners
+  dart:async/future_impl.dart 862:9                Future._propagateToListeners
+  dart:async/future_impl.dart 720:5                Future._completeWithValue
+  dart:async/future_impl.dart 804:7                Future._asyncCompleteWithValue.<fn>
+  dart:async/zone_root.dart 35:13                  _rootRun
+  dart:async/zone.dart 726:19                      _CustomZone.run
+  dart:async/zone.dart 625:7                       _CustomZone.runGuarded
+  dart:async/zone.dart 666:23                      _CustomZone.bindCallbackGuarded.<fn>
+  dart:async/schedule_microtask.dart 40:35         _microtaskLoop
+  dart:async/schedule_microtask.dart 49:5          _startMicrotaskLoop
+  dart:isolate-patch/isolate_patch.dart 127:13     _runPendingImmediateCallback
+  dart:isolate-patch/isolate_patch.dart 193:5      _RawReceivePort._handleMessage
+  
+lib/components/data_display/uten_totals_summary_bar.dart:128:27: Error: The getter 'BoxHeightStyle' isn't defined for the type '_RenderTotalsRuns'.
+ - '_RenderTotalsRuns' is from 'package:uten_imp/components/data_display/uten_totals_summary_bar.dart' ('lib/components/data_display/uten_totals_summary_bar.dart').
+Try correcting the name to the name of an existing getter, or defining a getter or field named 'BoxHeightStyle'.
+          boxHeightStyle: BoxHeightStyle.max,
+                          ^^^^^^^^^^^^^^
+00:00 +0 -4: loading D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/uten_editable_grid_row_details_test.dart [E]
+  Failed to load "D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/uten_editable_grid_row_details_test.dart":
+  Compilation failed for testPath=D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/uten_editable_grid_row_details_test.dart: lib/components/data_display/uten_totals_summary_bar.dart:128:27: Error: The getter 'BoxHeightStyle' isn't defined for the type '_RenderTotalsRuns'.
+   - '_RenderTotalsRuns' is from 'package:uten_imp/components/data_display/uten_totals_summary_bar.dart' ('lib/components/data_display/uten_totals_summary_bar.dart').
+  Try correcting the name to the name of an existing getter, or defining a getter or field named 'BoxHeightStyle'.
+            boxHeightStyle: BoxHeightStyle.max,
+                            ^^^^^^^^^^^^^^
+  .
+00:00 +0 -4: loading D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/expense/expense_invoice_section_test.dart [E]
+  Error: The Dart compiler exited unexpectedly.
+  package:flutter_tools/src/base/common.dart 34:3  throwToolExit
+  package:flutter_tools/src/compile.dart 1009:11   DefaultResidentCompiler._compile.<fn>
+  dart:async/zone_root.dart 48:47                  _rootRunUnary
+  dart:async/zone.dart 733:19                      _CustomZone.runUnary
+  dart:async/future_impl.dart 948:45               Future._propagateToListeners.handleValueCallback
+  dart:async/future_impl.dart 977:13               Future._propagateToListeners
+  dart:async/future_impl.dart 862:9                Future._propagateToListeners
+  dart:async/future_impl.dart 720:5                Future._completeWithValue
+  dart:async/future_impl.dart 804:7                Future._asyncCompleteWithValue.<fn>
+  dart:async/zone_root.dart 35:13                  _rootRun
+  dart:async/zone.dart 726:19                      _CustomZone.run
+  dart:async/zone.dart 625:7                       _CustomZone.runGuarded
+  dart:async/zone.dart 666:23                      _CustomZone.bindCallbackGuarded.<fn>
+  dart:async/schedule_microtask.dart 40:35         _microtaskLoop
+  dart:async/schedule_microtask.dart 49:5          _startMicrotaskLoop
+  dart:isolate-patch/isolate_patch.dart 127:13     _runPendingImmediateCallback
+  dart:isolate-patch/isolate_patch.dart 193:5      _RawReceivePort._handleMessage
+  
+00:00 +0 -4: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_editable_grid_window_test.dart: two thousand owned rows stay complete and exact while only visible editors mount
+00:03 +0 -4: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_primary_hscrollbar_test.dart: 内容少：横滚条贴最后一行下方（隔 11），不钉屏幕底
+内容少：横滚条 top=313.0，最后一行底=313.0（条 box 占位 [行底, 行底+11]，滑块上缘距行底约 1px）
+00:03 +1 -4: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_editable_grid_window_test.dart: two thousand owned rows stay complete and exact while only visible editors mount
+00:04 +1 -4: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_primary_hscrollbar_test.dart: 内容多：横滚条钉在表体区底（视口底）
+内容多：横滚条 top=689.0，期望 689.0
+00:04 +2 -4: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_editable_grid_window_test.dart: two thousand owned rows stay complete and exact while only visible editors mount
+00:05 +3 -4: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_primary_hscrollbar_test.dart: 折叠手势不受影响：表格上上滑仍收起顶部卡片
+折叠手势：工具行 y 70.0 → 10.0（卡片收起后应顶到 0）
+00:05 +4 -4: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_editable_grid_window_test.dart: view delete and add mutate complete source once and old disabled callbacks cannot mutate it
+00:06 +4 -4: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_primary_hscrollbar_test.dart: 带悬浮批量按钮（货品资料同款）：内容少时横滚条仍贴末行
+批量表内容少：横滚条 top=325.0，最后一行底=325.0（应贴合，非 +200）
+00:06 +5 -4: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_editable_grid_window_test.dart: view delete and add mutate complete source once and old disabled callbacks cannot mutate it
+00:07 +6 -4: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_editable_grid_window_test.dart: view delete and add mutate complete source once and old disabled callbacks cannot mutate it
+00:11 +7 -4: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/uten_editable_grid_row_details_test.dart: loading D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/uten_editable_grid_row_details_test.dart
+  D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/expense/expense_invoice_section_test.dart: loading D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/expense/expense_invoice_section_test.dart
+  D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_payable_statement_adjustment_dialog_test.dart: loading D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_payable_statement_adjustment_dialog_test.dart
+  D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/production/start_confirmation_sheet_test.dart: loading D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/production/start_confirmation_sheet_test.dart

@@ -1,0 +1,39 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/feedback/uten_progress_dialog_test.dart
+00:00 +0: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/feedback/uten_progress_dialog_test.dart: shared progress bar stays clearly visible in unknown and counted stages
+00:02 +1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/feedback/uten_progress_dialog_test.dart: percent mode shows figure, detail, elapsed and cancel; never a spinner
+00:03 +2: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/feedback/uten_progress_dialog_test.dart: unknown totals show the sweep bar and status headline, never a fake percent
+00:03 +3: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/feedback/uten_progress_dialog_test.dart: count and percent clamp out-of-range input
+00:03 +4: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/feedback/uten_progress_dialog_test.dart: cancel closes at once, returns null and flags the session; later errors are swallowed
+00:03 +5: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/feedback/uten_progress_dialog_test.dart: system back cancels instead of orphaning the work
+00:04 +6: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/feedback/uten_progress_dialog_test.dart: a failure closes the dialog and rethrows the original error
+00:04 +7: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/feedback/uten_progress_dialog_test.dart: cross error-zone frame returns asynchronous original failure to the caller exactly once
+00:04 +8: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/feedback/uten_progress_dialog_test.dart: cross error-zone frame returns synchronous original failure to the caller exactly once
+00:04 +9: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/feedback/uten_progress_dialog_test.dart: long waits show a reassurance line
+00:05 +10: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/feedback/uten_progress_dialog_test.dart: afterCurrent (write batches) cancel keeps the dialog until the in-flight item finishes, then returns the real partial result
+00:05 +11: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/feedback/uten_progress_dialog_test.dart: afterCurrent (write batches) a write failure after cancel is still reported, not swallowed as a cancellation
+00:05 +12: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/feedback/uten_progress_dialog_test.dart: afterCurrent (write batches) system back drains the same way as the cancel button
+00:05 +13: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/feedback/uten_progress_dialog_test.dart: a non-cancellable wait offers neither cancel nor close and ignores system back
+00:06 +14: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/feedback/uten_progress_dialog_test.dart: onRouteOpened hands out the live dialog route and invalidation retires the wait
+00:09 +15: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_ar_ap_overview_search_test.dart: (setUpAll)
+00:09 +15: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_ar_ap_overview_search_test.dart: default customer report keeps the old 16 headers and exports the same scope
+00:16 +16: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_ar_ap_overview_search_test.dart: customer summary search retains its schema and searches beyond selected category
+00:19 +17: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_ar_ap_overview_search_test.dart: schema switches retire old results and clear incompatible column criteria
+00:22 +18: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_ar_ap_overview_search_test.dart: old customer preferences migrate incompatible sort and display to summary
+00:24 +19: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_ar_ap_overview_search_test.dart: 2500 customer rows append progressively and enable output only when complete
+00:30 +20: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_ar_ap_overview_search_test.dart: rapid layout changes and search retire a growing customer prefix during debounce
+00:35 +21: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_ar_ap_overview_search_test.dart: a failed growing read withdraws every partial customer row
+00:37 +22: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_ar_ap_overview_search_test.dart: real ARAP return clears its search, stops the old locator and refreshes only the current query
+00:38 +23: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_ar_ap_overview_search_test.dart: Ticker-only ARAP cover retains the query and revalidates report and full locator once
+00:39 +24: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_ar_ap_overview_search_test.dart: finance report return preserves hub scroll and report filters
+00:43 +25: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_ar_ap_overview_search_test.dart: hub report row opens native document and returns through both retained pages
+00:47 +26: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_ar_ap_overview_search_test.dart: overview tree and single toolbar fit desktop narrow zoom and dark
+00:58 +27: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_ar_ap_overview_search_test.dart: one global table combines categories and preserves server exact-before-near order
+00:59 +28: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_ar_ap_overview_search_test.dart: a category code is retained as the keyword without selecting that branch
+00:59 +29: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_ar_ap_overview_search_test.dart: clearing a search restores original type and category while keeping date display and sort
+01:00 +30: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_ar_ap_overview_search_test.dart: stale report response cannot replace the latest global search
+01:01 +31: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_ar_ap_overview_search_test.dart: server empty search result does not fall back to unfiltered rows
+01:02 +32: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_ar_ap_overview_search_test.dart: failed category hints do not block global results or restore a superseded report
+01:03 +33: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_ar_ap_overview_search_test.dart: new input invalidates old report during the debounce window
+01:03 +34: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_ar_ap_overview_search_test.dart: (tearDownAll)
+01:04 +34: All tests passed!

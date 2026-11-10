@@ -1,0 +1,65 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/integration_test/warehouse_feedback_runtime_test.dart
+Building Windows application...                                    31.0s
+√ Built build\windows\x64\runner\Debug\uten_imp.exe
+00:00 +0: arrival-runtime selected merged output lot defaults and submits the entire 20000 plus 1000 physical quantity
+warehouse-feedback controlled arrival fixture: Guarded function conflict.
+You must use "await" with all Future-returning test APIs.
+The guarded method "pumpAndSettle" from class WidgetTester was called from file:///D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/warehouse/production_finished_arrival_registration_page_test.dart on line 1587.
+Then, the "expect" function was called from file:///D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/warehouse/production_finished_arrival_registration_page_test.dart on line 1674.
+The first method (WidgetTester.pumpAndSettle) had not yet finished executing at the time that the second function (expect) was called. Since both are guarded, and the second was not a nested call inside the first, the first must complete its execution before the second can be called. Typically, this is achieved by putting an "await" statement in front of the call to the first.
+If you are confident that all test APIs are being called using "await", and this expect() call is not being called at the top level but is itself being called from some sort of callback registered before the pumpAndSettle method was called, then consider using expectSync() instead.
+
+When the first method (WidgetTester.pumpAndSettle) was called, this was the stack:
+#0      TestAsyncUtils.guard (package:flutter_test/src/test_async_utils.dart:72:42)
+#1      WidgetTester.pumpAndSettle (package:flutter_test/src/widget_tester.dart:712:27)
+#2      _openPage (file:///D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/warehouse/production_finished_arrival_registration_page_test.dart:1587:16)
+<asynchronous suspension>
+#3      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/warehouse/production_finished_arrival_registration_page_test.dart:67:7)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+#0      TestAsyncUtils.guardSync (package:flutter_test/src/test_async_utils.dart:312:5)
+#1      expect (package:flutter_test/src/widget_tester.dart:472:18)
+#2      _ArrivalRegistrationApi.getList (file:///D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/warehouse/production_finished_arrival_registration_page_test.dart:1674:7)
+#3      ProductionFinishedInboundTaskRepository.batchArrivalRegistrations (package:uten_imp/features/warehouse/repositories/production_finished_inbound_task_repository.dart:127:28)
+#4      _ProductionFinishedArrivalRegistrationPageState._load (package:uten_imp/features/warehouse/pages/production_finished_arrival_registration_page.dart:382:12)
+<asynchronous suspension>
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: exactly one matching candidate
+  Actual: _KeyWidgetFinder:<Found 0 widgets with key [<'production-finished-arrival-grid'>]: []>
+   Which: means none were found but one was expected
+arrival table must finish loading; current page: 成品登记信息加载失败，请检查网络后重试 | 任务可能已被其他仓库人员处理，请返回任务中心刷新。 |
+重新加载 | 登记实际入库
+
+When the exception was thrown, this was the stack:
+#4      _revealGrid (file:///D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/warehouse/production_finished_arrival_registration_page_test.dart:1387:3)
+<asynchronous suspension>
+#5      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/warehouse/production_finished_arrival_registration_page_test.dart:82:7)
+<asynchronous suspension>
+#6      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#7      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/warehouse/production_finished_arrival_registration_page_test.dart line 1387
+The test description was:
+  selected merged output lot defaults and submits the entire 20000 plus 1000 physical quantity
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:06 +0 -1: arrival-runtime selected merged output lot defaults and submits the entire 20000 plus 1000 physical quantity [E]
+  Test failed. See exception logs above.
+  The test description was: selected merged output lot defaults and submits the entire 20000 plus 1000 physical quantity
+  
+00:06 +0 -1: (tearDownAll)
+00:06 +0 -1: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/integration_test/warehouse_feedback_runtime_test.dart: arrival-runtime selected merged output lot defaults and submits the entire 20000 plus 1000 physical quantity

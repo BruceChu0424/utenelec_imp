@@ -1,0 +1,8 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/uten_totals_summary_bar_test.dart
+00:00 +0: 圆角红底、白字，金额大于标签，紧凑=false
+00:00 +1: 圆角红底、白字，金额大于标签，紧凑=true
+00:00 +2: 换行合计仅在每行实际内容后铺红底，不铺满第二行空白
+00:01 +3: 条目内部换行与旁侧短条目不把两行背景连成卡片
+00:01 +4: 窄屏和两倍字体完整显示多币种长精度金额，不裁切或缩字
+00:01 +5: All tests passed!

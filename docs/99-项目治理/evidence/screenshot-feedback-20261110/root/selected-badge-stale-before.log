@@ -1,0 +1,31 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/warehouse/warehouse_task_scope_test.dart
+00:00 +0: same-owner selected warehouse stale response preserves counts and then recovers
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: <11>
+  Actual: <0>
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/warehouse/warehouse_task_scope_test.dart:290:7)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/warehouse/warehouse_task_scope_test.dart line 290
+The test description was:
+  same-owner selected warehouse stale response preserves counts and then recovers
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:00 +0 -1: same-owner selected warehouse stale response preserves counts and then recovers [E]
+  Test failed. See exception logs above.
+  The test description was: same-owner selected warehouse stale response preserves counts and then recovers
+  
+00:00 +0 -1: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/warehouse/warehouse_task_scope_test.dart: same-owner selected warehouse stale response preserves counts and then recovers

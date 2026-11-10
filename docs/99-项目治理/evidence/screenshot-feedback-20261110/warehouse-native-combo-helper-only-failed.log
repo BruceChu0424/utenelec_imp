@@ -1,0 +1,311 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/integration_test/screenshot_feedback_runtime_test.dart
+Building Windows application...                                   108.4s
+√ Built build\windows\x64\runner\Debug\uten_imp.exe
+00:00 +0: editor-runtime shipment order prefill retains the exact discount and locked preview through quantity edits
+00:05 +1: editor-runtime existing shipment retains legacy original-price semantics for discount null
+00:06 +2: editor-runtime existing shipment retains legacy original-price semantics for discount 0
+00:07 +3: editor-runtime existing shipment retains legacy original-price semantics for discount 0.8
+00:08 +4: detail-runtime shipment detail presents source discount null without changing its source
+00:09 +5: detail-runtime shipment detail presents source discount 0 without changing its source
+00:10 +6: detail-runtime shipment detail presents source discount 0.8 without changing its source
+00:11 +7: shipment-runtime finance task page defaults to pending and uses desktop table
+00:12 +8: table-runtime 空表（覆盖层路径）：横滚条可拖动表头且贴提示行
+00:13 +9: table-runtime 空表与有数据往返时横滚条及位置保持
+00:14 +10: table-runtime 空表（流内路径）：保留可拖动横向滚动条
+00:15 +11: grid-runtime 空编辑表保留超宽表头横滚且空态保持在可视区
+00:16 +12: totals-runtime 换行合计仅在每行实际内容后铺红底，不铺满第二行空白
+00:17 +13: totals-runtime 条目内部换行与旁侧短条目不把两行背景连成卡片
+00:17 +14: quality-runtime atomic IQC report keeps truthful moving unknown progress while delayed and retries the frozen report
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following NetworkTimeoutException was thrown running a test:
+ApiException(NETWORK_TIMEOUT): 服务器未及时响应，请先核对操作结果
+
+When the exception was thrown, this was the stack:
+#0      main.<anonymous closure>.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/quality/quality_batch_approval_recovery_test.dart:66:11)
+<asynchronous suspension>
+#1      _Iqc.decideReport (file:///D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/quality/quality_batch_approval_recovery_test.dart:785:5)
+<asynchronous suspension>
+#2      QualityBatchSubmission.send.<anonymous closure> (package:uten_imp/features/quality/services/quality_batch_submission.dart:155:13)
+<asynchronous suspension>
+#3      QualityBatchSubmission.send (package:uten_imp/features/quality/services/quality_batch_submission.dart:141:7)
+<asynchronous suspension>
+#4      _QualityBatchApprovalPageState._sendSubmission.<anonymous closure> (package:uten_imp/features/quality/pages/quality_batch_approval_page.dart:800:11)
+<asynchronous suspension>
+#5      _UtenProgressDialogState._start.<anonymous closure> (package:uten_imp/components/feedback/uten_progress_dialog.dart:336:7)
+<asynchronous suspension>
+
+The test description was:
+  atomic IQC report keeps truthful moving unknown progress while delayed and retries the frozen
+  report
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:24 +14 -1: quality-runtime atomic IQC report keeps truthful moving unknown progress while delayed and retries the frozen report [E]
+  Test failed. See exception logs above.
+  The test description was: atomic IQC report keeps truthful moving unknown progress while delayed and retries the frozen report
+  
+  Guarded function conflict.
+  You must use "await" with all Future-returning test APIs.
+  The guarded method "pumpAndSettle" from class WidgetTester was called from file:///D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/quality/quality_batch_approval_recovery_test.dart on line 126.
+  Then, the "setSurfaceSize" method from class IntegrationTestWidgetsFlutterBinding was called from file:///D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/quality/quality_batch_approval_recovery_test.dart on line 655.
+  The first method (WidgetTester.pumpAndSettle) had not yet finished executing at the time that the second method (IntegrationTestWidgetsFlutterBinding.setSurfaceSize) was called. Since both are guarded, and the second was not a nested call inside the first, the first must complete its execution before the second can be called. Typically, this is achieved by putting an "await" statement in front of the call to the first.
+  
+  When the first method (WidgetTester.pumpAndSettle) was called, this was the stack:
+  #0      TestAsyncUtils.guard (package:flutter_test/src/test_async_utils.dart:72:42)
+  #1      WidgetTester.pumpAndSettle (package:flutter_test/src/widget_tester.dart:712:27)
+  #2      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/quality/quality_batch_approval_recovery_test.dart:126:20)
+  <asynchronous suspension>
+  #3      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+  <asynchronous suspension>
+  #4      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+  <asynchronous suspension>
+  <asynchronous suspension>
+  (elided one frame from package:stack_trace)
+  package:flutter_test/src/test_async_utils.dart 312:5                                                         TestAsyncUtils.guardSync
+  package:flutter_test/src/test_async_utils.dart 66:5                                                          TestAsyncUtils.guard
+  package:integration_test/integration_test.dart 109:27                                                        IntegrationTestWidgetsFlutterBinding.setSurfaceSize
+  test\features\quality\quality_batch_approval_recovery_test.dart 655:36                                       _pump.<fn>
+  ===== asynchronous gap ===========================
+  package:stream_channel                                                                                       _GuaranteeSink.add
+  c:/Users/bruce/AppData/Local/Temp/flutter_tools.471312e9/flutter_test_listener.eadb6729/listener.dart 56:22  main.<fn>
+  
+  'package:flutter_test/src/binding.dart': Failed assertion: line 3081 pos 12: '_pendingFrame == null': is not true.
+  dart:core                                                                                                    _AssertionError._throwNew
+  package:flutter_test/src/binding.dart 3081:12                                                                LiveTestWidgetsFlutterBinding.postTest
+  ===== asynchronous gap ===========================
+  package:stream_channel                                                                                       _GuaranteeSink.add
+  c:/Users/bruce/AppData/Local/Temp/flutter_tools.471312e9/flutter_test_listener.eadb6729/listener.dart 56:22  main.<fn>
+  
+00:24 +14 -1: warehouse-scope-runtime same-owner scope refresh keeps badges across rapid rechecks and confirmed removal
+00:24 +14 -2: warehouse-scope-runtime same-owner scope refresh keeps badges across rapid rechecks and confirmed removal [E]
+  Guarded function conflict.
+  You must use "await" with all Future-returning test APIs.
+  The guarded method "pumpAndSettle" from class WidgetTester was called from file:///D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/quality/quality_batch_approval_recovery_test.dart on line 126.
+  Then, the "expect" function was called from file:///D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/warehouse/warehouse_task_scope_test.dart on line 393.
+  The first method (WidgetTester.pumpAndSettle) had not yet finished executing at the time that the second function (expect) was called. Since both are guarded, and the second was not a nested call inside the first, the first must complete its execution before the second can be called. Typically, this is achieved by putting an "await" statement in front of the call to the first.
+  If you are confident that all test APIs are being called using "await", and this expect() call is not being called at the top level but is itself being called from some sort of callback registered before the pumpAndSettle method was called, then consider using expectSync() instead.
+  
+  When the first method (WidgetTester.pumpAndSettle) was called, this was the stack:
+  #0      TestAsyncUtils.guard (package:flutter_test/src/test_async_utils.dart:72:42)
+  #1      WidgetTester.pumpAndSettle (package:flutter_test/src/widget_tester.dart:712:27)
+  #2      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/quality/quality_batch_approval_recovery_test.dart:126:20)
+  <asynchronous suspension>
+  #3      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+  <asynchronous suspension>
+  #4      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+  <asynchronous suspension>
+  <asynchronous suspension>
+  (elided one frame from package:stack_trace)
+  package:flutter_test/src/test_async_utils.dart 312:5                                                         TestAsyncUtils.guardSync
+  package:flutter_test/src/widget_tester.dart 472:18                                                           expect
+  test\features\warehouse\warehouse_task_scope_test.dart 393:7                                                 main.<fn>
+  ===== asynchronous gap ===========================
+  package:stream_channel                                                                                       _GuaranteeSink.add
+  c:/Users/bruce/AppData/Local/Temp/flutter_tools.471312e9/flutter_test_listener.eadb6729/listener.dart 56:22  main.<fn>
+  
+00:24 +14 -2: arrival-runtime selected merged output lot defaults and submits the entire 20000 plus 1000 physical quantity
+00:24 +14 -3: arrival-runtime selected merged output lot defaults and submits the entire 20000 plus 1000 physical quantity [E]
+  'package:flutter_test/src/binding.dart': Failed assertion: line 3056 pos 12: '!inTest': is not true.
+  dart:core                                                                                                    _AssertionError._throwNew
+  package:flutter_test/src/binding.dart 3056:12                                                                LiveTestWidgetsFlutterBinding.runTest
+  package:integration_test/integration_test.dart 237:17                                                        IntegrationTestWidgetsFlutterBinding.runTest
+  package:flutter_test/src/widget_tester.dart 184:24                                                           testWidgets.<fn>
+  ===== asynchronous gap ===========================
+  package:stream_channel                                                                                       _GuaranteeSink.add
+  c:/Users/bruce/AppData/Local/Temp/flutter_tools.471312e9/flutter_test_listener.eadb6729/listener.dart 56:22  main.<fn>
+  
+  'package:flutter_test/src/binding.dart': Failed assertion: line 3081 pos 12: '_pendingFrame == null': is not true.
+  dart:core                                                                                                    _AssertionError._throwNew
+  package:flutter_test/src/binding.dart 3081:12                                                                LiveTestWidgetsFlutterBinding.postTest
+  ===== asynchronous gap ===========================
+  package:stream_channel                                                                                       _GuaranteeSink.add
+  c:/Users/bruce/AppData/Local/Temp/flutter_tools.471312e9/flutter_test_listener.eadb6729/listener.dart 56:22  main.<fn>
+  
+00:24 +14 -3: count-route-runtime merged final-count row opens both physical source items under the original document
+00:24 +14 -4: count-route-runtime merged final-count row opens both physical source items under the original document [E]
+  'package:flutter_test/src/binding.dart': Failed assertion: line 3056 pos 12: '!inTest': is not true.
+  dart:core                                                                                                    _AssertionError._throwNew
+  package:flutter_test/src/binding.dart 3056:12                                                                LiveTestWidgetsFlutterBinding.runTest
+  package:integration_test/integration_test.dart 237:17                                                        IntegrationTestWidgetsFlutterBinding.runTest
+  package:flutter_test/src/widget_tester.dart 184:24                                                           testWidgets.<fn>
+  ===== asynchronous gap ===========================
+  package:stream_channel                                                                                       _GuaranteeSink.add
+  c:/Users/bruce/AppData/Local/Temp/flutter_tools.471312e9/flutter_test_listener.eadb6729/listener.dart 56:22  main.<fn>
+  
+  'package:flutter_test/src/binding.dart': Failed assertion: line 3081 pos 12: '_pendingFrame == null': is not true.
+  dart:core                                                                                                    _AssertionError._throwNew
+  package:flutter_test/src/binding.dart 3081:12                                                                LiveTestWidgetsFlutterBinding.postTest
+  ===== asynchronous gap ===========================
+  package:stream_channel                                                                                       _GuaranteeSink.add
+  c:/Users/bruce/AppData/Local/Temp/flutter_tools.471312e9/flutter_test_listener.eadb6729/listener.dart 56:22  main.<fn>
+  
+00:24 +14 -4: draw-runtime stock reference preserves exact warehouse quantity and stock unit through source selection
+00:24 +14 -5: draw-runtime stock reference preserves exact warehouse quantity and stock unit through source selection [E]
+  'package:flutter_test/src/binding.dart': Failed assertion: line 3056 pos 12: '!inTest': is not true.
+  dart:core                                                                                                    _AssertionError._throwNew
+  package:flutter_test/src/binding.dart 3056:12                                                                LiveTestWidgetsFlutterBinding.runTest
+  package:integration_test/integration_test.dart 237:17                                                        IntegrationTestWidgetsFlutterBinding.runTest
+  package:flutter_test/src/widget_tester.dart 184:24                                                           testWidgets.<fn>
+  ===== asynchronous gap ===========================
+  package:stream_channel                                                                                       _GuaranteeSink.add
+  c:/Users/bruce/AppData/Local/Temp/flutter_tools.471312e9/flutter_test_listener.eadb6729/listener.dart 56:22  main.<fn>
+  
+  'package:flutter_test/src/binding.dart': Failed assertion: line 3081 pos 12: '_pendingFrame == null': is not true.
+  dart:core                                                                                                    _AssertionError._throwNew
+  package:flutter_test/src/binding.dart 3081:12                                                                LiveTestWidgetsFlutterBinding.postTest
+  ===== asynchronous gap ===========================
+  package:stream_channel                                                                                       _GuaranteeSink.add
+  c:/Users/bruce/AppData/Local/Temp/flutter_tools.471312e9/flutter_test_listener.eadb6729/listener.dart 56:22  main.<fn>
+  
+00:24 +14 -5: year-runtime year picker cancels and reopens, selected filter matches search at width 1440.0
+00:24 +14 -6: year-runtime year picker cancels and reopens, selected filter matches search at width 1440.0 [E]
+  'package:flutter_test/src/binding.dart': Failed assertion: line 3056 pos 12: '!inTest': is not true.
+  dart:core                                                                                                    _AssertionError._throwNew
+  package:flutter_test/src/binding.dart 3056:12                                                                LiveTestWidgetsFlutterBinding.runTest
+  package:integration_test/integration_test.dart 237:17                                                        IntegrationTestWidgetsFlutterBinding.runTest
+  package:flutter_test/src/widget_tester.dart 184:24                                                           testWidgets.<fn>
+  ===== asynchronous gap ===========================
+  package:stream_channel                                                                                       _GuaranteeSink.add
+  c:/Users/bruce/AppData/Local/Temp/flutter_tools.471312e9/flutter_test_listener.eadb6729/listener.dart 56:22  main.<fn>
+  
+  'package:flutter_test/src/binding.dart': Failed assertion: line 3081 pos 12: '_pendingFrame == null': is not true.
+  dart:core                                                                                                    _AssertionError._throwNew
+  package:flutter_test/src/binding.dart 3081:12                                                                LiveTestWidgetsFlutterBinding.postTest
+  ===== asynchronous gap ===========================
+  package:stream_channel                                                                                       _GuaranteeSink.add
+  c:/Users/bruce/AppData/Local/Temp/flutter_tools.471312e9/flutter_test_listener.eadb6729/listener.dart 56:22  main.<fn>
+  
+00:24 +14 -6: year-runtime year picker cancels and reopens, selected filter matches search at width 375.0
+00:24 +14 -7: year-runtime year picker cancels and reopens, selected filter matches search at width 375.0 [E]
+  'package:flutter_test/src/binding.dart': Failed assertion: line 3056 pos 12: '!inTest': is not true.
+  dart:core                                                                                                    _AssertionError._throwNew
+  package:flutter_test/src/binding.dart 3056:12                                                                LiveTestWidgetsFlutterBinding.runTest
+  package:integration_test/integration_test.dart 237:17                                                        IntegrationTestWidgetsFlutterBinding.runTest
+  package:flutter_test/src/widget_tester.dart 184:24                                                           testWidgets.<fn>
+  ===== asynchronous gap ===========================
+  package:stream_channel                                                                                       _GuaranteeSink.add
+  c:/Users/bruce/AppData/Local/Temp/flutter_tools.471312e9/flutter_test_listener.eadb6729/listener.dart 56:22  main.<fn>
+  
+  'package:flutter_test/src/binding.dart': Failed assertion: line 3081 pos 12: '_pendingFrame == null': is not true.
+  dart:core                                                                                                    _AssertionError._throwNew
+  package:flutter_test/src/binding.dart 3081:12                                                                LiveTestWidgetsFlutterBinding.postTest
+  ===== asynchronous gap ===========================
+  package:stream_channel                                                                                       _GuaranteeSink.add
+  c:/Users/bruce/AppData/Local/Temp/flutter_tools.471312e9/flutter_test_listener.eadb6729/listener.dart 56:22  main.<fn>
+  
+00:24 +14 -7: finance-entry-runtime receipt creation puts settlement terms in the common selectable grid
+00:24 +14 -8: finance-entry-runtime receipt creation puts settlement terms in the common selectable grid [E]
+  'package:flutter_test/src/binding.dart': Failed assertion: line 3056 pos 12: '!inTest': is not true.
+  dart:core                                                                                                    _AssertionError._throwNew
+  package:flutter_test/src/binding.dart 3056:12                                                                LiveTestWidgetsFlutterBinding.runTest
+  package:integration_test/integration_test.dart 237:17                                                        IntegrationTestWidgetsFlutterBinding.runTest
+  package:flutter_test/src/widget_tester.dart 184:24                                                           testWidgets.<fn>
+  ===== asynchronous gap ===========================
+  package:stream_channel                                                                                       _GuaranteeSink.add
+  c:/Users/bruce/AppData/Local/Temp/flutter_tools.471312e9/flutter_test_listener.eadb6729/listener.dart 56:22  main.<fn>
+  
+  'package:flutter_test/src/binding.dart': Failed assertion: line 3081 pos 12: '_pendingFrame == null': is not true.
+  dart:core                                                                                                    _AssertionError._throwNew
+  package:flutter_test/src/binding.dart 3081:12                                                                LiveTestWidgetsFlutterBinding.postTest
+  ===== asynchronous gap ===========================
+  package:stream_channel                                                                                       _GuaranteeSink.add
+  c:/Users/bruce/AppData/Local/Temp/flutter_tools.471312e9/flutter_test_listener.eadb6729/listener.dart 56:22  main.<fn>
+  
+00:24 +14 -8: finance-entry-runtime payment creation puts settlement terms in the common selectable grid
+00:24 +14 -9: finance-entry-runtime payment creation puts settlement terms in the common selectable grid [E]
+  'package:flutter_test/src/binding.dart': Failed assertion: line 3056 pos 12: '!inTest': is not true.
+  dart:core                                                                                                    _AssertionError._throwNew
+  package:flutter_test/src/binding.dart 3056:12                                                                LiveTestWidgetsFlutterBinding.runTest
+  package:integration_test/integration_test.dart 237:17                                                        IntegrationTestWidgetsFlutterBinding.runTest
+  package:flutter_test/src/widget_tester.dart 184:24                                                           testWidgets.<fn>
+  ===== asynchronous gap ===========================
+  package:stream_channel                                                                                       _GuaranteeSink.add
+  c:/Users/bruce/AppData/Local/Temp/flutter_tools.471312e9/flutter_test_listener.eadb6729/listener.dart 56:22  main.<fn>
+  
+  'package:flutter_test/src/binding.dart': Failed assertion: line 3081 pos 12: '_pendingFrame == null': is not true.
+  dart:core                                                                                                    _AssertionError._throwNew
+  package:flutter_test/src/binding.dart 3081:12                                                                LiveTestWidgetsFlutterBinding.postTest
+  ===== asynchronous gap ===========================
+  package:stream_channel                                                                                       _GuaranteeSink.add
+  c:/Users/bruce/AppData/Local/Temp/flutter_tools.471312e9/flutter_test_listener.eadb6729/listener.dart 56:22  main.<fn>
+  
+00:24 +14 -9: finance-entry-runtime expense creation puts settlement terms in the common selectable grid
+00:24 +14 -10: finance-entry-runtime expense creation puts settlement terms in the common selectable grid [E]
+  'package:flutter_test/src/binding.dart': Failed assertion: line 3056 pos 12: '!inTest': is not true.
+  dart:core                                                                                                    _AssertionError._throwNew
+  package:flutter_test/src/binding.dart 3056:12                                                                LiveTestWidgetsFlutterBinding.runTest
+  package:integration_test/integration_test.dart 237:17                                                        IntegrationTestWidgetsFlutterBinding.runTest
+  package:flutter_test/src/widget_tester.dart 184:24                                                           testWidgets.<fn>
+  ===== asynchronous gap ===========================
+  package:stream_channel                                                                                       _GuaranteeSink.add
+  c:/Users/bruce/AppData/Local/Temp/flutter_tools.471312e9/flutter_test_listener.eadb6729/listener.dart 56:22  main.<fn>
+  
+  'package:flutter_test/src/binding.dart': Failed assertion: line 3081 pos 12: '_pendingFrame == null': is not true.
+  dart:core                                                                                                    _AssertionError._throwNew
+  package:flutter_test/src/binding.dart 3081:12                                                                LiveTestWidgetsFlutterBinding.postTest
+  ===== asynchronous gap ===========================
+  package:stream_channel                                                                                       _GuaranteeSink.add
+  c:/Users/bruce/AppData/Local/Temp/flutter_tools.471312e9/flutter_test_listener.eadb6729/listener.dart 56:22  main.<fn>
+  
+00:24 +14 -10: finance-entry-runtime otherIncome creation puts settlement terms in the common selectable grid
+00:24 +14 -11: finance-entry-runtime otherIncome creation puts settlement terms in the common selectable grid [E]
+  'package:flutter_test/src/binding.dart': Failed assertion: line 3056 pos 12: '!inTest': is not true.
+  dart:core                                                                                                    _AssertionError._throwNew
+  package:flutter_test/src/binding.dart 3056:12                                                                LiveTestWidgetsFlutterBinding.runTest
+  package:integration_test/integration_test.dart 237:17                                                        IntegrationTestWidgetsFlutterBinding.runTest
+  package:flutter_test/src/widget_tester.dart 184:24                                                           testWidgets.<fn>
+  ===== asynchronous gap ===========================
+  package:stream_channel                                                                                       _GuaranteeSink.add
+  c:/Users/bruce/AppData/Local/Temp/flutter_tools.471312e9/flutter_test_listener.eadb6729/listener.dart 56:22  main.<fn>
+  
+  'package:flutter_test/src/binding.dart': Failed assertion: line 3081 pos 12: '_pendingFrame == null': is not true.
+  dart:core                                                                                                    _AssertionError._throwNew
+  package:flutter_test/src/binding.dart 3081:12                                                                LiveTestWidgetsFlutterBinding.postTest
+  ===== asynchronous gap ===========================
+  package:stream_channel                                                                                       _GuaranteeSink.add
+  c:/Users/bruce/AppData/Local/Temp/flutter_tools.471312e9/flutter_test_listener.eadb6729/listener.dart 56:22  main.<fn>
+  
+00:24 +14 -11: finance-entry-runtime bankTransfer creation puts settlement terms in the common selectable grid
+00:25 +14 -12: finance-entry-runtime bankTransfer creation puts settlement terms in the common selectable grid [E]
+  'package:flutter_test/src/binding.dart': Failed assertion: line 3056 pos 12: '!inTest': is not true.
+  dart:core                                                                                                    _AssertionError._throwNew
+  package:flutter_test/src/binding.dart 3056:12                                                                LiveTestWidgetsFlutterBinding.runTest
+  package:integration_test/integration_test.dart 237:17                                                        IntegrationTestWidgetsFlutterBinding.runTest
+  package:flutter_test/src/widget_tester.dart 184:24                                                           testWidgets.<fn>
+  ===== asynchronous gap ===========================
+  package:stream_channel                                                                                       _GuaranteeSink.add
+  c:/Users/bruce/AppData/Local/Temp/flutter_tools.471312e9/flutter_test_listener.eadb6729/listener.dart 56:22  main.<fn>
+  
+  'package:flutter_test/src/binding.dart': Failed assertion: line 3081 pos 12: '_pendingFrame == null': is not true.
+  dart:core                                                                                                    _AssertionError._throwNew
+  package:flutter_test/src/binding.dart 3081:12                                                                LiveTestWidgetsFlutterBinding.postTest
+  ===== asynchronous gap ===========================
+  package:stream_channel                                                                                       _GuaranteeSink.add
+  c:/Users/bruce/AppData/Local/Temp/flutter_tools.471312e9/flutter_test_listener.eadb6729/listener.dart 56:22  main.<fn>
+  
+00:25 +14 -12: monthly-runtime 375px monthly list remains usable
+00:25 +14 -13: monthly-runtime 375px monthly list remains usable [E]
+  'package:flutter_test/src/binding.dart': Failed assertion: line 3056 pos 12: '!inTest': is not true.
+  dart:core                                                                                                    _AssertionError._throwNew
+  package:flutter_test/src/binding.dart 3056:12                                                                LiveTestWidgetsFlutterBinding.runTest
+  package:integration_test/integration_test.dart 237:17                                                        IntegrationTestWidgetsFlutterBinding.runTest
+  package:flutter_test/src/widget_tester.dart 184:24                                                           testWidgets.<fn>
+  ===== asynchronous gap ===========================
+  package:stream_channel                                                                                       _GuaranteeSink.add
+  c:/Users/bruce/AppData/Local/Temp/flutter_tools.471312e9/flutter_test_listener.eadb6729/listener.dart 56:22  main.<fn>
+  
+  'package:flutter_test/src/binding.dart': Failed assertion: line 3081 pos 12: '_pendingFrame == null': is not true.
+  dart:core                                                                                                    _AssertionError._throwNew
+  package:flutter_test/src/binding.dart 3081:12                                                                LiveTestWidgetsFlutterBinding.postTest
+  ===== asynchronous gap ===========================
+  package:stream_channel                                                                                       _GuaranteeSink.add
+  c:/Users/bruce/AppData/Local/Temp/flutter_tools.471312e9/flutter_test_listener.eadb6729/listener.dart 56:22  main.<fn>
+  
+00:25 +14 -13: (tearDownAll)
+00:25 +14 -13: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/integration_test/screenshot_feedback_runtime_test.dart: arrival-runtime selected merged output lot defaults and submits the entire 20000 plus 1000 physical quantity
+  D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/integration_test/screenshot_feedback_runtime_test.dart: count-route-runtime merged final-count row opens both physical source items under the original document
+  D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/integration_test/screenshot_feedback_runtime_test.dart: draw-runtime stock reference preserves exact warehouse quantity and stock unit through source selection
+  D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/integration_test/screenshot_feedback_runtime_test.dart: finance-entry-runtime bankTransfer creation puts settlement terms in the common selectable grid
+  ... and 9 more

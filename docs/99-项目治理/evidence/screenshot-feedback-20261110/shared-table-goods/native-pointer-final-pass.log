@@ -1,0 +1,10 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/integration_test/shared_table_pointer_runtime_test.dart
+Building Windows application...                                    48.2s
+√ Built build\windows\x64\runner\Debug\uten_imp.exe
+00:00 +0: shared-pointer-table 空表（覆盖层路径）：横滚条可拖动表头且贴提示行
+00:02 +1: shared-pointer-table 空表与有数据往返时横滚条及位置保持
+00:03 +2: shared-pointer-table 空表（流内路径）：保留可拖动横向滚动条
+00:04 +3: shared-pointer-grid 空编辑表保留超宽表头横滚且空态保持在可视区
+00:06 +4: (tearDownAll)
+00:06 +4: All tests passed!

@@ -41,15 +41,17 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
 import '../../support/native_detail_reader_overrides.dart';
+import '../../support/audit_font_asset_loader_io.dart'
+    if (dart.library.js_interop) '../../support/audit_font_asset_loader_web.dart';
 
 void main() {
   setUpAll(() async {
     await (FontLoader(
       'MaterialIcons',
-    )..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'))).load();
+    )..addFont(loadAuditFontAsset('fonts/MaterialIcons-Regular.otf'))).load();
     await (FontLoader(
       'NotoSansSC',
-    )..addFont(rootBundle.load('assets/fonts/NotoSansSC.ttf'))).load();
+    )..addFont(loadAuditFontAsset('assets/fonts/NotoSansSC.ttf'))).load();
   });
 
   testWidgets(

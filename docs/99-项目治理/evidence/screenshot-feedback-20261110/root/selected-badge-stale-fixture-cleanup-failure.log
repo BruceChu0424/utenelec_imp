@@ -1,0 +1,286 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/warehouse/warehouse_task_scope_test.dart
+00:00 +0: same-owner selected warehouse stale response preserves counts and then recovers
+Pending timers:
+Timer (duration: 0:01:00.000000, periodic: false), created:
+#0      new FakeTimer._ (package:fake_async/fake_async.dart:342:62)
+#1      FakeAsync._createTimer (package:fake_async/fake_async.dart:260:29)
+#2      FakeAsync.run.<anonymous closure> (package:fake_async/fake_async.dart:185:15)
+#5      retainReadSnapshot.<anonymous closure> (package:uten_imp/shared/providers/retain_read_snapshot.dart:17:12)
+#6      InternalProviderContainer.runGuarded (package:riverpod/src/core/provider_container.dart:788:9)
+#7      _runCallbacks (package:riverpod/src/core/ref.dart:793:17)
+#8      ProviderElement._onChangeSubscription (package:riverpod/src/core/element.dart:1197:9)
+#9      ProviderElement.onSubscriptionPauseOrDeactivate (package:riverpod/src/core/element.dart:1090:5)
+#10     ProviderSubscriptionImpl.deactivate (package:riverpod/src/core/provider_subscription.dart:182:22)
+#11     ProviderElement.onCancel.<anonymous closure> (package:riverpod/src/core/element.dart:1010:16)
+#12     List.forEach (dart:core-patch/growable_array.dart:428:8)
+#13     ProviderElement.onCancel (package:riverpod/src/core/element.dart:1009:20)
+#14     ElementWithFuture.onCancel (package:riverpod/src/core/element.dart:189:11)
+#15     ProviderElement._onChangeSubscription (package:riverpod/src/core/element.dart:1198:9)
+#16     ProviderElement.removeDependentSubscription (package:riverpod/src/core/element.dart:1057:5)
+#17     ProviderSubscriptionImpl.close (package:riverpod/src/core/provider_subscription.dart:228:22)
+#18     ConsumerStatefulElement.unmount (package:flutter_riverpod/src/core/consumer.dart:507:18)
+#19     _InactiveElements._unmount (package:flutter/src/widgets/framework.dart:2117:13)
+#20     _InactiveElements._unmount.<anonymous closure> (package:flutter/src/widgets/framework.dart:2115:7)
+#21     ComponentElement.visitChildren (package:flutter/src/widgets/framework.dart:5871:14)
+#22     _InactiveElements._unmount (package:flutter/src/widgets/framework.dart:2113:13)
+#23     _InactiveElements._unmount.<anonymous closure> (package:flutter/src/widgets/framework.dart:2115:7)
+#24     ComponentElement.visitChildren (package:flutter/src/widgets/framework.dart:5871:14)
+#25     _InactiveElements._unmount (package:flutter/src/widgets/framework.dart:2113:13)
+#26     ListIterable.forEach (dart:_internal/iterable.dart:49:13)
+#27     _InactiveElements._unmountAll (package:flutter/src/widgets/framework.dart:2126:25)
+#28     BuildOwner.lockState (package:flutter/src/widgets/framework.dart:3020:15)
+#29     BuildOwner.finalizeTree (package:flutter/src/widgets/framework.dart:3344:7)
+#30     AutomatedTestWidgetsFlutterBinding.drawFrame (package:flutter_test/src/binding.dart:2453:19)
+#31     RendererBinding._handlePersistentFrameCallback (package:flutter/src/rendering/binding.dart:509:5)
+#32     SchedulerBinding._invokeFrameCallback (package:flutter/src/scheduler/binding.dart:1430:15)
+#33     SchedulerBinding.handleDrawFrame (package:flutter/src/scheduler/binding.dart:1345:9)
+#34     AutomatedTestWidgetsFlutterBinding.scheduleWarmUpFrame (package:flutter_test/src/binding.dart:2357:5)
+#35     _runWidget (package:flutter/src/widgets/binding.dart:1952:7)
+#36     runApp (package:flutter/src/widgets/binding.dart:1885:3)
+#37     TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1959:7)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided 3 frames from dart:async and package:stack_trace)
+
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following assertion was thrown running a test:
+A Timer is still pending even after the widget tree was disposed.
+'package:flutter_test/src/binding.dart':
+Failed assertion: line 2542 pos 12: '!timersPending'
+
+When the exception was thrown, this was the stack:
+#2      AutomatedTestWidgetsFlutterBinding._verifyInvariants (package:flutter_test/src/binding.dart:2542:12)
+#3      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1973:7)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided 3 frames from class _AssertionError and package:stack_trace)
+
+The test description was:
+  same-owner selected warehouse stale response preserves counts and then recovers
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:00 +0 -1: same-owner selected warehouse stale response preserves counts and then recovers [E]
+  Test failed. See exception logs above.
+  The test description was: same-owner selected warehouse stale response preserves counts and then recovers
+  
+00:00 +0 -1: selected warehouse stale response cannot reuse a previous identity boundary
+Pending timers:
+Timer (duration: 0:01:00.000000, periodic: false), created:
+#0      new FakeTimer._ (package:fake_async/fake_async.dart:342:62)
+#1      FakeAsync._createTimer (package:fake_async/fake_async.dart:260:29)
+#2      FakeAsync.run.<anonymous closure> (package:fake_async/fake_async.dart:185:15)
+#5      retainReadSnapshot.<anonymous closure> (package:uten_imp/shared/providers/retain_read_snapshot.dart:17:12)
+#6      InternalProviderContainer.runGuarded (package:riverpod/src/core/provider_container.dart:788:9)
+#7      _runCallbacks (package:riverpod/src/core/ref.dart:793:17)
+#8      ProviderElement._onChangeSubscription (package:riverpod/src/core/element.dart:1197:9)
+#9      ProviderElement.onSubscriptionPauseOrDeactivate (package:riverpod/src/core/element.dart:1090:5)
+#10     ProviderSubscriptionImpl.deactivate (package:riverpod/src/core/provider_subscription.dart:182:22)
+#11     ProviderElement.onCancel.<anonymous closure> (package:riverpod/src/core/element.dart:1010:16)
+#12     List.forEach (dart:core-patch/growable_array.dart:428:8)
+#13     ProviderElement.onCancel (package:riverpod/src/core/element.dart:1009:20)
+#14     ElementWithFuture.onCancel (package:riverpod/src/core/element.dart:189:11)
+#15     ProviderElement._onChangeSubscription (package:riverpod/src/core/element.dart:1198:9)
+#16     ProviderElement.removeDependentSubscription (package:riverpod/src/core/element.dart:1057:5)
+#17     ProviderSubscriptionImpl.close (package:riverpod/src/core/provider_subscription.dart:228:22)
+#18     ConsumerStatefulElement.unmount (package:flutter_riverpod/src/core/consumer.dart:507:18)
+#19     _InactiveElements._unmount (package:flutter/src/widgets/framework.dart:2117:13)
+#20     _InactiveElements._unmount.<anonymous closure> (package:flutter/src/widgets/framework.dart:2115:7)
+#21     ComponentElement.visitChildren (package:flutter/src/widgets/framework.dart:5871:14)
+#22     _InactiveElements._unmount (package:flutter/src/widgets/framework.dart:2113:13)
+#23     _InactiveElements._unmount.<anonymous closure> (package:flutter/src/widgets/framework.dart:2115:7)
+#24     ComponentElement.visitChildren (package:flutter/src/widgets/framework.dart:5871:14)
+#25     _InactiveElements._unmount (package:flutter/src/widgets/framework.dart:2113:13)
+#26     ListIterable.forEach (dart:_internal/iterable.dart:49:13)
+#27     _InactiveElements._unmountAll (package:flutter/src/widgets/framework.dart:2126:25)
+#28     BuildOwner.lockState (package:flutter/src/widgets/framework.dart:3020:15)
+#29     BuildOwner.finalizeTree (package:flutter/src/widgets/framework.dart:3344:7)
+#30     AutomatedTestWidgetsFlutterBinding.drawFrame (package:flutter_test/src/binding.dart:2453:19)
+#31     RendererBinding._handlePersistentFrameCallback (package:flutter/src/rendering/binding.dart:509:5)
+#32     SchedulerBinding._invokeFrameCallback (package:flutter/src/scheduler/binding.dart:1430:15)
+#33     SchedulerBinding.handleDrawFrame (package:flutter/src/scheduler/binding.dart:1345:9)
+#34     AutomatedTestWidgetsFlutterBinding.scheduleWarmUpFrame (package:flutter_test/src/binding.dart:2357:5)
+#35     _runWidget (package:flutter/src/widgets/binding.dart:1952:7)
+#36     runApp (package:flutter/src/widgets/binding.dart:1885:3)
+#37     TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1959:7)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided 3 frames from dart:async and package:stack_trace)
+
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following assertion was thrown running a test:
+A Timer is still pending even after the widget tree was disposed.
+'package:flutter_test/src/binding.dart':
+Failed assertion: line 2542 pos 12: '!timersPending'
+
+When the exception was thrown, this was the stack:
+#2      AutomatedTestWidgetsFlutterBinding._verifyInvariants (package:flutter_test/src/binding.dart:2542:12)
+#3      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1973:7)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided 3 frames from class _AssertionError and package:stack_trace)
+
+The test description was:
+  selected warehouse stale response cannot reuse a previous identity boundary
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:00 +0 -2: selected warehouse stale response cannot reuse a previous identity boundary [E]
+  Test failed. See exception logs above.
+  The test description was: selected warehouse stale response cannot reuse a previous identity boundary
+  
+00:00 +0 -2: selected warehouse stale response cannot reuse a previous permission boundary
+Pending timers:
+Timer (duration: 0:01:00.000000, periodic: false), created:
+#0      new FakeTimer._ (package:fake_async/fake_async.dart:342:62)
+#1      FakeAsync._createTimer (package:fake_async/fake_async.dart:260:29)
+#2      FakeAsync.run.<anonymous closure> (package:fake_async/fake_async.dart:185:15)
+#5      retainReadSnapshot.<anonymous closure> (package:uten_imp/shared/providers/retain_read_snapshot.dart:17:12)
+#6      InternalProviderContainer.runGuarded (package:riverpod/src/core/provider_container.dart:788:9)
+#7      _runCallbacks (package:riverpod/src/core/ref.dart:793:17)
+#8      ProviderElement._onChangeSubscription (package:riverpod/src/core/element.dart:1197:9)
+#9      ProviderElement.onSubscriptionPauseOrDeactivate (package:riverpod/src/core/element.dart:1090:5)
+#10     ProviderSubscriptionImpl.deactivate (package:riverpod/src/core/provider_subscription.dart:182:22)
+#11     ProviderElement.onCancel.<anonymous closure> (package:riverpod/src/core/element.dart:1010:16)
+#12     List.forEach (dart:core-patch/growable_array.dart:428:8)
+#13     ProviderElement.onCancel (package:riverpod/src/core/element.dart:1009:20)
+#14     ElementWithFuture.onCancel (package:riverpod/src/core/element.dart:189:11)
+#15     ProviderElement._onChangeSubscription (package:riverpod/src/core/element.dart:1198:9)
+#16     ProviderElement.removeDependentSubscription (package:riverpod/src/core/element.dart:1057:5)
+#17     ProviderSubscriptionImpl.close (package:riverpod/src/core/provider_subscription.dart:228:22)
+#18     ConsumerStatefulElement.unmount (package:flutter_riverpod/src/core/consumer.dart:507:18)
+#19     _InactiveElements._unmount (package:flutter/src/widgets/framework.dart:2117:13)
+#20     _InactiveElements._unmount.<anonymous closure> (package:flutter/src/widgets/framework.dart:2115:7)
+#21     ComponentElement.visitChildren (package:flutter/src/widgets/framework.dart:5871:14)
+#22     _InactiveElements._unmount (package:flutter/src/widgets/framework.dart:2113:13)
+#23     _InactiveElements._unmount.<anonymous closure> (package:flutter/src/widgets/framework.dart:2115:7)
+#24     ComponentElement.visitChildren (package:flutter/src/widgets/framework.dart:5871:14)
+#25     _InactiveElements._unmount (package:flutter/src/widgets/framework.dart:2113:13)
+#26     ListIterable.forEach (dart:_internal/iterable.dart:49:13)
+#27     _InactiveElements._unmountAll (package:flutter/src/widgets/framework.dart:2126:25)
+#28     BuildOwner.lockState (package:flutter/src/widgets/framework.dart:3020:15)
+#29     BuildOwner.finalizeTree (package:flutter/src/widgets/framework.dart:3344:7)
+#30     AutomatedTestWidgetsFlutterBinding.drawFrame (package:flutter_test/src/binding.dart:2453:19)
+#31     RendererBinding._handlePersistentFrameCallback (package:flutter/src/rendering/binding.dart:509:5)
+#32     SchedulerBinding._invokeFrameCallback (package:flutter/src/scheduler/binding.dart:1430:15)
+#33     SchedulerBinding.handleDrawFrame (package:flutter/src/scheduler/binding.dart:1345:9)
+#34     AutomatedTestWidgetsFlutterBinding.scheduleWarmUpFrame (package:flutter_test/src/binding.dart:2357:5)
+#35     _runWidget (package:flutter/src/widgets/binding.dart:1952:7)
+#36     runApp (package:flutter/src/widgets/binding.dart:1885:3)
+#37     TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1959:7)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided 3 frames from dart:async and package:stack_trace)
+
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following assertion was thrown running a test:
+A Timer is still pending even after the widget tree was disposed.
+'package:flutter_test/src/binding.dart':
+Failed assertion: line 2542 pos 12: '!timersPending'
+
+When the exception was thrown, this was the stack:
+#2      AutomatedTestWidgetsFlutterBinding._verifyInvariants (package:flutter_test/src/binding.dart:2542:12)
+#3      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1973:7)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided 3 frames from class _AssertionError and package:stack_trace)
+
+The test description was:
+  selected warehouse stale response cannot reuse a previous permission boundary
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:00 +0 -3: selected warehouse stale response cannot reuse a previous permission boundary [E]
+  Test failed. See exception logs above.
+  The test description was: selected warehouse stale response cannot reuse a previous permission boundary
+  
+00:00 +0 -3: selected warehouse stale response cannot reuse a previous revision boundary
+Pending timers:
+Timer (duration: 0:01:00.000000, periodic: false), created:
+#0      new FakeTimer._ (package:fake_async/fake_async.dart:342:62)
+#1      FakeAsync._createTimer (package:fake_async/fake_async.dart:260:29)
+#2      FakeAsync.run.<anonymous closure> (package:fake_async/fake_async.dart:185:15)
+#5      retainReadSnapshot.<anonymous closure> (package:uten_imp/shared/providers/retain_read_snapshot.dart:17:12)
+#6      InternalProviderContainer.runGuarded (package:riverpod/src/core/provider_container.dart:788:9)
+#7      _runCallbacks (package:riverpod/src/core/ref.dart:793:17)
+#8      ProviderElement._onChangeSubscription (package:riverpod/src/core/element.dart:1197:9)
+#9      ProviderElement.onSubscriptionPauseOrDeactivate (package:riverpod/src/core/element.dart:1090:5)
+#10     ProviderSubscriptionImpl.deactivate (package:riverpod/src/core/provider_subscription.dart:182:22)
+#11     ProviderElement.onCancel.<anonymous closure> (package:riverpod/src/core/element.dart:1010:16)
+#12     List.forEach (dart:core-patch/growable_array.dart:428:8)
+#13     ProviderElement.onCancel (package:riverpod/src/core/element.dart:1009:20)
+#14     ElementWithFuture.onCancel (package:riverpod/src/core/element.dart:189:11)
+#15     ProviderElement._onChangeSubscription (package:riverpod/src/core/element.dart:1198:9)
+#16     ProviderElement.removeDependentSubscription (package:riverpod/src/core/element.dart:1057:5)
+#17     ProviderSubscriptionImpl.close (package:riverpod/src/core/provider_subscription.dart:228:22)
+#18     ConsumerStatefulElement.unmount (package:flutter_riverpod/src/core/consumer.dart:507:18)
+#19     _InactiveElements._unmount (package:flutter/src/widgets/framework.dart:2117:13)
+#20     _InactiveElements._unmount.<anonymous closure> (package:flutter/src/widgets/framework.dart:2115:7)
+#21     ComponentElement.visitChildren (package:flutter/src/widgets/framework.dart:5871:14)
+#22     _InactiveElements._unmount (package:flutter/src/widgets/framework.dart:2113:13)
+#23     _InactiveElements._unmount.<anonymous closure> (package:flutter/src/widgets/framework.dart:2115:7)
+#24     ComponentElement.visitChildren (package:flutter/src/widgets/framework.dart:5871:14)
+#25     _InactiveElements._unmount (package:flutter/src/widgets/framework.dart:2113:13)
+#26     ListIterable.forEach (dart:_internal/iterable.dart:49:13)
+#27     _InactiveElements._unmountAll (package:flutter/src/widgets/framework.dart:2126:25)
+#28     BuildOwner.lockState (package:flutter/src/widgets/framework.dart:3020:15)
+#29     BuildOwner.finalizeTree (package:flutter/src/widgets/framework.dart:3344:7)
+#30     AutomatedTestWidgetsFlutterBinding.drawFrame (package:flutter_test/src/binding.dart:2453:19)
+#31     RendererBinding._handlePersistentFrameCallback (package:flutter/src/rendering/binding.dart:509:5)
+#32     SchedulerBinding._invokeFrameCallback (package:flutter/src/scheduler/binding.dart:1430:15)
+#33     SchedulerBinding.handleDrawFrame (package:flutter/src/scheduler/binding.dart:1345:9)
+#34     AutomatedTestWidgetsFlutterBinding.scheduleWarmUpFrame (package:flutter_test/src/binding.dart:2357:5)
+#35     _runWidget (package:flutter/src/widgets/binding.dart:1952:7)
+#36     runApp (package:flutter/src/widgets/binding.dart:1885:3)
+#37     TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1959:7)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided 3 frames from dart:async and package:stack_trace)
+
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following assertion was thrown running a test:
+A Timer is still pending even after the widget tree was disposed.
+'package:flutter_test/src/binding.dart':
+Failed assertion: line 2542 pos 12: '!timersPending'
+
+When the exception was thrown, this was the stack:
+#2      AutomatedTestWidgetsFlutterBinding._verifyInvariants (package:flutter_test/src/binding.dart:2542:12)
+#3      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1973:7)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided 3 frames from class _AssertionError and package:stack_trace)
+
+The test description was:
+  selected warehouse stale response cannot reuse a previous revision boundary
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:00 +0 -4: selected warehouse stale response cannot reuse a previous revision boundary [E]
+  Test failed. See exception logs above.
+  The test description was: selected warehouse stale response cannot reuse a previous revision boundary
+  
+00:00 +0 -4: same-owner scope refresh keeps badges across rapid rechecks and confirmed removal
+00:00 +1 -4: all-warehouse browsing preserves the keeper role and physical badge selection
+00:00 +2 -4: warehouse participation is an explicit server capability
+00:00 +3 -4: refreshing or failed warehouse scopes cannot reuse old authorization
+00:00 +4 -4: warehouse selector keeps its theme border at 390.0 in Brightness.dark with large text
+00:02 +5 -4: warehouse selector keeps its theme border at 760.0 in Brightness.dark with large text
+00:02 +6 -4: warehouse selector keeps its theme border at 1500.0 in Brightness.dark with large text
+00:02 +7 -4: warehouse selector keeps its theme border at 390.0 in Brightness.light with large text
+00:02 +8 -4: warehouse selector keeps its theme border at 760.0 in Brightness.light with large text
+00:03 +9 -4: warehouse selector keeps its theme border at 1500.0 in Brightness.light with large text
+00:03 +10 -4: embedded parent and child categories share one compact gap and keep IDs
+00:03 +11 -4: supervisor picks any warehouse from the side panel
+00:05 +12 -4: keeper of several warehouses switches only among them
+00:06 +13 -4: keeper of one warehouse can explicitly filter that warehouse
+00:07 +14 -4: an account without visible warehouses has no selector
+00:07 +15 -4: ordinary warehouse staff can filter within visible warehouses
+00:07 +16 -4: parent warehouse filter makes visible descendants explicit
+00:08 +17 -4: failed scope read exposes an inline retry
+00:08 +18 -4: READ_SCOPE_CHANGED retires the version and the scope refetches once by itself
+00:08 +19 -4: the scope selector leaves its retry state once the read version is retired
+00:08 +20 -4: refreshing a selected scope never briefly expands to the default
+00:08 +21 -4: a remembered warehouse outside the current scope falls back
+00:09 +22 -4: legacy ADR-115 preferences fall back to the default scope
+00:09 +23 -4: views outside a task center send no scope parameter
+00:09 +24 -4: window resume retries a failed warehouse scope only
+00:09 +25 -4: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/warehouse/warehouse_task_scope_test.dart: same-owner selected warehouse stale response preserves counts and then recovers
+  D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/warehouse/warehouse_task_scope_test.dart: selected warehouse stale response cannot reuse a previous identity boundary
+  D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/warehouse/warehouse_task_scope_test.dart: selected warehouse stale response cannot reuse a previous permission boundary
+  D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/warehouse/warehouse_task_scope_test.dart: selected warehouse stale response cannot reuse a previous revision boundary

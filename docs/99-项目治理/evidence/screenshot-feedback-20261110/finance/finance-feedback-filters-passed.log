@@ -1,0 +1,52 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_year_and_master_filter_test.dart
+00:00 +0: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_year_and_master_filter_test.dart: year picker cancels and reopens, selected filter matches search at width 1440.0
+00:02 +1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_ar_ap_overview_search_test.dart: real ARAP return clears its search, stops the old locator and refreshes only the current query
+00:03 +2: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_ar_ap_overview_search_test.dart: real ARAP return clears its search, stops the old locator and refreshes only the current query
+00:03 +3: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_ar_ap_overview_search_test.dart: real ARAP return clears its search, stops the old locator and refreshes only the current query
+00:04 +4: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_ar_ap_overview_search_test.dart: real ARAP return clears its search, stops the old locator and refreshes only the current query
+00:04 +5: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_ar_ap_overview_search_test.dart: real ARAP return clears its search, stops the old locator and refreshes only the current query
+00:05 +6: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_ar_ap_overview_search_test.dart: real ARAP return clears its search, stops the old locator and refreshes only the current query
+00:05 +7: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_ar_ap_overview_search_test.dart: real ARAP return clears its search, stops the old locator and refreshes only the current query
+00:05 +8: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_employee_picker_race_test.dart: older candidate response cannot overwrite latest search
+00:06 +9: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_employee_picker_race_test.dart: older candidate response cannot overwrite latest search
+00:06 +10: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_employee_picker_race_test.dart: older candidate response cannot overwrite latest search
+00:06 +11: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_employee_picker_race_test.dart: older candidate response cannot overwrite latest search
+00:06 +12: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_employee_picker_race_test.dart: older candidate response cannot overwrite latest search
+00:06 +13: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_employee_picker_race_test.dart: older candidate response cannot overwrite latest search
+00:06 +14: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_employee_picker_race_test.dart: older candidate response cannot overwrite latest search
+00:06 +15: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_employee_picker_race_test.dart: older candidate response cannot overwrite latest search
+00:06 +16: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_employee_picker_race_test.dart: older candidate response cannot overwrite latest search
+00:06 +17: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/department/widgets/uten_department_picker_test.dart: 单选在确认前只更新草稿，确认后完整路径稳定回填
+00:06 +18: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_ar_ap_overview_search_test.dart: Ticker-only ARAP cover retains the query and revalidates report and full locator once
+00:06 +19: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_dropdown_field_selected_label_test.dart: selected label does not change menu search or keyboard values
+00:07 +20: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_dropdown_field_selected_label_test.dart: selected label does not change menu search or keyboard values
+00:07 +21: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/department/widgets/uten_department_picker_test.dart: 直接部门滑窗入口 UtenDepartmentPickerMode.single 选中暂存、取消保留初值、确定返回
+00:07 +22: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/department/widgets/uten_department_picker_test.dart: 直接部门滑窗入口 UtenDepartmentPickerMode.single 选中暂存、取消保留初值、确定返回
+00:07 +23: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_ar_ap_overview_search_test.dart: finance report return preserves hub scroll and report filters
+00:07 +24: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_ar_ap_overview_search_test.dart: finance report return preserves hub scroll and report filters
+00:07 +25: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_ar_ap_overview_search_test.dart: finance report return preserves hub scroll and report filters
+00:07 +26: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_ar_ap_overview_search_test.dart: finance report return preserves hub scroll and report filters
+00:07 +27: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_ar_ap_overview_search_test.dart: finance report return preserves hub scroll and report filters
+00:08 +28: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_ar_ap_overview_search_test.dart: finance report return preserves hub scroll and report filters
+00:08 +29: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_ar_ap_overview_search_test.dart: finance report return preserves hub scroll and report filters
+00:08 +30: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_ar_ap_overview_search_test.dart: finance report return preserves hub scroll and report filters
+00:08 +31: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_ar_ap_overview_search_test.dart: finance report return preserves hub scroll and report filters
+00:08 +32: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_ar_ap_overview_search_test.dart: finance report return preserves hub scroll and report filters
+00:08 +33: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_ar_ap_overview_search_test.dart: finance report return preserves hub scroll and report filters
+00:09 +34: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_ar_ap_overview_search_test.dart: finance report return preserves hub scroll and report filters
+00:09 +35: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_ar_ap_overview_search_test.dart: finance report return preserves hub scroll and report filters
+00:10 +36: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_ar_ap_overview_search_test.dart: finance report return preserves hub scroll and report filters
+00:10 +36 ~1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_ar_ap_overview_search_test.dart: finance report return preserves hub scroll and report filters
+00:10 +37 ~1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_employee_picker_race_test.dart: embedded panel drops pending candidates and picks when scope changes
+00:10 +38 ~1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_ar_ap_overview_search_test.dart: hub report row opens native document and returns through both retained pages
+00:12 +39 ~1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_ar_ap_overview_search_test.dart: overview tree and single toolbar fit desktop narrow zoom and dark
+00:14 +40 ~1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_ar_ap_overview_search_test.dart: one global table combines categories and preserves server exact-before-near order
+00:14 +41 ~1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_ar_ap_overview_search_test.dart: a category code is retained as the keyword without selecting that branch
+00:15 +42 ~1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_ar_ap_overview_search_test.dart: clearing a search restores original type and category while keeping date display and sort
+00:15 +43 ~1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_ar_ap_overview_search_test.dart: stale report response cannot replace the latest global search
+00:15 +44 ~1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_ar_ap_overview_search_test.dart: server empty search result does not fall back to unfiltered rows
+00:16 +45 ~1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_ar_ap_overview_search_test.dart: failed category hints do not block global results or restore a superseded report
+00:16 +46 ~1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_ar_ap_overview_search_test.dart: new input invalidates old report during the debounce window
+00:16 +47 ~1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_ar_ap_overview_search_test.dart: (tearDownAll)
+00:16 +47 ~1: All tests passed!

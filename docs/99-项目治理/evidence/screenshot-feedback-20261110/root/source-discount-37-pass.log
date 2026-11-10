@@ -1,0 +1,40 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/sales/pages/sales_doc_detail_columns_test.dart
+00:00 +0: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/sales/pages/sales_doc_detail_columns_test.dart: shipment detail presents source discount null without changing its source
+00:01 +1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/sales/pages/sales_doc_detail_columns_test.dart: shipment detail presents source discount null without changing its source
+00:01 +2: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/sales/pages/sales_doc_detail_columns_test.dart: shipment detail presents source discount null without changing its source
+00:01 +3: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/sales/pages/sales_doc_detail_columns_test.dart: shipment detail presents source discount null without changing its source
+00:01 +4: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/sales/pages/sales_doc_detail_columns_test.dart: shipment detail presents source discount null without changing its source
+00:01 +5: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/sales/pages/sales_doc_detail_columns_test.dart: shipment detail presents source discount null without changing its source
+00:01 +6: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/sales/pages/sales_doc_detail_columns_test.dart: shipment detail presents source discount null without changing its source
+00:01 +7: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/sales/pages/sales_doc_detail_columns_test.dart: shipment detail presents source discount null without changing its source
+00:01 +8: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/sales/pages/sales_doc_detail_columns_test.dart: shipment detail presents source discount null without changing its source
+00:01 +9: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/sales/pages/sales_doc_detail_columns_test.dart: shipment detail presents source discount null without changing its source
+00:01 +10: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/sales/pages/sales_doc_detail_columns_test.dart: shipment detail presents source discount null without changing its source
+00:02 +11: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/sales/pages/sales_doc_edit_v187_test.dart: sales return own line locator with empty metadata loaded=false
+00:02 +12: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/sales/pages/sales_doc_edit_v187_test.dart: sales return own line locator with empty metadata loaded=false
+00:02 +13: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/sales/pages/sales_doc_edit_v187_test.dart: sales return own line locator with empty metadata loaded=false
+00:03 +14: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/sales/pages/sales_doc_edit_v187_test.dart: sales return own line locator with empty metadata loaded=false
+00:04 +15: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/sales/pages/sales_doc_edit_v187_test.dart: sales return own line locator with empty metadata loaded=true
+00:05 +16: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/sales/pages/sales_doc_edit_v187_test.dart: sales picker accepts a selectable client after fresh lookup
+00:07 +17: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/sales/pages/sales_doc_edit_v187_test.dart: sales picker rejects a newly hidden client after fresh lookup
+00:08 +18: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/sales/pages/sales_doc_edit_v187_test.dart: shipment order prefill retains the exact discount and locked preview through quantity edits
+00:09 +19: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/sales/pages/sales_doc_edit_v187_test.dart: selected order products prefill partial shipment and save without warehouse
+00:10 +20: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/sales/pages/sales_doc_edit_v187_test.dart: existing shipment retains legacy original-price semantics for discount null
+00:11 +21: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/sales/pages/sales_doc_edit_v187_test.dart: existing shipment retains legacy original-price semantics for discount 0
+00:11 +22: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/sales/pages/sales_doc_edit_v187_test.dart: existing shipment retains legacy original-price semantics for discount 0.8
+00:11 +23: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/sales/pages/sales_doc_edit_v187_test.dart: unconfirmed multi-shipment creation retries identical intent and then shows created documents
+00:13 +24: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/sales/pages/sales_doc_edit_v187_test.dart: stale product availability blocks prefill with a recovery message
+00:13 +25: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/sales/pages/sales_doc_edit_v187_test.dart: direct customer edit retains exact decimals and stable row revision
+00:13 +26: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/sales/pages/sales_doc_edit_v187_test.dart: direct customer total amount reverses exact price and submits decimal strings
+00:14 +27: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/sales/pages/sales_doc_edit_v187_test.dart: direct customer inexact total blocks save without silently rounding price
+00:15 +28: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/sales/pages/sales_doc_edit_v187_test.dart: unlinked sales return includes its stored discount when reversing total
+00:16 +29: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/sales/pages/sales_doc_edit_v187_test.dart: explicit free dispatch hides unnecessary price and currency inputs
+00:17 +30: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/sales/pages/sales_doc_edit_v187_test.dart: new order uses partial shipment without a policy input
+00:18 +31: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/sales/pages/sales_doc_edit_v187_test.dart: 375px order editor has no deposit or advance receipt input
+00:19 +32: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/sales/pages/sales_doc_edit_v187_test.dart: legacy order keeps shipment policy read-only
+00:20 +33: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/sales/pages/sales_doc_edit_v187_test.dart: non-order currency document keeps exchange rate editor
+00:20 +34: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/sales/pages/sales_doc_edit_v187_test.dart: order save omits exchange rate but keeps currency and tax rate
+00:21 +35: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/sales/pages/sales_doc_edit_v187_test.dart: new sales shipment explains mandatory order linkage
+00:22 +36: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/sales/pages/sales_doc_edit_v187_test.dart: finance-rejected order shows reason and save explains reapproval
+00:23 +37: All tests passed!

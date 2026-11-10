@@ -1,0 +1,39 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart
+00:00 +0: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 组织目录保留真实父子路径，剪除无候选分支且同名部门按ID隔离
+00:00 +1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 开通账号标题使用员工表格，父级部门同时展示子部门授权员工
+00:05 +2: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 开通账号标题使用员工表格，父级部门同时展示子部门授权员工
+00:07 +3: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 开通账号标题使用员工表格，父级部门同时展示子部门授权员工
+00:07 +4: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/production/production_material_settlement_sheet_test.dart: a task with issued stock can return without enabling usage registration
+00:08 +5: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/production/production_material_settlement_sheet_test.dart: a task with issued stock can return without enabling usage registration
+00:08 +6: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/production/production_material_return_flow_test.dart: unissued direct lot sends its exact source without inventing an issue or receiving warehouse
+00:09 +7: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/production/production_material_return_flow_test.dart: unissued direct lot sends its exact source without inventing an issue or receiving warehouse
+00:09 +8: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/production/production_material_return_flow_test.dart: unissued direct lot sends its exact source without inventing an issue or receiving warehouse
+00:10 +9: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/production/production_material_return_flow_test.dart: unissued direct lot sends its exact source without inventing an issue or receiving warehouse
+00:11 +10: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/production/production_material_return_flow_test.dart: unissued direct lot sends its exact source without inventing an issue or receiving warehouse
+00:11 +11: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/production/production_material_return_flow_test.dart: unissued direct lot sends its exact source without inventing an issue or receiving warehouse
+00:12 +12: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 同名部门分别选择不会串组，搜索父级名称与姓名保留真实祖先
+00:12 +13: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 同名部门分别选择不会串组，搜索父级名称与姓名保留真实祖先
+00:12 +14: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 同名部门分别选择不会串组，搜索父级名称与姓名保留真实祖先
+00:12 +15: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/production/production_material_settlement_sheet_test.dart: usage cap and mandatory loss reason remain before one typed scoped submission
+00:12 +16: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/production/production_material_settlement_sheet_test.dart: usage cap and mandatory loss reason remain before one typed scoped submission
+00:13 +17: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/production/production_material_settlement_sheet_test.dart: usage cap and mandatory loss reason remain before one typed scoped submission
+00:14 +18: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/production/production_material_settlement_sheet_test.dart: usage cap and mandatory loss reason remain before one typed scoped submission
+00:14 +19: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/production/production_material_settlement_sheet_test.dart: usage cap and mandatory loss reason remain before one typed scoped submission
+00:14 +20: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/production/production_material_settlement_sheet_test.dart: usage cap and mandatory loss reason remain before one typed scoped submission
+00:14 +21: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/production/production_material_return_flow_test.dart: compact consumption uncertain response survives drag backdrop and system back
+00:16 +22: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 跨部门多选与表头全选只选择授权且可用人员，确认前不返回
+00:17 +23: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 跨部门多选与表头全选只选择授权且可用人员，确认前不返回
+00:18 +24: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/production/production_material_return_flow_test.dart: compact return uncertain response survives drag backdrop and system back
+00:19 +25: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/production/production_material_return_flow_test.dart: compact return uncertain response survives drag backdrop and system back
+00:19 +26: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 隐藏部门筛选的专用候选不请求组织树
+00:19 +27: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/production/production_material_return_flow_test.dart: identical quantities in successive production batches create distinct intentions
+00:20 +28: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 候选范围切换后等待新树时不得用旧祖先名称补回新候选
+00:20 +29: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/production/production_material_return_flow_test.dart: lost consumption receipt freezes inputs and retries the same payload without double consumption
+00:22 +30: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 员工组织表格真实中文预览 light
+00:22 +31: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/production/production_material_return_flow_test.dart: partial return is explicit, pending receipt freezes balance, and cancellation restores it
+00:24 +32: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/production/production_material_return_flow_test.dart: partial return is explicit, pending receipt freezes balance, and cancellation restores it
+00:24 +33: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 员工组织表格真实中文预览 narrow
+00:26 +34: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/production/production_material_return_flow_test.dart: unknown return response keeps the exact request and prevents quantity edits
+00:26 +35: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 员工组织表格真实中文预览 compact
+00:28 +36: All tests passed!

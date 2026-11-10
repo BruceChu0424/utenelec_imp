@@ -1,0 +1,35 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/feedback/uten_progress_dialog_test.dart
+00:00 +0: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/feedback/uten_progress_dialog_test.dart: shared progress bar stays clearly visible in unknown and counted stages
+00:01 +1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/feedback/uten_progress_dialog_test.dart: percent mode shows figure, detail, elapsed and cancel; never a spinner
+00:02 +2: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/feedback/uten_progress_dialog_test.dart: unknown totals show the sweep bar and status headline, never a fake percent
+00:02 +3: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/feedback/uten_progress_dialog_test.dart: count and percent clamp out-of-range input
+00:02 +4: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/feedback/uten_progress_dialog_test.dart: cancel closes at once, returns null and flags the session; later errors are swallowed
+00:02 +5: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/feedback/uten_progress_dialog_test.dart: system back cancels instead of orphaning the work
+00:02 +6: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/feedback/uten_progress_dialog_test.dart: a failure closes the dialog and rethrows the original error
+00:03 +7: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/feedback/uten_progress_dialog_test.dart: cross error-zone frame returns asynchronous original failure to the caller exactly once
+00:03 +8: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/feedback/uten_progress_dialog_test.dart: cross error-zone frame returns synchronous original failure to the caller exactly once
+00:03 +9: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/feedback/uten_progress_dialog_test.dart: long waits show a reassurance line
+00:03 +10: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/feedback/uten_progress_dialog_test.dart: afterCurrent (write batches) cancel keeps the dialog until the in-flight item finishes, then returns the real partial result
+00:03 +11: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/feedback/uten_progress_dialog_test.dart: afterCurrent (write batches) a write failure after cancel is still reported, not swallowed as a cancellation
+00:04 +12: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/feedback/uten_progress_dialog_test.dart: afterCurrent (write batches) system back drains the same way as the cancel button
+00:04 +13: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/feedback/uten_progress_dialog_test.dart: a non-cancellable wait offers neither cancel nor close and ignores system back
+00:04 +14: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/feedback/uten_progress_dialog_test.dart: onRouteOpened hands out the live dialog route and invalidation retires the wait
+00:05 +15: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/quality/quality_batch_approval_recovery_test.dart: completed IQC selection retains empty table headers and blocked submit
+00:09 +16: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/quality/quality_batch_approval_recovery_test.dart: atomic IQC report keeps truthful moving unknown progress while delayed and retries the frozen report
+00:14 +17: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/quality/quality_batch_approval_recovery_test.dart: confirmation cannot adopt a newer same-account authentication intent
+00:16 +18: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/quality/quality_batch_approval_recovery_test.dart: disposing an in-flight batch stops after the single report command
+00:17 +19: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/quality/quality_batch_approval_recovery_test.dart: changing server and returning does not revive the old batch
+00:19 +20: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/quality/quality_batch_approval_recovery_test.dart: compact grouped tables preserve edits and clear selection from floating controls
+00:20 +21: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/quality/quality_batch_approval_recovery_test.dart: editing pass auto-fills fail until fail is hand-edited
+00:21 +22: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/quality/quality_batch_approval_recovery_test.dart: pure IQC batch drops the plan and unit columns and inlines the unit
+00:22 +23: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/quality/quality_batch_approval_recovery_test.dart: pre-stocked lines show their storage location per row in the batch table
+00:23 +24: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/quality/quality_batch_approval_recovery_test.dart: selected item scope keeps unselected sibling lines out of the report
+00:24 +25: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/quality/quality_batch_approval_recovery_test.dart: canceling report confirmation leaves an editable draft and sends nothing
+00:24 +26: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/quality/quality_batch_approval_recovery_test.dart: an oversized single receipt is rejected before freezing its report
+00:33 +27: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/quality/quality_batch_approval_recovery_test.dart: more than twenty receipts is rejected before freezing its report
+00:35 +28: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/quality/quality_batch_approval_recovery_test.dart: report timeout keeps the whole report retryable with the exact frozen body
+00:36 +29: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/quality/quality_batch_approval_recovery_test.dart: in-flight report blocks toolbar and system back but permits return after failure
+00:37 +30: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/quality/quality_batch_approval_recovery_test.dart: receipt reads have four workers and late responses do not revive a disposed page
+00:37 +31: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/quality/quality_batch_approval_recovery_test.dart: retry failed loading keeps other receipt edits and selection
+00:38 +32: All tests passed!

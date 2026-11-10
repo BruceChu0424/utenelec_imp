@@ -1,0 +1,26 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/sales/pages/sales_shipment_task_workbench_test.dart
+00:00 +0: test\features\sales\pages\sales_shipment_task_workbench_test.dart: finance task page defaults to pending and uses desktop table
+00:02 +1: loading D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/sales/pages/sales_doc_edit_v187_test.dart
+00:19 +1: test\features\sales\pages\sales_doc_edit_v187_test.dart: shipment order prefill retains the exact discount and locked preview through quantity edits
+00:23 +2: loading D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart
+00:36 +2: test\master_data_table_view_hscrollbar_test.dart: 空表（覆盖层路径）：横滚条可拖动表头且贴提示行
+00:37 +3: test\master_data_table_view_hscrollbar_test.dart: 空表与有数据往返时横滚条及位置保持
+00:38 +4: test\master_data_table_view_hscrollbar_test.dart: 空表（流内路径）：保留可拖动横向滚动条
+00:39 +5: loading D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/uten_editable_grid_hscrollbar_test.dart
+00:58 +5: test\components\uten_editable_grid_hscrollbar_test.dart: 空编辑表保留超宽表头横滚且空态保持在可视区
+00:59 +6: loading D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/uten_totals_summary_bar_test.dart
+01:11 +6: test\components\uten_totals_summary_bar_test.dart: 换行合计仅在每行实际内容后铺红底，不铺满第二行空白
+01:12 +7: test\components\uten_totals_summary_bar_test.dart: 条目内部换行与旁侧短条目不把两行背景连成卡片
+01:12 +8: loading D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_year_and_master_filter_test.dart
+01:25 +8: test\components\inputs\uten_year_and_master_filter_test.dart: year picker cancels and reopens, selected filter matches search at width 1440
+01:27 +9: test\components\inputs\uten_year_and_master_filter_test.dart: year picker cancels and reopens, selected filter matches search at width 375
+01:29 +10: loading D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_batch_entry_test.dart
+01:41 +10: test\features\finance\finance_batch_entry_test.dart: receipt creation puts settlement terms in the common selectable grid
+01:47 +11: test\features\finance\finance_batch_entry_test.dart: payment creation puts settlement terms in the common selectable grid
+01:50 +12: test\features\finance\finance_batch_entry_test.dart: expense creation puts settlement terms in the common selectable grid
+01:55 +13: test\features\finance\finance_batch_entry_test.dart: otherIncome creation puts settlement terms in the common selectable grid
+01:58 +14: test\features\finance\finance_batch_entry_test.dart: bankTransfer creation puts settlement terms in the common selectable grid
+02:00 +15: loading D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/supplier_settlement_panel_test.dart
+02:14 +15: test\features\finance\supplier_settlement_panel_test.dart: 375px monthly list remains usable
+02:16 +16: All tests passed!

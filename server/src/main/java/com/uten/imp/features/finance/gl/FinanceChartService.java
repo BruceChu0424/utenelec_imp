@@ -380,7 +380,7 @@ public class FinanceChartService {
     @Transactional(readOnly=true)
     public Preview imported(UUID id) {
         readAccess();var row=importRow(id,false);var p=decode((String)row.get("preview"),Preview.class);
-        return new Preview(p.importId(),p.sourceName(),p.sha256(),p.rows(),p.issues(),row.get("applied_at")!=null);
+        return new Preview(p.importId(),p.sourceName(),p.sha256(),p.rows(),p.issues(),row.get("applied_at")!=null,p.columnContractVersion());
     }
 
     @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
@@ -458,6 +458,7 @@ public class FinanceChartService {
         var raw=tree(metadataEnvelope((String)source.get("preview"))).deepCopy();
         if(!raw.isObject()||!raw.path("rows").isArray())throw conflict("原科目文件预览不完整，不能重建源行");
         UUID id=UUID.randomUUID();((com.fasterxml.jackson.databind.node.ObjectNode)raw).put("importId",id.toString());
+        ((com.fasterxml.jackson.databind.node.ObjectNode)raw).put("columnContractVersion",com.uten.imp.common.importing.ImportColumnGuard.VERSION);
         Map<String,Long> versions=new HashMap<>();db.query("SELECT code,row_version FROM finance_chart_codes",rs->{versions.put(rs.getString(1),rs.getLong(2));});
         for(JsonNode row:raw.path("rows")){
             if(!row.isObject()||!row.path("code").isTextual())throw conflict("原科目源行身份不完整，不能猜补");
@@ -485,7 +486,11 @@ public class FinanceChartService {
         db.update("INSERT INTO finance_chart_manual_operations(request_id,actor_id,fingerprint,result)VALUES(?,?,?,?::jsonb)",request,current.requireId(),commandFingerprint(IMPORT_REVIEW,path,original),encode(receipt));return receipt;
     }
     private static String repreviewPath(UUID parent){if(parent==null)throw invalid("请保留原科目文件批次");return "/finance/chart/imports/"+parent+"/repreview";}
-    private void verifyImportFile(Map<String,Object> row){files.checkLegacy("FINANCE_CHART_IMPORT_REPLAY",files.read(new ImmutableDocumentStore.Reference((String)row.get("storage_provider"),(String)row.get("storage_key"),(String)row.get("storage_version"),((Number)row.get("storage_size")).longValue(),(String)row.get("sha256"))));}
+    private void verifyImportFile(Map<String,Object> row){
+        byte[] bytes=files.checkLegacy("FINANCE_CHART_IMPORT_REPLAY",files.read(new ImmutableDocumentStore.Reference((String)row.get("storage_provider"),(String)row.get("storage_key"),(String)row.get("storage_version"),((Number)row.get("storage_size")).longValue(),(String)row.get("sha256"))));
+        var checked=FinanceChartWorkbookParser.parse((UUID)row.get("id"),(String)row.get("source_name"),(String)row.get("sha256"),bytes);
+        if(!checked.issues().isEmpty())throw invalid("原文件仍有列映射或数据问题，请重新检测；未写入任何科目");
+    }
     private List<Map<String,Object>> importRows(UUID id,boolean forUpdate){
         if(id==null)throw invalid("请保留原科目文件批次");
         return db.queryForList("SELECT id,actor_id,source_name,sha256,storage_provider,storage_key,storage_version,storage_size,preview::text AS preview,applied_at,applied_result::text AS applied_result,parent_import_id,review_request_id,apply_receipt::text AS apply_receipt,cancelled_at,cancellation_result::text AS cancellation_result FROM finance_chart_imports WHERE id=? AND actor_id=?"+(forUpdate?" FOR UPDATE":""),id,current.requireId());
@@ -505,6 +510,7 @@ public class FinanceChartService {
         var receipt=applyCommand(json.valueToTree(request));return decode(encode(receipt.get("result")),Result.class);
     }
     private Result applyCore(UUID id,Map<String,Object> data){
+        com.uten.imp.common.importing.ImportColumnGuard.requireValidated(decode((String)data.get("preview"),Preview.class).columnContractVersion());
         Preview preview=decode((String)data.get("preview"),Preview.class);
         if(preview.rows()==null||preview.rows().isEmpty())throw invalid("原导入预览没有可审阅科目，不能返回空成功");
         if(!preview.issues().isEmpty())throw invalid("请先修正预览中的全部错误，未写入任何科目");

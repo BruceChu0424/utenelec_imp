@@ -200,6 +200,7 @@ public class XlsxExportService {
         private boolean closed;
         /** Set before the first rich run reaches a row; rows flush to sheet writers only afterwards. */
         private boolean richText;
+        private final List<com.uten.imp.common.importing.PlatformWorkbookSchema.Sheet> importSchemas = new java.util.ArrayList<>();
         private final class SheetState {
             final Sheet sheet;final List<ExportColumn> columns;final ExportTableLayout layout;int rowIndex=1,dataCount;
             final boolean document;
@@ -275,6 +276,8 @@ public class XlsxExportService {
                     do{safeName="表"+suffix++;}while(workbook.getSheet(safeName)!=null);
                 }
                 Sheet sheet=workbook.createSheet(safeName);
+                var importSchema=com.uten.imp.common.importing.PlatformWorkbookSchema.sheet(safeName,layout==null?0:layout.headerRow(),columns);
+                if(importSchema!=null)importSchemas.add(importSchema);
                 if(layout!=null&&layout.widths().size()<columns.size())throw new IllegalStateException("Template column count changed");
                 state=new SheetState(sheet,columns,layout,document);sheets.put(id,state);
                 Row labels = sheet.createRow(layout==null?0:layout.headerRow());
@@ -568,6 +571,7 @@ public class XlsxExportService {
                 workbook.setPrintArea(workbook.getSheetIndex(state.sheet),0,state.layout.widths().size()-1,0,state.rowIndex-1);
             }
             finished = true;
+            com.uten.imp.common.importing.PlatformWorkbookSchema.write(workbook.getXSSFWorkbook(),allowedScope,importSchemas);
             var bounded=ExportTemporaryBudget.artifactOutput(output,tempBudget==null?null:tempBudget.directory,checkpoint);
             if (tempBudget == null) workbook.write(bounded);
             else workbook.writeAvoidingTempFiles(bounded);

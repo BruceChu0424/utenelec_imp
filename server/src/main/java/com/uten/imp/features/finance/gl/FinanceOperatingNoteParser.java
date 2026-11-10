@@ -23,6 +23,8 @@ final class FinanceOperatingNoteParser {
         Map<String,List<FinanceExpenseTemplateCatalog.OperatingRow>> identities=new HashMap<>();
         for(var row:FinanceExpenseTemplateCatalog.operatingRows())identities.computeIfAbsent(identity(row.category(),row.sub(),row.item()),k->new ArrayList<>()).add(row);
         List<NoteImportRow> rows=new ArrayList<>();List<ImportIssue> issues=new ArrayList<>();Set<String> keys=new HashSet<>();
+        for(var issue:com.uten.imp.common.importing.ImportColumnGuard.inspectExtraColumns(bytes,sheet,header,headers.size()))
+            issues.add(new ImportIssue(issue.rowNum(),issue.column(),issue.message()));
         for(var row:sheet.rows()) {
             if(row.index0()<=header)continue;String remark=text(sheet,row.index0(),28),reason=text(sheet,row.index0(),29);if(remark.isBlank()&&reason.isBlank())continue;
             String category=text(sheet,row.index0(),0),sub=text(sheet,row.index0(),1),item=text(sheet,row.index0(),2);int line=row.index0()+1;

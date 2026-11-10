@@ -30,7 +30,8 @@ public final class FinanceAccountingWorkbookParser {
                    @JsonFormat(shape=JsonFormat.Shape.STRING) BigDecimal openingDebit,@JsonFormat(shape=JsonFormat.Shape.STRING) BigDecimal openingCredit,
                    @JsonFormat(shape=JsonFormat.Shape.STRING) BigDecimal debit,@JsonFormat(shape=JsonFormat.Shape.STRING) BigDecimal credit,
                    @JsonFormat(shape=JsonFormat.Shape.STRING) BigDecimal closingDebit,@JsonFormat(shape=JsonFormat.Shape.STRING) BigDecimal closingCredit) { }
-    public record Parsed(String kind,List<Voucher> vouchers,List<Balance> balances,List<Issue> issues,List<String> headers) {
+    public record Parsed(String kind,List<Voucher> vouchers,List<Balance> balances,List<Issue> issues,List<String> headers,int columnContractVersion) {
+        public Parsed(String kind,List<Voucher> vouchers,List<Balance> balances,List<Issue> issues,List<String> headers){this(kind,vouchers,balances,issues,headers,1);}
         public Parsed(String kind,List<Voucher> vouchers,List<Balance> balances,List<Issue> issues){this(kind,vouchers,balances,issues,List.of());}
     }
     private static final Pattern CODE=Pattern.compile("[0-9]{1,32}");
@@ -43,7 +44,7 @@ public final class FinanceAccountingWorkbookParser {
         if(sheet.truncated()||sheet.skippedHiddenRows()!=0||sheet.rows().isEmpty())throw invalid("原账套文件未完整读取");
         // Raw BIFF3 has no formula support. OLE/XML identity and amount fields must be literal.
         if(!LegacyBiffGridReader.isRaw(bytes))SpreadsheetImportVisibility.requireCompleteLiteralIdentities(bytes,83);
-        return switch(kind){case "VOUCHERS"->vouchers(sheet);case "BALANCE"->balances(sheet);default->throw invalid("请选择凭证或科目余额文件类型");};
+        return switch(kind){case "VOUCHERS"->vouchers(sheet);case "BALANCE"->balances(sheet,bytes);default->throw invalid("请选择凭证或科目余额文件类型");};
     }
     private static Parsed vouchers(DocumentGrid.Sheet sheet) {
         var header=sheet.rows().getFirst();
@@ -86,11 +87,13 @@ public final class FinanceAccountingWorkbookParser {
         if(vouchers.isEmpty()&&issues.isEmpty())throw invalid("未读到原凭证分录");
         return new Parsed("VOUCHERS",List.copyOf(vouchers),List.of(),List.copyOf(issues),java.util.stream.IntStream.range(0,83).mapToObj(column->text(header,column)).toList());
     }
-    private static Parsed balances(DocumentGrid.Sheet sheet) {
+    private static Parsed balances(DocumentGrid.Sheet sheet,byte[] bytes) {
         List<String> expected=List.of("会计年度","会计期间","科目编码","科目名称","外币名称","期初借方","期初贷方","本期发生借方","本期发生贷方","期末借方","期末贷方");
         var header=sheet.rows().stream().filter(row->text(row,2).equals("科目编码")&&text(row,3).equals("科目名称")).findFirst().orElseThrow(()->invalid("缺少11列原科目余额表头（含会计年度、会计期间）"));
         for(int col=0;col<expected.size();col++)if(!text(header,col).equals(expected.get(col)))throw invalid("科目余额第"+(col+1)+"列表头应为"+expected.get(col));
         List<Balance> rows=new ArrayList<>();List<Issue> issues=new ArrayList<>();Set<String> codes=new HashSet<>();
+        for(var issue:com.uten.imp.common.importing.ImportColumnGuard.inspectExtraColumns(bytes,sheet,header.index0(),expected.size()))
+            issues.add(new Issue(issue.rowNum(),issue.column(),issue.message()));
         for(var row:sheet.rows()) {
             if(row.index0()<=header.index0())continue;
             String code=text(row,2);

@@ -9,6 +9,24 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.*;
 
 class GoodsCostWorkbookParserTest {
+    @Test void duplicateAndPopulatedCustomColumnsRequireExplicitHandling() throws Exception {
+        for(String extra:java.util.List.of("单价","自定义备注")) {
+            try(var wb=new XSSFWorkbook();var out=new ByteArrayOutputStream()) {
+                var sheet=wb.createSheet("材料");headers(sheet,0);sheet.getRow(0).createCell(5).setCellValue(extra);
+                var row=sheet.createRow(1);row.createCell(0).setCellValue("原料");row.createCell(1).setCellValue(1);row.createCell(5).setCellValue("不可丢弃");
+                wb.write(out);
+                assertThatThrownBy(()->GoodsCostWorkbookParser.parse(UUID.randomUUID(),"source.xlsx","a".repeat(64),out.toByteArray()))
+                        .isInstanceOf(com.uten.imp.common.web.ApiException.class).hasMessageContaining(extra.equals("单价")?"重复":"不支持");
+            }
+        }
+    }
+    @Test void entirelyEmptyExtraCostColumnDoesNotBlockOrdinaryRows() throws Exception {
+        try(var wb=new XSSFWorkbook();var out=new ByteArrayOutputStream()) {
+            var sheet=wb.createSheet("材料");headers(sheet,0);sheet.getRow(0).createCell(5).setCellValue("空尾列");
+            var row=sheet.createRow(1);row.createCell(0).setCellValue("原料");row.createCell(1).setCellValue(1);wb.write(out);
+            assertThat(GoodsCostWorkbookParser.parse(UUID.randomUUID(),"source.xlsx","a".repeat(64),out.toByteArray()).blocks()).hasSize(1);
+        }
+    }
     @Test void discoversProductBlocksKeepsCachedFormulaEvidenceAndNeverFillsMissingPricesWithZero() throws Exception {
         byte[] bytes;
         try (var wb = new XSSFWorkbook(); var out = new ByteArrayOutputStream()) {

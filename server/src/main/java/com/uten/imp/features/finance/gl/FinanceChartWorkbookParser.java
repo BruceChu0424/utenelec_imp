@@ -21,6 +21,8 @@ final class FinanceChartWorkbookParser {
                 .findFirst().orElseThrow(()->invalid("未找到原表头：科目编码、科目名称"));
         if(!Set.of("","外币名称").contains(text(header,2)))throw invalid("第三列应为外币名称");
         List<SourceRow> rows=new ArrayList<>();List<Issue> issues=new ArrayList<>();Set<String> codes=new HashSet<>();
+        for(var issue:com.uten.imp.common.importing.ImportColumnGuard.inspectExtraColumns(bytes,sheet,header.index0(),3))
+            issues.add(new Issue(issue.rowNum(),issue.column(),issue.message()));
         Set<String> currencyLabels=new HashSet<>();
         for(var source:sheet.rows())if(text(source,0).matches("[0-9]{1,32}")&&!text(source,2).isBlank())currencyLabels.add(text(source,2));
         var groupEnds=new TreeMap<Integer,String>();

@@ -1,6 +1,5 @@
 package com.uten.imp.features.master.goods.importing;
 
-import com.uten.imp.common.web.ApiException;
 import com.uten.imp.features.master.color.ColorRepository;
 import com.uten.imp.features.master.goods.GoodsRepository;
 import com.uten.imp.features.master.materialcategory.MaterialCategoryRepository;
@@ -11,11 +10,11 @@ import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.jupiter.api.Test;
 import java.io.ByteArrayOutputStream;
 import java.lang.reflect.Field;
-import java.lang.reflect.InvocationTargetException;
 import java.util.List;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.mock;
 
+@SuppressWarnings("unchecked")
 class GoodsImportCustomerLabelsTest {
     @Test void onlyExplicitCustomerGoodsHeadersPopulateTheSeparateNameAndModel() throws Exception {
         for(String header:List.of("客户货品名称","客户品名")) {
@@ -29,8 +28,13 @@ class GoodsImportCustomerLabelsTest {
     }
 
     @Test void companyNameAndOrdinaryGoodsNameAreNeverGuessedIntoCustomerGoodsName() throws Exception {
-        Object row=parseRow(workbook(new String[]{"编号","货品名称","类别","客户名称","型号"},
+        Object unsupported=parse(workbook(new String[]{"编号","货品名称","类别","客户名称","型号"},
                 new String[]{"P2","普通货品名称","成品","某客户公司","OWN-MODEL"}));
+        assertThat((List<?>)value(unsupported,"rows")).isEmpty();
+        assertThat((List<GoodsImportError>)value(unsupported,"headerErrors"))
+                .anyMatch(error->error.column().equals("客户名称")&&error.message().contains("不支持"));
+        Object row=parseRow(workbook(new String[]{"编号","货品名称","类别","型号"},
+                new String[]{"P2","普通货品名称","成品","OWN-MODEL"}));
         assertThat(value(row,"clientGoodsNamePresent")).isEqualTo(false);
         assertThat(value(row,"clientGoodsName")).isIn(null,"");
         assertThat(value(row,"cNumberPresent")).isEqualTo(false);
@@ -48,17 +52,19 @@ class GoodsImportCustomerLabelsTest {
     @Test void twoCustomerNameColumnsCannotSilentlyChooseTheFirstValue() throws Exception {
         byte[] file=workbook(new String[]{"编号","货品名称","类别","客户货品名称","客户品名"},
                 new String[]{"P4","本厂名称","成品","客户甲名称","客户乙名称"});
-        assertThatThrownBy(()->parseRow(file)).isInstanceOf(InvocationTargetException.class)
-                .hasCauseInstanceOf(ApiException.class);
+        assertThat((List<GoodsImportError>)value(parse(file),"headerErrors"))
+                .anyMatch(error->error.message().contains("重复"));
     }
 
     private static Object parseRow(byte[] file) throws Exception {
+        return ((List<?>)value(parse(file),"rows")).getFirst();
+    }
+    private static Object parse(byte[] file) throws Exception {
         var service=new GoodsImportService(null,mock(GoodsRepository.class),null,mock(MaterialCategoryRepository.class),
                 null,mock(ColorRepository.class),null,mock(UnitRepository.class),mock(EntityManager.class),
                 mock(SecurityContextCurrentUser.class),null);
         var method=GoodsImportService.class.getDeclaredMethod("parse",byte[].class);method.setAccessible(true);
-        Object parsed=method.invoke(service,(Object)file);
-        return ((List<?>)value(parsed,"rows")).getFirst();
+        return method.invoke(service,(Object)file);
     }
     private static Object value(Object object,String name) throws Exception {
         Field field=object.getClass().getDeclaredField(name);field.setAccessible(true);return field.get(object);

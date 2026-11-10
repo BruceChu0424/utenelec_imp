@@ -10,7 +10,9 @@ public final class FinanceChartContracts {
     }
     public record Issue(int sourceRow,String field,String message) { }
     public record Preview(UUID importId,String sourceName,String sha256,List<SourceRow> rows,List<Issue> issues,
-                          boolean applied) { }
+                          boolean applied,int columnContractVersion) {
+        public Preview(UUID importId,String sourceName,String sha256,List<SourceRow> rows,List<Issue> issues,boolean applied){this(importId,sourceName,sha256,rows,issues,applied,1);}
+    }
     public record Apply(UUID importId) { }
     public record Repreview(UUID requestId) implements com.uten.imp.features.finance.FinanceOperationJournal.OriginalBodyCommand { }
     public record Mapping(UUID requestId,Long expectedVersion,List<UUID> styleIds,String balanceLineKey,String profitLineKey,String classification,UUID currencyId) implements com.uten.imp.features.finance.FinanceOperationJournal.OriginalBodyCommand {

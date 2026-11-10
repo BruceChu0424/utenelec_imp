@@ -20,6 +20,7 @@ public final class SpreadsheetEvidenceReader {
         return DocumentParseGate.run(deadline -> {
             ZipSafety.inspectSpreadsheetEvidence(bytes);
             try (var workbook = new XSSFWorkbook(new ByteArrayInputStream(bytes))) {
+                com.uten.imp.common.importing.PlatformWorkbookSchema.requireImportable(workbook);
                 if (workbook.getNumberOfSheets() > 16) throw ZipSafety.rejected("成本表最多包含 16 个工作表");
                 List<Sheet> sheets = new ArrayList<>();
                 int totalCells = 0, external = 0;

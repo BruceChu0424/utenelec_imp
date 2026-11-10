@@ -6,6 +6,10 @@ import java.util.*;
 import static org.assertj.core.api.Assertions.*;
 
 class FinanceOperatingNoteParserTest {
+    @Test void unknownPopulatedNoteColumnsAreProblemsRatherThanDiscardedSourceText() throws Exception {
+        var result=FinanceOperatingNoteParser.parse(UUID.randomUUID(),"2026-09","source.xlsx","a".repeat(64),book(s->{data(s,3,4,"备注","");s.getRow(1).createCell(30).setCellValue("自定义列");s.getRow(3).createCell(30).setCellValue("不能丢");}),Map.of());
+        assertThat(result.issues()).anySatisfy(issue->assertThat(issue.message()).contains("自定义列","不支持"));
+    }
     @Test void matchesReorderedOriginalIdentityAndPreservesTextVersionsWhileIgnoringWorkbookAmounts()throws Exception {
         byte[] bytes=book((s)->{data(s,3,5,"第二项备注","");data(s,8,4,"","第一项差异");s.getRow(3).createCell(3).setCellValue(999999);});
         var result=FinanceOperatingNoteParser.parse(UUID.randomUUID(),"2026-09","原表.xlsx","a".repeat(64),bytes,Map.of("OP_MATERIAL_5",8L));

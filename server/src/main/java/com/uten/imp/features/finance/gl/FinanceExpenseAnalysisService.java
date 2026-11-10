@@ -203,7 +203,16 @@ public class FinanceExpenseAnalysisService {
     public NoteImportPreview previewNotes(String rawPeriod,String filename,byte[] bytes){
         write();String period=period(rawPeriod);tx.bind();lock(period);editable(period);String hash=ImmutableDocumentStore.digest(bytes);UUID actor=current.requireId();
         var previous=db.queryForList("SELECT id FROM finance_expense_note_imports WHERE actor_id=? AND period=? AND sha256=?",UUID.class,actor,period,hash);
-        if(!previous.isEmpty()){files.checkLegacy("FINANCE_EXPENSE_NOTES_REPLAY",bytes);return importedNotes(previous.getFirst());}
+        if(!previous.isEmpty()){
+            files.checkLegacy("FINANCE_EXPENSE_NOTES_REPLAY",bytes);var original=importedNotes(previous.getFirst());
+            if(!original.applied()&&original.columnContractVersion()!=com.uten.imp.common.importing.ImportColumnGuard.VERSION){
+                Map<String,Long> versions=new HashMap<>();db.query("SELECT line_key,row_version FROM finance_operating_report_notes WHERE period=?",rs->{versions.put(rs.getString(1),rs.getLong(2));},period);
+                var verified=FinanceOperatingNoteParser.parse(original.importId(),period,original.sourceName(),hash,bytes,versions);
+                db.update("UPDATE finance_expense_note_imports SET preview=?::jsonb WHERE id=? AND applied_at IS NULL",encode(verified),original.importId());
+                return verified;
+            }
+            return original;
+        }
         String name=filename==null?"经营损益.xlsx":filename.replaceAll("[\\\\/:*?\"<>|\\p{Cntrl}]","_");if(name.isBlank()||name.length()>240)throw invalid("文件名称无效");
         Map<String,Long> versions=new HashMap<>();db.query("SELECT line_key,row_version FROM finance_operating_report_notes WHERE period=?",rs->{versions.put(rs.getString(1),rs.getLong(2));},period);
         UUID id=UUID.randomUUID();var result=FinanceOperatingNoteParser.parse(id,period,name,hash,bytes,versions);
@@ -234,13 +243,14 @@ public class FinanceExpenseAnalysisService {
     @Transactional(readOnly=true)
     public List<Map<String,Object>> recentNoteImports(String rawPeriod){write();String period=period(rawPeriod);return db.queryForList("SELECT id AS \"importId\",source_name AS \"sourceName\",applied_at AS \"appliedAt\" FROM finance_expense_note_imports WHERE actor_id=? AND period=? ORDER BY created_at DESC,id LIMIT 10",current.requireId(),period);}
     @Transactional(readOnly=true)
-    public NoteImportPreview importedNotes(UUID id){write();var rows=db.queryForList("SELECT preview::text,applied_at FROM finance_expense_note_imports WHERE id=? AND actor_id=?",id,current.requireId());if(rows.isEmpty())throw new ApiException(ErrorCode.NOT_FOUND,"导入批次不存在或不属于当前账号");var p=decode(rows.getFirst().get("preview").toString(),NoteImportPreview.class);return new NoteImportPreview(p.importId(),p.period(),p.sourceName(),p.sha256(),p.rows(),p.issues(),rows.getFirst().get("applied_at")!=null);}
+    public NoteImportPreview importedNotes(UUID id){write();var rows=db.queryForList("SELECT preview::text,applied_at FROM finance_expense_note_imports WHERE id=? AND actor_id=?",id,current.requireId());if(rows.isEmpty())throw new ApiException(ErrorCode.NOT_FOUND,"导入批次不存在或不属于当前账号");var p=decode(rows.getFirst().get("preview").toString(),NoteImportPreview.class);return new NoteImportPreview(p.importId(),p.period(),p.sourceName(),p.sha256(),p.rows(),p.issues(),rows.getFirst().get("applied_at")!=null,p.columnContractVersion());}
     @Transactional
     public Map<String,Object> applyNotes(ImportApply request){
         write();if(request==null||request.importId()==null)throw invalid("请选择已预览的备注文件");tx.bind();var p=importedNotes(request.importId());lock(p.period());editable(p.period());
         var row=db.queryForList("SELECT preview::text,applied_result::text FROM finance_expense_note_imports WHERE id=? AND actor_id=? FOR UPDATE",request.importId(),current.requireId()).getFirst();
         if(row.get("applied_result")!=null){try{return json.readValue(row.get("applied_result").toString(),new com.fasterxml.jackson.core.type.TypeReference<Map<String,Object>>(){});}catch(com.fasterxml.jackson.core.JsonProcessingException error){throw new IllegalStateException("归属记录无效",error);}}
         p=decode(row.get("preview").toString(),NoteImportPreview.class);if(!p.issues().isEmpty())throw invalid("请先修正预览中的全部错误，未写入任何备注");
+        com.uten.imp.common.importing.ImportColumnGuard.requireValidated(p.columnContractVersion());
         var currentNotes=FinanceExpenseAnalysisReader.notes(em,p.period());
         for(var item:p.rows()){
             var old=currentNotes.getOrDefault(item.lineKey(),Map.of("version",-1L,"remark","","varianceReason",""));

@@ -96,6 +96,15 @@ class MasterDirectoryExportPostgresTest extends AuthSessionPostgresTestSupport {
                 .project(source.columns(),source.rows(),projection,"master_warehouse");
         assertThat(result.columns()).extracting(ExportColumn::key)
                 .containsExactly("remark","workshopDepartmentName");
+        UUID workshop=UUID.randomUUID();
+        assertThat(jdbc.update("INSERT INTO departments(id,code,name,parent_id,level) SELECT ?,?,? ,id,'二级班组' FROM departments WHERE code='DEPT_PROD' AND NOT is_deleted",
+                workshop,"MX-WORKSHOP-"+token,"导出铜柱车间")).isEqualTo(1);
+        jdbc.update("UPDATE warehouses SET workshop_department_id=? WHERE id=?",workshop,warehouse);
+        var populated=master.read(request("warehouse",Map.of("keyword",token)));
+        assertThat(populated.rows().getFirst()).containsEntry("workshopDepartmentName","导出铜柱车间");
+        var actual=context.getBean(ExportTableProjectionService.class)
+                .project(populated.columns(),populated.rows(),projection,"master_warehouse");
+        assertThat(actual.rows().getFirst()).containsEntry("workshopDepartmentName","导出铜柱车间");
     }
     @Test void mouldWorkbookKeepsAll1626RowsAndExactSelectedScopeWithoutTheDisplayPlaceholder() throws Exception {
         String token="MOULD"+UUID.randomUUID().toString().replace("-","").substring(0,10);
@@ -117,8 +126,11 @@ class MasterDirectoryExportPostgresTest extends AuthSessionPostgresTestSupport {
                 var sheet=workbook.getSheetAt(0);
                 assertThat(sheet.getLastRowNum()).isEqualTo(ids.size());
                 assertThat(sheet.getRow(0).getLastCellNum()).isEqualTo((short)9);
-                assertThat(sheet.getRow(ids.size()).getCell(1).getStringCellValue())
-                        .isEqualTo("MX-"+token+"-"+String.format("%06d",selected?1501:1625));
+                for(int index=0;index<ids.size();index++) {
+                    assertThat(sheet.getRow(index+1).getCell(1).getStringCellValue())
+                            .as("Every original mould identity is present once, in original order: row %s",index+1)
+                            .isEqualTo("MX-"+token+"-"+String.format("%06d",index+(selected?201:0)));
+                }
             }
         }
         // The fix belongs to the client declaration; unknown columns must still

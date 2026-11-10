@@ -196,8 +196,8 @@ public class ReferenceMethodService {
     }
 
     /**
-     * 加密 Excel 导出（settlement_method:export）：小字典不分页，全量导出。
-     * 列集与前端结算方式表格一致：编号 / 名称 / 状态 / 系统角色 / 到期基准 / 到期规则 / 账期口径。
+     * 加密 Excel 导出（settlement_method:export）：公共有界读取保持完整范围。
+     * 列集与表格一致，保留默认天数、固定日、跨月数的原始整数和空值。
      */
     @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ,
             timeout = com.uten.imp.common.export.ExportTransactions.TIMEOUT_SECONDS)

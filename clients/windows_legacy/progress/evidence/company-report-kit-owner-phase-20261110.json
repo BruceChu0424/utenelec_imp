@@ -34,13 +34,34 @@
       "includesFinalGraphGuard": true
     },
     "businessDeltaOverlay": {
-      "targetCases": 20,
-      "status": "running",
+      "classes": 3,
+      "found": 20,
+      "passed": 20,
+      "failed": 0,
+      "skipped": 0,
       "includesFinalGraphGuard": false,
-      "explanation": "The running JVM was frozen before the last conservative graph-coverage validation was added. It validates the projection and final-owner phase fix, not the latest complete product. Root Maven must test the fully merged final source.",
+      "results": {
+        "ProductionPartialReportQuantityEndToEndTest": 9,
+        "ProductionQuantityAdversarialEndToEndTest selected FULL_KIT and waste": 6,
+        "WorkshopPublicSurplusEndToEndTest selected actual-output/quality/WIP": 5
+      },
+      "explanation": "This JVM was frozen before the last conservative graph-coverage validation was added. It proves the projection and final-owner phase fix, not the latest complete product. Root Maven must validate the fully merged final source.",
       "newMethod": "materialReturnAndItsTerminalReverseCaptureOnlyTheFinalOwnerState"
     },
-    "rootOriginalMaven": "Still preserved independently; neither the root classes/reports nor its execution were changed by the private runner. The 100k stress result is owned by the root run, not this evidence."
+    "rootOriginalMaven": "Still preserved independently; neither the root classes/reports nor its execution were changed by the private runner. The 100k stress result is owned by the root run, not this evidence.",
+    "additionalGraphDatabaseObservation": {
+      "status": "not executed",
+      "reason": "The private test container was already removed by normal JVM/Testcontainers cleanup when the read-only follow-up query was attempted. No success is claimed."
+    },
+    "isolation": {
+      "rootOutputMutated": false,
+      "rootReportsMutated": false,
+      "rootMavenCancelled": false,
+      "copy": "Original integrated project classes/test-classes were copied into the private overlay snapshot before execution, so later root compilation cannot change its inputs.",
+      "tmpRoot": "D:/Projects/uten_imp_worktrees/company-report-kit-20261110/build/checkpoint-business-launcher/tmp",
+      "loggingFileRedirected": true,
+      "testStorageHelper": "FullChain registerDataSource uses Files.createTempDirectory; app/Flyway suppliers bind to this JVM Testcontainers instance."
+    }
   },
   "newUnitClasses": [
     "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchProjectionTest",
@@ -66,6 +87,11 @@
       "path": "build\\checkpoint-delta-launcher\\business-input.json",
       "sha256": "e8c57c01b5d731c846ef36fd44f79c1c407970247de21c309991801ca212bf87",
       "bytes": 2776
+    },
+    "business-delta-after": {
+      "path": "build\\checkpoint-delta-launcher\\business.log",
+      "sha256": "bc817e3454b2b2d700b6fa37b35687f959e805a4b8f946e4762f20005303714c",
+      "bytes": 422102
     }
   },
   "candidateSourceWorkspaceSha256": {
@@ -73,5 +99,32 @@
     "server/src/main/java/com/uten/imp/features/production/execution/ProductionExecutionWorkbenchService.java": "8a0ab31e55f716d83344b31508dfacd20c2614e7b4eae69f6761f6fe810373bf",
     "server/src/main/java/com/uten/imp/features/stock/allocation/ProductionMaterialStockLedgerService.java": "199dee35df679af98e0f0271ac9baa5e33400a2243325f605ae68b8b551a51fd",
     "server/src/main/java/com/uten/imp/features/stock/StockDocService.java": "58d4d12b36df524a1521830b25b47775a87342ecd321c8d68d7390c4247dfdee"
+  },
+  "updatedAtUtc": "2026-11-10T22:15:48.215298+00:00",
+  "candidateProductCommit": "36aed290d",
+  "frozenOverlayReceipt": {
+    "startedAtUtc": "2026-11-10T21:50:53.268235+00:00",
+    "targetCases": 20,
+    "scope": "Frozen integrated classes/test-classes copied read-only into private snapshot; four patched product classes and two test classes compiled only into independent overlay. Root output/reports/process untouched.",
+    "tmpRoot": "D:\\Projects\\uten_imp_worktrees\\company-report-kit-20261110\\build\\checkpoint-business-launcher\\tmp",
+    "overlayProductSha256": {
+      "com/uten/imp/common/production/ProductionMaterialKitProofs.class": "0baac39e018c5eb11589979c79a0b248607f29ce05395809694e19f2b52dfb09",
+      "com/uten/imp/features/production/execution/ProductionExecutionWorkbenchService.class": "a0ccceb36381a16ffd50645db4d42d0751e13612ab17ed76c9611244a3836d5a",
+      "com/uten/imp/features/stock/StockDocService.class": "7df494b35dd308836da19d2b2a897adcaf9f85a87a28d78a4236a365d87acf9a",
+      "com/uten/imp/features/stock/allocation/ProductionMaterialStockLedgerService.class": "fd7a42b303e4d8bdbcc401205b808ccff1214588cd381820d3c1147cb57aa831"
+    },
+    "copiedRootInputSha256": {
+      "classes\\com\\uten\\imp\\common\\production\\ProductionMaterialKitProofs.class": "c7b2653ddc8927060b1fa12a57161914b5f5df46b323e42344c7e4db802b770e",
+      "classes\\com\\uten\\imp\\features\\production\\dailyreport\\ProductionDailyReportService.class": "137270f1dfb75cbaddb8a68bd9bff2478d0fae3d28ca7480bcde4a7e619f1f46",
+      "classes\\com\\uten\\imp\\features\\stock\\allocation\\ProductionMaterialStockLedgerService.class": "36436f4519c67aab60c955d44ba2cd5d7f7573c0e8d1e5947bc45b132b55a322",
+      "classes\\com\\uten\\imp\\features\\stock\\allocation\\ProductionMaterialSettlementService.class": "4373e6fb500a279b60f49a81e525b2460e6536bf73f6ba1eada15e733854d28e",
+      "classes\\com\\uten\\imp\\features\\production\\dailyreport\\DailyReportExecutionSegmentGuard.class": "72c6801e8cd750c847fda6ea57d05387964c9d601cd652d8c606554ff989eb42",
+      "classes\\db\\migration\\V1129__partial_material_reporting_capacity.sql": "4aeb741b79982f37699f0ea08b6601c6449f39d4fe9b10dbbc07df884be09859",
+      "test-classes\\com\\uten\\imp\\businesschain\\ProductionPartialReportQuantityEndToEndTest.class": "b17b0d43d191fbd0757ee4e00bc5f4cd2dd889cc35d92f601ec6bbea47689f84",
+      "test-classes\\com\\uten\\imp\\businesschain\\ProductionQuantityAdversarialEndToEndTest.class": "27069c7940270caa607eb8c3095675e06126ac1e12d8888baf9f5c369ae5a651",
+      "test-classes\\com\\uten\\imp\\businesschain\\WorkshopPublicSurplusEndToEndTest.class": "de7801c62a18d254e050c348ab8a9f75c8ceb85023d9bccc0c7e2b028742143a",
+      "test-classes\\com\\uten\\imp\\businesschain\\FullChainEndToEndTest.class": "34edda6bfe782de5de229de7af0f1d798a704b8de170586fb2adeca1f74321e5"
+    },
+    "rootInputManifestStillMatchedBeforeCopy": true
   }
 }

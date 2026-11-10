@@ -1,0 +1,28 @@
+[INFO] Scanning for projects...
+[INFO] 
+[INFO] ----------------------< com.uten:uten-imp-server >----------------------
+[INFO] Building uten-imp-server 0.1.0
+[INFO]   from pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- clean:3.5.0:clean (default-clean) @ uten-imp-server ---
+[INFO] 
+[INFO] --- clean:3.5.0:clean (refresh-migration-resources) @ uten-imp-server ---
+[INFO] 
+[INFO] --- resources:3.5.0:resources (default-resources) @ uten-imp-server ---
+[INFO] Copying 1 resource from ..\contracts\windows-payload-binding to target-company-delta\classes\contracts\windows-payload-binding
+[INFO] Copying 1 resource from ..\contracts\windows-engine-safety to target-company-delta\classes\contracts\windows-engine-safety
+[INFO] Copying 1084 resources from src\main\resources to target-company-delta\classes
+[INFO] Copying 1 resource from ..\assets\fonts to target-company-delta\classes\fonts
+[INFO] Copying 295 resources from ..\docs to target-company-delta\classes\ai-knowledge
+[INFO] 
+[INFO] --- compiler:3.15.0:compile (default-compile) @ uten-imp-server ---
+[INFO] Recompiling the module because of changed source code.
+[INFO] Compiling 3272 source files with javac [debug deprecation parameters release 21] to target-company-delta\classes
+[INFO] 
+[INFO] --- resources:3.5.0:testResources (default-testResources) @ uten-imp-server ---
+[INFO] Copying 64 resources from src\test\resources to target-company-delta\test-classes
+[INFO] 
+[INFO] --- compiler:3.15.0:testCompile (default-testCompile) @ uten-imp-server ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 2745 source files with javac [debug deprecation parameters release 21] to target-company-delta\test-classes

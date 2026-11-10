@@ -64,7 +64,17 @@ public class FinanceAccountingImportService {
         if(sourceSystem==null||sourceSystem.isBlank()||sourceSystem.length()>80)throw invalid("请填写原账套标识，与辅助明细资料保持一致");
         tx.bind();lock();String hash=ImmutableDocumentStore.digest(bytes),system=sourceSystem.strip();
         var old=db.queryForList("SELECT id FROM finance_accounting_import_batches WHERE actor_id=? AND sha256=? AND source_system=?",UUID.class,current.requireId(),hash,system);
-        if(!old.isEmpty()){files.checkLegacy("FINANCE_ACCOUNTING_IMPORT_REPLAY",bytes);return get(old.getFirst());}
+        if(!old.isEmpty()){
+            files.checkLegacy("FINANCE_ACCOUNTING_IMPORT_REPLAY",bytes);var previous=stored(old.getFirst(),true);
+            // Completed/submitted intent remains immutable. Only an explicit new preview
+            // may validate a legacy PREVIEW against its complete original workbook.
+            if(previous.status().equals("PREVIEW")&&previous.source().columnContractVersion()!=com.uten.imp.common.importing.ImportColumnGuard.VERSION){
+                String originalName=db.queryForObject("SELECT source_name FROM finance_accounting_import_batches WHERE id=?",String.class,previous.id());
+                var verified=FinanceAccountingWorkbookParser.parse(previous.kind(),originalName,bytes);
+                db.update("UPDATE finance_accounting_import_batches SET preview=?::jsonb,row_version=row_version+1 WHERE id=?",encode(verified),previous.id());
+            }
+            return get(old.getFirst());
+        }
         String name=filename==null?"source.xls":filename.replaceAll("[\\\\/:*?\"<>|\\p{Cntrl}]","_");if(name.isBlank()||name.length()>240)throw invalid("文件名称无效");
         var parsed=FinanceAccountingWorkbookParser.parse(kind,name,bytes);UUID id=UUID.randomUUID();
         var file=files.save("FINANCE_ACCOUNTING_IMPORT",name,name.toLowerCase(Locale.ROOT).endsWith(".xls")?"application/vnd.ms-excel":"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",bytes,DocumentIntakeProfile.FINANCIAL_TEMPLATE);
@@ -155,6 +165,8 @@ public class FinanceAccountingImportService {
         db.update("INSERT INTO finance_accounting_review_operations(request_id,actor_id,import_id,action,fingerprint,result) VALUES(?,?,?,?,?,?::jsonb)",request.requestId(),current.requireId(),id,action,ImmutableDocumentStore.digest(encode(request).getBytes(java.nio.charset.StandardCharsets.UTF_8)),result);
     }
     private Plan prepare(Stored vouchers,Stored balances,Submit request,UUID submitter) {
+        com.uten.imp.common.importing.ImportColumnGuard.requireValidated(vouchers.source().columnContractVersion());
+        com.uten.imp.common.importing.ImportColumnGuard.requireValidated(balances.source().columnContractVersion());
         reason(request.reason());if(!request.completeOriginalPeriod())throw invalid("需确认原凭证为完整期间，不得用部分凭证认证零发生额");
         if(!vouchers.kind().equals("VOUCHERS")||!balances.kind().equals("BALANCE")||!vouchers.system().equals(balances.system()))throw invalid("原凭证、余额类型或原账套不一致");
         if(!vouchers.source().issues().isEmpty()||!balances.source().issues().isEmpty())throw invalid("请先处理原文件解析问题，未入账");

@@ -43,6 +43,8 @@ public final class FinanceAuxiliaryWorkbookParser {
             throw invalid("第"+(col+1)+"列表头应为原文："+FinanceTemplateContract.header(key,col));
         if(sheet.maxColumn()>13)throw invalid("辅助明细应为原14列，请核对额外列中的数据");
         var rows=new ArrayList<Row>();var issues=new ArrayList<Issue>();var identities=new HashSet<String>();
+        for(var issue:com.uten.imp.common.importing.ImportColumnGuard.inspectExtraColumns(bytes,sheet,header.index0(),14))
+            issues.add(new Issue(issue.rowNum(),issue.column(),issue.message()));
         for(var row:sheet.rows()) {
             if(row.index0()<=header.index0()||row.cells().isEmpty())continue;
             int line=row.index0()+1;String code=text(row,0),party=text(row,2),name=text(row,3);

@@ -51,7 +51,14 @@ public class GoodsCostImportService {
         var old = db.queryForList("SELECT preview::text FROM goods_cost_imports WHERE goods_id=:goods AND actor_id=:actor AND storage_sha256=:hash", args, String.class);
         if (!old.isEmpty()) {
             files.checkLegacy("GOODS_COST_IMPORT_REPLAY",bytes);
-            return decode(old.getFirst());
+            Preview previous=decode(old.getFirst());
+            if(previous.columnContractVersion()!=com.uten.imp.common.importing.ImportColumnGuard.VERSION){
+                Preview verified=GoodsCostWorkbookParser.parse(previous.id(),previous.sourceName(),hash,bytes);
+                db.update("UPDATE goods_cost_imports SET preview=CAST(:preview AS jsonb) WHERE id=:id",
+                        new MapSqlParameterSource().addValue("preview",encode(verified)).addValue("id",previous.id()));
+                return verified;
+            }
+            return previous;
         }
         String name = sourceName == null ? "cost.xlsx" : sourceName.replaceAll("[\\\\/:*?\"<>|\\p{Cntrl}]", "_");
         if (name.isBlank() || name.length() > 240) throw invalid("文件名称过长或无效");
@@ -82,6 +89,7 @@ public class GoodsCostImportService {
         var stored = db.queryForMap("SELECT actor_id,preview::text FROM goods_cost_imports WHERE id=:id", Map.of("id", request.importId()));
         if (!Objects.equals(stored.get("actor_id"), current.id().orElse(null))) throw new ApiException(ErrorCode.FORBIDDEN, "只能应用本人上传的原始成本文件");
         Preview preview = decode((String) stored.get("preview"));
+        com.uten.imp.common.importing.ImportColumnGuard.requireValidated(preview.columnContractVersion());
         Block block = preview.blocks().stream().filter(b -> b.key().equals(request.blockKey())).findFirst().orElseThrow(() -> invalid("请选择产品区块"));
         if (request.mappings() == null || request.mappings().size() != block.rows().size()) throw invalid("每条来源行都需要匹配或明确跳过");
         DraftInput base = detachPreviousImport(request.input());

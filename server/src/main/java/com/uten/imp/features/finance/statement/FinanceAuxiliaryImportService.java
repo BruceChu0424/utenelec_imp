@@ -35,7 +35,12 @@ public class FinanceAuxiliaryImportService {
     private final FinanceDocumentIntakeOperations intake;
     public record Preview(UUID importId,boolean receivable,String sourceSystem,UUID currencyId,LocalDate dateFrom,LocalDate dateTo,
                           String sourceName,String sha256,List<Row> rows,List<Issue> issues,boolean directoryApplied,
-                          List<com.uten.imp.features.finance.report.ReportColumn> columns,String currencyMappingFingerprint) {
+                          List<com.uten.imp.features.finance.report.ReportColumn> columns,String currencyMappingFingerprint,int columnContractVersion) {
+        public Preview(UUID importId,boolean receivable,String sourceSystem,UUID currencyId,LocalDate dateFrom,LocalDate dateTo,
+                String sourceName,String sha256,List<Row> rows,List<Issue> issues,boolean directoryApplied,
+                List<com.uten.imp.features.finance.report.ReportColumn> columns,String currencyMappingFingerprint){
+            this(importId,receivable,sourceSystem,currencyId,dateFrom,dateTo,sourceName,sha256,rows,issues,directoryApplied,columns,currencyMappingFingerprint,1);
+        }
         public Preview {columns=columns==null?FinanceAuxiliaryReports.columns(receivable):List.copyOf(columns);currencyMappingFingerprint=currencyMappingFingerprint==null?"LEGACY":currencyMappingFingerprint;}
         public Preview(UUID importId,boolean receivable,String sourceSystem,UUID currencyId,LocalDate dateFrom,LocalDate dateTo,
                 String sourceName,String sha256,List<Row> rows,List<Issue> issues,boolean directoryApplied) {
@@ -66,7 +71,14 @@ public class FinanceAuxiliaryImportService {
         var parsed=FinanceAuxiliaryWorkbookParser.parse(receivable,name,bytes);var resolved=resolveCurrencies(parsed);
         String mapping=resolved.fingerprint();
         var previous=db.queryForList("SELECT id FROM finance_statement_source_reviews WHERE actor_id=? AND kind=? AND source_system=? AND currency_id=? AND date_from=? AND date_to=? AND sha256=? AND currency_mapping_fingerprint=?",UUID.class,current.requireId(),kind,book,currencyId,from,to,hash,mapping);
-        if(!previous.isEmpty()){files.checkLegacy("FINANCE_AUXILIARY_COMPARE_REPLAY",bytes);if(requestId!=null){intake.complete(requestId,FinanceDocumentIntakeOperations.Family.AUXILIARY_STATEMENT_PREVIEW,payload,previous.getFirst());}return imported(previous.getFirst());}
+        if(!previous.isEmpty()){
+            files.checkLegacy("FINANCE_AUXILIARY_COMPARE_REPLAY",bytes);Preview original=imported(previous.getFirst());
+            if(!original.directoryApplied()&&original.columnContractVersion()!=com.uten.imp.common.importing.ImportColumnGuard.VERSION){
+                Preview verified=new Preview(original.importId(),receivable,book,currencyId,from,to,name,hash,resolved.rows(),resolved.issues(),false,FinanceAuxiliaryReports.columns(receivable),mapping);
+                db.update("UPDATE finance_statement_source_reviews SET preview=?::jsonb WHERE id=? AND directory_applied_at IS NULL",encode(verified),original.importId());
+            }
+            if(requestId!=null){intake.complete(requestId,FinanceDocumentIntakeOperations.Family.AUXILIARY_STATEMENT_PREVIEW,payload,previous.getFirst());}return imported(previous.getFirst());
+        }
         UUID id=UUID.randomUUID();
         Preview preview=new Preview(id,receivable,book,currencyId,from,to,name,hash,resolved.rows(),resolved.issues(),false,FinanceAuxiliaryReports.columns(receivable),mapping);
         var stored=files.save("FINANCE_AUXILIARY_COMPARE",name,name.toLowerCase(Locale.ROOT).endsWith(".xls")?"application/vnd.ms-excel":"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",bytes);
@@ -82,7 +94,7 @@ public class FinanceAuxiliaryImportService {
         authorize();var data=db.queryForList("SELECT preview::text,directory_applied_at FROM finance_statement_source_reviews WHERE id=? AND actor_id=?",id,current.requireId());
         if(data.isEmpty())throw new ApiException(ErrorCode.NOT_FOUND,"辅助导入批次不存在或不属于当前账号");
         var preview=decode(data.getFirst().get("preview").toString(),Preview.class);
-        return new Preview(preview.importId(),preview.receivable(),preview.sourceSystem(),preview.currencyId(),preview.dateFrom(),preview.dateTo(),preview.sourceName(),preview.sha256(),preview.rows(),preview.issues(),data.getFirst().get("directory_applied_at")!=null,preview.columns(),preview.currencyMappingFingerprint());
+        return new Preview(preview.importId(),preview.receivable(),preview.sourceSystem(),preview.currencyId(),preview.dateFrom(),preview.dateTo(),preview.sourceName(),preview.sha256(),preview.rows(),preview.issues(),data.getFirst().get("directory_applied_at")!=null,preview.columns(),preview.currencyMappingFingerprint(),preview.columnContractVersion());
     }
     @Transactional(readOnly=true)
     public List<Map<String,Object>> recent() {
@@ -118,6 +130,7 @@ public class FinanceAuxiliaryImportService {
         if(data.isEmpty())throw new ApiException(ErrorCode.NOT_FOUND,"辅助导入批次不存在或不属于当前账号");
         if(data.getFirst().get("directory_result")!=null)return decode(data.getFirst().get("directory_result").toString(),DirectoryResult.class);
         Preview preview=imported(id);if(!preview.issues().isEmpty())throw invalid("请先修正全部原表错误；未写入任何辅助项目");
+        com.uten.imp.common.importing.ImportColumnGuard.requireValidated(preview.columnContractVersion());
         String role=preview.receivable()?"CUSTOMER":"SUPPLIER";var names=new HashMap<String,String>();
         var existing=existing(preview);var ids=new HashSet<UUID>();
         for(var row:preview.rows()) {

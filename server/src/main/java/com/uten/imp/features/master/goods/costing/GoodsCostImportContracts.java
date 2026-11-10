@@ -10,7 +10,9 @@ public final class GoodsCostImportContracts {
             String quantity, String unitPrice, String amount, String formula,
             boolean externalReference, boolean requiresReview) {}
     public record Block(String key, String label, String sheetName, List<ImportRow> rows) {}
-    public record Preview(UUID id, String sourceName, String sha256, List<Block> blocks, List<String> warnings) {}
+    public record Preview(UUID id, String sourceName, String sha256, List<Block> blocks, List<String> warnings,int columnContractVersion) {
+        public Preview(UUID id,String sourceName,String sha256,List<Block> blocks,List<String> warnings){this(id,sourceName,sha256,blocks,warnings,1);}
+    }
     /** Every source row is explicitly mapped or skipped; quantities are opt-in to avoid changing BOM semantics. */
     public record Mapping(String rowKey, String kind, String targetPath, String adoptedQty,
             String unitPrice, String priceUnitRate, String feeName, String skipReason, boolean reviewed) {}

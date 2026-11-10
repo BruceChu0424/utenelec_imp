@@ -152,7 +152,7 @@ public class GoodsImportService {
     private static final Set<String> NUMERIC_IMPORT_FIELDS = Set.of("price", "minOrderQty", "orderMultipleQty");
     /** Source columns remain uneditable in preview; mould codes resolve only from the frozen workbook. */
     private static final Set<String> READ_ONLY_FIELDS = Set.of("goodsId", "bomRef", "owningWarehouseName",
-            "productionWorkshopName", "mouldCode", "mouldName");
+            "productionWorkshopName", "mouldCode", "mouldName", "stockQty", "discount");
 
     private static final Map<String, String> HEADER_ALIASES = new HashMap<>();
     static {
@@ -201,6 +201,8 @@ public class GoodsImportService {
         // 不按名称猜关系；提交前重新检查编号、身份、名称和状态。
         for (String a : new String[]{"所属仓库", "归属仓库"}) putAlias(a, "owningWarehouseName");
         for (String a : new String[]{"归属车间", "生产车间", "车间"}) putAlias(a, "productionWorkshopName");
+        for (String a : new String[]{"库存量", "库存数量", "即时库存"}) putAlias(a, "stockQty");
+        putAlias("折扣", "discount");
         putAlias("模具编号", "mouldCode");
         for (String a : new String[]{"模具名称", "模具"}) putAlias(a, "mouldName");
     }
@@ -592,6 +594,9 @@ public class GoodsImportService {
                                     Map<Integer, Map<String, String>> cellCorrections, GoodsImportMode mode) {
         Map<Integer, Map<String, String>> corrections = normalizeCellCorrections(codeCorrections, cellCorrections);
         Set<Integer> excluded = normalizeExcludedRows(excludedRowNums);
+        Parsed original = parse(xlsx, corrections);
+        if (original.headerErrors.stream().anyMatch(error -> error.rowNum() <= 1))
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,"文件表头或自定义列仍有未处理问题，请重新检测："+original.headerErrors.getFirst().message());
         ImportPlan plan = requireAndConsumePlan(planId, xlsx, corrections, excluded, mode);
         Set<String> replacements = replaceRowKeys == null ? Set.of() : Set.copyOf(replaceRowKeys);
         Set<String> allowedKeys = plan.rows().stream()
@@ -600,7 +605,6 @@ public class GoodsImportService {
         if (!allowedKeys.containsAll(replacements)) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "替换选择包含检测报告以外的行，请重新检测");
         }
-        Parsed original = parse(xlsx, corrections);
         validateCorrectionRows(original, corrections);
         validateExcludedRows(original, excluded);
         Set<Integer> plannedRowNums = plan.rows().stream().map(PlannedRow::rowNum)
@@ -1138,6 +1142,11 @@ public class GoodsImportService {
         GoodsImportWorkbookSecurity.inspectArchive(xlsx);
         try (Workbook wb = WorkbookFactory.create(new ByteArrayInputStream(xlsx))) {
             GoodsImportWorkbookSecurity.inspectWorkbook(wb);
+            String platformReason = com.uten.imp.common.importing.PlatformWorkbookSchema.importRejection(wb);
+            if (platformReason != null) {
+                headerErrors.add(new GoodsImportError(1, "自定义列", platformReason));
+                return new Parsed(rows, headerErrors, 0);
+            }
             if (wb.getNumberOfSheets() == 0) {
                 throw invalidWorkbook("Excel 文件不包含工作表，请使用货品导出格式后重试");
             }
@@ -1147,6 +1156,10 @@ public class GoodsImportService {
                 headerErrors.add(new GoodsImportError(1, "表头", "首个工作表无表头行"));
                 return new Parsed(rows, headerErrors, 0);
             }
+            for (var issue : com.uten.imp.common.importing.ImportColumnGuard.inspect(sheet, 0,
+                    raw -> HEADER_ALIASES.get(normKey(raw))))
+                headerErrors.add(new GoodsImportError(issue.rowNum(), issue.column(), issue.message()));
+            if (!headerErrors.isEmpty()) return new Parsed(rows, headerErrors, 0);
             Map<String, Integer> col = mapHeaders(header);
             // An omitted number column has the same meaning as blank numbers:
             // retain a matched local identity's number or allocate for new goods.
@@ -1273,9 +1286,7 @@ public class GoodsImportService {
             String raw = df.formatCellValue(cell);
             if (raw == null) continue;
             String key = HEADER_ALIASES.get(normKey(raw));
-            if ("clientGoodsName".equals(key) && col.containsKey(key)) {
-                throw new ApiException(ErrorCode.VALIDATION_FAILED, "客户货品名称与客户品名只保留一列，避免来源冲突");
-            }
+            // Duplicate aliases were rejected with located preview issues before mapping.
             if (key != null && !col.containsKey(key)) col.put(key, c);
         }
         return col;

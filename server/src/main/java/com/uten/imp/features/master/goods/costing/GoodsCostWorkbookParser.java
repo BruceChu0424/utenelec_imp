@@ -22,12 +22,20 @@ public final class GoodsCostWorkbookParser {
         for (var sheet : book.sheets()) {
             String label = sheet.name(), key = null;
             Map<String, Integer> fields = Map.of();
+            List<com.uten.imp.common.importing.ImportColumnGuard.Header> declared = List.of();
+            var populated = new java.util.HashSet<Integer>();
+            int headerRow = 0;
             List<ImportRow> rows = new ArrayList<>();
             for (var row : sheet.rows()) {
                 Map<Integer, SpreadsheetEvidenceReader.Value> cells = new HashMap<>();
                 row.cells().forEach(cell -> cells.put((int) new CellReference(cell.address()).getCol(), cell));
                 Map<String, Integer> candidate = header(row.cells());
                 if (candidate.containsKey("name") && (candidate.containsKey("qty") || candidate.containsKey("price"))) {
+                    requireColumns(declared,populated,headerRow);
+                    declared=row.cells().stream().map(cell -> new com.uten.imp.common.importing.ImportColumnGuard.Header(
+                            (int)new CellReference(cell.address()).getCol(),cell.text(),field(cell.text()))).toList();
+                    populated=new java.util.HashSet<>();headerRow=row.number()-1;
+                    requireColumns(declared,populated,headerRow);
                     if (key != null && !rows.isEmpty()) blocks.add(new Block(key, label, sheet.name(), List.copyOf(rows)));
                     fields = candidate; rows = new ArrayList<>(); key = sheet.name() + "!" + row.number();
                     continue;
@@ -35,15 +43,21 @@ public final class GoodsCostWorkbookParser {
                 String title = row.cells().stream().map(SpreadsheetEvidenceReader.Value::text)
                         .filter(t -> t.matches(".*产品名称[：:].*")).findFirst().orElse(null);
                 if (title != null) {
+                    requireColumns(declared,populated,headerRow);
+                    declared=List.of();populated=new java.util.HashSet<>();
                     if (key != null && !rows.isEmpty()) blocks.add(new Block(key, label, sheet.name(), List.copyOf(rows)));
                     key = null; rows = new ArrayList<>();
                     label = title.replaceFirst(".*产品名称[：:]", "").strip();
                     continue;
                 }
                 if (key == null) continue;
+                for(var cell:row.cells())if(!cell.text().isBlank()||cell.formula()!=null)
+                    populated.add((int)new CellReference(cell.address()).getCol());
                 String rowName = value(cells, fields.get("name"));
                 if (rowName.isBlank()) continue;
                 if (rowName.matches(".*(合计|小计|总计).*")) {
+                    requireColumns(declared,populated,headerRow);
+                    declared=List.of();populated=new java.util.HashSet<>();
                     if (!rows.isEmpty()) blocks.add(new Block(key, label, sheet.name(), List.copyOf(rows)));
                     key = null; rows = new ArrayList<>(); continue;
                 }
@@ -55,6 +69,7 @@ public final class GoodsCostWorkbookParser {
                         number(value(cells, fields.get("qty"))), number(value(cells, fields.get("price"))),
                         number(value(cells, fields.get("amount"))), formula, external, true));
             }
+            requireColumns(declared,populated,headerRow);
             if (key != null && !rows.isEmpty()) blocks.add(new Block(key, label, sheet.name(), List.copyOf(rows)));
         }
         if (blocks.isEmpty()) throw new ApiException(ErrorCode.VALIDATION_FAILED, "未找到材料名称、用量或单价表头，请使用成本明细格式");
@@ -68,8 +83,14 @@ public final class GoodsCostWorkbookParser {
     private static Map<String, Integer> header(List<SpreadsheetEvidenceReader.Value> cells) {
         Map<String, Integer> fields = new HashMap<>();
         for (var cell : cells) {
-            String title = cell.text().replaceAll("\\s", "").replace('\uff08', '(').replace('\uff09', ')');
-            String field = switch (title) {
+            String field = field(cell.text());
+            if (field != null) fields.putIfAbsent(field, (int) new CellReference(cell.address()).getCol());
+        }
+        return fields;
+    }
+    private static String field(String raw) {
+            String title = raw.replaceAll("\\s", "").replace('\uff08', '(').replace('\uff09', ')');
+            return switch (title) {
                 case "名称", "货品名称", "材料名称", "物料名称", "零件名称", "品名" -> "name";
                 case "编号", "编码", "货品编号", "物料编码", "物料编号" -> "code";
                 case "单位", "材料单位", "计价单位" -> "unit";
@@ -78,9 +99,11 @@ public final class GoodsCostWorkbookParser {
                 case "金额", "成本金额", "成本金额(元)", "批次材料金额", "材料金额" -> "amount";
                 default -> null;
             };
-            if (field != null) fields.putIfAbsent(field, (int) new CellReference(cell.address()).getCol());
-        }
-        return fields;
+    }
+    private static void requireColumns(List<com.uten.imp.common.importing.ImportColumnGuard.Header> headers,
+            java.util.Set<Integer> populated,int headerRow) {
+        var issues=com.uten.imp.common.importing.ImportColumnGuard.inspect(headers,populated,headerRow);
+        if(!issues.isEmpty())throw new ApiException(ErrorCode.VALIDATION_FAILED,"第"+(headerRow+1)+"行表头："+issues.getFirst().message());
     }
     private static String value(Map<Integer, SpreadsheetEvidenceReader.Value> cells, Integer index) {
         if (index == null) return "";

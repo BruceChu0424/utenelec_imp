@@ -434,6 +434,11 @@ public class GoodsBomImportService {
         List<ParsedRow> rows = new ArrayList<>();
         Set<String> columns = new HashSet<>();
         try (Workbook wb = WorkbookFactory.create(new ByteArrayInputStream(xlsx))) {
+            String platformReason = com.uten.imp.common.importing.PlatformWorkbookSchema.importRejection(wb);
+            if (platformReason != null) {
+                errors.add(new GoodsImportError(1, "自定义列", platformReason));
+                return parsedOf(rows, errors, warnings, columns);
+            }
             GoodsImportWorkbookSecurity.inspectWorkbook(wb);
             if (wb.getNumberOfSheets() == 0) {
                 throw invalidWorkbook("Excel 文件不包含工作表，请使用「导出组件」的格式后重试");
@@ -444,7 +449,10 @@ public class GoodsBomImportService {
                 errors.add(new GoodsImportError(1, "表头", "首个工作表无表头行"));
                 return parsedOf(rows, errors, warnings, columns);
             }
-            Map<String, Integer> col = mapHeaders(header, errors);
+            for (var issue : com.uten.imp.common.importing.ImportColumnGuard.inspect(sheet, 0,
+                    raw -> HEADER_ALIASES.get(normKey(raw))))
+                errors.add(new GoodsImportError(issue.rowNum(), issue.column(), issue.message()));
+            Map<String, Integer> col = mapHeaders(header);
             columns.addAll(col.keySet());
             for (String required : new String[]{"seq", "code", "qty"}) {
                 if (!col.containsKey(required)) {
@@ -797,7 +805,7 @@ public class GoodsBomImportService {
                 Math.max(0, rows.size() - errorRows), null);
     }
 
-    private Map<String, Integer> mapHeaders(Row header, List<GoodsImportError> errors) {
+    private Map<String, Integer> mapHeaders(Row header) {
         Map<String, Integer> col = new HashMap<>();
         DataFormatter df = new DataFormatter();
         for (int c = 0; c < header.getLastCellNum(); c++) {
@@ -806,9 +814,7 @@ public class GoodsBomImportService {
             String raw = df.formatCellValue(cell);
             if (raw == null) continue;
             String key = HEADER_ALIASES.get(normKey(raw));
-            if (key != null && col.putIfAbsent(key, c) != null) {
-                errors.add(new GoodsImportError(1, "表头", "列「" + raw.trim() + "」重复或与其他列同义，请只保留一列"));
-            }
+            if (key != null) col.putIfAbsent(key, c);
         }
         return col;
     }

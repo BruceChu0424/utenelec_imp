@@ -9,6 +9,12 @@ import java.util.function.Consumer;
 import static org.assertj.core.api.Assertions.*;
 
 class FinanceAuxiliaryWorkbookParserTest {
+    @Test void populatedUnknownColumnsAreLocatedButAnEmptyTailIsAllowed() throws Exception {
+        var invalid=FinanceAuxiliaryWorkbookParser.parse(true,"source.xlsx",file(true,w->{w.getSheetAt(0).getRow(2).createCell(14).setCellValue("用户自定义");w.getSheetAt(0).getRow(3).createCell(14).setCellValue("不能丢");}));
+        assertThat(invalid.issues()).anySatisfy(issue->assertThat(issue.message()).contains("自定义","不支持"));
+        var valid=FinanceAuxiliaryWorkbookParser.parse(true,"source.xlsx",file(true,w->w.getSheetAt(0).getRow(2).createCell(14).setCellValue("空尾列")));
+        assertThat(valid.issues()).isEmpty();
+    }
     @Test void preservesLiteralSourceCodesAndOriginalFourteenHeaderOrder()throws Exception {
         for(boolean receivable:new boolean[]{true,false}) {
             var parsed=FinanceAuxiliaryWorkbookParser.parse(receivable,"anonymous.xlsx",file(receivable,w->{}));

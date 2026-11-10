@@ -10,6 +10,7 @@
 > - Dart：`lib/core/ui/table_load_progress_notice.dart`
 > - 上游事件：`lib/shared/paging/complete_read_progress.dart`
 > - 测试：`test/core/ui/table_load_progress_notice_test.dart`、
+>   `test/core/ui/app_shell_notice_host_test.dart`（真实 UtenApp 外壳）、
 >   `test/shared/paging/complete_read_progress_test.dart`
 
 ---
@@ -38,7 +39,8 @@
 并带 `onProgressiveBatch` 的页面**自动获得**该通知，无需逐页接线。
 
 不上报的读取：无渐进槽的辅助读取（facets 等）、已接受结果的静默重读、
-后台（silent）刷新、游标历史（无总量语义）。
+后台（silent）刷新。游标历史读取（`loadCompleteCursorSnapshot` 带 `onBatch`
+时）没有总量语义，按不定进度（扫动光带，`total = null`）上报。
 
 ## 三、展示决策（TableLoadProgressNoticeController）
 
@@ -64,6 +66,12 @@
 - 宿主 `TableLoadProgressNoticeHost` 挂在 `app.dart` 顶部 Stack 内，与
   `AppNotificationHost` 同 Column 堆叠（通知在上、加载进度在下），互不遮挡；
   卡片像素之外不拦截页面点击。
+- **宿主按计数共用控制器**：`attach()`/`detach()` 按挂载的宿主计数，最后一个
+  宿主卸载才断开上报。外壳的 `PlatformTablesHost` 以登录身份为 key，登录、
+  刷新后恢复会话、切换模拟身份都会整棵重建宿主，而 Flutter 先 `initState`
+  新宿主、帧末才 `dispose` 旧宿主。2026-11-09 曾用布尔开关，旧宿主卸载时把
+  新宿主刚接上的监听一并断开，登录后读取链见无监听者便不再上报，卡片在
+  网页和桌面端都永不出现；回归用例见外壳测试「身份切换」与通知测试「宿主重建」。
 - 关闭按钮 tooltip/语义名「关闭加载提示」，键盘可达；卡片 Semantics 为静态
   标签（`正在加载数据，NN%` / `数据加载完成`），不做逐批 live region 播报。
 - 控制器/卡片销毁时取消全部计时器、动画与扫动控制器；上报层在无监听者时

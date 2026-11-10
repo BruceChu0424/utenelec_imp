@@ -240,6 +240,45 @@ void main() {
     await tester.pump();
   });
 
+  testWidgets('host remount keeps the reporter attached: the new host '
+      'builds before the old one disposes', (tester) async {
+    // 真实外壳里 PlatformTablesHost 的 key 带登录身份：登录、刷新后恢复会话、
+    // 切换模拟身份都会整棵重建宿主。Flutter 先 initState 新宿主、帧末才
+    // dispose 旧宿主——共享控制器不得被旧宿主的 dispose 断开上报，否则读取链
+    // 见 hasListeners=false 就不再创建进度任务，卡片永远不出现。
+    Widget keyed(String identity) => MaterialApp(
+      home: Scaffold(
+        body: Align(
+          alignment: Alignment.topCenter,
+          child: KeyedSubtree(
+            key: ValueKey(identity),
+            child: TableLoadProgressNoticeHost(controller: controller),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpWidget(keyed('signed-out'));
+    expect(CompleteReadProgressReporter.hasListeners, isTrue);
+
+    await tester.pumpWidget(keyed('signed-in'));
+    expect(
+      CompleteReadProgressReporter.hasListeners,
+      isTrue,
+      reason: '宿主重建（先建新、后拆旧）后上报层必须仍有监听者',
+    );
+    final handle = await appearWithBatch(tester);
+    expect(find.textContaining('正在加载数据：10%'), findsOneWidget);
+    handle.finish(succeeded: true);
+    await tester.pump();
+    await tester.pump(
+      tableLoadNoticeDoneHold + const Duration(milliseconds: 300),
+    );
+
+    // 最后一个宿主卸载才真正断开上报。
+    await tester.pumpWidget(const SizedBox.shrink());
+    expect(CompleteReadProgressReporter.hasListeners, isFalse);
+  });
+
   testWidgets('empty result ends silently', (tester) async {
     await tester.pumpWidget(host());
     final handle = CompleteReadProgressReporter.start();

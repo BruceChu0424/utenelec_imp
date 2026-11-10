@@ -79,20 +79,29 @@ class TableLoadProgressNoticeController extends ChangeNotifier {
   int? _showTaskId;
   Timer? _doneExitTimer;
   bool _holding = false;
-  bool _attached = false;
+  int _hosts = 0;
 
   /// 当前应展示的卡片；null = 无卡（宿主随即让卡片退场）。
   TableLoadProgressView? get current => _current;
 
+  /// 宿主挂载时登记。按宿主计数共用一份上报监听：app.dart 外壳的
+  /// PlatformTablesHost 以登录身份为 key，登录、刷新后恢复会话、切换模拟
+  /// 身份都会整棵重建宿主，而 Flutter 先 initState 新宿主、帧末才 dispose
+  /// 旧宿主——布尔开关会让旧宿主的 [detach] 断开新宿主刚接上的监听，此后
+  /// 读取链见 `hasListeners == false` 不再上报，卡片永不出现。
   void attach() {
-    if (_attached) return;
-    _attached = true;
-    CompleteReadProgressReporter.addListener(_onEvent);
+    _hosts += 1;
+    if (_hosts == 1) CompleteReadProgressReporter.addListener(_onEvent);
   }
 
+  /// 宿主卸载时注销；最后一个宿主离开才断开上报并清空展示状态。
   void detach() {
-    if (!_attached) return;
-    _attached = false;
+    if (_hosts == 0) return;
+    _hosts -= 1;
+    if (_hosts == 0) _unhook();
+  }
+
+  void _unhook() {
     CompleteReadProgressReporter.removeListener(_onEvent);
     _showTimer?.cancel();
     _showTimer = null;
@@ -107,7 +116,10 @@ class TableLoadProgressNoticeController extends ChangeNotifier {
 
   @override
   void dispose() {
-    detach();
+    if (_hosts > 0) {
+      _hosts = 0;
+      _unhook();
+    }
     super.dispose();
   }
 

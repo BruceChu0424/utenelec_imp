@@ -13,7 +13,8 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * V831/V925 常用模块分组：公司资料库在报销、工资条、意见箱之前，原自助码授权策略与基础包保持不变。
+ * V831/V925/V1127 常用模块分组：公司资料库、我的申请、报销、工资条、意见箱、访客按工作台
+ * 卡片顺序排列；我的申请五码对齐自助码 NORMAL 策略（可进全员基础包），基础包默认关闭。
  */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class CommonModuleCatalogMigrationPostgresTest {
@@ -48,12 +49,44 @@ class CommonModuleCatalogMigrationPostgresTest {
 
         assertThat(rows).containsExactly(
                 new Grouped("company_file:view", "公司资料库", 15),
+                // V1127：我的申请五码并入常用模块，落在资料库与报销之间（工作台卡片顺序）。
+                new Grouped("application:apply", "我的申请", 20),
+                new Grouped("application:apply:payment", "我的申请", 20),
+                new Grouped("application:apply:prepayment", "我的申请", 20),
+                new Grouped("application:apply:travel", "我的申请", 20),
+                new Grouped("application:view", "我的申请", 21),
                 new Grouped("expense:apply", "我的报销", 30),
                 new Grouped("payroll:view:self", "工资条", 40),
                 new Grouped("suggestion:submit", "意见箱", 50),
                 new Grouped("suggestion:view", "意见箱", 50),
                 new Grouped("visitor:host_confirm", "我的访客", 60),
                 new Grouped("visitor:host_view", "我的访客", 60));
+    }
+
+    @Test
+    void applicationSelfServiceCodesLeaveNoStrayCommonFunctionModule() {
+        // V1127：V1001 的临时一级模块「常用功能」清空后不再出现在任何目录/全选分组里。
+        assertThat(jdbc.queryForObject(
+                "SELECT count(*) FROM permissions WHERE module = '常用功能'", Integer.class))
+                .isZero();
+        // 供应商付款申请仍归「采购管理」且维持 INDIVIDUAL_ONLY（采购侧专码、按人开通）。
+        assertThat(jdbc.queryForObject(
+                "SELECT module || '/' || category || '/' || array_to_string(grant_policy, ',')"
+                        + " FROM permissions WHERE code = 'application:apply:supplier_payment'",
+                String.class))
+                .isEqualTo("采购管理/我的申请/INDIVIDUAL_ONLY");
+        // 自助码对齐报销/工资条口径：NORMAL 才能进全员基础包（baselineEligible），
+        // baseline 默认仍关闭，由管理员在基础包里自行勾选开通。
+        assertThat(jdbc.queryForObject(
+                "SELECT count(*) FROM permissions WHERE module = '常用模块' AND category = '我的申请'"
+                        + " AND array_to_string(grant_policy, ',') = 'NORMAL' AND NOT baseline",
+                Integer.class))
+                .isEqualTo(5);
+        assertThat(jdbc.queryForObject(
+                "SELECT count(*) FROM permission_surfaces s JOIN permission_surface_permissions p"
+                        + " ON p.surface_id = s.id WHERE s.surface_key = 'common.applications'",
+                Integer.class))
+                .isEqualTo(6);
     }
 
     @Test

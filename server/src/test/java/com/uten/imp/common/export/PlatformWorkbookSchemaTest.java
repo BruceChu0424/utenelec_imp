@@ -26,7 +26,8 @@ class PlatformWorkbookSchemaTest {
             var source=(XSSFWorkbook)book;String marker=source.getProperties().getCustomProperties().getProperty(PlatformWorkbookSchema.PROPERTY).getLpwstr();
             var json=new com.fasterxml.jackson.databind.ObjectMapper().readTree(marker);
             assertThat(json.path("scope").asText()).isEqualTo("master_goods");assertThat(json.path("sheets").size()).isEqualTo(2);
-            for(var sheet:json.path("sheets"))assertThat(sheet.path("columns").get(0).path("definitionId").asText()).isEqualTo(id);
+            assertThat(json.path("columnSets").size()).isEqualTo(1);
+            for(var sheet:json.path("sheets"))assertThat(json.path("columnSets").get(sheet.path("columnSet").intValue()).get(0).path("definitionId").asText()).isEqualTo(id);
         }
     }
     @Test void evenOneCustomColumnNamedLikeABusinessFieldCarriesStableProvenance() throws Exception {
@@ -44,11 +45,35 @@ class PlatformWorkbookSchemaTest {
         try(var book=new XSSFWorkbook(new ByteArrayInputStream(bytes))) { assertThat(PlatformWorkbookSchema.importRejection(book)).isNull(); }
     }
     @Test void malformedAndFutureMarkersFailClosed() throws Exception {
-        for(String marker:List.of("{}","{\"schemaVersion\":2}","not-json","x".repeat(65_537))) {
+        for(String marker:List.of("{}","{\"schemaVersion\":2}","not-json","x".repeat(262_145))) {
             try(var book=new XSSFWorkbook()) {
                 book.getProperties().getCustomProperties().addProperty(PlatformWorkbookSchema.PROPERTY,marker);
                 assertThat(PlatformWorkbookSchema.importRejection(book)).contains("缺损、过大或版本不支持");
             }
+        }
+    }
+    @Test void manyContinuationSheetsShareLongColumnDefinitionsInsteadOfMultiplyingTheSchema() throws Exception {
+        var columns=new ArrayList<ExportColumn>();var values=new LinkedHashMap<String,Object>();
+        for(int index=0;index<32;index++){String key="platform:"+UUID.randomUUID();columns.add(new ExportColumn(key,"长标签".repeat(60)+index,ExportColumn.TEXT));values.put(key,"合成值");}
+        byte[] bytes;
+        try(var output=new ByteArrayOutputStream();var writer=new XlsxExportService().openStream(null,"master_goods")) {
+            var field=writer.getClass().getDeclaredField("sheets");field.setAccessible(true);
+            for(int index=0;index<40;index++) {
+                var states=(Map<?,?>)field.get(writer);
+                if(!states.isEmpty()) {
+                    Object last=states.values().stream().reduce((first,next)->next).orElseThrow();
+                    var rowIndex=last.getClass().getDeclaredField("rowIndex");rowIndex.setAccessible(true);rowIndex.setInt(last,org.apache.poi.ss.SpreadsheetVersion.EXCEL2007.getMaxRows());
+                }
+                writer.accept(new ExportPayload(columns,List.of(values),1));
+            }
+            writer.finish(output);bytes=output.toByteArray();
+        }
+        try(var book=new XSSFWorkbook(new ByteArrayInputStream(bytes))) {
+            String marker=book.getProperties().getCustomProperties().getProperty(PlatformWorkbookSchema.PROPERTY).getLpwstr();
+            var json=new com.fasterxml.jackson.databind.ObjectMapper().readTree(marker);
+            assertThat(book.getNumberOfSheets()).isEqualTo(40);assertThat(json.path("sheets").size()).isEqualTo(40);
+            assertThat(json.path("columnSets").size()).isEqualTo(1);assertThat(json.path("columnSets").get(0).size()).isEqualTo(32);
+            assertThat(marker.length()).isLessThan(32_000);assertThat(PlatformWorkbookSchema.importRejection(book)).contains("尚不支持自定义列写回");
         }
     }
 }

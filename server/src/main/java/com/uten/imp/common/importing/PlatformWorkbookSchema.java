@@ -10,7 +10,7 @@ import java.util.*;
 /** Stable export provenance only; this marker is never a write authorization. */
 public final class PlatformWorkbookSchema {
     public static final String PROPERTY = "UTEN_PLATFORM_COLUMN_SCHEMA";
-    private static final int MAX_CHARS = 65_536;
+    private static final int MAX_CHARS = 262_144;
     private static final ObjectMapper JSON = new ObjectMapper();
     private PlatformWorkbookSchema() { }
     public record Column(int index, String definitionId, String label) { }
@@ -32,7 +32,15 @@ public final class PlatformWorkbookSchema {
     public static void write(XSSFWorkbook workbook, String scope, List<Sheet> sheets) {
         if (sheets.isEmpty()) return;
         try {
-            String value = JSON.writeValueAsString(Map.of("schemaVersion", 1, "scope", scope == null ? "UNSPECIFIED" : scope, "sheets", sheets));
+            var indexes=new LinkedHashMap<List<Column>,Integer>();
+            var columnSets=new ArrayList<List<Column>>();
+            var references=new ArrayList<Map<String,Object>>();
+            for(var sheet:sheets) {
+                int index=indexes.computeIfAbsent(sheet.columns(),columns->{columnSets.add(columns);return columnSets.size()-1;});
+                references.add(Map.of("name",sheet.name(),"headerRow",sheet.headerRow(),"columnSet",index));
+            }
+            String value = JSON.writeValueAsString(Map.of("schemaVersion", 1, "scope", scope == null ? "UNSPECIFIED" : scope,
+                    "columnSets",columnSets,"sheets", references));
             if (value.length() > MAX_CHARS) throw invalid("导出自定义列来源标记过大，请减少导出列后重试");
             workbook.getProperties().getCustomProperties().addProperty(PROPERTY, value);
         } catch (ApiException error) { throw error; }
@@ -50,17 +58,23 @@ public final class PlatformWorkbookSchema {
             var root = JSON.readTree(value);
             if (!root.isObject() || !root.path("schemaVersion").isIntegralNumber() || root.path("schemaVersion").intValue() != 1
                     || !root.path("scope").isTextual() || root.path("scope").asText().isBlank() || root.path("scope").asText().length() > 120
-                    || !root.path("sheets").isArray() || root.path("sheets").isEmpty() || root.path("sheets").size() > 1024) throw new IllegalArgumentException();
-            for (var sheet : root.path("sheets")) {
-                if (!sheet.path("name").isTextual() || sheet.path("name").asText().length() > 31
-                        || !sheet.path("headerRow").isIntegralNumber() || sheet.path("headerRow").intValue() < 0
-                        || !sheet.path("columns").isArray() || sheet.path("columns").isEmpty() || sheet.path("columns").size() > 160) throw new IllegalArgumentException();
-                for (var column : sheet.path("columns")) {
-                    if (!column.path("index").isIntegralNumber() || column.path("index").intValue() < 0 || column.path("index").intValue() >= 16384
+                    || !root.path("sheets").isArray() || root.path("sheets").isEmpty() || root.path("sheets").size() > MAX_CHARS/16
+                    || !root.path("columnSets").isArray() || root.path("columnSets").isEmpty() || root.path("columnSets").size() > MAX_CHARS/16) throw new IllegalArgumentException();
+            for(var columns:root.path("columnSets")) {
+                if(!columns.isArray()||columns.isEmpty()||columns.size()>160)throw new IllegalArgumentException();
+                for(var column:columns) {
+                    if (!column.path("index").isIntegralNumber() || !column.path("index").canConvertToInt() || column.path("index").intValue() < 0 || column.path("index").intValue() >= 16384
                             || !column.path("label").isTextual() || column.path("label").asText().length() > 200
                             || !column.path("definitionId").isTextual()) throw new IllegalArgumentException();
                     UUID.fromString(column.path("definitionId").asText());
                 }
+            }
+            for (var sheet : root.path("sheets")) {
+                if (!sheet.path("name").isTextual() || sheet.path("name").asText().length() > 31
+                        || !sheet.path("headerRow").isIntegralNumber() || !sheet.path("headerRow").canConvertToInt() || sheet.path("headerRow").intValue() < 0
+                        || sheet.path("headerRow").intValue()>=1_048_576 || !sheet.path("columnSet").isIntegralNumber()
+                        || !sheet.path("columnSet").canConvertToInt() || sheet.path("columnSet").intValue()<0
+                        || sheet.path("columnSet").intValue()>=root.path("columnSets").size()) throw new IllegalArgumentException();
             }
             return "文件含有导出的自定义列，当前导入尚不支持自定义列写回；请重新导出仅含系统列的文件后导入，不能按显示名称改写系统字段";
         } catch (Exception error) {

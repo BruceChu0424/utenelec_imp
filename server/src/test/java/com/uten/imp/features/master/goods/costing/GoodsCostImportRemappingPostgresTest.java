@@ -126,14 +126,31 @@ class GoodsCostImportRemappingPostgresTest {
         assertThatThrownBy(()->apply(file,input(List.of(),List.of()),mapping("FEE"))).hasMessageContaining("计算失败");
         assertThat(sql.queryForObject("SELECT count(*) FROM goods_cost_import_mappings",Integer.class)).isZero();
     }
+    @Test void missingOrZeroColumnValidationCannotApplyOrRewriteItsImmutablePreview() throws Exception {
+        for(Integer version:Arrays.asList(null,0)) {
+            String name="legacy-"+(version==null?"absent":"zero")+".xlsx";UUID file=file(name,version);
+            String original=sql.queryForObject("SELECT preview::text FROM goods_cost_imports WHERE id=?",String.class,file);
+            assertThatThrownBy(()->apply(file,input(List.of(),List.of(manualFee())),mapping("FEE")))
+                    .isInstanceOf(ApiException.class).hasMessageContaining("重新检测");
+            assertThatThrownBy(()->tx(()->service.preview(goods,name,name.getBytes(StandardCharsets.UTF_8))))
+                    .isInstanceOf(ApiException.class).hasMessageContaining("仅改文件名");
+            assertThat(sql.queryForObject("SELECT count(*) FROM goods_cost_import_mappings",Integer.class)).isZero();
+            assertThat(sql.queryForObject("SELECT preview::text FROM goods_cost_imports WHERE id=?",String.class,file)).isEqualTo(original);
+        }
+    }
     private Applied apply(UUID file,DraftInput input,Mapping mapping){return tx(()->service.apply(new Apply(file,"block",input,List.of(mapping))));}
     private <T> T tx(Supplier<T> work){return transaction.execute(status->work.get());}
     private UUID file(String name)throws Exception {
+        return file(name,1);
+    }
+    private UUID file(String name,Integer contractVersion)throws Exception {
         UUID id=UUID.randomUUID();String hash=ImmutableDocumentStore.digest(name.getBytes(StandardCharsets.UTF_8));
         Preview preview=new Preview(id,name,hash,List.of(new Block("block","产品","Sheet1",
                 List.of(new ImportRow("Sheet1!2",2,"组件","M1","个","1","3","3",null,false,true)))),List.of());
+        var encoded=(com.fasterxml.jackson.databind.node.ObjectNode)json.valueToTree(preview);
+        if(contractVersion==null)encoded.remove("columnContractVersion");else encoded.put("columnContractVersion",contractVersion);
         sql.update("INSERT INTO goods_cost_imports(id,goods_id,actor_id,source_name,storage_provider,storage_key,storage_size,storage_sha256,preview) VALUES(?,?,?,?,'local',?,10,?,?::jsonb)",
-                id,goods,actor,name,id.toString(),hash,json.writeValueAsString(preview));return id;
+                id,goods,actor,name,id.toString(),hash,json.writeValueAsString(encoded));return id;
     }
     private Mapping mapping(String kind){return new Mapping("Sheet1!2",kind,"MATERIAL".equals(kind)?path:null,null,null,null,null,"已明确跳过",true);}
     private FeeInput manualFee(){return new FeeInput("manual","手工费用","FIXED_BATCH","OTHER",null,"2",null,List.of(),"MANUAL","保留");}

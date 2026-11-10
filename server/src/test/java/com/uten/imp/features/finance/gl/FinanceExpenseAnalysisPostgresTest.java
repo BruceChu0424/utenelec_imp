@@ -140,6 +140,38 @@ class FinanceExpenseAnalysisPostgresTest {
             assertThat(db.queryForObject("SELECT remark FROM finance_operating_report_notes",String.class)).isEqualTo("原备注\n保留换行");
         } finally {org.springframework.security.core.context.SecurityContextHolder.clearContext();}
     }
+    @Test void legacyNotePreviewsCannotWriteButTheirCompletedReceiptStillReplaysBeforeTheNewGate() throws Exception {
+        UUID actor=UUID.randomUUID();var user=mock(com.uten.imp.security.SecurityContextCurrentUser.class);when(user.requireId()).thenReturn(actor);
+        var access=mock(com.uten.imp.features.finance.FinanceDocumentAccessPolicy.class);when(access.scope()).thenReturn(new com.uten.imp.security.OwnerVisibility.OwnerScope(true,Set.of()));
+        var json=new com.fasterxml.jackson.databind.ObjectMapper();
+        var service=new FinanceExpenseAnalysisService(db,em(),json,mock(com.uten.imp.common.storage.ImmutableDocumentStore.class),user,access,mock(com.uten.imp.security.TxSessionVars.class));
+        var auth=new org.springframework.security.authentication.UsernamePasswordAuthenticationToken("operator","",List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("finance_report:view"),new org.springframework.security.core.authority.SimpleGrantedAuthority("payment_style:edit")));
+        org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(auth);
+        var tx=new org.springframework.transaction.support.TransactionTemplate(new org.springframework.jdbc.datasource.DataSourceTransactionManager(db.getDataSource()));
+        try {
+            for(Integer version:Arrays.asList(null,0)) {
+                UUID id=UUID.randomUUID();String hash=id.toString().replace("-","").repeat(2);
+                var preview=new FinanceExpenseAnalysisContracts.NoteImportPreview(id,"2026-09","synthetic.xlsx",hash,
+                        List.of(new FinanceExpenseAnalysisContracts.NoteImportRow(2,"OP_RENT","合成分类","合成分项","合成项目","不能自动写入","",-1)),List.of(),false);
+                var raw=(com.fasterxml.jackson.databind.node.ObjectNode)json.valueToTree(preview);
+                if(version==null)raw.remove("columnContractVersion");else raw.put("columnContractVersion",version);
+                db.update("INSERT INTO finance_expense_note_imports(id,actor_id,period,source_name,sha256,storage_provider,storage_key,storage_size,preview) VALUES(?,?,'2026-09','synthetic.xlsx',?,'local',?,1,?::jsonb)",id,actor,hash,id.toString(),json.writeValueAsString(raw));
+                var request=new FinanceExpenseAnalysisContracts.ImportApply(id);
+                assertThatThrownBy(()->tx.execute(status->service.applyNotes(request))).hasMessageContaining("重新检测");
+                assertThat(db.queryForObject("SELECT count(*) FROM finance_operating_report_notes",Integer.class)).isZero();
+                Map<String,Object> receipt=Map.of("importId",id.toString(),"period","2026-09","count",0,"state","APPLIED");
+                // The projection fixture records a historical completed zero-write result;
+                // the original literal preview stays legacy and is never rewritten.
+                db.update("UPDATE finance_expense_note_imports SET applied_at=now(),applied_result=?::jsonb WHERE id=?",json.writeValueAsString(receipt),id);
+                assertThat(tx.execute(status->service.applyNotes(request))).isEqualTo(receipt);
+                assertThat(db.queryForObject("SELECT count(*) FROM finance_operating_report_notes",Integer.class)).isZero();
+            }
+            when(user.requireId()).thenReturn(UUID.randomUUID());
+            UUID existing=db.queryForObject("SELECT id FROM finance_expense_note_imports ORDER BY id LIMIT 1",UUID.class);
+            assertThatThrownBy(()->tx.execute(status->service.applyNotes(new FinanceExpenseAnalysisContracts.ImportApply(existing))))
+                    .isInstanceOf(com.uten.imp.common.web.ApiException.class).hasMessageContaining("当前账号");
+        }finally{org.springframework.security.core.context.SecurityContextHolder.clearContext();}
+    }
     static void assetFact(UUID entry,UUID expense,String amount,String kind,String status){
         UUID asset=UUID.randomUUID(),book=UUID.randomUUID(),run=UUID.randomUUID(),line=UUID.randomUUID();UUID voucher=db.queryForObject("SELECT voucher_id FROM gl_entries WHERE id=?",UUID.class,entry);
         db.update("INSERT INTO fixed_assets(id,code,name,original_value,capitalized_on,start_period,useful_months,lifecycle_status,expense_style_id,is_deleted) VALUES(?,?,'匿名资产',1000,'2026-01-01','2026-09',12,'ACTIVE',?,false)",asset,asset.toString(),expense);

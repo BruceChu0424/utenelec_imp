@@ -62,12 +62,18 @@ void main() {
     await tester.pumpWidget(host());
     final handle = await appearWithBatch(tester);
     expect(find.textContaining('正在加载数据：10%'), findsOneWidget);
-    // 加粗样式（含百分号整体加粗）。
+    // 大字加粗（2026-11-09 用户口径）：说明句 w700/17px，百分比（含百分号）
+    // w800/21px，同一颜色语义（正文/强调）。
     final text = tester.widget<Text>(find.textContaining('正在加载数据：10%'));
     final spans = (text.textSpan as TextSpan).children!;
+    final label = spans.first as TextSpan;
     final percent = spans.last as TextSpan;
+    expect(label.text, '正在加载数据：');
+    expect(label.style?.fontWeight, FontWeight.w700);
+    expect(label.style?.fontSize, 17);
     expect(percent.text, '10%');
-    expect(percent.style?.fontWeight, FontWeight.w700);
+    expect(percent.style?.fontWeight, FontWeight.w800);
+    expect(percent.style?.fontSize, 21);
 
     // 后续批次：进度平滑推进，文字同步更新。
     handle.update(loaded: 250, total: 500);
@@ -277,6 +283,42 @@ void main() {
     // 最后一个宿主卸载才真正断开上报。
     await tester.pumpWidget(const SizedBox.shrink());
     expect(CompleteReadProgressReporter.hasListeners, isFalse);
+  });
+
+  testWidgets('narrow screens shrink the notice without overflow', (
+    tester,
+  ) async {
+    // 小屏自适应（2026-11-09 用户口径「小屏幕的时候会适当变小」）：
+    // 卡宽 <340 缩到 0.92、<280 缩到 0.84，文字/图标/关闭钮命中带同档缩放，
+    // 且窄视口下不出现布局溢出。
+    Future<double?> percentFontSizeAt(double width) async {
+      // DPR=1：view 的物理宽即逻辑宽（测试默认 DPR 3.0 会把 260 缩成 87）。
+      tester.view.physicalSize = Size(width, 240);
+      tester.view.devicePixelRatio = 1;
+      await tester.pumpWidget(host());
+      final handle = await appearWithBatch(tester, loaded: 30, total: 300);
+      expect(tester.takeException(), isNull, reason: '窄视口不得布局溢出');
+      final text = tester.widget<Text>(
+        find.textContaining('正在加载数据：10%'),
+      );
+      final percent =
+          ((text.textSpan as TextSpan).children!.last) as TextSpan;
+      handle.finish(succeeded: true);
+      await tester.pump();
+      await tester.pump(
+        tableLoadNoticeDoneHold + const Duration(milliseconds: 300),
+      );
+      return percent.style?.fontSize;
+    }
+
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    // 全尺寸（≥340）：21px。
+    expect(await percentFontSizeAt(1280), 21);
+    // 280–340 档：21 × 0.92。
+    expect(await percentFontSizeAt(300), closeTo(21 * 0.92, 0.01));
+    // 更窄：21 × 0.84。
+    expect(await percentFontSizeAt(260), closeTo(21 * 0.84, 0.01));
   });
 
   testWidgets('empty result ends silently', (tester) async {

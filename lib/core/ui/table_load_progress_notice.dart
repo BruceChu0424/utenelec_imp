@@ -38,6 +38,18 @@ const Duration tableLoadNoticeShowDelay = Duration(milliseconds: 150);
 /// 完成态停留时长：铺满 100% + 对勾后停一拍再向上收起。
 const Duration tableLoadNoticeDoneHold = Duration(milliseconds: 1400);
 
+/// 进度文字的目标卡宽（Constraint 上限）：2026-11-09 用户口径「字体尽量大」，
+/// 卡片随之加宽给大字留呼吸位。
+const double _kNoticeMaxCardWidth = 420;
+
+/// 按实际卡宽分档的缩放：整卡（文字/图标/关闭钮命中带）同一比例缩，
+/// 小屏适当变小、永不换行溢出。2026-11-09 用户口径「小屏幕的时候会适当变小」。
+double _noticeScale(double cardWidth) {
+  if (cardWidth >= 340) return 1;
+  if (cardWidth >= 280) return 0.92;
+  return 0.84;
+}
+
 /// 一张进度卡片当前要展示的内容。
 class TableLoadProgressView {
   const TableLoadProgressView({
@@ -484,19 +496,21 @@ class _TableLoadProgressCardState extends State<TableLoadProgressCard>
             child: Semantics(
               container: true,
               label: _semanticLabel(view),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 372),
-                child: Material(
-                  color: track,
-                  elevation: 4,
-                  shadowColor: theme.colorScheme.shadow.withValues(alpha: 0.18),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(UtenRadius.card),
-                    side: BorderSide(color: border),
-                  ),
-                  clipBehavior: Clip.antiAlias,
-                  child: LayoutBuilder(
-                    builder: (context, constraints) => Stack(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: _kNoticeMaxCardWidth),
+              child: Material(
+                color: track,
+                elevation: 4,
+                shadowColor: theme.colorScheme.shadow.withValues(alpha: 0.18),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(UtenRadius.card),
+                  side: BorderSide(color: border),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final scale = _noticeScale(constraints.maxWidth);
+                    return Stack(
                       children: [
                         Positioned.fill(
                           child: AnimatedBuilder(
@@ -535,38 +549,43 @@ class _TableLoadProgressCardState extends State<TableLoadProgressCard>
                             },
                           ),
                         Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 10, 10, 10),
-                          // 定高内容行：图标 + 关闭按钮撑起卡片高度（48 命中带）。
-                          // 文字用 Positioned.fill + Center 悬在整个内容层上：
+                          padding: const EdgeInsets.fromLTRB(16, 11, 10, 11),
+                          // 定高内容行：图标 + 关闭按钮撑起卡片高度。文字用
+                          // Positioned.fill + Center 悬在整个内容层上：
                           // 相对整卡真居中（图标列与关闭钮宽度不对称也不偏），
                           // 且 Text 按自身宽度收紧命中盒，不挡右侧关闭按钮。
                           child: Stack(
                             children: [
                               Row(
                                 children: [
-                                  _StatusIcon(view: view),
-                                  const SizedBox(width: 12),
+                                  _StatusIcon(view: view, scale: scale),
+                                  const SizedBox(width: 14),
                                   const Expanded(child: SizedBox.shrink()),
                                   const SizedBox(width: 8),
                                   UtenCloseButton(
                                     onPressed: widget.controller.dismissCurrent,
                                     tooltip: '关闭加载提示',
                                     showTooltip: hasOverlay,
-                                    desktopHitExtent: 48,
+                                    // 命中带随卡宽同档缩放（48 → 44/40）；
+                                    // 触控设备仍由内部规则保底 48。
+                                    desktopHitExtent: (48 * scale).roundToDouble(),
                                   ),
                                 ],
                               ),
                               Positioned.fill(
-                                child: Center(child: _ProgressText(view: view)),
+                                child: Center(
+                                  child: _ProgressText(view: view, scale: scale),
+                                ),
                               ),
                             ],
                           ),
                         ),
                       ],
-                    ),
-                  ),
+                    );
+                  },
                 ),
               ),
+            ),
             ),
           ),
         ),
@@ -633,11 +652,12 @@ class _LoadNoticeSweepBand extends StatelessWidget {
   }
 }
 
-/// 左侧状态图标：加载中为细线旋转环，完成后平滑切换对勾。
+/// 左侧状态图标：加载中为细线旋转环，完成后平滑切换对勾。随卡宽同档缩放。
 class _StatusIcon extends StatelessWidget {
-  const _StatusIcon({required this.view});
+  const _StatusIcon({required this.view, required this.scale});
 
   final TableLoadProgressView? view;
+  final double scale;
 
   @override
   Widget build(BuildContext context) {
@@ -648,9 +668,10 @@ class _StatusIcon extends StatelessWidget {
     final done = view?.done ?? false;
     final reduceMotion =
         MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    final size = 26 * scale;
     return SizedBox(
-      width: 20,
-      height: 20,
+      width: size,
+      height: size,
       child: AnimatedSwitcher(
         duration: reduceMotion
             ? Duration.zero
@@ -668,17 +689,17 @@ class _StatusIcon extends StatelessWidget {
             ? Icon(
                 Icons.check_rounded,
                 key: const ValueKey('load-notice-done'),
-                size: 20,
+                size: size,
                 color: color,
               )
             : SizedBox(
                 key: const ValueKey('load-notice-loading'),
-                width: 20,
-                height: 20,
+                width: size,
+                height: size,
                 child: CircularProgressIndicator(
                   // 减少动态效果：固定弧段不旋转，仍表达「进行中」。
                   value: reduceMotion ? 0.72 : null,
-                  strokeWidth: 2,
+                  strokeWidth: 2.5 * scale,
                   strokeCap: StrokeCap.round,
                   color: color,
                 ),
@@ -688,12 +709,15 @@ class _StatusIcon extends StatelessWidget {
   }
 }
 
-/// 中间文字：说明句正常字重 + 百分比（含百分号）整体加粗，相对整卡居中，
-/// 不随进度填充移动。
+/// 中间文字：说明句加粗 + 百分比（含百分号）更大更重，相对整卡居中，
+/// 不随进度填充移动。字号随卡宽同档缩放（小屏适当变小，永不溢出）。
 class _ProgressText extends StatelessWidget {
-  const _ProgressText({this.view});
+  const _ProgressText({this.view, required this.scale});
 
   final TableLoadProgressView? view;
+
+  /// [_noticeScale] 的当前档位（1 / 0.92 / 0.84）。
+  final double scale;
 
   @override
   Widget build(BuildContext context) {
@@ -705,39 +729,45 @@ class _ProgressText extends StatelessWidget {
     final accent = isDark
         ? UtenColors.loadNoticeAccentDark
         : UtenColors.loadNoticeAccent;
-    final base =
-        theme.textTheme.bodyMedium?.copyWith(color: text) ??
-        TextStyle(color: text);
-    final bold = base.copyWith(fontWeight: FontWeight.w700, color: accent);
+    final label =
+        theme.textTheme.bodyMedium?.copyWith(
+          color: text,
+          fontWeight: FontWeight.w700,
+          fontSize: 17 * scale,
+        ) ??
+        TextStyle(color: text, fontWeight: FontWeight.w700);
+    final percent = label.copyWith(
+      fontWeight: FontWeight.w800,
+      fontSize: 21 * scale,
+      color: accent,
+    );
     final v = view;
-    if (v == null) return Text('正在加载数据…', style: base);
+    if (v == null) return Text('正在加载数据…', style: label);
     if (v.done) {
       return Text.rich(
         TextSpan(
           children: [
-            const TextSpan(text: '数据加载完成：'),
-            TextSpan(text: '100%', style: bold),
+            TextSpan(text: '数据加载完成：', style: label),
+            TextSpan(text: '100%', style: percent),
           ],
         ),
-        style: base,
       );
     }
     final fraction = v.fraction;
     if (fraction == null) {
-      return Text('正在加载数据…', style: base);
+      return Text('正在加载数据…', style: label);
     }
     return Text.rich(
       TextSpan(
         children: [
-          const TextSpan(text: '正在加载数据：'),
+          TextSpan(text: '正在加载数据：', style: label),
           TextSpan(
             // 加载中封顶 99%：100% 只属于真正完成的完整结果。
             text: '${(fraction * 100).floor().clamp(0, 99)}%',
-            style: bold,
+            style: percent,
           ),
         ],
       ),
-      style: base,
     );
   }
 }

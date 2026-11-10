@@ -1,0 +1,15 @@
+[INFO] Scanning for projects...
+[INFO] 
+[INFO] ----------------------< com.uten:uten-imp-server >----------------------
+[INFO] Building uten-imp-server 0.1.0
+[INFO]   from pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- dependency:3.10.0:build-classpath (default-cli) @ uten-imp-server ---
+[INFO] Wrote classpath file 'D:\Projects\uten_imp_worktrees\company-return-picker-20261110\server\target-return-import\test-classpath.txt'.
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD SUCCESS
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  3.046 s
+[INFO] Finished at: 2026-11-10T13:43:28-07:00
+[INFO] ------------------------------------------------------------------------

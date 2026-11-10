@@ -1,0 +1,135 @@
+[INFO] Scanning for projects...
+[INFO] 
+[INFO] ----------------------< com.uten:uten-imp-server >----------------------
+[INFO] Building uten-imp-server 0.1.0
+[INFO]   from pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- clean:3.5.0:clean (refresh-migration-resources) @ uten-imp-server ---
+[INFO] Deleting D:\Projects\uten_imp_worktrees\company-return-picker-20261110\server\target-return-import\classes\db\migration
+[INFO] Deleting D:\Projects\uten_imp_worktrees\company-return-picker-20261110\server\target-return-import\classes\com\uten\imp (includes = [features/admin/systemtest/**, features/attachment/BusinessTestResetFiles*.class, features/ai/job/AiJobWorker$ResetDraining.class, application/port/BusinessDataResetGatePort*.class, application/port/BusinessTestResetFilesPort*.class, common/platformcolumns/RetainedPlatformColumnAdapter*.class], excludes = [])
+[INFO] Deleting D:\Projects\uten_imp_worktrees\company-return-picker-20261110\server\target-return-import\test-classes\com\uten\imp (includes = [config/BusinessResetCorsPreflightTest*.class, features/admin/systemtest/**, features/attachment/BusinessDataReset*.class, features/attachment/BusinessTestReset*.class, features/attachment/ResetEndToEndFixture*.class, features/ai/job/AiJobWorkerTest$FakeGate.class, ops/BusinessDataResetCatalogPostgresTest*.class, ops/BusinessDataResetServicePostgresTest*.class, ops/TestResetCurrentOwnerPostgresTest*.class, ops/TestResetHistoryExceptionPostgresTest*.class], excludes = [])
+[INFO] Deleting D:\Projects\uten_imp_worktrees\company-return-picker-20261110\server\target-return-import\classes\ai-knowledge\99-���߼�¼-ADR (includes = [ADR-155-*.md], excludes = [])
+[INFO] 
+[INFO] --- resources:3.5.0:resources (default-resources) @ uten-imp-server ---
+[INFO] Copying 1 resource from ..\contracts\windows-payload-binding to target-return-import\classes\contracts\windows-payload-binding
+[INFO] Copying 1 resource from ..\contracts\windows-engine-safety to target-return-import\classes\contracts\windows-engine-safety
+[INFO] Copying 1083 resources from src\main\resources to target-return-import\classes
+[INFO] Copying 1 resource from ..\assets\fonts to target-return-import\classes\fonts
+[INFO] Copying 295 resources from ..\docs to target-return-import\classes\ai-knowledge
+[INFO] 
+[INFO] --- compiler:3.15.0:compile (default-compile) @ uten-imp-server ---
+[INFO] Recompiling the module because of changed source code.
+[INFO] Compiling 3271 source files with javac [debug deprecation parameters release 21] to target-return-import\classes
+[INFO] 
+[INFO] --- resources:3.5.0:testResources (default-testResources) @ uten-imp-server ---
+[INFO] Copying 64 resources from src\test\resources to target-return-import\test-classes
+[INFO] 
+[INFO] --- compiler:3.15.0:testCompile (default-testCompile) @ uten-imp-server ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 2743 source files with javac [debug deprecation parameters release 21] to target-return-import\test-classes
+[WARNING] /D:/Projects/uten_imp_worktrees/company-return-picker-20261110/server/src/test/java/com/uten/imp/features/master/goods/importing/GoodsImportCustomerLabelsTest.java:[34,18] δ������ת��
+  ��Ҫ: java.util.List<com.uten.imp.features.master.goods.importing.GoodsImportError>
+  �ҵ�:    java.lang.Object
+[WARNING] /D:/Projects/uten_imp_worktrees/company-return-picker-20261110/server/src/test/java/com/uten/imp/features/master/goods/importing/GoodsImportCustomerLabelsTest.java:[55,18] δ������ת��
+  ��Ҫ: java.util.List<com.uten.imp.features.master.goods.importing.GoodsImportError>
+  �ҵ�:    java.lang.Object
+[INFO] 
+[INFO] --- surefire:3.5.6:test (default-test) @ uten-imp-server ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running com.uten.imp.common.export.PlatformWorkbookSchemaTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 2.178 s -- in com.uten.imp.common.export.PlatformWorkbookSchemaTest
+[INFO] Running com.uten.imp.common.export.WorkbookDownloadServiceTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.638 s -- in com.uten.imp.common.export.WorkbookDownloadServiceTest
+[INFO] Running com.uten.imp.common.export.XlsxCompleteSourceTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 10.20 s -- in com.uten.imp.common.export.XlsxCompleteSourceTest
+[INFO] Running com.uten.imp.common.export.XlsxSelectedRowsStreamingTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.241 s -- in com.uten.imp.common.export.XlsxSelectedRowsStreamingTest
+[INFO] Running com.uten.imp.common.export.XlsxTableProjectionPrecisionTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.094 s -- in com.uten.imp.common.export.XlsxTableProjectionPrecisionTest
+[INFO] Running com.uten.imp.common.importing.ImportColumnGuardTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.302 s -- in com.uten.imp.common.importing.ImportColumnGuardTest
+[INFO] Running com.uten.imp.features.finance.gl.FinanceAccountingWorkbookParserTest
+13:31:59.853 [main] WARN org.apache.poi.POIDocument -- DocumentSummaryInformation property set came back as null
+13:31:59.864 [main] WARN org.apache.poi.POIDocument -- SummaryInformation property set came back as null
+13:32:00.195 [main] WARN org.apache.poi.POIDocument -- DocumentSummaryInformation property set came back as null
+13:32:00.195 [main] WARN org.apache.poi.POIDocument -- SummaryInformation property set came back as null
+13:32:00.226 [main] WARN org.apache.poi.POIDocument -- DocumentSummaryInformation property set came back as null
+13:32:00.226 [main] WARN org.apache.poi.POIDocument -- SummaryInformation property set came back as null
+13:32:00.237 [main] WARN org.apache.poi.POIDocument -- DocumentSummaryInformation property set came back as null
+13:32:00.237 [main] WARN org.apache.poi.POIDocument -- SummaryInformation property set came back as null
+13:32:00.241 [main] WARN org.apache.poi.POIDocument -- DocumentSummaryInformation property set came back as null
+13:32:00.241 [main] WARN org.apache.poi.POIDocument -- SummaryInformation property set came back as null
+13:32:00.270 [main] WARN org.apache.poi.POIDocument -- DocumentSummaryInformation property set came back as null
+13:32:00.270 [main] WARN org.apache.poi.POIDocument -- SummaryInformation property set came back as null
+[WARNING] Tests run: 5, Failures: 0, Errors: 0, Skipped: 1, Time elapsed: 0.861 s -- in com.uten.imp.features.finance.gl.FinanceAccountingWorkbookParserTest
+[INFO] Running com.uten.imp.features.finance.gl.FinanceChartWorkbookParserTest
+[ERROR] Tests run: 6, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.689 s <<< FAILURE! -- in com.uten.imp.features.finance.gl.FinanceChartWorkbookParserTest
+[ERROR] com.uten.imp.features.finance.gl.FinanceChartWorkbookParserTest.duplicateCodesAndBalanceValuesProduceLocatedIssuesInsteadOfPartialImports -- Time elapsed: 0.248 s <<< FAILURE!
+java.lang.AssertionError: 
+
+Expected size: 2 but was: 3 in:
+[Issue[sourceRow=1, field=��4�У�δ������, message=�С���4�У�δ�������������ݣ���ǰ���벻֧�ָ��У����Զ����У�����ɾ�����л���ȷӳ������¼�⣬����ֱ�Ӻ���],
+    Issue[sourceRow=3, field=��Ŀ����, message=ͬһ�ļ������ظ���000001],
+    Issue[sourceRow=3, field=���, message=�����ֻ�����ĿĿ¼���������ڳ�/�������������ܿؽ���]]
+	at com.uten.imp.features.finance.gl.FinanceChartWorkbookParserTest.duplicateCodesAndBalanceValuesProduceLocatedIssuesInsteadOfPartialImports(FinanceChartWorkbookParserTest.java:28)
+
+[INFO] Running com.uten.imp.features.finance.gl.FinanceOperatingNoteParserTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.556 s -- in com.uten.imp.features.finance.gl.FinanceOperatingNoteParserTest
+[INFO] Running com.uten.imp.features.finance.statement.FinanceAuxiliaryWorkbookParserTest
+[ERROR] Tests run: 4, Failures: 0, Errors: 1, Skipped: 0, Time elapsed: 0.380 s <<< FAILURE! -- in com.uten.imp.features.finance.statement.FinanceAuxiliaryWorkbookParserTest
+[ERROR] com.uten.imp.features.finance.statement.FinanceAuxiliaryWorkbookParserTest.populatedUnknownColumnsAreLocatedButAnEmptyTailIsAllowed -- Time elapsed: 0.036 s <<< ERROR!
+com.uten.imp.common.web.ApiException: ������ϸӦΪԭ14�У���˶Զ������е�����
+	at com.uten.imp.features.finance.statement.FinanceAuxiliaryWorkbookParser.invalid(FinanceAuxiliaryWorkbookParser.java:95)
+	at com.uten.imp.features.finance.statement.FinanceAuxiliaryWorkbookParser.parse(FinanceAuxiliaryWorkbookParser.java:44)
+	at com.uten.imp.features.finance.statement.FinanceAuxiliaryWorkbookParserTest.populatedUnknownColumnsAreLocatedButAnEmptyTailIsAllowed(FinanceAuxiliaryWorkbookParserTest.java:13)
+
+[INFO] Running com.uten.imp.features.master.goods.costing.GoodsCostWorkbookParserTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.150 s -- in com.uten.imp.features.master.goods.costing.GoodsCostWorkbookParserTest
+[INFO] Running com.uten.imp.features.master.goods.importing.GoodsBomImportColumnContractTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.506 s -- in com.uten.imp.features.master.goods.importing.GoodsBomImportColumnContractTest
+[INFO] Running com.uten.imp.features.master.goods.importing.GoodsBomImportNumericPrecisionTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.261 s -- in com.uten.imp.features.master.goods.importing.GoodsBomImportNumericPrecisionTest
+[INFO] Running com.uten.imp.features.master.goods.importing.GoodsBomImportServiceTest
+[INFO] Tests run: 22, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.598 s -- in com.uten.imp.features.master.goods.importing.GoodsBomImportServiceTest
+[INFO] Running com.uten.imp.features.master.goods.importing.GoodsImportColumnContractTest
+[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.469 s -- in com.uten.imp.features.master.goods.importing.GoodsImportColumnContractTest
+[INFO] Running com.uten.imp.features.master.goods.importing.GoodsImportCustomerLabelsTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.874 s -- in com.uten.imp.features.master.goods.importing.GoodsImportCustomerLabelsTest
+[INFO] Running com.uten.imp.features.master.goods.importing.GoodsImportPlanSafetyTest
+[INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.286 s -- in com.uten.imp.features.master.goods.importing.GoodsImportPlanSafetyTest
+[INFO] 
+[INFO] Results:
+[INFO] 
+[ERROR] Failures: 
+[ERROR]   FinanceChartWorkbookParserTest.duplicateCodesAndBalanceValuesProduceLocatedIssuesInsteadOfPartialImports:28 
+Expected size: 2 but was: 3 in:
+[Issue[sourceRow=1, field=��4�У�δ������, message=�С���4�У�δ�������������ݣ���ǰ���벻֧�ָ��У����Զ����У�����ɾ�����л���ȷӳ������¼�⣬����ֱ�Ӻ���],
+    Issue[sourceRow=3, field=��Ŀ����, message=ͬһ�ļ������ظ���000001],
+    Issue[sourceRow=3, field=���, message=�����ֻ�����ĿĿ¼���������ڳ�/�������������ܿؽ���]]
+[ERROR] Errors: 
+[ERROR]   FinanceAuxiliaryWorkbookParserTest.populatedUnknownColumnsAreLocatedButAnEmptyTailIsAllowed:13 ? Api ������ϸӦΪԭ14�У���˶Զ������е�����
+[INFO] 
+[ERROR] Tests run: 87, Failures: 1, Errors: 1, Skipped: 1
+[INFO] 
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD FAILURE
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  03:13 min
+[INFO] Finished at: 2026-11-10T13:32:07-07:00
+[INFO] ------------------------------------------------------------------------
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.5.6:test (default-test) on project uten-imp-server: There are test failures.
+[ERROR] 
+[ERROR] See D:\Projects\uten_imp_worktrees\company-return-picker-20261110\server\target-return-import\surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException

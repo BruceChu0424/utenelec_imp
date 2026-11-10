@@ -18,10 +18,79 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/ai/page_context/ai_page_context.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations_zh.dart';
+import 'package:uten_imp/components/data_display/uten_status_badge.dart';
+import 'package:uten_imp/components/data_display/uten_status_cell_color.dart';
+import 'package:uten_imp/components/data_display/uten_table_surface.dart';
 
 import '../../../support/filter_segment_tap.dart';
 
 void main() {
+  testWidgets(
+    'running task table visibly distinguishes partial kits from fully issued work',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1600, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final container = ProviderContainer(
+        overrides: [
+          emptyServerReportDraftsFixture(),
+          apiClientProvider.overrideWithValue(_preparingApi(inProgress: true)),
+          currentPermissionsProvider.overrideWithValue(const {
+            Perm.productionExecutionView,
+          }),
+          localServerReachableProvider.overrideWith(
+            (ref) => LocalServerReachabilityNotifier(null, web: true),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+      final router = GoRouter(
+        initialLocation: RouteName.productionWorkshopTasks,
+        routes: [
+          GoRoute(
+            path: RouteName.productionWorkshopTasks,
+            builder: (_, _) => const ProductionWorkshopTasksPage(),
+          ),
+        ],
+      );
+      addTearDown(router.dispose);
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp.router(
+            routerConfig: router,
+            locale: const Locale('zh'),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await selectFilterSegment(tester, '生产中');
+      await tester.pumpAndSettle();
+      final partial = find.textContaining('部分领料生产中');
+      final complete = find.textContaining('持续生产中');
+      expect(partial, findsNWidgets(3));
+      expect(complete, findsOneWidget);
+      UtenTableCellFrame frame(Finder text) =>
+          tester.widget<UtenTableCellFrame>(
+            find
+                .ancestor(
+                  of: text.first,
+                  matching: find.byType(UtenTableCellFrame),
+                )
+                .first,
+          );
+      expect(
+        frame(partial).backgroundColor,
+        utenStatusBadgeCellColor(UtenStatusBadgeType.violet),
+      );
+      expect(
+        frame(complete).backgroundColor,
+        utenStatusBadgeCellColor(UtenStatusBadgeType.info),
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
   testWidgets('preparing rows sort closest-to-startable first', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1600, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -164,7 +233,7 @@ void main() {
 }
 
 /// 四条等待物料任务的假 API（服务端按 plan_no 返回「越不齐越靠前」的乱序）。
-ApiClient _preparingApi() {
+ApiClient _preparingApi({bool inProgress = false}) {
   Map<String, dynamic> task({
     required String segmentId,
     required String segmentCode,
@@ -188,16 +257,17 @@ ApiClient _preparingApi() {
     'plannedQty': 100,
     'reportedQty': 0,
     'remainingReportQty': 100,
-    'segmentStatus': segmentStatus,
+    'segmentStatus': inProgress ? 'IN_PROGRESS' : segmentStatus,
+    if (inProgress) 'partialMaterialReportLimited': issuedKindCount < kindCount,
     'materialStatus': 'KIT_SHORT',
     'preparationStatus': 'PREPARING',
     'materialReady': false,
     'warehouseReady': false,
     'issued': false,
     'canStart': canStart,
-    'canReport': false,
+    'canReport': inProgress,
     'lockVersion': 1,
-    'startRoute': 'FULL_KIT',
+    'startRoute': inProgress ? 'CONTINUOUS' : 'FULL_KIT',
     'materialKindCount': kindCount,
     'materialIssuedKindCount': issuedKindCount,
     'materialShortKindCount': shortKindCount,

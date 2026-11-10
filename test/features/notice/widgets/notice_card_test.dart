@@ -97,7 +97,7 @@ void main() {
             final other = tester.getRect(
               selecting
                   ? find.byIcon(Icons.radio_button_unchecked)
-                  : find.text('12'),
+                  : find.text('共 12 条 · 3 未读'),
             );
             expect(status.overlaps(other), isFalse);
             expect(

@@ -139,7 +139,10 @@ class UtenCard extends ConsumerWidget {
     // 不会遮挡卡片内部的 ink 效果。
     if (shadows != null) {
       card = DecoratedBox(
-        decoration: BoxDecoration(boxShadow: shadows),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(borderRadius),
+          boxShadow: shadows,
+        ),
         child: card,
       );
     }

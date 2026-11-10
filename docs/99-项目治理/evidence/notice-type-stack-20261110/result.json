@@ -1,0 +1,91 @@
+{
+  "date": "2026-11-10",
+  "classification": "frontend presentation and display grouping",
+  "base": "d73f86e1eca5db796c610045bd9f63916a2523bf",
+  "sourceSha256": {
+    "lib/features/notice/models/notice_group.dart": "fa45d297b6e6143fcfb18dea349c2faa80c2439323d2f34d8c9eee12eb09e554",
+    "lib/features/notice/widgets/notice_card.dart": "3439b9651ddbd326ae425e787573f419490f72c7f9da53aefed6777db4f4e690",
+    "lib/features/notice/widgets/notice_group_dialog.dart": "f334aca9588e9ab689c2c1b82056c55a0217f5e2f471980ecfc33b657bad2ce3",
+    "lib/features/notice/pages/notice_list_page.dart": "bf9181996e8ac94ce7d2661518f1430e8d9a0dcc317346ee2827bcac5c5f4278",
+    "lib/components/cards/uten_card.dart": "a308afd66d3bae644ed337fbe7fa16406960c26cbb011d1c45a61a42c06ea564"
+  },
+  "flutterNoticeSuite": {
+    "command": "flutter test --no-pub test/features/notice/ --reporter expanded",
+    "passed": 197,
+    "exitCode": 0,
+    "log": "notice-suite.log"
+  },
+  "finalFocusedReview": {
+    "passed": 5,
+    "exitCode": 0,
+    "coverage": [
+      "UtenCard light/dark selection",
+      "batch cancellation drains in-flight request and retries remaining unread",
+      "monitoring visual review",
+      "all-type visual review"
+    ],
+    "log": "final-visual-progress.log"
+  },
+  "largeData": {
+    "notices": 30000,
+    "coverage": "all notice IDs retained, deterministic within-group ordering, input preserved"
+  },
+  "rapidInteraction": {
+    "cycles": 12,
+    "coverage": "repeat open, transition interruption and close; opening alone does not mark read"
+  },
+  "failureEvidence": {
+    "file": "interaction-first-run.log",
+    "classification": "new test fixture assumptions: detail action label and second click on modal barrier; corrected without weakening product assertions",
+    "retryLog": "interaction-second-run.log",
+    "versionedLogNormalization": "Trailing spaces removed; original raw output retained in task tmp directory. Diagnostic text preserved."
+  },
+  "visualEvidence": {
+    "before": "before-shadow-radius.png",
+    "final": [
+      "notice-monitoring-inbox.png",
+      "notice-monitoring-expanded.png",
+      "notice-monitoring-mobile-dark-200.png"
+    ],
+    "mobileWidth": 375,
+    "mobileTextScale": 2,
+    "reviewed": true,
+    "note": "neutral low shadow follows existing UtenCard radius; back cards use borders only"
+  },
+  "runtimeReview": {
+    "kind": "real in-app browser, local Flutter Web debug, synthetic in-memory repository",
+    "viewportWidths": [
+      714,
+      1440,
+      375
+    ],
+    "observations": [
+      "8 repeated backup-disk alerts collapsed into one stack, 6 unread",
+      "group open retains individual notices; opening alone does not mark the group read",
+      "single detail opening shows UtenBusyOverlay; clicking receive shows received by one person",
+      "batch cancel shows 0 / 6 and stopping until the in-flight write completes",
+      "after cancellation group retains 8 notices and exactly 5 unread",
+      "375px single-column layout and desktop multicolumn layout retain content and stack count"
+    ],
+    "backend": "no real account, no production or company API",
+    "browserConsoleWarningsOrErrorsDuringReview": 0,
+    "viewportReset": true,
+    "temporaryTabClosed": true,
+    "limitations": [
+      "Windows native runtime and target hardware not exercised",
+      "200% dark-mode review uses rendered widget interactions"
+    ]
+  },
+  "platforms": {
+    "flutterWebDesktopMobile": "shared Dart implementation and rendered widget interaction evidence",
+    "wpfLegacy": "notification list/detail not migrated; W7-BIZ-084/085 remain todo"
+  },
+  "productionDeployed": false,
+  "formalPackagesBuilt": false,
+  "win7TargetPcAccepted": false,
+  "staticAnalysis": {
+    "exitCode": 0,
+    "result": "No issues found",
+    "log": "analyze-final.log"
+  }
+}

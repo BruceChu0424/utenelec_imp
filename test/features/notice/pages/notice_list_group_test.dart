@@ -31,7 +31,8 @@ import '../../../helpers/badge_summary_fixture.dart';
 /// - 默认筛选是「未读」（list 请求带 onlyUnread=true）；
 /// - 同一业务对象（路由回执 + 服务端聚合卡）叠成一组：组卡带「共 N 条」胶囊，
 ///   点开弹窗列出全部（未读在前），「全部已读」逐条置读；
-/// - 无锚点的通知仍是普通单卡（无胶囊）。
+/// - 同类系统事件叠放，恢复、异常主题及不同更新版本仍各自独立；
+/// - 无业务锚点的公告、庆典和工作待办仍为普通单卡。
 class _FakeNoticeRepository implements NoticeRepository {
   _FakeNoticeRepository(this._notices);
 
@@ -89,6 +90,127 @@ class _ReceiptRepository extends _FakeNoticeRepository {
     );
   }
 }
+
+class _GatedReadRepository extends _FakeNoticeRepository {
+  _GatedReadRepository(super.notices);
+
+  final firstRead = Completer<void>();
+
+  @override
+  Future<Notice> markRead(String id) async {
+    markReadCalls.add(id);
+    if (markReadCalls.length == 1) await firstRead.future;
+    final index = _notices.indexWhere((notice) => notice.id == id);
+    return _notices[index] = _notices[index].copyWith(isRead: true);
+  }
+}
+
+class _TrackingReceiptRepository extends _FakeNoticeRepository {
+  _TrackingReceiptRepository(super.notices);
+
+  final List<String> acknowledgeCalls = [];
+
+  @override
+  Future<Notice> acknowledge(String id) async {
+    acknowledgeCalls.add(id);
+    final index = _notices.indexWhere((notice) => notice.id == id);
+    return _notices[index] = _notices[index].copyWith(
+      isRead: true,
+      myAcked: true,
+      ackCount: 1,
+    );
+  }
+}
+
+Notice _systemNotice(
+  String id, {
+  required String title,
+  required String sourceEvent,
+  NoticeType type = NoticeType.urgent,
+  bool isRead = false,
+  int ageInHours = 1,
+}) => Notice(
+  id: id,
+  title: title,
+  content: type == NoticeType.urgent
+      ? '最近一次检查未通过，请核对备份任务、存储和恢复所需文件。'
+      : '请在服务器状态页查看这次通知的详细记录。',
+  type: type,
+  publisher: '系统监控',
+  publishedAt: ChinaDateTime.now().subtract(Duration(hours: ageInHours)),
+  isRead: isRead,
+  actionRoute: '/admin/server-status',
+  sourceEvent: sourceEvent,
+  interactionMode: NoticeInteractionMode.acknowledge,
+);
+
+List<Notice> _monitoringNotices() => [
+  _systemNotice(
+    'disk-new',
+    title: '本机备份盘未挂载',
+    sourceEvent: 'SERVER_HOST_ALERT:11111111-1111-4111-8111-111111111111',
+  ),
+  _systemNotice(
+    'recovered-new',
+    title: '【已恢复】备份已回到正常范围',
+    sourceEvent: 'SERVER_STATUS_ALERT:backup:RECOVERED',
+    type: NoticeType.system,
+    ageInHours: 3,
+  ),
+  _systemNotice(
+    'backup-new',
+    title: '【危急】备份需要尽快处理',
+    sourceEvent: 'SERVER_STATUS_ALERT:backup:CRITICAL',
+    ageInHours: 3,
+  ),
+  _systemNotice(
+    'database',
+    title: '数据库备份与恢复点检查失败',
+    sourceEvent: 'SERVER_HOST_ALERT:22222222-2222-4222-8222-222222222222',
+    ageInHours: 3,
+  ),
+  _systemNotice(
+    'disk-old',
+    title: '本机备份盘未挂载',
+    sourceEvent: 'SERVER_HOST_ALERT:33333333-3333-4333-8333-333333333333',
+    ageInHours: 7,
+  ),
+  _systemNotice(
+    'disk-older',
+    title: '本机备份盘未挂载',
+    sourceEvent: 'SERVER_HOST_ALERT:44444444-4444-4444-8444-444444444444',
+    isRead: true,
+    ageInHours: 13,
+  ),
+  _systemNotice(
+    'update-new',
+    title: '服务器有新版本 v2.5.52',
+    sourceEvent: 'SERVER_UPDATE:new-revision',
+    type: NoticeType.system,
+    ageInHours: 21,
+  ),
+  _systemNotice(
+    'update-old',
+    title: '服务器有新版本 v2.5.52',
+    sourceEvent: 'SERVER_UPDATE:old-revision',
+    type: NoticeType.system,
+    isRead: true,
+    ageInHours: 22,
+  ),
+  _systemNotice(
+    'recovered-old',
+    title: '【已恢复】备份已回到正常范围',
+    sourceEvent: 'SERVER_STATUS_ALERT:backup:RECOVERED',
+    type: NoticeType.system,
+    ageInHours: 24,
+  ),
+  _systemNotice(
+    'backup-old',
+    title: '【危急】备份需要尽快处理',
+    sourceEvent: 'SERVER_STATUS_ALERT:backup:CRITICAL',
+    ageInHours: 24,
+  ),
+];
 
 const _orderA = '11111111-1111-4111-8111-111111111111';
 
@@ -387,6 +509,250 @@ void main() {
     );
   }
 
+  testWidgets(
+    'same monitoring subjects stack while recovery and versions stay separate',
+    (tester) async {
+      final repository = _FakeNoticeRepository([
+        ..._monitoringNotices(),
+        _systemNotice(
+          'update-other-version',
+          title: '服务器有新版本 v2.5.53',
+          sourceEvent: 'SERVER_UPDATE:next-version',
+          type: NoticeType.system,
+        ),
+      ]);
+      await _mount(tester, repository);
+
+      expect(find.byType(NoticeStackCard), findsNWidgets(4));
+      expect(find.text('本机备份盘未挂载'), findsOneWidget);
+      expect(find.text('【已恢复】备份已回到正常范围'), findsOneWidget);
+      expect(find.text('【危急】备份需要尽快处理'), findsOneWidget);
+      expect(find.text('服务器有新版本 v2.5.52'), findsOneWidget);
+      expect(find.text('服务器有新版本 v2.5.53'), findsOneWidget);
+      final disk = find.ancestor(
+        of: find.text('本机备份盘未挂载'),
+        matching: find.byType(NoticeStackCard),
+      );
+      expect(
+        find.descendant(of: disk, matching: find.text('共 3 条 · 2 未读')),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.text('本机备份盘未挂载'));
+      await tester.pumpAndSettle();
+      final stage = find.byKey(const ValueKey('notice-group-stage'));
+      expect(
+        find.descendant(of: stage, matching: find.byType(NoticeCard)),
+        findsNWidgets(3),
+      );
+      expect(
+        find.descendant(of: stage, matching: find.text('【危急】备份需要尽快处理')),
+        findsNothing,
+      );
+      expect(
+        find.descendant(of: stage, matching: find.text('【已恢复】备份已回到正常范围')),
+        findsNothing,
+      );
+      expect(repository.markReadCalls, isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('receiving one stacked alert preserves every other receipt', (
+    tester,
+  ) async {
+    final repository = _TrackingReceiptRepository([
+      _systemNotice(
+        'first',
+        title: '本机备份盘未挂载',
+        sourceEvent: 'SERVER_HOST_ALERT:first',
+      ),
+      _systemNotice(
+        'second',
+        title: '本机备份盘未挂载',
+        sourceEvent: 'SERVER_HOST_ALERT:second',
+        ageInHours: 2,
+      ),
+    ]);
+    await _mount(tester, repository, withRouter: true);
+    await tester.tap(find.text('共 2 条 · 2 未读'));
+    await tester.pumpAndSettle();
+    final firstCard = find.descendant(
+      of: find.byKey(const ValueKey('notice-unfold-first')),
+      matching: find.byType(NoticeCard),
+    );
+    await tester.tap(firstCard);
+    await tester.pumpAndSettle();
+    expect(repository.markReadCalls, ['first']);
+    expect(repository.acknowledgeCalls, isEmpty);
+    await tester.ensureVisible(find.text('点击收到'));
+    await tester.tap(find.text('点击收到'));
+    await tester.pumpAndSettle();
+    expect(repository.acknowledgeCalls, ['first']);
+    expect(
+      repository._notices
+          .singleWhere((notice) => notice.id == 'second')
+          .myAcked,
+      isFalse,
+    );
+    expect(
+      repository._notices.singleWhere((notice) => notice.id == 'second').isRead,
+      isFalse,
+    );
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('notice-group-stage')), findsOneWidget);
+    expect(find.textContaining('未读 1 条'), findsOneWidget);
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(find.text('共 2 条 · 1 未读'), findsOneWidget);
+    expect(repository.markReadCalls, ['first']);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'rapid repeated opening and interruption leaves one intact stack',
+    (tester) async {
+      final repository = _FakeNoticeRepository([
+        _systemNotice(
+          'first',
+          title: '本机备份盘未挂载',
+          sourceEvent: 'SERVER_HOST_ALERT:first',
+        ),
+        _systemNotice(
+          'second',
+          title: '本机备份盘未挂载',
+          sourceEvent: 'SERVER_HOST_ALERT:second',
+        ),
+      ]);
+      await _mount(tester, repository);
+      for (var cycle = 0; cycle < 12; cycle++) {
+        final stack = find.text('共 2 条 · 2 未读');
+        await tester.tap(stack);
+        await tester.pump(const Duration(milliseconds: 60));
+        await tester.tap(stack, warnIfMissed: false);
+        await tester.pumpAndSettle();
+        // The second click may land on the backdrop and close the group.
+        // Both outcomes must settle without duplicate modal routes.
+        final stage = find.byKey(const ValueKey('notice-group-stage'));
+        expect(stage.evaluate().length, lessThanOrEqualTo(1));
+        if (stage.evaluate().isNotEmpty) {
+          await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+          await tester.pump(const Duration(milliseconds: 60));
+          await tester.tap(stack, warnIfMissed: false);
+        }
+        await tester.pumpAndSettle();
+        expect(find.byKey(const ValueKey('notice-group-stage')), findsNothing);
+        expect(find.byType(NoticeStackCard), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      }
+      expect(repository.markReadCalls, isEmpty);
+      expect(repository._notices.map((notice) => notice.id), [
+        'first',
+        'second',
+      ]);
+    },
+  );
+
+  testWidgets(
+    'monitoring card visual review: repeated alerts, recovery and updates',
+    (tester) async {
+      const previewDirectory = String.fromEnvironment('NOTICE_PREVIEW_DIR');
+      await _mount(
+        tester,
+        _FakeNoticeRepository(_monitoringNotices()),
+        width: 1440,
+      );
+      expect(tester.takeException(), isNull);
+      await _capture(tester, previewDirectory, 'notice-monitoring-inbox.png');
+      await tester.tap(find.text('本机备份盘未挂载'));
+      await tester.pumpAndSettle();
+      await _capture(
+        tester,
+        previewDirectory,
+        'notice-monitoring-expanded.png',
+      );
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+      await _mount(
+        tester,
+        _FakeNoticeRepository(_monitoringNotices()),
+        width: 375,
+        textScale: 2,
+        dark: true,
+      );
+      expect(tester.takeException(), isNull);
+      await _capture(
+        tester,
+        previewDirectory,
+        'notice-monitoring-mobile-dark-200.png',
+      );
+    },
+  );
+
+  testWidgets(
+    'cancelling batch read drains the current request and retries only unread notices',
+    (tester) async {
+      final repository = _GatedReadRepository([
+        _systemNotice(
+          'first',
+          title: '本机备份盘未挂载',
+          sourceEvent: 'SERVER_HOST_ALERT:first',
+        ),
+        _systemNotice(
+          'second',
+          title: '本机备份盘未挂载',
+          sourceEvent: 'SERVER_HOST_ALERT:second',
+          ageInHours: 2,
+        ),
+        _systemNotice(
+          'third',
+          title: '本机备份盘未挂载',
+          sourceEvent: 'SERVER_HOST_ALERT:third',
+          ageInHours: 3,
+        ),
+      ]);
+      await _mount(tester, repository);
+      await tester.tap(find.text('共 3 条 · 3 未读'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('全部已读').last);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(repository.markReadCalls, ['first']);
+      expect(find.text('0 / 3'), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(find.byType(UtenBusyOverlay), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('uten-progress-cancel')));
+      await tester.pump();
+      expect(
+        find.byKey(const ValueKey('uten-progress-stopping')),
+        findsOneWidget,
+      );
+      expect(repository.markReadCalls, ['first']);
+      // Cancellation keeps the pending write visible until its actual outcome.
+      expect(
+        find.byKey(const ValueKey('uten-progress-cancel')),
+        findsOneWidget,
+      );
+      repository.firstRead.complete();
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('uten-progress-cancel')), findsNothing);
+      expect(find.textContaining('未读 2 条'), findsOneWidget);
+      expect(repository.markReadCalls, ['first']);
+      await tester.tap(find.text('全部已读').last);
+      await tester.pumpAndSettle();
+      expect(repository.markReadCalls, ['first', 'second', 'third']);
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('notice-group-stage')),
+          matching: find.text('共 3 条 · 全部已读'),
+        ),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('partial read failure retains unread state and can retry', (
     tester,
   ) async {
@@ -537,7 +903,7 @@ void main() {
       );
 
       expect(tester.takeException(), isNull);
-      // 2026-10-29 柔光卡改版：卡面本体是 NoticeCard（自带渐变+阴影表面），
+      // 2026-11-10：卡面本体是 NoticeCard（统一表面与叠放计数），
       // 以它为边界校验元数据文本完整落在卡内。
       final card = tester.getRect(
         find.ancestor(

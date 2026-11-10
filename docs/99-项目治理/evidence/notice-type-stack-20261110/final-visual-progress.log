@@ -1,0 +1,11 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/notice-type-stack-20261110/test/components/cards/uten_card_selected_test.dart
+00:00 +0: D:/Projects/uten_imp_worktrees/notice-type-stack-20261110/test/components/cards/uten_card_selected_test.dart: 浅色主题：选中卡用定稿选中底色 + 主色 1.5 描边
+00:01 +1: D:/Projects/uten_imp_worktrees/notice-type-stack-20261110/test/components/cards/uten_card_selected_test.dart: 深色主题：选中卡用 teal900 定稿底色
+00:01 +2: loading D:/Projects/uten_imp_worktrees/notice-type-stack-20261110/test/features/notice/pages/notice_list_group_test.dart
+00:21 +2: D:/Projects/uten_imp_worktrees/notice-type-stack-20261110/test/features/notice/pages/notice_list_group_test.dart: (setUpAll)
+00:22 +2: D:/Projects/uten_imp_worktrees/notice-type-stack-20261110/test/features/notice/pages/notice_list_group_test.dart: monitoring card visual review: repeated alerts, recovery and updates
+00:29 +3: D:/Projects/uten_imp_worktrees/notice-type-stack-20261110/test/features/notice/pages/notice_list_group_test.dart: cancelling batch read drains the current request and retries only unread notices
+00:31 +4: D:/Projects/uten_imp_worktrees/notice-type-stack-20261110/test/features/notice/pages/notice_list_group_test.dart: notification visual review: types, stack and expanded stage
+00:35 +5: D:/Projects/uten_imp_worktrees/notice-type-stack-20261110/test/features/notice/pages/notice_list_group_test.dart: (tearDownAll)
+00:35 +5: All tests passed!

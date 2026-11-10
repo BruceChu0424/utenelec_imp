@@ -190,11 +190,18 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
         Map<UUID,BigDecimal> physicalDelta=new HashMap<>();
         if(physicalStockClaims!=null&&physicalStockClaims.claim(analysisId,physicalLimits,"AGGREGATE-PHYSICAL:"+analysisId+":"+request.idempotencyKey())) {
             physicalStockClaims.ownedByMaterial(analysisId).forEach((id,qty)->physicalDelta.put(id,qty.subtract(physicalBefore.getOrDefault(id,BigDecimal.ZERO)).max(BigDecimal.ZERO)));
-            analysis.refreshLocked(analysisId);
         }
+        analysis.refreshLocked(analysisId);
+        AnalysisView nextSnapshot=analysis.detailInternal(analysisId,false);
+        Map<UUID,MaterialView> claimedRows=nextSnapshot.flatMaterials().stream()
+                .collect(Collectors.toMap(MaterialView::materialLineId,row->row,(left,right)->left));
         // Parent groups commit first inside this transaction. Each following group
         // resolves its unchanged original ids against the refreshed exact alias graph.
-        Map<String,GroupInput> inputs=request.groups().stream().collect(Collectors.toMap(GroupInput::clientGroupKey,value->subtractPhysicalClaim(AggregateMaterialOrderPreviewService.incrementalInput(value,reviewedRows),value.quantityMode()==null?physicalDelta:Map.of())));
+        // Physical adoption can move an unowned stock projection from a sibling
+        // to this selected source. Coverage totals must normalize against the
+        // resulting ownership, as the ordinary notification path already does.
+        // Legacy incremental inputs still deduct only this command's new claim.
+        Map<String,GroupInput> inputs=request.groups().stream().collect(Collectors.toMap(GroupInput::clientGroupKey,value->subtractPhysicalClaim(AggregateMaterialOrderPreviewService.incrementalInput(value,claimedRows),value.quantityMode()==null?physicalDelta:Map.of())));
         Map<UUID,Integer> levels=reviewed.analysis().flatMaterials().stream().collect(Collectors.toMap(MaterialView::materialLineId,MaterialView::level));
         List<GroupPreview> ordered=reviewed.groups().stream().filter(group->group.requestedQty().signum()>0||group.safetyQty().signum()>0)
                 .sorted(Comparator.comparingInt((GroupPreview group)->inputs.get(group.clientGroupKey()).materialLineIds().stream().mapToInt(source->levels.getOrDefault(source,Integer.MAX_VALUE)).min().orElse(Integer.MAX_VALUE))
@@ -204,8 +211,6 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
                         .thenComparingInt(group->"BUY".equals(group.route())&&group.safetyQty().signum()>0?0:1)
                         .thenComparing(GroupPreview::clientGroupKey)).toList();
 
-        analysis.refreshLocked(analysisId);
-        AnalysisView nextSnapshot=analysis.detailInternal(analysisId,false);
         List<BatchResult> results=new ArrayList<>();List<SourceAdoptionIntent> sourceAdoptions=new ArrayList<>();
         Set<String> safetyDimensions=new HashSet<>();
         int cursor=0;

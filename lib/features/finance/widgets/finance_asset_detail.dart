@@ -648,10 +648,11 @@ class _FinanceAssetDetailSurfaceState
                 ),
             ],
           ),
-        if (detail.schedule.isNotEmpty) ...[
+        ...[
           const SizedBox(height: UtenSpacing.s16),
           MasterDataTableView<FinanceAssetScheduleLine>(
             expensiveRowMounts: false,
+            emptyMessage: '暂无资产计提计划',
             tableKey: 'finance.asset.schedule',
             embedded: true,
             platformBinding: PlatformTableBinding(

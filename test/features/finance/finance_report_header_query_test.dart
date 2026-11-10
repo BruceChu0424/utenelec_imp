@@ -68,6 +68,40 @@ void main() {
     });
   }
   testWidgets(
+    'auxiliary receivable and payable use only currency header scope for rows and export',
+    (tester) async {
+      final api = await _pump(tester, 'summary');
+      for (final variant in [6, 7]) {
+        tester
+            .widget<UtenFilterToolbar<int>>(find.byType(UtenFilterToolbar<int>))
+            .onSelectionChanged!(variant);
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('finance-report-currency')), findsNothing);
+        final table = tester.widget<MasterDataTableView<Map<String, dynamic>>>(
+          find.byType(MasterDataTableView<Map<String, dynamic>>),
+        );
+        expect(
+          table.columns.map((column) => column.key),
+          contains('currencyCode'),
+        );
+        table.onFilterChanged('currencyCode', 'currency-id');
+        await tester.pumpAndSettle();
+        expect(
+          api.requests.last.$2,
+          containsPair('f.currencyCode', 'currency-id'),
+        );
+        expect(api.requests.last.$2, isNot(contains('currencyId')));
+        final export = await _visibleExport(tester);
+        expect(
+          export.queryParams,
+          containsPair('f.currencyCode', 'currency-id'),
+        );
+        expect(export.queryParams, isNot(contains('currencyId')));
+      }
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
     'plastic context1001 keeps the Chinese tail and reuses selected dates during header work',
     (tester) async {
       final api = _HeaderApi()..plasticCount = 1001;

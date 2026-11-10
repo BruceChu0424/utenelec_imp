@@ -9,6 +9,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
+import 'package:uten_imp/core/theme/light_theme.dart';
+import 'package:uten_imp/components/feedback/uten_progress_dialog.dart';
 import 'package:uten_imp/components/buttons/uten_back_button.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/layout/uten_floating_action_group.dart';
@@ -22,8 +24,116 @@ import 'package:uten_imp/features/quality/pages/quality_batch_approval_page.dart
 import 'package:uten_imp/features/warehouse/repositories/procurement_inspection_repository.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
+import '../../support/audit_screenshot_support.dart';
+
+const _captureFeedback = bool.fromEnvironment('WAREHOUSE_FEEDBACK_SCREENSHOTS');
 
 void main() {
+  testWidgets(
+    'completed IQC selection retains empty table headers and blocked submit',
+    (tester) async {
+      final iqc = _Iqc(load: (_) async => []);
+      await _pump(tester, iqc, 1);
+      expect(
+        find.byKey(const Key('batch-approval-unified-table')),
+        findsOneWidget,
+      );
+      expect(find.text('货品名称'), findsOneWidget);
+      expect(find.text('所选单据已无待检明细'), findsOneWidget);
+      final submit = tester.widget<UtenButton>(
+        find.byKey(const Key('batch-approval-submit-report')),
+      );
+      expect(submit.onPressed, isNull);
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
+    'atomic IQC report keeps truthful moving unknown progress while delayed and retries the frozen report',
+    (tester) async {
+      if (_captureFeedback) await loadAuditScreenshotFonts(tester);
+      final capture = GlobalKey();
+      late Completer<void> reply;
+      var attempt = 0;
+      final iqc = _Iqc(
+        decide: () async {
+          if (attempt++ != 0) return;
+          // Release succeeds across test/engine zones; the request itself then
+          // fails in its awaiting continuation, as a real network future does.
+          // Completing a pending error from the outer test zone can instead be
+          // reported as an unhandled live-engine test error before this chain.
+          reply = Completer<void>();
+          await reply.future;
+          throw NetworkTimeoutException();
+        },
+      );
+      await _pump(
+        tester,
+        iqc,
+        3,
+        captureKey: _captureFeedback ? capture : null,
+      );
+      await _confirm(tester);
+      await tester.pump(const Duration(milliseconds: 800));
+      expect(iqc.sent, hasLength(1));
+      expect(find.byKey(const ValueKey('uten-progress-percent')), findsNothing);
+      expect(find.byType(UtenProgressBar), findsOneWidget);
+      expect(
+        tester.widget<UtenProgressBar>(find.byType(UtenProgressBar)).value,
+        isNull,
+      );
+      final sweep = find.descendant(
+        of: find.byType(UtenProgressBar),
+        matching: find.byType(FractionallySizedBox),
+      );
+      expect(
+        tester
+            .getSize(
+              find.descendant(of: sweep, matching: find.byType(ColoredBox)),
+            )
+            .height,
+        greaterThan(0),
+        reason: 'the unknown-progress band must have visible height',
+      );
+      expect(find.text('3 张收货单'), findsOneWidget);
+      final firstPosition = tester.getTopLeft(sweep).dx;
+      if (_captureFeedback) {
+        await saveAuditScreenshot(
+          tester,
+          capture,
+          'warehouse-iqc-delayed-0800ms',
+        );
+      }
+      await tester.pump(const Duration(seconds: 3));
+      expect(
+        tester.getTopLeft(sweep).dx,
+        isNot(firstPosition),
+        reason: 'unknown progress sweeps instead of remaining a blank track',
+      );
+      expect(find.byKey(const ValueKey('uten-progress-percent')), findsNothing);
+      expect(
+        iqc.sent,
+        hasLength(1),
+        reason: 'waiting cannot replay an atomic write',
+      );
+      if (_captureFeedback) {
+        await saveAuditScreenshot(
+          tester,
+          capture,
+          'warehouse-iqc-delayed-3800ms',
+        );
+      }
+      reply.complete();
+      await tester.pumpAndSettle();
+      expect(find.byType(UtenProgressBar), findsNothing);
+      expect(find.text('本次报告已确认提交'), findsNothing);
+      await tester.tap(find.byKey(const Key('batch-approval-submit-report')));
+      await tester.pumpAndSettle();
+      expect(iqc.sent, hasLength(2));
+      expect(iqc.sent[0].$1, iqc.sent[1].$1);
+      expect(iqc.sent[0].$2, iqc.sent[1].$2);
+      expect(tester.takeException(), isNull);
+    },
+  );
   testWidgets(
     'confirmation cannot adopt a newer same-account authentication intent',
     (tester) async {
@@ -539,6 +649,7 @@ Future<void> _pump(
   Size size = const Size(1400, 1000),
   _IntentSession? session,
   Map<String, List<String>>? itemIds,
+  GlobalKey? captureKey,
 }) async {
   await tester.binding.setSurfaceSize(size);
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -585,6 +696,13 @@ Future<void> _pump(
         sharedPreferencesProvider.overrideWithValue(preferences),
       ],
       child: MaterialApp.router(
+        theme: captureKey == null
+            ? null
+            : auditScreenshotTheme(buildLightTheme()),
+        builder: captureKey == null
+            ? null
+            : (context, child) =>
+                  RepaintBoundary(key: captureKey, child: child!),
         locale: const Locale('zh'),
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,

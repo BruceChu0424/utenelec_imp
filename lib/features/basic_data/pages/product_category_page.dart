@@ -1525,7 +1525,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
         onTap: () => pane.toggleStatus(g),
       ),
       UtenMenuItem(
-        label: '删除货品',
+        label: _canDeleteMaster ? '删除货品' : '删除货品（无权限）',
         icon: Icons.delete_outline_rounded,
         destructive: true,
         enabled: _canDeleteMaster,
@@ -1569,7 +1569,9 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
         onTap: () => pane.batchSetStatus(selected, '使用'),
       ),
       UtenMenuItem(
-        label: '批量删除($n)', // TODO(l10n): 补 arb
+        label: _canDeleteMaster
+            ? '批量删除($n)'
+            : '批量删除($n)（无权限）', // TODO(l10n): 补 arb
         icon: Icons.delete_outline_rounded,
         destructive: true,
         enabled: _canDeleteMaster,

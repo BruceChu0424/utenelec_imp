@@ -1,3 +1,5 @@
+import '../../../components/inputs/uten_selected_value_theme.dart';
+import '../../../components/inputs/uten_filter_field_theme.dart';
 import '../../../shared/paging/scoped_paged_read.dart'
     show pagedReadAccessDenied;
 import '../../../shared/paging/paged_query_identity.dart';
@@ -941,6 +943,8 @@ class _UtenMasterPickerFieldState<TItem>
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final filter = UtenFilterFieldTheme.contains(context);
+    final selected = _id != null && UtenSelectedValueTheme.contains(context);
     final requiredEmpty =
         widget.required && _id == null && widget.errorMessage == null;
     return Opacity(
@@ -948,15 +952,26 @@ class _UtenMasterPickerFieldState<TItem>
       child: TextField(
         controller: _ctl,
         readOnly: true,
+        style: !selected
+            ? null
+            : theme.textTheme.bodyLarge?.copyWith(
+                color: theme.colorScheme.onPrimaryContainer,
+                fontWeight: FontWeight.w600,
+              ),
         decoration: applyRequiredEmpty(
           UtenInputDecoration(
             InputDecoration(
+              filled: selected ? true : null,
+              fillColor: !selected ? null : theme.colorScheme.primaryContainer,
               label: requiredLabel(
                 widget.label,
                 theme,
                 required: widget.required,
                 base: theme.inputDecorationTheme.labelStyle,
               ),
+              floatingLabelBehavior: filter
+                  ? FloatingLabelBehavior.never
+                  : null,
               hintText: widget.hint ?? '点击选择${widget.label}',
               error: widget.errorMessage == null
                   ? null
@@ -965,6 +980,23 @@ class _UtenMasterPickerFieldState<TItem>
               suffixIcon: _id != null && widget.allowClear
                   ? IconButton(
                       tooltip: '清除选择',
+                      style: filter
+                          ? ButtonStyle(
+                              minimumSize: WidgetStatePropertyAll(
+                                Size.square(UtenFilterRow.heightOf(context)),
+                              ),
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            )
+                          : null,
+                      constraints: filter
+                          ? BoxConstraints(
+                              minWidth: UtenFilterRow.heightOf(context),
+                              minHeight: UtenFilterRow.heightOf(context),
+                            )
+                          : null,
+                      padding: filter
+                          ? EdgeInsets.zero
+                          : const EdgeInsets.all(8),
                       icon: const Icon(Icons.clear_rounded),
                       onPressed: widget.enabled ? () => _set(null) : null,
                     )

@@ -51,7 +51,7 @@
 
 证据：尚未登记，不得推定通过。
 
-接续/限制：按依赖与DoD继续，完成后登记证据。
+接续/限制：2026-11-09 Flutter/Web 物料列修订(ADR-156)：待处理申请行下单前也显示直属物料备齐/缺的种数(工作台行级逐种计数分页后批量下发，点开「齐套情况」弹窗)，与领料行/车间任务共用公共物料组件；本 WPF 入口未迁移，保持 todo，不开放占位写入，不以 Flutter/服务端测试替代原生验收。见 docs/99-决策记录-ADR/ADR-156。。
 
 ## W7-FLOW-004
 
@@ -307,3 +307,23 @@
 证据：尚未登记，不得推定通过。
 
 接续/限制：按依赖与DoD继续，完成后登记证据。
+
+## W7-FLOW-019
+
+- [ ] **统一进度弹窗：UtenBusyDialog 确定进度模式与 Flutter 端同步** — 源码已实现/待整合验证
+
+影响：`shared`；负责人：bruce；依赖：W7-CORE-011, W7-CORE-012, W7-CORE-013, W7-CORE-014。
+
+源入口：`clients/windows_legacy/Uten.Legacy.Desktop/Controls/UtenBusyDialog.cs`；`clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitExportWindow.cs`；`clients/windows_legacy/Uten.Legacy.Desktop/MainWindow.xaml.cs`；`clients/windows_legacy/Uten.Legacy.Desktop/Features/Downloads/SoftwareDownloadsView.cs`；`lib/components/feedback/uten_progress_dialog.dart`。
+
+完成条件：
+
+1. UtenBusyDialog 新增 ShowProgress 确定进度模式与 Report/Stage 汇报；总量未知走扫动条+详情，不伪造百分比；样式走 Uten.PrimaryBrush/Uten.Space 资源。
+2. 单位导出下载、更新下载两流程接入；安装包下载页既有内联进度（Uten 资源样式+取消）确认合规不改。
+3. 已提交业务请求不提供误导性取消；单请求型与 Flutter 端 cancellable:false 同口径。
+4. C# 级编译验证（本机 dotnet msbuild 无法生成 XAML codegen，过滤 XAML 名错误后本次改动零错误）；Win7 真机验收未做。
+5. 未迁移项明确记录：WPF 端无同步导出生成进度协议（服务端进度端点）与 UtenProgressRing 圆环组件——按需后续补。
+
+证据：`clients/windows_legacy/Uten.Legacy.Desktop/Controls/UtenBusyDialog.cs`；`clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitExportWindow.cs`；`clients/windows_legacy/Uten.Legacy.Desktop/MainWindow.xaml.cs`；`docs/99-项目治理/evidence/screenshot-feedback-20261110/shared-table-goods/wpf-busy/README.md`；`clients/windows_legacy/progress/evidence/screenshot-feedback-20261110.json`。
+
+接续/限制：2026-11-09 随 Flutter「导出/下载/批量操作统一进度弹窗」批次实施；Flutter 侧组件 docs/02-组件库/通用进度弹窗.md。状态 implemented：代码就位，Win7 真机 UAT 未完成，不据此开放任何已支持组合。；原evidence非路径描述原文留存（不把旧构建失败改写为通过）：clients/windows_legacy/Uten.Legacy.Desktop/Controls/UtenBusyDialog.cs（ShowProgress/Report/Stage）；clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitExportWindow.cs DownloadAsync（下载全程持弹窗+取消传输令牌）；clients/windows_legacy/Uten.Legacy.Desktop/MainWindow.xaml.cs OnCheckUpdate（确定进度 received/SizeBytes+幂等 Dispose 收尾）；本机 dotnet msbuild：85 个错误全为 XAML 生成名缺失（既有环境限制），本次新增符号零错误；2026-11-10 E-SCREENSHOT-FEEDBACK-20261110：WPF公共确定/未知进度模式切换。完整入口、公共实现、真实运行时与保留差异见docs/99-项目治理/2026-11-10-十四张截图反馈修复.md。任务原status/owner/DoD/依赖/nativeTargets保留；Flutter或服务端通过不等于本项原生业务、Win7目标机或正式交付完成。 Stage/未知总量切回扫动，Report已知计数恢复确定；本机x86/x64完整含XAML编译TreatWarningsAsErrors，各65项控件断言及PE/CLR校验通过，状态仍implemented；旧DoD括注为当时环境事实，当前结果以上述新证据为准。。

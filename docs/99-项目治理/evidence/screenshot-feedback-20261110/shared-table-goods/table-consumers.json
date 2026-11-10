@@ -1,0 +1,1934 @@
+[
+  {
+    "source": "lib/components/cards/uten_card.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/approvals/pages/approval_policy_settings_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/applications/pages/business_application_list_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/components/data_display/uten_cell_revision_table.dart",
+    "components": [
+      "MasterDataTableView",
+      "UtenCellRevisionTable"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/components/data_display/uten_revision_table.dart",
+    "components": [
+      "MasterDataTableView",
+      "UtenRevisionTable"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/components/data_display/uten_status_badge.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/components/data_display/uten_selection_summary_pill.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/components/data_display/uten_revision_cell.dart",
+    "components": [
+      "UtenRevisionTable"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/components/data_display/uten_table_row_drag.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/components/data_display/uten_totals_summary_bar.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/hr_profile/pages/hr_profile_changes_list_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/components/inputs/uten_dropdown_field.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/procurement_iqc_rejection/pages/procurement_iqc_rejection_list_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/hr_task/widgets/hr_celebration_history_panel.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/components/inputs/uten_employee_selection_panel.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/components/layout/uten_collapsing_header_scroll_view.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/components/layout/uten_doc_link_picker_sheet.dart",
+    "components": [
+      "MasterDataTableView",
+      "UtenEditableGrid"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/hr_task/pages/hr_task_list_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/components/layout/uten_editable_grid_ai.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/components/inputs/uten_table_cell_spec.dart",
+    "components": [
+      "MasterDataTableView",
+      "UtenEditableGrid"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/hr_task/pages/hr_reconcile_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/components/layout/uten_editable_grid.dart",
+    "components": [
+      "MasterDataTableView",
+      "UtenEditableGrid",
+      "UtenRevisionTable"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/employee/widgets/department_employee_picker.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/components/inputs/uten_table_cell_action.dart",
+    "components": [
+      "MasterDataTableView",
+      "UtenEditableGrid"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/payroll/pages/payroll_slip_list_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/finance/widgets/finance_asset_detail.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/finance/widgets/finance_asset_ui.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/payroll/pages/payroll_review_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/components/layout/uten_grid_header_filter_cell.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/finance/widgets/finance_asset_revision_section.dart",
+    "components": [
+      "UtenRevisionTable"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/finance/widgets/finance_application_detail.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/finance/widgets/finance_asset_posting_panel.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/finance/widgets/finance_actual_receipt_context.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/finance/widgets/finance_account_picker_panel.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/finance/widgets/finance_asset_opening_group_dialog.dart",
+    "components": [
+      "MasterDataTableView",
+      "UtenEditableGrid"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/finance/widgets/finance_accounting_import_dialog.dart",
+    "components": [
+      "MasterDataTableView",
+      "UtenEditableGrid"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/finance/widgets/finance_asset_ledger_panel.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/finance/widgets/ar_ap_picker_dialog.dart",
+    "components": [
+      "UtenEditableGrid"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/operations_workbench/pages/operations_workbench_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/employee/pages/employee_list_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/security/pages/security_blacklist_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/rd_task/pages/rd_task_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/finance/widgets/finance_classification_correction_dialog.dart",
+    "components": [
+      "UtenEditableGrid"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/finance/widgets/finance_chart_import_workbench.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/finance/widgets/finance_chart_dialog.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/finance/widgets/finance_material_statement_compare.dart",
+    "components": [
+      "UtenEditableGrid"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/finance/widgets/finance_grid_columns.dart",
+    "components": [
+      "UtenEditableGrid"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/finance/widgets/finance_expense_analysis_dialog.dart",
+    "components": [
+      "MasterDataTableView",
+      "UtenEditableGrid"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/sales/widgets/shipment_finance_change_summary.dart",
+    "components": [
+      "UtenRevisionTable"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/sales/widgets/sales_shipment_task_workbench.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/finance/widgets/finance_editable_grid_window.dart",
+    "components": [
+      "UtenEditableGrid"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/sales/widgets/sales_quote_revision_comparison.dart",
+    "components": [
+      "UtenCellRevisionTable"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/sales/widgets/sales_plan_progress_panel.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/finance/widgets/sales_order_revision_table.dart",
+    "components": [
+      "UtenRevisionTable"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/department/widgets/uten_position_picker.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/department/widgets/uten_position_entry_picker.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/sales/widgets/sales_grid_columns.dart",
+    "components": [
+      "UtenEditableGrid"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/finance/widgets/finance_source_table.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/finance/widgets/inventory_cost_posting_dialog.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/quality/pages/quality_pending_disposal_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/quality/pages/quality_inspection_records_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/department/widgets/department_overview_pane.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/finance/widgets/finance_payroll_preparation.dart",
+    "components": [
+      "MasterDataTableView",
+      "UtenEditableGrid"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/quality/pages/quality_batch_approval_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/finance/widgets/finance_payroll_deduction_allocations.dart",
+    "components": [
+      "UtenEditableGrid"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/quality/pages/production_fqc_inspections_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/finance/widgets/finance_payable_statement_adjustment_dialog.dart",
+    "components": [
+      "UtenEditableGrid"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/components/layout/uten_table_column_kit.dart",
+    "components": [
+      "MasterDataTableView",
+      "UtenEditableGrid"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/quality/pages/production_fqc_handling_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/finance/widgets/finance_open_item_classification_dialog.dart",
+    "components": [
+      "UtenEditableGrid"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/components/layout/uten_table_action_scope.dart",
+    "components": [
+      "MasterDataTableView",
+      "UtenEditableGrid"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/components/layout/uten_sticky_header.dart",
+    "components": [
+      "UtenEditableGrid"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/finance/payables/widgets/supplier_settlement_panel.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/finance/widgets/finance_native_legacy_opening_dialog.dart",
+    "components": [
+      "UtenEditableGrid"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/finance/payables/widgets/subcontract_loss_claim_panel.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/finance/payables/widgets/subcontract_loss_claim_detail_panel.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/finance/payables/pages/finance_payables_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/purchase/pages/purchase_report_table_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/purchase/widgets/purchase_grid_columns.dart",
+    "components": [
+      "UtenEditableGrid"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/purchase/pages/purchase_order_edit_page.dart",
+    "components": [
+      "UtenEditableGrid"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/purchase/pages/purchase_doc_list_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/purchase/pages/purchase_doc_edit_page.dart",
+    "components": [
+      "UtenEditableGrid"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/sales/pages/sales_doc_edit_page.dart",
+    "components": [
+      "UtenEditableGrid"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/purchase/pages/purchase_doc_detail_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/warehouse/widgets/warehouse_task_records_view.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/sales/pages/sales_doc_detail_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/warehouse/widgets/warehouse_task_physical_detail_dialog.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/sales/pages/sales_report_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/sales/pages/sales_order_progress_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/warehouse/widgets/warehouse_subcontract_outbound_workbench.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/sales/pages/sales_manager_review_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/warehouse/widgets/warehouse_stock_outbound_detail_table.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/admin/pages/server_status_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/sales/pages/sales_doc_list_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/warehouse/widgets/warehouse_stock_doc_segment.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/admin/pages/audit_overview_widgets.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/warehouse/widgets/warehouse_sales_outbound_workbench.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/components/layout/uten_paged_picker_list.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/components/layout/uten_h_scroll_area.dart",
+    "components": [
+      "UtenEditableGrid"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/components/layout/uten_list_two_pane.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/profile/pages/my_profile_changes_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/warehouse/widgets/production_finished_inbound_tasks_view.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/warehouse/widgets/production_draw_detail_table.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/finance/pages/finance_ar_ap_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/warehouse/widgets/warehouse_delivery_components_table.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/warehouse/widgets/outbound_weight_columns.dart",
+    "components": [
+      "MasterDataTableView",
+      "UtenEditableGrid"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/finance/pages/finance_ar_ap_overview_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/finance/pages/finance_statement_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/finance/pages/finance_sales_shipment_audit_review_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/finance/pages/finance_application_settings_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/finance/pages/finance_application_edit_page.dart",
+    "components": [
+      "UtenEditableGrid"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/warehouse/widgets/inbound_registration_widgets.dart",
+    "components": [
+      "UtenEditableGrid"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/finance/pages/finance_sales_order_review_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/finance/pages/finance_applications_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/finance/pages/finance_sales_order_confirmation_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/finance/pages/finance_report_table_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/finance/pages/finance_account_flow_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/warehouse/widgets/warehouse_arrival_exceptions_view.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/finance/pages/finance_reconciliation_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/warehouse/widgets/arrival_qty_revision_table.dart",
+    "components": [
+      "UtenRevisionTable"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/finance/pages/finance_quote_review_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/warehouse/widgets/warehouse_quality_merged_table.dart",
+    "components": [
+      "UtenEditableGrid"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/finance/pages/finance_quote_review_list_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/finance/pages/finance_procurement_approval_tasks_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/warehouse/widgets/subcontract_outbound_detail_table.dart",
+    "components": [
+      "MasterDataTableView",
+      "UtenEditableGrid"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/finance/pages/finance_procurement_approval_review_page.dart",
+    "components": [
+      "MasterDataTableView",
+      "UtenRevisionTable"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/warehouse/widgets/warehouse_inbound_expectations_view.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/finance/pages/finance_doc_list_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/warehouse/widgets/stock_grid_columns.dart",
+    "components": [
+      "UtenEditableGrid"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/finance/pages/finance_doc_edit_page.dart",
+    "components": [
+      "UtenEditableGrid"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/finance/pages/finance_doc_detail_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/warehouse/widgets/warehouse_draw_task_segment.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/finance/pages/finance_doc_batch_entry.dart",
+    "components": [
+      "UtenEditableGrid"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/warehouse/widgets/warehouse_document_history_view.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/admin/pages/admin_ai_usage_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/production/widgets/production_daily_product_details_card.dart",
+    "components": [
+      "UtenEditableGrid"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/production/widgets/workshop_task_material_table.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/production/widgets/production_daily_grid_columns.dart",
+    "components": [
+      "UtenEditableGrid"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/production/widgets/plan_order_import_sheet.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/visitor/pages/visitor_home_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/production/widgets/start_confirmation_sheet.dart",
+    "components": [
+      "UtenEditableGrid"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/production/widgets/material_manual_demand_editor.dart",
+    "components": [
+      "UtenEditableGrid"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/basic_data/widgets/category_page_shell.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/production/widgets/reportable_plan_line_picker.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/production/widgets/daily_report_material_review_section.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/production/widgets/production_overproduction_rate_revision.dart",
+    "components": [
+      "UtenRevisionTable"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/production/widgets/production_material_settlement_sheet.dart",
+    "components": [
+      "UtenEditableGrid"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/production/widgets/production_material_return_request_sheet.dart",
+    "components": [
+      "UtenEditableGrid"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/production/widgets/production_grid_columns.dart",
+    "components": [
+      "UtenEditableGrid"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/production/widgets/production_flow_stage_cell.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/production/widgets/production_execution_group_panel.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/subcontract/widgets/subcontract_order_progress.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/subcontract/widgets/subcontract_application_kit_dialog.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/production/repositories/production_repository.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/suggestion/pages/suggestion_list_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/admin/pages/admin_ai_usage_records_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/expense/widgets/expense_submission_revision.dart",
+    "components": [
+      "UtenRevisionTable"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/subcontract/widgets/subcontract_grid_columns.dart",
+    "components": [
+      "UtenEditableGrid"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/expense/widgets/expense_invoice_section.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/subcontract/widgets/subcontract_draw_task_detail_dialog.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/admin/widgets/page_permission_drawer.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/expense/widgets/expense_editable_items.dart",
+    "components": [
+      "UtenEditableGrid"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/warehouse/materialbin/widgets/workshop_request_material_picker.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/warehouse/materialbin/widgets/workshop_material_task_center.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/warehouse/materialbin/widgets/workshop_material_summary_table.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/warehouse/materialbin/widgets/workshop_material_request_dialog.dart",
+    "components": [
+      "UtenEditableGrid"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/warehouse/materialbin/widgets/workshop_material_prep_tab.dart",
+    "components": [
+      "UtenEditableGrid"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/warehouse/materialbin/widgets/workshop_material_overview.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/warehouse/materialbin/widgets/workshop_material_machines_tab.dart",
+    "components": [
+      "UtenEditableGrid"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/expense/providers/expense_providers.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/warehouse/materialbin/pages/workshop_material_issue_page.dart",
+    "components": [
+      "UtenEditableGrid"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/warehouse/materialbin/pages/workshop_material_issue_batch_page.dart",
+    "components": [
+      "UtenEditableGrid"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/warehouse/materialbin/widgets/workshop_material_enable_panel.dart",
+    "components": [
+      "UtenEditableGrid"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/warehouse/materialbin/pages/workshop_material_bin_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/subcontract/pages/subcontract_short_delivery_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/visitor_approval/pages/visitor_approval_list_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/warehouse/pages/warehouse_document_history_detail_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/subcontract/pages/subcontract_report_table_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/warehouse/pages/warehouse_insight_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/visitor_approval/pages/my_visitors_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/warehouse/pages/warehouse_sales_outbound_detail_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/warehouse/pages/stock_doc_list_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/warehouse/pages/warehouse_sales_outbound_batch_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/warehouse/pages/stock_doc_edit_page.dart",
+    "components": [
+      "UtenEditableGrid"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/warehouse/pages/production_finished_batch_stock_in_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/expense/pages/expense_list_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/subcontract/pages/subcontract_order_edit_page.dart",
+    "components": [
+      "UtenEditableGrid"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/warehouse/pages/warehouse_report_table_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/warehouse/pages/production_finished_arrival_registration_page.dart",
+    "components": [
+      "UtenEditableGrid"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/warehouse/pages/stock_doc_detail_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/expense/pages/expense_detail_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/subcontract/pages/subcontract_draw_request_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/warehouse/pages/shelf_label_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/expense/pages/expense_claim_edit_page.dart",
+    "components": [
+      "UtenEditableGrid"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/warehouse/pages/warehouse_quality_results_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/warehouse/pages/warehouse_quality_pre_stock_in_page.dart",
+    "components": [
+      "UtenEditableGrid"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/subcontract/pages/subcontract_doc_edit_page.dart",
+    "components": [
+      "UtenEditableGrid"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/expense/pages/expense_approval_list_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/warehouse/pages/production_material_discovery_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/warehouse/pages/inbound_arrival_registration_page.dart",
+    "components": [
+      "UtenEditableGrid"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/subcontract/pages/subcontract_doc_detail_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/expense/pages/expense_approval_detail_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/basic_data/widgets/goods_cost_production_evidence.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/subcontract/pages/subcontract_decomposition_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/subcontract/pages/subcontract_business_list_pages.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/basic_data/widgets/goods_cost_import_dialog.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/basic_data/widgets/goods_bom_comparison_table.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/basic_data/widgets/goods_cost_editor.dart",
+    "components": [
+      "MasterDataTableView",
+      "UtenEditableGrid",
+      "UtenRevisionTable"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/production/pages/material_analysis_order_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/production/pages/material_analysis_material_table.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/basic_data/widgets/goods_bom_tab.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/basic_data/widgets/goods_cost_actual_panel.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/production/pages/workshop_material_reports_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/production/pages/where_used_report_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/basic_data/widgets/goods_bom_learning_panel.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/production/pages/material_analysis_child_shortage_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/production/pages/production_workshop_tasks_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/basic_data/widgets/goods_bom_material_evidence.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/production/pages/material_analysis_candidates.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/production/pages/production_report_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/production/pages/material_analysis_bucket_detail.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/basic_data/widgets/goods_cost_tab.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/production/pages/production_plan_list_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/production/pages/production_plan_edit_page.dart",
+    "components": [
+      "UtenEditableGrid"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/basic_data/models/supplier_node.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/basic_data/pages/warehouse_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/basic_data/widgets/goods_price_facet_picker.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/basic_data/widgets/goods_price_observation_detail.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/production/pages/production_over_limit_pages.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/basic_data/pages/unit_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/stock/widgets/instant_inventory_overview_content.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/production/pages/production_overproduction_rate_pages.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/basic_data/pages/supplier_category_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/basic_data/widgets/goods_subcontract_supplier_table.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/production/pages/production_material_increment_pages.dart",
+    "components": [
+      "MasterDataTableView",
+      "UtenRevisionTable"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/basic_data/widgets/goods_quote_history_tab.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/basic_data/pages/settlement_method_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/basic_data/widgets/master_data_table_view.dart",
+    "components": [
+      "MasterDataTableView",
+      "UtenEditableGrid",
+      "UtenRevisionTable"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/production/pages/production_material_increment_create.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/basic_data/models/mould_node.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/basic_data/pages/payment_style_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/production/delivery_processing/delivery_processing_tasks_button.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/basic_data/pages/mould_category_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/basic_data/widgets/master_entity_detail_pane.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/basic_data/models/goods_node.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/basic_data/pages/import_review_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/basic_data/pages/goods_price_analysis_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/basic_data/pages/goods_import_preview_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/production/pages/production_material_discovery_request_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/production/pages/production_board_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/production/pages/production_daily_report_edit_page.dart",
+    "components": [
+      "UtenEditableGrid"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/basic_data/pages/currency_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/production/pages/production_analysis_sales_order_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/production/pages/production_material_analysis_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/basic_data/pages/color_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/production/pages/production_chain_health_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/production/pages/production_daily_report_detail_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/stock/pages/instant_inventory_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/production/pages/production_material_analysis_history_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/production/pages/production_execution_batch_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/production/pages/production_draw_request_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/basic_data/pages/account_workspace_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/production/pages/production_daily_report_list_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/basic_data/models/client_node.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/basic_data/pages/account_detail_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/basic_data/widgets/master_server_column_filters.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/basic_data/widgets/mould_picker_field.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/stock/counts/widgets/stock_count_batch_approval_dialog.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/stock/counts/pages/stock_count_review_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/stock/counts/pages/stock_count_session_page.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/basic_data/widgets/warehouse_inventory_panel.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/basic_data/widgets/uten_goods_picker.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  },
+  {
+    "source": "lib/features/basic_data/widgets/uten_master_picker.dart",
+    "components": [
+      "MasterDataTableView"
+    ],
+    "proof": "static component routing inventory; per-page interactive acceptance is not inferred"
+  }
+]

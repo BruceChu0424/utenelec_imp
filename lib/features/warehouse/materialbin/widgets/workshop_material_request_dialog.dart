@@ -272,46 +272,45 @@ class _WorkshopMaterialRequestPanelState
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        if (_isReturn && _materials.isEmpty)
-                          const UtenEmpty(message: '内料仓里现在没有可退的料')
-                        else
-                          UtenEditableGrid<WmIssueLineRow>(
-                            tableKey:
-                                'features.warehouse.materialbin.widgets.workshop_material_request_dialog.WorkshopMaterialRequestPanelState.build.1',
-                            controller: _grid,
-                            columns: wmIssueLineColumns(
-                              l10n: l10n,
-                              grid: _grid,
-                              materials: _materials,
-                              enabled: !_saving,
-                              positionByKey: widget.positionByKey,
-                              showWarehouseAvailable: !_isReturn,
-                              pickMaterial: _isReturn
-                                  ? null
-                                  : () async {
-                                      final material =
-                                          await showWorkshopRequestMaterialPicker(
-                                            context,
-                                            workshopId: widget.workshopId,
-                                          );
-                                      if (mounted && material != null) {
-                                        setState(
-                                          () => _materials = [
-                                            ..._materials.where(
-                                              (existing) =>
-                                                  existing.key != material.key,
-                                            ),
-                                            material,
-                                          ],
+                        UtenEditableGrid<WmIssueLineRow>(
+                          emptyMessage: '内料仓里现在没有可退的料',
+                          tableKey:
+                              'features.warehouse.materialbin.widgets.workshop_material_request_dialog.WorkshopMaterialRequestPanelState.build.1',
+                          controller: _grid,
+                          columns: wmIssueLineColumns(
+                            l10n: l10n,
+                            grid: _grid,
+                            materials: _materials,
+                            enabled: !_saving,
+                            positionByKey: widget.positionByKey,
+                            showWarehouseAvailable: !_isReturn,
+                            pickMaterial: _isReturn
+                                ? null
+                                : () async {
+                                    final material =
+                                        await showWorkshopRequestMaterialPicker(
+                                          context,
+                                          workshopId: widget.workshopId,
                                         );
-                                      }
-                                      return material;
-                                    },
-                            ),
-                            createBlankRow: _newRow,
-                            showColumnSettings: false,
-                            confirmDelete: false,
+                                    if (mounted && material != null) {
+                                      setState(
+                                        () => _materials = [
+                                          ..._materials.where(
+                                            (existing) =>
+                                                existing.key != material.key,
+                                          ),
+                                          material,
+                                        ],
+                                      );
+                                    }
+                                    return material;
+                                  },
                           ),
+                          createBlankRow: _newRow,
+                          showAddRow: !(_isReturn && _materials.isEmpty),
+                          showColumnSettings: false,
+                          confirmDelete: false,
+                        ),
                         const SizedBox(height: UtenSpacing.s12),
                         TextField(
                           key: const Key('wm-request-remark'),

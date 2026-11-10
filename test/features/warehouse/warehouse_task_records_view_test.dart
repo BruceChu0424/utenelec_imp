@@ -2320,9 +2320,8 @@ void main() {
     expect(find.text('货品名称'), findsNothing);
     final status = find.text('状态').hitTestable().first;
     final bill = find.text('单据 / 任务单号').hitTestable().first;
-    final party = find.text('客户 / 供应商 / 委外商').hitTestable().first;
     expect(tester.getTopLeft(status).dx, lessThan(tester.getTopLeft(bill).dx));
-    expect(tester.getTopLeft(bill).dx, lessThan(tester.getTopLeft(party).dx));
+    expect(find.text('客户 / 供应商 / 委外商'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -2440,7 +2439,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('生产工单列只在出库方向出现，列序紧跟来源单据之后', (tester) async {
+  testWidgets('生产领料保留工单入口，隐藏仓库不需要的来源和往来方列', (tester) async {
     final draw = warehouseTestRecord(
       source: 'DRAW',
       record: 'STOCK_DOC',
@@ -2459,13 +2458,20 @@ void main() {
     expect(find.text('生产工单'), findsOneWidget);
     expect(find.text('GD-2601'), findsOneWidget);
     final columns = _table(tester).columns;
-    final sourceIndex = columns.indexWhere(
-      (column) => column.key == 'sourceDocNo',
+    expect(columns.any((column) => column.key == 'sourceDocNo'), isFalse);
+    expect(columns.any((column) => column.key == 'partyName'), isFalse);
+    expect(
+      columns.firstWhere((column) => column.key == 'quantity').emphasized,
+      isTrue,
     );
+    expect(columns.any((column) => column.key == 'stockPlace'), isTrue);
     final orderIndex = columns.indexWhere(
       (column) => column.key == 'productionOrderNo',
     );
-    expect(orderIndex, sourceIndex + 1);
+    expect(
+      orderIndex,
+      columns.indexWhere((column) => column.key == 'quantity') + 1,
+    );
     expect(tester.takeException(), isNull);
   });
 

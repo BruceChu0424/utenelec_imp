@@ -1,3 +1,4 @@
+import '../../../components/inputs/uten_selected_value_theme.dart';
 import 'package:uten_imp/components/feedback/uten_modal_bottom_sheet.dart';
 import '../../../components/inputs/uten_field_hint_icon.dart';
 import 'package:flutter/material.dart';
@@ -514,7 +515,7 @@ class _FinanceAssetPolicySurfaceState
 
   @override
   Widget build(BuildContext context) =>
-      withFormDraft(_buildPolicySurface(context));
+      withFormDraft(_buildPolicySurface(context)).withSelectedValueHighlights();
 
   Widget _buildPolicySurface(BuildContext context) {
     final theme = Theme.of(context);

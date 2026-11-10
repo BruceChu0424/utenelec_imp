@@ -36,6 +36,8 @@ class SalesLinkedItem {
     required this.qty,
     this.qtyText,
     this.price,
+    this.priceText,
+    this.discountText,
     this.orderItemId,
     this.outItemId,
     this.colorId,
@@ -48,6 +50,8 @@ class SalesLinkedItem {
   final double qty;
   final String? qtyText;
   final double? price;
+  final String? priceText;
+  final String? discountText;
   final String? orderItemId;
   final String? outItemId;
   final String? colorId;
@@ -237,8 +241,12 @@ Future<SalesLinkPickResult?> showSalesDocLinkPicker(
           colorId: (it) => it.colorId,
           unitId: (it) => it.unitId,
           price: (it) => it.price,
+          priceText: (it) => it.exactDecimals['price'] ?? it.price?.toString(),
+          discountText: (it) =>
+              it.exactDecimals['discount'] ?? it.discount?.toString(),
           upstreamItemId: (it) => it.id,
           unitRate: (it) => it.unitRate,
+          unitRateText: (it) => it.exactDecimals['unitRate'],
         ),
         docColumns: (names) => _docColumns(names, upstream),
         goodsName: (names, goodsId) => names.goods(goodsId),
@@ -274,6 +282,8 @@ Future<SalesLinkPickResult?> showSalesDocLinkPicker(
             qty: d.qty,
             qtyText: d.qtyText,
             price: d.price,
+            priceText: d.priceText,
+            discountText: d.discountText,
             orderItemId: cfg.linkToOrderItem && upstream == SalesDocType.order
                 ? d.upstreamItemId
                 : null,

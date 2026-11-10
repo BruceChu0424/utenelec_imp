@@ -148,6 +148,17 @@ class MasterReferenceGuardFixedPointTest {
 
     // ---- helpers -------------------------------------------------------------------
 
+    @Test
+    void permanentUsageDeniesDeletionWithoutExposingItsPrivateSource() {
+        UUID goods = UUID.randomUUID();
+        var result = guard(List.<Object[]>of(row(goods, "GOODS_USAGE",
+                "permanent-goods-usage-" + goods, "已保留的业务使用记录", 1)))
+                .goodsBlockers(List.of(goods));
+        String message = MasterReferenceGuard.describe(MasterEntityKind.GOODS, "NEW-1", result.get(goods));
+        assertThat(message).contains("已用于业务或库存记录", "不能删除", "请改用停用");
+        assertThat(result.get(goods).getFirst().references()).isEmpty();
+    }
+
     private static Object[] row(UUID target, String code, String ref, String label, long total) {
         return new Object[]{target, code, ref, label, null, "public", total};
     }

@@ -68,7 +68,12 @@ public final class WarehouseTaskCenterContracts {
     /** Stable physical item identity; repeated goods on one document remain separate lines. */
     public record Line(String key, UUID itemId, Integer lineNo, String goodsCode, String goodsName,
                        String specification, String colorName, String unitName,
-                       BigDecimal quantity, BigDecimal weight) {
+                       BigDecimal quantity, BigDecimal weight, String stockPlace) {
+        public Line(String key, UUID itemId, Integer lineNo, String goodsCode, String goodsName,
+                    String specification, String colorName, String unitName,
+                    BigDecimal quantity, BigDecimal weight) {
+            this(key,itemId,lineNo,goodsCode,goodsName,specification,colorName,unitName,quantity,weight,null);
+        }
         public String getQuantityText() { return quantity == null ? null : quantity.toPlainString(); }
     }
 

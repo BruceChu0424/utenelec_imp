@@ -19,6 +19,7 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/core/network/server_selection.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/components/buttons/uten_back_button.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/core/network/api_client.dart';
@@ -163,6 +164,79 @@ void main() {
     );
   }
   testWidgets(
+    'shipment order prefill retains the exact discount and locked preview through quantity edits',
+    (tester) async {
+      final capture = GlobalKey();
+      await _pumpEditor(
+        tester,
+        capture: capture,
+        type: SalesDocType.shipment,
+        initialOrderId: 'source-order',
+        initialOrderItems: 'source-line:7.5',
+        detail: {
+          ..._prefillOrder,
+          'items': [
+            {
+              'id': 'source-line',
+              'goodsId': 'goods-1',
+              'qty': 1000,
+              'price': 31,
+              'priceExact': '31.0001',
+              'discount': 0.8765,
+              'discountExact': '0.8765',
+              'unitId': 'unit-box',
+              'unitRate': 1,
+            },
+          ],
+        },
+      );
+      final grid = tester.widget<UtenEditableGrid<SalesGridRow>>(
+        find.byType(UtenEditableGrid<SalesGridRow>),
+      );
+      final row = grid.controller.rows.single;
+      expect(row.price.text, '31.0001');
+      expect(row.discount.text, '0.8765');
+      expect(row.amountExactNotifier.value, '203.786907375');
+      expect(row.canEditTotal, isFalse);
+      final column = grid.columns.singleWhere((c) => c.key == 'discount');
+      expect(column.headerInfo, contains('不可在出货单改价'));
+      expect(
+        find.byWidgetPredicate(
+          (w) => w is TextField && w.controller == row.discount && !w.readOnly,
+        ),
+        findsNothing,
+      );
+      row.qty.text = '3';
+      await tester.pump();
+      expect(row.amountExactNotifier.value, '81.51476295');
+      final copy = row.clone();
+      final restored = SalesGridRow.fromDraft(row.exportDraft());
+      for (final retained in [copy, restored]) {
+        expect(retained.discount.text, '0.8765');
+        expect(retained.amountExactNotifier.value, '81.51476295');
+        expect(retained.canEditTotal, isFalse);
+        retained.dispose();
+      }
+      await tester.runAsync(() async {
+        final boundary =
+            capture.currentContext!.findRenderObject()!
+                as RenderRepaintBoundary;
+        final rendered = await boundary.toImage();
+        final png = await rendered.toByteData(format: ui.ImageByteFormat.png);
+        expect(png, isNotNull);
+        if (!kIsWeb) {
+          final file = File(
+            'build/evidence/screenshot-feedback-20261110/shipment-discount.png',
+          );
+          await file.parent.create(recursive: true);
+          await file.writeAsBytes(png!.buffer.asUint8List());
+        }
+        rendered.dispose();
+      });
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
     'selected order products prefill partial shipment and save without warehouse',
     (tester) async {
       final api = await _pumpEditor(
@@ -194,6 +268,49 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  for (final sourceDiscount in [null, 0, 0.8]) {
+    testWidgets(
+      'existing shipment retains legacy original-price semantics for discount $sourceDiscount',
+      (tester) async {
+        await _pumpEditor(
+          tester,
+          type: SalesDocType.shipment,
+          id: 'legacy-shipment',
+          detail: {
+            'id': 'legacy-shipment',
+            'status': 0,
+            'writable': true,
+            'canEdit': true,
+            'billDate': '2026-11-10',
+            'clientId': 'client-1',
+            'warehouseWorkStatus': 'PENDING_PICK',
+            'items': [
+              {
+                'id': 'shipment-line',
+                'orderItemId': 'order-line',
+                'goodsId': 'goods-1',
+                'qty': 2,
+                'price': 10,
+                'discount': ?sourceDiscount,
+              },
+            ],
+          },
+        );
+        final grid = tester.widget<UtenEditableGrid<SalesGridRow>>(
+          find.byType(UtenEditableGrid<SalesGridRow>),
+        );
+        final row = grid.controller.rows.single;
+        expect(row.discount.text, sourceDiscount == 0.8 ? '0.8' : '1');
+        expect(
+          row.amountExactNotifier.value,
+          sourceDiscount == 0.8 ? '16' : '20',
+        );
+        expect(row.canEditTotal, isFalse);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 
   testWidgets(
     'unconfirmed multi-shipment creation retries identical intent and then shows created documents',
@@ -677,7 +794,11 @@ void main() {
       find.byKey(const ValueKey('sales-shipment-order-link-guidance')),
       findsOneWidget,
     );
-    expect(find.textContaining('订货发货必须从订货单引入'), findsOneWidget);
+    final hint = tester.widget<UtenFieldHintIcon>(
+      find.byKey(const ValueKey('sales-shipment-order-link-guidance')),
+    );
+    expect(hint.info, contains('订货发货必须从订货单引入'));
+    expect(find.textContaining('订货发货必须从订货单引入'), findsNothing);
   });
 
   testWidgets(

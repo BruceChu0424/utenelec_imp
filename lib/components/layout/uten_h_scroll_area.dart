@@ -190,6 +190,7 @@ class _UtenHScrollAreaState extends State<UtenHScrollArea> {
         Scrollbar(
           controller: _h,
           thumbVisibility: true,
+          interactive: true,
           child: SingleChildScrollView(
             controller: _h,
             scrollDirection: Axis.horizontal,
@@ -214,6 +215,7 @@ class _UtenHScrollAreaState extends State<UtenHScrollArea> {
                 child: Scrollbar(
                   controller: _pinnedH,
                   thumbVisibility: true,
+                  interactive: true,
                   child: SingleChildScrollView(
                     controller: _pinnedH,
                     scrollDirection: Axis.horizontal,

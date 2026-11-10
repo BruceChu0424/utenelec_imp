@@ -54,6 +54,50 @@ final _liveFinishedScope = StateProvider<AuthenticatedScope?>(
 );
 
 void main() {
+  testWidgets(
+    'selected merged output lot defaults and submits the entire 20000 plus 1000 physical quantity',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1800, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final api = _ArrivalRegistrationApi(
+        warehouseId: 'warehouse-1',
+        placeHint: 'CP-MERGED',
+        splitOutputLot: true,
+      );
+      await _openPage(
+        tester,
+        api: api,
+        canRegister: true,
+        clearSelection: false,
+        lotIds: const [_row1],
+        overrides: [
+          isSuperAdminProvider.overrideWithValue(true),
+          currentPermissionsProvider.overrideWithValue({
+            Perm.stockDocView,
+            Perm.stockDocApprove,
+            Perm.productionFinishedInBeforeInspection,
+          }),
+        ],
+      );
+      await _revealGrid(tester);
+      final quantity = find.byKey(
+        const ValueKey('production-finished-arrival-qty-$_row1'),
+      );
+      expect(
+        tester.widget<TextField>(quantity).controller?.text,
+        '21000',
+        reason:
+            'default uses the physical lot, never the representative 1000 slice',
+      );
+      await _submit(tester, route: InboundRoute.stockInFirst);
+      final lots = (api.postBodies.single['lots'] as List)
+          .cast<Map<String, dynamic>>();
+      expect(lots.single['lotId'], _row1);
+      expect(lots.single['countedQty'], 21000);
+      expect(lots.single.containsKey('sourceReportItemId'), isFalse);
+      expect(tester.takeException(), isNull);
+    },
+  );
   testWidgets('成品到货以行单位单重录入，包装换算不重复乘，提交本批总重', (tester) async {
     await tester.binding.setSurfaceSize(const Size(2000, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -1335,6 +1379,18 @@ List<String> _toasts(WidgetTester tester) => ProviderScope.containerOf(
 ).read(appNotificationProvider).map((notice) => notice.message).toList();
 
 Future<void> _revealGrid(WidgetTester tester) async {
+  // Live engines can finish their last scheduled frame before local draft/name
+  // IO completes. Wait for the actual table, not just frame quiescence.
+  for (var turn = 0; turn < 50 && _grid.evaluate().isEmpty; turn++) {
+    await tester.pump(const Duration(milliseconds: 100));
+  }
+  expect(
+    _grid,
+    findsOneWidget,
+    reason:
+        'arrival table must finish loading; '
+        'current page: ${tester.widgetList<Text>(find.byType(Text)).map((text) => text.data).whereType<String>().join(' | ')}',
+  );
   await tester.scrollUntilVisible(
     _grid,
     320,
@@ -1478,6 +1534,7 @@ Future<void> _openPage(
   bool clearSelection = true,
   bool resetPrefs = true,
   List<Override> overrides = const [],
+  List<String>? lotIds,
 }) async {
   await tester.pumpWidget(const SizedBox.shrink());
   await tester.pumpAndSettle();
@@ -1509,6 +1566,7 @@ Future<void> _openPage(
                     builder: (_) => ProductionFinishedArrivalRegistrationPage(
                       reportIds: const [_reportId],
                       canRegister: canRegister,
+                      lotIds: lotIds,
                     ),
                   ),
                 ),
@@ -1544,6 +1602,7 @@ class _ArrivalRegistrationApi extends ApiClient {
     this.reversible = false,
     this.unitRate,
     this.registeredWeightKg,
+    this.splitOutputLot = false,
   }) : failWarehouses = failWarehouses ?? <String>{},
        super(Dio());
 
@@ -1552,6 +1611,7 @@ class _ArrivalRegistrationApi extends ApiClient {
 
   /// 已登记行登记时的实称重量 (千克)；待登记行恒为空。
   final double? registeredWeightKg;
+  final bool splitOutputLot;
 
   bool registered;
 
@@ -1611,7 +1671,7 @@ class _ArrivalRegistrationApi extends ApiClient {
     }
     // 登记页按来源报工一次拉取(单张 = 1 个来源)。
     if (path == _registrationPath) {
-      expect(query?['reportIds'], _reportId);
+      expectSync(query?['reportIds'], _reportId);
       return [_detailJson()];
     }
     return const [];
@@ -1791,9 +1851,16 @@ class _ArrivalRegistrationApi extends ApiClient {
         {
           'reportItemId': reportItemId,
           'lineNo': lineNo,
-          'qty': 10,
+          'qty': splitOutputLot ? 20000 : 10,
           'kind': 'DEMAND',
         },
+        if (splitOutputLot)
+          {
+            'reportItemId': _row2,
+            'lineNo': lineNo + 1,
+            'qty': 1000,
+            'kind': 'ACTUAL_SURPLUS',
+          },
       ],
       'lineNo': lineNo,
       'planItemId': '70000000-0000-0000-0000-000000000001',
@@ -1807,7 +1874,9 @@ class _ArrivalRegistrationApi extends ApiClient {
       'colorName': '—',
       'unitId': 'b0000000-0000-0000-0000-000000000001',
       'unitName': '只',
-      'reportedQty': 10,
+      'reportedQty': splitOutputLot ? 21000 : 10,
+      if (splitOutputLot) 'demandQty': 20000,
+      if (splitOutputLot) 'actualSurplusQty': 1000,
       'place': _savedPlaces[reportItemId] ?? place,
       'placeHint': placeHint,
       // 货品主档归属仓：只在待登记时作为预填来源带回。

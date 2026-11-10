@@ -698,34 +698,22 @@ class _DeptEmployeePickerSheetState
   }
 
   Widget _buildTable(ThemeData theme) {
-    if (_loading) {
-      return const Center(child: CircularProgressIndicator(strokeWidth: 2.5));
-    }
-    if (_error != null) {
-      return Center(
-        child: Text(
-          _error!,
-          style: TextStyle(color: theme.colorScheme.error),
-          textAlign: TextAlign.center,
-        ),
-      );
-    }
-    if (_items.isEmpty && _headers.searches.isEmpty && _headers.sort == null) {
-      final hasQuery =
-          _keywordCtl.text.trim().isNotEmpty || _selectedDeptId != null;
-      return Center(
-        child: Text(
-          hasQuery ? '无匹配人员' : '请选择左侧部门或输入姓名/工号搜索',
-          style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
-        ),
-      );
-    }
     final requestVersion = _requestVersion;
     return Column(
       children: [
         Expanded(
           child: MasterDataTableView<UtenEmployeePickerItem>(
             key: const ValueKey('department-employee-table'),
+            isLoading: _loading,
+            error: _error,
+            onRetry: () => _loadEmployees(
+              departmentId: _selectedDeptId,
+              keyword: _keywordCtl.text.trim(),
+            ),
+            emptyMessage:
+                _keywordCtl.text.trim().isNotEmpty || _selectedDeptId != null
+                ? '无匹配人员'
+                : '请选择左侧部门或输入姓名/工号搜索',
             virtualized: true,
             columns: [
               MasterColumnDef(

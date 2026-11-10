@@ -1152,34 +1152,21 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer>
   }
 
   Widget _staffList() {
-    if (_staffLoading && _staff.isEmpty) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    if (_staffError != null && _staff.isEmpty) {
-      return UtenEmpty.error(
-        message: _staffError,
-        actionLabel: '重试',
-        onAction: _loadStaff,
-      );
-    }
-    if (_staff.isEmpty &&
-        _staffHeaders.searches.isEmpty &&
-        _staffHeaders.sort == null) {
-      return UtenEmpty(
-        icon: Icons.people_outline_rounded,
-        message: _search.isNotEmpty
-            ? '没有匹配的员工'
-            : _departmentId == null
-            ? '当前可管理范围暂无员工'
-            : '该部门及子部门暂无可管理员工',
-      );
-    }
     final requestVersion = _staffRequest;
     return Column(
       children: [
         Expanded(
           child: MasterDataTableView<PagePermissionStaffSummary>(
             expensiveRowMounts: false,
+            isLoading: _staffLoading,
+            error: _staff.isEmpty ? _staffError : null,
+            refreshError: _staff.isEmpty ? null : _staffError,
+            onRetry: _loadStaff,
+            emptyMessage: _search.isNotEmpty
+                ? '没有匹配的员工'
+                : _departmentId == null
+                ? '当前可管理范围暂无员工'
+                : '该部门及子部门暂无可管理员工',
             key: const ValueKey('page-permission-staff-table'),
             columns: [
               MasterColumnDef(

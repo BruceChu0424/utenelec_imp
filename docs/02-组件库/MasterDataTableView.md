@@ -146,6 +146,7 @@
   2026-09-28 用户口径退役——分类分段条等筛选入口常驻表外，按钮是重复入口）。
   测试：`test/features/basic_data/widgets/master_data_table_view_empty_state_test.dart`、
   `test/master_data_table_view_stable_toolbar_test.dart`。
+- **空表横滚（2026-11-10 截图反馈）**：空结果、加载和错误态仍保留同一列画布；列宽超过可视区时，横向滚动条仍可拖动，并与表头同步。普通表贴行区提示下方；有悬浮动作或联动表使用同一覆盖层，不沉到预留空白底部。提示及其重试按钮固定在可视区内。`UtenEditableGrid` 的零行/筛空状态也保留 `UtenHScrollArea`，0→有行→0 不重建横滚拥有者。`UtenRevisionTable`、`UtenCellRevisionTable` 继承公共读表行为；调用方不得用空数据早退替换表头。历史 2026-10-10“空表不画横滚条”口径由本条替代。回归：`test/master_data_table_view_hscrollbar_test.dart`、`test/components/uten_editable_grid_hscrollbar_test.dart`。
 - **文字框选(2026-10-17 统一口径，准则 §3.4)**：所有表体默认自带局部
   `SelectionArea`(跨格框选 + 复制，页面 region 嵌套时各管各的)；**表头整体
   `SelectionContainer.disabled`**——表头有「按住拖拽隐藏列/拖拽调宽」手势，与拖选隔离，

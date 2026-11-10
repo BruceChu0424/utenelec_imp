@@ -1,3 +1,4 @@
+import '../../../components/inputs/uten_selected_value_theme.dart';
 import '../shared/finance_complete_summary_read.dart';
 import 'finance_summary_scope_field.dart';
 import '../../../shared/paging/read_view_activity.dart';
@@ -1710,7 +1711,7 @@ class _FinanceAssetOpeningGroupSurfaceState
         ],
       ),
     ),
-  );
+  ).withSelectedValueHighlights();
 }
 
 /// Reuses the asset ledger table and native form. Only an explicit click selects

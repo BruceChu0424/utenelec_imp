@@ -393,19 +393,6 @@ class _SupplierSettlementPanelState
       children: [
         Column(
           children: [
-            if (_canCreate)
-              Padding(
-                padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-                child: Align(
-                  alignment: Alignment.centerRight,
-                  child: UtenButton(
-                    key: const ValueKey('supplier-settlement-create'),
-                    icon: Icons.add_rounded,
-                    onPressed: _writing ? null : _create,
-                    child: const Text('生成月结批次'),
-                  ),
-                ),
-              ),
             UtenFilterToolbar<String?>(
               autoSelectBadge: false,
               segmentsKey: const ValueKey('supplier-settlement-status'),
@@ -434,105 +421,140 @@ class _SupplierSettlementPanelState
             ),
             const SizedBox(height: UtenSpacing.s8),
             Expanded(
-              child: MasterDataTableView<SupplierSettlementSummary>(
-                rowsController: _tableRows,
-                expensiveRowMounts: false,
-                tableKey:
-                    'features.finance.payables.widgets.supplier_settlement_panel.SupplierSettlementPanelState.build.1',
-                primary: true,
-                columns: _columns,
-                items: _result?.items ?? const [],
-                facets: const {
-                  'status': [
-                    MasterFacetBucket(value: 'FROZEN', label: '已冻结', count: 0),
-                    MasterFacetBucket(
-                      value: 'SUPPLIER_CONFIRMED',
-                      label: '供应商确认',
-                      count: 0,
-                    ),
-                    MasterFacetBucket(
-                      value: 'INTERNAL_CONFIRMED',
-                      label: '公司确认',
-                      count: 0,
-                    ),
-                    MasterFacetBucket(
-                      value: 'BOTH_CONFIRMED',
-                      label: '双方确认',
-                      count: 0,
-                    ),
-                    MasterFacetBucket(value: 'DISPUTED', label: '争议', count: 0),
-                    MasterFacetBucket(value: 'CLOSED', label: '已关闭', count: 0),
-                    MasterFacetBucket(
-                      value: 'REVERSED',
-                      label: '已反转',
-                      count: 0,
-                    ),
-                  ],
-                },
-                nullCounts: const {},
-                filters: {
-                  'status': _status,
-                  for (final entry in _columnSearch.entries)
-                    'search.${entry.key}': entry.value,
-                },
-                serverColumnSearchKeys: const {
-                  'batchNo',
-                  'supplierName',
-                  'currencyCode',
-                  'periodStart',
-                  'dueDate',
-                  'openingBalanceOriginal',
-                  'periodPostedOriginal',
-                  'periodPaidOriginal',
-                  'periodOffsetOriginal',
-                  'closingBalanceOriginal',
-                  'lineCount',
-                },
-                onFilterChanged: (key, value) {
-                  if (key == 'status') {
-                    setState(() => _status = value);
-                  } else if (key.startsWith('search.')) {
-                    final search = {..._columnSearch};
-                    if (value == null || value.trim().isEmpty) {
-                      search.remove(key.substring(7));
-                    } else {
-                      search[key.substring(7)] = value;
-                    }
-                    setState(() => _columnSearch = search);
-                  } else {
-                    return;
-                  }
-                  _load(1);
-                },
-                sortColumn: _sort,
-                sortAscending: _sortAscending,
-                onSortChange: (column, ascending) {
-                  setState(() {
-                    _sort = column;
-                    _sortAscending = ascending;
-                  });
-                  _load(1);
-                },
-                onRowTap: _open,
-                isLoading: _loading && _result == null,
-                loadingMore: _loading && _result != null,
-                error: _error,
-                onRetry: () => _load(),
-                emptyMessage: '暂无供应商月结批次',
-                currentPage: _result?.page ?? 1,
-                totalPages: _result?.totalPages ?? 1,
-                paginationScope: (
-                  _keyword,
-                  _status,
-                  _columnSearch,
-                  _sort,
-                  _sortAscending,
+              child: Padding(
+                padding: EdgeInsets.only(
+                  bottom: _canCreate
+                      ? UtenFloatingActionGroup.scrollClearance
+                      : 0,
                 ),
-                onPageChange: _navigatePage,
+                child: MasterDataTableView<SupplierSettlementSummary>(
+                  rowsController: _tableRows,
+                  expensiveRowMounts: false,
+                  tableKey:
+                      'features.finance.payables.widgets.supplier_settlement_panel.SupplierSettlementPanelState.build.1',
+                  primary: true,
+                  columns: _columns,
+                  items: _result?.items ?? const [],
+                  facets: const {
+                    'status': [
+                      MasterFacetBucket(
+                        value: 'FROZEN',
+                        label: '已冻结',
+                        count: 0,
+                      ),
+                      MasterFacetBucket(
+                        value: 'SUPPLIER_CONFIRMED',
+                        label: '供应商确认',
+                        count: 0,
+                      ),
+                      MasterFacetBucket(
+                        value: 'INTERNAL_CONFIRMED',
+                        label: '公司确认',
+                        count: 0,
+                      ),
+                      MasterFacetBucket(
+                        value: 'BOTH_CONFIRMED',
+                        label: '双方确认',
+                        count: 0,
+                      ),
+                      MasterFacetBucket(
+                        value: 'DISPUTED',
+                        label: '争议',
+                        count: 0,
+                      ),
+                      MasterFacetBucket(
+                        value: 'CLOSED',
+                        label: '已关闭',
+                        count: 0,
+                      ),
+                      MasterFacetBucket(
+                        value: 'REVERSED',
+                        label: '已反转',
+                        count: 0,
+                      ),
+                    ],
+                  },
+                  nullCounts: const {},
+                  filters: {
+                    'status': _status,
+                    for (final entry in _columnSearch.entries)
+                      'search.${entry.key}': entry.value,
+                  },
+                  serverColumnSearchKeys: const {
+                    'batchNo',
+                    'supplierName',
+                    'currencyCode',
+                    'periodStart',
+                    'dueDate',
+                    'openingBalanceOriginal',
+                    'periodPostedOriginal',
+                    'periodPaidOriginal',
+                    'periodOffsetOriginal',
+                    'closingBalanceOriginal',
+                    'lineCount',
+                  },
+                  onFilterChanged: (key, value) {
+                    if (key == 'status') {
+                      setState(() => _status = value);
+                    } else if (key.startsWith('search.')) {
+                      final search = {..._columnSearch};
+                      if (value == null || value.trim().isEmpty) {
+                        search.remove(key.substring(7));
+                      } else {
+                        search[key.substring(7)] = value;
+                      }
+                      setState(() => _columnSearch = search);
+                    } else {
+                      return;
+                    }
+                    _load(1);
+                  },
+                  sortColumn: _sort,
+                  sortAscending: _sortAscending,
+                  onSortChange: (column, ascending) {
+                    setState(() {
+                      _sort = column;
+                      _sortAscending = ascending;
+                    });
+                    _load(1);
+                  },
+                  onRowTap: _open,
+                  isLoading: _loading && _result == null,
+                  loadingMore: _loading && _result != null,
+                  error: _error,
+                  onRetry: () => _load(),
+                  emptyMessage: '暂无供应商月结批次',
+                  currentPage: _result?.page ?? 1,
+                  totalPages: _result?.totalPages ?? 1,
+                  paginationScope: (
+                    _keyword,
+                    _status,
+                    _columnSearch,
+                    _sort,
+                    _sortAscending,
+                  ),
+                  onPageChange: _navigatePage,
+                ),
               ),
             ),
           ],
         ),
+        if (_canCreate)
+          Positioned(
+            right: UtenSpacing.s16,
+            bottom: UtenSpacing.s16,
+            child: UtenFloatingActionGroup(
+              children: [
+                UtenButton(
+                  key: const ValueKey('supplier-settlement-create'),
+                  size: UtenButtonSize.large,
+                  icon: Icons.add_rounded,
+                  onPressed: _writing ? null : _create,
+                  child: const Text('生成月结批次'),
+                ),
+              ],
+            ),
+          ),
         // 生成月结批次提交期间的全屏居中遮罩（2026-09-25 统一口径）。
         if (_writing)
           const Positioned.fill(child: UtenBusyOverlay(title: '正在生成月结批次，请稍候')),

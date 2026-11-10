@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.uten.imp.features.master.lifecycle.MasterReferenceGuardFixedPointTest
+-------------------------------------------------------------------------------
+Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.487 s -- in com.uten.imp.features.master.lifecycle.MasterReferenceGuardFixedPointTest

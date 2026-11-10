@@ -63,7 +63,7 @@ final class WarehouseWorkshopMaterialTaskProjection {
                        NULL::uuid,NULL::int,NULL::int,requisition.row_version,requisition.id,TRUE,
                        requisition.status='PENDING' AND line.fulfilled_qty=0,ARRAY[goods.code],ARRAY[goods.name],
                        physical.line_key,physical.item_id,line.line_no,goods.code,goods.name,goods.spec,color.name,unit.name,
-                       physical.quantity,NULL::numeric
+                       physical.quantity,NULL::numeric,goods.stock_place
                 """ + from("ISSUE", scope);
     }
 

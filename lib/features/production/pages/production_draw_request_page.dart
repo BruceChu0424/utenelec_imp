@@ -757,6 +757,18 @@ class _ProductionDrawRequestPageState
         ),
       ),
       MasterColumnDef(
+        key: 'stockQuantity',
+        label: '仓库库存数量',
+        info: '本行领料仓库中同货品、同颜色的实存量，按库存基本单位显示，包含已预留量；仅供核对，不代表本次可领量。计量待核时不显示为零。',
+        width: 170,
+        type: 'number',
+        sortable: true,
+        exactValueOf: (row) => row.stockQuantityText,
+        value: (row) => row.stockQuantityText == null
+            ? '待核'
+            : formatExactQtyWithUnit(row.stockQuantityText, row.stockUnitName),
+      ),
+      MasterColumnDef(
         key: 'sources',
         label: '任务来源',
         width: 180,

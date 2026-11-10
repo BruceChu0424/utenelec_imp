@@ -350,8 +350,11 @@ public class WarehouseInboundTaskCenterQueryService {
             parameters.addValue("lineKey",lineKey);
         }
         return jdbc.query(WarehouseInboundTaskCenterSql.base(access,scope)+
-                " SELECT CAST(CASE WHEN record_type='WORKSHOP_REQUISITION' THEN line_data->>'itemId'"
-                + " ELSE line_data->>'key' END AS uuid) FROM inbound_rows"+identity,parameters,
+                " SELECT DISTINCT CAST(visible.item_id AS uuid) FROM inbound_rows"
+                + " CROSS JOIN LATERAL jsonb_array_elements_text(CASE WHEN record_type='FINISHED_REGISTER'"
+                + " THEN action_data->'sourceReportItemIds' WHEN record_type='FINISHED_COUNT' THEN action_data->'documentItemIds'"
+                + " ELSE jsonb_build_array(CASE WHEN record_type='WORKSHOP_REQUISITION'"
+                + " THEN line_data->>'itemId' ELSE line_data->>'key' END) END) visible(item_id)"+identity,parameters,
                 (rs,index)->rs.getObject(1,UUID.class));
     }
 

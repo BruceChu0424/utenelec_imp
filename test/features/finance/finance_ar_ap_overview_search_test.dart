@@ -1,3 +1,5 @@
+import 'package:uten_imp/components/inputs/uten_dropdown_geometry.dart';
+import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/shared/paging/paged_read_intent.dart';
 import 'dart:async';
 import 'dart:io';
@@ -252,7 +254,7 @@ void main() {
     expect(restoredDates.to, dates.to);
     expect(
       tester
-          .widget<DropdownButton<String>>(
+          .widget<UtenDropdownField>(
             find.byKey(const ValueKey('finance-ar-ap-display-mode')),
           )
           .value,
@@ -446,6 +448,23 @@ void main() {
         expect(mode.hitTestable(), findsOneWidget);
         await tester.tap(mode);
         await tester.pumpAndSettle();
+        if (const bool.fromEnvironment('UI_CAPTURE')) {
+          await _captureOverview(
+            tester,
+            capture,
+            '${variant.size.width.toInt()}-${variant.scale}-mode-menu',
+          );
+        }
+        await tester.scrollUntilVisible(
+          find.text('只应付≠0'),
+          100,
+          scrollable: find
+              .descendant(
+                of: find.byType(UtenDropdownResizeFrame),
+                matching: find.byType(Scrollable),
+              )
+              .last,
+        );
         await tester.tap(find.text('只应付≠0').last);
         await tester.pumpAndSettle();
         expect(api.reportQueries.last['displayMode'], 'AP_ONLY');
@@ -669,7 +688,9 @@ void main() {
       final api = _OverviewApi();
       await _pumpPage(tester, prefs: prefs, api: api);
       api.holdNextReport();
-      await tester.tap(find.byType(DropdownButton<String>));
+      await tester.tap(
+        find.byKey(const ValueKey('finance-ar-ap-display-mode')),
+      );
       await tester.pumpAndSettle();
       await tester.tap(find.text('只应收≠0').last);
       await tester.pump();

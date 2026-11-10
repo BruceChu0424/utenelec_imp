@@ -118,11 +118,15 @@ class FinanceAuxiliaryPostgresTest {
         proof(world,zero,null,"0","0");
         db.update("INSERT INTO finance_accounting_period_coverage(period,entries_revision,source_kind,source_sha256,verified_by) SELECT period,revision,'ANONYMOUS_TEST',?,? FROM finance_gl_period_versions WHERE period='2026-09'", "b".repeat(64),world.superAdminUserId());
         var report=FinanceAuxiliaryReports.balances(em,access,true,LocalDate.parse("2026-09-01"),LocalDate.parse("2026-09-30"),"112201",null,world.currencyId(),"匿名账套",1,50,FinanceReportColumnOptions.NONE);
-        assertThat(report.columns()).hasSize(14);
-        assertThat(report.columns().stream().map(ReportColumn::label)).containsExactly("科目编码","科目名称","客户编号","客户名称","方向","期初借方余额","期初贷方余额","期初余额金额","本期借方金额","本期贷方金额","期末借方余额","期末贷方余额","方向20","期末余额金额");
+        assertThat(report.columns()).hasSize(15);
+        assertThat(report.columns().stream().map(ReportColumn::label)).containsExactly("科目编码","科目名称","客户编号","客户名称","币别","方向","期初借方余额","期初贷方余额","期初余额金额","本期借方金额","本期贷方金额","期末借方余额","期末贷方余额","方向20","期末余额金额");
         assertThat(report.rows()).hasSize(3);
         var row=report.rows().stream().filter(r->"00017".equals(r.get("partyCode"))).findFirst().orElseThrow();
         assertThat(row.get("accountName")).isEqualTo("原用途科目名称");
+        assertThat(row.get("currencyCode")).isEqualTo(db.queryForObject("SELECT COALESCE(NULLIF(name,''),code) FROM currencies WHERE id=?",String.class,world.currencyId()));
+        var currencyFiltered=FinanceAuxiliaryReports.balances(em,access,true,LocalDate.parse("2026-09-01"),LocalDate.parse("2026-09-30"),"112201",null,null,"匿名账套",1,50,new FinanceReportColumnOptions(Map.of("currencyCode",world.currencyId().toString()),null,null));
+        assertThat(currencyFiltered.rows()).hasSize(3);
+        assertThat(currencyFiltered.facets()).containsKey("currencyCode");
         decimal(row,"openingDebit","100.1234");decimal(row,"debit","20.0001");decimal(row,"credit","7.0000");decimal(row,"closingBalance","113.1235");
         assertThat(row.get("openingDirection")).isEqualTo("借");
         var contra=report.rows().stream().filter(r->"00018".equals(r.get("partyCode"))).findFirst().orElseThrow();

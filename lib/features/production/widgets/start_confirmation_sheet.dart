@@ -715,22 +715,19 @@ class _StartConfirmationSheetState extends ConsumerState<StartConfirmationSheet>
                           _notice(theme),
                           const SizedBox(height: UtenSpacing.s12),
                         ],
-                        if (_rows.isNotEmpty)
-                          UtenEditableGrid<_StartRow>(
-                            tableKey:
-                                'features.production.widgets.start_confirmation_sheet.StartConfirmationSheetState.build.1',
-                            controller: _grid,
-                            columns: _columns(l10n),
-                            showAddRow: false,
-                            showRowDelete: false,
-                            selectable: true,
-                            selectionEnabled: !_busy,
-                            showColumnSettings: false,
-                            showRemoveRowsAction: false,
-                            emptyMessage: '没有要确认的产品',
-                          )
-                        else
-                          const Text('这些工单已经不用确认，可以直接开工。'),
+                        UtenEditableGrid<_StartRow>(
+                          tableKey:
+                              'features.production.widgets.start_confirmation_sheet.StartConfirmationSheetState.build.1',
+                          controller: _grid,
+                          columns: _columns(l10n),
+                          showAddRow: false,
+                          showRowDelete: false,
+                          selectable: true,
+                          selectionEnabled: !_busy,
+                          showColumnSettings: false,
+                          showRemoveRowsAction: false,
+                          emptyMessage: '这些工单已经不用确认，可以直接开工。',
+                        ),
                         if (_submitError != null)
                           Padding(
                             padding: const EdgeInsets.only(

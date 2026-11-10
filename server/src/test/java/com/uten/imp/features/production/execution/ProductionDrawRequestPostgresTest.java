@@ -79,6 +79,9 @@ class ProductionDrawRequestPostgresTest {
                     is_line_side boolean NOT NULL DEFAULT FALSE);
                 CREATE TABLE units(id uuid PRIMARY KEY,name text);
                 CREATE TABLE colors(id uuid PRIMARY KEY,name text,remark text);
+                ALTER TABLE goods ADD COLUMN unit_id uuid;
+                CREATE TABLE stock_balances(warehouse_id uuid,goods_id uuid,color_id uuid,qty numeric);
+                CREATE FUNCTION fn_stock_measurement_usable(uuid,uuid,uuid) RETURNS boolean LANGUAGE sql AS 'SELECT true';
                 CREATE FUNCTION fn_segment_bin_material_state(uuid) RETURNS text LANGUAGE sql AS 'SELECT ''NO_BIN''::text';
                 """);
         jdbc.execute(Files.readString(Path.of("src/main/resources/db/migration/V559__production_workshop_draw_request.sql")));
@@ -98,11 +101,11 @@ class ProductionDrawRequestPostgresTest {
         jdbc.execute("TRUNCATE production_execution_segment_events,production_planning_package_documents,"
                 + "production_planning_package_document_items,production_material_demands,"
                 + "production_material_stock_postings,stock_document_items,stock_documents,production_execution_segments,"
-                + "production_plans,production_planning_packages,departments,goods,warehouses,units,colors");
+                + "production_plans,production_planning_packages,departments,goods,warehouses,units,colors,stock_balances");
         jdbc.update("INSERT INTO production_plans(id,bill_no,status,maker_id) VALUES (?,'PLAN-1',1,?)", PLAN, ACTOR);
         jdbc.update("INSERT INTO production_planning_packages VALUES (?,'CONFIRMED',false)", PACKAGE);
         jdbc.update("INSERT INTO departments VALUES (?,'Assembly')", WORKSHOP);
-        jdbc.update("INSERT INTO goods VALUES (?,'G-1','Component')", GOODS);
+        jdbc.update("INSERT INTO goods(id,code,name,unit_id) VALUES (?,'G-1','Component',?)", GOODS,UNIT);
         jdbc.update("INSERT INTO units VALUES (?,'piece')", UNIT);
         jdbc.update("INSERT INTO warehouses VALUES (?,'Plastic'),(?,'Metal')", WH_A, WH_B);
         jdbc.update("""
@@ -152,6 +155,24 @@ class ProductionDrawRequestPostgresTest {
     }
     private boolean requested(UUID document) {
         return Boolean.TRUE.equals(jdbc.queryForObject("SELECT fn_production_draw_requested(?)", Boolean.class, document));
+    }
+
+    @Test void stockReferenceUsesExactWarehouseAndColorAndNeverEntersIntentFingerprint() {
+        var original=preview();
+        jdbc.update("INSERT INTO stock_balances VALUES (?,?,NULL,123456.7890),(?,?,NULL,8),(?,?,?,999)",
+                WH_A,GOODS,WH_B,GOODS,WH_A,GOODS,UUID.randomUUID());
+        var current=preview();
+        assertThat(current.fingerprint()).isEqualTo(original.fingerprint());
+        assertThat(current.summaries()).extracting(Summary::stockQuantity)
+                .containsExactly(new BigDecimal("123456.7890"),new BigDecimal("8"));
+        assertThat(current.summaries()).extracting(Summary::stockUnitName).containsOnly("piece");
+        assertThat(requested(DRAW_A)).isFalse();
+        assertThat(requested(DRAW_B)).isFalse();
+        jdbc.update("UPDATE goods SET unit_id=NULL WHERE id=?",GOODS);
+        assertThat(preview().summaries()).allSatisfy(summary -> {
+            assertThat(summary.stockQuantity()).isNull();
+            assertThat(summary.stockUnitName()).isNull();
+        });
     }
 
     @Test void readinessIsReadOnlyAndSubmitOpensExactActualWarehouses() {

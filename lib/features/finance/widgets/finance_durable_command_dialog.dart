@@ -1,3 +1,4 @@
+import '../../../components/inputs/uten_selected_value_theme.dart';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -901,6 +902,6 @@ class _FinanceDurableCommandDialogState
           ),
         ],
       ),
-    );
+    ).withSelectedValueHighlights();
   }
 }

@@ -14,9 +14,9 @@ import java.util.Map;
 final class WarehouseOutboundTaskCenterSql {
     private WarehouseOutboundTaskCenterSql() {}
 
-    /** Column offsets in the merged page statement: 31 projection columns, page_position, then the aggregates. */
-    static final int PAGE_TOTAL_COLUMN = 32;
-    static final int PAGE_METADATA_COLUMN = 33;
+    /** 32 projection columns, page_position, then the aggregates. */
+    static final int PAGE_TOTAL_COLUMN = 33;
+    static final int PAGE_METADATA_COLUMN = 34;
 
     private static final java.util.Set<String> ACTIVE_STATUSES = java.util.Set.of(
             "SALES_PENDING","SALES_LEGACY","SUBCONTRACT_PENDING","SUBCONTRACT_DRAFT",
@@ -120,7 +120,7 @@ final class WarehouseOutboundTaskCenterSql {
                            maker_id,stock_status,issue_status,revision,request_id,materials_defined,actionable,
                            line_key,item_id,line_no,goods_code,goods_name,specification,color_name,unit_name,quantity,weight,
                            production_orders.production_order_no,
-                           production_orders.production_orders::text
+                           production_orders.production_orders::text,stock_place
                     """.formatted(selectPrefix);
         }
         /**
@@ -238,7 +238,7 @@ final class WarehouseOutboundTaskCenterSql {
                 WITH source_rows(source_type,record_type,id,bill_no,source_doc_no,business_date,
                      party_name,warehouse_name,responsible_name,maker_name,line_count,status,search_text,
                      maker_id,stock_status,issue_status,revision,request_id,materials_defined,actionable,goods_codes,goods_names,
-                     line_key,item_id,line_no,goods_code,goods_name,specification,color_name,unit_name,quantity,weight) AS (
+                     line_key,item_id,line_no,goods_code,goods_name,specification,color_name,unit_name,quantity,weight,stock_place) AS (
                 """ + union + """
                 ), physical_rows AS
                 """;
@@ -298,7 +298,7 @@ final class WarehouseOutboundTaskCenterSql {
                        ARRAY[COALESCE(NULLIF(item.goods_name_snapshot,''),goods.name)],
                        COALESCE(item.id::text,'empty'),item.id,item.line_no,
                        COALESCE(NULLIF(item.goods_code_snapshot,''),goods.code),
-                       COALESCE(NULLIF(item.goods_name_snapshot,''),goods.name),goods.spec,color.name,unit.name,item.qty,item.weight
+                       COALESCE(NULLIF(item.goods_name_snapshot,''),goods.name),goods.spec,color.name,unit.name,item.qty,item.weight,goods.stock_place
                 FROM %1$s s
                 LEFT JOIN %2$s item ON item.shipment_id=s.id AND NOT item.is_deleted
                 LEFT JOIN goods ON goods.id=item.goods_id
@@ -339,7 +339,7 @@ final class WarehouseOutboundTaskCenterSql {
                        ARRAY[COALESCE(NULLIF(item.goods_name_snapshot,''),goods.name)],
                        COALESCE(item.id::text,'empty'),item.id,item.line_no,
                        COALESCE(NULLIF(item.goods_code_snapshot,''),goods.code),
-                       COALESCE(NULLIF(item.goods_name_snapshot,''),goods.name),goods.spec,color.name,unit.name,item.qty,item.weight
+                       COALESCE(NULLIF(item.goods_name_snapshot,''),goods.name),goods.spec,color.name,unit.name,item.qty,item.weight,goods.stock_place
                 FROM %1$s issue
                 LEFT JOIN LATERAL (
                   SELECT COUNT(plan_item.id)::int AS plan_line_count
@@ -399,7 +399,7 @@ final class WarehouseOutboundTaskCenterSql {
                 + "d.maker_id,d.status::int,d.issue_status::int,0::bigint,discovery.request_id,TRUE," + actionable
                 + ",ARRAY[COALESCE(NULLIF(item.goods_code_snapshot,''),goods.code)],ARRAY[COALESCE(NULLIF(item.goods_name_snapshot,''),goods.name)],"
                 + "COALESCE(item.id::text,'empty'),item.id,item.line_no,COALESCE(NULLIF(item.goods_code_snapshot,''),goods.code),"
-                + "COALESCE(NULLIF(item.goods_name_snapshot,''),goods.name),goods.spec,color.name,unit.name,item.qty,item.weight\n"
+                + "COALESCE(NULLIF(item.goods_name_snapshot,''),goods.name),goods.spec,color.name,unit.name,item.qty,item.weight,goods.stock_place\n"
                 + """
                 FROM %1$s d
                 LEFT JOIN %2$s item ON item.doc_id=d.id AND NOT item.is_deleted
@@ -455,7 +455,7 @@ final class WarehouseOutboundTaskCenterSql {
                         AND segment.status IN('WAITING','READY','DISPATCHED')),
                        ARRAY[material.goods_code],ARRAY[material.goods_name],COALESCE(material.line_key,'empty'),
                        material.item_id,material.line_no,material.goods_code,material.goods_name,
-                       material.specification,material.color_name,material.unit_name,material.quantity,NULL::numeric
+                       material.specification,material.color_name,material.unit_name,material.quantity,NULL::numeric,material.stock_place
                 FROM production_material_discovery_requests request
                 JOIN production_execution_segments segment ON segment.id=request.execution_segment_id
                 JOIN %1$s plan ON plan.id=segment.plan_id
@@ -464,7 +464,7 @@ final class WarehouseOutboundTaskCenterSql {
                 LEFT JOIN LATERAL (
                   SELECT line.id::text AS line_key,line.id AS item_id,ROW_NUMBER() OVER(ORDER BY line.id)::int AS line_no,
                          line.warehouse_id,warehouse.name AS warehouse_name,goods.code AS goods_code,goods.name AS goods_name,
-                         goods.spec AS specification,color.name AS color_name,unit.name AS unit_name,line.qty AS quantity
+                         goods.spec AS specification,color.name AS color_name,unit.name AS unit_name,line.qty AS quantity,goods.stock_place
                   FROM production_material_discovery_lines line
                   LEFT JOIN warehouses warehouse ON warehouse.id=line.warehouse_id
                   LEFT JOIN goods ON goods.id=line.goods_id
@@ -479,7 +479,7 @@ final class WarehouseOutboundTaskCenterSql {
                          COALESCE(NULLIF(suggestion.item->>'spec',''),goods.spec),
                          COALESCE(NULLIF(suggestion.item->>'colorName',''),color.name),
                          COALESCE(NULLIF(suggestion.item->>'unitName',''),unit.name),
-                         NULLIF(suggestion.item->>'qty','')::numeric
+                         NULLIF(suggestion.item->>'qty','')::numeric,goods.stock_place
                   FROM jsonb_array_elements(request.requested_materials) WITH ORDINALITY suggestion(item,ordinality)
                   LEFT JOIN goods ON goods.id=NULLIF(suggestion.item->>'goodsId','')::uuid
                   LEFT JOIN colors color ON color.id=NULLIF(suggestion.item->>'colorId','')::uuid

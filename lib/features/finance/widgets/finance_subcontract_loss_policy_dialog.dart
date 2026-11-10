@@ -1,3 +1,4 @@
+import '../../../components/inputs/uten_selected_value_theme.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -678,7 +679,7 @@ class _PolicyEditorState extends ConsumerState<_PolicyEditor>
           title: const Text('允许损耗率'),
           content: const Text('登录身份、权限或服务器已变化，原草稿已保留。'),
         ),
-      );
+      ).withSelectedValueHighlights();
     }
     final editable = _editing && !_busy && !_frozen && _canEdit;
     return withFormDraft(
@@ -866,6 +867,6 @@ class _PolicyEditorState extends ConsumerState<_PolicyEditor>
           ],
         ),
       ),
-    );
+    ).withSelectedValueHighlights();
   }
 }

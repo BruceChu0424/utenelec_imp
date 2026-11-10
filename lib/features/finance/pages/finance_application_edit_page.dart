@@ -1,3 +1,4 @@
+import '../../../components/inputs/uten_selected_value_theme.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
@@ -438,7 +439,9 @@ class _ApplicationEditState extends ConsumerState<FinanceApplicationEditPage>
                       Padding(
                         padding: const EdgeInsets.only(bottom: 12),
                         child: UtenButton(
-                          type: UtenButtonType.secondary,
+                          type: _travel.isEmpty
+                              ? UtenButtonType.secondary
+                              : UtenButtonType.tonal,
                           onPressed: editable
                               ? () => _pick('travel', 'TRAVEL_APPLICATION')
                               : null,
@@ -451,7 +454,9 @@ class _ApplicationEditState extends ConsumerState<FinanceApplicationEditPage>
                       ),
                     if (_expense || _kind == 'PAYROLL_PAYMENT') ...[
                       UtenButton(
-                        type: UtenButtonType.secondary,
+                        type: _source.isEmpty
+                            ? UtenButtonType.secondary
+                            : UtenButtonType.tonal,
                         onPressed: editable
                             ? () => _pick(
                                 'source',
@@ -539,7 +544,9 @@ class _ApplicationEditState extends ConsumerState<FinanceApplicationEditPage>
                       const SizedBox(height: 12),
                       if (_nature.startsWith('SUPPLIER'))
                         UtenButton(
-                          type: UtenButtonType.secondary,
+                          type: _supplier.isEmpty
+                              ? UtenButtonType.secondary
+                              : UtenButtonType.tonal,
                           onPressed: editable
                               ? () => _pick('supplier', 'SUPPLIER')
                               : null,
@@ -569,7 +576,9 @@ class _ApplicationEditState extends ConsumerState<FinanceApplicationEditPage>
                                 textOf: (r) =>
                                     r.source['code']?.toString() ?? '',
                                 cellBuilder: (_, r) => UtenButton(
-                                  type: UtenButtonType.secondary,
+                                  type: r.source.isEmpty
+                                      ? UtenButtonType.secondary
+                                      : UtenButtonType.tonal,
                                   onPressed: editable
                                       ? () => _pick(
                                           'source',
@@ -633,7 +642,7 @@ class _ApplicationEditState extends ConsumerState<FinanceApplicationEditPage>
                 ),
         ),
       ),
-    );
+    ).withSelectedValueHighlights();
   }
 }
 

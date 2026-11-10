@@ -45,12 +45,14 @@ namespace Uten.Legacy.Desktop.Controls
             }
             internal void Report(double? fraction, string message)
             {
-                if (fraction.HasValue && !bar.IsIndeterminate)
+                bar.IsIndeterminate = !fraction.HasValue;
+                if (fraction.HasValue)
                 {
                     var clamped = fraction.Value;
                     if (clamped < 0) clamped = 0; else if (clamped > 1) clamped = 1;
                     bar.Value = clamped * 1000;
                 }
+                else bar.Value = 0;
                 if (message != null)
                 {
                     detail.Text = message;
@@ -95,7 +97,7 @@ namespace Uten.Legacy.Desktop.Controls
             value.Leases++;
             return new UtenBusyDialog(value);
         }
-        /// <summary>汇报计数型进度：done/total 显示百分比与「done / total」详情；total ≤ 0 时只更新详情。</summary>
+        /// <summary>汇报计数型进度并切回确定模式；total ≤ 0 时切回未知总量，不保留旧百分比。</summary>
         public void Report(long done, long total)
         {
             var window = entry == null ? null : entry.Window;
@@ -104,7 +106,7 @@ namespace Uten.Legacy.Desktop.Controls
             var safe = done < 0 ? 0 : (done > total ? total : done);
             window.Report(safe / (double)total, safe + " / " + total);
         }
-        /// <summary>只更新详情行（阶段句/已收字节等），不动进度条；空串收起详情行。</summary>
+        /// <summary>汇报未知总量阶段并撤下旧百分比；空串收起详情行。与 Flutter session.stage 同口径。</summary>
         public void Stage(string message)
         {
             var window = entry == null ? null : entry.Window;

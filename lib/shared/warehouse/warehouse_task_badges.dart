@@ -26,41 +26,63 @@ typedef _WarehouseBadgeSnapshot = ({
   int revision,
 });
 
-final _selectedWarehouseBadgesProvider = FutureProvider.autoDispose
-    .family<_WarehouseBadgeSnapshot, String>((ref, warehouseId) async {
-      final owner = ref.watch(sensitiveReadBoundaryProvider);
-      final revision = ref.watch(readScopeRevisionProvider);
-      retainReadSnapshot(ref);
-      if (ref.watch(authenticatedScopeProvider) == null) {
-        return (summary: BadgeSummary.empty, owner: owner, revision: revision);
-      }
-      final api = ref.watch(apiClientProvider);
-      final json = await AuthenticatedRequestScope.sharedRead(
-        () =>
-            ref.mounted &&
-            ref.read(sensitiveReadBoundaryProvider) == owner &&
-            ref.read(readScopeRevisionProvider) == revision &&
-            identical(ref.read(apiClientProvider), api),
-        () => api.get(
-          ApiEndpoints.workbenchBadges,
-          query: {'scopeWarehouseId': warehouseId},
-        ),
-      );
-      return (
-        summary: BadgeSummary.fromJson(json),
-        owner: owner,
-        revision: revision,
-      );
-    });
+final _selectedWarehouseBadgesProvider = AsyncNotifierProvider.autoDispose
+    .family<_SelectedWarehouseBadges, _WarehouseBadgeSnapshot, String>(
+      _SelectedWarehouseBadges.new,
+    );
+
+class _SelectedWarehouseBadges extends AsyncNotifier<_WarehouseBadgeSnapshot> {
+  _SelectedWarehouseBadges(this.warehouseId);
+
+  final String warehouseId;
+
+  @override
+  Future<_WarehouseBadgeSnapshot> build() async {
+    // The provider owns its last accepted snapshot; no separate badge cache.
+    // Its owner/revision must still match before global stale reconciliation.
+    final previous = state.value;
+    final owner = ref.watch(sensitiveReadBoundaryProvider);
+    final revision = ref.watch(readScopeRevisionProvider);
+    retainReadSnapshot(ref);
+    if (ref.watch(authenticatedScopeProvider) == null) {
+      return (summary: BadgeSummary.empty, owner: owner, revision: revision);
+    }
+    final api = ref.watch(apiClientProvider);
+    final json = await AuthenticatedRequestScope.sharedRead(
+      () =>
+          ref.mounted &&
+          ref.read(sensitiveReadBoundaryProvider) == owner &&
+          ref.read(readScopeRevisionProvider) == revision &&
+          identical(ref.read(apiClientProvider), api),
+      () => api.get(
+        ApiEndpoints.workbenchBadges,
+        query: {'scopeWarehouseId': warehouseId},
+      ),
+    );
+    final fetched = BadgeSummary.fromJson(json);
+    return (
+      summary:
+          previous != null &&
+              previous.owner == owner &&
+              previous.revision == revision
+          ? fetched.keepStaleFrom(previous.summary)
+          : fetched,
+      owner: owner,
+      revision: revision,
+    );
+  }
+}
 
 /// 某个范围下的仓库任务汇总。还没拉到时为空汇总(各数字按「未知」处理)。
 final warehouseScopedBadgesProvider = Provider.autoDispose
     .family<BadgeSummary, WarehouseTaskScope>((ref, scope) {
       final warehouseId = scope.warehouseId;
       if (warehouseId == null) return ref.watch(effectiveBadgeSummaryProvider);
-      final physical = confirmedMyWarehouseScope(
-        ref.watch(myWarehouseScopeProvider),
-      );
+      // Refreshing responsibility is not a new identity. Keep the last same-owner
+      // badge visible while it is rechecked; command gates still require a fully
+      // confirmed scope. A failed/revoked scope immediately withdraws the count.
+      final scopeRead = ref.watch(myWarehouseScopeProvider);
+      final physical = scopeRead.hasError ? null : scopeRead.value;
       if (physical == null || !physical.canSelectForTasks(warehouseId)) {
         return BadgeSummary.empty;
       }

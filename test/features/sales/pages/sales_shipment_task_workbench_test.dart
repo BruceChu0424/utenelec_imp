@@ -219,6 +219,48 @@ void main() {
       (column) => column.key == 'currency',
     );
     expect(currency.value(table.items.single), '美金');
+    final paid = table.columns.singleWhere(
+      (column) => column.key == 'confirmedPaidOriginal',
+    );
+    expect(paid.info, contains('尚未抵扣的订单预收不算已收'));
+    final receipt = SalesDocListItem.fromJson({
+      'id': 'paid-shipment',
+      'receivablePosition': {
+        'state': 'READY',
+        'complete': true,
+        'currencyName': '美金',
+        'cashReceivedOriginal': '100.1234',
+        'prepaymentAppliedOriginal': '20',
+        'confirmedPaidOriginal': '120.1234',
+        'balanceOriginal': '79.8766',
+      },
+    });
+    expect(paid.value(receipt), '120.1234 美金');
+    expect(paid.value(table.items.single), '需核对');
+    expect(
+      paid.value(
+        SalesDocListItem.fromJson({
+          'id': 'pending',
+          'receivablePosition': {'state': 'NOT_POSTED', 'complete': true},
+        }),
+      ),
+      '待出库',
+    );
+    expect(
+      paid.value(
+        SalesDocListItem.fromJson({
+          'id': 'masked',
+          'priceMasked': true,
+          'receivablePosition': {
+            'state': 'READY',
+            'complete': true,
+            'confirmedPaidOriginal': '120.1234',
+            'balanceOriginal': '0',
+          },
+        }),
+      ),
+      '***',
+    );
     expect(table.items.single.shipmentWorkflow.financeReviewPending, isTrue);
     expect(table.selectable, isFalse);
     expect(table.batchActionsBuilder, isNull);

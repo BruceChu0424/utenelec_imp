@@ -22,9 +22,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：`docs/99-项目治理/2026-11-01-财务钱流全分类数据与导出审计.md`；`clients/windows_legacy/progress/evidence/finance-entry-ui-20261103.json`。
+证据：`docs/99-项目治理/2026-11-01-财务钱流全分类数据与导出审计.md`；`clients/windows_legacy/progress/evidence/finance-entry-ui-20261103.json`；`clients/windows_legacy/progress/evidence/screenshot-feedback-20261110.json`。
 
-接续/限制：2026-11-01：财务数据审计修复Flutter账户旧查询金额归属、银行明细/汇总真实取数与导出；后端共享权限/筛选/金额契约已更新，本WPF页面仍未迁移，接入要求见本次审计记录。；2026-11-03 财务录入与公共表格增量：费用/收入项目同源新增及即时回显、备注末列、正常字号汇总、完整查询文本候选、表格工具栏日期及历史门控。来源、权限、精确金额、草稿及未知提交保留；完整调用清单见finance-entry-ui-20261103证据。 本任务WPF同责业务仍未迁移或未完成原DoD，不开放占位写入口，不据Flutter/后端验证提升完成状态。 完整ERP、Win7目标机与正式分发未验收；原状态、负责人、DoD及历史证据保留。。
+接续/限制：2026-11-01：财务数据审计修复Flutter账户旧查询金额归属、银行明细/汇总真实取数与导出；后端共享权限/筛选/金额契约已更新，本WPF页面仍未迁移，接入要求见本次审计记录。；2026-11-03 财务录入与公共表格增量：费用/收入项目同源新增及即时回显、备注末列、正常字号汇总、完整查询文本候选、表格工具栏日期及历史门控。来源、权限、精确金额、草稿及未知提交保留；完整调用清单见finance-entry-ui-20261103证据。 本任务WPF同责业务仍未迁移或未完成原DoD，不开放占位写入口，不据Flutter/后端验证提升完成状态。 完整ERP、Win7目标机与正式分发未验收；原状态、负责人、DoD及历史证据保留。；2026-11-10 E-SCREENSHOT-FEEDBACK-20261110：财务显式选中视觉、附件上置、币别列头与年度筛选合同。完整入口、公共实现、真实运行时与保留差异见docs/99-项目治理/2026-11-10-十四张截图反馈修复.md。任务原status/owner/DoD/依赖/nativeTargets保留；Flutter或服务端通过不等于本项原生业务、Win7目标机或正式交付完成。。
 
 ## W7-BIZ-230
 
@@ -46,9 +46,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：尚未登记，不得推定通过。
+证据：`clients/windows_legacy/progress/evidence/screenshot-feedback-20261110.json`。
 
-接续/限制：尚未迁移；先做动作/合同审计。。
+接续/限制：尚未迁移；先做动作/合同审计。；2026-11-10 E-SCREENSHOT-FEEDBACK-20261110：财务显式选中视觉、附件上置、币别列头与年度筛选合同。完整入口、公共实现、真实运行时与保留差异见docs/99-项目治理/2026-11-10-十四张截图反馈修复.md。任务原status/owner/DoD/依赖/nativeTargets保留；Flutter或服务端通过不等于本项原生业务、Win7目标机或正式交付完成。。
 
 ## W7-BIZ-231
 
@@ -70,9 +70,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：尚未登记，不得推定通过。
+证据：`clients/windows_legacy/progress/evidence/screenshot-feedback-20261110.json`。
 
-接续/限制：尚未迁移；先做动作/合同审计。。
+接续/限制：尚未迁移；先做动作/合同审计。；2026-11-10 E-SCREENSHOT-FEEDBACK-20261110：财务显式选中视觉、附件上置、币别列头与年度筛选合同。完整入口、公共实现、真实运行时与保留差异见docs/99-项目治理/2026-11-10-十四张截图反馈修复.md。任务原status/owner/DoD/依赖/nativeTargets保留；Flutter或服务端通过不等于本项原生业务、Win7目标机或正式交付完成。。
 
 ## W7-BIZ-232
 
@@ -142,9 +142,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：`clients/windows_legacy/progress/evidence/finance-entry-ui-20261103.json`。
+证据：`clients/windows_legacy/progress/evidence/finance-entry-ui-20261103.json`；`clients/windows_legacy/progress/evidence/screenshot-feedback-20261110.json`。
 
-接续/限制：尚未迁移；先做动作/合同审计。；2026-11-03 财务录入与公共表格增量：费用/收入项目同源新增及即时回显、备注末列、正常字号汇总、完整查询文本候选、表格工具栏日期及历史门控。来源、权限、精确金额、草稿及未知提交保留；完整调用清单见finance-entry-ui-20261103证据。 本任务WPF同责业务仍未迁移或未完成原DoD，不开放占位写入口，不据Flutter/后端验证提升完成状态。 完整ERP、Win7目标机与正式分发未验收；原状态、负责人、DoD及历史证据保留。。
+接续/限制：尚未迁移；先做动作/合同审计。；2026-11-03 财务录入与公共表格增量：费用/收入项目同源新增及即时回显、备注末列、正常字号汇总、完整查询文本候选、表格工具栏日期及历史门控。来源、权限、精确金额、草稿及未知提交保留；完整调用清单见finance-entry-ui-20261103证据。 本任务WPF同责业务仍未迁移或未完成原DoD，不开放占位写入口，不据Flutter/后端验证提升完成状态。 完整ERP、Win7目标机与正式分发未验收；原状态、负责人、DoD及历史证据保留。；2026-11-10 E-SCREENSHOT-FEEDBACK-20261110：财务显式选中视觉、附件上置、币别列头与年度筛选合同。完整入口、公共实现、真实运行时与保留差异见docs/99-项目治理/2026-11-10-十四张截图反馈修复.md。任务原status/owner/DoD/依赖/nativeTargets保留；Flutter或服务端通过不等于本项原生业务、Win7目标机或正式交付完成。。
 
 ## W7-BIZ-059
 
@@ -261,9 +261,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：`clients/windows_legacy/progress/evidence/finance-entry-ui-20261103.json`；`clients/windows_legacy/progress/evidence/internal-feedback-20261104.json`。
+证据：`clients/windows_legacy/progress/evidence/finance-entry-ui-20261103.json`；`clients/windows_legacy/progress/evidence/internal-feedback-20261104.json`；`clients/windows_legacy/progress/evidence/screenshot-feedback-20261110.json`。
 
-接续/限制：尚未迁移；先做动作/合同审计。；2026-11-03 财务录入与公共表格增量：费用/收入项目同源新增及即时回显、备注末列、正常字号汇总、完整查询文本候选、表格工具栏日期及历史门控。来源、权限、精确金额、草稿及未知提交保留；完整调用清单见finance-entry-ui-20261103证据。 本任务WPF同责业务仍未迁移或未完成原DoD，不开放占位写入口，不据Flutter/后端验证提升完成状态。 完整ERP、Win7目标机与正式分发未验收；原状态、负责人、DoD及历史证据保留。；2026-11-05 内部测试反馈（E-INTERNAL-FEEDBACK-20261104）：财务单据详情须迁移服务端生成的真实出货来源type/id/no与原应收编号区别、可选订单辅助来源及原币/费用/银行净到账的独立金额；冻结事实及反向历史不可由当前客户累计改写，金融字段继续按原单据/金额权限显示。 WPF本项保持todo，原owner/DoD/依赖/nativeTargets保留，Flutter/后端检查不构成本项或Win7验收。；2026-11-05 真UAT最终合同（E-INTERNAL-FEEDBACK-20261104）：财务单据详情须迁移服务端生成的真实出货来源type/id/no与原应收编号区别、可选订单辅助来源及原币/费用/银行净到账的独立金额；冻结事实及反向历史不可由当前客户累计改写，金融字段继续按原单据/金额权限显示。 真UAT补足：收/付款详情使用已授权DTO有限clientName/supplierName，不因缺主档查看而丢本单名字；保留原4财务金额名，现有状态同排标待审核/已审核/历史金额，紧邻hint说明本收款单结算批次（可多出货）、草稿不计系统流水或出货已收、毛额与银行净到账各自保留。 WPF保持todo；未修改原owner/DoD/依赖/nativeTargets，真实HTTP/Flutter结果不是原生验收。。
+接续/限制：尚未迁移；先做动作/合同审计。；2026-11-03 财务录入与公共表格增量：费用/收入项目同源新增及即时回显、备注末列、正常字号汇总、完整查询文本候选、表格工具栏日期及历史门控。来源、权限、精确金额、草稿及未知提交保留；完整调用清单见finance-entry-ui-20261103证据。 本任务WPF同责业务仍未迁移或未完成原DoD，不开放占位写入口，不据Flutter/后端验证提升完成状态。 完整ERP、Win7目标机与正式分发未验收；原状态、负责人、DoD及历史证据保留。；2026-11-05 内部测试反馈（E-INTERNAL-FEEDBACK-20261104）：财务单据详情须迁移服务端生成的真实出货来源type/id/no与原应收编号区别、可选订单辅助来源及原币/费用/银行净到账的独立金额；冻结事实及反向历史不可由当前客户累计改写，金融字段继续按原单据/金额权限显示。 WPF本项保持todo，原owner/DoD/依赖/nativeTargets保留，Flutter/后端检查不构成本项或Win7验收。；2026-11-05 真UAT最终合同（E-INTERNAL-FEEDBACK-20261104）：财务单据详情须迁移服务端生成的真实出货来源type/id/no与原应收编号区别、可选订单辅助来源及原币/费用/银行净到账的独立金额；冻结事实及反向历史不可由当前客户累计改写，金融字段继续按原单据/金额权限显示。 真UAT补足：收/付款详情使用已授权DTO有限clientName/supplierName，不因缺主档查看而丢本单名字；保留原4财务金额名，现有状态同排标待审核/已审核/历史金额，紧邻hint说明本收款单结算批次（可多出货）、草稿不计系统流水或出货已收、毛额与银行净到账各自保留。 WPF保持todo；未修改原owner/DoD/依赖/nativeTargets，真实HTTP/Flutter结果不是原生验收。；2026-11-10 E-SCREENSHOT-FEEDBACK-20261110：公共空表/横滚及终身使用货品删除合同。完整入口、公共实现、真实运行时与保留差异见docs/99-项目治理/2026-11-10-十四张截图反馈修复.md。任务原status/owner/DoD/依赖/nativeTargets保留；Flutter或服务端通过不等于本项原生业务、Win7目标机或正式交付完成。。
 
 ## W7-BIZ-064
 
@@ -285,9 +285,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：`clients/windows_legacy/progress/evidence/business-auxiliary-references-20261101.json`；`clients/windows_legacy/progress/evidence/finance-batch-entry-20261102.json`；`clients/windows_legacy/progress/evidence/party-master-hidden-20261103.json`；`clients/windows_legacy/progress/contracts/party-master-hidden.json`；`clients/windows_legacy/progress/evidence/finance-entry-ui-20261103.json`；`clients/windows_legacy/progress/evidence/internal-feedback-20261104.json`。
+证据：`clients/windows_legacy/progress/evidence/business-auxiliary-references-20261101.json`；`clients/windows_legacy/progress/evidence/finance-batch-entry-20261102.json`；`clients/windows_legacy/progress/evidence/party-master-hidden-20261103.json`；`clients/windows_legacy/progress/contracts/party-master-hidden.json`；`clients/windows_legacy/progress/evidence/finance-entry-ui-20261103.json`；`clients/windows_legacy/progress/evidence/internal-feedback-20261104.json`；`clients/windows_legacy/progress/evidence/screenshot-feedback-20261110.json`。
 
-接续/限制：尚未迁移；先做动作/合同审计。；2026-11-01 业务辅助选择改用已有业务动作授权的最小引用，人员仅工号、姓名、部门、职位；本次未实施或验收此WPF任务的原生增量，既有状态与DoD保留。见业务辅助引用证据及治理记录。；2026-11-02 钱流五类新建改为逐行往来单位/账户/方式/币种及同条件自动合单；新增 /api/finance/{seg}/batch 原子幂等合同，流水号选填、数量单价金额公共联动。WPF尚未迁移；不开放写入口，不据Flutter/后端结果标记本任务完成。接手须复用 contracts/finance-entry-grouping-v1.json、服务端分组与金额权威、整批回滚、未知提交及附件恢复。源码与验证边界见finance-batch-entry-20261102证据。；2026-11-03 客户/供应商资料删除确认仅设置 is_hidden，主档与新业务选择隐藏；is_deleted/status/UUID、旧单据及既有往来保留。引用提醒按 confirmationRequired 给“去查看/仍然删除”，重提只含确认子集并保留版本；权限/版本失败不得强制。负责人“未分配”用同源 Uten.Error 红色。原生页面及相关业务选择/历史筛选尚未迁移，保持 todo，不开放占位写入口；接入合同见 clients/windows_legacy/progress/contracts/party-master-hidden.json。；2026-11-03 财务录入与公共表格增量：费用/收入项目同源新增及即时回显、备注末列、正常字号汇总、完整查询文本候选、表格工具栏日期及历史门控。来源、权限、精确金额、草稿及未知提交保留；完整调用清单见finance-entry-ui-20261103证据。 本任务WPF同责业务仍未迁移或未完成原DoD，不开放占位写入口，不据Flutter/后端验证提升完成状态。 完整ERP、Win7目标机与正式分发未验收；原状态、负责人、DoD及历史证据保留。；2026-11-05 内部测试反馈（E-INTERNAL-FEEDBACK-20261104）：收款录入须以明确选择的实际出货AR批次为主，新行本次金额留空且必填，普通NULL订单合法、不跨批自动挑款；订单预收（定金/多付）单独引用订单，履约完成可记真实多付，中止/撤销新定金仍拒绝。复用有限来源scope，保留财务交接原绑定、服务端来源快照、草稿/未知提交/同键恢复与200货款-10费用=190净到账；实际审核拒未来银行时间。界面连续一表，800px/手机全宽设置及固定右底操作、附加还欠末列均尚待原生迁移。 来源选择器须固定全宽底栏（摘要左、取消/引用右，手机分行），完整模式名称和审核前还欠不提前扣减提示同步。 WPF本项保持todo，原owner/DoD/依赖/nativeTargets保留，Flutter/后端检查不构成本项或Win7验收。；2026-11-05 真UAT最终合同（E-INTERNAL-FEEDBACK-20261104）：收款录入须以明确选择的实际出货AR批次为主，新行本次金额留空且必填，普通NULL订单合法、不跨批自动挑款；订单预收（定金/多付）单独引用订单，履约完成可记真实多付，中止/撤销新定金仍拒绝。复用有限来源scope，保留财务交接原绑定、服务端来源快照、草稿/未知提交/同键恢复与200货款-10费用=190净到账；实际审核拒未来银行时间。界面连续一表，800px/手机全宽设置及固定右底操作、附加还欠末列均尚待原生迁移。 来源选择器须固定全宽底栏（摘要左、取消/引用右，手机分行），完整模式名称和审核前还欠不提前扣减提示同步。 真UAT补足：原编辑优先本单DTO姓名并随真实party UUID变化失效，草稿保留原标签、不扩大新选；非转账收付款方式仅字典有选项才标必填，费用/收入style沿真实保存必填元数据。 WPF保持todo；未修改原owner/DoD/依赖/nativeTargets，真实HTTP/Flutter结果不是原生验收。。
+接续/限制：尚未迁移；先做动作/合同审计。；2026-11-01 业务辅助选择改用已有业务动作授权的最小引用，人员仅工号、姓名、部门、职位；本次未实施或验收此WPF任务的原生增量，既有状态与DoD保留。见业务辅助引用证据及治理记录。；2026-11-02 钱流五类新建改为逐行往来单位/账户/方式/币种及同条件自动合单；新增 /api/finance/{seg}/batch 原子幂等合同，流水号选填、数量单价金额公共联动。WPF尚未迁移；不开放写入口，不据Flutter/后端结果标记本任务完成。接手须复用 contracts/finance-entry-grouping-v1.json、服务端分组与金额权威、整批回滚、未知提交及附件恢复。源码与验证边界见finance-batch-entry-20261102证据。；2026-11-03 客户/供应商资料删除确认仅设置 is_hidden，主档与新业务选择隐藏；is_deleted/status/UUID、旧单据及既有往来保留。引用提醒按 confirmationRequired 给“去查看/仍然删除”，重提只含确认子集并保留版本；权限/版本失败不得强制。负责人“未分配”用同源 Uten.Error 红色。原生页面及相关业务选择/历史筛选尚未迁移，保持 todo，不开放占位写入口；接入合同见 clients/windows_legacy/progress/contracts/party-master-hidden.json。；2026-11-03 财务录入与公共表格增量：费用/收入项目同源新增及即时回显、备注末列、正常字号汇总、完整查询文本候选、表格工具栏日期及历史门控。来源、权限、精确金额、草稿及未知提交保留；完整调用清单见finance-entry-ui-20261103证据。 本任务WPF同责业务仍未迁移或未完成原DoD，不开放占位写入口，不据Flutter/后端验证提升完成状态。 完整ERP、Win7目标机与正式分发未验收；原状态、负责人、DoD及历史证据保留。；2026-11-05 内部测试反馈（E-INTERNAL-FEEDBACK-20261104）：收款录入须以明确选择的实际出货AR批次为主，新行本次金额留空且必填，普通NULL订单合法、不跨批自动挑款；订单预收（定金/多付）单独引用订单，履约完成可记真实多付，中止/撤销新定金仍拒绝。复用有限来源scope，保留财务交接原绑定、服务端来源快照、草稿/未知提交/同键恢复与200货款-10费用=190净到账；实际审核拒未来银行时间。界面连续一表，800px/手机全宽设置及固定右底操作、附加还欠末列均尚待原生迁移。 来源选择器须固定全宽底栏（摘要左、取消/引用右，手机分行），完整模式名称和审核前还欠不提前扣减提示同步。 WPF本项保持todo，原owner/DoD/依赖/nativeTargets保留，Flutter/后端检查不构成本项或Win7验收。；2026-11-05 真UAT最终合同（E-INTERNAL-FEEDBACK-20261104）：收款录入须以明确选择的实际出货AR批次为主，新行本次金额留空且必填，普通NULL订单合法、不跨批自动挑款；订单预收（定金/多付）单独引用订单，履约完成可记真实多付，中止/撤销新定金仍拒绝。复用有限来源scope，保留财务交接原绑定、服务端来源快照、草稿/未知提交/同键恢复与200货款-10费用=190净到账；实际审核拒未来银行时间。界面连续一表，800px/手机全宽设置及固定右底操作、附加还欠末列均尚待原生迁移。 来源选择器须固定全宽底栏（摘要左、取消/引用右，手机分行），完整模式名称和审核前还欠不提前扣减提示同步。 真UAT补足：原编辑优先本单DTO姓名并随真实party UUID变化失效，草稿保留原标签、不扩大新选；非转账收付款方式仅字典有选项才标必填，费用/收入style沿真实保存必填元数据。 WPF保持todo；未修改原owner/DoD/依赖/nativeTargets，真实HTTP/Flutter结果不是原生验收。；2026-11-10 E-SCREENSHOT-FEEDBACK-20261110：财务显式选中视觉、附件上置、币别列头与年度筛选合同。完整入口、公共实现、真实运行时与保留差异见docs/99-项目治理/2026-11-10-十四张截图反馈修复.md。任务原status/owner/DoD/依赖/nativeTargets保留；Flutter或服务端通过不等于本项原生业务、Win7目标机或正式交付完成。。
 
 ## W7-BIZ-065
 
@@ -477,9 +477,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：`docs/99-项目治理/2026-11-01-财务钱流全分类数据与导出审计.md`；`clients/windows_legacy/progress/evidence/staff-feedback-20261103.json`；`clients/windows_legacy/progress/evidence/party-master-hidden-20261103.json`；`clients/windows_legacy/progress/contracts/party-master-hidden.json`；`clients/windows_legacy/progress/evidence/date-range-entry-20261103.json`；`clients/windows_legacy/progress/evidence/finance-entry-ui-20261103.json`。
+证据：`docs/99-项目治理/2026-11-01-财务钱流全分类数据与导出审计.md`；`clients/windows_legacy/progress/evidence/staff-feedback-20261103.json`；`clients/windows_legacy/progress/evidence/party-master-hidden-20261103.json`；`clients/windows_legacy/progress/contracts/party-master-hidden.json`；`clients/windows_legacy/progress/evidence/date-range-entry-20261103.json`；`clients/windows_legacy/progress/evidence/finance-entry-ui-20261103.json`；`clients/windows_legacy/progress/evidence/screenshot-feedback-20261110.json`。
 
-接续/限制：2026-11-03：客户对账单新增 clientName/客户名称；列表、筛选、排序、打印及导出须同一投影。WPF 报表尚未迁移，保持 todo。；2026-11-03 客户/供应商资料删除确认仅设置 is_hidden，主档与新业务选择隐藏；is_deleted/status/UUID、旧单据及既有往来保留。引用提醒按 confirmationRequired 给“去查看/仍然删除”，重提只含确认子集并保留版本；权限/版本失败不得强制。负责人“未分配”用同源 Uten.Error 红色。原生页面及相关业务选择/历史筛选尚未迁移，保持 todo，不开放占位写入口；接入合同见 clients/windows_legacy/progress/contracts/party-master-hidden.json。；2026-11-03：日期范围UI合同增量：外部单一选择日期入口，卡内最右Uten红圆白X清除，默认中国壁钟最近一个日历月，年月标题直接跳年/月。该业务WPF宿主仍未迁移；后续接入公共UtenDateRangeDialog，并保留本业务日期/时区/开放边界及服务端权威，不开放占位写入口。见 E-DATE-RANGE-ENTRY-20261103。；2026-11-03 财务录入与公共表格增量：费用/收入项目同源新增及即时回显、备注末列、正常字号汇总、完整查询文本候选、表格工具栏日期及历史门控。来源、权限、精确金额、草稿及未知提交保留；完整调用清单见finance-entry-ui-20261103证据。 本任务WPF同责业务仍未迁移或未完成原DoD，不开放占位写入口，不据Flutter/后端验证提升完成状态。 完整ERP、Win7目标机与正式分发未验收；原状态、负责人、DoD及历史证据保留。。
+接续/限制：2026-11-03：客户对账单新增 clientName/客户名称；列表、筛选、排序、打印及导出须同一投影。WPF 报表尚未迁移，保持 todo。；2026-11-03 客户/供应商资料删除确认仅设置 is_hidden，主档与新业务选择隐藏；is_deleted/status/UUID、旧单据及既有往来保留。引用提醒按 confirmationRequired 给“去查看/仍然删除”，重提只含确认子集并保留版本；权限/版本失败不得强制。负责人“未分配”用同源 Uten.Error 红色。原生页面及相关业务选择/历史筛选尚未迁移，保持 todo，不开放占位写入口；接入合同见 clients/windows_legacy/progress/contracts/party-master-hidden.json。；2026-11-03：日期范围UI合同增量：外部单一选择日期入口，卡内最右Uten红圆白X清除，默认中国壁钟最近一个日历月，年月标题直接跳年/月。该业务WPF宿主仍未迁移；后续接入公共UtenDateRangeDialog，并保留本业务日期/时区/开放边界及服务端权威，不开放占位写入口。见 E-DATE-RANGE-ENTRY-20261103。；2026-11-03 财务录入与公共表格增量：费用/收入项目同源新增及即时回显、备注末列、正常字号汇总、完整查询文本候选、表格工具栏日期及历史门控。来源、权限、精确金额、草稿及未知提交保留；完整调用清单见finance-entry-ui-20261103证据。 本任务WPF同责业务仍未迁移或未完成原DoD，不开放占位写入口，不据Flutter/后端验证提升完成状态。 完整ERP、Win7目标机与正式分发未验收；原状态、负责人、DoD及历史证据保留。；2026-11-10 E-SCREENSHOT-FEEDBACK-20261110：财务显式选中视觉、附件上置、币别列头与年度筛选合同。完整入口、公共实现、真实运行时与保留差异见docs/99-项目治理/2026-11-10-十四张截图反馈修复.md。任务原status/owner/DoD/依赖/nativeTargets保留；Flutter或服务端通过不等于本项原生业务、Win7目标机或正式交付完成。。
 
 ## W7-BIZ-073
 
@@ -503,7 +503,7 @@
 
 证据：`clients/windows_legacy/progress/evidence/review-layout-and-refresh-20261101.json`；`clients/windows_legacy/progress/evidence/category-prefetch-sweep-20261103.json`。
 
-接续/限制：尚未迁移；先做动作/合同审计。；2026-11-01 补充：审核页悬浮动作/顶栏刷新、财务小类徽章同源、销售编辑返回认领刷新循环的客户端公共分类合同已修复；本 WPF 页面仍未迁移。详见docs/99-项目治理/2026-11-01-订单复审刷新循环与审核布局补充.md。；2026-11-03 同类任务页面预加载扩查：前端同口径徽章/有界首屏交接已按当前源码处理；WPF 对应业务仍未迁移，不因 Dart 或公共测试提高状态。后续接入须遵守完整查询、源实例/身份/权限/写修订隔离、全 App 两条物理投机预算及原历史/期间/能力闸门；详见本轮 evidence。。
+接续/限制：尚未迁移；先做动作/合同审计。；2026-11-01 补充：审核页悬浮动作/顶栏刷新、财务小类徽章同源、销售编辑返回认领刷新循环的客户端公共分类合同已修复；本 WPF 页面仍未迁移。详见docs/99-项目治理/2026-11-01-订单复审刷新循环与审核布局补充.md。；2026-11-03 同类任务页面预加载扩查：前端同口径徽章/有界首屏交接已按当前源码处理；WPF 对应业务仍未迁移，不因 Dart 或公共测试提高状态。后续接入须遵守完整查询、源实例/身份/权限/写修订隔离、全 App 两条物理投机预算及原历史/期间/能力闸门；详见本轮 evidence。；2026-11-06 任务徽章与物料准备回归。原生销售订单确认页仍待接入，确认/退回成功按同一浏览权限立即读取准确待办数。本轮未验收本原生业务或 Win7 真机。。
 
 ## W7-BIZ-074
 
@@ -527,7 +527,7 @@
 
 证据：`clients/windows_legacy/progress/evidence/order-bom-delivery-20261104.json`；`clients/windows_legacy/progress/evidence/internal-feedback-20261104.json`。
 
-接续/限制：2026-10-31 负责人订货审核仍未迁移；反审核须先持久化decisionId并按不可变事件身份、下一修订号、员工及原因核对未知结果，不能凭状态猜成功或重放。合同见contracts/sales-manager-review/v1.json。；2026-11-04：订单BOM交付配置、必要加工、组件实物库存及发货合同新增；本WPF入口尚未迁移，保留原状态/DoD/依赖，不开放占位写入。见E-ORDER-BOM-DELIVERY-20261104。；2026-11-05 内部测试反馈（E-INTERNAL-FEEDBACK-20261104）：订单财审须把订单预收与未收计划标为辅助，未发货计划不得当本批应收/红色催收余额；有限订单资金权限与客户全账分开、客户累计到账折叠辅助，保持原审核边界、不可变历史依据及未知非零语义。 WPF本项保持todo，原owner/DoD/依赖/nativeTargets保留，Flutter/后端检查不构成本项或Win7验收。。
+接续/限制：2026-10-31 负责人订货审核仍未迁移；反审核须先持久化decisionId并按不可变事件身份、下一修订号、员工及原因核对未知结果，不能凭状态猜成功或重放。合同见contracts/sales-manager-review/v1.json。；2026-11-04：订单BOM交付配置、必要加工、组件实物库存及发货合同新增；本WPF入口尚未迁移，保留原状态/DoD/依赖，不开放占位写入。见E-ORDER-BOM-DELIVERY-20261104。；2026-11-05 内部测试反馈（E-INTERNAL-FEEDBACK-20261104）：订单财审须把订单预收与未收计划标为辅助，未发货计划不得当本批应收/红色催收余额；有限订单资金权限与客户全账分开、客户累计到账折叠辅助，保持原审核边界、不可变历史依据及未知非零语义。 WPF本项保持todo，原owner/DoD/依赖/nativeTargets保留，Flutter/后端检查不构成本项或Win7验收。；2026-11-06 任务徽章与物料准备回归。原生销售订单审核页仍待接入，审核成功同步子分类、父分类及工作台徽章。本轮未验收本原生业务或 Win7 真机。。
 
 ## W7-BIZ-075
 
@@ -549,9 +549,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：`clients/windows_legacy/progress/evidence/review-layout-and-refresh-20261101.json`；`clients/windows_legacy/progress/evidence/category-prefetch-sweep-20261103.json`。
+证据：`clients/windows_legacy/progress/evidence/review-layout-and-refresh-20261101.json`；`clients/windows_legacy/progress/evidence/category-prefetch-sweep-20261103.json`；`clients/windows_legacy/progress/evidence/screenshot-feedback-20261110.json`。
 
-接续/限制：尚未迁移；先做动作/合同审计。；2026-11-01 补充：审核页悬浮动作/顶栏刷新、财务小类徽章同源、销售编辑返回认领刷新循环的客户端公共分类合同已修复；本 WPF 页面仍未迁移。详见docs/99-项目治理/2026-11-01-订单复审刷新循环与审核布局补充.md。；2026-11-03 同类任务页面预加载扩查：前端同口径徽章/有界首屏交接已按当前源码处理；WPF 对应业务仍未迁移，不因 Dart 或公共测试提高状态。后续接入须遵守完整查询、源实例/身份/权限/写修订隔离、全 App 两条物理投机预算及原历史/期间/能力闸门；详见本轮 evidence。。
+接续/限制：尚未迁移；先做动作/合同审计。；2026-11-01 补充：审核页悬浮动作/顶栏刷新、财务小类徽章同源、销售编辑返回认领刷新循环的客户端公共分类合同已修复；本 WPF 页面仍未迁移。详见docs/99-项目治理/2026-11-01-订单复审刷新循环与审核布局补充.md。；2026-11-03 同类任务页面预加载扩查：前端同口径徽章/有界首屏交接已按当前源码处理；WPF 对应业务仍未迁移，不因 Dart 或公共测试提高状态。后续接入须遵守完整查询、源实例/身份/权限/写修订隔离、全 App 两条物理投机预算及原历史/期间/能力闸门；详见本轮 evidence。；2026-11-10 E-SCREENSHOT-FEEDBACK-20261110：本批已收与来源折扣展示合同。完整入口、公共实现、真实运行时与保留差异见docs/99-项目治理/2026-11-10-十四张截图反馈修复.md。任务原status/owner/DoD/依赖/nativeTargets保留；Flutter或服务端通过不等于本项原生业务、Win7目标机或正式交付完成。。
 
 ## W7-BIZ-076
 
@@ -597,9 +597,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：`docs/99-项目治理/2026-11-01-财务钱流全分类数据与导出审计.md`；`clients/windows_legacy/progress/evidence/party-master-hidden-20261103.json`；`clients/windows_legacy/progress/contracts/party-master-hidden.json`；`clients/windows_legacy/progress/evidence/finance-entry-ui-20261103.json`。
+证据：`docs/99-项目治理/2026-11-01-财务钱流全分类数据与导出审计.md`；`clients/windows_legacy/progress/evidence/party-master-hidden-20261103.json`；`clients/windows_legacy/progress/contracts/party-master-hidden.json`；`clients/windows_legacy/progress/evidence/finance-entry-ui-20261103.json`；`clients/windows_legacy/progress/evidence/screenshot-feedback-20261110.json`。
 
-接续/限制：2026-11-01财务审计续修：客户/供应商流水、明细、年度的月汇总同快照回放与重算并发保护需共享接入；年度退货不单列时为NULL并明确已并入发生额，不能伪报0。本WPF页面仍未迁移。；2026-11-03 客户/供应商资料删除确认仅设置 is_hidden，主档与新业务选择隐藏；is_deleted/status/UUID、旧单据及既有往来保留。引用提醒按 confirmationRequired 给“去查看/仍然删除”，重提只含确认子集并保留版本；权限/版本失败不得强制。负责人“未分配”用同源 Uten.Error 红色。原生页面及相关业务选择/历史筛选尚未迁移，保持 todo，不开放占位写入口；接入合同见 clients/windows_legacy/progress/contracts/party-master-hidden.json。；2026-11-03 财务录入与公共表格增量：费用/收入项目同源新增及即时回显、备注末列、正常字号汇总、完整查询文本候选、表格工具栏日期及历史门控。来源、权限、精确金额、草稿及未知提交保留；完整调用清单见finance-entry-ui-20261103证据。 本任务WPF同责业务仍未迁移或未完成原DoD，不开放占位写入口，不据Flutter/后端验证提升完成状态。 完整ERP、Win7目标机与正式分发未验收；原状态、负责人、DoD及历史证据保留。。
+接续/限制：2026-11-01财务审计续修：客户/供应商流水、明细、年度的月汇总同快照回放与重算并发保护需共享接入；年度退货不单列时为NULL并明确已并入发生额，不能伪报0。本WPF页面仍未迁移。；2026-11-03 客户/供应商资料删除确认仅设置 is_hidden，主档与新业务选择隐藏；is_deleted/status/UUID、旧单据及既有往来保留。引用提醒按 confirmationRequired 给“去查看/仍然删除”，重提只含确认子集并保留版本；权限/版本失败不得强制。负责人“未分配”用同源 Uten.Error 红色。原生页面及相关业务选择/历史筛选尚未迁移，保持 todo，不开放占位写入口；接入合同见 clients/windows_legacy/progress/contracts/party-master-hidden.json。；2026-11-03 财务录入与公共表格增量：费用/收入项目同源新增及即时回显、备注末列、正常字号汇总、完整查询文本候选、表格工具栏日期及历史门控。来源、权限、精确金额、草稿及未知提交保留；完整调用清单见finance-entry-ui-20261103证据。 本任务WPF同责业务仍未迁移或未完成原DoD，不开放占位写入口，不据Flutter/后端验证提升完成状态。 完整ERP、Win7目标机与正式分发未验收；原状态、负责人、DoD及历史证据保留。；2026-11-10 E-SCREENSHOT-FEEDBACK-20261110：财务显式选中视觉、附件上置、币别列头与年度筛选合同。完整入口、公共实现、真实运行时与保留差异见docs/99-项目治理/2026-11-10-十四张截图反馈修复.md。任务原status/owner/DoD/依赖/nativeTargets保留；Flutter或服务端通过不等于本项原生业务、Win7目标机或正式交付完成。。
 
 ## W7-BIZ-078
 
@@ -621,6 +621,6 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：`clients/windows_legacy/progress/evidence/party-master-hidden-20261103.json`；`clients/windows_legacy/progress/contracts/party-master-hidden.json`；`clients/windows_legacy/progress/evidence/finance-entry-ui-20261103.json`。
+证据：`clients/windows_legacy/progress/evidence/party-master-hidden-20261103.json`；`clients/windows_legacy/progress/contracts/party-master-hidden.json`；`clients/windows_legacy/progress/evidence/finance-entry-ui-20261103.json`；`clients/windows_legacy/progress/evidence/screenshot-feedback-20261110.json`。
 
-接续/限制：尚未迁移；先做动作/合同审计。；2026-11-03 客户/供应商资料删除确认仅设置 is_hidden，主档与新业务选择隐藏；is_deleted/status/UUID、旧单据及既有往来保留。引用提醒按 confirmationRequired 给“去查看/仍然删除”，重提只含确认子集并保留版本；权限/版本失败不得强制。负责人“未分配”用同源 Uten.Error 红色。原生页面及相关业务选择/历史筛选尚未迁移，保持 todo，不开放占位写入口；接入合同见 clients/windows_legacy/progress/contracts/party-master-hidden.json。；2026-11-03 财务录入与公共表格增量：费用/收入项目同源新增及即时回显、备注末列、正常字号汇总、完整查询文本候选、表格工具栏日期及历史门控。来源、权限、精确金额、草稿及未知提交保留；完整调用清单见finance-entry-ui-20261103证据。 本任务WPF同责业务仍未迁移或未完成原DoD，不开放占位写入口，不据Flutter/后端验证提升完成状态。 完整ERP、Win7目标机与正式分发未验收；原状态、负责人、DoD及历史证据保留。。
+接续/限制：尚未迁移；先做动作/合同审计。；2026-11-03 客户/供应商资料删除确认仅设置 is_hidden，主档与新业务选择隐藏；is_deleted/status/UUID、旧单据及既有往来保留。引用提醒按 confirmationRequired 给“去查看/仍然删除”，重提只含确认子集并保留版本；权限/版本失败不得强制。负责人“未分配”用同源 Uten.Error 红色。原生页面及相关业务选择/历史筛选尚未迁移，保持 todo，不开放占位写入口；接入合同见 clients/windows_legacy/progress/contracts/party-master-hidden.json。；2026-11-03 财务录入与公共表格增量：费用/收入项目同源新增及即时回显、备注末列、正常字号汇总、完整查询文本候选、表格工具栏日期及历史门控。来源、权限、精确金额、草稿及未知提交保留；完整调用清单见finance-entry-ui-20261103证据。 本任务WPF同责业务仍未迁移或未完成原DoD，不开放占位写入口，不据Flutter/后端验证提升完成状态。 完整ERP、Win7目标机与正式分发未验收；原状态、负责人、DoD及历史证据保留。；2026-11-10 E-SCREENSHOT-FEEDBACK-20261110：财务显式选中视觉、附件上置、币别列头与年度筛选合同。完整入口、公共实现、真实运行时与保留差异见docs/99-项目治理/2026-11-10-十四张截图反馈修复.md。任务原status/owner/DoD/依赖/nativeTargets保留；Flutter或服务端通过不等于本项原生业务、Win7目标机或正式交付完成。。

@@ -192,7 +192,7 @@
 
 证据：尚未登记，不得推定通过。
 
-接续/限制：尚未迁移；先做动作/合同审计。。
+接续/限制：尚未迁移；先做动作/合同审计。；2026-11-06 生产日报详情列并排展示实称总重量和冻结的货品资料单重。旧单单重未知保留未知。原生业务仍待迁移。。
 
 ## W7-BIZ-102
 
@@ -216,7 +216,7 @@
 
 证据：`clients/windows_legacy/progress/evidence/business-auxiliary-references-20261101.json`；`clients/windows_legacy/progress/evidence/platform-search-20261103.json`；`clients/windows_legacy/progress/evidence/platform-search-integration-20261104.json`。
 
-接续/限制：尚未迁移；先做动作/合同审计。；2026-11-01 业务辅助选择改用已有业务动作授权的最小引用，人员仅工号、姓名、部门、职位；本次未实施或验收此WPF任务的原生增量，既有状态与DoD保留。见业务辅助引用证据及治理记录。；2026-11-04 搜索契约及c8eb95cb1合成双架构读取/草稿fixture证据追加；仅证明当前读取增量，原status、owner、DoD和依赖保留，未声明原生业务迁移、Win7真机或正式交付完成。。
+接续/限制：尚未迁移；先做动作/合同审计。；2026-11-01 业务辅助选择改用已有业务动作授权的最小引用，人员仅工号、姓名、部门、职位；本次未实施或验收此WPF任务的原生增量，既有状态与DoD保留。见业务辅助引用证据及治理记录。；2026-11-04 搜索契约及c8eb95cb1合成双架构读取/草稿fixture证据追加；仅证明当前读取增量，原status、owner、DoD和依赖保留，未声明原生业务迁移、Win7真机或正式交付完成。；2026-11-06 任务徽章与物料准备回归。原生生产日报编辑仍待迁移。Flutter 来源子任务靠左，保留现有报工数量及来源契约。本轮未验收本原生业务或 Win7 真机。；2026-11-06 报工称重补充合同。由授权来源读取货品资料单重，实称总重与确认后的申报数量各自留存，服务端冻结单重与有效换算方式。原生编辑仍待迁移。。
 
 ## W7-BIZ-103
 
@@ -262,9 +262,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：尚未登记，不得推定通过。
+证据：`clients/windows_legacy/progress/evidence/screenshot-feedback-20261110.json`。
 
-接续/限制：尚未迁移；先做动作/合同审计。。
+接续/限制：尚未迁移；先做动作/合同审计。；2026-11-10 E-SCREENSHOT-FEEDBACK-20261110：仓库徽章、库位、物理批次合并、领料库存及品质原子进度合同。完整入口、公共实现、真实运行时与保留差异见docs/99-项目治理/2026-11-10-十四张截图反馈修复.md。任务原status/owner/DoD/依赖/nativeTargets保留；Flutter或服务端通过不等于本项原生业务、Win7目标机或正式交付完成。。
 
 ## W7-BIZ-105
 
@@ -360,7 +360,7 @@
 
 证据：`clients/windows_legacy/progress/evidence/business-auxiliary-references-20261101.json`；`clients/windows_legacy/progress/evidence/storage-claim-role-20261102.json`；`clients/windows_legacy/progress/evidence/staff-feedback-20261103.json`；`clients/windows_legacy/progress/evidence/order-bom-delivery-20261104.json`；`clients/windows_legacy/progress/evidence/internal-feedback-20261104.json`；`clients/windows_legacy/progress/contracts/subcontract-actual-receipt-v2.json`。
 
-接续/限制：尚未迁移；先做动作/合同审计。；2026-11-01 业务辅助选择改用已有业务动作授权的最小引用，人员仅工号、姓名、部门、职位；本次未实施或验收此WPF任务的原生增量，既有状态与DoD保留。见业务辅助引用证据及治理记录。；2026-11-02 仓库调拨保留原预留身份及数量、以不可变流转凭证投影实际锁定仓位；排产供应方式只读，计划接口不能改写货品主档。Web/Flutter 已修改，WPF 本入口仍未迁移、保持 todo，不开放写入。完整生产/委外取料及 Win7 真机验收未完成；见 E-STORAGE-CLAIM-ROLE-20261102。；2026-11-03：物料分析主表、汇总及分桶供应方式只读；服务端拒绝改角色且不回写 goods.source_type，历史已下达事实保留。WPF 尚未迁移，保持 todo。；2026-11-04：订单BOM交付配置、必要加工、组件实物库存及发货合同新增；本WPF入口尚未迁移，保留原状态/DoD/依赖，不开放占位写入。见E-ORDER-BOM-DELIVERY-20261104。；2026-11-05 内部测试反馈（E-INTERNAL-FEEDBACK-20261104）：物料分析须同步来源确认资格routeConfirmable与物理补缺actionable区别，库存覆盖不误标待维护；普通覆盖行仍可在权威办理上下文中显式追加公共备货，已占现货不释放/重复占需求。首建/刷新/人工确认与主表/汇总/下单共用投影，原库存归属、供应方式、权限和未知来源闸门不可放松。 WPF本项保持todo，原owner/DoD/依赖/nativeTargets保留，Flutter/后端检查不构成本项或Win7验收。；2026-11-06 E-SUBCONTRACT-ACTUAL-RECEIPT-V2：损耗为最大供料预算，成品目标不减；1000目标/10%供料1100时实际1000～1100正常。回厂实收由人员填写，基础用料、实际损耗、退料及余料分开，历史v1切片保留；分析与私有补单遵循服务端同源精确合同。Web/Flutter已实施的源与共享样例见subcontract-actual-receipt-v2合同；本原生业务未迁移，原status/owner/依赖/DoD保持，不开放占位写入。Win7目标机及完整ERP未验收。。
+接续/限制：尚未迁移；先做动作/合同审计。；2026-11-01 业务辅助选择改用已有业务动作授权的最小引用，人员仅工号、姓名、部门、职位；本次未实施或验收此WPF任务的原生增量，既有状态与DoD保留。见业务辅助引用证据及治理记录。；2026-11-02 仓库调拨保留原预留身份及数量、以不可变流转凭证投影实际锁定仓位；排产供应方式只读，计划接口不能改写货品主档。Web/Flutter 已修改，WPF 本入口仍未迁移、保持 todo，不开放写入。完整生产/委外取料及 Win7 真机验收未完成；见 E-STORAGE-CLAIM-ROLE-20261102。；2026-11-03：物料分析主表、汇总及分桶供应方式只读；服务端拒绝改角色且不回写 goods.source_type，历史已下达事实保留。WPF 尚未迁移，保持 todo。；2026-11-04：订单BOM交付配置、必要加工、组件实物库存及发货合同新增；本WPF入口尚未迁移，保留原状态/DoD/依赖，不开放占位写入。见E-ORDER-BOM-DELIVERY-20261104。；2026-11-05 内部测试反馈（E-INTERNAL-FEEDBACK-20261104）：物料分析须同步来源确认资格routeConfirmable与物理补缺actionable区别，库存覆盖不误标待维护；普通覆盖行仍可在权威办理上下文中显式追加公共备货，已占现货不释放/重复占需求。首建/刷新/人工确认与主表/汇总/下单共用投影，原库存归属、供应方式、权限和未知来源闸门不可放松。 WPF本项保持todo，原owner/DoD/依赖/nativeTargets保留，Flutter/后端检查不构成本项或Win7验收。；2026-11-06 E-SUBCONTRACT-ACTUAL-RECEIPT-V2：损耗为最大供料预算，成品目标不减；1000目标/10%供料1100时实际1000～1100正常。回厂实收由人员填写，基础用料、实际损耗、退料及余料分开，历史v1切片保留；分析与私有补单遵循服务端同源精确合同。Web/Flutter已实施的源与共享样例见subcontract-actual-receipt-v2合同；本原生业务未迁移，原status/owner/依赖/DoD保持，不开放占位写入。Win7目标机及完整ERP未验收。；2026-11-06 任务徽章与物料准备回归。原生物料分析和补下层物料仍待迁移。依稳定来源 ID 跨阶段读最新回执，沿用本次确认量和公共/私有归属，分桶同源计数。本轮未验收本原生业务或 Win7 真机。；2026-11-07 采购及委外组件追加支持合格入库优先补同一父层，或独立公共备货。原生物料分析及下单入口仍未迁移，保持 todo，原生交付继续复用服务端来源及数量合同。。
 
 ## W7-BIZ-109
 

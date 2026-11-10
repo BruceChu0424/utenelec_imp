@@ -1,3 +1,4 @@
+import 'uten_selected_value_theme.dart';
 // UtenDropdownField - outlined 单选下拉，弹层样式对齐货品资料 MasterDataTableView 的 _FilterCell
 // （surfaceContainerHigh + elevation 8 + 圆角 8 + 选中 primaryContainer + 勾）。
 //
@@ -670,6 +671,7 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
     final theme = Theme.of(context);
     final compact = widget.dense || UtenTableCellInputTheme.contains(context);
     final hasValue = widget.value != null;
+    final selected = hasValue && UtenSelectedValueTheme.contains(context);
     final requiredEmpty =
         widget.enabled &&
         widget.required &&
@@ -694,6 +696,10 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
               UtenInputDecoration(
                 InputDecoration(
                   enabled: widget.enabled,
+                  filled: selected ? true : null,
+                  fillColor: selected
+                      ? theme.colorScheme.primaryContainer
+                      : null,
                   isDense: true,
                   contentPadding: compact
                       ? UtenEditableGridCellSpec.contentPaddingOf(context)
@@ -776,6 +782,9 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
                           ?.copyWith(
                             color: hasValue
                                 ? _selectedForeground ??
+                                      (selected
+                                          ? theme.colorScheme.onPrimaryContainer
+                                          : null) ??
                                       theme.colorScheme.onSurface
                                 : theme.colorScheme.onSurfaceVariant,
                           ),

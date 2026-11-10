@@ -12,6 +12,7 @@ import 'package:uten_imp/core/router/route_access_policy.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/warehouse/models/warehouse_task_center_record.dart';
+import 'package:uten_imp/features/warehouse/pages/production_finished_batch_stock_in_page.dart';
 import 'package:uten_imp/features/warehouse/widgets/warehouse_task_record_actions.dart';
 import 'package:uten_imp/features/warehouse/widgets/warehouse_task_physical_detail_dialog.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
@@ -35,6 +36,7 @@ WarehouseTaskCenterRecord _record({
   String? lotId,
   bool physical = false,
   bool canHandle = true,
+  Map<String, dynamic> extraData = const {},
 }) => WarehouseTaskCenterRecord(
   rowKey:
       'FINISHED:${action == 'FINISHED_ARRIVAL_DETAIL' ? 'REGISTRATION' : 'REPORT'}:$id',
@@ -53,6 +55,7 @@ WarehouseTaskCenterRecord _record({
     if (action == 'FINISHED_ARRIVAL_DETAIL') 'registrationId': id,
     'lotId': ?lotId,
     if (physical) 'sourceReportItemId': 'item-$id',
+    ...extraData,
   },
   line: physical
       ? WarehouseTaskLine(key: 'item-$id', itemId: 'item-$id')
@@ -282,6 +285,44 @@ class _RouterHarness {
 }
 
 void main() {
+  testWidgets(
+    'merged final-count row opens both physical source items under the original document',
+    (tester) async {
+      final harness = _RouterHarness(
+        rows: [
+          _record(
+            action: 'FINISHED_COUNT',
+            physical: true,
+            lotId: 'merged-lot',
+            extraData: {
+              'taskId': 'stock-original',
+              'documentId': 'stock-original',
+              'documentItemIds': ['normal-20000', 'surplus-1000'],
+              'pendingQty': 21000,
+            },
+          ),
+        ],
+        batch: true,
+      );
+      await harness.pump(tester);
+      await tester.tap(find.byKey(const Key('open-record')));
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pump(const Duration(milliseconds: 300));
+      final page = tester.widget<ProductionFinishedBatchStockInPage>(
+        find.byType(ProductionFinishedBatchStockInPage),
+      );
+      expect(
+        page.selectedItemIds,
+        unorderedEquals(['normal-20000', 'surplus-1000']),
+      );
+      expect(page.selectedItemDocuments, {
+        'normal-20000': 'stock-original',
+        'surplus-1000': 'stock-original',
+      });
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
   for (final status in [
     'DRAW_DISCOVERY_PENDING',
     'DRAW_DISCOVERY_CONFIGURED',

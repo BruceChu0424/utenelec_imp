@@ -482,7 +482,8 @@ public class WarehouseOutboundTaskCenterQueryService {
         Row mapped = raw.length < 29 ? row : row.withLine(new Line(String.valueOf(raw[19]), NativeValueConverters.uuid(raw[20]),
                 raw[21] instanceof Number number ? number.intValue() : null,
                 NativeValueConverters.text(raw[22]), NativeValueConverters.text(raw[23]), NativeValueConverters.text(raw[24]),
-                NativeValueConverters.text(raw[25]), NativeValueConverters.text(raw[26]), decimalOrNull(raw[27]), decimalOrNull(raw[28])));
+                NativeValueConverters.text(raw[25]), NativeValueConverters.text(raw[26]), decimalOrNull(raw[27]), decimalOrNull(raw[28]),
+                raw.length > 31 ? NativeValueConverters.text(raw[31]) : null));
         return raw.length > 29 && raw[29] != null ? mapped.withProductionOrderNo(raw[29].toString()) : mapped;
     }
 

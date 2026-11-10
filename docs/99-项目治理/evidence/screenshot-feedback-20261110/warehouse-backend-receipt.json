@@ -1,0 +1,79 @@
+{
+  "baseCommit": "cb6e9ad26",
+  "worktree": "D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110",
+  "latestFinalCountAggregationCompiled": true,
+  "suites": [
+    {
+      "name": "com.uten.imp.businesschain.WorkshopPublicSurplusEndToEndTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 297.769
+    },
+    {
+      "name": "com.uten.imp.features.production.execution.ProductionDrawRequestPostgresTest",
+      "tests": 12,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 132.27
+    },
+    {
+      "name": "com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalRegistrationServiceTest",
+      "tests": 9,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.082
+    },
+    {
+      "name": "com.uten.imp.features.warehouse.taskcenter.WarehouseInboundTaskCenterQueryPostgresTest",
+      "tests": 26,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 119.351
+    },
+    {
+      "name": "com.uten.imp.features.warehouse.taskcenter.WarehouseInboundTaskCenterQueryServiceTest",
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.717
+    },
+    {
+      "name": "com.uten.imp.features.warehouse.taskcenter.WarehouseOutboundTaskCenterQueryServiceTest",
+      "tests": 17,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.203
+    },
+    {
+      "name": "com.uten.imp.features.warehouse.taskcenter.WarehouseOutboundTaskCenterSqlPostgresTest",
+      "tests": 14,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 3.543
+    },
+    {
+      "name": "com.uten.imp.features.warehouse.taskcenter.WarehouseTaskCenterExportServiceTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 1.688
+    },
+    {
+      "name": "com.uten.imp.features.warehouse.taskcenter.WarehouseTaskHeaderQueryTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.004
+    }
+  ]
+}

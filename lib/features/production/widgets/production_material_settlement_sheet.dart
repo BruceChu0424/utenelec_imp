@@ -740,7 +740,7 @@ class _MaterialSettlementSheetState
                       children: [
                         _stats(theme),
                         const SizedBox(height: UtenSpacing.s8),
-                        if (_allCleared || _grid.rows.isEmpty) ...[
+                        if (_allCleared && _grid.rows.isNotEmpty) ...[
                           _notice(theme),
                           const SizedBox(height: UtenSpacing.s12),
                         ],
@@ -794,17 +794,18 @@ class _MaterialSettlementSheetState
                               ),
                             ),
                           const SizedBox(height: UtenSpacing.s4),
-                          UtenEditableGrid<_SettlementGridRow>(
-                            tableKey:
-                                'features.production.widgets.production_material_settlement_sheet.MaterialSettlementSheetState.build.1',
-                            controller: _grid,
-                            columns: _columns(),
-                            createBlankRow: () =>
-                                throw UnsupportedError('材料行只能来自需求台账'),
-                            showAddRow: false,
-                            showRowDelete: false,
-                          ),
                         ],
+                        UtenEditableGrid<_SettlementGridRow>(
+                          tableKey:
+                              'features.production.widgets.production_material_settlement_sheet.MaterialSettlementSheetState.build.1',
+                          controller: _grid,
+                          columns: _columns(),
+                          emptyMessage: '当前没有已领未登记的材料',
+                          createBlankRow: () =>
+                              throw UnsupportedError('材料行只能来自需求台账'),
+                          showAddRow: false,
+                          showRowDelete: false,
+                        ),
                         if (_canRegister) ...[
                           const SizedBox(height: UtenSpacing.s12),
                           TextField(

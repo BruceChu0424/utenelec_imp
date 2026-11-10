@@ -1,3 +1,4 @@
+import '../../../components/inputs/uten_filter_field_theme.dart';
 import 'package:uten_imp/shared/paging/scoped_paged_read.dart'
     show pagedReadAccessDenied;
 import 'package:uten_imp/shared/providers/native_facet_options.dart';
@@ -428,64 +429,69 @@ class _FinanceAccountFlowPageState
 
   Widget _buildFilterPane(ThemeData theme) {
     final names = ref.watch(financeNameServiceProvider);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          UtenFilterToolbar<_FlowView>(
-            compactBreakpoint: UtenBreakpoints.mediumStart,
-            segments: const [
-              UtenFilterSegment(value: _FlowView.statement, label: '帐户进出流水'),
-              UtenFilterSegment(value: _FlowView.bankDetail, label: '银行存取明细'),
-              UtenFilterSegment(value: _FlowView.bankSummary, label: '银行存取汇总'),
-            ],
-            selected: {_view},
-            onSelectionChanged: _changeView,
-            searchHint: _view == _FlowView.statement
-                ? '搜索单号 / 对方'
-                : '搜索单号 / 摘要',
-            initialSearchValue: _keyword,
-            onSearchChanged: (value) {
-              _keyword = value;
-              _persistAndReload();
-            },
-            onSearchSubmitted: (value) {
-              _keyword = value;
-              _persistAndReload();
-            },
-          ),
-          const SizedBox(height: UtenSpacing.s8),
-          Wrap(
-            spacing: UtenSpacing.s12,
-            runSpacing: UtenSpacing.s8,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              SizedBox(
-                width: 240,
-                child: UtenDropdownField(
-                  label: '账户',
-                  value: _accountId,
-                  allowClear: _view != _FlowView.statement,
-                  hintText: _view == _FlowView.statement ? '选择账户' : '全部账户',
-                  searchable: true,
-                  items: [
-                    for (final entry in names.accountEntries.entries)
-                      UtenDropdownItem(value: entry.key, label: entry.value),
-                  ],
-                  onChanged: (value) {
-                    setState(() {
-                      _accountId = value;
-                      _billNoFilter = null;
-                      _columnQuery.clear();
-                    });
-                    _persistAndReload();
-                  },
+    return UtenFilterFieldTheme(
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            UtenFilterToolbar<_FlowView>(
+              compactBreakpoint: UtenBreakpoints.mediumStart,
+              segments: const [
+                UtenFilterSegment(value: _FlowView.statement, label: '帐户进出流水'),
+                UtenFilterSegment(value: _FlowView.bankDetail, label: '银行存取明细'),
+                UtenFilterSegment(
+                  value: _FlowView.bankSummary,
+                  label: '银行存取汇总',
                 ),
-              ),
-            ],
-          ),
-        ],
+              ],
+              selected: {_view},
+              onSelectionChanged: _changeView,
+              searchHint: _view == _FlowView.statement
+                  ? '搜索单号 / 对方'
+                  : '搜索单号 / 摘要',
+              initialSearchValue: _keyword,
+              onSearchChanged: (value) {
+                _keyword = value;
+                _persistAndReload();
+              },
+              onSearchSubmitted: (value) {
+                _keyword = value;
+                _persistAndReload();
+              },
+            ),
+            const SizedBox(height: UtenSpacing.s8),
+            Wrap(
+              spacing: UtenSpacing.s12,
+              runSpacing: UtenSpacing.s8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                SizedBox(
+                  width: 240,
+                  child: UtenDropdownField(
+                    label: '账户',
+                    value: _accountId,
+                    allowClear: _view != _FlowView.statement,
+                    hintText: _view == _FlowView.statement ? '选择账户' : '全部账户',
+                    searchable: true,
+                    items: [
+                      for (final entry in names.accountEntries.entries)
+                        UtenDropdownItem(value: entry.key, label: entry.value),
+                    ],
+                    onChanged: (value) {
+                      setState(() {
+                        _accountId = value;
+                        _billNoFilter = null;
+                        _columnQuery.clear();
+                      });
+                      _persistAndReload();
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

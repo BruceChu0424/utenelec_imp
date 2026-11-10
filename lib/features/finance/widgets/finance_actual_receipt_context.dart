@@ -128,12 +128,12 @@ class _FinanceActualReceiptContextState
                             ),
                         ],
                       ),
-                      if (data?.available == true &&
-                          data!.receipts.isNotEmpty) ...[
+                      if (data != null && data.available) ...[
                         const SizedBox(height: UtenSpacing.s8),
                         SizedBox(
                           height: 320,
                           child: MasterDataTableView<CustomerActualReceipt>(
+                            emptyMessage: '暂无已核对的收款明细',
                             tableKey: 'finance.shipment.actual-receipts',
                             columns: [
                               MasterColumnDef(

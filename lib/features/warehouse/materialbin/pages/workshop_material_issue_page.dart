@@ -1203,21 +1203,9 @@ class _WorkshopMaterialIssuePageState
       );
     }
 
-    if (_direct && _materials.isEmpty && !_loading) {
-      children.add(
-        UtenEmpty(
-          message: '还没有整批领料的料',
-          description: '请先在基础资料里把颗粒等料的发料方式改为"${l10n.wmIssueMethodPeriodic}"。',
-        ),
-      );
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: children,
-      );
-    }
-
     children.add(
       UtenEditableGrid<WmIssueLineRow>(
+        emptyMessage: _direct ? '还没有整批领料的料' : '暂无领料明细',
         tableKey:
             'features.warehouse.materialbin.pages.workshop_material_issue_page.WorkshopMaterialIssuePageState._form.1',
         key: const Key('wm-issue-grid'),

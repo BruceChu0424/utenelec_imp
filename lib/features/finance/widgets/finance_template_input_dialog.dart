@@ -1,3 +1,4 @@
+import '../../../components/inputs/uten_selected_value_theme.dart';
 import 'package:flutter/material.dart';
 import '../shared/finance_template_source_upload.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -820,5 +821,5 @@ class _FinanceTemplateInputSurfaceState
         ],
       ),
     ),
-  );
+  ).withSelectedValueHighlights();
 }

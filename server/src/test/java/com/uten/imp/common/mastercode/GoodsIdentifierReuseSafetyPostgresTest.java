@@ -227,7 +227,9 @@ class GoodsIdentifierReuseSafetyPostgresTest {
             assertTrue(List.of("55000", "42501").contains(auditProtection.getSQLState()),
                     "The append-only guard or current audit privileges must prevent purging");
         }
-        deleteGoods(used);
+        SQLException usedDelete = assertThrows(SQLException.class, () -> deleteGoods(used));
+        assertEquals("23514", usedDelete.getSQLState());
+        assertTrue(usedDelete.getMessage().contains("货品已用于业务或库存记录"));
         String reusedCode = code();
         UUID old = createGoods(reusedCode);
         deleteGoods(old);
@@ -239,6 +241,72 @@ class GoodsIdentifierReuseSafetyPostgresTest {
             assertEquals(1, number(c, "SELECT count(*) FROM goods_code_reuse_releases WHERE old_goods_id=? AND new_goods_id=?", old, next));
             assertEquals(3, number(c, "SELECT count(*) FROM goods_code_lifecycles WHERE goods_id IN (?,?,?)", used, old, next));
             assertNull(reusable(c, usedCode));
+        }
+    }
+
+    @Test
+    void firstBusinessUseThatCommitsBeforeDeleteRetainsTheGoodsIdentity() throws Exception {
+        UUID used = createGoods(code());
+        costingRoot = createGoods(code());
+        try (Connection reference = connection()) {
+            reference.setAutoCommit(false);
+            insertBusinessJson(reference, used);
+            try (RunningQuery deletion = start(c -> update(c,
+                    "UPDATE goods SET is_deleted=true,deleted_at=clock_timestamp() WHERE id=?", used))) {
+                awaitBlocked(deletion);
+                reference.commit();
+                assertEquals("23514", deletion.result().get(10, TimeUnit.SECONDS));
+            }
+        }
+        try (Connection c = connection()) {
+            assertEquals(1, number(c, "SELECT count(*) FROM goods WHERE id=? AND NOT is_deleted", used));
+            assertEquals(1, number(c, "SELECT count(*) FROM goods_code_usage_facts WHERE goods_id=?", used));
+        }
+    }
+
+    @Test
+    void rolledBackFirstUseDoesNotPreventAnOtherwiseUnusedGoodsDelete() throws Exception {
+        UUID unused = createGoods(code());
+        costingRoot = createGoods(code());
+        try (Connection reference = connection()) {
+            reference.setAutoCommit(false);
+            insertBusinessJson(reference, unused);
+            try (RunningQuery deletion = start(c -> update(c,
+                    "UPDATE goods SET is_deleted=true,deleted_at=clock_timestamp() WHERE id=?", unused))) {
+                awaitBlocked(deletion);
+                reference.rollback();
+                assertEquals("OK", deletion.result().get(10, TimeUnit.SECONDS));
+            }
+        }
+        try (Connection c = connection()) {
+            assertEquals(1, number(c, "SELECT count(*) FROM goods WHERE id=? AND is_deleted", unused));
+            assertEquals(0, number(c, "SELECT count(*) FROM goods_code_usage_facts WHERE goods_id=?", unused));
+        }
+    }
+
+    @Test
+    void migrationBackfillsExistingHistoricalReferencesWithoutInventingNonuseProof() throws Exception {
+        UUID old = UUID.randomUUID();
+        try (Connection c = connection()) {
+            c.setAutoCommit(false);
+            update(c, "INSERT INTO goods(id,legacy_id,code,name,code_sequence) VALUES(?,2099000002,?,'legacy historical goods',?)",
+                    old, code(), sequence.incrementAndGet());
+            // Represents a retained source row which predates the permanent
+            // observer. The canonical catalog discovers its real goods FK.
+            update(c, "CREATE TABLE uten_older_goods_reference(id uuid PRIMARY KEY,goods_id uuid REFERENCES goods(id))");
+            update(c, "INSERT INTO uten_older_goods_reference VALUES(?,?)", UUID.randomUUID(), old);
+            assertEquals(0, number(c, "SELECT count(*) FROM goods_code_usage_facts WHERE goods_id=?", old));
+            String migration = java.nio.file.Files.readString(java.nio.file.Path.of(
+                    "src/main/resources/db/migration/V1128__goods_used_identity_delete_guard.sql"));
+            update(c, migration.substring(0, migration.indexOf("CREATE FUNCTION fn_guard_used_goods_soft_delete")));
+            assertEquals(1, number(c, "SELECT count(*) FROM goods_code_usage_facts WHERE goods_id=?", old));
+            assertEquals(0, number(c, "SELECT count(*) FROM goods_code_lifecycles WHERE goods_id=?", old));
+            var point = c.setSavepoint();
+            SQLException denied = assertThrows(SQLException.class, () -> update(c,
+                    "UPDATE goods SET is_deleted=true WHERE id=?", old));
+            assertEquals("23514", denied.getSQLState());
+            c.rollback(point);
+            c.rollback();
         }
     }
 

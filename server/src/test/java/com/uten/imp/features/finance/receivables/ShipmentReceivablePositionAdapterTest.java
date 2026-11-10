@@ -85,5 +85,19 @@ class ShipmentReceivablePositionAdapterTest {
         Object[] value=ready("0","0","1000");value[1]=null;value[8]=null;row(value);
         assertThat(service.read(List.of(shipment)).get(shipment).state()).isEqualTo("UNVERIFIED");
     }
+    @Test void completeReadBatchAcceptsTheSharedBoundAndKeepsMissingFactsUnknown(){
+        List<UUID> ids=java.util.stream.IntStream.range(0,com.uten.imp.common.web.Pageables.MAX_PAGE_SIZE)
+                .mapToObj(ignored->UUID.randomUUID()).toList();
+        when(query.getResultList()).thenReturn(List.of());
+        var positions=service.read(ids);
+        assertThat(positions).hasSize(com.uten.imp.common.web.Pageables.MAX_PAGE_SIZE);
+        assertThat(positions.values()).allSatisfy(value->{
+            assertThat(value.complete()).isFalse();
+            assertThat(value.confirmedPaidOriginal()).isNull();
+        });
+        verify(query).setParameter("ids",ids);
+        List<UUID> tooMany=new ArrayList<>(ids);tooMany.add(UUID.randomUUID());
+        assertThatThrownBy(()->service.read(tooMany)).isInstanceOf(com.uten.imp.common.web.ApiException.class);
+    }
     static BigDecimal n(String value){return new BigDecimal(value);}
 }

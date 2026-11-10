@@ -776,6 +776,7 @@ class _SweepBarState extends State<_SweepBar>
                     alignment: Alignment(-1.0 + 2.0 * t, 0.0),
                     child: FractionallySizedBox(
                       widthFactor: band,
+                      heightFactor: 1,
                       child: ColoredBox(color: widget.color),
                     ),
                   );

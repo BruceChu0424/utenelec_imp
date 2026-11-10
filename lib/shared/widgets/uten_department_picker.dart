@@ -1,3 +1,4 @@
+import '../../components/inputs/uten_selected_value_theme.dart';
 // UtenDepartmentPicker - 统一抽屉式部门选择器（领域组件）
 //
 // 触发形态：只读输入框样式的 field（显示选中完整路径，空框显示「部门」），
@@ -385,6 +386,8 @@ class _UtenDepartmentPickerState extends ConsumerState<UtenDepartmentPicker> {
       }
     }
     final theme = Theme.of(context);
+    final highlighted =
+        _selection.isNotEmpty && UtenSelectedValueTheme.contains(context);
     final String? display = _selection.isEmpty
         ? null
         : _isMulti
@@ -417,6 +420,10 @@ class _UtenDepartmentPickerState extends ConsumerState<UtenDepartmentPicker> {
                         // 紧凑形态（表格格）：选择格统一规格，正文 bodyLarge 与
                         // 同行输入格同字号同行高（2026-10-08 表格输入格统一口径）。
                         InputDecoration(
+                          filled: highlighted ? true : null,
+                          fillColor: highlighted
+                              ? theme.colorScheme.primaryContainer
+                              : null,
                           isDense: true,
                           contentPadding:
                               UtenEditableGridCellSpec.contentPaddingOf(
@@ -458,6 +465,7 @@ class _UtenDepartmentPickerState extends ConsumerState<UtenDepartmentPicker> {
                       )
                     : utenPickerFieldDecoration(
                         context,
+                        selected: _selection.isNotEmpty,
                         labelText: widget.label,
                         hintText: widget.hint,
                         enabled: widget.enabled,
@@ -518,6 +526,7 @@ class _UtenDepartmentPickerState extends ConsumerState<UtenDepartmentPicker> {
 InputDecoration utenPickerFieldDecoration(
   BuildContext context, {
   String? labelText,
+  bool selected = false,
   required String hintText,
   required bool enabled,
   String? errorMessage,
@@ -526,6 +535,12 @@ InputDecoration utenPickerFieldDecoration(
   return UtenInputDecoration(
     InputDecoration(
       labelText: labelText,
+      filled: selected && UtenSelectedValueTheme.contains(context)
+          ? true
+          : null,
+      fillColor: selected && UtenSelectedValueTheme.contains(context)
+          ? Theme.of(context).colorScheme.primaryContainer
+          : null,
       hintText: hintText,
       enabled: enabled,
       error: utenFieldError(errorMessage),

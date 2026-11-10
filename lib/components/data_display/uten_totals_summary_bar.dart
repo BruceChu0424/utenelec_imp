@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'dart:ui' as ui;
 
 import 'package:uten_imp/core/theme/uten_colors.dart';
 import 'package:uten_imp/core/theme/uten_tokens.dart';
@@ -62,11 +64,8 @@ class UtenTotalsSummaryBar extends StatelessWidget {
     if (visible.isEmpty && trailing == null) return const SizedBox.shrink();
     final summary = visible.isEmpty
         ? null
-        : DecoratedBox(
-            decoration: const BoxDecoration(
-              color: UtenColors.errorText,
-              borderRadius: UtenRadius.smAll,
-            ),
+        : _TotalsRunBackground(
+            key: const ValueKey('uten-totals-runs'),
             child: Padding(
               padding: const EdgeInsets.symmetric(
                 horizontal: UtenSpacing.s8,
@@ -74,9 +73,8 @@ class UtenTotalsSummaryBar extends StatelessWidget {
               ),
               child: Wrap(
                 alignment: WrapAlignment.end,
-                crossAxisAlignment: WrapCrossAlignment.center,
                 spacing: UtenSpacing.s16,
-                runSpacing: UtenSpacing.s4,
+                runSpacing: UtenSpacing.s8,
                 children: [
                   for (final entry in visible)
                     _UtenTotalEntryView(entry: entry),
@@ -109,6 +107,78 @@ class UtenTotalsSummaryBar extends StatelessWidget {
   }
 }
 
+/// Paint behind the actual text runs, including lines inside a long amount.
+/// Keeping the original Wrap as the layout owner preserves text scaling,
+/// selection semantics and trailing actions without a second width calculation.
+class _TotalsRunBackground extends SingleChildRenderObjectWidget {
+  const _TotalsRunBackground({super.key, required super.child});
+
+  @override
+  RenderObject createRenderObject(BuildContext context) => _RenderTotalsRuns();
+}
+
+class _RenderTotalsRuns extends RenderProxyBox {
+  List<Rect> _textRuns() {
+    final boxes = <Rect>[];
+    void visit(RenderObject node) {
+      if (node is RenderParagraph) {
+        final transform = node.getTransformTo(this);
+        for (final box in node.getBoxesForSelection(
+          TextSelection(
+            baseOffset: 0,
+            extentOffset: node.text.toPlainText().length,
+          ),
+          boxHeightStyle: ui.BoxHeightStyle.max,
+        )) {
+          final rect = MatrixUtils.transformRect(transform, box.toRect());
+          if (!rect.isEmpty) boxes.add(rect);
+        }
+      } else {
+        node.visitChildren(visit);
+      }
+    }
+
+    child?.visitChildren(visit);
+    boxes.sort((a, b) => a.top.compareTo(b.top));
+    final runs = <Rect>[];
+    for (final box in boxes) {
+      // Different font sizes on one line have slightly different boxes. Group
+      // by their line centres, not transitive vertical overlap: a neighbouring
+      // short entry must not bridge two lines inside another entry.
+      if (runs.isNotEmpty &&
+          (box.center.dy - runs.last.center.dy).abs() <
+              (box.height < runs.last.height ? box.height : runs.last.height) /
+                  4) {
+        runs[runs.length - 1] = runs.last.expandToInclude(box);
+      } else {
+        runs.add(box);
+      }
+    }
+    return runs;
+  }
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    final paint = Paint()..color = UtenColors.errorText;
+    for (final run in _textRuns()) {
+      final bounds = Rect.fromLTRB(
+        run.left - UtenSpacing.s8,
+        run.top - UtenSpacing.s2,
+        run.right + UtenSpacing.s8,
+        run.bottom + UtenSpacing.s2,
+      );
+      context.canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          bounds.shift(offset),
+          const Radius.circular(UtenRadius.sm),
+        ),
+        paint,
+      );
+    }
+    super.paint(context, offset);
+  }
+}
+
 /// Keeps the full value readable with the active text scaler.
 class _UtenTotalEntryView extends StatelessWidget {
   const _UtenTotalEntryView({required this.entry});
@@ -124,6 +194,7 @@ class _UtenTotalEntryView extends StatelessWidget {
     return Wrap(
       alignment: WrapAlignment.end,
       crossAxisAlignment: WrapCrossAlignment.center,
+      runSpacing: UtenSpacing.s8,
       children: [
         Text('${entry.label}: ', style: labelStyle),
         Text(

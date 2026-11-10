@@ -87,6 +87,8 @@ class UtenDocLinkPickedItem {
     this.maxQtyText,
     this.qtyText,
     this.price,
+    this.priceText,
+    this.discountText,
     this.upstreamItemId,
     this.colorId,
     this.unitId,
@@ -102,6 +104,8 @@ class UtenDocLinkPickedItem {
   final String? maxQtyText;
   final String? qtyText;
   final double? price;
+  final String? priceText;
+  final String? discountText;
   final String? upstreamItemId;
   final String? colorId;
   final String? unitId;
@@ -165,6 +169,8 @@ class UtenDocLinkItemFields<I> {
     required this.upstreamItemId,
     this.unitRate,
     this.unitRateText,
+    this.priceText,
+    this.discountText,
   });
 
   final String? Function(I item) goodsId;
@@ -174,6 +180,8 @@ class UtenDocLinkItemFields<I> {
   final String? Function(I item) upstreamItemId;
   final double? Function(I item)? unitRate;
   final String? Function(I item)? unitRateText;
+  final String? Function(I item)? priceText;
+  final String? Function(I item)? discountText;
 }
 
 /// 两步引入面板的领域配置（由采购/销售/委外的引入入口提供）。
@@ -745,6 +753,8 @@ class _UtenDocLinkPickerSheetState<D, I, N>
               : _cfg.remainGiftQtyText?.call(it),
           maxQty: remaining,
           price: _cfg.itemFields.price(it),
+          priceText: _cfg.itemFields.priceText?.call(it),
+          discountText: _cfg.itemFields.discountText?.call(it),
           upstreamItemId: _cfg.itemFields.upstreamItemId(it),
           colorId: _cfg.itemFields.colorId(it),
           unitId: _cfg.itemFields.unitId(it),

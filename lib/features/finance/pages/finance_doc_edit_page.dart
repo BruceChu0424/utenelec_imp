@@ -1,3 +1,4 @@
+import '../../../components/inputs/uten_selected_value_theme.dart';
 import '../../../core/network/api_client.dart';
 import '../shared/finance_document_intent.dart';
 import 'finance_doc_detail_page.dart';
@@ -2326,6 +2327,10 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
         decoration: UtenInputDecoration(
           InputDecoration(
             label: fieldLabel('收款账户', theme, required: true),
+            filled: _accountId != null,
+            fillColor: _accountId == null
+                ? null
+                : theme.colorScheme.primaryContainer,
             suffixIcon: const Icon(Icons.chevron_right_rounded),
           ),
           info: _accountId == null ? '尚未选择收款账户，保存前必须选择' : null,
@@ -2336,7 +2341,10 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
               ? theme.textTheme.bodyLarge?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 )
-              : theme.textTheme.bodyLarge,
+              : theme.textTheme.bodyLarge?.copyWith(
+                  color: theme.colorScheme.onPrimaryContainer,
+                  fontWeight: FontWeight.w600,
+                ),
         ),
       ),
     );
@@ -2750,7 +2758,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
         financeMethods,
         canRegisterCustomerPrepayment,
         canApplyCustomerPrepayment,
-      );
+      ).withSelectedValueHighlights();
     }
     return withFormDraft(
       Scaffold(
@@ -2959,6 +2967,41 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
                                     ),
                                   ),
                                 ),
+                                if (widget.id != null)
+                                  BusinessAttachmentSection(
+                                    ownerType: _attachmentOwnerType,
+                                    ownerId: widget.id!,
+                                    canView: ref
+                                        .watch(currentPermissionsProvider)
+                                        .contains(Perm.attachmentView),
+                                    // 进入编辑页即已确认可写；草稿状态与范围由服务端附件策略再校验。
+                                    canManage: !_saving && !_editFrozen,
+                                    title: '单据和凭证',
+                                    categories: const ['银行回单', '发票', '其他凭证'],
+                                  )
+                                else ...[
+                                  if (_createdDocId != null)
+                                    PendingAttachmentRetryNotice(
+                                      documentLabel: _cfg.label,
+                                      controller: _pendingFiles,
+                                    ),
+                                  BusinessAttachmentSection.draft(
+                                    key: const ValueKey(
+                                      'finance-doc-draft-attachments',
+                                    ),
+                                    controller: _pendingFiles,
+                                    canManage: switch (_cfg.createPerm) {
+                                      final perm? =>
+                                        ref
+                                            .watch(currentPermissionsProvider)
+                                            .contains(perm),
+                                      null => false,
+                                    },
+                                    title: '单据和凭证',
+                                    categories: const ['银行回单', '发票', '其他凭证'],
+                                  ),
+                                ],
+                                const SizedBox(height: UtenSpacing.s12),
                                 if (_isCustomerPrepayment) ...[
                                   _sectionHeading(
                                     theme,
@@ -3191,40 +3234,6 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
                                 const SizedBox(height: UtenSpacing.s12),
                                 _entryDetails(theme),
                                 const SizedBox(height: UtenSpacing.s12),
-                                if (widget.id != null)
-                                  BusinessAttachmentSection(
-                                    ownerType: _attachmentOwnerType,
-                                    ownerId: widget.id!,
-                                    canView: ref
-                                        .watch(currentPermissionsProvider)
-                                        .contains(Perm.attachmentView),
-                                    // 进入编辑页即已确认可写；草稿状态与范围由服务端附件策略再校验。
-                                    canManage: !_saving && !_editFrozen,
-                                    title: '单据和凭证',
-                                    categories: const ['银行回单', '发票', '其他凭证'],
-                                  )
-                                else ...[
-                                  if (_createdDocId != null)
-                                    PendingAttachmentRetryNotice(
-                                      documentLabel: _cfg.label,
-                                      controller: _pendingFiles,
-                                    ),
-                                  BusinessAttachmentSection.draft(
-                                    key: const ValueKey(
-                                      'finance-doc-draft-attachments',
-                                    ),
-                                    controller: _pendingFiles,
-                                    canManage: switch (_cfg.createPerm) {
-                                      final perm? =>
-                                        ref
-                                            .watch(currentPermissionsProvider)
-                                            .contains(perm),
-                                      null => false,
-                                    },
-                                    title: '单据和凭证',
-                                    categories: const ['银行回单', '发票', '其他凭证'],
-                                  ),
-                                ],
                               ],
                             ),
                           ),
@@ -3277,7 +3286,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
                 saving: _saving,
               ),
       ),
-    );
+    ).withSelectedValueHighlights();
   }
 
   /// 费用/收入/转账/分摊单据挂在明细表下方的合计（全站统一合计条口径）：总行数 +

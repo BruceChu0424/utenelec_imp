@@ -453,9 +453,19 @@ Map<String, String> _itemScopeQuery(List<WarehouseTaskCenterRecord> rows) {
     throw const FormatException('所选明细标识已变化，请刷新后重新选择');
   }
   return {
-    'itemIds': (rows.map((row) => row.line!.itemId!).toSet().toList()..sort())
-        .join(','),
+    'itemIds': (rows.expand(_physicalItemIds).toSet().toList()..sort()).join(
+      ',',
+    ),
   };
+}
+
+Iterable<String> _physicalItemIds(WarehouseTaskCenterRecord row) {
+  final members = row.action == 'FINISHED_COUNT'
+      ? row.dataIds('documentItemIds')
+      : const <String>[];
+  return members.isNotEmpty
+      ? members
+      : [if (row.line?.itemId != null) row.line!.itemId!];
 }
 
 Future<void> openWarehouseTaskRecordBatch(
@@ -620,13 +630,12 @@ Future<void> openWarehouseTaskRecordBatch(
           builder: (_) => ProductionFinishedBatchStockInPage(
             targets: targets,
             selectedItemIds: _itemScopeQuery(rows).containsKey('itemIds')
-                ? rows.map((row) => row.line!.itemId!).toList()
+                ? rows.expand(_physicalItemIds).toSet().toList()
                 : null,
             selectedItemDocuments: {
               for (final row in rows)
-                if (row.line?.itemId != null)
-                  row.line!.itemId!:
-                      row.dataId('documentId') ?? row.targetId ?? row.id,
+                for (final itemId in _physicalItemIds(row))
+                  itemId: row.dataId('documentId') ?? row.targetId ?? row.id,
             },
           ),
         ),

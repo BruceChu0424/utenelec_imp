@@ -70,6 +70,12 @@ void main() {
       find.byKey(const ValueKey('supplier-settlement-search')),
       findsOneWidget,
     );
+    expect(
+      tester
+          .getCenter(find.byKey(const ValueKey('supplier-settlement-create')))
+          .dy,
+      greaterThan(700),
+    );
     expect(find.text('人民币'), findsOneWidget);
     expect(find.text('001'), findsNothing);
     expect(tester.takeException(), isNull);

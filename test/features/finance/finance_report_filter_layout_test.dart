@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -61,6 +63,38 @@ void main() {
     'ar-ap-ledger': () => const FinanceArApPage(),
     'account-ledger': () => const FinanceReconciliationPage(),
   };
+  testWidgets(
+    'annual year cancel has no read and confirmation hands wait to the report owner',
+    (tester) async {
+      final api = _FilterApi();
+      await _pump(tester, const FinanceStatementPage(), api: api);
+      await tester.tap(find.text('年度对帐'));
+      await tester.pumpAndSettle();
+      final initialReads = api.requests.length;
+      final yearButton = find.byKey(const ValueKey('finance-statement-year'));
+      await tester.tap(yearButton);
+      await tester.pumpAndSettle();
+      expect(find.byType(UtenBusyOverlay), findsNothing);
+      await tester.tap(find.text('取消'));
+      await tester.pumpAndSettle();
+      expect(api.requests.length, initialReads);
+      api.annualHold = Completer<void>();
+      await tester.tap(yearButton);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey<int>(2025)));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.byType(UtenDateRangePickerDialog), findsNothing);
+      expect(find.byType(UtenBusyOverlay), findsOneWidget);
+      expect(api.requests.length, initialReads + 1);
+      expect(api.requests.last.$2['year'], 2025);
+      api.annualHold!.complete();
+      await tester.pumpAndSettle();
+      expect(find.byType(UtenBusyOverlay), findsNothing);
+      expect(find.text('2025'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
   for (final page in pages.entries) {
     testWidgets(
       '${page.key} keeps short search with classifications across viewports',
@@ -310,6 +344,7 @@ Future<void> _capture(WidgetTester tester, GlobalKey key, String name) async {
 class _FilterApi extends ApiClient {
   _FilterApi({this.failFirstReport = false}) : super(Dio());
   final bool failFirstReport;
+  Completer<void>? annualHold;
   final requests = <(String, Map<String, dynamic>)>[];
 
   @override
@@ -319,6 +354,9 @@ class _FilterApi extends ApiClient {
   }) async {
     if (path.contains('/reports/')) {
       requests.add((path, Map.of(query ?? {})));
+      if (path.endsWith('/annual') && annualHold != null) {
+        await annualHold!.future;
+      }
       if (failFirstReport && requests.length == 1) {
         throw NetworkTimeoutException();
       }

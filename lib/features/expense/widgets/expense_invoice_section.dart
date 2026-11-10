@@ -145,10 +145,9 @@ class ExpenseInvoiceSection extends ConsumerWidget {
             claim: claim,
             stickyHeaderPinned: stickyHeaderPinned,
           )
-        else if (invoices.isEmpty)
-          const SizedBox.shrink()
         else
           MasterDataTableView<ExpenseClaimInvoice>(
+            emptyMessage: '暂无发票记录',
             tableKey:
                 'features.expense.widgets.expense_invoice_section.ExpenseInvoiceSection.build.1',
             key: const Key('expense-invoice-table'),

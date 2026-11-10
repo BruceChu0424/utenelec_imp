@@ -3369,9 +3369,8 @@ class _UtenEditableGridState<T extends EditableGridRow>
             SizedBox(height: _headerHeight),
             // 表体保留内容总高；大单据按祖先viewport窗口挂载，横滚条走共用 UtenHScrollArea——
             // 内容不超高 → 末行下方紧贴的自然滚动条；超高 → 钉视口底。
-            // 空态只占可视宽，不进「列宽和」的横滚盒：列总宽超过面板/视口时，
-            // 居中于滚动内容会把空态引导块（含按钮）推出屏幕外（2026-10-10
-            // AR 选择器实测）。
+            // 空态也保留同一横滚画布；提示/按钮固定在可视宽内，拖动横滚条
+            // 仅移动列头，不把空态引导块推出屏幕外。
             FocusTraversalGroup(
               key: _bodyKey,
               policy: WidgetOrderTraversalPolicy(),
@@ -3386,81 +3385,90 @@ class _UtenEditableGridState<T extends EditableGridRow>
                   listenable: widget.controller.rowsListenable,
                   builder: (context, _) {
                     final all = _allRows();
-                    if (all.isEmpty) {
-                      return _EmptyRows(
-                        message: widget.emptyMessage,
-                        child: widget.emptyPlaceholder,
-                      );
-                    }
                     // 表头筛选为视图级过滤：只影响可见行集，不动数据与选中。
                     final rows = _visibleRows();
                     _publishHiddenByFilter(all, rows);
-                    if (rows.isEmpty) {
-                      return const _EmptyRows(message: '没有符合表头筛选条件的行');
-                    }
                     final detailsBuilder = widget.rowDetailsBuilder;
-                    Widget rowList(double canvasWidth, {double? detailsWidth}) {
+                    Widget rowList(
+                      double canvasWidth, {
+                      required double detailsWidth,
+                    }) {
                       return UtenHScrollArea(
                         controller: _bodyH,
                         child: SizedBox(
                           width: canvasWidth,
-                          child: UtenAncestorRowWindow<T>(
-                            deferRowMounts: false,
-                            controller: _rowWindow,
-                            rows: rows,
-                            estimatedRowExtent: _rowExtentEstimate,
-                            onExtentChanged: _onDetailsLayoutChanged,
-                            rowBuilder: (context, row, i) {
-                              final dataRow = _rowCellOrMenuRegion(
-                                row,
-                                i,
-                                divider,
-                                visibleColumnIndices,
-                              );
-                              return UtenSelectionLifecycleScope(
-                                onHasSelectionChanged: (selected) =>
-                                    _rowWindow.retain(row, selected),
-                                child: RepaintBoundary(
-                                  key: ObjectKey(row),
-                                  // 主行与详情共用身份；筛选、删除、插入后展开状态不会串行。
-                                  child: detailsBuilder == null
-                                      ? dataRow
-                                      : Column(
-                                          mainAxisSize: MainAxisSize.min,
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.stretch,
-                                          children: [
-                                            dataRow,
-                                            NotificationListener<
-                                              SizeChangedLayoutNotification
-                                            >(
-                                              onNotification: (_) {
-                                                _onDetailsLayoutChanged();
-                                                return true;
-                                              },
-                                              child: SizeChangedLayoutNotifier(
-                                                child: _ViewportRowDetails(
-                                                  horizontal: _bodyH,
-                                                  viewportWidth: detailsWidth!,
-                                                  builder: (context) =>
-                                                      detailsBuilder(
-                                                        context,
-                                                        row,
+                          child: rows.isEmpty
+                              ? _ViewportRowDetails(
+                                  horizontal: _bodyH,
+                                  viewportWidth: detailsWidth,
+                                  builder: (_) => _EmptyRows(
+                                    message: all.isEmpty
+                                        ? widget.emptyMessage
+                                        : '没有符合表头筛选条件的行',
+                                    child: all.isEmpty
+                                        ? widget.emptyPlaceholder
+                                        : null,
+                                  ),
+                                )
+                              : UtenAncestorRowWindow<T>(
+                                  deferRowMounts: false,
+                                  controller: _rowWindow,
+                                  rows: rows,
+                                  estimatedRowExtent: _rowExtentEstimate,
+                                  onExtentChanged: _onDetailsLayoutChanged,
+                                  rowBuilder: (context, row, i) {
+                                    final dataRow = _rowCellOrMenuRegion(
+                                      row,
+                                      i,
+                                      divider,
+                                      visibleColumnIndices,
+                                    );
+                                    return UtenSelectionLifecycleScope(
+                                      onHasSelectionChanged: (selected) =>
+                                          _rowWindow.retain(row, selected),
+                                      child: RepaintBoundary(
+                                        key: ObjectKey(row),
+                                        // 主行与详情共用身份；筛选、删除、插入后展开状态不会串行。
+                                        child: detailsBuilder == null
+                                            ? dataRow
+                                            : Column(
+                                                mainAxisSize: MainAxisSize.min,
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.stretch,
+                                                children: [
+                                                  dataRow,
+                                                  NotificationListener<
+                                                    SizeChangedLayoutNotification
+                                                  >(
+                                                    onNotification: (_) {
+                                                      _onDetailsLayoutChanged();
+                                                      return true;
+                                                    },
+                                                    child: SizeChangedLayoutNotifier(
+                                                      child: _ViewportRowDetails(
+                                                        horizontal: _bodyH,
+                                                        viewportWidth:
+                                                            detailsWidth,
+                                                        builder: (context) =>
+                                                            detailsBuilder(
+                                                              context,
+                                                              row,
+                                                            ),
                                                       ),
-                                                ),
+                                                    ),
+                                                  ),
+                                                ],
                                               ),
-                                            ),
-                                          ],
-                                        ),
+                                      ),
+                                    );
+                                  },
                                 ),
-                              );
-                            },
-                          ),
                         ),
                       );
                     }
 
-                    if (detailsBuilder == null) return rowList(total);
+                    // Keep the scroll area mounted when rows become empty or
+                    // return, so column offset and header synchronization survive.
                     return LayoutBuilder(
                       builder: (context, constraints) {
                         final viewportWidth = constraints.maxWidth.isFinite

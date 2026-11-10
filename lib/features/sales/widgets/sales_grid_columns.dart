@@ -36,6 +36,7 @@ import '../../../shared/pricing/line_pricing_amount_cell.dart';
 import '../../../shared/pricing/line_pricing_controller.dart';
 import '../intake/sales_intake_apply.dart';
 import '../models/sales_doc.dart';
+import '../models/sales_source_discount.dart';
 import '../providers/master_name_provider.dart';
 import 'sales_doc_link_picker.dart';
 
@@ -352,7 +353,9 @@ class SalesGridRow extends EditableGridRow
       ..unitRate = li.unitRate
       ..unitRateExact = li.unitRateText;
     r.qty.text = li.qtyText ?? li.qty.toString();
-    if (li.price != null) r.price.text = li.price.toString();
+    r.price.text =
+        financeExactTrimmed(li.priceText ?? li.price?.toString()) ?? '';
+    r.discount.text = salesSourceDiscountText(li.discountText);
   }
 
   /// 识别客户文件导入的一行：货品/颜色/单位、数量、标价预览(只读)、折扣、
@@ -988,6 +991,7 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
     // 报价转入的订货行只读(财务已在报价中核定)。
     if (!freeCustomerShipment &&
         (docType == SalesDocType.order ||
+            docType == SalesDocType.shipment ||
             docType == SalesDocType.customerShipment ||
             isQuote))
       EditableGridColumn<SalesGridRow>(
@@ -999,9 +1003,11 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
         numeric: true,
         columnSearchEnabled: !priceMasked,
         listenableOf: (row) => row.discount,
-        required: !isQuote && !priceMasked,
+        required: !isQuote && docType != SalesDocType.shipment && !priceMasked,
         // 表头 ⓘ 悬停说明折扣口径（2026-09-04 用户口径）；格内不再重复 ⓘ。
-        headerInfo: l10n.workflowDiscountHint,
+        headerInfo: docType == SalesDocType.shipment
+            ? '沿用来源订单的折扣，不可在出货单改价。${l10n.workflowDiscountHint}'
+            : l10n.workflowDiscountHint,
         frozenTextOf: (r) => priceMasked
             ? '***'
             : r.quoteDiscountLocked
@@ -1013,6 +1019,14 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
             return Tooltip(
               message: intakeText.salesIntakeMaskedDiscount,
               child: const Text('***'),
+            );
+          }
+          if (docType == SalesDocType.shipment) {
+            return _lockedCell(
+              context,
+              row.discount,
+              tag: '沿用订单',
+              info: '来源订单核定的折扣；最终金额由服务端按订单剩余金额分配。',
             );
           }
           if (row.quoteDiscountLocked) {
@@ -1094,7 +1108,8 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
         // 也不要用“¥”让外币订单看起来像人民币。
         label: docType == SalesDocType.order
             ? '总金额(订单币种)'
-            : docType == SalesDocType.customerShipment
+            : docType == SalesDocType.customerShipment ||
+                  docType == SalesDocType.shipment
             ? '总金额预览(所选币种)'
             : '总金额',
         width: allowsTotalInput ? 188 : 150,
@@ -1106,12 +1121,15 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
         headerInfo: allowsTotalInput
             ? '可输入数量和总金额计算单价，也可选择按单价和总金额计算数量。'
                   '有关联来源的行沿用来源金额。'
+            : docType == SalesDocType.shipment
+            ? '按来源订单单价及折扣预览；最终金额由服务端按订单累计份额和剩余金额分配。'
             : '总金额随数量、单价和适用折扣自动计算；单价沿用主档或来源单据。',
         frozenTextOf: (r) => priceMasked
             ? '***'
             : r.amountExactNotifier.value == null
             ? ''
             : docType == SalesDocType.order ||
+                  docType == SalesDocType.shipment ||
                   docType == SalesDocType.customerShipment ||
                   isQuote
             ? financeExactMoneyDisplay(r.amountExactNotifier.value!)
@@ -1126,6 +1144,7 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
                   v == null
                       ? '—'
                       : docType == SalesDocType.order ||
+                            docType == SalesDocType.shipment ||
                             docType == SalesDocType.customerShipment ||
                             isQuote
                       ? financeExactMoneyDisplay(v)
@@ -1134,7 +1153,7 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
               ),
       ),
     // 报表补列（与 _save/_init 字段映射一致；按 docType 显隐）。
-    // 出货单(shipment)只留 货品/颜色/数量/单价/金额/备注：成本分项/折扣等补列不展示
+    // 出货单显示来源订单折扣，成本分项等补列不展示
     //（出货是发货履约，价格/折扣沿用订货单）。隐藏列的字段仍在行模型里，编辑既有出货单时
     // 回填并随保存回写，不丢数据。
     if (docType == SalesDocType.order || docType == SalesDocType.otherShipment)

@@ -112,6 +112,16 @@ void main() {
     // 全项目进度弹窗不出现转圈(规范: 导出/下载/批量等待用进度条)。
     expect(find.byType(CircularProgressIndicator), findsNothing);
 
+    final sweep = find.descendant(
+      of: find.byType(UtenProgressBar),
+      matching: find.byType(FractionallySizedBox),
+    );
+    final band = find.descendant(of: sweep, matching: find.byType(ColoredBox));
+    expect(tester.getSize(band).height, greaterThan(0));
+    final initialX = tester.getTopLeft(band).dx;
+    await tester.pump(const Duration(milliseconds: 700));
+    expect(tester.getTopLeft(band).dx, isNot(initialX));
+
     driver.session!.count(3, 5, detail: '3,200 / 5,300 行');
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 600));

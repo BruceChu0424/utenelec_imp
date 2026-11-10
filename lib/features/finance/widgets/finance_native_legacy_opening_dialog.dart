@@ -1,3 +1,4 @@
+import '../../../components/inputs/uten_selected_value_theme.dart';
 import '../shared/finance_workbench_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -682,7 +683,7 @@ class _LegacyOpeningState extends ConsumerState<_LegacyOpening>
             ],
           ),
         ),
-      );
+      ).withSelectedValueHighlights();
     }
     final bound = _data['binding'] != null;
     final columns = <EditableGridColumn<_Share>>[
@@ -927,7 +928,7 @@ class _LegacyOpeningState extends ConsumerState<_LegacyOpening>
             ),
         ],
       ),
-    );
+    ).withSelectedValueHighlights();
   }
 }
 

@@ -1,3 +1,5 @@
+import '../../../components/buttons/uten_year_selection_button.dart';
+import '../../../components/inputs/uten_filter_field_theme.dart';
 import '../../../shared/paging/paged_query_identity.dart';
 import 'package:uten_imp/shared/paging/scoped_paged_read.dart'
     show pagedReadAccessDenied;
@@ -427,114 +429,104 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
 
   Widget _buildFilterPane(ThemeData theme) {
     final names = ref.watch(financeNameServiceProvider);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          UtenFilterToolbar<String>(
-            compactBreakpoint: UtenBreakpoints.mediumStart,
-            segments: const [
-              UtenFilterSegment(value: 'AR', label: '应收(客户)'),
-              UtenFilterSegment(value: 'AP', label: '应付(供应商)'),
-            ],
-            selected: {_side},
-            onSelectionChanged: _changeSide,
-          ),
-          const SizedBox(height: UtenSpacing.s8),
-          UtenFilterToolbar<_StmtView>(
-            compactBreakpoint: UtenBreakpoints.mediumStart,
-            segments: const [
-              UtenFilterSegment(value: _StmtView.flow, label: '流水对帐'),
-              UtenFilterSegment(value: _StmtView.detail, label: '明细对帐'),
-              UtenFilterSegment(value: _StmtView.annual, label: '年度对帐'),
-            ],
-            selected: {_view},
-            onSelectionChanged: _changeView,
-            searchHint: _view == _StmtView.annual ? null : '搜索单号',
-            initialSearchValue: _keyword,
-            onSearchChanged: (value) {
-              _keyword = value;
-              _persistAndReload();
-            },
-            onSearchSubmitted: (value) {
-              _keyword = value;
-              _persistAndReload();
-            },
-          ),
-          const SizedBox(height: UtenSpacing.s8),
-          Wrap(
-            spacing: UtenSpacing.s12,
-            runSpacing: UtenSpacing.s8,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              SizedBox(
-                width: 240,
-                child: _side == 'AR'
-                    ? ClientPickerField(
-                        initialId: _partyId,
-                        initialName: _partyId == null
-                            ? null
-                            : names.client(_partyId),
-                        onPick: () => resolvePickedParty(
-                          ref,
-                          () => showUtenClientPicker(
-                            context,
+    return UtenFilterFieldTheme(
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            UtenFilterToolbar<String>(
+              compactBreakpoint: UtenBreakpoints.mediumStart,
+              segments: const [
+                UtenFilterSegment(value: 'AR', label: '应收(客户)'),
+                UtenFilterSegment(value: 'AP', label: '应付(供应商)'),
+              ],
+              selected: {_side},
+              onSelectionChanged: _changeSide,
+            ),
+            const SizedBox(height: UtenSpacing.s8),
+            UtenFilterToolbar<_StmtView>(
+              compactBreakpoint: UtenBreakpoints.mediumStart,
+              segments: const [
+                UtenFilterSegment(value: _StmtView.flow, label: '流水对帐'),
+                UtenFilterSegment(value: _StmtView.detail, label: '明细对帐'),
+                UtenFilterSegment(value: _StmtView.annual, label: '年度对帐'),
+              ],
+              selected: {_view},
+              onSelectionChanged: _changeView,
+              searchHint: _view == _StmtView.annual ? null : '搜索单号',
+              initialSearchValue: _keyword,
+              onSearchChanged: (value) {
+                _keyword = value;
+                _persistAndReload();
+              },
+              onSearchSubmitted: (value) {
+                _keyword = value;
+                _persistAndReload();
+              },
+            ),
+            const SizedBox(height: UtenSpacing.s8),
+            Wrap(
+              spacing: UtenSpacing.s12,
+              runSpacing: UtenSpacing.s8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                SizedBox(
+                  width: 240,
+                  child: _side == 'AR'
+                      ? ClientPickerField(
+                          initialId: _partyId,
+                          initialName: _partyId == null
+                              ? null
+                              : names.client(_partyId),
+                          onPick: () => resolvePickedParty(
                             ref,
-                            selectableOnly: false,
+                            () => showUtenClientPicker(
+                              context,
+                              ref,
+                              selectableOnly: false,
+                            ),
+                            idOf: (party) => party.id,
+                            loadNames: names.loadClientNames,
+                            isResolved: (id) => names.clientReferenceKnown(id),
                           ),
-                          idOf: (party) => party.id,
-                          loadNames: names.loadClientNames,
-                          isResolved: (id) => names.clientReferenceKnown(id),
-                        ),
-                        onChanged: _onPartyChanged,
-                      )
-                    : SupplierPickerField(
-                        initialId: _partyId,
-                        initialName: _partyId == null
-                            ? null
-                            : names.supplier(_partyId),
-                        onPick: () => resolvePickedParty(
-                          ref,
-                          () => showUtenSupplierPicker(
-                            context,
+                          onChanged: _onPartyChanged,
+                        )
+                      : SupplierPickerField(
+                          initialId: _partyId,
+                          initialName: _partyId == null
+                              ? null
+                              : names.supplier(_partyId),
+                          onPick: () => resolvePickedParty(
                             ref,
-                            selectableOnly: false,
-                            allowQuickCreate: false,
+                            () => showUtenSupplierPicker(
+                              context,
+                              ref,
+                              selectableOnly: false,
+                              allowQuickCreate: false,
+                            ),
+                            idOf: (party) => party.id,
+                            loadNames: names.loadSupplierNames,
+                            isResolved: (id) =>
+                                names.supplierReferenceKnown(id),
                           ),
-                          idOf: (party) => party.id,
-                          loadNames: names.loadSupplierNames,
-                          isResolved: (id) => names.supplierReferenceKnown(id),
+                          onChanged: _onPartyChanged,
                         ),
-                        onChanged: _onPartyChanged,
-                      ),
-              ),
-              if (_view == _StmtView.annual)
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IconButton(
-                      tooltip: '上一年',
-                      icon: const Icon(Icons.chevron_left),
-                      onPressed: () {
-                        setState(() => _year--);
-                        _persistAndReload();
-                      },
-                    ),
-                    Text('$_year', style: theme.textTheme.titleMedium),
-                    IconButton(
-                      tooltip: '下一年',
-                      icon: const Icon(Icons.chevron_right),
-                      onPressed: () {
-                        setState(() => _year++);
-                        _persistAndReload();
-                      },
-                    ),
-                  ],
                 ),
-            ],
-          ),
-        ],
+                if (_view == _StmtView.annual)
+                  UtenYearSelectionButton(
+                    key: const ValueKey('finance-statement-year'),
+                    year: _year,
+                    onChanged: (year) {
+                      if (year == _year) return;
+                      setState(() => _year = year);
+                      _persistAndReload();
+                    },
+                  ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

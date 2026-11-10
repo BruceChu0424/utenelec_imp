@@ -205,7 +205,7 @@ class WarehouseInboundTaskCenterQueryPostgresTest {
         assertThat(otherScope.list(filter("OTHER","",1,20)).total()).isEqualTo(1);
     }
 
-    @Test void finishedRegistrationScopesSharesBeforeSummingAndRetainsEachPhysicalRowQuantity() {
+    @Test void finishedRegistrationScopesSharesBeforeSummingOnePhysicalLotAndRetainsDetailLineage() {
         UUID report=UUID.randomUUID(),warehouse=UUID.randomUUID(),outside=UUID.randomUUID();
         UUID goods=UUID.randomUUID(),hiddenGoods=UUID.randomUUID(),lot=UUID.randomUUID();
         UUID normal=UUID.randomUUID(),publicShare=UUID.randomUUID(),surplus=UUID.randomUUID(),hidden=UUID.randomUUID(),workshop=UUID.randomUUID();
@@ -227,12 +227,17 @@ class WarehouseInboundTaskCenterQueryPostgresTest {
         var scope=new WarehouseTaskScope(true,List.of(warehouse),false);
         var service=service(Set.of("stock_doc:view"),scope,true);
         var page=service.list(new Filter("FINISHED","","",null,null,null,warehouse,1,20));
-        assertThat(page.total()).isEqualTo(3);
+        assertThat(page.total()).isEqualTo(1);
         assertThat(taskRowCounts().finishedInbound(scope)).isEqualTo(page.total());
-        assertThat(taskRowCounts().finishedInbound(WarehouseTaskScope.ALL)).isEqualTo(4);
-        assertThat(page.items()).extracting(row->row.line().itemId()).containsExactlyInAnyOrder(normal,publicShare,surplus);
-        assertThat(page.facets().get("status")).singleElement().satisfies(facet->assertThat(facet.count()).isEqualTo(3));
-        assertThat(page.facets().get("billNo")).singleElement().satisfies(facet->assertThat(facet.count()).isEqualTo(3));
+        assertThat(taskRowCounts().finishedInbound(WarehouseTaskScope.ALL)).isEqualTo(2);
+        assertThat(page.items()).singleElement().satisfies(row->{
+            assertThat(row.line().key()).isEqualTo(lot.toString());
+            assertThat(row.line().quantity()).isEqualByComparingTo("130");
+            assertThat(((List<?>)row.actionData().get("sourceReportItemIds")).stream().map(Object::toString).toList())
+                    .containsExactlyInAnyOrder(normal.toString(),publicShare.toString(),surplus.toString());
+        });
+        assertThat(page.facets().get("status")).singleElement().satisfies(facet->assertThat(facet.count()).isEqualTo(1));
+        assertThat(page.facets().get("billNo")).singleElement().satisfies(facet->assertThat(facet.count()).isEqualTo(1));
         assertThat(service.list(new Filter("FINISHED","","别仓成品",null,null,null,warehouse,1,20)).total()).isZero();
         assertThat(service.detail("FINISHED:FINISHED_REGISTER:"+report,warehouse).get("total")).isEqualTo(3L);
         assertThatThrownBy(()->service.detail("FINISHED:FINISHED_REGISTER:"+report+":"+hidden,warehouse))
@@ -241,9 +246,9 @@ class WarehouseInboundTaskCenterQueryPostgresTest {
             assertThat(new java.math.BigDecimal(row.actionData().get("pendingQty").toString()))
                     .isEqualByComparingTo(row.line().quantity());
             assertThat(new java.math.BigDecimal(row.actionData().get("publicQty").toString()))
-                    .isEqualByComparingTo(row.line().itemId().equals(publicShare)?"20":"0");
+                    .isEqualByComparingTo("20");
             assertThat(new java.math.BigDecimal(row.actionData().get("actualSurplusQty").toString()))
-                    .isEqualByComparingTo(row.line().itemId().equals(surplus)?"10":"0");
+                    .isEqualByComparingTo("10");
         });
 
         var access=mock(ProductionStockTaskAccessPolicy.class);

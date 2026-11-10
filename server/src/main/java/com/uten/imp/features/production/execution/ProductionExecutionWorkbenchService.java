@@ -35,6 +35,22 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class ProductionExecutionWorkbenchService {
+    // Tail of the one segmentSelect projection, followed by readSegmentPage metadata.
+    static final int SEGMENT_PARTIAL_MATERIAL_LIMIT_COLUMN = 80;
+    static final int SEGMENT_ORIGINAL_TASK_SCOPE_COLUMN = SEGMENT_PARTIAL_MATERIAL_LIMIT_COLUMN + 1;
+    static final int SEGMENT_CANDIDATE_TOTAL_COLUMN = SEGMENT_ORIGINAL_TASK_SCOPE_COLUMN + 1;
+
+    static boolean segmentOriginalTaskScope(Object[] row) {
+        return bool(row[SEGMENT_ORIGINAL_TASK_SCOPE_COLUMN]);
+    }
+
+    static long segmentCandidateTotal(Object[] row) {
+        if (row.length != SEGMENT_CANDIDATE_TOTAL_COLUMN + 1
+                || !(row[SEGMENT_CANDIDATE_TOTAL_COLUMN] instanceof Number total)) {
+            throw new IllegalStateException("车间任务摘要投影与完整计数不一致");
+        }
+        return total.longValue();
+    }
 
     /** ADR-131 认料与换料权限；段级动作只在服务端按它算。 */
     private static final String WORKSHOP_MATERIAL_CHOOSE = "workshop_material:choose";
@@ -933,7 +949,7 @@ public class ProductionExecutionWorkbenchService {
         data.setParameter("limit", size);
         data.setParameter("offset", (long) (page - 1) * size);
         List<Object[]> rows = NativeQueryResults.objectArrayRows(data);
-        long total = rows.isEmpty() ? 0L : ((Number) rows.getFirst()[81]).longValue();
+        long total = rows.isEmpty() ? 0L : segmentCandidateTotal(rows.getFirst());
         if (rows.isEmpty() && page > 1) {
             // 页码超过末页：与原「先计数、再钳到末页取数」一致——空页才单独计数并收回。
             Query count = em.createNativeQuery("SELECT COUNT(*) FROM v_production_execution_workbench_segments task WHERE " + predicate);
@@ -944,7 +960,7 @@ public class ProductionExecutionWorkbenchService {
                 page = lastPage;
                 data.setParameter("offset", (long) (page - 1) * size);
                 rows = NativeQueryResults.objectArrayRows(data);
-                if (!rows.isEmpty()) total = ((Number) rows.getFirst()[81]).longValue();
+                if (!rows.isEmpty()) total = segmentCandidateTotal(rows.getFirst());
             }
         }
         int totalPages = pages(total, size);
@@ -961,7 +977,7 @@ public class ProductionExecutionWorkbenchService {
         List<ProductionExecutionWorkbenchSegment> items = rows.stream()
                         .map(row -> segmentRow(row, usage.getOrDefault(uuid(row[0]), ProductionMaterialUsageReadPort.UsageFlags.NONE),
                                 operatorRouteMemory, planning.getOrDefault(uuid(row[0]), PlanningFacts.NONE),
-                                canChooseMaterial && bool(row[80]), requirements.getOrDefault(uuid(row[0]), List.of())))
+                                canChooseMaterial && segmentOriginalTaskScope(row), requirements.getOrDefault(uuid(row[0]), List.of())))
                         .toList();
         return new PageResponse<>(items, page, size, total, totalPages);
     }
@@ -989,7 +1005,7 @@ public class ProductionExecutionWorkbenchService {
             urges.put(uuid(urge[0]), urge);
         }
         java.util.Map<UUID, PlanningFacts> result = new java.util.HashMap<>();
-        var assigned=rows.stream().filter(row->bool(row[80])).map(row->uuid(row[0])).collect(java.util.stream.Collectors.toSet());
+        var assigned=rows.stream().filter(ProductionExecutionWorkbenchService::segmentOriginalTaskScope).map(row->uuid(row[0])).collect(java.util.stream.Collectors.toSet());
         gaps.forEach((segmentId, segmentGaps) -> {
             Object[] urge = urges.get(segmentId);
             java.time.OffsetDateTime urgedAt = urge == null ? null
@@ -1734,7 +1750,7 @@ public class ProductionExecutionWorkbenchService {
                                                                   List<com.uten.imp.features.production.ProductionSalesRequirements.Requirement> requirements) {
         // The same current plan/package facts gate every command capability. Compute once
         // per projected task, so historical or paused rows do not advertise rejected actions.
-        boolean executable = bool(row[46]) && bool(row[80]);
+        boolean executable = bool(row[46]) && segmentOriginalTaskScope(row);
         boolean custodyValid = bool(row[47]);
         // ADR-131 §5.4：待认料或路线未确认的行要先过开工确认表(车间没开启整批领料的不算)。
         String binMaterialState = text(row[76]);
@@ -1754,7 +1770,7 @@ public class ProductionExecutionWorkbenchService {
                 decimal(row[18]), decimal(row[19]), text(row[20]),
                 text(row[21]), text(row[22]), bool(row[23]), bool(row[24]),
                 bool(row[25]), executable && bool(row[26]), executable && custodyValid && bool(row[27]), executable && custodyValid && bool(row[28]),
-                executable && custodyValid && bool(row[29]), !bool(row[80]) ? "当前仅可查看其它车间任务，办理仍须符合原责任范围" : custodyValid ? text(row[30]) : "实领或直送物料与当前车间不一致，请先核对原领料并按来源退回或反向处理", date(row[31]), date(row[32]),
+                executable && custodyValid && bool(row[29]), !segmentOriginalTaskScope(row) ? "当前仅可查看其它车间任务，办理仍须符合原责任范围" : custodyValid ? text(row[30]) : "实领或直送物料与当前车间不一致，请先核对原领料并按来源退回或反向处理", date(row[31]), date(row[32]),
                 ((Number) row[33]).longValue(), bool(row[34]), executable && bool(row[35]),
                 usage.hasMaterialActivity(), usage.hasUnregisteredMaterial(), bool(row[36]), executable && bool(row[37]),
                 executable && bool(row[38]), uuid(row[39]), bool(row[40]), bool(row[41]),
@@ -1773,7 +1789,8 @@ public class ProductionExecutionWorkbenchService {
                 bool(row[71]), uuid(row[72]), text(row[73]), executable && bool(row[74]),
                 text(row[75]),
                 binMaterialState, needsStartConfirmation, allowedActions,
-                decimal(row[78]),uuid(row[79]), requirements, row.length>80 ? bool(row[80]) : null);
+                decimal(row[78]),uuid(row[79]), requirements,
+                row.length>SEGMENT_PARTIAL_MATERIAL_LIMIT_COLUMN ? bool(row[SEGMENT_PARTIAL_MATERIAL_LIMIT_COLUMN]) : null);
     }
 
     /**

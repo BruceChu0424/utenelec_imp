@@ -1,0 +1,77 @@
+{
+  "evidenceId": "E-COMPANY-REPORT-KIT-OWNER-PHASE-20261110",
+  "createdAtUtc": "2026-11-10T22:04:48.814964+00:00",
+  "classification": "backend projection and locked return-owner checkpoint phase",
+  "originalFrozenRun": {
+    "targetCases": 19,
+    "passed": 17,
+    "failed": 2,
+    "skipped": 0,
+    "failures": [
+      {
+        "method": "reportingEightHundredKeepsTwoHundredOpenWithoutExpandingReportQualityOrReceipt",
+        "cause": "New material-limit tail column shifted original task scope and candidate count; stale indexes treated the Boolean scope as a Number and could alter command qualification."
+      },
+      {
+        "method": "returnAndReissueOfHalfTheMaterialsCannotMasqueradeAsAFullKit",
+        "cause": "Capturing inside GOOD_RETURN sampled the coexistence of physical return and the still-DRAFT pending-return fence; the authoritative net capacity correctly rejected a negative intermediate quantity."
+      }
+    ]
+  },
+  "fix": {
+    "projection": "One named tail index/accessor contract; partial limit=80, original task scope=81, candidate total=82. All scope/count consumers migrated, projection drift refuses publication.",
+    "returnOwner": "GOOD_RETURN, GOOD_RETURN_REVERSE, and receipt-tail refresh keep material status refresh but do not capture intermediate capacity. StockDocService captures after the final APPROVED/REVERSED header state is flushed. Existing before-intent capture is retained.",
+    "graph": "Return checkpoint target union includes request target (including DIRECT_LOT) and original ISSUE demands. All source segments must have the active document-link -> plan -> package -> segment chain acquired by lockProductionDocumentGraphs; validate the whole batch before any capture; take no new locks.",
+    "lifecycle": "WDRAW generic unapproval remains blocked in both eligibility and the family adapter. No fictitious approved-to-draft workflow was introduced."
+  },
+  "validation": {
+    "ownerOverlayFinal": {
+      "classes": 13,
+      "found": 133,
+      "passed": 133,
+      "failed": 0,
+      "skipped": 0,
+      "includesFinalGraphGuard": true
+    },
+    "businessDeltaOverlay": {
+      "targetCases": 20,
+      "status": "running",
+      "includesFinalGraphGuard": false,
+      "explanation": "The running JVM was frozen before the last conservative graph-coverage validation was added. It validates the projection and final-owner phase fix, not the latest complete product. Root Maven must test the fully merged final source.",
+      "newMethod": "materialReturnAndItsTerminalReverseCaptureOnlyTheFinalOwnerState"
+    },
+    "rootOriginalMaven": "Still preserved independently; neither the root classes/reports nor its execution were changed by the private runner. The 100k stress result is owned by the root run, not this evidence."
+  },
+  "newUnitClasses": [
+    "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchProjectionTest",
+    "com.uten.imp.common.production.ProductionMaterialKitProofsTest"
+  ],
+  "rawLogs": {
+    "business-before": {
+      "path": "build\\checkpoint-business-launcher\\result.log",
+      "sha256": "261ba4f46366ded970635705e9e74a833899c79310b4f0cceea84237e414c919",
+      "bytes": 439297
+    },
+    "owner-final": {
+      "path": "build\\checkpoint-graph-launcher\\owner-final.log",
+      "sha256": "ee8c3fe917876088fdccf75b37dc12a5b9301fcb517433395e340626feba50f6",
+      "bytes": 2939
+    },
+    "graph-only": {
+      "path": "build\\checkpoint-graph-launcher\\result.log",
+      "sha256": "6e8451d2bc38678a1f2ae22094c022584926e38c61649abd9d9d7934471cdedf",
+      "bytes": 481
+    },
+    "business-delta-input": {
+      "path": "build\\checkpoint-delta-launcher\\business-input.json",
+      "sha256": "e8c57c01b5d731c846ef36fd44f79c1c407970247de21c309991801ca212bf87",
+      "bytes": 2776
+    }
+  },
+  "candidateSourceWorkspaceSha256": {
+    "server/src/main/java/com/uten/imp/common/production/ProductionMaterialKitProofs.java": "343862ab83e4254ef90b0c4b46727d84c016c34412a361c73a34285c6e2d1835",
+    "server/src/main/java/com/uten/imp/features/production/execution/ProductionExecutionWorkbenchService.java": "8a0ab31e55f716d83344b31508dfacd20c2614e7b4eae69f6761f6fe810373bf",
+    "server/src/main/java/com/uten/imp/features/stock/allocation/ProductionMaterialStockLedgerService.java": "199dee35df679af98e0f0271ac9baa5e33400a2243325f605ae68b8b551a51fd",
+    "server/src/main/java/com/uten/imp/features/stock/StockDocService.java": "58d4d12b36df524a1521830b25b47775a87342ecd321c8d68d7390c4247dfdee"
+  }
+}

@@ -388,7 +388,9 @@ public class ProductionMaterialStockLedgerService {
             validateReturnSource(line);
             unwindIssued(event.id(), line, "GOOD_RETURN", actorId, touched);
         }
-        refreshDemandStatuses(touched);
+        // The owning WDRAW header is still DRAFT here: its pending-return fence
+        // coexists with the new physical posting until approval finishes.
+        refreshDemandStatuses(touched, false);
         return new PostingResult(false,event.id());
     }
 
@@ -425,7 +427,8 @@ public class ProductionMaterialStockLedgerService {
             validateReturnSource(line);
             restoreReturned(event.id(), line, actorId, touched);
         }
-        refreshDemandStatuses(touched);
+        // The owning header has not reached its final reversed/draft state yet.
+        refreshDemandStatuses(touched, false);
         return new PostingResult(false,event.id());
     }
 
@@ -875,7 +878,9 @@ public class ProductionMaterialStockLedgerService {
                 SELECT move.target_demand_id FROM production_workshop_material_custody_moves move
                 JOIN production_material_return_request_items item ON item.id=move.request_item_id WHERE item.request_id=:document
                 """, UUID.class).setParameter("document", documentId), UUID.class));
-        refreshDemandStatuses(demands);
+        // Receipt/custody rows are complete, but the WDRAW lifecycle is still
+        // owned by StockDocService. Capture only after that final status flush.
+        refreshDemandStatuses(demands, false);
     }
 
     private LockedPlanningPackage lockPackageForDraw(UUID documentId) {
@@ -1036,6 +1041,10 @@ public class ProductionMaterialStockLedgerService {
     }
 
     private void refreshDemandStatuses(Set<UUID> ids) {
+        refreshDemandStatuses(ids, true);
+    }
+
+    private void refreshDemandStatuses(Set<UUID> ids, boolean captureKit) {
         if (ids.isEmpty()) return;
         em.createNativeQuery("""
                         UPDATE production_material_demands d
@@ -1045,7 +1054,7 @@ public class ProductionMaterialStockLedgerService {
                         """)
                 .setParameter("ids", ids)
                 .executeUpdate();
-        com.uten.imp.common.production.ProductionMaterialKitProofs.captureDemands(em, ids);
+        if (captureKit) com.uten.imp.common.production.ProductionMaterialKitProofs.captureDemands(em, ids);
     }
 
     private static List<MaterialLine> normalize(

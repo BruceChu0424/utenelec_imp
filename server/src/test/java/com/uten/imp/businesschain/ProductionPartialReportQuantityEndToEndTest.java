@@ -178,6 +178,29 @@ class ProductionPartialReportQuantityEndToEndTest {
         var error=assertThrows(ApiException.class,()->reports.create(input));assertTrue(error.getMessage().contains("物料配套可报数量 100"),error.getMessage());
     }
 
+    @Test void materialReturnAndItsTerminalReverseCaptureOnlyTheFinalOwnerState() {
+        var fixture=preparedFixture();
+        Object task=ReflectionTestUtils.invokeMethod(fixture,"createStartedTask","partial-return-owner-"+UUID.randomUUID(),false,"1000",true,new BigDecimal("0.5"));
+        UUID primary=id(task,"demand"),segment=id(task,"segment"),plan=id(task,"plan");
+        UUID other=db.queryForObject("SELECT id FROM production_material_demands WHERE execution_segment_id=? AND id<>? AND NOT is_deleted",UUID.class,segment,primary);
+        issueMore(primary,"500");
+        var returns=beans.getBean(ProductionMaterialReturnRequestService.class);
+        var issue=returns.sources(plan,segment).stream().filter(row->primary.equals(row.demandId())).findFirst().orElseThrow();
+        var docs=returns.submit(plan,new ProductionMaterialReturnRequest.Submit(segment,"partial-owner-return-"+UUID.randomUUID(),
+                "首种物料退回半批，核对未曾稳定齐套的工单",List.of(new ProductionMaterialReturnRequest.Item(issue.issuePostingId(),new BigDecimal("500")))));
+        UUID returned=docs.getFirst().documentId();var stock=beans.getBean(com.uten.imp.features.stock.StockDocService.class);
+        stock.approve(returned);issueMore(other,"1000");
+        amount("500",source(fixture,task).materialReportQty());
+        assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM production_material_full_kit_proofs WHERE execution_segment_id=?",Integer.class,segment));
+        // WDRAW has no generic approved-to-draft transition. Keep this boundary;
+        // terminal reverse restores real material and may legitimately establish a full kit.
+        assertFalse(stock.unapprovalEligibility(returned).eligible());
+        assertThrows(ApiException.class,()->beans.getBean(com.uten.imp.features.stock.StockDocumentUnapprovalAdapter.class).requireSupported(returned));
+        stock.reverse(returned);
+        assertNull(source(fixture,task).materialReportQty());
+        assertTrue(db.queryForObject("SELECT COUNT(*) FROM production_material_full_kit_proofs WHERE execution_segment_id=?",Integer.class,segment)>0);
+    }
+
     private void issueMore(UUID demand,String quantity) {
         var source=db.queryForMap("SELECT item.id,item.doc_id FROM stock_document_items item JOIN production_material_stock_postings issue ON issue.stock_document_item_id=item.id WHERE issue.demand_id=? AND issue.posting_type='ISSUE' ORDER BY issue.created_at,issue.id LIMIT 1",demand);
         var item=new com.uten.imp.features.stock.dto.StockDocIssueRequest.Line();item.setItemId((UUID)source.get("id"));item.setQty(new BigDecimal(quantity));

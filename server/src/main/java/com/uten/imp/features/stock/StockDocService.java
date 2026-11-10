@@ -1759,6 +1759,11 @@ public class StockDocService implements ProductionPreStockedInboundPort {
         d.setStatus(STATUS_APPROVED);
         d.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（服务端权威，忽略客户端值）
         docRepo.save(d);
+        if ("WDRAW".equals(d.getDocType())) {
+            em.flush();
+            com.uten.imp.common.production.ProductionMaterialKitProofs.captureReturnDocument(em,d.getId(),
+                    items.stream().map(StockDocumentItem::getUpstreamItemId).toList());
+        }
         if ("FINISHED_IN".equals(d.getDocType())) {
             // Flushing the approved status fires the execution-segment completion
             // reconciliation trigger. Recompute the plan only afterwards: the
@@ -1949,6 +1954,11 @@ public class StockDocService implements ProductionPreStockedInboundPort {
         }
         d.setStatus(STATUS_REVERSED);
         docRepo.save(d);
+        if ("WDRAW".equals(d.getDocType())) {
+            em.flush();
+            com.uten.imp.common.production.ProductionMaterialKitProofs.captureReturnDocument(em,d.getId(),
+                    items.stream().map(StockDocumentItem::getUpstreamItemId).toList());
+        }
         if ("FINISHED_IN".equals(d.getDocType())) {
             // The wake-up query deliberately accepts only a terminal reversed
             // source. Persist that fact after stock and execution ledgers are

@@ -72,6 +72,23 @@ class FinanceAuxiliaryPostgresTest {
         var preview=imports.preview(true,"辅助导入匿名账套",world.currencyId(),from,to,"anonymous.xlsx",file);
         assertThat(preview.issues()).isEmpty();assertThat(imports.preview(true,"辅助导入匿名账套",world.currencyId(),from,to,"renamed.xlsx",file).importId()).isEqualTo(preview.importId());
         assertThat(imports.compare(preview.importId()).getFirst().status()).isEqualTo("AUXILIARY_NOT_REGISTERED");
+        UUID legacy=UUID.randomUUID();
+        // Insert the historical JSON shape rather than mutating retained evidence.
+        db.update("""
+                INSERT INTO finance_statement_source_reviews(id,actor_id,kind,source_system,currency_id,date_from,date_to,
+                    source_name,sha256,storage_provider,storage_key,storage_version,storage_size,preview,currency_mapping_fingerprint)
+                SELECT ?,actor_id,kind,source_system,currency_id,date_from,date_to,source_name,sha256,storage_provider,
+                    storage_key,storage_version,storage_size,
+                    jsonb_set(jsonb_set(preview-'columnContractVersion','{importId}',to_jsonb(?::text)),
+                        '{currencyMappingFingerprint}','"LEGACY"'::jsonb),'LEGACY'
+                FROM finance_statement_source_reviews WHERE id=?
+                """,legacy,legacy.toString(),preview.importId());
+        String legacySource=db.queryForObject("SELECT preview::text FROM finance_statement_source_reviews WHERE id=?",String.class,legacy);
+        int auxiliariesBefore=db.queryForObject("SELECT count(*) FROM finance_auxiliary_items",Integer.class);
+        assertThatThrownBy(()->imports.applyDirectory(legacy)).isInstanceOf(ApiException.class).hasMessageContaining("重新检测");
+        assertThat(db.queryForObject("SELECT count(*) FROM finance_auxiliary_items",Integer.class)).isEqualTo(auxiliariesBefore);
+        assertThat(db.queryForObject("SELECT directory_result::text FROM finance_statement_source_reviews WHERE id=?",String.class,legacy)).isNull();
+        assertThat(db.queryForObject("SELECT preview::text FROM finance_statement_source_reviews WHERE id=?",String.class,legacy)).isEqualTo(legacySource);
         var applied=imports.applyDirectory(preview.importId());assertThat(applied.auxiliaryCount()).isEqualTo(1);
         assertThat(imports.applyDirectory(preview.importId())).isEqualTo(applied);
         var ref=service.resolveImported("112201","辅助导入匿名账套","CUSTOMER","00099",world.currencyId());assertThat(ref.partyId()).isNull();

@@ -65,6 +65,23 @@ class FinanceAccountingContinuationPostgresTest {
         var incomplete=new FinanceAccountingContracts.Submit(journals.version(),balance.importId(),balance.version(),selected,purposes,Map.of(),List.of(),Set.of(),false,true,"匿名完整9月来源核对");
         assertThatThrownBy(()->imports.submit(journals.importId(),incomplete)).isInstanceOf(ApiException.class).hasMessageContaining("逐科目发生额");
         var request=new FinanceAccountingContracts.Submit(journals.version(),balance.importId(),balance.version(),selected,purposes,Map.of(),List.of(),Set.of("560301"),false,true,"已复核原表省略的零余额损益科目，按完整凭证发生额接续");
+        UUID legacyJournals=UUID.randomUUID(),legacyBalance=UUID.randomUUID();
+        for(var pair:List.of(Map.entry(legacyJournals,journals.importId()),Map.entry(legacyBalance,balance.importId()))) {
+            // Original workbook references are real and retained; only the historical
+            // missing validation fact is simulated at INSERT, never by disabling a guard.
+            db.update("""
+                    INSERT INTO finance_accounting_import_batches(id,actor_id,kind,source_system,source_name,sha256,
+                        storage_provider,storage_key,storage_version,storage_size,preview)
+                    SELECT ?,actor_id,kind,source_system||'-column-safety',source_name,sha256,
+                        storage_provider,storage_key,storage_version,storage_size,preview-'columnContractVersion'
+                    FROM finance_accounting_import_batches WHERE id=?
+                    """,pair.getKey(),pair.getValue());
+        }
+        var legacyRequest=new FinanceAccountingContracts.Submit(0,legacyBalance,0,selected,purposes,Map.of(),List.of(),Set.of("560301"),false,true,"合法原文件但缺少当前列校验事实");
+        assertThatThrownBy(()->imports.submit(legacyJournals,legacyRequest)).isInstanceOf(ApiException.class).hasMessageContaining("重新检测");
+        assertThat(db.queryForList("SELECT status FROM finance_accounting_import_batches WHERE id IN (?,?)",String.class,legacyJournals,legacyBalance))
+                .containsOnly("PREVIEW");
+        assertThat(db.queryForObject("SELECT count(*) FROM gl_entries",Integer.class)).isZero();
         var submitted=imports.submit(journals.importId(),request);assertThat(imports.submit(journals.importId(),request).version()).isEqualTo(submitted.version());
         assertThatThrownBy(()->imports.approve(journals.importId(),new FinanceAccountingContracts.Review(submitted.version(),"本人复核"))).isInstanceOf(ApiException.class).hasMessageContaining("不同账号");
         fixture.loginAs(reviewer.superAdminUserId());

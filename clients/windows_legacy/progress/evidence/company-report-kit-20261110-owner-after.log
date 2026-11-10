@@ -1,0 +1,15 @@
+START com.uten.imp.features.production.execution.ProductionExecutionSegmentServiceTest
+RESULT com.uten.imp.features.production.execution.ProductionExecutionSegmentServiceTest found=24 passed=24 failed=0 skipped=0
+START com.uten.imp.features.stock.allocation.ProductionMaterialSettlementServiceTest
+RESULT com.uten.imp.features.stock.allocation.ProductionMaterialSettlementServiceTest found=7 passed=7 failed=0 skipped=0
+START com.uten.imp.features.stock.allocation.ProductionMaterialStockLedgerRoutingTest
+RESULT com.uten.imp.features.stock.allocation.ProductionMaterialStockLedgerRoutingTest found=3 passed=3 failed=0 skipped=0
+START com.uten.imp.features.stock.allocation.ProductionMaterialStockLedgerCancellationPolicyTest
+RESULT com.uten.imp.features.stock.allocation.ProductionMaterialStockLedgerCancellationPolicyTest found=2 passed=2 failed=0 skipped=0
+START com.uten.imp.features.production.dailyreport.DailyReportExecutionSegmentGuardTest
+RESULT com.uten.imp.features.production.dailyreport.DailyReportExecutionSegmentGuardTest found=28 passed=28 failed=0 skipped=0
+START com.uten.imp.features.production.dailyreport.ReportablePlanLineQuerySecurityContractTest
+RESULT com.uten.imp.features.production.dailyreport.ReportablePlanLineQuerySecurityContractTest found=1 passed=1 failed=0 skipped=0
+START com.uten.imp.features.production.execution.ProductionWorkshopTaskStageContractTest
+RESULT com.uten.imp.features.production.execution.ProductionWorkshopTaskStageContractTest found=52 passed=52 failed=0 skipped=0
+TOTAL classes=7 found=117 passed=117 failed=0 skipped=0

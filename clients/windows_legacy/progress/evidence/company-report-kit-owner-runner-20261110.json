@@ -1,0 +1,72 @@
+{
+  "evidenceId": "E-COMPANY-REPORT-KIT-OWNER-RUNNER-20261110",
+  "createdAtUtc": "2026-11-10T21:19:53.377797+00:00",
+  "scope": "Independent seven-class JUnit launcher over the integrated frozen production/test classes. The sole patched test class is compiled into a separate build directory; no root source, class, report, POM, or long-running Maven process was modified.",
+  "classes": [
+    "com.uten.imp.features.production.execution.ProductionExecutionSegmentServiceTest",
+    "com.uten.imp.features.stock.allocation.ProductionMaterialSettlementServiceTest",
+    "com.uten.imp.features.stock.allocation.ProductionMaterialStockLedgerRoutingTest",
+    "com.uten.imp.features.stock.allocation.ProductionMaterialStockLedgerCancellationPolicyTest",
+    "com.uten.imp.features.production.dailyreport.DailyReportExecutionSegmentGuardTest",
+    "com.uten.imp.features.production.dailyreport.ReportablePlanLineQuerySecurityContractTest",
+    "com.uten.imp.features.production.execution.ProductionWorkshopTaskStageContractTest"
+  ],
+  "junitPlatformVersion": "6.0.3",
+  "testWorkingDirectory": "D:/Projects/uten_imp_worktrees/company-feedback-20261110/server",
+  "rootFrozenOutput": "D:\\Projects\\uten_imp_worktrees\\company-feedback-20261110\\server\\target-company-integrated",
+  "initialResult": {
+    "found": 117,
+    "passed": 114,
+    "failed": 3,
+    "skipped": 0,
+    "failingClass": "com.uten.imp.features.production.execution.ProductionExecutionSegmentServiceTest",
+    "failures": [
+      "plannedWorkshopAndResponsibleEmployeeStartWithoutAnOptionalEndDate",
+      "zeroMaterialSegmentCanStartWithoutDemandRows",
+      "batchStartDeduplicatesAndLocksInUuidOrderBeforeAnyMutation"
+    ]
+  },
+  "rootCause": "Ordered Mockito Query queues did not represent the new START checkpoint collaboration. The zero-material queue also omitted the existing material-discovery check. Production code was not changed.",
+  "testChange": "Add named checkpoint Queries, their exact segment UUIDs and lock-read -> checkpoint -> update order assertions; add explicit zero-material pending-discovery false query; batch statement count includes two checkpoints (16 -> 18).",
+  "finalResult": {
+    "classes": 7,
+    "found": 117,
+    "passed": 117,
+    "failed": 0,
+    "skipped": 0
+  },
+  "limitations": [
+    "The original integrated 44-class Maven run is still running and uses the original frozen test class; its later failures must remain recorded.",
+    "This is not a pass for the full Maven run or its 100k goods-data stress test.",
+    "Root will merge this test-only patch and separately perform the necessary Maven owner-test rerun without repeating the 100k stress run."
+  ],
+  "productClassSha256": {
+    "com/uten/imp/features/production/execution/ProductionExecutionSegmentService.class": "1889e5ba67cba878c67acf4206a73bd045521f85745f4008827149e026aeae05",
+    "com/uten/imp/common/production/ProductionMaterialKitProofs.class": "c7b2653ddc8927060b1fa12a57161914b5f5df46b323e42344c7e4db802b770e",
+    "com/uten/imp/features/stock/allocation/ProductionMaterialSettlementService.class": "4373e6fb500a279b60f49a81e525b2460e6536bf73f6ba1eada15e733854d28e",
+    "com/uten/imp/features/stock/allocation/ProductionMaterialStockLedgerService.class": "36436f4519c67aab60c955d44ba2cd5d7f7573c0e8d1e5947bc45b132b55a322",
+    "com/uten/imp/features/production/dailyreport/DailyReportExecutionSegmentGuard.class": "72c6801e8cd750c847fda6ea57d05387964c9d601cd652d8c606554ff989eb42",
+    "com/uten/imp/features/production/dailyreport/ReportablePlanLineQueryService.class": "90138ddfb94fc8c605c1684b5dfbb8de5a60e0ddc5aa1883da2fee3459a19422",
+    "com/uten/imp/features/production/execution/ProductionWorkshopTaskStage.class": "06803eabc82439f59a35605b9dd663f45e9b342a18e72856c99ea56586babe43"
+  },
+  "rootOriginalTestClassSha256": "2123b2fd34850e8b3b59f3dab4ed43b36fa77d7b5535cd28795869e343509a24",
+  "patchedTestClassSha256": "b1c8206612011ee01026eb6702132aade5612d3d21886d6de1202a0c8b6fc79a",
+  "rawLogs": {
+    "before.log": {
+      "sha256": "d5ec387edf46b907afa2e99c11a0eb2e0f28538b223f315c5331b067238729ba",
+      "bytes": 5511
+    },
+    "after.log": {
+      "sha256": "be47c615a7432422562e898a673eb2f6f68eee76e1387b16f626428a9b4ed9a6",
+      "bytes": 1590
+    },
+    "compile.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "compile-test-final.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    }
+  }
+}

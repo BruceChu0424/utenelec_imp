@@ -19,7 +19,32 @@ import 'uten_page_transitions.dart';
 import '../../shared/platform_branding/platform_branding.dart';
 import 'brand_theme.dart';
 
+/// Value-keyed memo for [buildLightTheme]. [UtenApp.build] runs on every
+/// unrelated root rebuild (session/epoch/notice state); rebuilding the
+/// ThemeData here would hand MaterialApp a fresh (closure-carrying, never-==)
+/// theme every time and replay a 200ms theme transition across the app. The
+/// key is the full branding VALUE (normalized colors included) plus this
+/// builder's fixed brightness — not just `version`, which a restored database
+/// can reuse with different content. Bounded: real branding changes are rare,
+/// and a churn beyond a handful of values just rebuilds.
+const _themeMemoCapacity = 8;
+final Map<PlatformBranding, ThemeData> _lightThemeMemo = {};
+
 ThemeData buildLightTheme({PlatformBranding? branding}) {
+  final key = branding ?? PlatformBranding.defaults;
+  final memoResult = _lightThemeMemo[key];
+  if (memoResult != null) {
+    return memoResult;
+  }
+  final built = _buildLightTheme(key);
+  if (_lightThemeMemo.length >= _themeMemoCapacity) {
+    _lightThemeMemo.clear();
+  }
+  _lightThemeMemo[key] = built;
+  return built;
+}
+
+ThemeData _buildLightTheme(PlatformBranding branding) {
   // 浅色模式交互主色：统一使用深色模式下的 teal（青绿）系绿
   // —— 实心交互使用 teal700 + 白字，满足普通文字 WCAG AA 对比度
   const colorScheme = ColorScheme(
@@ -446,5 +471,5 @@ ThemeData buildLightTheme({PlatformBranding? branding}) {
 
     tabBarTheme: buildUtenCategoryTabTheme(colorScheme, textTheme),
   );
-  return applyPlatformBrandTheme(base, branding ?? PlatformBranding.defaults);
+  return applyPlatformBrandTheme(base, branding);
 }

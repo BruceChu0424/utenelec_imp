@@ -870,17 +870,18 @@ void main() {
         ),
       );
       expect(summary.facts.first.value, startsWith('3 条放行明细'));
-      expect(summary.consequences.single, contains('增加可用库存'));
+      expect(summary.facts.first.info, contains('增加可用库存'));
+      expect(summary.consequences, isEmpty);
       expect(
         find.descendant(of: confirmDialog, matching: find.text('本次 5 件')),
-        findsOneWidget,
+        findsNothing,
       );
       expect(
         find.descendant(
           of: confirmDialog,
           matching: find.text('计划部预定 4 · 公共在途已采用 1'),
         ),
-        findsOneWidget,
+        findsNothing,
       );
       expect(find.text('数量 4 件'), findsNothing);
       await tester.tap(

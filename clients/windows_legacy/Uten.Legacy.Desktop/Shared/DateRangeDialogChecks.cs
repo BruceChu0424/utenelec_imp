@@ -43,6 +43,11 @@ namespace Uten.Legacy.Desktop.Shared
             var dialog = new UtenDateRangeDialog(null, new DateTime(2026, 3, 1), new DateTime(2026, 3, 4), new DateTime(1900, 2, 10), new DateTime(2100, 10, 15));
             try
             {
+                check(dialog.Title == "2026/03/01 - 2026/03/04", "selected range replaces the redundant heading with precise dates");
+                var heading = (TextBlock)typeof(UtenDialogWindow).GetField("heading", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(dialog);
+                check(heading.FontSize == (double)dialog.FindResource("Uten.FontSize.Heading") && heading.FontWeight == FontWeights.Bold,
+                    "selected dates use the common prominent heading style");
+                check(ReferenceEquals(heading.Foreground, dialog.FindResource("Uten.PrimaryBrush")), "selected dates use the common primary brush");
                 Click(Field<Button>(dialog, "monthTitle"));
                 var calendar = Field<StackPanel>(dialog, "calendar");
                 var year = (ComboBox)calendar.Children[0];

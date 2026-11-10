@@ -30,6 +30,7 @@ import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
+import '../../../components/feedback/uten_confirmation_summary.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/inputs/uten_field_message.dart';
@@ -636,11 +637,18 @@ class _FinanceSalesShipmentAuditReviewPageState
             children: [
               const UtenReviewerResponsibilityNotice(
                 actionLabel: FinanceRequirementNames.customerShipmentReview,
-                description: '确认仅放行仓库作业；正式应收在仓库确认出库后生成。系统将记录当前审核员并承担本次放行责任。',
                 compact: true,
               ),
               const SizedBox(height: UtenSpacing.s12),
-              const Text('放行后仓库即可确认出库；出库时才扣库存并生成应收。确认放行？'),
+              const UtenConfirmationSummary(
+                facts: [
+                  UtenConfirmationFact(
+                    label: '本次放行',
+                    value: '仓库作业',
+                    info: '仓库确认出库后才扣库存并生成正式应收。',
+                  ),
+                ],
+              ),
               if (rateLine != null) ...[
                 const SizedBox(height: UtenSpacing.s8),
                 Text(
@@ -742,8 +750,6 @@ class _FinanceSalesShipmentAuditReviewPageState
                   compact: true,
                 ),
                 const SizedBox(height: UtenSpacing.s12),
-                const Text('退回原因将通知销售修改；确认后本单回到「待销售确认」。'),
-                const SizedBox(height: UtenSpacing.s12),
                 TextField(
                   key: const Key('finance-shipment-audit-reject-reason'),
                   controller: controller,
@@ -756,7 +762,7 @@ class _FinanceSalesShipmentAuditReviewPageState
                       border: const OutlineInputBorder(),
                       error: utenFieldError(errorText),
                     ),
-                    info: '写明需要销售修改的内容，如结账方式或明细数量。',
+                    info: '写明需要销售修改的内容，如结账方式或明细数量。原因将通知销售，确认后本单回到「待销售确认」。',
                   ),
                 ),
               ],

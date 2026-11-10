@@ -545,7 +545,8 @@ public class StockQueryService {
                 item.setPeriodCostAmount(canViewCost ? decimal(r[start + 3]) : null);
                 item.setCostPrice(canViewCost ? decimal(r[start + 4]) : null);
             }
-            int reservationIndex = measurementIndex + 8;
+            item.setCategoryId((UUID) r[measurementIndex + 8]);
+            int reservationIndex = measurementIndex + 9;
             item.setReservedQty(decimal(r[reservationIndex]));
             item.setAvailableQty(decimal(r[reservationIndex + 1]));
             items.add(item);
@@ -805,6 +806,7 @@ public class StockQueryService {
                             WHEN u.id IS NULL THEN 'MISSING_BASE_UNIT' END AS measurement_hold_reason,
                        (NOT COALESCE(base.measurement_pending,false) AND u.id IS NOT NULL) AS available_known
                 """ + periodProjection + """
+                       , g.category_id AS category_id
                 FROM goods g
                 LEFT JOIN (
                     SELECT u.goods_id, u.color_id,

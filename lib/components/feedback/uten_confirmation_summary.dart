@@ -1,13 +1,19 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_tokens.dart';
+import '../inputs/uten_field_hint_icon.dart';
 
 /// One quantity, count, or other decisive fact shown before a write.
 class UtenConfirmationFact {
-  const UtenConfirmationFact({required this.label, required this.value});
+  const UtenConfirmationFact({
+    required this.label,
+    required this.value,
+    this.info,
+  });
 
   final String label;
   final String value;
+  final String? info;
 }
 
 /// Compact facts and critical consequences shared by secondary confirmations.
@@ -23,7 +29,8 @@ class UtenConfirmationSummary extends StatelessWidget {
 
   /// A complete text representation for confirmations saved with a request.
   String get plainText => [
-    for (final fact in facts) '${fact.label} ${fact.value}',
+    for (final fact in facts)
+      '${fact.label} ${fact.value}${fact.info == null ? '' : '\n${fact.info}'}',
     ...consequences,
   ].join('\n');
 
@@ -42,7 +49,14 @@ class UtenConfirmationSummary extends StatelessWidget {
           Text.rich(
             TextSpan(
               text: '${fact.label} ',
-              children: [TextSpan(text: fact.value, style: emphasis)],
+              children: [
+                if (fact.info?.isNotEmpty == true)
+                  WidgetSpan(
+                    alignment: PlaceholderAlignment.middle,
+                    child: UtenFieldHintIcon(info: fact.info, dense: true),
+                  ),
+                TextSpan(text: fact.value, style: emphasis),
+              ],
             ),
           ),
         if (facts.isNotEmpty && consequences.isNotEmpty)

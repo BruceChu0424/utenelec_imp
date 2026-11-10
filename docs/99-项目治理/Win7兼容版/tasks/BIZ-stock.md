@@ -94,9 +94,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：`clients/windows_legacy/progress/evidence/instant-inventory-period-20261102.json`；`clients/windows_legacy/progress/evidence/inventory-column-order-20261102.json`；`clients/windows_legacy/progress/evidence/date-range-entry-20261103.json`。
+证据：`clients/windows_legacy/progress/evidence/instant-inventory-period-20261102.json`；`clients/windows_legacy/progress/evidence/inventory-column-order-20261102.json`；`clients/windows_legacy/progress/evidence/date-range-entry-20261103.json`；`docs/99-项目治理/2026-11-10-截图批注补齐与本地主链整合.md`。
 
-接续/限制：2026-11-02：Web/Flutter 库存期间统计和独立成本权限已接公共入口，移除旧全部分类按钮与多排数量。后续默认列序统一为识别货品→当前数量/重量→期间进出结存→成本→待处理→库位及主档资料，个人布局 v2 只迁已知默认；打印和默认导出同序，Java/Dart 共同验证 contracts/instant-inventory-column-order.json。WPF 即时库存宿主仍未迁移，不标支持、不开放写入口；后续消费同日期统计和 goods:cost:view 合同。；2026-11-03：日期范围UI合同增量：外部单一选择日期入口，卡内最右Uten红圆白X清除，默认中国壁钟最近一个日历月，年月标题直接跳年/月。该业务WPF宿主仍未迁移；后续接入公共UtenDateRangeDialog，并保留本业务日期/时区/开放边界及服务端权威，不开放占位写入口。见 E-DATE-RANGE-ENTRY-20261103。。
+接续/限制：2026-11-02：Web/Flutter 库存期间统计和独立成本权限已接公共入口，移除旧全部分类按钮与多排数量。后续默认列序统一为识别货品→当前数量/重量→期间进出结存→成本→待处理→库位及主档资料，个人布局 v2 只迁已知默认；打印和默认导出同序，Java/Dart 共同验证 contracts/instant-inventory-column-order.json。WPF 即时库存宿主仍未迁移，不标支持、不开放写入口；后续消费同日期统计和 goods:cost:view 合同。；2026-11-03：日期范围UI合同增量：外部单一选择日期入口，卡内最右Uten红圆白X清除，默认中国壁钟最近一个日历月，年月标题直接跳年/月。该业务WPF宿主仍未迁移；后续接入公共UtenDateRangeDialog，并保留本业务日期/时区/开放边界及服务端权威，不开放占位写入口。见 E-DATE-RANGE-ENTRY-20261103。；2026-11-06 任务徽章与物料准备回归。本轮修改 Flutter 库存首读恢复，原生本项原有阶段状态和证据保留。本轮未验收本原生业务或 Win7 真机。；2026-11-10 补交11图：单一左侧分类/货品搜索复用GoodsSearchPolicy及库存行categoryId，保留单HTTP完整NDJSON、范围/成本权限、首批/完整结果及防抖前退休；原生该页仍未迁移。。
 
 ## W7-BIZ-153
 

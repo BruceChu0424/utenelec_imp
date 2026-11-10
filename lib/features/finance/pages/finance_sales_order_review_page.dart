@@ -522,12 +522,6 @@ class _FinanceSalesOrderReviewPageState
                     : '确认后系统将记录当前审核员，并由该审核员承担本次财务放行责任。',
               ),
               const SizedBox(height: UtenSpacing.s12),
-              Text(
-                widget.managerReview
-                    ? '批准后进入财务审核。财务通过后才可排产。可填写审核备注(选填)：'
-                    : '确认通过后，该订单将对计划部可见并可排产。可填写确认备注(选填)：',
-              ),
-              const SizedBox(height: UtenSpacing.s12),
               TextField(
                 key: const Key('finance-review-confirm-remark'),
                 controller: controller,
@@ -696,8 +690,6 @@ class _FinanceSalesOrderReviewPageState
                   description: '确认后系统将记录当前审核员、驳回原因和时间，请对本次决定负责。',
                 ),
                 const SizedBox(height: UtenSpacing.s12),
-                const Text('驳回不会改动订单与库存预留；驳回原因将通知归属销售，修正后可重新确认。'),
-                const SizedBox(height: UtenSpacing.s12),
                 TextField(
                   key: const Key('finance-review-reject-reason'),
                   controller: controller,
@@ -710,7 +702,8 @@ class _FinanceSalesOrderReviewPageState
                       border: const OutlineInputBorder(),
                       error: utenFieldError(errorText),
                     ),
-                    info: workflowFieldText(context).workflowFinanceRejectHint,
+                    info:
+                        '${workflowFieldText(context).workflowFinanceRejectHint} 驳回不会改动订单与库存预留；原因将通知归属销售，修正后可重新确认。',
                   ),
                 ),
               ],

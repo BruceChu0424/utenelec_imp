@@ -580,8 +580,6 @@ class _FinanceProcurementApprovalReviewPageState
                 description: '确认后系统将以当前审核员记录通过责任，本操作即时生效。',
               ),
               const SizedBox(height: UtenSpacing.s12),
-              const Text('通过后订货单立即生效，并生成仓库预计到货任务。可填写审批备注(选填)：'),
-              const SizedBox(height: UtenSpacing.s12),
               TextField(
                 key: const Key('finance-order-review-approve-remark'),
                 controller: controller,
@@ -711,8 +709,6 @@ class _FinanceProcurementApprovalReviewPageState
                   description: '确认后系统将记录当前审核员、驳回原因和时间，请对本次决定负责。',
                 ),
                 const SizedBox(height: UtenSpacing.s12),
-                const Text('驳回不改动订货单内容；原因将通知原制单人修改后重新提交。'),
-                const SizedBox(height: UtenSpacing.s12),
                 TextField(
                   key: const Key('finance-order-review-reject-reason'),
                   controller: controller,
@@ -728,6 +724,7 @@ class _FinanceProcurementApprovalReviewPageState
                       border: const OutlineInputBorder(),
                       error: utenFieldError(errorText),
                     ),
+                    info: '驳回不改动订货单内容；原因将通知原制单人修改后重新提交。',
                   ),
                 ),
               ],

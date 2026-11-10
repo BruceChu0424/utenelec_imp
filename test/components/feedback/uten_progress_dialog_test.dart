@@ -6,6 +6,9 @@ import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/feedback/uten_progress_dialog.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
+import 'package:uten_imp/core/theme/dark_theme.dart';
+
+import '../../support/dialog_fixture_capture.dart';
 
 final _zh = lookupAppLocalizations(const Locale('zh'));
 
@@ -96,6 +99,76 @@ Future<_Launch> _open(
 }
 
 void main() {
+  if (dialogFixtureCaptureEnabled) {
+    setUpAll(loadDialogFixtureFonts);
+    for (final scenario in [
+      (name: 'light-wide', size: const Size(1000, 800), dark: false),
+      (name: 'dark-wide', size: const Size(1000, 800), dark: true),
+      (name: 'dark-narrow', size: const Size(390, 844), dark: true),
+    ]) {
+      testWidgets('capture clear shared progress ${scenario.name}', (
+        tester,
+      ) async {
+        await tester.binding.setSurfaceSize(scenario.size);
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        final driver = _Driver();
+        await tester.pumpWidget(
+          dialogFixtureBoundary(
+            MaterialApp(
+              debugShowCheckedModeBanner: false,
+              locale: const Locale('zh'),
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+              theme: scenario.dark ? buildDarkTheme() : buildLightTheme(),
+              home: Builder(
+                builder: (context) => Scaffold(
+                  body: TextButton(
+                    onPressed: () => showUtenProgress<String>(
+                      context,
+                      title: '正在导出表格',
+                      action: driver.call,
+                    ),
+                    child: const Text('打开'),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.tap(find.text('打开'));
+        await tester.pump();
+        await tester.pump();
+        driver.session!.count(2700, 31948, status: '正在读取数据');
+        await tester.pump(const Duration(milliseconds: 600));
+        expect(tester.getSize(find.byType(UtenProgressBar)).height, 12);
+        await captureDialogFixture(
+          tester,
+          'progress-${scenario.name}',
+          outputDirectory: 'build/common-visual-review',
+        );
+        driver.completer.complete('done');
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
+
+  testWidgets(
+    'shared progress bar stays clearly visible in unknown and counted stages',
+    (tester) async {
+      final driver = _Driver();
+      final launch = await _open(tester, driver);
+      expect(tester.getSize(find.byType(UtenProgressBar)).height, 12);
+      driver.session!.count(1, 10);
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(tester.getSize(find.byType(UtenProgressBar)).height, 12);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      driver.completer.complete('done');
+      await tester.pumpAndSettle();
+      expect(await launch.result, 'done');
+    },
+  );
+
   testWidgets('percent mode shows figure, detail, elapsed and cancel; '
       'never a spinner', (tester) async {
     final driver = _Driver();

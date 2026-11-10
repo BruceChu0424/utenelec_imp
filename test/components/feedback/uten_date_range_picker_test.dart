@@ -5,13 +5,13 @@ import 'package:uten_imp/core/utils/date_range_defaults.dart';
 // 居中的「取消 / 确定」按钮组（无铅笔切换、无「应用」文字钮），起止值
 // 归一化为本地 date-only。选择语义与 Material 一致：首击定起点、再击定
 // 终点或重设起点、拖拽扩展区间。2026-11-08 起选中的日期与标题同排显示
-// 在标题行（uten-date-selection），不再单独占一行；月份模式标题保持纯
-// 文字，单日未选不显示占位。
+// 在标题区（uten-date-selection），直接突出实际值；月份模式与单日未选不重复提示。
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/feedback/uten_date_range_picker.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/theme/uten_tokens.dart';
 
@@ -101,28 +101,46 @@ void main() {
     expect(picked, isNull);
   });
 
-  testWidgets('选中日期与标题同排显示，不再单独占一行', (tester) async {
-    await tester.pumpWidget(
-      _harness(
-        onPicked: (_) {},
-        initialDateRange: DateTimeRange(
-          start: DateTime(2026, 3, 2),
-          end: DateTime(2026, 3, 18),
+  testWidgets('实际日期取代冗余标题，日期补零并加大加粗着重显示', (tester) async {
+    final semantics = tester.ensureSemantics();
+    try {
+      await tester.pumpWidget(
+        _harness(
+          onPicked: (_) {},
+          initialDateRange: DateTimeRange(
+            start: DateTime(2026, 3, 2),
+            end: DateTime(2026, 3, 18),
+          ),
         ),
-      ),
-    );
-    await _openDialog(tester);
+      );
+      await _openDialog(tester);
 
-    final selection = find.byKey(const Key('uten-date-selection'));
-    expect(selection, findsOneWidget);
-    expect(tester.widget<Text>(selection).data, '2026/3/2 – 2026/3/18');
-    // 2026-11-08 用户口径：日期进入标题行，与 helpText 同一标题区。
-    expect(
-      find.ancestor(of: selection, matching: find.byType(UtenDialogHeading)),
-      findsOneWidget,
-    );
-    // 弹窗中间不再有单独的选择行：日期文字全弹窗只出现一次。
-    expect(find.text('2026/3/2 – 2026/3/18'), findsOneWidget);
+      final selection = find.byKey(const Key('uten-date-selection'));
+      expect(selection, findsOneWidget);
+      expect(
+        tester.widget<Semantics>(selection).properties.label,
+        '2026/03/02 - 2026/03/18',
+      );
+      final selectedText = tester.widget<Text>(
+        find.descendant(of: selection, matching: find.byType(Text)).first,
+      );
+      expect(selectedText.style!.fontSize, greaterThanOrEqualTo(22));
+      expect(selectedText.style!.fontWeight, FontWeight.w700);
+      expect(
+        selectedText.style!.color,
+        Theme.of(tester.element(selection)).colorScheme.primary,
+      );
+      expect(find.text('选择日期范围'), findsNothing);
+      expect(find.byType(UtenFieldHintIcon), findsNothing);
+      expect(
+        find.ancestor(of: selection, matching: find.byType(UtenDialogHeading)),
+        findsOneWidget,
+      );
+      // 弹窗中间不再有单独的选择行：日期文字全弹窗只出现一次。
+      expect(find.bySemanticsLabel('2026/03/02 - 2026/03/18'), findsOneWidget);
+    } finally {
+      semantics.dispose();
+    }
   });
 
   testWidgets('单日未选时标题不显示日期占位，选中后随标题显示', (tester) async {
@@ -154,9 +172,11 @@ void main() {
     expect(find.text('未选择日期'), findsNothing);
     await _tapDay(tester, 15);
     final data = tester
-        .widget<Text>(find.byKey(const Key('uten-date-selection')))
-        .data;
-    expect(data, matches(RegExp(r'^\d{4}/\d{1,2}/\d{1,2}$')));
+        .widget<Semantics>(find.byKey(const Key('uten-date-selection')))
+        .properties
+        .label;
+    expect(data, matches(RegExp(r'^\d{4}/\d{2}/\d{2}$')));
+    expect(find.text('选择日期'), findsNothing);
     await _confirm(tester);
     expect(result, isNotNull);
   });
@@ -409,11 +429,15 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('uten-calendar-month-3')));
     await tester.pumpAndSettle();
     final before = tester
-        .widget<Text>(find.byKey(const Key('uten-date-selection')))
-        .data;
+        .widget<Semantics>(find.byKey(const Key('uten-date-selection')))
+        .properties
+        .label;
     await _tapDay(tester, 1);
     expect(
-      tester.widget<Text>(find.byKey(const Key('uten-date-selection'))).data,
+      tester
+          .widget<Semantics>(find.byKey(const Key('uten-date-selection')))
+          .properties
+          .label,
       before,
     );
   });

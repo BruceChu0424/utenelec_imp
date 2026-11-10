@@ -63,6 +63,33 @@ Widget _app({
 
 void main() {
   setUpAll(loadDialogFixtureFonts);
+  testWidgets('导出范围直接显示选择项，手工文件名在弹窗编辑时保留', (tester) async {
+    await tester.pumpWidget(
+      _app(
+        permissions: {},
+        child: const UtenExportButton(
+          endpoint: '/export',
+          report: 'goods',
+          filename: '原料分类',
+          queryParams: {},
+        ),
+      ),
+    );
+    await tester.tap(find.bySemanticsLabel('下载表格'));
+    await tester.pumpAndSettle();
+    expect(find.text('导出范围'), findsNothing);
+    expect(find.byKey(const ValueKey('table-output-all')), findsOneWidget);
+    expect(find.byKey(const ValueKey('table-output-selected')), findsOneWidget);
+    final name = find.byKey(const Key('uten-export-filename'));
+    expect(tester.widget<TextField>(name).controller!.text, '原料分类');
+    await tester.enterText(name, '自定义文件名');
+    await tester.tap(find.text('设置密码'));
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(name).controller!.text, '自定义文件名');
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
   if (dialogFixtureCaptureEnabled) {
     for (final dark in [false, true]) {
       testWidgets('capture actual export settings dark=$dark', (tester) async {
@@ -77,13 +104,19 @@ void main() {
             child: const UtenExportButton(
               endpoint: '/export',
               report: 'goods',
-              filename: '货品资料',
+              filename: '成品类',
               queryParams: {},
             ),
           ),
         );
         await tester.tap(find.bySemanticsLabel('下载表格'));
         await tester.pumpAndSettle();
+        expect(find.text('导出范围'), findsNothing);
+        expect(find.byKey(const ValueKey('table-output-all')), findsOneWidget);
+        expect(
+          find.byKey(const ValueKey('table-output-selected')),
+          findsOneWidget,
+        );
         if (find
             .byKey(const ValueKey('table-output-all'))
             .evaluate()

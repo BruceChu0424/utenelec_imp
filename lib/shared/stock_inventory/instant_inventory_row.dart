@@ -8,6 +8,7 @@ class InstantInventoryRow {
   const InstantInventoryRow({
     this.goodsId,
     this.colorId,
+    this.categoryId,
     this.categoryName,
     this.model,
     this.cNumber,
@@ -51,6 +52,9 @@ class InstantInventoryRow {
 
   final String? goodsId;
   final String? colorId;
+
+  /// Server-owned category identity for the shared hierarchy search paths.
+  final String? categoryId;
 
   /// Identity within the current warehouse/query scope; ownership is a filter,
   /// not a substitute for the physical stock scope.
@@ -142,6 +146,7 @@ class InstantInventoryRow {
       InstantInventoryRow(
         goodsId: json['goodsId'] as String?,
         colorId: json['colorId'] as String?,
+        categoryId: json['categoryId'] as String?,
         categoryName: json['categoryName'] as String?,
         model: json['model'] as String?,
         cNumber: json['cNumber'] as String?,

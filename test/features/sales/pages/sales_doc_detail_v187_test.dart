@@ -190,34 +190,39 @@ void main() {
     await _expectShipmentHint(tester, '历史直接审核流程已停用');
   });
 
-  testWidgets('order approval describes order activation without AR wording', (
-    tester,
-  ) async {
-    await _pumpDetail(
-      tester,
-      type: SalesDocType.order,
-      detail: const {
-        'id': 'order-draft',
-        'status': 0,
-        'writable': true,
-        'items': <Map<String, dynamic>>[],
-      },
-      permissions: const {Perm.salesOrderApprove},
-    );
+  testWidgets(
+    'order approval shows its identity and puts routine workflow in the responsibility hint',
+    (tester) async {
+      await _pumpDetail(
+        tester,
+        type: SalesDocType.order,
+        detail: const {
+          'id': 'order-draft',
+          'status': 0,
+          'writable': true,
+          'items': <Map<String, dynamic>>[],
+        },
+        permissions: const {Perm.salesOrderApprove},
+      );
 
-    await tester.tap(find.text('审核'));
-    await tester.pump();
+      await tester.tap(find.text('审核'));
+      await tester.pump();
 
-    // V300：审核弹窗明示后续流转——生效+预留，先经销售负责人批准，再由财务确认后排产。
-    expect(
-      find.text(
-        '审核通过后订单将生效并形成库存预留，随后提交销售负责人审核，负责人批准后转交财务；财务确认通过后计划部才可见并排产。确认审核？',
-      ),
-      findsOneWidget,
-    );
-    expect(find.textContaining('应收'), findsNothing);
-    expect(find.textContaining('财务汇率'), findsNothing);
-  });
+      expect(find.text('单据 order-draft'), findsOneWidget);
+      expect(find.textContaining('订单审核后生效并形成库存预留'), findsNothing);
+      expect(find.textContaining('应收'), findsNothing);
+      expect(find.textContaining('财务汇率'), findsNothing);
+      final hint = find.byWidgetPredicate(
+        (widget) =>
+            widget is UtenFieldHintIcon &&
+            (widget.info?.contains('订单审核后生效') ?? false),
+      );
+      expect(hint, findsOneWidget);
+      await tester.tap(hint);
+      await tester.pumpAndSettle();
+      expect(find.textContaining('销售负责人批准、财务确认后排产'), findsOneWidget);
+    },
+  );
 
   testWidgets('finance actions disappear once the warehouse shipped it', (
     tester,

@@ -606,12 +606,12 @@ class _AnimatedPercent extends StatelessWidget {
   }
 }
 
-/// 全项目唯一的进度条样式: 细长圆角, 有值时填充, 无值([value] 为 null)时缓慢
+/// 全项目唯一的进度条样式: 清晰的圆角条, 有值时填充, 无值([value] 为 null)时缓慢
 /// 扫动。省电档或系统「减少动画」时扫动退化为静止短条, 靠数字/时间表达活性。
 ///
 /// 弹窗与内嵌(下载页等)共用; 以后换进度条外观只改这里。
 class UtenProgressBar extends StatelessWidget {
-  const UtenProgressBar({super.key, this.value, this.height = 6});
+  const UtenProgressBar({super.key, this.value, this.height = UtenSpacing.s12});
 
   /// 0..1; null 表示不确定进度。
   final double? value;

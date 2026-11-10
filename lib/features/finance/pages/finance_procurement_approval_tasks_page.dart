@@ -631,7 +631,7 @@ class _FinanceProcurementApprovalTasksPageState
                   description: '确认后，系统将以此登录员工记录整批订货财务审核责任。',
                 ),
                 const SizedBox(height: 12),
-                Text('$summary。整批通过后订货立即生效，并分别生成仓库预计到货任务。'),
+                Text(summary),
               ],
             ),
           ),

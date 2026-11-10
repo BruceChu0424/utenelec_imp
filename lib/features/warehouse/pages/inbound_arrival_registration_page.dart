@@ -987,7 +987,6 @@ class _InboundArrivalRegistrationPageState
     final hasCrossWarehouse = projectedSections.any(
       (section) => section.allocations.any((item) => item.isCrossWarehouse),
     );
-    // ADR-144：采购明细在最多可收以内照常处理；本次全是委外时不提这句。
     final includesPurchase = submitLines.any(
       (line) => line.prefill.orderType == ProcurementInboundOrderType.purchase,
     );
@@ -1008,6 +1007,13 @@ class _InboundArrivalRegistrationPageState
           UtenConfirmationFact(
             label: '本次登记',
             value: '${submitLines.length} 行 · $warehouseCount 个仓库',
+            info: [
+              stockInFirst
+                  ? '按库位上架送检，合格自动转正入库，不合格从库位退回。'
+                  : '先送检，合格后由仓库确认实物和库位再入库。',
+              if (includesPurchase) '采购到货在订货量加允许超收量以内照常登记。',
+              '超批准量的单隔离转财务，不上架、不入库、不生成应付，其余照常办理。',
+            ].join('\n'),
           ),
           UtenConfirmationFact(
             label: '到货实物量',
@@ -1022,13 +1028,7 @@ class _InboundArrivalRegistrationPageState
             ),
           ),
         ],
-        consequences: [
-          stockInFirst ? '按库位上架送检，合格自动转正入库，不合格从库位退回。' : '先送检，合格后由仓库确认实物和库位再入库。',
-          if (hasCrossWarehouse) '跨仓去向仅作预计，按实际仓入公共库存，不绑定原计划。',
-          if (includesPurchase) '采购到货不超过订货量加允许超收量时照常登记。',
-          '超批准量的单隔离转财务，不上架、不入库、不生成应付。其余照常办理。',
-          if (excludedCount > 0) '有 $excludedCount 行未勾选，仍留待登记送检。',
-        ],
+        consequences: [if (excludedCount > 0) '有 $excludedCount 行未勾选，仍留待登记送检。'],
       ),
     );
     requestScope.checkCurrent();

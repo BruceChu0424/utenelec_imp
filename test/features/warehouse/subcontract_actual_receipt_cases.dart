@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/components/feedback/uten_confirmation_summary.dart';
+import 'package:uten_imp/shared/formatters/exact_decimal.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/features/warehouse/pages/inbound_arrival_registration_page.dart';
@@ -353,8 +354,14 @@ void _registerSharedConfirmationPrecision(String quantity) {
                   accepted = await showWarehouseInboundAllocationConfirmDialog(
                     context,
                     title: '确认原始实收',
-                    summary: const UtenConfirmationSummary(
-                      consequences: ['核对本次实收与来源'],
+                    summary: UtenConfirmationSummary(
+                      facts: [
+                        UtenConfirmationFact(
+                          label: '原始实收合计',
+                          value:
+                              '${financeExactSumTexts(List.filled(3, quantity))} 个',
+                        ),
+                      ],
                     ),
                     actionLabel: '登记实收',
                     sections: [
@@ -378,7 +385,12 @@ void _registerSharedConfirmationPrecision(String quantity) {
     );
     await tester.tap(find.text('打开公共确认'));
     await tester.pumpAndSettle();
-    expect(find.text('本次 $quantity 个'), findsNWidgets(3));
+    final expected = financeExactSumTexts(List.filled(3, quantity));
+    expect(
+      find.textContaining('原始实收合计 $expected 个', findRichText: true),
+      findsOneWidget,
+    );
+    expect(find.textContaining('原量'), findsNothing);
     expect(tester.takeException(), isNull);
     await tester.tap(find.text('确认入库'));
     await tester.pumpAndSettle();

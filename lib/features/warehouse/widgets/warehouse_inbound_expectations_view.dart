@@ -716,8 +716,13 @@ class _WarehouseInboundExpectationsViewState
       actionLabel: '送检',
       confirmLabel: '确认送检',
       summary: const UtenConfirmationSummary(
-        facts: [UtenConfirmationFact(label: '本次送检', value: '1 张已登记收货单')],
-        consequences: ['送检合格后由仓库核对实物和库位再入库。', '超批准量的单隔离转财务，不入库、不生成应付。'],
+        facts: [
+          UtenConfirmationFact(
+            label: '本次送检',
+            value: '1 张已登记收货单',
+            info: '送检合格后由仓库核对实物和库位再入库；超批准量的单隔离转财务，不入库、不生成应付。',
+          ),
+        ],
       ),
     );
     if (confirmed != true || !mounted) return;

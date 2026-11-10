@@ -476,7 +476,8 @@ void main() {
       find.byType(UtenConfirmationSummary),
     );
     expect(summary.facts.first.value, '2 行 · 1 个仓库');
-    expect(summary.consequences.first, contains('短收先扣实际超产'));
+    expect(summary.facts.first.info, contains('短收先扣实际超产'));
+    expect(summary.consequences, isEmpty);
     expect(find.text('确认登记并先入库'), findsNothing);
     await tester.tap(find.text('确认登记送检'));
     await tester.pumpAndSettle();

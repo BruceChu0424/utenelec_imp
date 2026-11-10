@@ -1136,8 +1136,13 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
 
   final _selectedRows = <String, T>{};
   late List<T> _items;
+  List<T>? _lastControllerRowsUpdate;
   List<T>? _collectedSource;
   String? Function(T)? _collectedIdentity;
+  // Last merge output. Dart canonicalizes tear-offs of the same function, so
+  // a closure's identity cannot prove its captured state is unchanged: the
+  // merge always re-runs, and only its value-stable output identity is kept.
+  List<T>? _mergedStable;
   final Set<String> _collectedIds = {};
   bool _collectedSnapshot = false;
   int? get _appendPage => null;
@@ -1227,9 +1232,26 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         merged[index] = row;
       }
     }
-    return widget.rowVisible == null
+    final result = widget.rowVisible == null
         ? merged
         : merged.where(widget.rowVisible!).toList();
+    // Stabilize the output identity: a merge yielding the same row instances
+    // in the same order keeps the previous list object, so caches keyed by
+    // _items identity (platform membership, projection source, row plan
+    // inputs) survive a parent rebuild that recreated its closures.
+    final previous = _mergedStable;
+    if (previous != null && previous.length == result.length) {
+      var same = true;
+      for (var index = 0; index < result.length; index++) {
+        if (!identical(previous[index], result[index])) {
+          same = false;
+          break;
+        }
+      }
+      if (same) return previous;
+    }
+    _mergedStable = result;
+    return result;
   }
 
   List<T>? _collectImmutableRows(List<T> rows) {
@@ -1297,18 +1319,29 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       if (_selectedRows.isEmpty) {
         if (_collectedSnapshot) {
           controller.updateSnapshot(_items);
-        } else {
+        } else if (!identical(_lastControllerRowsUpdate, _items)) {
+          // The merged list is replaced, never mutated in place, so the same
+          // object needs no fresh defensive copy.
+          _lastControllerRowsUpdate = _items;
           controller.update(_items);
         }
       } else {
         final liveIds = _withSelectionReadScope(
           () => _items.map((row) => _outputIdOf?.call(row)).toSet(),
         );
-        controller.update([
-          ..._items,
+        final retained = [
           for (final entry in _selectedRows.entries)
             if (!liveIds.contains(entry.key)) entry.value,
-        ]);
+        ];
+        if (retained.isEmpty) {
+          if (!identical(_lastControllerRowsUpdate, _items)) {
+            _lastControllerRowsUpdate = _items;
+            controller.update(_items);
+          }
+        } else {
+          _lastControllerRowsUpdate = null;
+          controller.update([..._items, ...retained]);
+        }
       }
     }
     _pruneFacetAccumulators();
@@ -1377,6 +1410,10 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     }
     _appendGeneration++;
     _prependBottomSpace = 0;
+    _groupedPlanCache = null;
+    _groupedPlanItems = null;
+    _groupedPlanGroups = null;
+    _groupedPlanNotice = null;
     _acceptPageIndicator(widget.currentPage, reset: true);
     _pageRows = widget.items;
     _syncRows();
@@ -1389,6 +1426,19 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     }
     final previous = _pageRows;
     if (identical(previous, incoming)) return incoming;
+    // A rebuilt host list that still carries the same row instances is the
+    // same page: keep the previous list object so downstream identity-keyed
+    // caches (platform membership, projection, row plan) stay valid.
+    if (previous.length == incoming.length) {
+      var same = true;
+      for (var index = 0; index < incoming.length; index++) {
+        if (!identical(previous[index], incoming[index])) {
+          same = false;
+          break;
+        }
+      }
+      if (same) return previous;
+    }
     const equality = DeepCollectionEquality();
     bool canReuse(T current, T before) {
       if (identical(current, before)) return true;
@@ -1769,7 +1819,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     );
     _platformRows = rows;
     _platformColumnCache = null;
-    _applyPlatformLayout();
+    // Callers re-apply the saved layout after their own column mutations;
+    // applying here as well doubled the work on every parent rebuild.
   }
 
   void _applyPlatformLayout() {
@@ -2981,6 +3032,36 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
 
   /// 当前展开的前导分组 id 集合（点击分组标题行切换）。默认全折叠。
   final Set<String> _expandedGroups = {};
+  int _expandedGroupsRevision = 0;
+
+  /// 分组行计划的输入键：displayItems/分组内容/提示行/展开态任一变化才重建，
+  /// 父级纯重建（勾选、loading 等）不再为全部行分配计划条目。宿主每次 build
+  /// 新建分组列表是常态，按计划真正读取的字段比较，而不是列表身份。
+  bool _samePlanGroups(List<MasterDataGroup<T>>? a, List<MasterDataGroup<T>> b) {
+    if (a == null || a.length != b.length) return false;
+    for (var index = 0; index < b.length; index++) {
+      final before = a[index];
+      final next = b[index];
+      if (identical(before, next)) continue;
+      if (before.id != next.id ||
+          before.title != next.title ||
+          before.initiallyExpanded != next.initiallyExpanded ||
+          !identical(before.items, next.items) ||
+          before.total != next.total ||
+          before.loading != next.loading ||
+          before.error != next.error ||
+          (before.onExpand == null) != (next.onExpand == null)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  List<_MasterRowPlan<T>>? _groupedPlanCache;
+  List<T>? _groupedPlanItems;
+  List<MasterDataGroup<T>>? _groupedPlanGroups;
+  Widget? _groupedPlanNotice;
+  int _groupedPlanExpansion = -1;
 
   /// 列下标→LayerLink：每列表头包一个 CompositedTransformTarget，跟手浮层（共用
   /// [UtenColumnDragHideHost]）经 CompositedTransformFollower 锚定到"当前拖拽列"的
@@ -3363,6 +3444,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     super.didChangeDependencies();
     _searchLifecycle.attach(context);
     _configurePlatform();
+    if (widget.listItemBuilder == null) _applyPlatformLayout();
     if (widget.listItemBuilder == null) {
       _aiSlot.attach(context, _aiTableSource);
     }
@@ -6557,6 +6639,12 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
           debugMasterTableWorkObserver?.call('rowPlanRows', 0);
           return _FlatMasterRowPlan<T>(appendSource);
         }
+        if (identical(displayItems, _groupedPlanItems) &&
+            _samePlanGroups(_groupedPlanGroups, groups) &&
+            identical(bodyNotice, _groupedPlanNotice) &&
+            _expandedGroupsRevision == _groupedPlanExpansion) {
+          return _groupedPlanCache!;
+        }
         debugMasterTableWorkObserver?.call('rowPlanRows', displayItems.length);
         final result =
             <
@@ -6594,6 +6682,11 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         for (final it in displayItems) {
           result.add((header: false, group: null, item: it, notice: null));
         }
+        _groupedPlanCache = result;
+        _groupedPlanItems = displayItems;
+        _groupedPlanGroups = groups;
+        _groupedPlanNotice = bodyNotice;
+        _groupedPlanExpansion = _expandedGroupsRevision;
         return result;
       },
     );
@@ -7678,6 +7771,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         onTap: () {
           final willExpand = !expanded;
           setState(() {
+            _expandedGroupsRevision++;
             if (expanded) {
               _expandedGroups.remove(group.id);
             } else {

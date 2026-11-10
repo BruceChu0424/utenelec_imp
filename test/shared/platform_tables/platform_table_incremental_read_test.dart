@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/data_display/master_data_table_rows_controller.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/shared/models/immutable_paged_rows.dart';
@@ -102,6 +103,7 @@ Widget _table({
   Set<String> selected = const {},
   ValueChanged<Set<String>>? onSelected,
   Object? revision,
+  MasterDataTableRowsController<_Row>? controller,
 }) => MasterDataTableView<_Row>(
   items: rows,
   columns: _columns,
@@ -114,6 +116,7 @@ Widget _table({
   selectedIds: selected,
   onSelectedIdsChanged: onSelected,
   virtualized: true,
+  rowsController: controller,
   facets: const {},
   nullCounts: const {},
   filters: const {},
@@ -324,5 +327,71 @@ void main() {
         reason: 'a rebuilt group list with the same items re-reads nothing');
     expect(metrics['uniqueIds'], total + 200);
     expect(metrics['peakInFlight'], 1);
+  });
+
+  testWidgets('pure parent rebuilds re-collect no rows and rebuild no plan', (
+    tester,
+  ) async {
+    final repo = _CountingRepository();
+    var recordIdCalls = 0;
+    final binding = _binding(() => recordIdCalls++);
+    const total = 3000;
+    final rows = List.generate(total, (i) => _Row('id-$i', 'v$i'));
+    final groupItems = List.generate(200, (i) => _Row('g-$i', 'g$i'));
+    List<MasterDataGroup<_Row>> groups() => [
+      MasterDataGroup<_Row>(id: 'disabled', title: '禁用', items: groupItems),
+    ];
+    var collected = 0;
+    var rowPlanRows = 0;
+    debugMasterTableWorkObserver = (label, count) {
+      if (label == 'collectRows') collected += count;
+      if (label == 'rowPlanRows') rowPlanRows += count;
+    };
+    addTearDown(() => debugMasterTableWorkObserver = null);
+    var selected = <String>{};
+    final rowController = MasterDataTableRowsController<_Row>();
+    Future<void> mount() => tester.pumpWidget(
+      _host(
+        StatefulBuilder(
+          builder: (context, setState) => _table(
+            // 宿主每次 build 都新建列表与闭包（同一批行实例）。
+            rows: List.of(rows),
+            binding: binding,
+            leadingGroups: groups(),
+            selected: selected,
+            onSelected: (next) => setState(() => selected = next),
+            controller: rowController,
+          ),
+        ),
+        repo: repo,
+      ),
+    );
+
+    await mount();
+    await tester.pumpAndSettle();
+    final planAfterFirst = rowPlanRows;
+    final itemsAfterFirst = rowController.items;
+    expect(
+      planAfterFirst,
+      total,
+      reason: 'the first build allocates a plan entry per displayed row',
+    );
+    for (var round = 0; round < 3; round++) {
+      selected = {'id-$round'};
+      await mount();
+      await tester.pump(const Duration(milliseconds: 200));
+    }
+    expect(
+      rowPlanRows,
+      planAfterFirst,
+      reason: 'a pure selection rebuild allocates no row-plan entries',
+    );
+    expect(
+      identical(rowController.items, itemsAfterFirst),
+      isTrue,
+      reason: 'a merge of the same instances keeps the stable list identity',
+    );
+    await _drain(tester, repo);
+    await tester.pumpAndSettle();
   });
 }

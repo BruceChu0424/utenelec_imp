@@ -84,12 +84,28 @@ class PlatformTableDescriptor<T> {
     required this.rows,
     this.tableKey,
     this.revision,
+    this.additionalRows = const [],
+    this.immutableRows = false,
+    this.appendStart,
   });
   final String kind;
   final Object? revision;
   final String? tableKey;
   final List<String> columnKeys;
   final List<T> rows;
+
+  /// Rows shown outside the main list (leading groups). They share the
+  /// table's record membership without copying the main list to join them.
+  final List<T> additionalRows;
+
+  /// The host proved [rows] is an immutable snapshot whose identity changes
+  /// whenever membership or a record identity changes. Only then may an
+  /// identical list skip the membership check; a mutable host is re-checked.
+  final bool immutableRows;
+
+  /// With [immutableRows], rows before this index are the previously
+  /// configured rows, unchanged. Null when the host has no such proof.
+  final int? appendStart;
   Type get rowType => T;
 }
 

@@ -1651,6 +1651,12 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   bool _platformRefreshScheduled = false;
   bool _projectionScheduled = false;
   Object? _projectionOwner;
+  int _platformStructureSeen = 0;
+  int _platformValuesSeen = 0;
+  List<T>? _platformRows;
+  List<T> _platformAdditionalRows = const [];
+  List<MasterDataGroup<T>>? _platformAdditionalSource;
+  (int, int, List<MasterColumnDef<T>>)? _platformRevealSeen;
   final _aiSlot = AiPageSlot();
 
   List<MasterColumnDef<T>> get _columns {
@@ -1704,14 +1710,45 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   void _configurePlatform() {
     if (widget.listItemBuilder != null) return;
     _projection = TableColumnProjectionScope.read(context);
+    final groups = _authorizedLeadingGroups;
+    if (groups == null || groups.isEmpty) {
+      _platformAdditionalSource = groups;
+      _platformAdditionalRows = const [];
+    } else {
+      // Group rows join the record membership without copying the main list.
+      // A rebuilt group list with the same item lists is not a change.
+      var sameSource = identical(_platformAdditionalSource, groups);
+      if (!sameSource &&
+          _platformAdditionalSource != null &&
+          _platformAdditionalSource!.length == groups.length) {
+        sameSource = true;
+        for (var index = 0; index < groups.length; index++) {
+          if (!identical(_platformAdditionalSource![index].items, groups[index].items)) {
+            sameSource = false;
+            break;
+          }
+        }
+      }
+      if (!sameSource) {
+        _platformAdditionalSource = groups;
+        _platformAdditionalRows = [for (final group in groups) ...group.items];
+      }
+    }
+    final rows = _items;
+    final appendStart =
+        _collectedSnapshot && _platformRows != null
+            ? pagedRowsAppendStart(_platformRows, rows)
+            : null;
     _platform.configure(
       context,
       descriptor: PlatformTableDescriptor<T>(
         kind: 'master',
-        revision: (_items, _authorizedLeadingGroups),
         tableKey: widget.tableKey,
         columnKeys: widget.columns.map((c) => c.key).toList(),
-        rows: _rowsWithLeadingGroups(),
+        rows: rows,
+        additionalRows: _platformAdditionalRows,
+        immutableRows: _collectedSnapshot,
+        appendStart: appendStart,
       ),
       explicitBinding: widget.platformBinding,
       columnEditingEnabled: widget.columnEditingEnabled,
@@ -1730,6 +1767,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
             column.key: column.exactValueOf!(row),
       },
     );
+    _platformRows = rows;
     _platformColumnCache = null;
     _applyPlatformLayout();
   }
@@ -1782,16 +1820,26 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
             .where((key) => !_columnOrder.contains(key)),
       ];
     }
-    for (final column in columns) {
-      if (_platform.binding?.revealPopulatedColumnKeys.contains(
-                _platform.canonicalKey(column.key),
-              ) ==
-              true &&
-          _items.any((row) {
-            final value = column.value(row)?.trim();
-            return value != null && value.isNotEmpty && value != '—';
-          })) {
-        _hiddenKeys.remove(column.key);
+    // 揭示列（有持久化值的隐藏列自动显形）依赖扩展字段的值：只有结构或值
+    // 真正变化、或列集合更换时才重扫行，loading/纯重建不触发全表 value() 调用。
+    final revealSeed = (
+      _platform.structureRevision,
+      _platform.valuesRevision,
+      widget.columns,
+    );
+    if (_platformRevealSeen != revealSeed) {
+      _platformRevealSeen = revealSeed;
+      for (final column in columns) {
+        if (_platform.binding?.revealPopulatedColumnKeys.contains(
+                  _platform.canonicalKey(column.key),
+                ) ==
+                true &&
+            _items.any((row) {
+              final value = column.value(row)?.trim();
+              return value != null && value.isNotEmpty && value != '—';
+            })) {
+          _hiddenKeys.remove(column.key);
+        }
       }
     }
     if (_hiddenKeys.length >= columns.length) _hiddenKeys.clear();
@@ -1821,12 +1869,30 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _platformRefreshScheduled = false;
       if (!mounted) return;
+      final structure = _platform.structureRevision != _platformStructureSeen;
+      final values = _platform.valuesRevision != _platformValuesSeen;
+      _platformStructureSeen = _platform.structureRevision;
+      _platformValuesSeen = _platform.valuesRevision;
+      if (!structure && (!values || _platform.definitions.isEmpty)) {
+        // Pure loading/error status, or values for columns nobody displays:
+        // the status row and cells rebuild, but no projection, facet or
+        // column-width work is repeated.
+        setState(() {});
+        if (_fullscreen) _fsTick.value++;
+        return;
+      }
       setState(() {
         _displayRowsSource = null;
         _rowFacetScope = null;
-        _platformColumnCache = null;
-        _applyPlatformLayout();
-        _widthsDirty = true;
+        if (structure) {
+          _platformColumnCache = null;
+          _applyPlatformLayout();
+          _widthsDirty = true;
+        } else {
+          // Only displayed extension values changed: keep the column set and
+          // projection inputs, re-derive the row projection below.
+          if (_platform.definitions.isNotEmpty) _widthsDirty = true;
+        }
       });
       if (_fullscreen) _fsTick.value++;
       _publishProjection();

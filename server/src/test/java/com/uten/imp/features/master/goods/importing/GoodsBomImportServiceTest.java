@@ -51,6 +51,19 @@ import static org.mockito.Mockito.when;
  * <p>提交先按 id 顺序一次锁住所有要写的父件，再按层粘贴(与学习引擎同一锁序)。</p>
  */
 class GoodsBomImportServiceTest {
+    @Test void learnedSourceIsRecognizedButCannotChangeTheImportedDesignQuantity() throws Exception {
+        var service=new GoodsBomImportService(repoWithAllCodes(),mock(GoodsBomPasteService.class));
+        try(var book=new XSSFWorkbook();var out=new ByteArrayOutputStream()) {
+            var sheet=book.createSheet("BOM");var header=sheet.createRow(0);var row=sheet.createRow(1);
+            String[] labels={"序号","编号","设计使用数量","学习来源","真实使用数量"};
+            String[] values={"1","K01","1.2345","系统学习","999"};
+            for(int i=0;i<labels.length;i++){header.createCell(i).setCellValue(labels[i]);row.createCell(i).setCellValue(values[i]);}
+            book.write(out);Object parsed=parsedRows(service,targetId,out.toByteArray());
+            assertTrue(errorsOf(parsed).isEmpty(),errorText(parsed));
+            Object imported=rowsOf(parsed).getFirst();var qty=imported.getClass().getDeclaredField("qty");qty.setAccessible(true);
+            assertEquals(new BigDecimal("1.2345"),qty.get(imported));
+        }
+    }
 
     private final UUID targetId = UUID.randomUUID();
     private final UUID shellId = UUID.randomUUID();

@@ -1,0 +1,62 @@
+-------------------------------------------------------------------------------
+Test set: com.uten.imp.businesschain.MasterDirectoryExportPostgresTest
+-------------------------------------------------------------------------------
+Tests run: 15, Failures: 0, Errors: 1, Skipped: 0, Time elapsed: 1865 s <<< FAILURE! -- in com.uten.imp.businesschain.MasterDirectoryExportPostgresTest
+com.uten.imp.businesschain.MasterDirectoryExportPostgresTest.expandedSettlementAndWarehouseHeadersExportTheirAuthoritativeValues -- Time elapsed: 0.244 s <<< ERROR!
+org.springframework.dao.DuplicateKeyException: 
+PreparedStatementCallback; SQL [INSERT INTO warehouses(id,code,name,status,parent_id,is_accountable) VALUES(?,?,?,?,?,?)]; ERROR: business identifier is reserved for another identity: code=MX-HDRc0e033e7b6-000000 owner=WAREHOUSE
+  在位置：PL/pgSQL function fn_claim_global_business_identifier(text,text,uuid,text,text,text,boolean,boolean) line 65 at RAISE
+SQL statement "SELECT fn_claim_global_business_identifier(
+        identifier_snapshot, owner_domain, entity_id, legacy_identity,
+        TG_TABLE_NAME, current_normalized,
+        TG_OP = 'INSERT' AND legacy_import_mode,
+        base_domain = 'FINANCE_ASSET_CATEGORY' AND TG_OP = 'INSERT')"
+PL/pgSQL function fn_reserve_global_master_identifier() line 51 at PERFORM
+	at org.springframework.jdbc.support.SQLStateSQLExceptionTranslator.doTranslate(SQLStateSQLExceptionTranslator.java:138)
+	at org.springframework.jdbc.support.AbstractFallbackSQLExceptionTranslator.translate(AbstractFallbackSQLExceptionTranslator.java:102)
+	at org.springframework.jdbc.support.AbstractFallbackSQLExceptionTranslator.translate(AbstractFallbackSQLExceptionTranslator.java:111)
+	at org.springframework.jdbc.core.JdbcTemplate.translateException(JdbcTemplate.java:1549)
+	at org.springframework.jdbc.core.JdbcTemplate.execute(JdbcTemplate.java:689)
+	at org.springframework.jdbc.core.JdbcTemplate.execute(JdbcTemplate.java:711)
+	at org.springframework.jdbc.core.JdbcTemplate.batchUpdate(JdbcTemplate.java:1097)
+	at com.uten.imp.businesschain.MasterDirectoryExportPostgresTest.lambda$seed$12(MasterDirectoryExportPostgresTest.java:265)
+	at org.springframework.transaction.support.TransactionOperations.lambda$executeWithoutResult$0(TransactionOperations.java:68)
+	at org.springframework.transaction.support.TransactionTemplate.execute(TransactionTemplate.java:137)
+	at org.springframework.transaction.support.TransactionOperations.executeWithoutResult(TransactionOperations.java:67)
+	at com.uten.imp.businesschain.MasterDirectoryExportPostgresTest.seed(MasterDirectoryExportPostgresTest.java:265)
+	at com.uten.imp.businesschain.MasterDirectoryExportPostgresTest.expandedSettlementAndWarehouseHeadersExportTheirAuthoritativeValues(MasterDirectoryExportPostgresTest.java:86)
+Caused by: org.springframework.jdbc.core.AggregatedBatchUpdateException: Batch entry 0 INSERT INTO warehouses(id,code,name,status,parent_id,is_accountable) VALUES(('2157ee09-a158-47cb-b927-6d08c4496dc4'::uuid),('MX-HDRc0e033e7b6-000000'),('HDRc0e033e7b6-0'),('使用'),('25e1da6c-8b9b-4f5d-8c8e-a1487a144697'::uuid),('TRUE'::boolean)) was aborted: ERROR: business identifier is reserved for another identity: code=MX-HDRc0e033e7b6-000000 owner=WAREHOUSE
+  在位置：PL/pgSQL function fn_claim_global_business_identifier(text,text,uuid,text,text,text,boolean,boolean) line 65 at RAISE
+SQL statement "SELECT fn_claim_global_business_identifier(
+        identifier_snapshot, owner_domain, entity_id, legacy_identity,
+        TG_TABLE_NAME, current_normalized,
+        TG_OP = 'INSERT' AND legacy_import_mode,
+        base_domain = 'FINANCE_ASSET_CATEGORY' AND TG_OP = 'INSERT')"
+PL/pgSQL function fn_reserve_global_master_identifier() line 51 at PERFORM  Call getNextException to see other errors in the batch.
+	at org.springframework.jdbc.core.JdbcTemplate.lambda$batchUpdate$0(JdbcTemplate.java:1118)
+	at org.springframework.jdbc.core.JdbcTemplate.execute(JdbcTemplate.java:670)
+	... 8 more
+Caused by: org.postgresql.util.PSQLException: ERROR: business identifier is reserved for another identity: code=MX-HDRc0e033e7b6-000000 owner=WAREHOUSE
+  在位置：PL/pgSQL function fn_claim_global_business_identifier(text,text,uuid,text,text,text,boolean,boolean) line 65 at RAISE
+SQL statement "SELECT fn_claim_global_business_identifier(
+        identifier_snapshot, owner_domain, entity_id, legacy_identity,
+        TG_TABLE_NAME, current_normalized,
+        TG_OP = 'INSERT' AND legacy_import_mode,
+        base_domain = 'FINANCE_ASSET_CATEGORY' AND TG_OP = 'INSERT')"
+PL/pgSQL function fn_reserve_global_master_identifier() line 51 at PERFORM
+	at org.postgresql.core.v3.QueryExecutorImpl.receiveErrorResponse(QueryExecutorImpl.java:2904)
+	at org.postgresql.core.v3.QueryExecutorImpl.processResults(QueryExecutorImpl.java:2589)
+	at org.postgresql.core.v3.QueryExecutorImpl.execute(QueryExecutorImpl.java:674)
+	at org.postgresql.jdbc.PgStatement.internalExecuteBatch(PgStatement.java:900)
+	at org.postgresql.jdbc.PgStatement.executeBatch(PgStatement.java:924)
+	at org.postgresql.jdbc.PgPreparedStatement.executeBatch(PgPreparedStatement.java:1778)
+	at com.zaxxer.hikari.pool.ProxyStatement.executeBatch(ProxyStatement.java:128)
+	at com.zaxxer.hikari.pool.HikariProxyPreparedStatement.executeBatch(HikariProxyPreparedStatement.java)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at com.uten.imp.businesschain.ProductionJdbcMeasurement.invoke(ProductionJdbcMeasurement.java:378)
+	at com.uten.imp.businesschain.ProductionJdbcMeasurement.lambda$statement$7(ProductionJdbcMeasurement.java:242)
+	at jdk.proxy3/jdk.proxy3.$Proxy496.executeBatch(Unknown Source)
+	at org.springframework.jdbc.core.JdbcTemplate.lambda$batchUpdate$0(JdbcTemplate.java:1114)
+	... 9 more
+

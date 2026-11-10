@@ -6,7 +6,6 @@ import com.uten.imp.features.admin.dto.PermissionBulkScopeDto;
 import com.uten.imp.features.admin.dto.PermissionChangeDto;
 import com.uten.imp.features.admin.dto.PermissionOverridesDto;
 import com.uten.imp.features.auth.PermissionResolver;
-import com.uten.imp.features.auth.model.RefreshTokenRepository;
 import com.uten.imp.features.auth.model.UserAccount;
 import com.uten.imp.features.rbac.GrantPolicy;
 import com.uten.imp.features.rbac.Permission;
@@ -23,7 +22,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -58,7 +56,6 @@ public class PermissionOverrideAdminService {
     private final PermissionRepository permissionRepo;
     private final TxSessionVars tx;
     private final AdminUserSupport support;
-    private final RefreshTokenRepository refreshTokenRepo;
     private final AdminAccountLifecycleLock accountLifecycle;
     private final PermissionResolver permissionResolver;
     private final DepartmentPermissionAdminService departmentPermissionAdmin;

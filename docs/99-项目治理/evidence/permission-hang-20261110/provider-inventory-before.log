@@ -1,0 +1,350 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/provider_http_owner_inventory_test.dart
+00:00 +0: employee picker department tree: final consumer retires bounded HTTP
+00:00 +0 -1: employee picker department tree: final consumer retires bounded HTTP [E]
+  Expected: every element(true)
+    Actual: [false]
+     Which: has value <false> which doesn't match true at index 0
+  employee picker department tree
+  
+  package:matcher                                                  expect
+  package:flutter_test/src/widget_tester.dart 473:18               expect
+  test\shared\paging\provider_http_owner_inventory_test.dart 80:7  main.<fn>
+  
+00:00 +0 -1: business application detail: final consumer retires bounded HTTP
+00:00 +0 -2: business application detail: final consumer retires bounded HTTP [E]
+  Expected: every element(true)
+    Actual: [false]
+     Which: has value <false> which doesn't match true at index 0
+  business application detail
+  
+  package:matcher                                                  expect
+  package:flutter_test/src/widget_tester.dart 473:18               expect
+  test\shared\paging\provider_http_owner_inventory_test.dart 80:7  main.<fn>
+  
+00:00 +0 -2: business application counts: final consumer retires bounded HTTP
+00:00 +0 -3: business application counts: final consumer retires bounded HTTP [E]
+  Expected: every element(true)
+    Actual: [false]
+     Which: has value <false> which doesn't match true at index 0
+  business application counts
+  
+  package:matcher                                                  expect
+  package:flutter_test/src/widget_tester.dart 473:18               expect
+  test\shared\paging\provider_http_owner_inventory_test.dart 80:7  main.<fn>
+  
+00:00 +0 -3: expense settings: final consumer retires bounded HTTP
+00:00 +0 -4: expense settings: final consumer retires bounded HTTP [E]
+  Expected: every element(true)
+    Actual: [false]
+     Which: has value <false> which doesn't match true at index 0
+  expense settings
+  
+  package:matcher                                                  expect
+  package:flutter_test/src/widget_tester.dart 473:18               expect
+  test\shared\paging\provider_http_owner_inventory_test.dart 80:7  main.<fn>
+  
+00:00 +0 -4: expense mine facets: final consumer retires bounded HTTP
+00:01 +0 -5: expense mine facets: final consumer retires bounded HTTP [E]
+  Expected: every element(true)
+    Actual: [false]
+     Which: has value <false> which doesn't match true at index 0
+  expense mine facets
+  
+  package:matcher                                                  expect
+  package:flutter_test/src/widget_tester.dart 473:18               expect
+  test\shared\paging\provider_http_owner_inventory_test.dart 80:7  main.<fn>
+  
+00:01 +0 -5: expense detail: final consumer retires bounded HTTP
+00:01 +0 -6: expense detail: final consumer retires bounded HTTP [E]
+  Expected: every element(true)
+    Actual: [false]
+     Which: has value <false> which doesn't match true at index 0
+  expense detail
+  
+  package:matcher                                                  expect
+  package:flutter_test/src/widget_tester.dart 473:18               expect
+  test\shared\paging\provider_http_owner_inventory_test.dart 80:7  main.<fn>
+  
+00:01 +0 -6: expense history detail: final consumer retires bounded HTTP
+00:01 +0 -7: expense history detail: final consumer retires bounded HTTP [E]
+  Expected: every element(true)
+    Actual: [false]
+     Which: has value <false> which doesn't match true at index 0
+  expense history detail
+  
+  package:matcher                                                  expect
+  package:flutter_test/src/widget_tester.dart 473:18               expect
+  test\shared\paging\provider_http_owner_inventory_test.dart 80:7  main.<fn>
+  
+00:01 +0 -7: expense queue summary: final consumer retires bounded HTTP
+00:01 +0 -8: expense queue summary: final consumer retires bounded HTTP [E]
+  Expected: every element(true)
+    Actual: [false]
+     Which: has value <false> which doesn't match true at index 0
+  expense queue summary
+  
+  package:matcher                                                  expect
+  package:flutter_test/src/widget_tester.dart 473:18               expect
+  test\shared\paging\provider_http_owner_inventory_test.dart 80:7  main.<fn>
+  
+00:01 +0 -8: expense approval facets: final consumer retires bounded HTTP
+00:01 +0 -9: expense approval facets: final consumer retires bounded HTTP [E]
+  Expected: every element(true)
+    Actual: [false]
+     Which: has value <false> which doesn't match true at index 0
+  expense approval facets
+  
+  package:matcher                                                  expect
+  package:flutter_test/src/widget_tester.dart 473:18               expect
+  test\shared\paging\provider_http_owner_inventory_test.dart 80:7  main.<fn>
+  
+00:01 +0 -9: expense payment options: final consumer retires bounded HTTP
+00:02 +0 -10: expense payment options: final consumer retires bounded HTTP [E]
+  Expected: every element(true)
+    Actual: [false, false]
+     Which: has value <false> which doesn't match true at index 0
+  expense payment options
+  
+  package:matcher                                                  expect
+  package:flutter_test/src/widget_tester.dart 473:18               expect
+  test\shared\paging\provider_http_owner_inventory_test.dart 80:7  main.<fn>
+  
+00:02 +0 -10: expense payment purpose options: final consumer retires bounded HTTP
+00:02 +0 -11: expense payment purpose options: final consumer retires bounded HTTP [E]
+  Expected: every element(true)
+    Actual: [false, false]
+     Which: has value <false> which doesn't match true at index 0
+  expense payment purpose options
+  
+  package:matcher                                                  expect
+  package:flutter_test/src/widget_tester.dart 473:18               expect
+  test\shared\paging\provider_http_owner_inventory_test.dart 80:7  main.<fn>
+  
+00:02 +0 -11: payroll slip detail: final consumer retires bounded HTTP
+00:02 +0 -12: payroll slip detail: final consumer retires bounded HTTP [E]
+  Expected: every element(true)
+    Actual: [false]
+     Which: has value <false> which doesn't match true at index 0
+  payroll slip detail
+  
+  package:matcher                                                  expect
+  package:flutter_test/src/widget_tester.dart 473:18               expect
+  test\shared\paging\provider_http_owner_inventory_test.dart 80:7  main.<fn>
+  
+00:02 +0 -12: payroll department options: final consumer retires bounded HTTP
+00:02 +0 -13: payroll department options: final consumer retires bounded HTTP [E]
+  Expected: every element(true)
+    Actual: [false]
+     Which: has value <false> which doesn't match true at index 0
+  payroll department options
+  
+  package:matcher                                                  expect
+  package:flutter_test/src/widget_tester.dart 473:18               expect
+  test\shared\paging\provider_http_owner_inventory_test.dart 80:7  main.<fn>
+  
+00:02 +0 -13: payroll batch detail: final consumer retires bounded HTTP
+00:02 +0 -14: payroll batch detail: final consumer retires bounded HTTP [E]
+  Expected: every element(true)
+    Actual: [false]
+     Which: has value <false> which doesn't match true at index 0
+  payroll batch detail
+  
+  package:matcher                                                  expect
+  package:flutter_test/src/widget_tester.dart 473:18               expect
+  test\shared\paging\provider_http_owner_inventory_test.dart 80:7  main.<fn>
+  
+00:02 +0 -14: my employee profile: final consumer retires bounded HTTP
+00:02 +0 -15: my employee profile: final consumer retires bounded HTTP [E]
+  Expected: every element(true)
+    Actual: [false]
+     Which: has value <false> which doesn't match true at index 0
+  my employee profile
+  
+  package:matcher                                                  expect
+  package:flutter_test/src/widget_tester.dart 473:18               expect
+  test\shared\paging\provider_http_owner_inventory_test.dart 80:7  main.<fn>
+  
+00:03 +0 -15: my profile change detail: final consumer retires bounded HTTP
+00:03 +0 -16: my profile change detail: final consumer retires bounded HTTP [E]
+  Expected: every element(true)
+    Actual: [false]
+     Which: has value <false> which doesn't match true at index 0
+  my profile change detail
+  
+  package:matcher                                                  expect
+  package:flutter_test/src/widget_tester.dart 473:18               expect
+  test\shared\paging\provider_http_owner_inventory_test.dart 80:7  main.<fn>
+  
+00:03 +0 -16: HR profile preview: final consumer retires bounded HTTP
+00:03 +0 -17: HR profile preview: final consumer retires bounded HTTP [E]
+  Expected: every element(true)
+    Actual: [false]
+     Which: has value <false> which doesn't match true at index 0
+  HR profile preview
+  
+  package:matcher                                                  expect
+  package:flutter_test/src/widget_tester.dart 473:18               expect
+  test\shared\paging\provider_http_owner_inventory_test.dart 80:7  main.<fn>
+  
+00:03 +0 -17: HR employee pending profile: final consumer retires bounded HTTP
+00:03 +0 -18: HR employee pending profile: final consumer retires bounded HTTP [E]
+  Expected: every element(true)
+    Actual: [false]
+     Which: has value <false> which doesn't match true at index 0
+  HR employee pending profile
+  
+  package:matcher                                                  expect
+  package:flutter_test/src/widget_tester.dart 473:18               expect
+  test\shared\paging\provider_http_owner_inventory_test.dart 80:7  main.<fn>
+  
+00:03 +0 -18: HR profile facets: final consumer retires bounded HTTP
+00:03 +0 -19: HR profile facets: final consumer retires bounded HTTP [E]
+  Expected: every element(true)
+    Actual: [false]
+     Which: has value <false> which doesn't match true at index 0
+  HR profile facets
+  
+  package:matcher                                                  expect
+  package:flutter_test/src/widget_tester.dart 473:18               expect
+  test\shared\paging\provider_http_owner_inventory_test.dart 80:7  main.<fn>
+  
+00:03 +0 -19: HR profile change detail: final consumer retires bounded HTTP
+00:03 +0 -20: HR profile change detail: final consumer retires bounded HTTP [E]
+  Expected: every element(true)
+    Actual: [false]
+     Which: has value <false> which doesn't match true at index 0
+  HR profile change detail
+  
+  package:matcher                                                  expect
+  package:flutter_test/src/widget_tester.dart 473:18               expect
+  test\shared\paging\provider_http_owner_inventory_test.dart 80:7  main.<fn>
+  
+00:03 +0 -20: my department tree: final consumer retires bounded HTTP
+00:04 +0 -21: my department tree: final consumer retires bounded HTTP [E]
+  Expected: every element(true)
+    Actual: [false]
+     Which: has value <false> which doesn't match true at index 0
+  my department tree
+  
+  package:matcher                                                  expect
+  package:flutter_test/src/widget_tester.dart 473:18               expect
+  test\shared\paging\provider_http_owner_inventory_test.dart 80:7  main.<fn>
+  
+00:04 +0 -21: my department roster: final consumer retires bounded HTTP
+00:04 +0 -22: my department roster: final consumer retires bounded HTTP [E]
+  Expected: every element(true)
+    Actual: [false]
+     Which: has value <false> which doesn't match true at index 0
+  my department roster
+  
+  package:matcher                                                  expect
+  package:flutter_test/src/widget_tester.dart 473:18               expect
+  test\shared\paging\provider_http_owner_inventory_test.dart 80:7  main.<fn>
+  
+00:04 +0 -22: FQC decision capability: final consumer retires bounded HTTP
+00:04 +0 -23: FQC decision capability: final consumer retires bounded HTTP [E]
+  Expected: every element(true)
+    Actual: [false]
+     Which: has value <false> which doesn't match true at index 0
+  FQC decision capability
+  
+  package:matcher                                                  expect
+  package:flutter_test/src/widget_tester.dart 473:18               expect
+  test\shared\paging\provider_http_owner_inventory_test.dart 80:7  main.<fn>
+  
+00:04 +0 -23: suggestion detail: final consumer retires bounded HTTP
+00:04 +0 -24: suggestion detail: final consumer retires bounded HTTP [E]
+  Expected: every element(true)
+    Actual: [false]
+     Which: has value <false> which doesn't match true at index 0
+  suggestion detail
+  
+  package:matcher                                                  expect
+  package:flutter_test/src/widget_tester.dart 473:18               expect
+  test\shared\paging\provider_http_owner_inventory_test.dart 80:7  main.<fn>
+  
+00:04 +0 -24: visitor approval facets: final consumer retires bounded HTTP
+00:04 +0 -25: visitor approval facets: final consumer retires bounded HTTP [E]
+  Expected: every element(true)
+    Actual: [false]
+     Which: has value <false> which doesn't match true at index 0
+  visitor approval facets
+  
+  package:matcher                                                  expect
+  package:flutter_test/src/widget_tester.dart 473:18               expect
+  test\shared\paging\provider_http_owner_inventory_test.dart 80:7  main.<fn>
+  
+00:04 +0 -25: visitor approval detail: final consumer retires bounded HTTP
+00:04 +0 -26: visitor approval detail: final consumer retires bounded HTTP [E]
+  Expected: every element(true)
+    Actual: [false]
+     Which: has value <false> which doesn't match true at index 0
+  visitor approval detail
+  
+  package:matcher                                                  expect
+  package:flutter_test/src/widget_tester.dart 473:18               expect
+  test\shared\paging\provider_http_owner_inventory_test.dart 80:7  main.<fn>
+  
+00:05 +0 -26: visitor own application detail: final consumer retires bounded HTTP
+00:05 +0 -27: visitor own application detail: final consumer retires bounded HTTP [E]
+  Expected: every element(true)
+    Actual: [false]
+     Which: has value <false> which doesn't match true at index 0
+  visitor own application detail
+  
+  package:matcher                                                  expect
+  package:flutter_test/src/widget_tester.dart 473:18               expect
+  test\shared\paging\provider_http_owner_inventory_test.dart 80:7  main.<fn>
+  
+00:05 +0 -27: website inquiry detail: final consumer retires bounded HTTP
+00:05 +0 -28: website inquiry detail: final consumer retires bounded HTTP [E]
+  Expected: every element(true)
+    Actual: [false]
+     Which: has value <false> which doesn't match true at index 0
+  website inquiry detail
+  
+  package:matcher                                                  expect
+  package:flutter_test/src/widget_tester.dart 473:18               expect
+  test\shared\paging\provider_http_owner_inventory_test.dart 80:7  main.<fn>
+  
+00:05 +0 -28: dashboard overview: final consumer retires bounded HTTP
+00:05 +0 -29: dashboard overview: final consumer retires bounded HTTP [E]
+  Expected: every element(true)
+    Actual: [false]
+     Which: has value <false> which doesn't match true at index 0
+  dashboard overview
+  
+  package:matcher                                                  expect
+  package:flutter_test/src/widget_tester.dart 473:18               expect
+  test\shared\paging\provider_http_owner_inventory_test.dart 80:7  main.<fn>
+  
+00:05 +0 -29: AI availability: final consumer retires bounded HTTP
+00:05 +0 -30: AI availability: final consumer retires bounded HTTP [E]
+  Expected: every element(true)
+    Actual: [false]
+     Which: has value <false> which doesn't match true at index 0
+  AI availability
+  
+  package:matcher                                                  expect
+  package:flutter_test/src/widget_tester.dart 473:18               expect
+  test\shared\paging\provider_http_owner_inventory_test.dart 80:7  main.<fn>
+  
+00:05 +0 -30: a remaining shared department consumer keeps its HTTP despite the initiating page leaving
+00:05 +0 -31: a remaining shared department consumer keeps its HTTP despite the initiating page leaving [E]
+  Expected: every element(false)
+    Actual: [true]
+     Which: has value <true> which doesn't match false at index 0
+  
+  package:matcher                                                   expect
+  package:flutter_test/src/widget_tester.dart 473:18                expect
+  test\shared\paging\provider_http_owner_inventory_test.dart 104:7  main.<fn>
+  
+00:05 +0 -31: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/provider_http_owner_inventory_test.dart: AI availability: final consumer retires bounded HTTP
+  D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/provider_http_owner_inventory_test.dart: FQC decision capability: final consumer retires bounded HTTP
+  D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/provider_http_owner_inventory_test.dart: HR employee pending profile: final consumer retires bounded HTTP
+  D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/provider_http_owner_inventory_test.dart: HR profile change detail: final consumer retires bounded HTTP
+  ... and 27 more

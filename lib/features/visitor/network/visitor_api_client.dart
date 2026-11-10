@@ -36,6 +36,7 @@ final visitorApiProvider = Provider<ApiClient>((ref) {
       storage: storage,
       baseUrl: baseUrl,
       dioFactory: auditedDioFactory,
+      replay: dio.fetch<dynamic>,
     ),
   );
   dio.interceptors.add(SafeRequestRetryInterceptor(dio, recovery: recovery));

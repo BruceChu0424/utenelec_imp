@@ -338,6 +338,7 @@ Future<({Dio dio, SecureStorage storage, String baseUrl})> _fixture(
   final dio = Dio(buildApiBaseOptions(baseUrl));
   dio.interceptors.add(
     AuthInterceptor(
+      replay: dio.fetch<dynamic>,
       storage: storage,
       baseUrl: baseUrl,
       dioFactory: () => Dio(

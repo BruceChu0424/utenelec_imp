@@ -8,6 +8,7 @@ import '../providers/export_context_epoch_provider.dart';
 import 'paged_query_identity.dart';
 import 'scoped_paged_read.dart';
 import 'read_view_activity.dart';
+import 'shared_read_provider_owner.dart';
 
 /// Complete reads publish a terminal failure. ApiClient keeps the original
 /// bounded transport retry; explicit refresh/recovery owns the next full read.
@@ -78,33 +79,37 @@ class ScopedPagedReadProviderLease<R> {
     if (failure != null) return Future.error(failure);
     final useCache = _intent?.page == page;
     if (useCache) _intent = null;
-    return _activity.runRead(
-      () => _current,
-      () => _reader.read(
-        page,
-        scope: [_epoch, _query],
-        fetchPage: fetchPage,
-        fetchPageSized: fetchPageSized,
-        idOf: idOf,
-        useCache: useCache,
-        isCurrent: () => _current,
-        onPrefetchError: (error) {
-          if (!_current ||
-              error is! ApiException ||
-              !({401, 403}.contains(error.httpStatus) ||
-                  const {
-                    'UNAUTHORIZED',
-                    'FORBIDDEN',
-                    'READ_SCOPE_CHANGED',
-                  }.contains(error.code))) {
-            return;
-          }
-          _readFailure = error;
-          // Re-evaluate subscribed page providers into the confirmed access
-          // error. Do not perform another GET or keep accepted private rows.
-          _ref.notifyListeners();
-        },
+    return runSharedProviderRead(
+      _ref,
+      () => _activity.runRead(
+        () => _current,
+        () => _reader.read(
+          page,
+          scope: [_epoch, _query],
+          fetchPage: fetchPage,
+          fetchPageSized: fetchPageSized,
+          idOf: idOf,
+          useCache: useCache,
+          isCurrent: () => _current,
+          onPrefetchError: (error) {
+            if (!_current ||
+                error is! ApiException ||
+                !({401, 403}.contains(error.httpStatus) ||
+                    const {
+                      'UNAUTHORIZED',
+                      'FORBIDDEN',
+                      'READ_SCOPE_CHANGED',
+                    }.contains(error.code))) {
+              return;
+            }
+            _readFailure = error;
+            // Re-evaluate subscribed page providers into the confirmed access
+            // error. Do not perform another GET or keep accepted private rows.
+            _ref.notifyListeners();
+          },
+        ),
       ),
+      isCurrent: () => _current,
     );
   }
 

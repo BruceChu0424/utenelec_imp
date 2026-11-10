@@ -1,3 +1,4 @@
+import '../../../shared/paging/shared_read_provider_owner.dart';
 import 'package:uten_imp/components/feedback/uten_date_range_picker.dart';
 import '../../../shared/formatters/exact_decimal.dart';
 // 报销单发票登记区（V608）：结构化发票要素表格 + 登记/编辑弹窗（图片识别回填 +
@@ -554,7 +555,10 @@ class _ExpenseInvoiceFormDialogState
 
   Future<void> _prefillCompany() async {
     try {
-      final settings = await ref.read(expenseSettingsProvider.future);
+      final settings = await readSharedWidgetFuture(
+        ref,
+        expenseSettingsProvider.future,
+      );
       if (!mounted) return;
       if (!_buyerEdited && _buyerController.text.isEmpty) {
         _buyerController.text = settings.companyName;

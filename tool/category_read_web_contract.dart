@@ -29,7 +29,7 @@ Future<void> main() async {
     isCurrent: (options) async => options.extra['identity'] == identity,
   );
   final dio = Dio()..httpClientAdapter = adapter;
-  dio.interceptors.add(scheduler);
+  scheduler.installOn(dio);
   Options owned() => Options(extra: {'identity': identity});
   try {
     final auxiliary = [
@@ -74,7 +74,7 @@ Future<void> main() async {
       isCurrent: (options) async => options.extra['identity'] == identity,
     );
     final client = Dio()..httpClientAdapter = identityAdapter;
-    client.interceptors.add(identityGate);
+    identityGate.installOn(client);
     try {
       final first = client.get<Map<String, dynamic>>(
         '/first',

@@ -1,3 +1,4 @@
+import '../../../shared/paging/shared_read_provider_owner.dart';
 // 登录庆典弹窗触发器：挂在 dashboard（登录后落地页），首帧后按「每日一次」守卫
 // 弹出当前用户今日庆典弹窗。失败静默（不影响使用）。渲染自身不可见。
 // 文档：docs/00-项目准则/06-动画规范.md。
@@ -43,7 +44,10 @@ class _CelebrationPopupGateState extends ConsumerState<CelebrationPopupGate> {
       if (cached != null) {
         list = cached;
       } else {
-        list = await ref.read(myCelebrationTodayProvider.future);
+        list = await readSharedWidgetFuture(
+          ref,
+          myCelebrationTodayProvider.future,
+        );
       }
       if (!mounted || list.isEmpty) return;
       await _showIfDue(list.first);

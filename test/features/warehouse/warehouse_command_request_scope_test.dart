@@ -328,7 +328,13 @@ _open(WidgetTester tester, _Action action) async {
   final wire = _Wire(action);
   final dio = Dio(BaseOptions(baseUrl: _base))..httpClientAdapter = wire;
   dio.interceptors.add(DeviceAuditInterceptor(audit));
-  dio.interceptors.add(AuthInterceptor(storage: credentials, baseUrl: _base));
+  dio.interceptors.add(
+    AuthInterceptor(
+      replay: dio.fetch<dynamic>,
+      storage: credentials,
+      baseUrl: _base,
+    ),
+  );
   final api = ApiClient(dio);
   Widget page() => switch (action) {
     _Action.draw => const ProductionDrawBatchIssuePage(

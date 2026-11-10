@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.uten.imp.businesschain.PermissionChangeSessionRefreshPostgresTest
+-------------------------------------------------------------------------------
+Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 252.1 s -- in com.uten.imp.businesschain.PermissionChangeSessionRefreshPostgresTest

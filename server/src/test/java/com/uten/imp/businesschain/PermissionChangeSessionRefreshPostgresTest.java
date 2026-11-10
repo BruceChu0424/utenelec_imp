@@ -17,6 +17,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.Callable;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -31,6 +34,49 @@ class PermissionChangeSessionRefreshPostgresTest extends AuthSessionPostgresTest
     @Autowired JwtService jwt;
 
     enum Source { PERSONAL, DEPARTMENT, BASELINE, CENTRAL_PAGE, MANAGER_PAGE }
+
+    @Test
+    void sameAdministratorSessionKeepsServingParallelReadsAcrossRepeatedAccountPermissionChanges() throws Exception {
+        List<Employee> targets = new ArrayList<>();
+        for (int index = 0; index < 3; index++) targets.add(newEmployee(adminToken(), "DEPT_ENG"));
+        Tokens administrator = tokens(login(ADMIN_LOGIN, ADMIN_PASSWORD));
+        String sessionId = jwt.parse(administrator.access()).get("sid", String.class);
+        try (var readers = Executors.newFixedThreadPool(3)) {
+            for (int round = 0; round < 12; round++) {
+                Employee target = targets.get(round % targets.size());
+                boolean enabled = (round / targets.size()) % 2 == 0;
+                String previousAccess = administrator.access();
+                MvcResult changed = mvc.perform(json(put("/api/admin/users/" + target.userId() + "/permission-overrides"),
+                        Map.of("grants", enabled ? List.of(ACTION) : List.of(),
+                                "revokes", enabled ? List.of() : List.of(ACTION)), previousAccess)
+                        .header("X-Uten-Step-Up", stepUp(previousAccess, ADMIN_PASSWORD))).andReturn();
+                assertEquals(200, changed.getResponse().getStatus(), body(changed));
+
+                // Personal grants also invalidate the shared delegation epoch. The
+                // administrator must rotate their current session, not log in again.
+                List<String> paths = List.of("/api/admin/users?page=1&size=50",
+                        "/api/admin/users/" + target.userId() + "/effective-permissions",
+                        "/api/admin/server-status");
+                for (var outcome : readers.invokeAll(paths.stream().<Callable<MvcResult>>map(path ->
+                        () -> mvc.perform(get(path).header("Authorization", "Bearer " + previousAccess)).andReturn())
+                        .toList(), 10, TimeUnit.SECONDS)) {
+                    assertFalse(outcome.isCancelled(), "a stale-authority read must finish rather than occupy a connection");
+                    assertEquals(401, outcome.get().getResponse().getStatus());
+                }
+
+                administrator = refresh(administrator.refresh());
+                assertEquals(sessionId, jwt.parse(administrator.access()).get("sid", String.class));
+                String refreshedAccess = administrator.access();
+                for (var outcome : readers.invokeAll(paths.stream().<Callable<MvcResult>>map(path ->
+                        () -> mvc.perform(get(path).header("Authorization", "Bearer " + refreshedAccess)).andReturn())
+                        .toList(), 10, TimeUnit.SECONDS)) {
+                    assertFalse(outcome.isCancelled(), "permission detail, employee list and server status must recover together");
+                    MvcResult result = outcome.get();
+                    assertEquals(200, result.getResponse().getStatus(), body(result));
+                }
+            }
+        }
+    }
 
     @ParameterizedTest
     @EnumSource(Source.class)

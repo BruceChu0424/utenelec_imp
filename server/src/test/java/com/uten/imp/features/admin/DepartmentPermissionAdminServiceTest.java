@@ -5,9 +5,7 @@ import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.admin.dto.PermissionBulkScopeDto;
 import com.uten.imp.features.admin.dto.PermissionChangeDto;
 import com.uten.imp.features.auth.PermissionResolver;
-import com.uten.imp.features.auth.model.RefreshTokenRepository;
 import com.uten.imp.features.org.department.DepartmentRepository;
-import com.uten.imp.features.org.employee.EmployeeRepository;
 import com.uten.imp.features.rbac.DepartmentPermissionRepository;
 import com.uten.imp.features.rbac.GrantPolicy;
 import com.uten.imp.features.rbac.Permission;
@@ -63,10 +61,6 @@ class DepartmentPermissionAdminServiceTest {
     @Mock
     private AdminUserSupport support;
     @Mock
-    private EmployeeRepository employeeRepo;
-    @Mock
-    private RefreshTokenRepository refreshTokenRepo;
-    @Mock
     private PermissionChangeAudit changeAudit;
 
     private DepartmentPermissionAdminService service;
@@ -82,8 +76,6 @@ class DepartmentPermissionAdminServiceTest {
                 tx,
                 currentUser,
                 support,
-                employeeRepo,
-                refreshTokenRepo,
                 changeAudit);
     }
 
@@ -197,7 +189,7 @@ class DepartmentPermissionAdminServiceTest {
         verify(permissionRepo, never()).findByCodeIn(anyCollection());
         verify(departmentPermissionRepo, never()).insertGrants(any(), anyCollection(), any());
         verify(departmentPermissionRepo, never()).deleteGrants(any(), anyCollection());
-        verifyNoInteractions(changeAudit, refreshTokenRepo, employeeRepo);
+        verifyNoInteractions(changeAudit);
     }
 
     @Test

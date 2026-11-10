@@ -1,3 +1,5 @@
+import '../providers/sensitive_read_boundary_provider.dart';
+import '../paging/shared_read_provider_owner.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/network/api_client.dart';
@@ -39,10 +41,13 @@ class AiStatus {
 /// 读取失败(断网、访客账号、服务端未升级)一律当作「AI 未开启」, 不打扰用户:
 /// 各功能照常走不依赖 AI 的路径, 真正提交时服务端仍会独立判断。
 final aiStatusProvider = FutureProvider.autoDispose<AiStatus>((ref) async {
-  final api = ref.watch(apiClientProvider);
-  try {
-    return AiStatus.fromJson(await api.get(ApiEndpoints.aiStatus));
-  } catch (_) {
-    return AiStatus.unavailable;
-  }
+  final readBoundary = ref.watch(sensitiveReadBoundaryProvider);
+  return runSharedProviderRead(ref, () async {
+    final api = ref.watch(apiClientProvider);
+    try {
+      return AiStatus.fromJson(await api.get(ApiEndpoints.aiStatus));
+    } catch (_) {
+      return AiStatus.unavailable;
+    }
+  }, isCurrent: () => ref.read(sensitiveReadBoundaryProvider) == readBoundary);
 });

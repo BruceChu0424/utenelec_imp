@@ -72,7 +72,11 @@ void main() {
       final sent = <RequestOptions>[];
       final dio = Dio(BaseOptions(baseUrl: 'https://erp.test/api'));
       dio.interceptors.add(
-        AuthInterceptor(storage: storage, baseUrl: 'https://erp.test/api'),
+        AuthInterceptor(
+          replay: dio.fetch<dynamic>,
+          storage: storage,
+          baseUrl: 'https://erp.test/api',
+        ),
       );
       dio.interceptors.add(
         InterceptorsWrapper(
@@ -204,7 +208,11 @@ void main() {
         ),
       );
       dio.interceptors.add(
-        AuthInterceptor(storage: storage, baseUrl: 'https://erp.test/api'),
+        AuthInterceptor(
+          replay: dio.fetch<dynamic>,
+          storage: storage,
+          baseUrl: 'https://erp.test/api',
+        ),
       );
       dio.interceptors.add(
         InterceptorsWrapper(

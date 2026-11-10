@@ -1,0 +1,16 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/authenticated_replay_completion_test.dart
+00:00 +0: each recovered network attempt has a terminal diagnostic event
+00:00 +0 -1: each recovered network attempt has a terminal diagnostic event [E]
+  Expected: an object with length of <1>
+    Actual: WhereIterable<Map<dynamic, dynamic>>:[]
+     Which: has length of <0>
+  
+  package:matcher                                                   expect
+  package:flutter_test/src/widget_tester.dart 473:18                expect
+  test\core\network\authenticated_replay_completion_test.dart 47:7  main.<fn>
+  
+00:00 +0 -1: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/authenticated_replay_completion_test.dart: each recovered network attempt has a terminal diagnostic event

@@ -8,6 +8,7 @@ import 'package:dio/dio.dart';
 import '../step_up_coordinator.dart';
 import '../user_activity.dart';
 import '../request_reload_semantics.dart';
+import '../rejected_request_replay.dart';
 
 class StepUpInterceptor extends Interceptor {
   StepUpInterceptor(
@@ -118,6 +119,7 @@ class StepUpInterceptor extends Interceptor {
     }
     options.headers[header] = token;
     options.extra[_attemptedKey] = true;
+    markDefiniteRejectionForReplay(options);
     try {
       final replayed = await _dio.fetch<dynamic>(options);
       handler.resolve(replayed);

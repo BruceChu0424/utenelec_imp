@@ -1,0 +1,61 @@
+Command exited with code 128: fetch --tags
+Standard error: fatal: unable to access 'https://github.com/flutter/flutter.git/': Failed to connect to 127.0.0.1 port 7897 after 2102 ms: Could not connect to server
+
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/notice/providers/review_pending_login_gate_test.dart
+00:00 +0: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/notice/providers/review_pending_login_gate_test.dart: late previous-account response cannot show its confidential task
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: false
+  Actual: <null>
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/notice/providers/review_pending_login_gate_test.dart:143:7)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/notice/providers/review_pending_login_gate_test.dart line 143
+The test description was:
+  late previous-account response cannot show its confidential task
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:01 +0 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/notice/providers/notice_arrival_test.dart: late user A response cannot cancel or dispatch user B request
+00:01 +0 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/notice/providers/review_pending_login_gate_test.dart: late previous-account response cannot show its confidential task [E]
+  Test failed. See exception logs above.
+  The test description was: late previous-account response cannot show its confidential task
+  
+00:01 +0 -1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/notice/providers/notice_arrival_test.dart: late user A response cannot cancel or dispatch user B request
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: false
+  Actual: <null>
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/notice/providers/notice_arrival_test.dart:1317:5)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/notice/providers/notice_arrival_test.dart line 1317
+The test description was:
+  late user A response cannot cancel or dispatch user B request
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:01 +0 -2: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/notice/providers/notice_arrival_test.dart: late user A response cannot cancel or dispatch user B request [E]
+  Test failed. See exception logs above.
+  The test description was: late user A response cannot cancel or dispatch user B request
+  
+00:01 +0 -2: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/notice/providers/notice_arrival_test.dart: late user A response cannot cancel or dispatch user B request
+  D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/notice/providers/review_pending_login_gate_test.dart: late previous-account response cannot show its confidential task

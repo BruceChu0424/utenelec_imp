@@ -1571,6 +1571,9 @@ Future<void> _mount(
         isSuperAdminProvider.overrideWith((ref) => ref.watch(_role)),
         sessionSnapshotProvider.overrideWith(_Snapshot.new),
         adminRepositoryProvider.overrideWithValue(repository),
+        // Layout cases do not exercise the template binding transport. Keep
+        // this auxiliary read synthetic, as the other repositories above are.
+        permissionTemplateBindingsProvider.overrideWith((ref) => const []),
         if (actorUserId != null)
           sessionProvider.overrideWith(() => _SelectionSession(actorUserId)),
         pagePermissionDelegationRepositoryProvider.overrideWithValue(ai),

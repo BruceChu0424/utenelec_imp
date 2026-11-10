@@ -83,12 +83,18 @@ public class RemoteRequestBudgetFilter extends OncePerRequestFilter {
                     ErrorCode.REMOTE_CAPACITY_REJECTED,"当前外网操作较多，请稍后再试；未开始本次业务处理")));
             return;
         }
-        Timer.Sample sample = health ? null : Timer.start(metrics);
+        Timer.Sample sample = null;
         try {
+            sample = health ? null : Timer.start(metrics);
             chain.doFilter(request,response);
         } finally {
-            if (sample != null) sample.stop(timer);
-            capacity.release();
+            try {
+                if (sample != null) sample.stop(timer);
+            } finally {
+                // Instrumentation callbacks must not strand shared capacity,
+                // including failures before business dispatch or during cleanup.
+                capacity.release();
+            }
         }
     }
 

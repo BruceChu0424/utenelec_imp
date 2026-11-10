@@ -1,3 +1,4 @@
+import '../../../shared/paging/shared_read_provider_owner.dart';
 import '../../../core/formatters/exact_number_text.dart';
 // 工资批次审核页。
 //
@@ -117,7 +118,10 @@ class _PayrollReviewPageState extends ConsumerState<PayrollReviewPage> {
                 data: (batch) => RefreshIndicator(
                   onRefresh: () async {
                     ref.invalidate(payrollBatchDetailProvider(batch.id));
-                    await ref.read(payrollBatchDetailProvider(batch.id).future);
+                    await readSharedWidgetFuture(
+                      ref,
+                      payrollBatchDetailProvider(batch.id).future,
+                    );
                   },
                   // 2026-09-22 全站表格滚动口径：折叠容器即滚动体（刷新手势仍全域有效）。
                   child: _BatchDetail(batch: batch),

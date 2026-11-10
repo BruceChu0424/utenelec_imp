@@ -1,0 +1,6 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_interceptor_backend_issuer_race_test.dart
+00:00 +0: a new independent backend never receives the old access token
+00:00 +1: proactive refresh cannot send an old issuer refresh token to a clone
+00:00 +2: the explicitly compiled company LAN and cloud relay keep one valid session
+00:00 +3: All tests passed!

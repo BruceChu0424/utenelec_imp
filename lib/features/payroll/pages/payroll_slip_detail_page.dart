@@ -1,3 +1,4 @@
+import '../../../shared/paging/shared_read_provider_owner.dart';
 import 'dart:typed_data';
 import '../../../core/formatters/exact_number_text.dart';
 // 工资条详情页
@@ -171,7 +172,10 @@ class _DetailContent extends ConsumerWidget {
           child: RefreshIndicator(
             onRefresh: () async {
               ref.invalidate(payrollDetailProvider(slip.id));
-              await ref.read(payrollDetailProvider(slip.id).future);
+              await readSharedWidgetFuture(
+                ref,
+                payrollDetailProvider(slip.id).future,
+              );
             },
             // 正文不设固定最大宽度，导航收起后跟随可用区域扩宽。
             child: UtenContentContainer(

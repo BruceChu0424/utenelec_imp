@@ -1,0 +1,11 @@
+PASS: parsed workflow, browser contract, JSON artifact and required frontend dependency
+Flutter shard 0: complete=False; log=/tmp/tmplklcpxz2/build/flutter-ci-reports/shard-0/stdout.log; native=/tmp/tmplklcpxz2/build/flutter-ci-reports/shard-0/machine.jsonl
+Flutter shard 0: complete=True; log=/tmp/tmp6uhiv0kj/build/flutter-ci-reports/shard-0/stdout.log; native=/tmp/tmp6uhiv0kj/build/flutter-ci-reports/shard-0/machine.jsonl
+Flutter shard 0: complete=False; log=/tmp/tmpwdxfrsp8/build/flutter-ci-reports/shard-0/stdout.log; native=/tmp/tmpwdxfrsp8/build/flutter-ci-reports/shard-0/machine.jsonl
+Flutter shard browser: complete=False; log=/tmp/tmpf1p_hk3m/build/flutter-ci-reports/shard-browser/stdout.log; native=/tmp/tmpf1p_hk3m/build/flutter-ci-reports/shard-browser/machine.jsonl
+Flutter shard browser: complete=False; log=/tmp/tmpf1p_hk3m/build/flutter-ci-reports/shard-browser/stdout.log; native=/tmp/tmpf1p_hk3m/build/flutter-ci-reports/shard-browser/machine.jsonl
+.........................................
+----------------------------------------------------------------------
+Ran 41 tests in 0.911s
+
+OK

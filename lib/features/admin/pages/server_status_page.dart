@@ -30,6 +30,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/providers/authenticated_scope_provider.dart';
+import '../../../shared/paging/read_view_activity.dart';
 import '../../../shared/badges/badge_registry.dart';
 import '../../../shared/badges/effective_badge_summary_provider.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
@@ -61,7 +62,9 @@ class _ServerStatusSession extends ConsumerStatefulWidget {
 }
 
 class _ServerStatusPageState extends ConsumerState<_ServerStatusSession>
-    with WidgetsBindingObserver {
+    with WidgetsBindingObserver, ReadViewActivityMixin<_ServerStatusSession> {
+  @override
+  Future<void> onReadViewResumed() => _refresh();
   late final Object _owner;
   bool get _current =>
       mounted &&
@@ -82,6 +85,7 @@ class _ServerStatusPageState extends ConsumerState<_ServerStatusSession>
   ServerStorageSummary? _storage;
   DateTime? _storageLoadedAt;
   bool _storageLoading = false;
+  int _storageGeneration = 0;
 
   /// 采样成功次数；只驱动总览的脉冲点，不参与任何数据判断。
   int _pulse = 0;
@@ -130,6 +134,7 @@ class _ServerStatusPageState extends ConsumerState<_ServerStatusSession>
     _routeVisible = value;
     _timer?.cancel();
     _staleTimer?.cancel();
+    if (!value) _retireReads();
     if (_active) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (_active) unawaited(_refresh());
@@ -142,18 +147,31 @@ class _ServerStatusPageState extends ConsumerState<_ServerStatusSession>
     _foreground = state == AppLifecycleState.resumed;
     _timer?.cancel();
     _staleTimer?.cancel();
+    if (!_foreground) _retireReads();
     if (_active) unawaited(_refresh());
+  }
+
+  void _retireReads() {
+    _generation++;
+    _storageGeneration++;
+    _loading = false;
+    _storageLoading = false;
   }
 
   Future<void> _refresh() async {
     if (!_active || _loading) return;
     _timer?.cancel();
     final generation = ++_generation;
+    bool current() => _active && generation == _generation;
     setState(() => _loading = true);
     _scheduleStaleState();
     try {
-      final next = await ref.read(serverStatusRepositoryProvider).load();
-      if (!_current || generation != _generation || !_hasPermission) return;
+      final next = await readViewActivity.runRead(
+        current,
+        () => ref.read(serverStatusRepositoryProvider).load(),
+        slot: 'status',
+      );
+      if (!current()) return;
       // 回写缓存：下次进页面第一帧直接用，不必再等一趟。
       ref.read(serverStatusSnapshotCacheProvider.notifier).state = next;
       setState(() {
@@ -164,6 +182,7 @@ class _ServerStatusPageState extends ConsumerState<_ServerStatusSession>
       _scheduleStaleState();
       unawaited(_loadStorage());
     } catch (error) {
+      if (isRetiredViewRead(error)) return;
       if (!_current || generation != _generation) return;
       setState(() {
         _failed = true;
@@ -174,7 +193,7 @@ class _ServerStatusPageState extends ConsumerState<_ServerStatusSession>
         }
       });
     } finally {
-      if (_current) {
+      if (_current && generation == _generation) {
         setState(() => _loading = false);
         // One-shot scheduling after completion guarantees a single request,
         // including slow responses, manual refresh and foreground changes.
@@ -189,7 +208,7 @@ class _ServerStatusPageState extends ConsumerState<_ServerStatusSession>
 
   @override
   void dispose() {
-    _generation++;
+    _retireReads();
     _timer?.cancel();
     _staleTimer?.cancel();
     _pageScroll.dispose();
@@ -222,9 +241,15 @@ class _ServerStatusPageState extends ConsumerState<_ServerStatusSession>
       return;
     }
     _storageLoading = true;
+    final generation = ++_storageGeneration;
+    bool current() => _active && generation == _storageGeneration;
     try {
-      final summary = await ref.read(serverStorageRepositoryProvider).summary();
-      if (!_current) return;
+      final summary = await readViewActivity.runRead(
+        current,
+        () => ref.read(serverStorageRepositoryProvider).summary(),
+        slot: 'storage',
+      );
+      if (!current()) return;
       setState(() {
         _storage = summary.available && summary.volumes.isNotEmpty
             ? summary
@@ -234,7 +259,7 @@ class _ServerStatusPageState extends ConsumerState<_ServerStatusSession>
     } catch (_) {
       // 存储清单暂时拉不到时保留上一次结果或退回逐盘卡，不影响状态轮询。
     } finally {
-      _storageLoading = false;
+      if (generation == _storageGeneration) _storageLoading = false;
     }
   }
 
@@ -245,7 +270,7 @@ class _ServerStatusPageState extends ConsumerState<_ServerStatusSession>
       if (!next) {
         _timer?.cancel();
         _staleTimer?.cancel();
-        _generation++;
+        _retireReads();
         setState(() => _snapshot = null);
       } else if (previous != true) {
         _denied = false;

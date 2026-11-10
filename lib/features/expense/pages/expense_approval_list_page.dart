@@ -1,3 +1,4 @@
+import '../../../shared/paging/shared_read_provider_owner.dart';
 import '../../../shared/providers/native_facet_options.dart';
 import '../../../shared/formatters/exact_decimal.dart';
 // 报销审批列表页（审批人 + 财务打款双队列）
@@ -843,9 +844,9 @@ class _ExpenseApprovalListPageState
       await Future.wait([
         refreshBadges(ref),
         ref.read(expenseApprovalListProvider.future),
-        ref.read(facets.future),
+        readSharedWidgetFuture(ref, facets.future),
         if (!ref.read(expenseApprovalReadScopeProvider).isScoped)
-          ref.read(expenseQueueSummaryProvider.future),
+          readSharedWidgetFuture(ref, expenseQueueSummaryProvider.future),
       ]);
     } catch (error) {
       if (mounted && (stillCurrent == null || stillCurrent())) {

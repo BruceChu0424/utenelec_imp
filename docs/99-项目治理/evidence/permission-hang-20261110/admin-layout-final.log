@@ -1,0 +1,60 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/admin/admin_permissions_layout_test.dart
+00:00 +0: permission Enter refreshes completed same-query data and suppresses actual in-flight duplicates
+00:03 +1: authorization management without account support cannot reset credentials
+00:05 +2: unusable manual receipt refreshes status without displaying or replaying credentials
+00:07 +3: superadmin reset capability opens only password support and accepts custom input
+00:10 +4: real permission editor 按员工 at 984.0 shares the page edges
+00:12 +5: real permission editor 按部门 at 984.0 shares the page edges
+00:13 +6: real permission editor 全员基础包 at 984.0 shares the page edges
+00:14 +7: real permission editor 按模板 at 984.0 shares the page edges
+00:16 +8: real permission editor 按员工 at 791.0 shares the page edges
+00:17 +9: real permission editor 按部门 at 791.0 shares the page edges
+00:18 +10: real permission editor 全员基础包 at 791.0 shares the page edges
+00:19 +11: real permission editor 按模板 at 791.0 shares the page edges
+00:20 +12: real permission editor 按员工 at 390.0 shares the page edges
+00:22 +13: real permission editor 按部门 at 390.0 shares the page edges
+00:23 +14: real permission editor 全员基础包 at 390.0 shares the page edges
+00:24 +15: real permission editor 按模板 at 390.0 shares the page edges
+00:25 +16: real permission desktop keeps the editor card inset
+00:26 +17: real permission resize preserves search expansion and selected target: 按员工
+00:29 +18: real permission resize preserves search expansion and selected target: 按部门
+00:32 +19: real permission resize preserves search expansion and selected target: 全员基础包
+00:35 +20: real permission resize preserves search expansion and selected target: 按模板
+00:38 +21: real permission popup retains the card inset despite inherited page scopes
+00:39 +22: real permission read generation retires directory state: 按员工
+00:39 +23: real permission read generation retires directory state: 按部门
+00:41 +24: real permission read generation retires directory state: 全员基础包
+00:42 +25: real permission read generation retires directory state: 按模板
+00:44 +26: real permission selected owner retires directory state: 按员工
+00:45 +27: real permission selected owner retires directory state: 按部门
+00:46 +28: real permission selected owner retires directory state: 按模板
+00:48 +29: saving baseline refreshes an already loaded department dependency warning
+00:50 +30: employee multiselect retains targets across loading and search
+00:55 +31: department multiselect keeps hidden targets and starts folded
+00:57 +32: account summaries complete once and preserve the viewport during scroll without reads
+00:58 +33: an incomplete account read is retryable from the beginning without exposing a partial directory
+00:59 +34: account header and left filters fit at 375.0 with large text
+01:00 +35: account header and left filters fit at 1440.0 with large text
+01:01 +36: employee selection toolbar replaces provisioning at 375.0 and text scale 1.0
+01:02 +37: employee selection toolbar replaces provisioning at 375.0 and text scale 1.6
+01:03 +38: employee selection toolbar replaces provisioning at 1440.0 and text scale 1.0
+01:04 +39: employee selection toolbar replaces provisioning at 1440.0 and text scale 1.6
+01:05 +40: employee select all excludes self and ineligible account states
+01:06 +41: employee select all and individual selection retain the 500 person limit
+01:13 +42: pending and failed employee search cannot select or cancel stale loaded accounts
+01:14 +43: super administrator export explains the non-restorable scope
+01:15 +44: super administrator target allows personal revokes but locks superadmin-only codes
+01:17 +45: template first visit is lazy and autosave survives switching modes
+01:20 +46: each mode exports its saved subject while the header exports all
+01:22 +47: department and baseline drafts also block imports across modes
+01:24 +48: authorization modes keep navigation and detail columns aligned
+01:25 +49: bulk operations and shared pane width retain drafts across modes
+01:29 +50: all authorization modes fit large text at 375.0
+01:31 +51: all authorization modes fit large text at 1440.0
+01:33 +52: AI use is an editable category inside permission details
+01:34 +53: server protected target hides locking and never sends a request
+01:34 +54: permission revocation while confirming prevents the old lock command
+01:35 +55: account action explicitly confirms discarding a permission draft
+01:37 +56: an account in a later read batch keeps its credential dialog through list refresh
+01:39 +57: All tests passed!

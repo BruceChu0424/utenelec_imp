@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_client.dart';
+import '../../../shared/paging/shared_read_provider_owner.dart';
 import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../models/permission_configuration.dart';
 import '../models/permission_template.dart';
@@ -120,15 +121,24 @@ class PermissionTemplateRepository {
 final permissionTemplateRepositoryProvider = Provider(
   (ref) => PermissionTemplateRepository(ref.watch(apiClientProvider)),
 );
-final permissionTemplatesProvider = FutureProvider<List<PermissionTemplate>>((
-  ref,
-) {
-  ref.watch(sensitiveReadBoundaryProvider);
-  return ref.watch(permissionTemplateRepositoryProvider).list();
-});
+final permissionTemplatesProvider =
+    FutureProvider.autoDispose<List<PermissionTemplate>>((ref) {
+      final boundary = ref.watch(sensitiveReadBoundaryProvider);
+      final repository = ref.watch(permissionTemplateRepositoryProvider);
+      return runSharedProviderRead(
+        ref,
+        repository.list,
+        isCurrent: () => boundary == ref.read(sensitiveReadBoundaryProvider),
+      );
+    });
 
 final permissionTemplateBindingsProvider =
-    FutureProvider<List<PermissionTemplateBinding>>((ref) {
-      ref.watch(sensitiveReadBoundaryProvider);
-      return ref.watch(permissionTemplateRepositoryProvider).bindings();
+    FutureProvider.autoDispose<List<PermissionTemplateBinding>>((ref) {
+      final boundary = ref.watch(sensitiveReadBoundaryProvider);
+      final repository = ref.watch(permissionTemplateRepositoryProvider);
+      return runSharedProviderRead(
+        ref,
+        repository.bindings,
+        isCurrent: () => boundary == ref.read(sensitiveReadBoundaryProvider),
+      );
     });

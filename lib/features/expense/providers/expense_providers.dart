@@ -1,3 +1,5 @@
+import '../../../shared/providers/sensitive_read_boundary_provider.dart';
+import '../../../shared/paging/shared_read_provider_owner.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/legacy.dart';
@@ -81,14 +83,22 @@ final expenseSortAscendingProvider = StateProvider<bool>((ref) => true);
 /// 我的报销「报销单号」筛选桶（facets?queue=mine，2026-09-25 单号列统一）。
 final expenseMineFacetsProvider =
     FutureProvider.autoDispose<Map<String, List<MasterFacetBucket>>>((ref) {
-      ref.watch(masterDataSessionKeyProvider);
-      return ref
-          .watch(expenseRepositoryProvider)
-          .facets(
-            ref.watch(expenseFilterProvider) == ExpenseFilter.finished
-                ? ApprovalFacetQueue.mineHistory
-                : ApprovalFacetQueue.mineActive,
-          );
+      final readBoundary = ref.watch(sensitiveReadBoundaryProvider);
+      return runSharedProviderRead(
+        ref,
+        () async {
+          ref.watch(masterDataSessionKeyProvider);
+          return ref
+              .watch(expenseRepositoryProvider)
+              .facets(
+                ref.watch(expenseFilterProvider) == ExpenseFilter.finished
+                    ? ApprovalFacetQueue.mineHistory
+                    : ApprovalFacetQueue.mineActive,
+              );
+        },
+        isCurrent: () =>
+            ref.read(sensitiveReadBoundaryProvider) == readBoundary,
+      );
     });
 
 /// 某状态所属的分段（表头筛选选中状态时同步切换顶部分段）。
@@ -287,38 +297,54 @@ class ExpenseListNotifier extends AsyncNotifier<PagedResult<ExpenseClaim>> {
 
 final expenseDetailProvider = FutureProvider.autoDispose
     .family<ExpenseClaim, String>((ref, id) {
-      ref.watch(masterDataSessionKeyProvider);
-      return ref.watch(expenseRepositoryProvider).getById(id);
+      final readBoundary = ref.watch(sensitiveReadBoundaryProvider);
+      return runSharedProviderRead(
+        ref,
+        () async {
+          ref.watch(masterDataSessionKeyProvider);
+          return ref.watch(expenseRepositoryProvider).getById(id);
+        },
+        isCurrent: () =>
+            ref.read(sensitiveReadBoundaryProvider) == readBoundary,
+      );
     });
 
 final expenseHistoryDetailProvider = FutureProvider.autoDispose
     .family<ExpenseClaim, String>(
       (ref, id) async {
-        ref.watch(masterDataSessionKeyProvider);
-        ref.watch(exportContextEpochProvider);
-        final repository = ref.watch(expenseRepositoryProvider);
-        final fields = ref.watch(platformTableRepositoryProvider);
-        final claim = await repository.getHistoryById(id);
-        if (!claim.abandoned) return claim;
-        final items = <ExpenseItem>[];
-        // The native history endpoint freezes definitions and saved values;
-        // keep requests bounded and retire a disposed identity before each wave.
-        for (var offset = 0; offset < claim.items.length; offset += 8) {
-          if (!ref.mounted) throw StateError('历史读取身份已变化');
-          final batch = claim.items.skip(offset).take(8);
-          final loaded = await Future.wait(
-            batch.map((item) async {
-              final snapshot = await fields.latestHistory(
-                'expense_claim_item',
-                item.id,
+        final readBoundary = ref.watch(sensitiveReadBoundaryProvider);
+        return runSharedProviderRead(
+          ref,
+          () async {
+            ref.watch(masterDataSessionKeyProvider);
+            ref.watch(exportContextEpochProvider);
+            final repository = ref.watch(expenseRepositoryProvider);
+            final fields = ref.watch(platformTableRepositoryProvider);
+            final claim = await repository.getHistoryById(id);
+            if (!claim.abandoned) return claim;
+            final items = <ExpenseItem>[];
+            // The native history endpoint freezes definitions and saved values;
+            // keep requests bounded and retire a disposed identity before each wave.
+            for (var offset = 0; offset < claim.items.length; offset += 8) {
+              if (!ref.mounted) throw StateError('历史读取身份已变化');
+              final batch = claim.items.skip(offset).take(8);
+              final loaded = await Future.wait(
+                batch.map((item) async {
+                  final snapshot = await fields.latestHistory(
+                    'expense_claim_item',
+                    item.id,
+                  );
+                  return item.withPlatformFields(snapshot.toJson());
+                }),
               );
-              return item.withPlatformFields(snapshot.toJson());
-            }),
-          );
-          if (!ref.mounted) throw StateError('历史读取身份已变化');
-          items.addAll(loaded);
-        }
-        return claim.copyWith(items: items);
+              if (!ref.mounted) throw StateError('历史读取身份已变化');
+              items.addAll(loaded);
+            }
+            return claim.copyWith(items: items);
+          },
+          isCurrent: () =>
+              ref.read(sensitiveReadBoundaryProvider) == readBoundary,
+        );
       },
       dependencies: [
         masterDataSessionKeyProvider,
@@ -348,8 +374,16 @@ Future<void> abandonExpense(
 /// 队列汇总（审批页统计卡：待审批/待打款/本月口径）。
 final expenseQueueSummaryProvider =
     FutureProvider.autoDispose<ExpenseQueueSummary>((ref) {
-      ref.watch(masterDataSessionKeyProvider);
-      return ref.watch(expenseRepositoryProvider).summary();
+      final readBoundary = ref.watch(sensitiveReadBoundaryProvider);
+      return runSharedProviderRead(
+        ref,
+        () async {
+          ref.watch(masterDataSessionKeyProvider);
+          return ref.watch(expenseRepositoryProvider).summary();
+        },
+        isCurrent: () =>
+            ref.read(sensitiveReadBoundaryProvider) == readBoundary,
+      );
     });
 
 Future<void> submitExpense(
@@ -649,18 +683,30 @@ final expenseApprovalSortAscendingProvider = StateProvider.autoDispose<bool>((
 /// 审批列表表头筛选桶（部门 / 年月），按分段取后端聚合。
 final expenseApprovalFacetsProvider = FutureProvider.autoDispose
     .family<Map<String, List<MasterFacetBucket>>, ApprovalQueue>((ref, queue) {
-      ref.watch(masterDataSessionKeyProvider);
-      final scope = ref.watch(expenseApprovalReadScopeProvider);
-      final repository = ref.watch(expenseRepositoryProvider);
-      final facetQueue = switch (queue) {
-        ApprovalQueue.pending => ApprovalFacetQueue.pending,
-        ApprovalQueue.payable => ApprovalFacetQueue.payable,
-        ApprovalQueue.history => ApprovalFacetQueue.history,
-        ApprovalQueue.browse => ApprovalFacetQueue.browse,
-      };
-      return repository is DioExpenseRepository
-          ? repository.facetsScoped(facetQueue, scope, includeClaimNos: false)
-          : repository.facets(facetQueue);
+      final readBoundary = ref.watch(sensitiveReadBoundaryProvider);
+      return runSharedProviderRead(
+        ref,
+        () async {
+          ref.watch(masterDataSessionKeyProvider);
+          final scope = ref.watch(expenseApprovalReadScopeProvider);
+          final repository = ref.watch(expenseRepositoryProvider);
+          final facetQueue = switch (queue) {
+            ApprovalQueue.pending => ApprovalFacetQueue.pending,
+            ApprovalQueue.payable => ApprovalFacetQueue.payable,
+            ApprovalQueue.history => ApprovalFacetQueue.history,
+            ApprovalQueue.browse => ApprovalFacetQueue.browse,
+          };
+          return repository is DioExpenseRepository
+              ? repository.facetsScoped(
+                  facetQueue,
+                  scope,
+                  includeClaimNos: false,
+                )
+              : repository.facets(facetQueue);
+        },
+        isCurrent: () =>
+            ref.read(sensitiveReadBoundaryProvider) == readBoundary,
+      );
     }, dependencies: [expenseApprovalReadScopeProvider]);
 
 final expenseApprovalListProvider =
@@ -884,45 +930,68 @@ class ExpenseApprovalListNotifier
 
 final expensePaymentOptionsProvider =
     FutureProvider.autoDispose<ExpensePaymentOptions>((ref) async {
-      ref.watch(masterDataSessionKeyProvider);
-      final accountFuture = ref.watch(accountRepositoryProvider).dict();
-      final styleFuture = ref
-          .watch(paymentStyleRepositoryProvider)
-          .tree(category: 'EXPENSE');
-      final accounts = await accountFuture;
-      final styles = await styleFuture;
-      return buildExpensePaymentOptions(accounts, styles);
+      final readBoundary = ref.watch(sensitiveReadBoundaryProvider);
+      return runSharedProviderRead(
+        ref,
+        () async {
+          ref.watch(masterDataSessionKeyProvider);
+          final accountFuture = ref.watch(accountRepositoryProvider).dict();
+          final styleFuture = ref
+              .watch(paymentStyleRepositoryProvider)
+              .tree(category: 'EXPENSE');
+          // Both reads already started. Observe both failures immediately so a
+          // retired page cannot leave the second future's cancellation unhandled.
+          final values = await Future.wait<Object>([
+            accountFuture,
+            styleFuture,
+          ]);
+          return buildExpensePaymentOptions(
+            values[0] as List<AccountListItem>,
+            values[1] as List<PaymentStyleNode>,
+          );
+        },
+        isCurrent: () =>
+            ref.read(sensitiveReadBoundaryProvider) == readBoundary,
+      );
     });
 final expensePaymentOptionsForPurposeProvider = FutureProvider.autoDispose
     .family<ExpensePaymentOptions, AccountingExpensePurpose>((
       ref,
       purpose,
     ) async {
-      ref.watch(masterDataSessionKeyProvider);
-      final values = await Future.wait([
-        ref.watch(accountRepositoryProvider).dict(),
-        ref
-            .watch(apiClientProvider)
-            .get(
-              '/finance/accounting-expense-styles',
-              query: {'postingPurpose': purpose.apiValue},
-            ),
-      ]);
-      final base = buildExpensePaymentOptions(
-        values[0] as List<AccountListItem>,
-        const [],
-      );
-      final data = values[1] as Map<String, dynamic>;
-      return ExpensePaymentOptions(
-        accounts: base.accounts,
-        styles: [
-          for (final row in data['items'] as List? ?? const [])
-            if (row is Map)
-              ExpenseStyleOption(
-                id: row['id'].toString(),
-                label: '${row['code'] ?? ''} ${row['name'] ?? ''}',
-              ),
-        ],
+      final readBoundary = ref.watch(sensitiveReadBoundaryProvider);
+      return runSharedProviderRead(
+        ref,
+        () async {
+          ref.watch(masterDataSessionKeyProvider);
+          final values = await Future.wait([
+            ref.watch(accountRepositoryProvider).dict(),
+            ref
+                .watch(apiClientProvider)
+                .get(
+                  '/finance/accounting-expense-styles',
+                  query: {'postingPurpose': purpose.apiValue},
+                ),
+          ]);
+          final base = buildExpensePaymentOptions(
+            values[0] as List<AccountListItem>,
+            const [],
+          );
+          final data = values[1] as Map<String, dynamic>;
+          return ExpensePaymentOptions(
+            accounts: base.accounts,
+            styles: [
+              for (final row in data['items'] as List? ?? const [])
+                if (row is Map)
+                  ExpenseStyleOption(
+                    id: row['id'].toString(),
+                    label: '${row['code'] ?? ''} ${row['name'] ?? ''}',
+                  ),
+            ],
+          );
+        },
+        isCurrent: () =>
+            ref.read(sensitiveReadBoundaryProvider) == readBoundary,
       );
     });
 

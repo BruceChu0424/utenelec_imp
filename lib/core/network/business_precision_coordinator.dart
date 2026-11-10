@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../async/serial_task_queue.dart';
 import 'business_precision.dart';
 
 typedef BusinessPrecisionPrompter =
@@ -11,7 +12,7 @@ class BusinessPrecisionCoordinator {
   static final instance = BusinessPrecisionCoordinator();
   BusinessPrecisionPrompter? _prompter;
   int _generation = 0;
-  Future<void> _tail = Future.value();
+  var _operations = SerialTaskQueue();
   final _pending = <Completer<BusinessPrecisionChoice?>>{};
   void Function() register(BusinessPrecisionPrompter prompter) {
     clear();
@@ -32,7 +33,9 @@ class BusinessPrecisionCoordinator {
       }
     }
     _pending.clear();
-    _tail = Future.value();
+    // A retired dialog may still be closing. New owners use a fresh queue and
+    // never inherit a completed/retired caller's execution zone.
+    _operations = SerialTaskQueue();
   }
 
   Future<BusinessPrecisionChoice?> ask(
@@ -43,33 +46,32 @@ class BusinessPrecisionCoordinator {
         generation = _generation,
         prompter = _prompter;
     _pending.add(result);
-    _tail = _tail.catchError((_) {}).then((_) async {
-      if (generation != _generation || prompter == null || !isCurrent()) {
-        if (!result.isCompleted) {
-          result.complete(null);
+    unawaited(
+      _operations.run(() async {
+        try {
+          if (generation != _generation || prompter == null || !isCurrent()) {
+            if (!result.isCompleted) result.complete(null);
+            return;
+          }
+          final choice = await prompter(requirement);
+          if (!result.isCompleted) {
+            result.complete(
+              generation == _generation &&
+                      identical(prompter, _prompter) &&
+                      isCurrent()
+                  ? choice
+                  : null,
+            );
+          }
+        } catch (error, stack) {
+          if (!result.isCompleted) {
+            result.completeError(error, stack);
+          }
+        } finally {
+          _pending.remove(result);
         }
-        _pending.remove(result);
-        return;
-      }
-      try {
-        final choice = await prompter(requirement);
-        if (!result.isCompleted) {
-          result.complete(
-            generation == _generation &&
-                    identical(prompter, _prompter) &&
-                    isCurrent()
-                ? choice
-                : null,
-          );
-        }
-      } catch (error, stack) {
-        if (!result.isCompleted) {
-          result.completeError(error, stack);
-        }
-      } finally {
-        _pending.remove(result);
-      }
-    });
+      }),
+    );
     return result.future;
   }
 }

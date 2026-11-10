@@ -1,0 +1,16 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/provider_http_owner_inventory_test.dart
+00:00 +0: direct future consumers keep a shared bootstrap read alive until completion
+00:00 +0 -1: direct future consumers keep a shared bootstrap read alive until completion [E]
+  Expected: a value greater than or equal to <1>
+    Actual: <0>
+     Which: is not a value greater than or equal to <1>
+  
+  package:matcher                                                   expect
+  package:flutter_test/src/widget_tester.dart 473:18                expect
+  test\shared\paging\provider_http_owner_inventory_test.dart 244:5  _Adapter.ready
+  
+00:00 +0 -1: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/provider_http_owner_inventory_test.dart: direct future consumers keep a shared bootstrap read alive until completion

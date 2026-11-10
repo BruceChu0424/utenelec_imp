@@ -59,7 +59,9 @@ class ApiClient {
     if (!_dio.interceptors.any(
       (item) => item is DiagnosticRequestInterceptor,
     )) {
-      _dio.interceptors.add(DiagnosticRequestInterceptor());
+      // Observe each attempt before authentication consumes a recoverable 401.
+      // A replay has its own begin/end pair and cannot overwrite a stuck clock.
+      _dio.interceptors.insert(0, DiagnosticRequestInterceptor());
     }
     if (!_dio.interceptors.any(
       (interceptor) => interceptor is BusinessPrecisionInterceptor,
@@ -1125,10 +1127,10 @@ final apiClientProvider = Provider<ApiClient>((ref) {
     storage: storage,
     baseUrl: baseUrl,
     dioFactory: auditedDioFactory,
+    replay: dio.fetch<dynamic>,
     realmPolicy: realmPolicy,
   );
   dio.interceptors.add(authInterceptor);
-  dio.interceptors.add(pageReads);
   dio.interceptors.add(readScope);
   // 敏感操作被要求再认证 (403 REAUTH_REQUIRED) 时弹统一密码框、带凭证重发一次 (ADR-110)。
   dio.interceptors.add(
@@ -1143,7 +1145,7 @@ final apiClientProvider = Provider<ApiClient>((ref) {
   dio.interceptors.add(
     DataWriteRevisionInterceptor((options) => recordDataWrite(ref, options)),
   );
-  return ApiClient(
+  final client = ApiClient(
     dio,
     streamingDownloads: true,
     precisionIdentity: AuthInterceptor.retainedIdentity,
@@ -1152,4 +1154,8 @@ final apiClientProvider = Provider<ApiClient>((ref) {
         ref.read(apiBaseUrlProvider) == baseUrl &&
         await authInterceptor.requestBelongsToCurrentIdentity(options),
   );
+  // ApiClient installs diagnostics/precision too. Queue only after all request
+  // checks, and release before authentication can consume a 401 during refresh.
+  pageReads.installOn(dio);
+  return client;
 });

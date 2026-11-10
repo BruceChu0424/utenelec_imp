@@ -1,0 +1,16 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/api_client_permission_epoch_http_test.dart
+00:00 +0: production client retains read capacity and write receipts across epochs
+00:00 +0 -1: production client retains read capacity and write receipts across epochs [E]
+  Expected: <2>
+    Actual: <1>
+  Every confirmed write publishes exactly one receipt
+  
+  package:matcher                                                     expect
+  package:flutter_test/src/widget_tester.dart 473:18                  expect
+  test\core\network\api_client_permission_epoch_http_test.dart 79:11  main.<fn>.<fn>
+  
+00:00 +0 -1: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/api_client_permission_epoch_http_test.dart: production client retains read capacity and write receipts across epochs

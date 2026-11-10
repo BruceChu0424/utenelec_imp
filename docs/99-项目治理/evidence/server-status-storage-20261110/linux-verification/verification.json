@@ -1,0 +1,31 @@
+{
+  "sourceCommit": "45bf87fc9",
+  "runtime": "existing WSL Ubuntu",
+  "pythonVersion": "3.14.4",
+  "os": "Linux",
+  "effectiveUid": 0,
+  "fixtureHome": "/root",
+  "fixtureRootPolicy": "TemporaryDirectory(prefix=uten-storage-test-, dir=Path.home()), automatic cleanup",
+  "productionCliExecuted": false,
+  "companyConnected": false,
+  "hostSudoExecuted": false,
+  "rootOnlyRegistryCases": 2,
+  "found": 41,
+  "ran": 41,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 0,
+  "sourceSha256Before": {
+    "operations_storage.py": "1ccf9ee93635c851772c02fd85c9b12d98b339a3a4d589096d5aa0d0b37a3c6b",
+    "test_operations_storage.py": "87e50927b395065a3e92506ee860bb004ab65eb111ee08b442f3734f124ac152"
+  },
+  "sourceSha256After": {
+    "operations_storage.py": "1ccf9ee93635c851772c02fd85c9b12d98b339a3a4d589096d5aa0d0b37a3c6b",
+    "test_operations_storage.py": "87e50927b395065a3e92506ee860bb004ab65eb111ee08b442f3734f124ac152"
+  },
+  "sourceUnchanged": true,
+  "exitCode": 0,
+  "command": "wsl -d Ubuntu -u root --exec python3 -B -u /mnt/d/Projects/uten_imp_worktrees/company-material-order-20261110/build/parallel-storage-verification/run_linux_storage.py",
+  "replayCommand": "wsl -d Ubuntu -u root --cd /mnt/d/Projects/uten_imp/deploy/simple --exec python3 -B -u -m unittest -v test_operations_storage",
+  "rawLogSha256": "ac4986cb2103845bba895624c81bbf5377c4ded01c9afac620f28690d61022ae"
+}

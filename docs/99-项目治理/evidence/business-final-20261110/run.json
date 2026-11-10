@@ -1,0 +1,523 @@
+{
+  "schemaVersion": 1,
+  "status": "finished",
+  "sourceBefore": {
+    "sha": "a5c51f8c43e09ab67b182110cb0c87500a082a20",
+    "fingerprint": "8ef67d14e915e336cf30d4b3fdc73f8de8a5f1273de4ec4ae3bea0c47626be07"
+  },
+  "requestedSelections": [
+    "ProductionExecutionSegmentServiceTest",
+    "ProductionExecutionWorkbenchProjectionTest",
+    "ProductionMaterialKitProofsTest",
+    "ProductionExecutionWorkbenchServiceSortTest",
+    "ProductionExecutionWorkbenchSecurityContractTest",
+    "ProductionExecutionWorkbenchRelatedDocumentsContractTest",
+    "ProductionExecutionWorkbenchQuantityExactJsonTest",
+    "ProductionMaterialSettlementServiceTest",
+    "ProductionMaterialStockLedgerRoutingTest",
+    "ProductionMaterialStockLedgerCancellationPolicyTest",
+    "ProductionPartialReportQuantityEndToEndTest",
+    "com.uten.imp.businesschain.MasterDirectoryExportPostgresTest#expandedSettlementAndWarehouseHeadersExportTheirAuthoritativeValues",
+    "com.uten.imp.businesschain.WorkshopPublicSurplusEndToEndTest#actualOverproductionUsesActualMaterialsAndPublicShortReceiptsNeverCompleteTheSalesDemand+actualPublicRecoveryReworkRetainsPublicOwnershipWithoutExpandingProductionTarget+actualPublicRecoveryRejectsZeroMaterialAndDoesNotReclassifyAnotherDraftsDemand+actualYieldAbovePlanSplitsSalesPlannedPublicAndActualPublicWithoutInventingMaterial+ordinaryRemainingOutputConvertsPreviouslyApprovedWipWithoutConsumingMaterialTwice",
+    "com.uten.imp.businesschain.ProductionQuantityAdversarialEndToEndTest#fullKitPendingReturnCannotFundOrdinaryReport+fullKitActualReturnKeepsActualOutputSeparateFromTheMaterialThatMayBeConsumed+fullKitActualReturnCanFinishTheSupportedQuantityAndReverseItsFinalTarget+fullKitLossCannotFundOrdinaryReport+actualProcessConsumptionIncludingFrozenNormalWasteDoesNotReduceCumulativeOutput"
+  ],
+  "expectedClassCount": 14,
+  "boundedCallerCounts": {
+    "ProductionPartialReportQuantityEndToEndTest": 9,
+    "MasterDirectoryExportPostgresTest": 1,
+    "WorkshopPublicSurplusEndToEndTest": 5,
+    "ProductionQuantityAdversarialEndToEndTest": 6
+  },
+  "command": [
+    "C:\\tools\\apache-maven-3.9.16\\bin\\mvn.CMD",
+    "-B",
+    "-ntp",
+    "-Duten.build.directory=D:\\Projects\\uten_imp_worktrees\\company-import-delta-20261110\\server\\target-company-business-final",
+    "-Dtest=ProductionExecutionSegmentServiceTest,ProductionExecutionWorkbenchProjectionTest,ProductionMaterialKitProofsTest,ProductionExecutionWorkbenchServiceSortTest,ProductionExecutionWorkbenchSecurityContractTest,ProductionExecutionWorkbenchRelatedDocumentsContractTest,ProductionExecutionWorkbenchQuantityExactJsonTest,ProductionMaterialSettlementServiceTest,ProductionMaterialStockLedgerRoutingTest,ProductionMaterialStockLedgerCancellationPolicyTest,ProductionPartialReportQuantityEndToEndTest,com.uten.imp.businesschain.MasterDirectoryExportPostgresTest#expandedSettlementAndWarehouseHeadersExportTheirAuthoritativeValues,com.uten.imp.businesschain.WorkshopPublicSurplusEndToEndTest#actualOverproductionUsesActualMaterialsAndPublicShortReceiptsNeverCompleteTheSalesDemand+actualPublicRecoveryReworkRetainsPublicOwnershipWithoutExpandingProductionTarget+actualPublicRecoveryRejectsZeroMaterialAndDoesNotReclassifyAnotherDraftsDemand+actualYieldAbovePlanSplitsSalesPlannedPublicAndActualPublicWithoutInventingMaterial+ordinaryRemainingOutputConvertsPreviouslyApprovedWipWithoutConsumingMaterialTwice,com.uten.imp.businesschain.ProductionQuantityAdversarialEndToEndTest#fullKitPendingReturnCannotFundOrdinaryReport+fullKitActualReturnKeepsActualOutputSeparateFromTheMaterialThatMayBeConsumed+fullKitActualReturnCanFinishTheSupportedQuantityAndReverseItsFinalTarget+fullKitLossCannotFundOrdinaryReport+actualProcessConsumptionIncludingFrozenNormalWasteDoesNotReduceCumulativeOutput",
+    "-DskipTests=false",
+    "-Dmaven.test.skip=false",
+    "-Dmaven.test.failure.ignore=false",
+    "-DfailIfNoTests=true",
+    "-DfailIfNoSpecifiedTests=true",
+    "-DforkCount=1",
+    "-DreuseForks=true",
+    "-Djunit.jupiter.execution.parallel.enabled=false",
+    "-Duten.test.jvm.heap.args=-Xmx4g",
+    "-Duten.test.tmpdir=D:\\Projects\\uten_imp_worktrees\\company-import-delta-20261110\\build\\import-delta\\tmp",
+    "clean",
+    "test"
+  ],
+  "target": "D:\\Projects\\uten_imp_worktrees\\company-import-delta-20261110\\server\\target-company-business-final",
+  "targetExistedBefore": false,
+  "temporaryDirectory": "D:\\Projects\\uten_imp_worktrees\\company-import-delta-20261110\\build\\import-delta\\tmp",
+  "UTEN_RUN_DB_TESTS": true,
+  "startedUtc": "2026-11-10T22:13:34.710089+00:00",
+  "exitCode": 0,
+  "sourceAfter": {
+    "sha": "a5c51f8c43e09ab67b182110cb0c87500a082a20",
+    "fingerprint": "8ef67d14e915e336cf30d4b3fdc73f8de8a5f1273de4ec4ae3bea0c47626be07"
+  },
+  "sourceUnchanged": true,
+  "completeRequestedInventory": true,
+  "boundedCallerCountsMatch": {
+    "ProductionPartialReportQuantityEndToEndTest": true,
+    "MasterDirectoryExportPostgresTest": true,
+    "WorkshopPublicSurplusEndToEndTest": true,
+    "ProductionQuantityAdversarialEndToEndTest": true
+  },
+  "elapsedSeconds": 905.539,
+  "reports": [
+    {
+      "file": "TEST-com.uten.imp.businesschain.MasterDirectoryExportPostgresTest.xml",
+      "class": "com.uten.imp.businesschain.MasterDirectoryExportPostgresTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": "210.23",
+      "cases": [
+        {
+          "name": "expandedSettlementAndWarehouseHeadersExportTheirAuthoritativeValues",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "file": "TEST-com.uten.imp.businesschain.ProductionPartialReportQuantityEndToEndTest.xml",
+      "class": "com.uten.imp.businesschain.ProductionPartialReportQuantityEndToEndTest",
+      "tests": 9,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": "271.837",
+      "cases": [
+        {
+          "name": "losingOneMaterialBeforeTheOtherArrivesCannotInventAFullKit(String)[1]",
+          "status": "passed"
+        },
+        {
+          "name": "losingOneMaterialBeforeTheOtherArrivesCannotInventAFullKit(String)[2]",
+          "status": "passed"
+        },
+        {
+          "name": "reversingAPreviouslyCompleteIssueRestoresThePartialLimitUntilReissue",
+          "status": "passed"
+        },
+        {
+          "name": "twoConcurrentOperatorsCannotTogetherExceedTheSamePartialIssue",
+          "status": "passed"
+        },
+        {
+          "name": "materialReturnAndItsTerminalReverseCaptureOnlyTheFinalOwnerState",
+          "status": "passed"
+        },
+        {
+          "name": "reportingEightHundredKeepsTwoHundredOpenWithoutExpandingReportQualityOrReceipt",
+          "status": "passed"
+        },
+        {
+          "name": "pendingMaterialReturnReducesReportRoomAndCancellationRestoresIt",
+          "status": "passed"
+        },
+        {
+          "name": "partialIssueLimitsCombinedDraftsAndEditsWhilePreservingExactInputs",
+          "status": "passed"
+        },
+        {
+          "name": "returnAndReissueOfHalfTheMaterialsCannotMasqueradeAsAFullKit",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "file": "TEST-com.uten.imp.businesschain.ProductionQuantityAdversarialEndToEndTest.xml",
+      "class": "com.uten.imp.businesschain.ProductionQuantityAdversarialEndToEndTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": "75.761",
+      "cases": [
+        {
+          "name": "fullKitPendingReturnCannotFundOrdinaryReport",
+          "status": "passed"
+        },
+        {
+          "name": "fullKitLossCannotFundOrdinaryReport",
+          "status": "passed"
+        },
+        {
+          "name": "fullKitActualReturnKeepsActualOutputSeparateFromTheMaterialThatMayBeConsumed",
+          "status": "passed"
+        },
+        {
+          "name": "actualProcessConsumptionIncludingFrozenNormalWasteDoesNotReduceCumulativeOutput",
+          "status": "passed"
+        },
+        {
+          "name": "fullKitActualReturnCanFinishTheSupportedQuantityAndReverseItsFinalTarget(boolean)[1]",
+          "status": "passed"
+        },
+        {
+          "name": "fullKitActualReturnCanFinishTheSupportedQuantityAndReverseItsFinalTarget(boolean)[2]",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "file": "TEST-com.uten.imp.businesschain.WorkshopPublicSurplusEndToEndTest.xml",
+      "class": "com.uten.imp.businesschain.WorkshopPublicSurplusEndToEndTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": "88.573",
+      "cases": [
+        {
+          "name": "actualOverproductionUsesActualMaterialsAndPublicShortReceiptsNeverCompleteTheSalesDemand",
+          "status": "passed"
+        },
+        {
+          "name": "actualPublicRecoveryReworkRetainsPublicOwnershipWithoutExpandingProductionTarget",
+          "status": "passed"
+        },
+        {
+          "name": "ordinaryRemainingOutputConvertsPreviouslyApprovedWipWithoutConsumingMaterialTwice",
+          "status": "passed"
+        },
+        {
+          "name": "actualYieldAbovePlanSplitsSalesPlannedPublicAndActualPublicWithoutInventingMaterial",
+          "status": "passed"
+        },
+        {
+          "name": "actualPublicRecoveryRejectsZeroMaterialAndDoesNotReclassifyAnotherDraftsDemand",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "file": "TEST-com.uten.imp.common.production.ProductionMaterialKitProofsTest.xml",
+      "class": "com.uten.imp.common.production.ProductionMaterialKitProofsTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": "0.454",
+      "cases": [
+        {
+          "name": "directLotRequestUsesItsTargetSegmentInsideTheAlreadyLockedGraph",
+          "status": "passed"
+        },
+        {
+          "name": "stockAndDirectTargetsAreUnionedAndCheckedBeforeAnyCapture",
+          "status": "passed"
+        },
+        {
+          "name": "anUnlinkedSourceRejectsTheWholeCheckpointBatchWithoutAddingLocksOrFacts",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "file": "TEST-com.uten.imp.features.production.execution.ProductionExecutionSegmentServiceTest.xml",
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionSegmentServiceTest",
+      "tests": 24,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": "1.945",
+      "cases": [
+        {
+          "name": "batchStartSafelyReplaysEveryPreviouslyCommittedItem",
+          "status": "passed"
+        },
+        {
+          "name": "successfulAssignmentLearnsWorkshopSelection",
+          "status": "passed"
+        },
+        {
+          "name": "startSucceedsAfterEveryMaterialDemandIsFulfilled",
+          "status": "passed"
+        },
+        {
+          "name": "batchStartPreflightsEveryItemBeforeTheFirstStatusUpdate",
+          "status": "passed"
+        },
+        {
+          "name": "batchStartRejectsTheSameIdempotencyKeyWithDifferentVersion",
+          "status": "passed"
+        },
+        {
+          "name": "zeroMaterialSegmentCanStartWithoutDemandRows",
+          "status": "passed"
+        },
+        {
+          "name": "confirmRouteResolvesTheArrivalProgressCardBeforeKitPromotion",
+          "status": "passed"
+        },
+        {
+          "name": "materialRecheckCannotOverrideAnExplicitManualDefer",
+          "status": "passed"
+        },
+        {
+          "name": "readySegmentStartRequiresCompleteAssignmentBeforeStarting",
+          "status": "passed"
+        },
+        {
+          "name": "objectScopeDenialStopsBeforeReplayAndMutation",
+          "status": "passed"
+        },
+        {
+          "name": "materialRecheckUsesInventoryLocksBeforeSegmentAndRecordsReadyVersion",
+          "status": "passed"
+        },
+        {
+          "name": "staleExpectedVersionIsRejectedBeforeMutation",
+          "status": "passed"
+        },
+        {
+          "name": "unchangedWorkshopAssignmentDoesNotLearnAgain",
+          "status": "passed"
+        },
+        {
+          "name": "startRejectsWhenNoMaterialDemandHasBeenIssued",
+          "status": "passed"
+        },
+        {
+          "name": "assignmentReplayDoesNotLearnWorkshopAgain",
+          "status": "passed"
+        },
+        {
+          "name": "confirmRouteBatchResolvesTheArrivalCardWithoutKitPromotion",
+          "status": "passed"
+        },
+        {
+          "name": "waitingSegmentCannotStartDirectly",
+          "status": "passed"
+        },
+        {
+          "name": "explicitDeferReleaseRechecksKitAndRecordsFinalVersion",
+          "status": "passed"
+        },
+        {
+          "name": "batchStartDeduplicatesAndLocksInUuidOrderBeforeAnyMutation",
+          "status": "passed"
+        },
+        {
+          "name": "batchStartRejectsAmbiguousDuplicatesBeforeLocking",
+          "status": "passed"
+        },
+        {
+          "name": "startRejectsWhenOnlyPartOfTheMaterialDemandsAreFulfilled",
+          "status": "passed"
+        },
+        {
+          "name": "plannedWorkshopAndResponsibleEmployeeStartWithoutAnOptionalEndDate",
+          "status": "passed"
+        },
+        {
+          "name": "nonSplittableSourceCannotBeConfirmedAsIndependentBatch",
+          "status": "passed"
+        },
+        {
+          "name": "illegalStatusTransitionIsRejected",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "file": "TEST-com.uten.imp.features.production.execution.ProductionExecutionWorkbenchProjectionTest.xml",
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchProjectionTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": "0.019",
+      "cases": [
+        {
+          "name": "fullMaterialIssueDoesNotRetireAnAuthorizedTasksCommands",
+          "status": "passed"
+        },
+        {
+          "name": "materialLimitScopeAndTotalAreIndependentTailColumns",
+          "status": "passed"
+        },
+        {
+          "name": "projectionDriftFailsExplicitlyBeforePublishingAFalseCount",
+          "status": "passed"
+        },
+        {
+          "name": "partialMaterialIssueDoesNotAuthorizeAnotherWorkshopsTask",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "file": "TEST-com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQuantityExactJsonTest.xml",
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQuantityExactJsonTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": "0.095",
+      "cases": [
+        {
+          "name": "remainingCapacityCompanionKeepsEverySignificantDigitAndDoesNotTrustIncomingCompanions",
+          "status": "passed"
+        },
+        {
+          "name": "unknownCapacityRemainsExplicitNullRatherThanZero",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "file": "TEST-com.uten.imp.features.production.execution.ProductionExecutionWorkbenchRelatedDocumentsContractTest.xml",
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchRelatedDocumentsContractTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": "0.021",
+      "cases": [
+        {
+          "name": "analysisRootPlansIncludeSubplanLineageDescendants",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "file": "TEST-com.uten.imp.features.production.execution.ProductionExecutionWorkbenchSecurityContractTest.xml",
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchSecurityContractTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": "0.015",
+      "cases": [
+        {
+          "name": "keywordIncludesWorkshopAndClientWithoutDroppingRootScope",
+          "status": "passed"
+        },
+        {
+          "name": "workbenchUsesExplicitStartAuthorityAndRetiresManualDispatch",
+          "status": "passed"
+        },
+        {
+          "name": "reportActionRequiresAllThreeAuthorities",
+          "status": "passed"
+        },
+        {
+          "name": "overviewKeepsProductionOwnerScopeAndRelatedDocumentScopes",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "file": "TEST-com.uten.imp.features.production.execution.ProductionExecutionWorkbenchServiceSortTest.xml",
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchServiceSortTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": "0.006",
+      "cases": [
+        {
+          "name": "segmentSelectIsPureColumnList",
+          "status": "passed"
+        },
+        {
+          "name": "rootSortUsesOnlyTheServerWhitelist",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "file": "TEST-com.uten.imp.features.stock.allocation.ProductionMaterialSettlementServiceTest.xml",
+      "class": "com.uten.imp.features.stock.allocation.ProductionMaterialSettlementServiceTest",
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": "0.343",
+      "cases": [
+        {
+          "name": "dailyReportCommandAndReplayKeepAuthorizationAndExactPostingWithoutBuildingClearance",
+          "status": "passed"
+        },
+        {
+          "name": "materialWriteAcquiresTheSharedPlanPrefixBeforePlanRowsAndVerifiesBeforeItsFirstWrite",
+          "status": "passed"
+        },
+        {
+          "name": "reportReversalRetainsItsOwnPermissionAndIdempotencyWithoutBuildingClearance",
+          "status": "passed"
+        },
+        {
+          "name": "nativeTimestampProjectionAcceptsHibernateUtcTypes",
+          "status": "passed"
+        },
+        {
+          "name": "reportCommandStillRejectsBothWriteAndReadScopeDenialsBeforeWriting",
+          "status": "passed"
+        },
+        {
+          "name": "existingMaterialPageCommandStillReturnsItsClearanceProjection",
+          "status": "passed"
+        },
+        {
+          "name": "reportReversalRefusesInactiveDemandBeforeEventOrValuationWrites",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "file": "TEST-com.uten.imp.features.stock.allocation.ProductionMaterialStockLedgerCancellationPolicyTest.xml",
+      "class": "com.uten.imp.features.stock.allocation.ProductionMaterialStockLedgerCancellationPolicyTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": "0.004",
+      "cases": [
+        {
+          "name": "startedOrCompletedTaskAlwaysUsesMaterialReturn",
+          "status": "passed"
+        },
+        {
+          "name": "readyAndHistoricalDispatchedCanCancelOnlyBeforeFirstReport",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "file": "TEST-com.uten.imp.features.stock.allocation.ProductionMaterialStockLedgerRoutingTest.xml",
+      "class": "com.uten.imp.features.stock.allocation.ProductionMaterialStockLedgerRoutingTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": "0.011",
+      "cases": [
+        {
+          "name": "versionZeroUsesOnlyLegacyConsumption",
+          "status": "passed"
+        },
+        {
+          "name": "unknownExecutionModelFailsClosed",
+          "status": "passed"
+        },
+        {
+          "name": "versionOneUsesExactDemandMapping",
+          "status": "passed"
+        }
+      ]
+    }
+  ],
+  "totals": {
+    "tests": 73,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  }
+}

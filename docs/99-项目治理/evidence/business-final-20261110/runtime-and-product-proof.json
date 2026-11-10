@@ -1,0 +1,100 @@
+{
+  "runtimeTemporaryDirectories": [
+    {
+      "class": "com.uten.imp.businesschain.MasterDirectoryExportPostgresTest",
+      "temporaryDirectory": "D:\\Projects\\uten_imp_worktrees\\company-import-delta-20261110\\build\\import-delta\\tmp",
+      "insideNewTree": true
+    },
+    {
+      "class": "com.uten.imp.businesschain.ProductionPartialReportQuantityEndToEndTest",
+      "temporaryDirectory": "D:\\Projects\\uten_imp_worktrees\\company-import-delta-20261110\\build\\import-delta\\tmp",
+      "insideNewTree": true
+    },
+    {
+      "class": "com.uten.imp.businesschain.ProductionQuantityAdversarialEndToEndTest",
+      "temporaryDirectory": "D:\\Projects\\uten_imp_worktrees\\company-import-delta-20261110\\build\\import-delta\\tmp",
+      "insideNewTree": true
+    },
+    {
+      "class": "com.uten.imp.businesschain.WorkshopPublicSurplusEndToEndTest",
+      "temporaryDirectory": "D:\\Projects\\uten_imp_worktrees\\company-import-delta-20261110\\build\\import-delta\\tmp",
+      "insideNewTree": true
+    },
+    {
+      "class": "com.uten.imp.common.production.ProductionMaterialKitProofsTest",
+      "temporaryDirectory": "D:\\Projects\\uten_imp_worktrees\\company-import-delta-20261110\\build\\import-delta\\tmp",
+      "insideNewTree": true
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionSegmentServiceTest",
+      "temporaryDirectory": "D:\\Projects\\uten_imp_worktrees\\company-import-delta-20261110\\build\\import-delta\\tmp",
+      "insideNewTree": true
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchProjectionTest",
+      "temporaryDirectory": "D:\\Projects\\uten_imp_worktrees\\company-import-delta-20261110\\build\\import-delta\\tmp",
+      "insideNewTree": true
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQuantityExactJsonTest",
+      "temporaryDirectory": "D:\\Projects\\uten_imp_worktrees\\company-import-delta-20261110\\build\\import-delta\\tmp",
+      "insideNewTree": true
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchRelatedDocumentsContractTest",
+      "temporaryDirectory": "D:\\Projects\\uten_imp_worktrees\\company-import-delta-20261110\\build\\import-delta\\tmp",
+      "insideNewTree": true
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchSecurityContractTest",
+      "temporaryDirectory": "D:\\Projects\\uten_imp_worktrees\\company-import-delta-20261110\\build\\import-delta\\tmp",
+      "insideNewTree": true
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchServiceSortTest",
+      "temporaryDirectory": "D:\\Projects\\uten_imp_worktrees\\company-import-delta-20261110\\build\\import-delta\\tmp",
+      "insideNewTree": true
+    },
+    {
+      "class": "com.uten.imp.features.stock.allocation.ProductionMaterialSettlementServiceTest",
+      "temporaryDirectory": "D:\\Projects\\uten_imp_worktrees\\company-import-delta-20261110\\build\\import-delta\\tmp",
+      "insideNewTree": true
+    },
+    {
+      "class": "com.uten.imp.features.stock.allocation.ProductionMaterialStockLedgerCancellationPolicyTest",
+      "temporaryDirectory": "D:\\Projects\\uten_imp_worktrees\\company-import-delta-20261110\\build\\import-delta\\tmp",
+      "insideNewTree": true
+    },
+    {
+      "class": "com.uten.imp.features.stock.allocation.ProductionMaterialStockLedgerRoutingTest",
+      "temporaryDirectory": "D:\\Projects\\uten_imp_worktrees\\company-import-delta-20261110\\build\\import-delta\\tmp",
+      "insideNewTree": true
+    }
+  ],
+  "allInsideNewTree": true,
+  "final36ProductBlobs": {
+    "server/src/main/java/com/uten/imp/common/production/ProductionMaterialKitProofs.java": {
+      "current": "8d224bfa17b1eba86933895a19970d2b6ff42b7a",
+      "final36": "8d224bfa17b1eba86933895a19970d2b6ff42b7a",
+      "identical": true
+    },
+    "server/src/main/java/com/uten/imp/features/production/execution/ProductionExecutionWorkbenchService.java": {
+      "current": "d65588cdbc1bfa85e2a493bba5d56ec3945b7d54",
+      "final36": "d65588cdbc1bfa85e2a493bba5d56ec3945b7d54",
+      "identical": true
+    },
+    "server/src/main/java/com/uten/imp/features/stock/StockDocService.java": {
+      "current": "aeb2f5d9f1f57f4367efcea873f1ccfb532baff5",
+      "final36": "aeb2f5d9f1f57f4367efcea873f1ccfb532baff5",
+      "identical": true
+    },
+    "server/src/main/java/com/uten/imp/features/stock/allocation/ProductionMaterialStockLedgerService.java": {
+      "current": "962e7b307455075e529388c383e3d270b622fc3f",
+      "final36": "962e7b307455075e529388c383e3d270b622fc3f",
+      "identical": true
+    }
+  },
+  "allFinal36ProductFilesIdentical": true,
+  "sensitiveKeywordLines": 10,
+  "keywordMatchesAreOnlyMigrationTitles": true
+}

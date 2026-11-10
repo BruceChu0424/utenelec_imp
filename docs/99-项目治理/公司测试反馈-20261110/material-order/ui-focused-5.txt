@@ -1,0 +1,8 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/company-material-order-20261110/test/features/production/pages/material_analysis_order_page_test.dart
+00:00 +0: 公司截图ORDER_ALL需求50改500：原需求50与公共备货450合计后正常下单
+00:21 +1: 覆盖总量500扣除现货18.1517：合法新增481.8483可提交且输入保留
+00:36 +2: 覆盖总量500扣除现货18.1517：不接受错误份额
+00:49 +3: 公司核对页改单行数量500：服务端拒绝原因保留在最终结果，输入和选择不丢
+01:03 +4: 核对页500未知提交仍锁定原意图，不能改数重放
+01:14 +5: All tests passed!

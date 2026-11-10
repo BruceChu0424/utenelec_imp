@@ -7437,7 +7437,7 @@ abstract class _MaterialAnalysisMaterialTableState
             note: aggregateOk
                 ? null
                 : sameSources
-                ? '未完成的行保留本次数量，可在当前页面继续下单'
+                ? _aggregateTable.error ?? '未完成的行保留本次数量，可在当前页面继续下单'
                 : '部分物料的来源已变化，请核对原输入和当前来源后再下单',
           ));
         }
@@ -7860,7 +7860,11 @@ abstract class _MaterialAnalysisMaterialTableState
     if (steps.isEmpty) return;
     final failed = steps.where((step) => !step.ok).toList();
     final summary = steps
-        .map((step) => '${step.ok ? "✓" : "✗"} ${step.label}')
+        .map(
+          (step) =>
+              '${step.ok ? "✓" : "✗"} ${step.label}'
+              '${!step.ok && step.note?.isNotEmpty == true ? '：${step.note}' : ''}',
+        )
         .join('\n');
     if (failed.isEmpty) {
       if (blocked.isEmpty) {

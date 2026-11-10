@@ -551,7 +551,7 @@ class ProductionFlowStage {
   }
 
   /// 展示真实阶段；完成数量保留在独立的数量事实里，不用数量比替代状态。
-  static const partialMaterialRunningLabel = '部分领料生产中 · 按配套报工';
+  static const partialMaterialRunningLabel = '生产中 · 按配套限量报工';
 
   /// 展示真实阶段；完成数量保留在独立的数量事实里，不用数量比替代状态。
   String get displayLabel => label;

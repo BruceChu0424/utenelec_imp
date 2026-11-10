@@ -740,7 +740,7 @@
         "overproductionPolicyApplies": true,
         "allowedOverproductionRate": 0.1
       },
-      "label": "部分领料生产中 · 按配套报工"
+      "label": "生产中 · 按配套限量报工"
     },
     {
       "name": "running_all_kinds_partial",
@@ -758,7 +758,7 @@
         "overproductionPolicyApplies": true,
         "allowedOverproductionRate": 0.1
       },
-      "label": "部分领料生产中 · 按配套报工"
+      "label": "生产中 · 按配套限量报工"
     },
     {
       "name": "running_full_issue",
@@ -852,7 +852,7 @@
         "allowedOverproductionRate": 0.1,
         "partialMaterialReportLimited": true
       },
-      "label": "部分领料生产中 · 按配套报工"
+      "label": "生产中 · 按配套限量报工"
     }
   ]
 }

@@ -139,6 +139,7 @@ public class ProductionMaterialReturnRequestService {
             return readDocuments(replay.stream().map(row -> uuid(row[0])).toList());
         }
         lockDemandsAndSources(demands,items);
+        com.uten.imp.common.production.ProductionMaterialKitProofs.captureSegment(em,request.executionSegmentId());
         Map<String,Source> sources = new LinkedHashMap<>();
         readSources(planId,request.executionSegmentId()).forEach(source -> sources.put(sourceKey(source), source));
         Map<ReturnOrigin,List<Item>> origins = new LinkedHashMap<>();
@@ -257,6 +258,7 @@ public class ProductionMaterialReturnRequestService {
         em.createNativeQuery("SELECT set_config('app.production_stock_cleanup_doc_id',:id,true)").setParameter("id",documentId.toString()).getSingleResult();
         em.createNativeQuery("UPDATE stock_documents SET is_deleted=TRUE,deleted_at=now(),updated_at=now(),updated_by=:actor WHERE id=:id")
                 .setParameter("actor",user.requireId()).setParameter("id",documentId).executeUpdate();
+        com.uten.imp.common.production.ProductionMaterialKitProofs.captureSegment(em,segmentId);
         return readDocuments(List.of(documentId)).getFirst();
     }
 

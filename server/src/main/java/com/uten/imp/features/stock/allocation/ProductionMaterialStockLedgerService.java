@@ -382,6 +382,8 @@ public class ProductionMaterialStockLedgerService {
         if (event.replayed()) return new PostingResult(true,event.id());
 
         Set<UUID> touched = new LinkedHashSet<>();
+        com.uten.imp.common.production.ProductionMaterialKitProofs.captureIssueSources(em,
+                lines.stream().map(MaterialLine::upstreamItemId).filter(Objects::nonNull).distinct().toList());
         for (MaterialLine line : lines) {
             validateReturnSource(line);
             unwindIssued(event.id(), line, "GOOD_RETURN", actorId, touched);
@@ -1043,6 +1045,7 @@ public class ProductionMaterialStockLedgerService {
                         """)
                 .setParameter("ids", ids)
                 .executeUpdate();
+        com.uten.imp.common.production.ProductionMaterialKitProofs.captureDemands(em, ids);
     }
 
     private static List<MaterialLine> normalize(

@@ -1549,6 +1549,7 @@ public class ProductionDailyReportService {
     private void capAndRemake(ProductionDailyReport r, UUID planItemId,
                               List<PlanOrderItemLink> lockedLinks) {
         Object[] pi = planItemRow(planItemId, true);
+        com.uten.imp.common.production.ProductionMaterialKitProofs.capturePlanItem(em,planItemId);
         BigDecimal plannedQty = bd(pi[2]);
         BigDecimal actualContribution=bd(em.createNativeQuery("SELECT fn_plan_actual_output_contribution_qty(:item,:report)")
                 .setParameter("item",planItemId).setParameter("report",r.getId()).getSingleResult());
@@ -1662,6 +1663,7 @@ public class ProductionDailyReportService {
                       )
                     """).setParameter("links", cappedAllocationLinkIds)
                     .executeUpdate();
+            com.uten.imp.common.production.ProductionMaterialKitProofs.capturePlanItem(em,planItemId);
         }
         if (segmentAttributed) {
             em.createNativeQuery(
@@ -1811,6 +1813,7 @@ public class ProductionDailyReportService {
                       )
                     """).setParameter("links", restoredAllocationLinkIds)
                     .executeUpdate();
+            com.uten.imp.common.production.ProductionMaterialKitProofs.capturePlanItem(em,planItemId);
         }
         if (segmentAttributed) {
             em.createNativeQuery(

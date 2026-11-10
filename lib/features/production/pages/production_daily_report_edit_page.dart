@@ -3420,8 +3420,8 @@ class _ProductionDailyReportEditPageState
       );
       if (!r.isFqcRecovery && materialCap != null && qty > materialCap) {
         context.appError(
-          '第 ${i + 1} 行工单部分领料，完工量超过物料配套可报数量 '
-          '${r.materialReportQtyExact}；请补领物料后继续报工，原输入已保留',
+          '第 ${i + 1} 行完工量超过当前可验证的物料配套可报数量 '
+          '${r.materialReportQtyExact}；请补领物料或核对原领退料记录后继续报工，原输入已保留',
         );
         await _grid.revealError(r, columnKey: 'qty');
         return;
@@ -3492,8 +3492,8 @@ class _ProductionDailyReportEditPageState
     for (final entry in materialTotals.entries) {
       if (entry.value > materialCaps[entry.key]!) {
         context.appError(
-          '同一工单部分领料，本次累计完工量超过物料配套可报数量 '
-          '${productionQuantityTextFromUnits(materialCaps[entry.key]!)}；请补领物料后继续报工，原输入已保留',
+          '同一工单本次累计完工量超过当前可验证的物料配套可报数量 '
+          '${productionQuantityTextFromUnits(materialCaps[entry.key]!)}；请补领物料或核对原领退料记录后继续报工，原输入已保留',
         );
         await _grid.revealError(
           rows.firstWhere((row) => row.executionSegmentId == entry.key),

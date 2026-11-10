@@ -40,7 +40,7 @@ void registerDailyReportPartialQuantityTests() {
       expect(creates, 0);
       expect(previews, 0);
       expect(row.qty.text, '6000');
-      expect(find.textContaining('超过物料配套可报数量 5000'), findsWidgets);
+      expect(find.textContaining('物料配套可报数量 5000'), findsWidgets);
       expect(tester.takeException(), isNull);
     },
   );

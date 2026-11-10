@@ -23,8 +23,8 @@
   "sharedAuthority": {
     "entry": "fn_execution_partial_material_report_room(uuid,uuid)",
     "migration": "V1129__partial_material_reporting_capacity.sql",
-    "contract": "Reuse frozen fn_execution_material_output_capacity(TRUE), not current BOM. While below full issued plan capacity, subtract all nondeleted draft/approved ordinary output, including actual-surplus slices; exclude the report currently edited/approved. NULL means this additional partial-issue ceiling is inapplicable, zero means no room.",
-    "locks": "Existing segment and active material-demand locks are acquired before a fresh capacity read; report create/edit/approve use the same guard. Pending returns/reversals use existing physical provenance/ledger authority.",
+    "contract": "While current verifiable frozen material capacity is below the original plan, subtract all active ordinary output including drafts/actual-surplus slices and exclude the edited/approved report. A genuine complete owner checkpoint preserves later actual-yield handling after return/loss. Checkpoints bind planned quantity, rulesVersion=1, exact demand identities and immutable consumption curves; future ISSUE_REVERSE only retires original ISSUE sources predating that checkpoint. New true full kits can record a new checkpoint at a new source-stock watermark. No second inventory balance is maintained.",
+    "locks": "Capture helpers take no new locks. Existing stock mutation graph, return request/cancel, material settlement, START, and final target cap/restore owners already hold segment before demand locks. Capture runs once per distinct affected segment at the complete owner boundary, with pre-capture for pending return/physical return and loss/WIP reductions; post-capture handles restoration. Stock posting order is assigned after demand locks, never inferred from transaction-start timestamps.",
     "preservedDifferences": [
       "Full-issued actual output and overproduction",
       "Zero-material production",
@@ -34,8 +34,21 @@
       "Draft/unknown-submit preservation and idempotency"
     ],
     "limitations": [
-      "The ceiling uses frozen planned consumption while issue is partial; it does not infer production yield from mutable current BOM or invent material use.",
-      "Reversal stays possible; already recorded historical output is not rewritten."
+      "升级前原流水ledger_order保留NULL，不随机回填。当前净配套已足量可继续原行为；一个完整旧ISSUE事件可独立证明。历史多次领料是否曾共同齐套无法证明时，按当前可验证配套保守限量；不能声称全部历史齐套例外已恢复。后续首次降能力owner会在当前仍确实齐套时先冻结真实检查点。",
+      "检查点按既有fn_execution_material_output_capacity/冻结曲线判完整配套，损耗预算不算额外产出；全领齐后损耗不改写已观察事实，齐套前LOSS/WIP错峰不能制造豁免。",
+      "本子任务尚未对最终检查点源码执行完整Spring业务链；根负责同源组合真实业务/多端交互结果。"
+    ],
+    "entries": [
+      "fn_execution_partial_material_report_room",
+      "fn_capture_execution_full_material_kit",
+      "fn_execution_full_kit_checkpoint_valid",
+      "fn_material_full_kit_identity",
+      "fn_material_kit_stock_order",
+      "ProductionMaterialKitProofs"
+    ],
+    "tables": [
+      "production_material_full_kit_proofs",
+      "production_material_full_kit_proof_items"
     ]
   },
   "migratedCallers": [
@@ -47,7 +60,12 @@
     "ProductionFlowStage.forSegment: one partial-running label/tone for workshop task table and task detail",
     "ProductionFlowStageCell: violet existing tier, readable icon/text, status legend",
     "ProductionExecutionSegmentsCard: plan detail and task detail statuses distinguish partial issue",
-    "ProductionWorkshopTaskStage: synchronous and durable report-export status text use shared fixture"
+    "ProductionWorkshopTaskStage: synchronous and durable report-export status text use shared fixture",
+    "ProductionMaterialStockLedgerService: complete issue/return/reverse refresh, physical return before mutation",
+    "ProductionMaterialSettlementService: locked LOSS/WIP/CONSUMED post and reversal before/after",
+    "ProductionMaterialReturnRequestService: before pending-return reservation and after cancel",
+    "ProductionExecutionSegmentService: explicit START under existing locks",
+    "ProductionDailyReportService: final-target cap/restore identity changes"
   ],
   "platforms": {
     "web": "Shared Flutter implementation changed; widget interactions tested, browser acceptance owned by root integration.",
@@ -86,11 +104,131 @@
     "manualAdvice": "Use existing report participant multi-selection A/B; record work-order number, issue occurrence and actual person A or B in draw remarks, retain issue documents. Do not overwrite work-order responsible employee merely to record the picker."
   },
   "validation": {
-    "status": "running",
-    "rawLogs": [],
+    "status": "checkpoint SQL contract verified; final integrated business chain pending at root",
+    "checkpointPostgres": {
+      "tests": 15,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "source": "Actual V1129 migration against isolated typed fixtures; original capacity stub is explicitly a baseline and not a production end-to-end performance claim.",
+      "largeHistory": {
+        "rows": 20000,
+        "baselineCapacityMs": 36,
+        "completeRoomMs": 51,
+        "singleEventPostings": 1000,
+        "checkpointWriteMs": 116
+      },
+      "cases": [
+        "return/reissue cycle",
+        "nonoverlapping material coverage",
+        "loss/WIP before final material",
+        "actual full kit then loss",
+        "loss budget versus output",
+        "frozen identity drift",
+        "original issue reversal",
+        "new-source reversal preserves old checkpoint",
+        "same-event posting slices",
+        "historical unknown/single event",
+        "draft/edit accounting",
+        "rollback gaps",
+        "sequence privileges",
+        "lock-wait transaction order",
+        "forged/immutable checkpoint"
+      ]
+    },
+    "flutter": {
+      "previousSharedTests": 61,
+      "realWidgetRepeatedSaveTests": 3,
+      "staticAnalysisFiles": 10,
+      "staticAnalysisIssues": 0,
+      "note": "Latest natural business wording must be rerun before final integration acceptance."
+    },
+    "previousBusinessChainRun": {
+      "tests": 97,
+      "failures": 1,
+      "errors": 0,
+      "explanation": "This was an intermediate source snapshot. One pending-return test expected the new output ceiling, but the existing actual-use guard correctly rejected first. Fixture now uses 360 material for 450 output, so pending return can exercise the intended independent output ceiling. The final checkpoint implementation and two new LOSS/WIP service cases require root rerun."
+    },
     "actualBrowserAcceptance": false,
     "companyDeployment": false,
     "push": false,
-    "formalPackage": false
+    "formalPackage": false,
+    "rawLogs": [
+      {
+        "path": "build-report-kit-checkpoint.log",
+        "sha256": "ca64caf2cf53b88996338abf9c83e3de88b988109212a47872c01f29c4ea2e17",
+        "bytes": 4113
+      },
+      {
+        "path": "build-report-kit-temporal-final.log",
+        "sha256": "729e04d985e289e928f9d8547340551f4f57d7517639886e71242b58da004dfc",
+        "bytes": 6067
+      },
+      {
+        "path": "build-report-kit-temporal-plan.log",
+        "sha256": "00454624d538f47a82655458757080a926243541252f99114b7a9eef6d62b482",
+        "bytes": 6497
+      },
+      {
+        "path": "build-report-kit-java-db.log",
+        "sha256": "53ebede6e99bcc01cffa5fce0de8d8e8b9a9734eb5b1c5d011d09dd7bfd4a674",
+        "bytes": 819293
+      },
+      {
+        "path": "build-report-kit-ui-before.log",
+        "sha256": "080255dbf37dab222ad6a7c9fe4f88d6612b90b23cc6386a7e00c277c01381ad",
+        "bytes": 8730
+      },
+      {
+        "path": "build-report-kit-ui-after.log",
+        "sha256": "9156ee38e3c8091187b0b833c1b81f6479d11b56e8ad31386d0d6731f67d9993",
+        "bytes": 590
+      },
+      {
+        "path": "build-report-kit-analyze-final.log",
+        "sha256": "297e0085216dc47d803669e6c985d152e496b5ea0c31537ab5170bda19ae6610",
+        "bytes": 203
+      },
+      {
+        "path": "build-report-kit-flutter-final.log",
+        "sha256": "d222f18a43f46f38f4af712ed0ba2de87a38c81a8ef384aba7f1337a32bbfee6",
+        "bytes": 11777
+      }
+    ]
+  },
+  "retiredApproach": {
+    "description": "An intermediate ordered-prefix implementation was rejected after independent review found unhandled LOSS/WIP timing and a real large-history performance failure. No prefix replay/helper remains in the product migration.",
+    "failure": "20000 posting rows: 38809 ms, assertion failed; raw plan showed a 20000-by-20000 nested loop between estimated-one-row materialized histories.",
+    "preservedSourceCommits": [
+      "d1c0cba70"
+    ],
+    "rawFailure": "company-report-kit-20261110-prefix-performance-failure.log"
+  },
+  "sourceHashes": {
+    "lib/features/production/models/production_execution_planning.dart": "96eb97264c22a4966c2556fe072539003ee78b62b2e975765feb0969d4fd14b6",
+    "lib/features/production/models/production_execution_workbench.dart": "9c02bd6ac6893eba6676093123e4b6697be46bce07d2edd8d383a98bfe3aef03",
+    "lib/features/production/models/production_flow_stage.dart": "e52b08185856c28f9afd3b9d74f3abdb9967670d2180a76d92e82c8d7bac9f0b",
+    "lib/features/production/models/production_workshop_task_stage.dart": "40673796d778168df2bc3445f875446e5502ac1056213ab1dfe86b10dd82712b",
+    "lib/features/production/models/reportable_plan_line.dart": "7b3ae157ef6035fdaf3fa51e7f0a9e0e2bb746c35b53bc994ad882ed20998b59",
+    "lib/features/production/pages/production_daily_report_edit_page.dart": "eeea2b9d15735edeaa2500c4e3f263896872e16a68a00ac28ad1feaf5601e1b9",
+    "lib/features/production/pages/production_workshop_tasks_page.dart": "7addb68399962ca2c12faa26ce9bc8c122b8f1ba0cc5111cf16314d08fc3d3e8",
+    "lib/features/production/widgets/production_daily_grid_columns.dart": "4c63f914c4ad4825549a1404ea5f15c60888695b0e23c595703f966c1490ef7d",
+    "lib/features/production/widgets/production_execution_segments_card.dart": "157a3dc9f0bb5055ca0fff267cc1a213d25b317fc6a5894cbe909bf8b3c7ba76",
+    "lib/features/production/widgets/production_flow_stage_cell.dart": "d60368ae35dbcfaa4004a6927932f9ba4d46c5c2e2e47ae05d4691a6f0a6cb12",
+    "server/src/main/java/com/uten/imp/common/production/ProductionMaterialKitProofs.java": "47f8f5259118c6fb7af9ae39ea791fac20d22ae79c4b21cf0144857be2b32d72",
+    "server/src/main/java/com/uten/imp/features/production/dailyreport/ActualOutputSupplementService.java": "8f36dfb7964b21a96a8e08d30161c9036d3d26054df5c733051000916bf12b1f",
+    "server/src/main/java/com/uten/imp/features/production/dailyreport/DailyReportExecutionSegmentGuard.java": "d1d7811f6dadf71eb2d1e3c967286c3bf1b3da555c5bc52edac7d169af609fb2",
+    "server/src/main/java/com/uten/imp/features/production/dailyreport/ProductionDailyReportService.java": "fb4210acc7407d00591292436ae39d208ffaa89c88bebc25dc4e237deeda8b00",
+    "server/src/main/java/com/uten/imp/features/production/dailyreport/ReportablePlanLineQueryService.java": "1e6425c2fcbdc512d634b468ec9f419dc5149226891102b3d59965250398c37f",
+    "server/src/main/java/com/uten/imp/features/production/dailyreport/dto/ReportablePlanLine.java": "bb3cda76bc0e5ec2011d53fa6a732fc60140a82eda2eb05fbc017ff536ff2b78",
+    "server/src/main/java/com/uten/imp/features/production/execution/ExecutionSegmentView.java": "003c916b68dead52c149a98f1846a1c6f0a1bd330021720eb1246cecec6d3c94",
+    "server/src/main/java/com/uten/imp/features/production/execution/ProductionExecutionSegmentService.java": "07ea8179fb8fa249adebbcdae017e78a20ef689c967e297e00f123e9734f56e2",
+    "server/src/main/java/com/uten/imp/features/production/execution/ProductionExecutionWorkbenchSegment.java": "0cd5686f7b5320a73487ae5290fc35d31c9cab3e29d90b56313b819cf38e78d0",
+    "server/src/main/java/com/uten/imp/features/production/execution/ProductionExecutionWorkbenchService.java": "c76276970284ed8d5c4915aae42c118f2b6bdb440a4c71bdf2c18a0a4cb93b6d",
+    "server/src/main/java/com/uten/imp/features/production/execution/ProductionWorkshopTaskStage.java": "d825e2f0b76982967cc34a90042ec4b9aac55ec7c5c0cc192c6d6ddb98821020",
+    "server/src/main/java/com/uten/imp/features/stock/allocation/ProductionMaterialReturnRequestService.java": "b8323392a805bb8b48dfd5c4a47b755c1da870d48b88d3ae005c295f7244d104",
+    "server/src/main/java/com/uten/imp/features/stock/allocation/ProductionMaterialSettlementService.java": "911726112caae433edb5d9eacaa18a40ac7e1abe57f4d22ab4e26b5a56b79011",
+    "server/src/main/java/com/uten/imp/features/stock/allocation/ProductionMaterialStockLedgerService.java": "c9d4e9b3cc74bd7280075d08ea9cd23d3317368f5287b7a6e4d4e9a7e53c60d2",
+    "server/src/main/resources/db/migration/V1129__partial_material_reporting_capacity.sql": "56d1faa458dda0e7a2f82372335e78ff09b9c6bbdec4a09262dfeb049bde55d1"
   }
 }

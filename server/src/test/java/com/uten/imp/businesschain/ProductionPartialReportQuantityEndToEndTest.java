@@ -78,7 +78,7 @@ class ProductionPartialReportQuantityEndToEndTest {
     @Test void pendingMaterialReturnReducesReportRoomAndCancellationRestoresIt() {
         var fixture=preparedFixture(); Object task=partialTask(fixture,"partial-report-return");
         var initial=source(fixture,task);
-        UUID draft=reports.create(request(fixture,task,initial,"450","400")).getId();
+        UUID draft=reports.create(request(fixture,task,initial,"450","360")).getId();
         var returns=beans.getBean(ProductionMaterialReturnRequestService.class);
         UUID plan=id(task,"plan"),segment=id(task,"segment");
         var issue=returns.sources(plan,segment).getFirst();
@@ -154,6 +154,35 @@ class ProductionPartialReportQuantityEndToEndTest {
         var limited=source(fixture,task);amount("500",limited.materialReportQty());
         var failure=assertThrows(ApiException.class,()->reports.create(request(fixture,task,limited,"600","500")));
         assertTrue(failure.getMessage().contains("物料配套可报数量 500"),failure.getMessage());
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings={"APPROVED_LOSS","LEGAL_WIP"})
+    void losingOneMaterialBeforeTheOtherArrivesCannotInventAFullKit(String kind) {
+        var fixture=preparedFixture();
+        Object task=ReflectionTestUtils.invokeMethod(fixture,"createStartedTask","partial-loss-"+UUID.randomUUID(),false,"1000",true,new BigDecimal("0.5"));
+        UUID primary=id(task,"demand"),segment=id(task,"segment");
+        UUID other=db.queryForObject("SELECT id FROM production_material_demands WHERE execution_segment_id=? AND id<>? AND NOT is_deleted",UUID.class,segment,primary);
+        issueMore(primary,"500"); // A has 1000, B still only supports 500 output.
+        var settlement=new com.uten.imp.features.stock.allocation.dto.ProductionMaterialSettlementRequest();
+        settlement.setExecutionSegmentId(segment);settlement.setIdempotencyKey("partial-loss-"+UUID.randomUUID());settlement.setReason("另一必需物料到齐前明确核对损耗或合法在制");
+        var loss=new com.uten.imp.features.stock.allocation.dto.ProductionMaterialSettlementRequest.Line();
+        loss.setDemandId(primary);loss.setSettlementType(kind);loss.setQtyBase(new BigDecimal("900"));settlement.setLines(List.of(loss));
+        Object world=ReflectionTestUtils.invokeMethod(task,"world");UUID actor=ReflectionTestUtils.invokeMethod(world,"superAdminUserId");
+        beans.getBean(com.uten.imp.features.stock.allocation.ProductionMaterialSettlementService.class).post(id(task,"plan"),settlement,actor);
+        issueMore(other,"1000");
+        var limited=source(fixture,task);amount("100",limited.materialReportQty());
+        var input=request(fixture,task,limited,"101","100");
+        var otherUse=new DailyReportMaterialUsageLine();otherUse.setDemandId(other);otherUse.setQtyBase(new BigDecimal("200"));
+        input.setMaterialLines(List.of(input.getMaterialLines().getFirst(),otherUse));
+        var error=assertThrows(ApiException.class,()->reports.create(input));assertTrue(error.getMessage().contains("物料配套可报数量 100"),error.getMessage());
+    }
+
+    private void issueMore(UUID demand,String quantity) {
+        var source=db.queryForMap("SELECT item.id,item.doc_id FROM stock_document_items item JOIN production_material_stock_postings issue ON issue.stock_document_item_id=item.id WHERE issue.demand_id=? AND issue.posting_type='ISSUE' ORDER BY issue.created_at,issue.id LIMIT 1",demand);
+        var item=new com.uten.imp.features.stock.dto.StockDocIssueRequest.Line();item.setItemId((UUID)source.get("id"));item.setQty(new BigDecimal(quantity));
+        var request=new com.uten.imp.features.stock.dto.StockDocIssueRequest();request.setIdempotencyKey("partial-more-"+UUID.randomUUID());request.setLines(List.of(item));
+        beans.getBean(com.uten.imp.features.stock.StockDocService.class).approveAndIssue((UUID)source.get("doc_id"),request);
     }
 
     private WorkshopPublicSurplusEndToEndTest preparedFixture() {

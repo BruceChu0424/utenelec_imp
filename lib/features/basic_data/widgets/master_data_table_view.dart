@@ -6666,6 +6666,11 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       // A complete read that failed after showing progressive rows retires
       // its owner; the host may still hold that withdrawn prefix. It is not an
       // empty result: never fall through to the empty state (a forged 0 rows).
+      // A retired old owner with a replacement read already in flight is a
+      // query switch, not a failure: show a transitional notice without
+      // failure copy or retry while the new result is loading.
+      final switching =
+          widget.error == null && (widget.isLoading || widget.isRefreshing);
       bodyNotice = Padding(
         key: widget.errorKey,
         padding: const EdgeInsets.symmetric(
@@ -6682,11 +6687,19 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
               _platform.authorizationRevision,
               _platform.queryLifecycle,
             ),
-            title: tableReadStatusText(context, 'loadFailed'),
-            reason: tableReadStatusText(context, 'incompleteRead'),
-            impact: tableReadStatusText(context, 'loadImpact'),
-            guidance: tableReadStatusText(context, 'guidance'),
-            retry: widget.onRetry,
+            title: tableReadStatusText(
+              context,
+              switching ? 'switchingRead' : 'loadFailed',
+            ),
+            reason: switching
+                ? null
+                : tableReadStatusText(context, 'incompleteRead'),
+            impact: tableReadStatusText(
+              context,
+              switching ? 'switchingImpact' : 'loadImpact',
+            ),
+            guidance: switching ? null : tableReadStatusText(context, 'guidance'),
+            retry: switching ? null : widget.onRetry,
           ),
         ),
       );

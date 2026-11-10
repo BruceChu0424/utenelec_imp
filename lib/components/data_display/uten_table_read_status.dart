@@ -15,7 +15,7 @@ class UtenTableReadStatus extends StatefulWidget {
   const UtenTableReadStatus({
     super.key,
     required this.title,
-    required this.reason,
+    this.reason,
     this.loadingTitle,
     this.guidance,
     this.impact,
@@ -29,7 +29,10 @@ class UtenTableReadStatus extends StatefulWidget {
   });
 
   final String title;
-  final String reason;
+
+  /// Failure detail shown in the details dialog. A transitional notice (query
+  /// switch with the previous result retained) has no failure to describe.
+  final String? reason;
   final String? loadingTitle;
   final String? guidance;
   final String? impact;
@@ -145,7 +148,9 @@ class _UtenTableReadStatusState extends State<UtenTableReadStatus> {
               Text(text),
               const SizedBox(height: UtenSpacing.s16),
             ],
-            SelectableText(snapshot.reason),
+            if (snapshot.reason case final reason? when reason.isNotEmpty) ...[
+              SelectableText(reason),
+            ],
             if (snapshot.guidance case final text? when text.isNotEmpty) ...[
               const SizedBox(height: UtenSpacing.s12),
               Text(text),

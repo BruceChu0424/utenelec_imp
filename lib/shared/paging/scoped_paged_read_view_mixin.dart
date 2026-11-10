@@ -4,6 +4,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/network/api_exception.dart';
+import '../../core/performance/ui_work_budget.dart';
 import '../models/paged_result.dart';
 import '../providers/export_context_epoch_provider.dart';
 import 'complete_paged_snapshot.dart';
@@ -161,6 +162,13 @@ mixin ScopedPagedReadViewMixin<W extends ConsumerStatefulWidget>
             if (current() && pagedReadAccessDenied(error)) {
               invalidateScopedPageReads();
               _scopedOwnerChanged(error);
+            }
+            if (!current() && isRetiredViewRead(error)) {
+              // A retired old owner is not the current request's failure:
+              // translate every retirement shape (owner change, REQUEST_STALE,
+              // cancellation) into the one canonical quiet signal, so no page
+              // handler can mistake a query switch for a failed load.
+              Error.throwWithStackTrace(const UiWorkCancelled(), stack);
             }
             Error.throwWithStackTrace(error, stack);
           }),

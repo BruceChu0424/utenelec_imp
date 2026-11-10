@@ -268,6 +268,7 @@ class ProductionFlowStage {
     required String segmentStatus,
     required bool zeroMaterial,
     bool materialIssued = true,
+    bool? partialMaterialReportLimited,
     bool drawRequested = false,
     bool splitReplaced = false,
     bool continuousSupply = false,
@@ -307,6 +308,12 @@ class ProductionFlowStage {
       return _make(2, '待选生产路线', ProductionFlowTone.decide);
     }
     final facts = materials;
+    final partialIssue =
+        partialMaterialReportLimited ??
+        (!zeroMaterial &&
+            facts != null &&
+            facts.kindCount > 0 &&
+            !facts.allIssued);
     // ADR-117：还没开工、缺的料里有计划还没下单的——车间自己能先办的(可开工 / 可领料 /
     // 已交仓库待发)照旧排在前面，其余一律先说「等计划下单」，而不是笼统的「等待到货」。
     if (facts != null &&
@@ -437,18 +444,12 @@ class ProductionFlowStage {
       'IN_PROGRESS' => _make(
         4,
         // V595 持续生产：仓库料与同车间直送料到一批投一批，工单一直开着直到最后一次报工。
-        !zeroMaterial &&
-                facts != null &&
-                facts.kindCount > 0 &&
-                !facts.allIssued
+        partialIssue
             ? partialMaterialRunningLabel
             : continuousRoute
             ? '持续生产中 · 按实际投料报工'
             : '生产中 · 可报工',
-        !zeroMaterial &&
-                facts != null &&
-                facts.kindCount > 0 &&
-                !facts.allIssued
+        partialIssue
             ? ProductionFlowTone.activePartial
             : ProductionFlowTone.active,
         progress: _ratio(reportedQty, plannedQty),

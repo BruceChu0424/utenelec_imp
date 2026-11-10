@@ -65,5 +65,6 @@ public record ExecutionSegmentView(
         BigDecimal plannedInboundQty,
         BigDecimal actualSurplusInboundQty,
         BigDecimal allowedOverproductionRate,
-        boolean overproductionPolicyApplies) {
+        boolean overproductionPolicyApplies,
+        Boolean partialMaterialReportLimited) {
 }

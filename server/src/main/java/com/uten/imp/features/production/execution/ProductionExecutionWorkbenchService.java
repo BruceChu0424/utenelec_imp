@@ -1418,7 +1418,8 @@ public class ProductionExecutionWorkbenchService {
                          WHERE disposition.execution_segment_id=task.segment_id
                            AND disposition.status IN('PENDING','HELD','RETURNED')
                            AND reported.status=1 AND NOT reported.is_deleted
-                         ORDER BY disposition.created_at DESC,disposition.id DESC LIMIT 1)
+                         ORDER BY disposition.created_at DESC,disposition.id DESC LIMIT 1),
+                       (fn_execution_partial_material_report_room(task.segment_id,NULL) IS NOT NULL)
                 """.formatted(splitEmptyIssued, supplementReady, discoveryPending,
                 drawRequestedPredicate(), ordinaryDrawRequestablePredicate("bin_material.state"),
                 nativeRowsByKey("production_plans","id","task.plan_id"), nativeRowsByKey("production_daily_reports","id","disposition.report_id"), nativeRowsByKey("production_daily_reports","id","claim.report_id"));
@@ -1772,7 +1773,7 @@ public class ProductionExecutionWorkbenchService {
                 bool(row[71]), uuid(row[72]), text(row[73]), executable && bool(row[74]),
                 text(row[75]),
                 binMaterialState, needsStartConfirmation, allowedActions,
-                decimal(row[78]),uuid(row[79]), requirements);
+                decimal(row[78]),uuid(row[79]), requirements, row.length>80 ? bool(row[80]) : null);
     }
 
     /**

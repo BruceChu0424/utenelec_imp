@@ -66,6 +66,7 @@ ProductionFlowStage _orderFlowStageOf(
         segmentStatus: task.segmentStatus,
         zeroMaterial: task.zeroMaterial,
         materialIssued: task.issued,
+        partialMaterialReportLimited: task.partialMaterialReportLimited,
         drawRequested: task.drawRequested,
         splitReplaced: task.splitReplaced,
         continuousSupply: task.continuousSupply,

@@ -44,6 +44,8 @@ public final class ProductionWorkshopTaskStage {
                         : t.hasUnregisteredMaterial() ? "已入库 · 待登记实际用料" : "已入库 · 待结清核对";
             return positive(t.fqcFailedQty()) ? "品质异常 · 待处理" : "已报完 · 待仓库登记送检";
         }
+        boolean partialIssue = t.partialMaterialReportLimited()!=null ? t.partialMaterialReportLimited()
+                : !t.zeroMaterial() && t.materialKindCount()>0 && t.materialIssuedKindCount()<t.materialKindCount();
         return switch (status) {
             case "WAITING" -> "FULL_KIT".equals(route) ? "等待物料到齐 · 齐套生产"
                     : "BATCH".equals(route) ? "等待到货 · 分批生产"
@@ -51,8 +53,7 @@ public final class ProductionWorkshopTaskStage {
             case "READY", "DISPATCHED" -> t.zeroMaterial() ? "无需领料 · 可开工"
                     : t.issued() ? "物料齐套 · 可开工"
                     : t.drawRequested() ? "已提交领料 · 待仓库发料" : "物料齐套 · 去领料";
-            case "IN_PROGRESS" -> !t.zeroMaterial() && t.materialKindCount()>0
-                    && t.materialIssuedKindCount()<t.materialKindCount()
+            case "IN_PROGRESS" -> partialIssue
                     ? "部分领料生产中 · 按配套报工"
                     : continuous ? "持续生产中 · 按实际投料报工" : "生产中 · 可报工";
             case "COMPLETED" -> "已完工";

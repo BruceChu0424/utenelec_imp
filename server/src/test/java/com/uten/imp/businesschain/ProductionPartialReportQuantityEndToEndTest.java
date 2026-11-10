@@ -78,14 +78,14 @@ class ProductionPartialReportQuantityEndToEndTest {
     @Test void pendingMaterialReturnReducesReportRoomAndCancellationRestoresIt() {
         var fixture=preparedFixture(); Object task=partialTask(fixture,"partial-report-return");
         var initial=source(fixture,task);
-        UUID draft=reports.create(request(fixture,task,initial,"450","450")).getId();
+        UUID draft=reports.create(request(fixture,task,initial,"450","400")).getId();
         var returns=beans.getBean(ProductionMaterialReturnRequestService.class);
         UUID plan=id(task,"plan"),segment=id(task,"segment");
         var issue=returns.sources(plan,segment).getFirst();
         var docs=returns.submit(plan,new ProductionMaterialReturnRequest.Submit(segment,"partial-return-"+UUID.randomUUID(),
                 "部分领料待退，核对物料配套上限",List.of(new ProductionMaterialReturnRequest.Item(issue.issuePostingId(),new BigDecimal("100")))));
         var failure=assertThrows(ApiException.class,()->reports.approve(draft,approve(draft)));
-        assertTrue(failure.getMessage().contains("物料配套") || failure.getMessage().contains("可登记"),failure.getMessage());
+        assertTrue(failure.getMessage().contains("物料配套"),failure.getMessage());
         returns.cancel(plan,docs.getFirst().documentId(),new ProductionMaterialReturnRequest.Cancel("partial-cancel-"+UUID.randomUUID(),"取消待退材料申请"));
         reports.approve(draft,approve(draft));
         amount("50",source(fixture,task).materialReportQty());
@@ -111,6 +111,30 @@ class ProductionPartialReportQuantityEndToEndTest {
             int successes=0;for(var future:futures)if(future.get(90,TimeUnit.SECONDS)!=null)successes++;
             assertEquals(1,successes);amount("200",source(fixture,task).materialReportQty());
         }
+    }
+
+    @Test void reversingAPreviouslyCompleteIssueRestoresThePartialLimitUntilReissue() {
+        var fixture=preparedFixture();
+        Object task=ReflectionTestUtils.invokeMethod(fixture,"createStartedTask","partial-reverse-"+UUID.randomUUID(),false,"1000");
+        assertNull(source(fixture,task).materialReportQty());
+        var issue=db.queryForMap("""
+                SELECT item.id,item.doc_id FROM stock_document_items item
+                JOIN production_planning_package_documents mapping ON mapping.document_id=item.doc_id
+                WHERE mapping.execution_segment_id=? AND mapping.document_type='DRAW' AND NOT item.is_deleted
+                """,id(task,"segment"));
+        var item=new com.uten.imp.features.stock.dto.StockDocIssueRequest.Line();
+        item.setItemId((UUID)issue.get("id"));item.setQty(new BigDecimal("100"));
+        var reverse=new com.uten.imp.features.stock.dto.StockDocIssueRequest();
+        reverse.setIdempotencyKey("partial-reverse-"+UUID.randomUUID());reverse.setReason("未投入的一百件按原实际发料红冲");reverse.setLines(List.of(item));
+        var stock=beans.getBean(com.uten.imp.features.stock.StockDocService.class);
+        stock.reverseIssue((UUID)issue.get("doc_id"),reverse);
+        var partial=source(fixture,task);amount("900",partial.materialReportQty());
+        var rejected=assertThrows(ApiException.class,()->reports.create(request(fixture,task,partial,"901","900")));
+        assertTrue(rejected.getMessage().contains("物料配套可报数量 900"),rejected.getMessage());
+        var reissue=new com.uten.imp.features.stock.dto.StockDocIssueRequest();
+        reissue.setIdempotencyKey("partial-reissue-"+UUID.randomUUID());reissue.setLines(List.of(item));
+        stock.approveAndIssue((UUID)issue.get("doc_id"),reissue);
+        assertNull(source(fixture,task).materialReportQty());
     }
 
     private WorkshopPublicSurplusEndToEndTest preparedFixture() {

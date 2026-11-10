@@ -25,20 +25,22 @@ public final class SpreadsheetEvidenceReader {
                 List<Sheet> sheets = new ArrayList<>();
                 int totalCells = 0, external = 0;
                 for (int s = 0; s < workbook.getNumberOfSheets(); s++) {
-                    if (workbook.isSheetHidden(s) || workbook.isSheetVeryHidden(s)) continue;
+                    boolean hiddenSheet=workbook.isSheetHidden(s)||workbook.isSheetVeryHidden(s);
                     var source = workbook.getSheetAt(s);
                     if (source.getLastRowNum() >= 5000) throw ZipSafety.rejected("单个成本工作表最多 5000 行");
                     List<Row> rows = new ArrayList<>();
                     for (var row : source) {
                         deadline.check();
-                        if (row.getZeroHeight()) continue;
                         if (row.getLastCellNum() > 128) throw ZipSafety.rejected("成本表最多 128 列");
                         List<Value> values = new ArrayList<>();
                         for (Cell cell : row) {
-                            if (source.isColumnHidden(cell.getColumnIndex())) continue;
                             if (++totalCells > 250_000) throw ZipSafety.rejected("成本表单元格过多，请按产品拆分");
                             String formula = cell.getCellType() == CellType.FORMULA ? cell.getCellFormula() : null;
                             String value = cached(cell);
+                            boolean hidden=hiddenSheet||row.getZeroHeight()||source.isColumnHidden(cell.getColumnIndex());
+                            if(hidden&&(!value.isBlank()||formula!=null))
+                                throw ZipSafety.rejected("成本表存在隐藏的有内容工作表、行或列，请先在原文件中显示并明确核对；不能静默忽略或自动采用隐藏数据");
+                            if(hidden)continue;
                             if (value.length() > 4096 || formula != null && formula.length() > 4096)
                                 throw ZipSafety.rejected("成本表单元格内容过长");
                             if (value.isBlank() && formula == null) continue;

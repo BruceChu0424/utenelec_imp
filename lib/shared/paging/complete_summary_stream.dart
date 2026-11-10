@@ -36,8 +36,9 @@ Stream<Map<String, dynamic>> decodeSummaryFrames(
 }
 
 /// The request `size` that selects the progressive frame plan (first frame
-/// 50 rows, then aligned up to 200). `100` keeps the original fixed frames.
-const kProgressiveSummaryStreamSize = 200;
+/// 50 rows, then aligned up to the shared bounded maximum, 1000 since
+/// 2026-11-09). `100` keeps the original fixed frames.
+const kProgressiveSummaryStreamSize = 1000;
 
 /// Adapts one HTTP stream to the existing complete-page validator. Only this
 /// transport changes: row identity, totals, authority and snapshot validation

@@ -72,7 +72,8 @@ public final class ReportExportCursor implements AutoCloseable {
             }
             long requestedSize = ((Number) query.getParameterValue(limitName)).longValue();
             long offset = ((Number) query.getParameterValue(offsetName)).longValue();
-            if (requestedSize < 1 || requestedSize > 500 || offset < 0) throw new IllegalStateException("Export query batch is out of bounds");
+            if (requestedSize < 1 || requestedSize > com.uten.imp.common.web.CompleteReadBatchPlan.MAX_BATCH_SIZE
+                    || offset < 0) throw new IllegalStateException("Export query batch is out of bounds");
             int size = (int) requestedSize;
             String sql = paged.substring(0, page.start());
             Map<String,Object> bindings = new LinkedHashMap<>();
@@ -93,11 +94,14 @@ public final class ReportExportCursor implements AutoCloseable {
                 NativeQuery<?> nativeQuery = unpaged.unwrap(NativeQuery.class);
                 nativeQuery.setReadOnly(true).setFetchSize(500);
                 Stream<?> stream = nativeQuery.getResultStream();
-                try { state = new State(sql, bindings, size, stream, stream.iterator()); }
+                try { state = new State(sql, bindings, stream, stream.iterator()); }
                 catch (RuntimeException failure) { stream.close();throw failure; }
             }
+            // Batch sizes may vary within one cursor (the shared progressive ladder
+            // 50, 50, 100, 200s, 1000s); the cursor only owns the exact row sequence:
+            // every batch continues at the row where the previous one ended.
             if (state.failed || !state.sql.equals(sql) || !state.bindings.equals(bindings)
-                    || state.size != size || state.nextOffset != offset) {
+                    || state.nextOffset != offset) {
                 throw new IllegalStateException("Export query conditions or batch sequence changed");
             }
             List<Object[]> rows = new ArrayList<>(size);
@@ -118,14 +122,13 @@ public final class ReportExportCursor implements AutoCloseable {
     private static final class State {
         final String sql;
         final Map<String,Object> bindings;
-        final int size;
         final Stream<?> stream;
         final Iterator<?> iterator;
         long nextOffset;
         boolean exhausted;
         boolean failed;
-        State(String sql, Map<String,Object> bindings, int size, Stream<?> stream, Iterator<?> iterator) {
-            this.sql = sql;this.bindings = new LinkedHashMap<>(bindings);this.size = size;
+        State(String sql, Map<String,Object> bindings, Stream<?> stream, Iterator<?> iterator) {
+            this.sql = sql;this.bindings = new LinkedHashMap<>(bindings);
             this.stream = stream;this.iterator = iterator;
         }
         void closeStream() {

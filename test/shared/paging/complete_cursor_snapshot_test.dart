@@ -86,8 +86,9 @@ void main() {
             : const _History([2], null, authority: 'not-first');
       });
       // A cursor continues from its token: a small first batch, then the
-      // bounded maximum (2026-11-08 progressive plan).
-      expect(calls, [(null, 50), ('second', 200)]);
+      // bounded maximum (2026-11-08 progressive plan; maximum 1000 since
+      // 2026-11-09).
+      expect(calls, [(null, 50), ('second', 1000)]);
       expect(result.rows, [1, 2]);
       expect(result.next, isNull);
       expect(result.authority, 'first');

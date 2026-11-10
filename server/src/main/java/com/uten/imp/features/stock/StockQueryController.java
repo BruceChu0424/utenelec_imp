@@ -26,10 +26,35 @@ import org.springframework.format.annotation.DateTimeFormat;
  */
 @RestController
 @RequestMapping("/api/stock")
-@RequiredArgsConstructor
+@RequiredArgsConstructor(onConstructor_ = @org.springframework.beans.factory.annotation.Autowired)
 public class StockQueryController {
 
     private final StockQueryService service;
+    private final InstantInventoryCompleteStreamService completeStream;
+
+    /** Compatibility for focused tests that supply only the paged query service. */
+    public StockQueryController(StockQueryService service) { this(service, null); }
+
+    /**
+     * 即时库存完整流（2026-11-09）：POST /api/stock/instant-inventory/summaries?complete=true，
+     * 一个 NDJSON 响应按共享批次计划连续分帧；首批 50 行带合计与表头桶，续批只取行与计数，
+     * 整个读取在同一个 RR 快照内单扫描完成。分页读取仍走原 GET /instant-inventory。
+     */
+    @org.springframework.web.bind.annotation.PostMapping(
+            value = "/instant-inventory/summaries", params = "complete=true",
+            produces = "application/x-ndjson")
+    @PreAuthorize("hasAuthority('stock:view')")
+    public void instantInventoryComplete(
+            @org.springframework.validation.annotation.Validated
+            @org.springframework.web.bind.annotation.RequestBody InstantInventoryCompleteRequest query,
+            @RequestParam(required = false) String readSnapshotRevision,
+            jakarta.servlet.http.HttpServletRequest request,
+            jakarta.servlet.http.HttpServletResponse response) throws java.io.IOException {
+        com.uten.imp.audit.AuditRequestContext.markControlledRead(request);
+        java.util.Objects.requireNonNull(completeStream,
+                "The complete instant-inventory stream requires its shared service");
+        completeStream.stream(query, readSnapshotRevision, response);
+    }
 
     @GetMapping("/balances")
     @PreAuthorize("hasAuthority('stock:view')")

@@ -54,7 +54,7 @@ public class NativeFinancialPostingAccountService implements NativeFinancialPost
 
     @Transactional(readOnly=true)
     public Map<String,Object> configurations(int page,int size){
-        readAccess();int s=Math.max(1,Math.min(200,size)),p=Math.max(1,page);
+        readAccess();int s=Math.max(1,Math.min(com.uten.imp.common.web.CompleteReadBatchPlan.MAX_BATCH_SIZE,size)),p=Math.max(1,page);
         long total=db.queryForObject("SELECT count(*) FROM finance_native_posting_configurations",Long.class);
         return Map.of("items",db.queryForList("SELECT * FROM finance_native_posting_configurations ORDER BY created_at DESC,id LIMIT ? OFFSET ?",s,(long)(p-1)*s),"page",p,"size",s,"total",total,"totalPages",(total+s-1)/s);
     }

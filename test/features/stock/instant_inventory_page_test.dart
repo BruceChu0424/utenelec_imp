@@ -872,28 +872,26 @@ class _RecordingStockRepository extends StockQueryRepository {
   bool? lastIncludeDefective;
   bool? lastIncludeLineSide;
 
+  // 2026-11-09 起主页面完整读取走单扫描流；分页读取（面板/弹窗）仍走 instantInventory。
   @override
-  Future<PagedResult<InstantInventoryRow>> instantInventory({
-    int page = 1,
-    int size = 20,
-    bool includeMetadata = true,
+  Future<PagedResult<InstantInventoryRow>> completeStream({
     String? categoryId,
     String? warehouseId,
     bool includeDefective = false,
     bool includeLineSide = false,
     bool warehouseRelatedOnly = false,
     String? keyword,
+    bool includeRelated = false,
     String? owningWarehouse,
     bool owningWarehouseNull = false,
     String? colorId,
     String? series,
     String? unitId,
-    String? sort,
-    String? order,
     String? attention,
     String? dateFrom,
     String? dateTo,
-    bool includeRelated = false,
+    String? sort,
+    String? order,
   }) {
     calls++;
     lastCategoryId = categoryId;

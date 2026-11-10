@@ -149,6 +149,51 @@ class _ScopeApi extends ApiClient {
     return {};
   }
 
+  /// 完整流（2026-11-09 起主页面读取）：一行货品一帧 + complete 栅栏。
+  @override
+  Future<T> postSummaryStream<T>(
+    String path, {
+    required Object body,
+    required Future<T> Function(Stream<Map<String, dynamic>>) consume,
+  }) async {
+    requests.add((
+      path,
+      Map<String, dynamic>.from((body as Map)['filter'] as Map),
+    ));
+    Stream<Map<String, dynamic>> frames() async* {
+      yield {
+        'type': 'page',
+        'value': {
+          'items': [
+            {
+              'goodsId': 'g1',
+              'colorId': null,
+              'name': '库存成品',
+              'qty': 9,
+              'owningWarehouseName': '主档归属仓',
+            },
+          ],
+          'page': 1,
+          'size': 50,
+          'total': 1,
+          'totalPages': 1,
+          'readScopeVersion': 'a' * 64,
+          'readSnapshotRevision': 'b' * 64,
+          'readDataVersion': 'c' * 64,
+        },
+      };
+      yield {
+        'type': 'complete',
+        'total': 1,
+        'readScopeVersion': 'a' * 64,
+        'readSnapshotRevision': 'b' * 64,
+        'readDataVersion': 'c' * 64,
+      };
+    }
+
+    return await consume(frames());
+  }
+
   Map<String, dynamic> contextResponse(Map<String, dynamic> q) {
     final qty = q['colorNull'] == true
         ? 0
@@ -559,7 +604,10 @@ void main() {
       expect(find.byType(InstantInventoryPage), findsOneWidget);
       await tester.tap(find.text('含不良品仓'));
       await tester.pumpAndSettle();
-      expect(api.last('/stock/instant-inventory')['includeDefective'], true);
+      expect(
+        api.last('/stock/instant-inventory/summaries')['includeDefective'],
+        true,
+      );
       expect(tester.takeException(), isNull);
     },
   );

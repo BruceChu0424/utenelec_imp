@@ -4,6 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/network/api_client.dart';
 import '../../core/network/api_endpoints.dart';
 import '../models/paged_result.dart';
+import '../paging/complete_paged_snapshot.dart';
+import '../paging/complete_summary_stream.dart';
+import '../paging/paged_read_intent.dart';
+import '../paging/versioned_summary_read.dart';
 import 'instant_inventory_row.dart';
 
 class InstantInventoryRepository {
@@ -79,6 +83,101 @@ class InstantInventoryRepository {
       },
     );
     return PagedResult.fromJson(json, InstantInventoryRow.fromJson);
+  }
+
+  /// 完整流（2026-11-09）：一个 NDJSON 响应内按共享批次计划连续分帧，服务端在同一个
+  /// RR 快照里单扫描完成全部批次——不再每批一次 OFFSET 请求（3.5 万行实测约 80 秒的
+  /// 根因）。首批 50 行带合计与表头桶（与 GET 首批同口径），续批只取行与计数；帧校验、
+  /// 三凭据与逐批追加发布走与主档完整流同一套公共件（CompleteSummaryStream +
+  /// readVersionedSummarySnapshot）。分页读取仍走 [instantInventory]。
+  Future<PagedResult<InstantInventoryRow>> completeStream({
+    String? categoryId,
+    String? warehouseId,
+    bool includeDefective = false,
+    bool includeLineSide = false,
+    bool warehouseRelatedOnly = false,
+    String? keyword,
+    bool includeRelated = false,
+    String? owningWarehouse,
+    bool owningWarehouseNull = false,
+    String? colorId,
+    String? series,
+    String? unitId,
+    String? attention,
+    String? dateFrom,
+    String? dateTo,
+    String? sort,
+    String? order,
+  }) async {
+    // Captured before any await: the view's progressive slot lives in the zone
+    // of the ScopedPagedRead that owns these rows.
+    final progressive = PagedReadIntent.currentProgressive;
+    final parent = PagedReadIntent.currentRead;
+    final owner = await _api.captureRequestScope(
+      isCurrent: () => parent?.call() ?? true,
+    );
+    final filter = Map<String, dynamic>.unmodifiable({
+      'categoryId': ?categoryId,
+      'warehouseId': ?warehouseId,
+      if (includeDefective) 'includeDefective': true,
+      if (includeLineSide) 'includeLineSide': true,
+      if (warehouseRelatedOnly) 'warehouseRelatedOnly': true,
+      if (keyword != null && keyword.isNotEmpty) 'keyword': keyword,
+      if (includeRelated && keyword?.trim().isNotEmpty == true)
+        'includeRelated': true,
+      'owningWarehouse': ?owningWarehouse,
+      if (owningWarehouseNull) 'owningWarehouseNull': true,
+      'colorId': ?colorId,
+      'series': ?series,
+      'unitId': ?unitId,
+      'attention': ?attention,
+      'dateFrom': ?dateFrom,
+      'dateTo': ?dateTo,
+    });
+    return owner.run(
+      () => _api.postSummaryStream<PagedResult<InstantInventoryRow>>(
+        '${ApiEndpoints.stockInstantInventory}/summaries',
+        body: {
+          'filter': filter,
+          'page': 1,
+          // Selects the progressive frame plan: 50 rows first, then aligned
+          // growth up to the shared bounded maximum.
+          'size': kProgressiveSummaryStreamSize,
+          if (sort?.isNotEmpty == true) 'sort': sort,
+          if (order?.isNotEmpty == true) 'order': order,
+        },
+        consume: (frames) async {
+          final stream = CompleteSummaryStream(
+            frames,
+            plan: CompleteReadBatchPlan.progressive,
+          );
+          // This complete read owns the view's rows, so it claims the slot
+          // unless another reader in the same zone already did.
+          final publish = progressive != null && progressive.claim()
+              ? progressive.publish
+              : null;
+          try {
+            final result = await readVersionedSummarySnapshot<InstantInventoryRow>(
+              isCurrent: () => owner.isCurrent,
+              decode: InstantInventoryRow.fromJson,
+              idOf: (row) => row.readIdentity,
+              plan: CompleteReadBatchPlan.progressive,
+              loadPage: stream.page,
+              onProgressiveBatch: publish == null
+                  ? null
+                  : (partial) {
+                      if (owner.isCurrent) {
+                        publish(partial as PagedResult<Object?>);
+                      }
+                    },
+            );
+            return result.page;
+          } finally {
+            await stream.close();
+          }
+        },
+      ),
+    );
   }
 }
 

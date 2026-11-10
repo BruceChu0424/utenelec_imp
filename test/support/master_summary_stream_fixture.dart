@@ -24,7 +24,8 @@ const _dataVersion =
 
 /// Validate the actual Dio request without rewriting its transport or filter.
 /// `size` selects the frame plan exactly as the server does: 100 keeps the
-/// original fixed frames, [kProgressiveSummaryStreamSize] the 50→200 ladder.
+/// original fixed frames, [kProgressiveSummaryStreamSize] the shared ladder
+/// (50 first, aligned growth up to the bounded maximum, 1000 since 2026-11-09).
 void _validateRequest(RequestOptions request) {
   final parameters = masterSummaryTestParameters(request);
   final acceptsStream = request.headers.entries.any(

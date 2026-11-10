@@ -23,8 +23,9 @@ public final class MasterSummaryReadSupport {
     /** The original fixed frame size; existing clients keep requesting it. */
     public static final int READ_BATCH_SIZE = 100;
     /**
-     * Request size that selects the progressive frame plan (2026-11-08): 50 rows first,
-     * then aligned up to 200 per frame ({@link CompleteReadBatchPlan#PROGRESSIVE}).
+     * Request size that selects the progressive frame plan (2026-11-08; maximum raised
+     * to 1000 with the user on 2026-11-09): 50 rows first, then aligned batches up to
+     * {@link CompleteReadBatchPlan#MAX_BATCH_SIZE} per frame.
      */
     public static final int PROGRESSIVE_REQUEST_SIZE = CompleteReadBatchPlan.MAX_BATCH_SIZE;
 

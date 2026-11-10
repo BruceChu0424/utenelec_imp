@@ -23,7 +23,10 @@ import static org.mockito.Mockito.*;
 class NativeSqlOffsetTest {
     private final EntityManager em = mock(EntityManager.class);
     private final Query query = mock(Query.class, RETURNS_SELF);
-    private static final long TWO_HUNDRED_ROW_OFFSET = ((long) Integer.MAX_VALUE - 1) * 200;
+    // 2026-11-09: the shared page maximum rose 200→1000 with the user; these queue
+    // pages keep deriving their boundary from it (their own last-page policy).
+    private static final long SHARED_MAX_ROW_OFFSET =
+            ((long) Integer.MAX_VALUE - 1) * CompleteReadBatchPlan.MAX_BATCH_SIZE;
 
     private void queries(long count) {
         when(em.createNativeQuery(anyString())).thenReturn(query);
@@ -32,11 +35,12 @@ class NativeSqlOffsetTest {
     }
 
     @Test void schedulingRetainsItsNativeLongPageWithoutReturningAnEarlierPage() {
-        queries((long) Integer.MAX_VALUE * 200);
+        queries((long) Integer.MAX_VALUE * CompleteReadBatchPlan.MAX_BATCH_SIZE);
         var result = new ProductionScheduleService(em, null, null).pending(
                 Integer.MAX_VALUE, Integer.MAX_VALUE, "", null, null, null, null, null, null);
-        assertThat(result.getPage()).isEqualTo(Integer.MAX_VALUE); assertThat(result.getSize()).isEqualTo(200);
-        verify(query).setParameter("off", TWO_HUNDRED_ROW_OFFSET);
+        assertThat(result.getPage()).isEqualTo(Integer.MAX_VALUE);
+        assertThat(result.getSize()).isEqualTo(CompleteReadBatchPlan.MAX_BATCH_SIZE);
+        verify(query).setParameter("off", SHARED_MAX_ROW_OFFSET);
     }
 
     @Test void schedulingStillNormalizesNegativePageAndSizeToTheFirstSingleRow() {
@@ -48,22 +52,24 @@ class NativeSqlOffsetTest {
     }
 
     @Test void quoteFinanceQueuePassesALongOffsetAfterItsExistingLastPagePolicy() {
-        queries((long) Integer.MAX_VALUE * 200);
+        queries((long) Integer.MAX_VALUE * CompleteReadBatchPlan.MAX_BATCH_SIZE);
         var service = mock(SalesQuoteFinanceService.class, CALLS_REAL_METHODS);
         ReflectionTestUtils.setField(service, "em", em);
         ReflectionTestUtils.setField(service, "claimViews", mock(TaskClaimService.class));
         var result = service.list("pending", null, Integer.MAX_VALUE, Integer.MAX_VALUE);
-        assertThat(result.getPage()).isEqualTo(Integer.MAX_VALUE); assertThat(result.getSize()).isEqualTo(200);
-        verify(query).setParameter("off", TWO_HUNDRED_ROW_OFFSET);
+        assertThat(result.getPage()).isEqualTo(Integer.MAX_VALUE);
+        assertThat(result.getSize()).isEqualTo(CompleteReadBatchPlan.MAX_BATCH_SIZE);
+        verify(query).setParameter("off", SHARED_MAX_ROW_OFFSET);
     }
 
     @Test void orderFinanceQueueDoesNotWrapTheNativeOffsetToANegativeInt() {
-        queries((long) Integer.MAX_VALUE * 200);
+        queries((long) Integer.MAX_VALUE * CompleteReadBatchPlan.MAX_BATCH_SIZE);
         var service = mock(SalesOrderFinanceConfirmService.class, CALLS_REAL_METHODS);
         ReflectionTestUtils.setField(service, "em", em);
         var result = service.pending(Integer.MAX_VALUE, Integer.MAX_VALUE, null, null, null);
-        assertThat(result.getPage()).isEqualTo(Integer.MAX_VALUE); assertThat(result.getSize()).isEqualTo(200);
-        verify(query).setParameter("off", TWO_HUNDRED_ROW_OFFSET);
+        assertThat(result.getPage()).isEqualTo(Integer.MAX_VALUE);
+        assertThat(result.getSize()).isEqualTo(CompleteReadBatchPlan.MAX_BATCH_SIZE);
+        verify(query).setParameter("off", SHARED_MAX_ROW_OFFSET);
     }
 
     @Test void subcontractDrawRetainsItsSeparateTwoHundredRowMaximumAndLongOffset() {

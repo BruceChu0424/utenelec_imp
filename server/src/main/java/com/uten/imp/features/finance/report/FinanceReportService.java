@@ -317,7 +317,8 @@ public class FinanceReportService {
                                                 FinanceWhereBuilder w, LocalDate dateFrom, LocalDate dateTo,
                                                 String keyword, UUID catParam, int page, int size, String ordering) {
         int safePage = Math.max(1, page);
-        int safeSize = Math.min(Math.max(1, size), 500);
+        int safeSize = Math.min(Math.max(1, size),
+                com.uten.imp.common.web.CompleteReadBatchPlan.MAX_BATCH_SIZE);
         long offset = (long) (safePage - 1) * safeSize;
         FinanceWhereBuilder.Built full = w.build(null);
         if(FinanceReportColumnCandidates.current()!=null) {
@@ -1918,7 +1919,7 @@ public class FinanceReportService {
                 ReportColumn.text("entryKind", "流水类型", 100));
         if (accountId == null) return empty(cols);
         int safePage=Math.max(1,page);
-        int safeSize=Math.min(Math.max(1,size),500);
+        int safeSize=Math.min(Math.max(1,size),com.uten.imp.common.web.CompleteReadBatchPlan.MAX_BATCH_SIZE);
         long offset=(long)(safePage-1)*safeSize;
         java.time.OffsetDateTime fromAt=dateFrom==null?null:BusinessTime.startOfDay(dateFrom);
         LocalDate fromMonth=dateFrom==null?null:dateFrom.withDayOfMonth(1);
@@ -2409,7 +2410,7 @@ public class FinanceReportService {
     private ReportTableResponse buildRunningBalance(List<ReportColumn> columns,String core,UUID party,
             LocalDate from,LocalDate to,int page,int size,NativeReadScope scope,
             PartyStatementHeaderQuery headers, String ordering, boolean simple) {
-        int safePage=Math.max(1,page),safeSize=Math.min(500,Math.max(1,size));
+        int safePage=Math.max(1,page),safeSize=Math.min(com.uten.imp.common.web.CompleteReadBatchPlan.MAX_BATCH_SIZE,Math.max(1,size));
         LocalDate fromMonth=from==null?null:from.withDayOfMonth(1);
         String selected=columns.stream().map(column->column.key().equals("__lineId")
                 ? "(\"eventOrder\"::text||':'||\"eventId\"::text) AS \"__lineId\""
@@ -2529,7 +2530,8 @@ public class FinanceReportService {
                                                   LocalDate yearStart, LocalDate yearEnd, int page, int size,
             NativeReadScope documentScope, PartyStatementHeaderQuery headers, String ordering) {
         int safePage = Math.max(1, page);
-        int safeSize = Math.min(Math.max(1, size), 500);
+        int safeSize = Math.min(Math.max(1, size),
+                com.uten.imp.common.web.CompleteReadBatchPlan.MAX_BATCH_SIZE);
         long offset = (long) (safePage - 1) * safeSize;
         var conditions = headers.criteria();
         String filtered = "SELECT * FROM (" + sql + ") report WHERE " + conditions.predicate();

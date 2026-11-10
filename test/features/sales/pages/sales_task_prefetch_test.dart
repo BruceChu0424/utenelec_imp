@@ -480,7 +480,12 @@ void main() {
       ladder,
     );
     expect(ladder.take(4), [(1, 50), (2, 50), (2, 100), (2, 200)]);
-    expect(ladder.last, (500, 200));
+    // 2026-11-09: the bounded maximum rose 200→1000, so the tail aligns to it.
+    expect(
+      ladder.last,
+      (100000 ~/ CompleteReadBatchPlan.progressive.maxBatchSize,
+          CompleteReadBatchPlan.progressive.maxBatchSize),
+    );
     final identities = table.rowsController!.items
         .map((row) => row.orderId)
         .toSet();

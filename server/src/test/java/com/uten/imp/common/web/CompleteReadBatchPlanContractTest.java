@@ -63,10 +63,12 @@ class CompleteReadBatchPlanContractTest {
 
     @Test
     void theProgressivePlanIsTheSharedPageMaximum() {
+        // 2026-11-09: the bounded maximum was raised 200→1000 with the user.
         assertThat(CompleteReadBatchPlan.PROGRESSIVE.firstBatchSize()).isEqualTo(50);
-        assertThat(CompleteReadBatchPlan.PROGRESSIVE.maxBatchSize()).isEqualTo(200);
-        assertThat(Pageables.MAX_PAGE_SIZE).isEqualTo(200);
-        assertThat(Pageables.of(3, 500).getPageSize()).isEqualTo(200);
+        assertThat(CompleteReadBatchPlan.PROGRESSIVE.maxBatchSize()).isEqualTo(1000);
+        assertThat(Pageables.MAX_PAGE_SIZE).isEqualTo(1000);
+        assertThat(Pageables.of(3, 500).getPageSize()).isEqualTo(500);
+        assertThat(Pageables.of(3, 5000).getPageSize()).isEqualTo(1000);
         assertThat(Pageables.of(3, 200).getOffset()).isEqualTo(400);
     }
 

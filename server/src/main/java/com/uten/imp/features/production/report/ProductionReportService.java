@@ -83,7 +83,8 @@ public class ProductionReportService {
             int page,int size,String sort,String order,Map<String,String> expressions) {
         final Map<String,String> nativeFilters=com.uten.imp.common.report.NativeReportFacetProducer.selectedScope(activeFacets,specs.stream().map(FacetSpec::key).toList());
         int safePage = Math.max(1, page);
-        int safeSize = Math.min(Math.max(1, size), 500);
+        int safeSize = Math.min(Math.max(1, size),
+                com.uten.imp.common.web.CompleteReadBatchPlan.MAX_BATCH_SIZE);
         long offset = (long) (safePage - 1) * safeSize;
         Map<String,String> types=new LinkedHashMap<>();
         for(var column:columns)types.put(column.key(),column.type());
@@ -464,7 +465,8 @@ public class ProductionReportService {
     public List<DailyDetailRow> dailyDetail(LocalDate dateFrom, LocalDate dateTo, UUID goodsId,
                                             Short status, String billNo, int page, int size) {
         int safePage = Math.max(1, page);
-        int safeSize = Math.min(Math.max(1, size), 500);
+        int safeSize = Math.min(Math.max(1, size),
+                com.uten.imp.common.web.CompleteReadBatchPlan.MAX_BATCH_SIZE);
         long offset = (long) (safePage - 1) * safeSize;
         var q = em.createNativeQuery("""
                 SELECT i.id, i.bill_no, i.bill_date, i.report_id, i.line_no,

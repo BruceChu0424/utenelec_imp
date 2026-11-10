@@ -193,7 +193,8 @@ class MasterSummaryStreamTest {
         for (int total:List.of(0,1,50,51)) {
             var response = new MockHttpServletResponse();
             summaries.stream("goods-master-list","master_goods","goods:view",
-                    new MasterSummaryReadSupport.Query<>(query.filter(),1,200,"code","asc"),null,
+                    new MasterSummaryReadSupport.Query<>(query.filter(),1,
+                            com.uten.imp.common.readsnapshot.MasterSummaryReadSupport.PROGRESSIVE_REQUEST_SIZE,"code","asc"),null,
                     (filter,page,size,sort,order)->page(page,size,total),response);
             var frames = frames(response);
             assertThat(frames.getLast().get("type").asText()).as("total=%d",total).isEqualTo("complete");

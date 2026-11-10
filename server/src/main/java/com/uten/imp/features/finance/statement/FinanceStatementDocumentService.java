@@ -305,7 +305,7 @@ public class FinanceStatementDocumentService {
     }
     @Transactional(readOnly=true)
     public com.uten.imp.features.finance.report.ReportTableResponse originalTable(UUID id,int page,int size){
-        var reviewed=reviewSummary(id);var original=originalSnapshot(id,reviewed);var rows=(List<?>)original.get("rows");int p=Math.max(1,page),s=Math.max(1,Math.min(500,size));
+        var reviewed=reviewSummary(id);var original=originalSnapshot(id,reviewed);var rows=(List<?>)original.get("rows");int p=Math.max(1,page),s=Math.max(1,Math.min(com.uten.imp.common.web.CompleteReadBatchPlan.MAX_BATCH_SIZE,size));
         var columns=json.convertValue(original.get("columns"),new TypeReference<List<com.uten.imp.features.finance.report.ReportColumn>>(){});
         var totals=json.convertValue(original.get("totals"),new TypeReference<List<com.uten.imp.common.report.ReportTotal>>(){});
         int start=(int)Math.min(rows.size(),(long)(p-1)*s),end=Math.min(rows.size(),start+s);var data=new ArrayList<Map<String,Object>>();for(Object row:rows.subList(start,end)){

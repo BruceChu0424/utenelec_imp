@@ -481,7 +481,8 @@ public class StockQueryService {
     private PageResponse<InstantInventoryRow> instantPage(InstantSql sql, int page, int size,
                                                           String sort, String order) {
         int safePage = Math.max(1, page);
-        int safeSize = Math.min(Math.max(1, size), 500);
+        int safeSize = Math.min(Math.max(1, size),
+                com.uten.imp.common.web.CompleteReadBatchPlan.MAX_BATCH_SIZE);
         long offset = (long) (safePage - 1) * safeSize;
         String orderBy = "qty DESC, name ASC";
         if (sort != null && INSTANT_ALLOWED_SORT.containsKey(sort)) {

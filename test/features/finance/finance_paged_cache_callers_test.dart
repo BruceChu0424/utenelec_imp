@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
+import 'package:uten_imp/shared/paging/complete_paged_snapshot.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_endpoints.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
@@ -309,25 +310,25 @@ void main() {
   }
 }
 
-/// 共享逐批追加读取计划（首批 50，续批按偏移对齐 50 → 100 → 200，之后每批
-/// 200）。300 行：(1,50)(2,50)(2,100)(2,200)。
+/// 共享逐批追加读取计划（首批 50，续批按偏移对齐增长；上限 2026-11-09 由 200
+/// 上调至 1000，总量 ≤1000 的序列不变）。300 行：(1,50)(2,50)(2,100)(2,200)。
 const _initialPages = [1, 2, 2, 2];
 const _initialSizes = [50, 50, 100, 200];
 
-/// 8000 行：前四批同上，再以 200 读第 3..40 页。
-final _largerReadPages = [
-  1,
-  2,
-  2,
-  2,
-  for (var page = 3; page <= 40; page++) page,
-];
-final _largerReadSizes = [
-  50,
-  50,
-  100,
-  for (var batch = 0; batch < 39; batch++) 200,
-];
+/// 共享计划的 [页码, 批大小] 序列（每批是自身页大小下的真实页）。
+List<(int, int)> _planReads(int total) {
+  final reads = <(int, int)>[];
+  for (var offset = 0; offset < total;) {
+    final size = CompleteReadBatchPlan.progressive.sizeAt(offset);
+    reads.add((offset ~/ size + 1, size));
+    offset += size;
+  }
+  return reads;
+}
+
+/// 8000 行：按共享计划对齐增长读取。
+final _largerReadPages = [for (final read in _planReads(8000)) read.$1];
+final _largerReadSizes = [for (final read in _planReads(8000)) read.$2];
 
 String _idOf(Object? row) => switch (row) {
   ArApLedgerItem(:final id) => id,

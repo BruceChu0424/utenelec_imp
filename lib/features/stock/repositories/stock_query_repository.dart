@@ -138,6 +138,47 @@ class StockQueryRepository {
     order: order,
   );
 
+  /// 即时库存完整流（2026-11-09）：一个 NDJSON 响应按共享批次计划连续分帧，服务端
+  /// 同一 RR 快照单扫描完成；首批带合计与表头桶，续批只取行与计数。详见
+  /// [InstantInventoryRepository.completeStream]。分页读取仍走 [instantInventory]。
+  Future<PagedResult<InstantInventoryRow>> completeStream({
+    String? categoryId,
+    String? warehouseId,
+    bool includeDefective = false,
+    bool includeLineSide = false,
+    bool warehouseRelatedOnly = false,
+    String? keyword,
+    bool includeRelated = false,
+    String? owningWarehouse,
+    bool owningWarehouseNull = false,
+    String? colorId,
+    String? series,
+    String? unitId,
+    String? attention,
+    String? dateFrom,
+    String? dateTo,
+    String? sort,
+    String? order,
+  }) => _instantInventory.completeStream(
+    categoryId: categoryId,
+    warehouseId: warehouseId,
+    includeDefective: includeDefective,
+    includeLineSide: includeLineSide,
+    warehouseRelatedOnly: warehouseRelatedOnly,
+    keyword: keyword,
+    includeRelated: includeRelated,
+    owningWarehouse: owningWarehouse,
+    owningWarehouseNull: owningWarehouseNull,
+    colorId: colorId,
+    series: series,
+    unitId: unitId,
+    attention: attention,
+    dateFrom: dateFrom,
+    dateTo: dateTo,
+    sort: sort,
+    order: order,
+  );
+
   /// 货架目视化清单行：货品主档已维护库位号的货品（未软删；默认不含禁用），
   /// 库位号按「库行-层-位」三段解析（不符合格式的行 parsed=false，归「未分层」），
   /// 附即时库存参考量与单位。

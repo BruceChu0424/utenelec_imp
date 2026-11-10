@@ -15,7 +15,9 @@ import 'paged_query_identity.dart';
 class CompleteReadBatchPlan {
   const CompleteReadBatchPlan({
     this.firstBatchSize = 50,
-    this.maxBatchSize = 200,
+    // 2026-11-09: raised 200→1000 with the user; totals ≤1000 keep the same
+    // request sequence as the previous 200 cap, so small fixtures are unchanged.
+    this.maxBatchSize = 1000,
   });
 
   /// Every batch has one size: metadata readers and explicit legacy callers.

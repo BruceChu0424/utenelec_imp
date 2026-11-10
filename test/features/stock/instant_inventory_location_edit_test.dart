@@ -158,6 +158,7 @@ void main() {
       final api = _GatedLocationApi();
       final container = await pumpPage(tester, api);
       await editPlace(tester, 'B-02');
+      api.armed = true;
       await tester.tap(find.text('保存 1 行修改'));
       for (var frame = 0; frame < 20 && !api.capturing; frame++) {
         await tester.pump(const Duration(milliseconds: 20));
@@ -426,6 +427,55 @@ class _LocationApi extends ApiClient {
     };
   }
 
+  /// 完整流（2026-11-09 起主页面读取）：与 get('/instant-inventory') 同一批行，
+  /// 按共享批次计划一帧（总量小于首批 50）+ complete 栅栏。
+  @override
+  Future<T> postSummaryStream<T>(
+    String path, {
+    required Object body,
+    required Future<T> Function(Stream<Map<String, dynamic>>) consume,
+  }) async {
+    final filter = Map<String, dynamic>.from((body as Map)['filter'] as Map);
+    inventoryQueries.add(filter);
+    final rows = [
+      for (final color in [null, if (twoColors) 'red'])
+        {
+          'goodsId': 'g1',
+          'colorId': color,
+          'name': '螺丝',
+          'stockPlace': stockPlace,
+          'owningWarehouseId': warehouseId,
+          'owningWarehouseName': warehouseId == 'w1' ? '原仓库' : '新仓库',
+          'qty': qty,
+          'unitName': '个',
+        },
+    ];
+    Stream<Map<String, dynamic>> frames() async* {
+      yield {
+        'type': 'page',
+        'value': {
+          'items': rows,
+          'page': 1,
+          'size': 50,
+          'total': rows.length,
+          'totalPages': 1,
+          'readScopeVersion': 'a' * 64,
+          'readSnapshotRevision': 'b' * 64,
+          'readDataVersion': 'c' * 64,
+        },
+      };
+      yield {
+        'type': 'complete',
+        'total': rows.length,
+        'readScopeVersion': 'a' * 64,
+        'readSnapshotRevision': 'b' * 64,
+        'readDataVersion': 'c' * 64,
+      };
+    }
+
+    return await consume(frames());
+  }
+
   @override
   Future<Map<String, dynamic>> patch(String path, {Object? body}) async {
     writes.add({'path': path, 'body': body});
@@ -445,12 +495,14 @@ class _LocationApi extends ApiClient {
 class _GatedLocationApi extends _LocationApi {
   final gate = Completer<void>();
   bool capturing = false;
+  // 2026-11-09 起主页面完整流也会捕获读请求范围；闸门只拦挂起保存的那次捕获。
+  bool armed = false;
   @override
   Future<AuthenticatedRequestScope> captureRequestScope({
     required bool Function() isCurrent,
   }) async {
     capturing = true;
-    await gate.future;
+    if (armed) await gate.future;
     return super.captureRequestScope(isCurrent: isCurrent);
   }
 }

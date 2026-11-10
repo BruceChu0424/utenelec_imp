@@ -100,7 +100,8 @@ public class SubcontractReportService {
         var columnSearchKeys = com.uten.imp.common.report.ProcurementReportColumnSearch.apply(
                 mainWhere, nativeFilters, searchableTypes, expressions);
         int safePage = Math.max(1, page);
-        int safeSize = Math.min(Math.max(1, size), 500);
+        int safeSize = Math.min(Math.max(1, size),
+                com.uten.imp.common.web.CompleteReadBatchPlan.MAX_BATCH_SIZE);
         long offset = (long) (safePage - 1) * safeSize;
 
         List<WhereBuilder.Clause> facetClauses = new ArrayList<>();
@@ -783,7 +784,8 @@ public class SubcontractReportService {
                                            int page, int size, Map<String, String> filters, String sort, String order) {
         boolean priceMasked = subcontractPriceMasked();
         int safePage = Math.max(1, page);
-        int safeSize = Math.min(Math.max(1, size), 500);
+        int safeSize = Math.min(Math.max(1, size),
+                com.uten.imp.common.web.CompleteReadBatchPlan.MAX_BATCH_SIZE);
         long offset = (long) (safePage - 1) * safeSize;
 
         List<ReportColumn> cols = List.of(

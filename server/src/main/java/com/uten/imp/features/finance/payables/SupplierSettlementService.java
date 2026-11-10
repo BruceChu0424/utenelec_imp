@@ -141,7 +141,8 @@ public class SupplierSettlementService {
     public BatchPage list(UUID supplierId, LocalDate periodStart, String status,
                           String keyword, int page, int size, Map<String, String> columnQuery) {
         int safePage = Math.max(1, page);
-        int safeSize = Math.min(Math.max(1, size), 200);
+        int safeSize = Math.min(Math.max(1, size),
+                com.uten.imp.common.web.CompleteReadBatchPlan.MAX_BATCH_SIZE);
         StringBuilder where = new StringBuilder(
                 " WHERE COALESCE(batch.is_deleted,FALSE)=FALSE");
         Map<String, Object> params = new LinkedHashMap<>();

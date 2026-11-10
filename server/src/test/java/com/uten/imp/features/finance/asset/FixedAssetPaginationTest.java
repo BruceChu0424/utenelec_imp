@@ -54,10 +54,10 @@ class FixedAssetPaginationTest {
         var response = service.listAssets(Integer.MIN_VALUE, Integer.MAX_VALUE);
 
         assertEquals(1, response.getPage());
-        // 2026-11-08 上限 200：501 行（超旧 500 临界）夹到 Pageables.MAX_PAGE_SIZE 后分 3 页。
+        // 上限随共享批次计划（2026-11-09 起 1000）：501 行夹到 Pageables.MAX_PAGE_SIZE 后按共享上限分页。
         assertEquals(Pageables.MAX_PAGE_SIZE, response.getSize());
         assertEquals(501, response.getTotal());
-        assertEquals(3, response.getTotalPages());
+        assertEquals((501 + Pageables.MAX_PAGE_SIZE - 1) / Pageables.MAX_PAGE_SIZE, response.getTotalPages());
         assertEquals("FA-001", response.getItems().getFirst().get("code"));
         verify(dataQuery).setParameter("__limit", Pageables.MAX_PAGE_SIZE);
         verify(dataQuery).setParameter("__offset", 0L);

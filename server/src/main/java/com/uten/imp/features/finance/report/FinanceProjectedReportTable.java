@@ -48,7 +48,7 @@ public final class FinanceProjectedReportTable {
                     query->{bindSource.accept(query);header.where().params().forEach(query::setParameter);});
             return new ReportTableResponse(columns,List.of(),Map.of(),1,1,0,0);
         }
-        int safePage=Math.max(1,page),safeSize=Math.min(500,Math.max(1,size));
+        int safePage=Math.max(1,page),safeSize=Math.min(com.uten.imp.common.web.CompleteReadBatchPlan.MAX_BATCH_SIZE,Math.max(1,size));
         String ordering=fallbackOrder;
         Map<String,String> visible=new LinkedHashMap<>();
         for(var column:columns) {

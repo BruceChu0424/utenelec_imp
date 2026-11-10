@@ -11,6 +11,7 @@ public final class ExactBodyReadRoutes {
                         + "|master/reference-methods/settlement-admin/summaries"
                         + "|business-references/(?:clients|suppliers|goods)/summaries"
                         + "|business-references/(?:clients|suppliers)/(?:search-context|search)"
+                        + "|stock/instant-inventory/summaries"
                         + "|sales/orders/(?:shippable-lines/selection|delivery-preview)"
                         + "|quality/pending-disposals/query"
                         + "|production/daily-reports/draft-claims/query)$");

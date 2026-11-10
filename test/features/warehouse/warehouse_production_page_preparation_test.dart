@@ -473,12 +473,12 @@ void main() {
       expect(page.totalPages, 1);
       expect(table.rowsController!.items, hasLength(100000));
       expect(page.items.last.orderItemId, 'item-99999');
-      // 50 → 50 → 100 → 200 … over 100 000 rows: 3 + 499 bounded batches,
-      // each row read once (offset == (page-1)*size).
+      // 50 first, then aligned growth to the shared maximum (2026-11-09:
+      // 1000) over 100 000 rows; each row read once (offset == (page-1)*size).
       final expectedSizes = [
         for (final batch in completeReadPlanBatches(100000)) batch.size,
       ];
-      expect(expectedSizes, hasLength(502));
+      expect(expectedSizes.fold<int>(0, (sum, size) => sum + size), 100000);
       expect(
         api
             .requests('/production/schedule/pending')

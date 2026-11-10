@@ -12,6 +12,7 @@ import 'package:uten_imp/features/stock/repositories/stock_query_repository.dart
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/paging/complete_read_progress.dart';
+import 'package:uten_imp/shared/paging/complete_paged_snapshot.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/stock_inventory/instant_inventory_row.dart';
 
@@ -41,7 +42,7 @@ void main() {
         ProviderScope(
           overrides: [
             sharedPreferencesProvider.overrideWithValue(prefs),
-            apiClientProvider.overrideWithValue(_IdleApi()),
+            apiClientProvider.overrideWithValue(_GatedApi()),
             stockQueryRepositoryProvider.overrideWithValue(stock),
             currentPermissionsProvider.overrideWithValue(const <String>{
               Perm.stockView,
@@ -101,15 +102,67 @@ void main() {
 }
 
 /// 仓储基类需要一个 ApiClient；本测试不触网。
-class _IdleApi extends ApiClient {
-  _IdleApi() : super(Dio());
+/// postSummaryStream 走真实链路（CompleteSummaryStream + readVersionedSummarySnapshot），
+/// 与货品页实证测试同款：帧流按共享批次计划切片，第 2 帧（page 2, size 50）挂闸门。
+class _GatedApi extends ApiClient {
+  _GatedApi([Completer<void>? gate]) : _batch2 = gate, super(Dio());
+
+  final Completer<void>? _batch2;
+
+  static const _total = 600;
+
+  @override
+  Future<T> postSummaryStream<T>(
+    String path, {
+    required Object body,
+    required Future<T> Function(Stream<Map<String, dynamic>>) consume,
+  }) async {
+    const plan = CompleteReadBatchPlan.progressive;
+    var frame = 0;
+    Stream<Map<String, dynamic>> frames() async* {
+      var offset = 0;
+      do {
+        final frameSize = plan.sizeAt(offset);
+        frame++;
+        if (frame == 2 && _batch2 != null) await _batch2.future;
+        yield {'type': 'page', 'value': _page(offset, frameSize)};
+        offset += frameSize;
+      } while (offset < _total);
+      yield {
+        'type': 'complete',
+        'total': _total,
+        'readScopeVersion': 'a' * 64,
+        'readSnapshotRevision': 'b' * 64,
+        'readDataVersion': 'c' * 64,
+      };
+    }
+
+    return await consume(frames());
+  }
+
+  Map<String, dynamic> _page(int offset, int size) => <String, dynamic>{
+    'items': <Map<String, dynamic>>[
+      for (var i = offset; i < offset + size && i < _total; i++)
+        {'goodsId': 'inv-$i', 'name': '库存物料$i', 'qty': 1},
+    ],
+    'page': offset ~/ size + 1,
+    'size': size,
+    'total': _total,
+    'totalPages': (_total + size - 1) ~/ size,
+    'readScopeVersion': 'a' * 64,
+    'readSnapshotRevision': 'b' * 64,
+    'readDataVersion': 'c' * 64,
+  };
 }
 
 /// 600 行、按请求页大小精确切片的假仓储；第 2 批（page 2, size 50）挂闸门。
 class _GatedStockRepository extends StockQueryRepository {
-  _GatedStockRepository() : super(_IdleApi());
+  _GatedStockRepository() : this._(Completer<void>());
+  _GatedStockRepository._(Completer<void> gate)
+    : _batch2 = gate,
+      super(_GatedApi(gate));
 
-  final Completer<void> _batch2 = Completer<void>();
+  final Completer<void> _batch2;
 
   void releaseBatch2() {
     if (!_batch2.isCompleted) _batch2.complete();

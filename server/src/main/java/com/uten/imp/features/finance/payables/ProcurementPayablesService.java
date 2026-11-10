@@ -29,7 +29,7 @@ import static com.uten.imp.features.finance.payables.ProcurementPayablesContract
 @Service
 @RequiredArgsConstructor
 public class ProcurementPayablesService {
-    private static final int MAX_PAGE_SIZE = 200;
+    private static final int MAX_PAGE_SIZE = com.uten.imp.common.web.CompleteReadBatchPlan.MAX_BATCH_SIZE;
     private static final int MAX_PAYMENT_PREVIEW = 100;
     private static final String[] SEARCH_FIELDS = {"ledger.source_doc_no", "supplier.name",
             "supplier.code", "ledger.bill_no"};

@@ -159,7 +159,9 @@ void main() {
 
       final result = await repository.list(
         page: 0,
-        size: 999,
+        // Deliberately above the shared maximum (2026-11-09: 1000) so the
+        // clamp in the repository still demonstrably applies.
+        size: CompleteReadBatchPlan.progressive.maxBatchSize + 137,
         keyword: '  G-001  ',
         status: ' 1 ',
       );

@@ -16,7 +16,7 @@ import java.util.stream.Stream;
 /** One counted, sorted database cursor shared by complete reads and exports.
  * Each owner supplies its own authority, deadline and total-row policy. Each
  * batch continues exactly where the cursor stands: exports keep 100-row batches,
- * progressive complete reads take 50, 50, 100, then 200 rows per batch. */
+ * progressive complete reads take 50, 50, 100, 200s, then 1000 rows per batch. */
 public final class BoundedMasterReadSource {
     public static final int BATCH_ROWS = 100;
     public static final int MAX_BATCH_ROWS = com.uten.imp.common.web.CompleteReadBatchPlan.MAX_BATCH_SIZE;

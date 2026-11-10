@@ -404,6 +404,25 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
           _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
         ],
         useCache: useCache,
+        // 完整流（2026-11-09）：一个 NDJSON 响应单扫描读完全部批次；首批带合计与
+        // 表头桶，续批只取行。分页/预取路径仍走 fetchPage(Sized)。
+        fetchComplete: () => pageRepository.completeStream(
+          categoryId: pageCategoryId,
+          warehouseId: pageWarehouseId,
+          includeDefective: pageIncludeDefective,
+          includeLineSide: pageIncludeLineSide,
+          keyword: pageKeyword,
+          includeRelated: pageIncludeRelated,
+          owningWarehouse: pageOwningWarehouse,
+          owningWarehouseNull: pageOwningWarehouseNull,
+          colorId: pageColorId,
+          series: pageSeries,
+          unitId: pageUnitId,
+          dateFrom: pageDateFrom,
+          dateTo: pageDateTo,
+          sort: pageSort,
+          order: pageOrder,
+        ),
         fetchPage: (target) => pageRepository.instantInventory(
           page: target,
           categoryId: pageCategoryId,

@@ -19,5 +19,6 @@ bool isSummaryStreamPath(String path) {
     '/business-references/goods/summaries',
     '/business-references/clients/summaries',
     '/business-references/suppliers/summaries',
+    '/stock/instant-inventory/summaries',
   }.contains(local);
 }

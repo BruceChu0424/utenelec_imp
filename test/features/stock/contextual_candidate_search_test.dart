@@ -194,17 +194,17 @@ void main() {
     );
     _inventory(tester).onFilterChanged('series', 'M3');
     await tester.pumpAndSettle();
-    expect(api.last('/stock/instant-inventory')['series'], 'M3');
+    expect(api.last('/stock/instant-inventory/summaries')['series'], 'M3');
     await _chooseInventoryCategory(tester, '成品');
-    expect(api.last('/stock/instant-inventory')['categoryId'], 'finished');
+    expect(api.last('/stock/instant-inventory/summaries')['categoryId'], 'finished');
     expect(_inventory(tester).items.map((r) => r.goodsId), ['r']);
     await _chooseInventoryCategory(tester, '成品');
     expect(_inventory(tester).items.map((r) => r.goodsId), ['a', 'r']);
     await _query(tester, '');
     expect(_related, findsNothing);
-    expect(api.last('/stock/instant-inventory')['categoryId'], 'raw');
+    expect(api.last('/stock/instant-inventory/summaries')['categoryId'], 'raw');
     expect(
-      api.last('/stock/instant-inventory'),
+      api.last('/stock/instant-inventory/summaries'),
       isNot(contains('includeRelated')),
     );
   });
@@ -617,6 +617,49 @@ class _ContextApi extends ApiClient {
   void complete(int index, String id) {
     final (path, q, completer) = held[index];
     completer.complete(_page(path, q, id: id));
+  }
+
+  /// 完整流（2026-11-09 起主页面读取）：记录筛选并把同一批行/桶按一帧+栅栏下发。
+  @override
+  Future<T> postSummaryStream<T>(
+    String path, {
+    required Object body,
+    required Future<T> Function(Stream<Map<String, dynamic>>) consume,
+  }) async {
+    final filter = Map<String, dynamic>.from((body as Map)['filter'] as Map);
+    requests.add((path, filter));
+    Map<String, dynamic> page;
+    if (holdRelated && filter['includeRelated'] == true) {
+      final c = Completer<Map<String, dynamic>>();
+      held.add((path, filter, c));
+      page = await c.future;
+    } else {
+      page = _page('/stock/instant-inventory', filter);
+    }
+    Stream<Map<String, dynamic>> frames() async* {
+      yield {
+        'type': 'page',
+        'value': {
+          ...page,
+          'page': 1,
+          'size': 50,
+          'total': (page['items'] as List).length,
+          'totalPages': (page['items'] as List).isEmpty ? 0 : 1,
+          'readScopeVersion': 'a' * 64,
+          'readSnapshotRevision': 'b' * 64,
+          'readDataVersion': 'c' * 64,
+        },
+      };
+      yield {
+        'type': 'complete',
+        'total': (page['items'] as List).length,
+        'readScopeVersion': 'a' * 64,
+        'readSnapshotRevision': 'b' * 64,
+        'readDataVersion': 'c' * 64,
+      };
+    }
+
+    return await consume(frames());
   }
 
   @override

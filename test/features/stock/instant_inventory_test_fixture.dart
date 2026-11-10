@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/shared/paging/complete_paged_snapshot.dart';
 
 class InstantInventoryApiFixture extends ApiClient {
   InstantInventoryApiFixture({
@@ -30,6 +31,55 @@ class InstantInventoryApiFixture extends ApiClient {
           },
         ]
       : <Map<String, dynamic>>[];
+
+  /// 完整流（2026-11-09 起主页面读取）：帧按共享批次计划切片；首批带合计，
+  /// 与 GET 首批同口径。nextInventoryResponse 仍用于把读取挂起或注入失败。
+  @override
+  Future<T> postSummaryStream<T>(
+    String path, {
+    required Object body,
+    required Future<T> Function(Stream<Map<String, dynamic>>) consume,
+  }) async {
+    final filter = Map<String, dynamic>.from((body as Map)['filter'] as Map);
+    inventoryRequests.add(filter);
+    final deferred = nextInventoryResponse;
+    if (deferred != null) {
+      nextInventoryResponse = null;
+      await deferred;
+    }
+    final first = response(query: {'page': 1, 'size': 50});
+    Stream<Map<String, dynamic>> frames() async* {
+      const plan = CompleteReadBatchPlan.progressive;
+      var offset = 0;
+      do {
+        final frameSize = plan.sizeAt(offset);
+        yield {
+          'type': 'page',
+          'value': {
+            'items': allRows.skip(offset).take(frameSize).toList(),
+            'page': offset ~/ frameSize + 1,
+            'size': frameSize,
+            'total': allRows.length,
+            'totalPages': (allRows.length + frameSize - 1) ~/ frameSize,
+            if (offset == 0 && withTotals) 'totals': first['totals'],
+            'readScopeVersion': 'a' * 64,
+            'readSnapshotRevision': 'b' * 64,
+            'readDataVersion': 'c' * 64,
+          },
+        };
+        offset += frameSize;
+      } while (offset < allRows.length);
+      yield {
+        'type': 'complete',
+        'total': allRows.length,
+        'readScopeVersion': 'a' * 64,
+        'readSnapshotRevision': 'b' * 64,
+        'readDataVersion': 'c' * 64,
+      };
+    }
+
+    return await consume(frames());
+  }
 
   @override
   Future<Map<String, dynamic>> get(

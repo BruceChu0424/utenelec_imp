@@ -44,8 +44,9 @@ class FixedAssetSchedulePagingTest {
                     .contains("ORDER BY report.\"assetName\",report.\"__assetId\"")
                     .contains("LIMIT :__limit OFFSET :__offset")
                     .contains("WHERE NOT a.is_deleted", "f.business_date<=:cutoff");
-            verify(query).setParameter("__limit", 500);
-            verify(query).setParameter("__offset", 1_073_741_823_000L);
+            verify(query).setParameter("__limit", com.uten.imp.common.web.CompleteReadBatchPlan.MAX_BATCH_SIZE);
+            verify(query).setParameter("__offset",
+                    (long) (Integer.MAX_VALUE - 1) * com.uten.imp.common.web.CompleteReadBatchPlan.MAX_BATCH_SIZE);
             verify(query, never()).getSingleResult();
         }
     }

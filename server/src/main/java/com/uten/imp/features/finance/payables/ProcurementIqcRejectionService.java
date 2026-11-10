@@ -334,7 +334,8 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
             throw validation("IQC不合格任务状态无效");
         }
         int safePage = Math.max(1, page);
-        int safeSize = Math.min(Math.max(1, size), 200);
+        int safeSize = Math.min(Math.max(1, size),
+                com.uten.imp.common.web.CompleteReadBatchPlan.MAX_BATCH_SIZE);
         StringBuilder where = new StringBuilder(
                 " WHERE COALESCE(rejection.is_deleted,FALSE)=FALSE");
         Map<String, Object> params = new LinkedHashMap<>();

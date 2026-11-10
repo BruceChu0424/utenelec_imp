@@ -33,7 +33,7 @@ public class CustomerPrepaymentQueryService {
     public PrepaymentPage list(
             UUID clientId, UUID currencyId, UUID salesOrderId, int requestedPage, int requestedSize) {
         int page = Math.max(1, requestedPage);
-        int size = Math.min(200, Math.max(1, requestedSize));
+        int size = Math.min(com.uten.imp.common.web.CompleteReadBatchPlan.MAX_BATCH_SIZE, Math.max(1, requestedSize));
         String where = """
                 FROM ar_ap_ledger ledger
                 JOIN finance_receipts receipt ON receipt.id=ledger.source_doc_id

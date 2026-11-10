@@ -2,16 +2,17 @@ package com.uten.imp.common.web;
 
 /**
  * Complete-list batch plan shared with the client
- * ({@code lib/shared/paging/complete_paged_snapshot.dart}, 2026-11-08 user decision):
- * the first batch is small so the first screen appears at once, later batches grow
- * to the bounded maximum. Every batch is the exact page of its own size at the rows
- * already read ({@code offset == (page - 1) * size}): 50, 50, 100, 200, 200, ...
+ * ({@code lib/shared/paging/complete_paged_snapshot.dart}, 2026-11-08 user decision;
+ * 2026-11-09 raised the bounded maximum 200→1000 with the user): the first batch is
+ * small so the first screen appears at once, later batches grow to the bounded
+ * maximum. Every batch is the exact page of its own size at the rows already read
+ * ({@code offset == (page - 1) * size}): 50, 50, 100, 200, 200, 200, 200, 1000, ...
  * No row is read twice and none is skipped. Shared vectors:
  * {@code contracts/complete-read-batch-plan-v1.json}.
  */
 public record CompleteReadBatchPlan(int firstBatchSize, int maxBatchSize) {
     public static final int FIRST_BATCH_SIZE = 50;
-    public static final int MAX_BATCH_SIZE = 200;
+    public static final int MAX_BATCH_SIZE = 1000;
     public static final CompleteReadBatchPlan PROGRESSIVE =
             new CompleteReadBatchPlan(FIRST_BATCH_SIZE, MAX_BATCH_SIZE);
 

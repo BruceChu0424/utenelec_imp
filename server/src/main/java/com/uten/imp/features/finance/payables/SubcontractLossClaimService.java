@@ -316,7 +316,8 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
     public CasePage list(UUID supplierId, String status, String keyword, int page, int size,
                          String sort, String order, String wasteBillNo) {
         int safePage = Math.max(1, page);
-        int safeSize = Math.min(Math.max(1, size), 200);
+        int safeSize = Math.min(Math.max(1, size),
+                com.uten.imp.common.web.CompleteReadBatchPlan.MAX_BATCH_SIZE);
         // 列表 / 计数 / facets 共用同一过滤基座（2026-09-25 单号列统一）。
         LossFilters filters = lossFilters(supplierId, status, keyword, wasteBillNo);
         String from = " FROM subcontract_loss_cases loss"

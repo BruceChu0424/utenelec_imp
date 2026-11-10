@@ -110,7 +110,8 @@ public class PurchaseReportService {
         var columnSearchKeys = com.uten.imp.common.report.ProcurementReportColumnSearch.apply(
                 mainWhere, nativeFilters, searchableTypes, searchOverrides);
         int safePage = Math.max(1, page);
-        int safeSize = Math.min(Math.max(1, size), 500);
+        int safeSize = Math.min(Math.max(1, size),
+                com.uten.imp.common.web.CompleteReadBatchPlan.MAX_BATCH_SIZE);
         long offset = (long) (safePage - 1) * safeSize;
 
         List<WhereBuilder.Clause> facetClauses = new ArrayList<>();

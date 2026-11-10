@@ -36,7 +36,7 @@ public class FinanceAuxiliaryService implements FinancialAuxiliaryValidationPort
 
     @Transactional(readOnly=true)
     public Map<String,Object> list(String accountCode,String role,String keyword,int page,int size) {
-        readAccess();int safeSize=Math.max(1,Math.min(500,size)),safePage=Math.max(1,page);
+        readAccess();int safeSize=Math.max(1,Math.min(com.uten.imp.common.web.CompleteReadBatchPlan.MAX_BATCH_SIZE,size)),safePage=Math.max(1,page);
         var args=new ArrayList<Object>();String where=" WHERE true";
         if(accountCode!=null&&!accountCode.isBlank()){
             where+=" AND EXISTS(SELECT 1 FROM finance_account_auxiliary_bindings b WHERE b.account_code=? AND b.auxiliary_id=a.id)";args.add(accountCode);

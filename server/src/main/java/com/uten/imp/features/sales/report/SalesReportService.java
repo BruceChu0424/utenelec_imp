@@ -163,7 +163,8 @@ public class SalesReportService {
             String sort,String order,java.util.Set<String> protectedPriceKeys,Map<String,String> expressions) {
         final Map<String,String> nativeFilters=com.uten.imp.common.report.NativeReportFacetProducer.selectedScope(activeFacets,specs.stream().map(FacetSpec::key).toList());
         int safePage = Math.max(1, page);
-        int safeSize = Math.min(Math.max(1, size), 500);
+        int safeSize = Math.min(Math.max(1, size),
+                com.uten.imp.common.web.CompleteReadBatchPlan.MAX_BATCH_SIZE);
         long offset = (long) (safePage - 1) * safeSize;
         com.uten.imp.common.report.ReportColumnSearch.requireVisibleSearches(nativeFilters,protectedPriceKeys::contains);
         Map<String,String> types=new LinkedHashMap<>(),allowed=new LinkedHashMap<>(expressions);

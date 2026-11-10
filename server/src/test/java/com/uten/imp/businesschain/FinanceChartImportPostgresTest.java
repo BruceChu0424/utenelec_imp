@@ -32,7 +32,34 @@ class FinanceChartImportPostgresTest {
     @Autowired JdbcTemplate db;
     @Autowired com.fasterxml.jackson.databind.ObjectMapper json;
     @Autowired org.springframework.transaction.PlatformTransactionManager transactions;
+    @Autowired com.uten.imp.common.storage.ImmutableDocumentStore documents;
     @AfterEach void logout(){SecurityContextHolder.clearContext();}
+
+    @Test void historicalChartPreviewCannotWriteOrRewriteItsSourceAndAnotherOwnerCannotUseIt() throws Exception {
+        var fixture=new FullChainEndToEndTest();beans.autowireBean(fixture);var world=fixture.seedWorld("legacy-chart-column-safety");fixture.loginAs(world.superAdminUserId());
+        byte[] bytes=getClass().getResourceAsStream("/finance/finance-chart-codes.xls").readAllBytes();
+        java.util.UUID id=java.util.UUID.randomUUID();String hash=com.uten.imp.common.storage.ImmutableDocumentStore.digest(bytes);
+        var parser=Class.forName("com.uten.imp.features.finance.gl.FinanceChartWorkbookParser").getDeclaredMethod("parse",java.util.UUID.class,String.class,String.class,byte[].class);parser.setAccessible(true);
+        var parsed=(FinanceChartContracts.Preview)parser.invoke(null,id,"legacy.xls",hash,bytes);
+        var raw=(com.fasterxml.jackson.databind.node.ObjectNode)json.valueToTree(parsed);raw.remove("columnContractVersion");
+        new org.springframework.transaction.support.TransactionTemplate(transactions).executeWithoutResult(status->{
+            beans.getBean(com.uten.imp.security.TxSessionVars.class).bind();
+            var stored=documents.save("FINANCE_CHART_IMPORT","legacy.xls","application/vnd.ms-excel",bytes);
+            db.update("INSERT INTO finance_chart_imports(id,actor_id,source_name,sha256,storage_provider,storage_key,storage_version,storage_size,preview) VALUES(?,?,'legacy.xls',?,?,?,?,?,?::jsonb)",
+                    id,world.superAdminUserId(),hash,stored.provider(),stored.key(),stored.version(),stored.size(),raw.toString());
+        });
+        String original=db.queryForObject("SELECT preview::text FROM finance_chart_imports WHERE id=?",String.class,id);
+        int codes=db.queryForObject("SELECT count(*) FROM finance_chart_codes",Integer.class),entries=db.queryForObject("SELECT count(*) FROM gl_entries",Integer.class);
+        assertThatThrownBy(()->chart.apply(new FinanceChartContracts.Apply(id))).isInstanceOf(ApiException.class).hasMessageContaining("重新检测");
+        assertThatThrownBy(()->chart.repreviewCommand(id,json.valueToTree(new FinanceChartContracts.Repreview(java.util.UUID.randomUUID()))))
+                .isInstanceOf(ApiException.class).hasMessageContaining("仅改文件名");
+        assertThat(db.queryForObject("SELECT count(*) FROM finance_chart_codes",Integer.class)).isEqualTo(codes);
+        assertThat(db.queryForObject("SELECT count(*) FROM gl_entries",Integer.class)).isEqualTo(entries);
+        assertThat(db.queryForObject("SELECT applied_result::text FROM finance_chart_imports WHERE id=?",String.class,id)).isNull();
+        assertThat(db.queryForObject("SELECT preview::text FROM finance_chart_imports WHERE id=?",String.class,id)).isEqualTo(original);
+        var other=fixture.seedWorld("legacy-chart-other-owner");fixture.loginAs(other.superAdminUserId());
+        assertThatThrownBy(()->chart.imported(id)).isInstanceOf(ApiException.class);
+    }
 
     @Test void forwardFinancialAuditUsesRealHelpersAndNeverCopiesPrivateSourceBodies()throws Exception {
         var fixture=new FullChainEndToEndTest();beans.autowireBean(fixture);

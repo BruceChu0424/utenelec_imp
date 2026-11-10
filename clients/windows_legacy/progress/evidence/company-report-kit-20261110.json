@@ -137,11 +137,12 @@
       ]
     },
     "flutter": {
-      "previousSharedTests": 61,
+      "sharedTests": 61,
       "realWidgetRepeatedSaveTests": 3,
       "staticAnalysisFiles": 10,
       "staticAnalysisIssues": 0,
-      "note": "Latest natural business wording must be rerun before final integration acceptance."
+      "naturalBusinessWordingVerified": true,
+      "note": "Final wording: 生产中 · 按配套限量报工. A formatter-only line wrap accompanies this evidence update."
     },
     "previousBusinessChainRun": {
       "tests": 97,
@@ -193,6 +194,16 @@
         "path": "build-report-kit-flutter-final.log",
         "sha256": "d222f18a43f46f38f4af712ed0ba2de87a38c81a8ef384aba7f1337a32bbfee6",
         "bytes": 11777
+      },
+      {
+        "path": "build-report-kit-ui-wording-final.log",
+        "sha256": "dc4d460573eb25861be7d4b4687800f8d30b7920333b820bdd552a3dc4a51eec",
+        "bytes": 590
+      },
+      {
+        "path": "build-report-kit-flutter-wording-final.log",
+        "sha256": "3d1a1c36bfc9c0cd22da972f8898c5fdb9081518518a726f84d59b2134f35b70",
+        "bytes": 11777
       }
     ]
   },
@@ -207,11 +218,11 @@
   "sourceHashes": {
     "lib/features/production/models/production_execution_planning.dart": "96eb97264c22a4966c2556fe072539003ee78b62b2e975765feb0969d4fd14b6",
     "lib/features/production/models/production_execution_workbench.dart": "9c02bd6ac6893eba6676093123e4b6697be46bce07d2edd8d383a98bfe3aef03",
-    "lib/features/production/models/production_flow_stage.dart": "e52b08185856c28f9afd3b9d74f3abdb9967670d2180a76d92e82c8d7bac9f0b",
+    "lib/features/production/models/production_flow_stage.dart": "bfa22300e76eb31b7f9b1fdb3eedc2bf07417b72a89d8baf76ee32e40aab5ad1",
     "lib/features/production/models/production_workshop_task_stage.dart": "40673796d778168df2bc3445f875446e5502ac1056213ab1dfe86b10dd82712b",
     "lib/features/production/models/reportable_plan_line.dart": "7b3ae157ef6035fdaf3fa51e7f0a9e0e2bb746c35b53bc994ad882ed20998b59",
-    "lib/features/production/pages/production_daily_report_edit_page.dart": "eeea2b9d15735edeaa2500c4e3f263896872e16a68a00ac28ad1feaf5601e1b9",
-    "lib/features/production/pages/production_workshop_tasks_page.dart": "7addb68399962ca2c12faa26ce9bc8c122b8f1ba0cc5111cf16314d08fc3d3e8",
+    "lib/features/production/pages/production_daily_report_edit_page.dart": "abe7a38883a5107e64132ba8f14a11963a2fcfc8813d0688f473a5c0cda6f836",
+    "lib/features/production/pages/production_workshop_tasks_page.dart": "81bce8c1bae4660cc40841215e71198ee39eb12b2c567bb3f492eb63cd8f6a4c",
     "lib/features/production/widgets/production_daily_grid_columns.dart": "4c63f914c4ad4825549a1404ea5f15c60888695b0e23c595703f966c1490ef7d",
     "lib/features/production/widgets/production_execution_segments_card.dart": "157a3dc9f0bb5055ca0fff267cc1a213d25b317fc6a5894cbe909bf8b3c7ba76",
     "lib/features/production/widgets/production_flow_stage_cell.dart": "d60368ae35dbcfaa4004a6927932f9ba4d46c5c2e2e47ae05d4691a6f0a6cb12",
@@ -225,10 +236,11 @@
     "server/src/main/java/com/uten/imp/features/production/execution/ProductionExecutionSegmentService.java": "07ea8179fb8fa249adebbcdae017e78a20ef689c967e297e00f123e9734f56e2",
     "server/src/main/java/com/uten/imp/features/production/execution/ProductionExecutionWorkbenchSegment.java": "0cd5686f7b5320a73487ae5290fc35d31c9cab3e29d90b56313b819cf38e78d0",
     "server/src/main/java/com/uten/imp/features/production/execution/ProductionExecutionWorkbenchService.java": "c76276970284ed8d5c4915aae42c118f2b6bdb440a4c71bdf2c18a0a4cb93b6d",
-    "server/src/main/java/com/uten/imp/features/production/execution/ProductionWorkshopTaskStage.java": "d825e2f0b76982967cc34a90042ec4b9aac55ec7c5c0cc192c6d6ddb98821020",
+    "server/src/main/java/com/uten/imp/features/production/execution/ProductionWorkshopTaskStage.java": "3e37d28c83a9562825bd5e7822785fa2fea323041dbfe8f671ea70e468f54541",
     "server/src/main/java/com/uten/imp/features/stock/allocation/ProductionMaterialReturnRequestService.java": "b8323392a805bb8b48dfd5c4a47b755c1da870d48b88d3ae005c295f7244d104",
     "server/src/main/java/com/uten/imp/features/stock/allocation/ProductionMaterialSettlementService.java": "911726112caae433edb5d9eacaa18a40ac7e1abe57f4d22ab4e26b5a56b79011",
     "server/src/main/java/com/uten/imp/features/stock/allocation/ProductionMaterialStockLedgerService.java": "c9d4e9b3cc74bd7280075d08ea9cd23d3317368f5287b7a6e4d4e9a7e53c60d2",
-    "server/src/main/resources/db/migration/V1129__partial_material_reporting_capacity.sql": "56d1faa458dda0e7a2f82372335e78ff09b9c6bbdec4a09262dfeb049bde55d1"
-  }
+    "server/src/main/resources/db/migration/V1129__partial_material_reporting_capacity.sql": "4aeb741b79982f37699f0ea08b6601c6449f39d4fe9b10dbbc07df884be09859"
+  },
+  "sourceHashConvention": "SHA-256 of staged Git blob bytes, independent of Windows checkout line endings."
 }

@@ -1,0 +1,49 @@
+{
+  "id": "E-SERVER-STATUS-STORAGE-20261110",
+  "date": "2026-11-10",
+  "classification": ["frontend", "shared-contract", "backend", "host-monitoring"],
+  "supportedConsumers": ["Flutter Web ServerStatusPage", "Flutter Windows/desktop ServerStatusPage"],
+  "nativeUnmigratedWorkItems": ["W7-BIZ-013", "W7-BIZ-014"],
+  "nativeStatusChanged": false,
+  "nativeWritesEnabled": false,
+  "win7Accepted": false,
+  "changes": [
+    "Reuse UtenResponsiveGrid for status and disk cards; storage uses one to three columns and responds to available width and text scale.",
+    "Preserve volume mount through the typed Java projection; use actual allocation with explicit byte units.",
+    "Host computes inode-deduplicated classified bytes, unclassified remainder, reserved capacity and visible-category overlap; incomplete or inconsistent scans remain PARTIAL or UNKNOWN.",
+    "Retain UNKNOWN categories and unassigned categories through contextual hints; do not invent volume identity or zero use.",
+    "Pair connection pool gauges by pool identity; missing active samples remain UNKNOWN; expose active, maximum, idle and waiting counts.",
+    "Manual refresh waits for status and fresh storage under one UtenBusyOverlay; failed or stale reads withdraw the old healthy inventory."
+  ],
+  "verification": {
+    "flutterRegressionPassed": 46,
+    "additionalFinalLayoutAndUnassignedPassed": 4,
+    "dartAnalyze": "No issues found",
+    "javaMonitoringPassed": 41,
+    "linuxStoragePassed": 41,
+    "nativeRegistryCheck": "Final owning-source inventory write, registry sync and check passed; all 373 work items retain status, owner, nativeTargets, DoD and dependencies. Parallel notice work and its notes/evidence were preserved.",
+    "browser": "Current source verified with read-only synthetic data: 1800px three disk columns, 390px single column with dark theme and 2x text; compact refresh shows and then removes the busy overlay. Screenshots archived in evidenceDirectory.",
+    "windowsNativeInteraction": "not run; shared Flutter implementation tested via widgets and browser",
+    "win7Native": "No migrated status/storage consumer; both work items remain todo with nativeTargets empty."
+  },
+  "evidenceDirectory": "docs/99-项目治理/evidence/server-status-storage-20261110",
+  "failureEvidence": [
+    "Initial UI assertions expected standalone guidance text and old rounded units; updated assertions verify the same reasons via UtenFieldHintIcon and precise units.",
+    "Independent review found stale storage on failure, WARNING measurements hidden as unknown, and overlap accounting counting within-category hardlinks twice; corrected and regressed.",
+    "Real compact-menu interaction reproduced a refresh accepted by the panel but dropped by its temporary refresh-button wrapper. The page now uses the public UtenAppBarActionButton with page-owned guards and shared read futures. A cache-only storage future could also absorb force refresh; the cache guard now precedes pending ownership. The compact-menu and forced-storage regressions pass.",
+    "Initial ordinary-user Linux run could not inspect /proc/1/fd and failed closed; root regression passed without weakening cleanup protections."
+  ],
+  "followupDiskDetails": {
+    "request": "Disk-card content below the capacity summary can expand/collapse and starts collapsed.",
+    "implementation": "Reuse UtenCollapsibleSection and its accessible clipped content; page-session state is keyed by volume ID. Capacity remains visible, accounting and category rows are folded. Independent expansion survives polling and responsive reparenting; toggles make no network requests.",
+    "consumers": ["Flutter Web", "Flutter desktop; same page"],
+    "native": "W7-BIZ-013 and W7-BIZ-014 remain unimplemented; no native page or writes added.",
+    "flutterPageTestsPassed": 27,
+    "dartAnalyze": "No issues found",
+    "nativeRegistryCheck": "Owning inventory write, registry sync and check passed; no native acceptance state changed.",
+    "browser": "Read-only synthetic UI: all three cards start collapsed; expanding the first leaves the others collapsed, resizing to 390px retains 1 expanded/2 collapsed, and collapsing restores all three. Hidden details are absent from the accessibility tree.",
+    "evidence": "docs/99-项目治理/evidence/server-status-storage-20261110/fold-details"
+  },
+  "publication": {"pushed": false, "companyDeployed": false, "formalClientPackaged": false},
+  "limits": ["No company live sample was read; the screenshot alone cannot prove whether its 0% was idle or missing gauges.", "Win7 full ERP and target-machine UAT remain incomplete."]
+}

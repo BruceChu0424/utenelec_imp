@@ -210,6 +210,7 @@ def _measure(path, deadline=None):
     started = time.monotonic()
     initial = path.lstat()
     entries, inodes, unsafe, directory_blocks = [], {}, False, 0
+    allocated_nodes = {}
     stack = [(path, '')]
     while stack:
         current, relative = stack.pop()
@@ -222,12 +223,15 @@ def _measure(path, deadline=None):
             continue
         if stat.S_ISDIR(info.st_mode):
             blocks = getattr(info, 'st_blocks', None)
+            allocated_nodes[(info.st_dev, info.st_ino)] = None if blocks is None else blocks * 512
             directory_blocks = None if blocks is None or directory_blocks is None else directory_blocks + blocks * 512
             with os.scandir(current) as children:
                 for child in children:
                     stack.append((Path(child.path), relative + '/' + child.name))
         elif stat.S_ISREG(info.st_mode):
             key = (info.st_dev, info.st_ino)
+            blocks = getattr(info, 'st_blocks', None)
+            allocated_nodes[key] = None if blocks is None else blocks * 512
             row = inodes.setdefault(key, [info.st_size, getattr(info, 'st_blocks', None), info.st_nlink, 0])
             row[3] += 1
             if _uid() is not None and info.st_uid not in {0, _uid(), initial.st_uid}:
@@ -246,7 +250,42 @@ def _measure(path, deadline=None):
             'directoryAllocatedBytes': directory_blocks,
             'unsafe': unsafe, 'hardlinked': any(row[2] > 1 for row in inodes.values()),
             'identity': _identity(initial), 'inodes': list(inodes),
+            'allocatedNodes': [[*key, blocks] for key, blocks in allocated_nodes.items()],
             'inodeRows': [[*key, row[1], row[2], row[3]] for key, row in inodes.items()]}
+
+
+def _reconcile_volume(volume, measurements, partial=False, category_total=None):
+    """Deduplicate physical blocks across nested roots and hardlinked categories.
+
+    The remainder is deliberately unclassified: this bounded inventory cannot
+    distinguish host files, filesystem metadata or unlinked-but-open files.
+    """
+    detail = ('按实际分配块统计，已统计内容按设备和文件身份去重；内容明细可能嵌套或共享硬链接，不能直接相加。'
+              '其他占用包含未纳入目录、文件系统元数据及已删除但仍打开等未分类占用；系统预留为当前服务不可用的空闲空间。')
+    unknown = {'status': 'UNKNOWN', 'classifiedBytes': None, 'otherBytes': None,
+               'reservedBytes': volume.get('_reservedBytes'), 'overlapBytes': None,
+               'detail': '采样变化或当前文件系统不提供完整实际块占用，暂不能完成空间核对。 ' + detail}
+    nodes, total = {}, 0
+    for measured in measurements:
+        if (measured['allocatedBytes'] is None
+                or any(row[2] is None for row in measured['allocatedNodes'])
+                or sum(row[2] for row in measured['allocatedNodes']) != measured['allocatedBytes']):
+            return unknown
+        total += measured['allocatedBytes']
+        for device, inode, blocks in measured['allocatedNodes']:
+            key = (device, inode)
+            if blocks is None or key in nodes and nodes[key] != blocks:
+                return unknown
+            nodes[key] = blocks
+    classified = sum(nodes.values())
+    reserved = volume.get('_reservedBytes')
+    visible_total = total if category_total is None else category_total
+    if reserved is None or classified > volume['usedBytes'] - reserved or visible_total < classified:
+        return unknown
+    return {'status': 'PARTIAL' if partial else 'NORMAL', 'classifiedBytes': classified,
+            'otherBytes': volume['usedBytes'] - reserved - classified, 'reservedBytes': reserved,
+            'overlapBytes': visible_total - classified,
+            'detail': ('部分目录未完成统计，已统计内容仅含本次成功范围，其余归入其他或未统计占用。 ' if partial else '') + detail}
 
 
 def _reclaimable_union(resources, last_link_only=True):
@@ -364,10 +403,15 @@ def _inventory(context):
     config = context['config']
     roots = {}
     categories, resources, volumes = [], [], {}
+    volume_measurements = {}
+    volume_category_totals = {}
+    incomplete_volumes = set()
+    unmapped_incomplete = False
     quarantine_present = False
     now = _now(context)
     deadline = time.monotonic() + MAX_SECONDS
     for kind, (key, label) in KINDS.items():
+        volume_id = None
         # Optional, installer-bound legacy local originals. Absence means the
         # deployment has no configured second root, not an unknown zero total.
         if kind == 'LEGACY_UPLOADS' and not config.get(key):
@@ -377,12 +421,16 @@ def _inventory(context):
             root = _safe_root(config.get(key))
             roots[kind] = root
             info = root.stat()
-            volume = os.statvfs(root) if hasattr(os, 'statvfs') else None
             volume_id = _digest(['volume', info.st_dev])[:24]
+            volume = os.statvfs(root) if hasattr(os, 'statvfs') else None
             if volume:
                 total, free = volume.f_blocks * volume.f_frsize, volume.f_bavail * volume.f_frsize
+                unallocated = volume.f_bfree * volume.f_frsize
+                if not 0 <= free <= unallocated <= total:
+                    _fail('UNAVAILABLE', '卷容量采样暂不可核验。')
                 volumes.setdefault(volume_id, {'id': volume_id, 'label': '存储卷 ' + str(len(volumes) + 1),
                                                'mount': _mount_point(root),
+                                               '_reservedBytes': unallocated - free,
                                                'totalBytes': total, 'usedBytes': total - free, 'freeBytes': free})
             # SYSTEM is an overview root and can overlap releases: never add category sizes.
             candidates = []
@@ -428,11 +476,25 @@ def _inventory(context):
                                'allocatedBytes': whole['allocatedBytes'] if whole else _reclaimable_union(category_resources, False),
                                'reclaimableBytes': 0, 'count': len(candidates), 'canList': True,
                                'detail': detail, 'volumeId': volume_id})
+            if kind != 'SYSTEM':
+                volume_measurements.setdefault(volume_id, []).extend([whole] if whole else measurements)
+                volume_category_totals[volume_id] = (volume_category_totals.get(volume_id, 0)
+                                                     + (categories[-1]['allocatedBytes'] or 0))
         except (OSError, StorageError):
             categories.append({'kind': kind, 'label': label, 'status': 'UNKNOWN', 'logicalBytes': None,
                                'allocatedBytes': None, 'reclaimableBytes': None, 'count': None,
-                               'canList': False, 'detail': '目录未配置、不可读或超出本次安全统计上限。', 'volumeId': None})
+                               'canList': False, 'detail': '目录未配置、不可读或超出本次安全统计上限。', 'volumeId': volume_id})
+            if kind != 'SYSTEM':
+                if volume_id is None:
+                    unmapped_incomplete = True
+                else:
+                    incomplete_volumes.add(volume_id)
             resources = [r for r in resources if r['public']['kind'] != kind]
+    for volume_id, volume in volumes.items():
+        volume['reconciliation'] = _reconcile_volume(volume, volume_measurements.get(volume_id, []),
+                                                    unmapped_incomplete or volume_id in incomplete_volumes,
+                                                    volume_category_totals.get(volume_id, 0))
+        volume.pop('_reservedBytes', None)
     proof_registry, proofs = _proofs(context, roots)
     protected = set()
     if proof_registry:

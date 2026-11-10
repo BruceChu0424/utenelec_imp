@@ -3,7 +3,7 @@ import 'dart:math' as math;
 
 import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
-import '../../../components/buttons/uten_refresh_button.dart';
+import '../../../components/buttons/uten_app_bar_action_button.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -14,12 +14,15 @@ import '../../../components/data_display/uten_gauge_ring.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_live_pulse_dot.dart';
 import '../../../components/feedback/uten_notification_badge.dart';
 import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_collapsible_section.dart';
 import '../../../components/layout/uten_grid_page_scrollbar.dart';
+import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/server_config.dart';
@@ -74,6 +77,9 @@ class _ServerStatusPageState extends ConsumerState<_ServerStatusSession>
   Timer? _timer;
   Timer? _staleTimer;
   bool _loading = false;
+  bool _manualRefreshing = false;
+  Future<void>? _pendingRefresh;
+  Future<void>? _pendingStorage;
   bool _failed = false;
   bool _denied = false;
   bool _foreground = true;
@@ -85,6 +91,7 @@ class _ServerStatusPageState extends ConsumerState<_ServerStatusSession>
   ServerStorageSummary? _storage;
   DateTime? _storageLoadedAt;
   bool _storageLoading = false;
+  final Set<String> _expandedStorageVolumes = {};
   int _storageGeneration = 0;
 
   /// 采样成功次数；只驱动总览的脉冲点，不参与任何数据判断。
@@ -156,9 +163,42 @@ class _ServerStatusPageState extends ConsumerState<_ServerStatusSession>
     _storageGeneration++;
     _loading = false;
     _storageLoading = false;
+    _pendingRefresh = null;
+    _pendingStorage = null;
   }
 
-  Future<void> _refresh() async {
+  Future<void> _refreshManually() async {
+    if (!_active || _manualRefreshing) return;
+    _manualRefreshing = true;
+    try {
+      await UtenBusyOverlay.run(
+        context,
+        title: '正在刷新服务器状态',
+        action: () async {
+          // Closing the compact actions panel may have already resumed reads.
+          // Join that owner instead of silently dropping the accepted click.
+          await _refresh();
+          if (_active) await _loadStorage(force: true);
+        },
+      );
+    } finally {
+      _manualRefreshing = false;
+    }
+  }
+
+  Future<void> _refresh() {
+    if (!_active) return Future<void>.value();
+    final pending = _pendingRefresh;
+    if (pending != null) return pending;
+    late final Future<void> request;
+    request = _refreshOnce().whenComplete(() {
+      if (identical(_pendingRefresh, request)) _pendingRefresh = null;
+    });
+    _pendingRefresh = request;
+    return request;
+  }
+
+  Future<void> _refreshOnce() async {
     if (!_active || _loading) return;
     _timer?.cancel();
     final generation = ++_generation;
@@ -232,14 +272,27 @@ class _ServerStatusPageState extends ConsumerState<_ServerStatusSession>
     }
   }
 
-  Future<void> _loadStorage() async {
+  Future<void> _loadStorage({bool force = false}) {
+    if (!_active) return Future<void>.value();
+    final pending = _pendingStorage;
+    if (pending != null) return pending;
+    final loadedAt = _storageLoadedAt;
+    if (!force &&
+        loadedAt != null &&
+        clock.now().difference(loadedAt) < const Duration(seconds: 60)) {
+      return Future<void>.value();
+    }
+    late final Future<void> request;
+    request = _loadStorageOnce(force: force).whenComplete(() {
+      if (identical(_pendingStorage, request)) _pendingStorage = null;
+    });
+    _pendingStorage = request;
+    return request;
+  }
+
+  Future<void> _loadStorageOnce({bool force = false}) async {
     if (!_active || _storageLoading) return;
     final now = clock.now();
-    final loadedAt = _storageLoadedAt;
-    if (loadedAt != null &&
-        now.difference(loadedAt) < const Duration(seconds: 60)) {
-      return;
-    }
     _storageLoading = true;
     final generation = ++_storageGeneration;
     bool current() => _active && generation == _storageGeneration;
@@ -257,7 +310,14 @@ class _ServerStatusPageState extends ConsumerState<_ServerStatusSession>
         _storageLoadedAt = now;
       });
     } catch (_) {
-      // 存储清单暂时拉不到时保留上一次结果或退回逐盘卡，不影响状态轮询。
+      // A failed detail read cannot remain a healthy-looking current inventory.
+      // Fall back to the separately sampled disk metrics and retry next poll.
+      if (current()) {
+        setState(() {
+          _storage = null;
+          _storageLoadedAt = null;
+        });
+      }
     } finally {
       if (generation == _storageGeneration) _storageLoading = false;
     }
@@ -300,11 +360,12 @@ class _ServerStatusPageState extends ConsumerState<_ServerStatusSession>
         showPagePermissionAction: false,
         actions: [
           if (allowed && !_denied)
-            UtenRefreshButton(
+            UtenAppBarActionButton(
               key: const Key('server-status-refresh'),
+              label: l10n.serverStatusRefresh,
               tooltip: l10n.serverStatusRefresh,
-              busy: _loading,
-              onRefresh: _refresh,
+              isLoading: _loading || _storageLoading,
+              onPressed: _loading || _storageLoading ? null : _refreshManually,
             ),
         ],
       ),
@@ -386,7 +447,10 @@ class _ServerStatusPageState extends ConsumerState<_ServerStatusSession>
                           const SizedBox(height: UtenSpacing.s12),
                           _grid(_resourceCards()),
                           const SizedBox(height: UtenSpacing.s24),
-                          _sectionTitle(l10n.serverStatusStorage),
+                          _sectionTitle(
+                            l10n.serverStatusStorage,
+                            hint: _unassignedStorageHint,
+                          ),
                           const SizedBox(height: UtenSpacing.s12),
                           _storageSection(),
                           const SizedBox(height: UtenSpacing.s24),
@@ -559,45 +623,45 @@ class _ServerStatusPageState extends ConsumerState<_ServerStatusSession>
     ],
   );
 
-  Widget _sectionTitle(String title) => Text(
-    title,
-    style: Theme.of(
-      context,
-    ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+  String? get _unassignedStorageHint {
+    final volumeIds = {
+      for (final volume in _storage?.volumes ?? <ServerStorageVolume>[])
+        volume.id,
+    };
+    final rows =
+        _storage?.categories
+            .where((row) => !volumeIds.contains(row.volumeId))
+            .toList() ??
+        [];
+    if (rows.isEmpty) return null;
+    return '以下内容尚未定位到存储卷，不当作零占用，也不归入任意存储卷：\n'
+        '${rows.map((row) => '${_categoryDisplayName(row)}：${row.detail ?? '统计不可用'}').join('\n')}';
+  }
+
+  Widget _sectionTitle(String title, {String? hint}) => Row(
+    children: [
+      Flexible(
+        child: Text(
+          title,
+          style: Theme.of(
+            context,
+          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+        ),
+      ),
+      if (hint != null) UtenFieldHintIcon(info: hint, dense: true),
+    ],
   );
 
-  Widget _grid(List<Widget> cards) => LayoutBuilder(
-    builder: (context, constraints) {
-      final available = constraints.maxWidth < 600
-          ? 1
-          : constraints.maxWidth < 1150
-          ? 2
-          : 4;
-      final columns = cards.length.clamp(1, available);
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          for (var start = 0; start < cards.length; start += columns) ...[
-            if (start > 0) const SizedBox(height: UtenSpacing.s16),
-            IntrinsicHeight(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  for (
-                    var index = start;
-                    index < (start + columns).clamp(0, cards.length);
-                    index++
-                  ) ...[
-                    if (index > start) const SizedBox(width: UtenSpacing.s16),
-                    Expanded(child: cards[index]),
-                  ],
-                ],
-              ),
-            ),
-          ],
-        ],
-      );
-    },
+  Widget _grid(
+    List<Widget> cards, {
+    double minItemWidth = 300,
+    int maxColumns = 4,
+  }) => UtenResponsiveGrid(
+    itemCount: cards.length,
+    columns: UtenResponsiveColumns(expanded: maxColumns),
+    maxColumns: cards.length.clamp(1, maxColumns),
+    minItemWidth: minItemWidth,
+    itemBuilder: (context, index, width) => cards[index],
   );
 
   List<Widget> _resourceCards() {
@@ -653,6 +717,14 @@ class _ServerStatusPageState extends ConsumerState<_ServerStatusSession>
         critical: metric?.criticalThreshold,
       ),
       facts: [
+        if (metric?.activeConnections != null)
+          ('正在使用', '${_number(metric!.activeConnections)} 个'),
+        if (metric?.maxConnections != null)
+          ('连接池上限', '${_number(metric!.maxConnections)} 个'),
+        if (metric?.idleConnections != null)
+          ('空闲连接', '${_number(metric!.idleConnections)} 个'),
+        if (metric?.waitingThreads != null)
+          ('等待连接', '${_number(metric!.waitingThreads)} 个'),
         if (metric?.usedBytes != null)
           (_l10n.serverStatusUsed, _bytes(metric!.usedBytes)),
         if (metric?.totalBytes != null)
@@ -747,7 +819,7 @@ class _ServerStatusPageState extends ConsumerState<_ServerStatusSession>
   /// 接口不可用时退回逐盘圆环卡。
   Widget _storageSection() {
     final storage = _storage;
-    if (storage == null || storage.volumes.isEmpty) {
+    if (!_fresh || storage == null || storage.volumes.isEmpty) {
       return _grid([
         if (_snapshot?.disks.isNotEmpty == true)
           for (final disk in _snapshot!.disks) _disk(disk)
@@ -755,16 +827,7 @@ class _ServerStatusPageState extends ConsumerState<_ServerStatusSession>
           _disk(null),
       ]);
     }
-    final zones = _storageZones(storage);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        for (var index = 0; index < zones.length; index++) ...[
-          if (index > 0) const SizedBox(height: UtenSpacing.s12),
-          zones[index],
-        ],
-      ],
-    );
+    return _grid(_storageZones(storage), minItemWidth: 360, maxColumns: 3);
   }
 
   List<Widget> _storageZones(ServerStorageSummary storage) {
@@ -793,6 +856,15 @@ class _ServerStatusPageState extends ConsumerState<_ServerStatusSession>
           totalBytes: volume.totalBytes,
           usedBytes: volume.usedBytes,
           freeBytes: volume.freeBytes,
+          reconciliation: volume.reconciliation,
+          expanded: _expandedStorageVolumes.contains(volume.id),
+          onExpandedChanged: (expanded) => setState(() {
+            if (expanded) {
+              _expandedStorageVolumes.add(volume.id);
+            } else {
+              _expandedStorageVolumes.remove(volume.id);
+            }
+          }),
           rows: rows,
         ),
       ));
@@ -808,26 +880,17 @@ class _ServerStatusPageState extends ConsumerState<_ServerStatusSession>
     '/data' => (
       name: '数据库与备份区',
       icon: Icons.dns_outlined,
-      hint:
-          '公司最核心的数据都保存在这块大容量硬盘上：数据库本体、每天凌晨自动生成的全量备份，'
-          '以及数据库和附件一起打包的配套备份。\n\n超过一年的老附件会自动搬到这块盘的冷存区，'
-          '要用时系统自动调取，无需人工处理。这块盘由两块硬盘做了镜像冗余，任何一块坏掉数据仍然完整；'
-          '超龄的旧备份每天自动删除，不需要人工清理。',
+      hint: '保存配置在此存储卷上的数据库、备份和归档资料。内容与占用以本次主机统计为准。',
     ),
     final String path when path.startsWith('/var/lib/uten-imp-media') => (
       name: '上传文件区',
       icon: Icons.cloud_upload_outlined,
-      hint:
-          '大家平时上传的附件和客户端安装包保存在这块独立的固态硬盘上，上传、下载、预览速度快。\n\n'
-          '公司文件库的文件和一年内上传的资料常驻这块盘；最近有人下载过的文件无论多老都留在这里。'
-          '只有既超过一年、又长期没人使用的老资料才会自动搬到数据库与备份区的大硬盘上，不影响使用。',
+      hint: '保存配置在此存储卷上的上传文件和相关资源。内容与占用以本次主机统计为准。',
     ),
     '/' => (
       name: '系统与程序区',
       icon: Icons.settings_suggest_outlined,
-      hint:
-          '操作系统、ERP 程序本体和运行日志在这里。\n\n每次版本更新会保留旧版本以便回退；'
-          '超龄的旧版本和日志会被自动清理。',
+      hint: '操作系统及配置在此存储卷上的程序、日志等资源。其他占用中可能包含未单独列出的系统内容。',
     ),
     _ => (
       name: fallbackLabel.isEmpty ? '存储区域' : fallbackLabel,
@@ -1079,14 +1142,7 @@ class _ServerStatusPageState extends ConsumerState<_ServerStatusSession>
       : value == value.truncateToDouble()
       ? value.toInt().toString()
       : value.toStringAsFixed(1);
-  String _bytes(double? value) {
-    if (value == null) return '—';
-    if (value >= 1024 * 1024 * 1024) {
-      return '${_number(value / (1024 * 1024 * 1024))} GiB';
-    }
-    if (value >= 1024 * 1024) return '${_number(value / (1024 * 1024))} MiB';
-    return '${_number(value / 1024)} KiB';
-  }
+  String _bytes(double? value) => _serverBytes(value);
 
   String _uptime(double? value) {
     if (value == null) return '—';
@@ -1142,7 +1198,7 @@ class _MetricCard extends StatelessWidget {
             children: [
               Icon(icon, color: theme.colorScheme.onSurfaceVariant, size: 22),
               const SizedBox(width: UtenSpacing.s8),
-              Expanded(
+              Flexible(
                 child: Text(
                   title,
                   style: theme.textTheme.titleSmall?.copyWith(
@@ -1150,7 +1206,9 @@ class _MetricCard extends StatelessWidget {
                   ),
                 ),
               ),
-              UtenFieldHintIcon(info: tooltip),
+              UtenFieldHintIcon(
+                info: [detail, tooltip].where((s) => s.isNotEmpty).join('\n\n'),
+              ),
             ],
           ),
           const SizedBox(height: UtenSpacing.s12),
@@ -1187,13 +1245,6 @@ class _MetricCard extends StatelessWidget {
                 ),
               ),
           ],
-          const SizedBox(height: UtenSpacing.s12),
-          Text(
-            detail,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
         ],
       ),
     );
@@ -1255,7 +1306,10 @@ class _StorageZoneCard extends StatelessWidget {
     required this.totalBytes,
     required this.usedBytes,
     required this.freeBytes,
+    required this.reconciliation,
     required this.rows,
+    required this.expanded,
+    required this.onExpandedChanged,
   });
 
   final String name;
@@ -1263,18 +1317,10 @@ class _StorageZoneCard extends StatelessWidget {
   final String hint;
   final String? mount;
   final int? totalBytes, usedBytes, freeBytes;
+  final ServerStorageReconciliation reconciliation;
   final List<ServerStorageCategory> rows;
-
-  static String _plainBytes(int? value) {
-    if (value == null) return '—';
-    const g = 1024 * 1024 * 1024;
-    if (value >= 1024 * g) {
-      return '${(value / (1024 * g)).toStringAsFixed(1)}T';
-    }
-    if (value >= g) return '${(value / g).toStringAsFixed(1)}G';
-    if (value >= 1024 * 1024) return '${(value / (1024 * 1024)).round()}M';
-    return '$value';
-  }
+  final bool expanded;
+  final ValueChanged<bool> onExpandedChanged;
 
   ServerHealthStatus get _status {
     final total = totalBytes, used = usedBytes;
@@ -1317,22 +1363,22 @@ class _StorageZoneCard extends StatelessWidget {
                 info: mountText == null ? hint : '$hint\n\n挂载位置：$mountText',
                 dense: true,
               ),
-              const Spacer(),
-              Text(
-                '剩余 ${_plainBytes(freeBytes)}',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  color: color,
-                  fontFeatures: const [FontFeature.tabularFigures()],
-                ),
-              ),
             ],
+          ),
+          const SizedBox(height: UtenSpacing.s8),
+          Text(
+            '剩余 ${_serverBytes(freeBytes)}',
+            style: theme.textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: color,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
           ),
           const SizedBox(height: UtenSpacing.s12),
           ClipRRect(
             borderRadius: BorderRadius.circular(UtenRadius.xs),
             child: LinearProgressIndicator(
-              value: ratio,
+              value: ratio?.clamp(0, 1) ?? 0,
               minHeight: 8,
               color: color,
               backgroundColor: theme.colorScheme.onSurface.withValues(
@@ -1343,45 +1389,141 @@ class _StorageZoneCard extends StatelessWidget {
           const SizedBox(height: UtenSpacing.s8),
           Text(
             ratio == null
-                ? '已用 ${_plainBytes(usedBytes)} / 共 ${_plainBytes(totalBytes)}'
-                : '已用 ${_plainBytes(usedBytes)} / 共 ${_plainBytes(totalBytes)}'
+                ? '已用 ${_serverBytes(usedBytes)} / 共 ${_serverBytes(totalBytes)}'
+                : '已用 ${_serverBytes(usedBytes)} / 共 ${_serverBytes(totalBytes)}'
                       '（已用 ${(ratio * 100).toStringAsFixed(0)}%）',
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
               fontFeatures: const [FontFeature.tabularFigures()],
             ),
           ),
-          if (rows.isNotEmpty) ...[
-            const Divider(height: UtenSpacing.s20),
-            for (final row in rows)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s4),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        _categoryDisplayName(row),
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
+          const Divider(height: UtenSpacing.s20),
+          Semantics(
+            expanded: expanded,
+            child: UtenCollapsibleSection(
+              title: expanded ? '收起明细' : '展开明细',
+              initiallyExpanded: false,
+              expanded: expanded,
+              onExpandedChanged: onExpandedChanged,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _fact(
+                    context,
+                    '已统计内容（去重）',
+                    reconciliation.classifiedBytes,
+                    hint: reconciliation.detail ?? '尚未取得完整的磁盘占用核对结果。',
+                  ),
+                  _fact(context, '其他及未统计占用', reconciliation.otherBytes),
+                  _fact(context, '系统预留', reconciliation.reservedBytes),
+                  if (rows.isNotEmpty) ...[
+                    const Divider(height: UtenSpacing.s20),
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            '内容明细',
+                            style: theme.textTheme.labelLarge,
+                          ),
                         ),
-                      ),
+                        const UtenFieldHintIcon(
+                          dense: true,
+                          info:
+                              '明细按文件实际占用显示；目录嵌套或硬链接可能重复，不能直接相加。'
+                              '上方已统计内容由服务器去重，和其他占用、系统预留一起核对整卷已用量。'
+                              '未完成或不可读取的统计显示为 —，不当作 0。',
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: UtenSpacing.s12),
-                    Text(
-                      _plainBytes(row.logicalBytes),
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        fontWeight: FontWeight.w600,
-                        fontFeatures: const [FontFeature.tabularFigures()],
+                    for (final row in rows)
+                      _fact(
+                        context,
+                        _categoryDisplayName(row),
+                        const {
+                              'NORMAL',
+                              'WARNING',
+                              'CRITICAL',
+                            }.contains(row.status)
+                            ? row.allocatedBytes
+                            : null,
+                        hint: [
+                          if (row.detail?.isNotEmpty == true) row.detail!,
+                          '文件大小：${_serverBytes(row.logicalBytes)}；'
+                              '磁盘占用：${_serverBytes(row.allocatedBytes)}。',
+                        ].join('\n\n'),
                       ),
-                    ),
+                    if ((reconciliation.overlapBytes ?? 0) > 0)
+                      _fact(context, '重复统计（已扣除）', reconciliation.overlapBytes),
                   ],
-                ),
+                ],
               ),
-          ],
+            ),
+          ),
         ],
       ),
     );
   }
+
+  Widget _fact(BuildContext context, String label, int? bytes, {String? hint}) {
+    final theme = Theme.of(context);
+    final labelWidget = Row(
+      children: [
+        Flexible(
+          child: Text(
+            label,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+        if (hint != null) UtenFieldHintIcon(info: hint, dense: true),
+      ],
+    );
+    final valueWidget = Text(
+      _serverBytes(bytes),
+      textAlign: TextAlign.end,
+      style: theme.textTheme.bodySmall?.copyWith(
+        fontWeight: FontWeight.w600,
+        fontFeatures: const [FontFeature.tabularFigures()],
+      ),
+    );
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s4),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          if (constraints.maxWidth < 300 &&
+              MediaQuery.textScalerOf(context).scale(14) > 21) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [labelWidget, valueWidget],
+            );
+          }
+          return Row(
+            children: [
+              Expanded(child: labelWidget),
+              const SizedBox(width: UtenSpacing.s12),
+              valueWidget,
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+String _serverBytes(num? value) {
+  if (value == null || !value.isFinite || value < 0) return '—';
+  const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
+  var size = value.toDouble();
+  var unit = 0;
+  while (size >= 1024 && unit < units.length - 1) {
+    size /= 1024;
+    unit++;
+  }
+  final number = size == size.truncateToDouble()
+      ? size.toInt().toString()
+      : size.toStringAsFixed(1);
+  return '$number ${units[unit]}';
 }
 
 String _categoryDisplayName(ServerStorageCategory row) => switch (row.kind) {

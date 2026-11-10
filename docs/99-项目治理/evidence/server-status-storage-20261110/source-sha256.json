@@ -1,0 +1,13 @@
+{
+  "deploy/simple/operations_storage.py": "1ccf9ee93635c851772c02fd85c9b12d98b339a3a4d589096d5aa0d0b37a3c6b",
+  "deploy/simple/test_operations_storage.py": "87e50927b395065a3e92506ee860bb004ab65eb111ee08b442f3734f124ac152",
+  "lib/features/admin/models/server_status.dart": "2fbd09a1e6de5b623cc9bad91cbcd4748d432abd7ad496dd5e95d7c432cad55d",
+  "lib/features/admin/models/server_storage.dart": "29857b92cd3c7f1261846f19b4ab72f30c2ba69da4ec563de3178f5e0756f6db",
+  "lib/features/admin/pages/server_status_page.dart": "14cc67a5edb00676dea07a2d81cf977c5067c2c5f91beab5bf4767cb93e4d2f9",
+  "server/src/main/java/com/uten/imp/features/admin/serverstatus/ServerStatusProbe.java": "4dd9a0f97c1dc29d2c4bcf838256ef7bdc025a75c839450b4a2b551332afeb13",
+  "server/src/main/java/com/uten/imp/features/admin/serverstatus/ServerStatusView.java": "b0c4591640a006fe843011391262ff0160113fa513b6d3f0b8c32ddb0ab1f4ed",
+  "server/src/main/java/com/uten/imp/features/admin/serverstatus/ServerStorageView.java": "d88df3aebe9219c8983d2389ddec11459d81ba4710bd14525d81c97346e4077e",
+  "server/src/test/java/com/uten/imp/features/admin/serverstatus/ServerStatusProbeTest.java": "06ce3faf4ee6ba3683e7768b99ef16d85238eab99a55b1f40f50421b37f7c609",
+  "server/src/test/java/com/uten/imp/features/admin/serverstatus/ServerStorageServiceTest.java": "922cf0e7905e9b1b1415e0eaa7da23fb3579cc5fea74abe5d32869b4d6fa413e",
+  "test/features/admin/server_status_page_test.dart": "827ab9ffab362c68ec2ab20a32377d37e6532b026c87cff5c5baeb9a3d8d760b"
+}

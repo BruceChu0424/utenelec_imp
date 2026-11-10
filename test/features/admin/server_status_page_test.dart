@@ -18,6 +18,8 @@ import 'package:uten_imp/components/data_display/uten_gauge_ring.dart';
 import 'package:uten_imp/components/data_display/uten_status_badge.dart';
 import 'package:uten_imp/components/feedback/uten_live_pulse_dot.dart';
 import 'package:uten_imp/components/feedback/uten_notification_badge.dart';
+import 'package:uten_imp/components/layout/uten_collapsible_section.dart';
+import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
@@ -98,7 +100,7 @@ void main() {
             find.byKey(const Key('server-status-freshness')),
             findsNothing,
           );
-          expect(find.text('尚未接入备份结果'), findsOneWidget);
+          expect(_hintContaining('尚未接入备份结果'), findsOneWidget);
           final help = find.byWidgetPredicate(
             (widget) =>
                 widget is UtenFieldHintIcon &&
@@ -120,7 +122,7 @@ void main() {
             await tester.pumpAndSettle();
             expect(find.text(message), findsOneWidget);
           }
-          expect(find.text('尚未接入备份结果'), findsOneWidget);
+          expect(_hintContaining('尚未接入备份结果'), findsOneWidget);
           expect(tester.takeException(), isNull);
           await tester.pumpWidget(const SizedBox.shrink());
         });
@@ -191,10 +193,24 @@ void main() {
             findsNothing,
           );
           expect(
-            find.descendant(of: pool, matching: find.text('连接池暂不提供数据')),
+            find.descendant(
+              of: pool,
+              matching: find.byWidgetPredicate(
+                (widget) =>
+                    widget is UtenFieldHintIcon &&
+                    (widget.info?.contains('连接池暂不提供数据') ?? false),
+              ),
+            ),
             findsOneWidget,
           );
-          expect(find.text('尚未接入备份结果'), findsOneWidget);
+          expect(
+            find.byWidgetPredicate(
+              (widget) =>
+                  widget is UtenFieldHintIcon &&
+                  (widget.info?.contains('尚未接入备份结果') ?? false),
+            ),
+            findsOneWidget,
+          );
           expect(find.text('需处理'), findsWidgets);
           expect(find.text('留意'), findsWidgets);
           expect(find.text('重启'), findsNothing);
@@ -234,6 +250,291 @@ void main() {
     },
   );
 
+  for (final layout in [
+    (width: 1800.0, scale: 1.0, columns: 3),
+    (width: 900.0, scale: 1.0, columns: 2),
+    (width: 390.0, scale: 1.35, columns: 1),
+    (width: 320.0, scale: 2.0, columns: 1),
+  ]) {
+    testWidgets(
+      'storage accounting adapts at ${layout.width}, text ${layout.scale}',
+      (tester) async {
+        await withClock(Clock.fixed(sampledAt), () async {
+          final repository = _Repository(() async => _sample(sampledAt));
+          await _pump(
+            tester,
+            repository,
+            size: Size(layout.width, 1600),
+            textScale: layout.scale,
+            storage: _StorageRepository(() async => _accountingStorage()),
+          );
+          final data = find.byKey(const Key('server-storage-zone-data'));
+          final media = find.byKey(const Key('server-storage-zone-media'));
+          final system = find.byKey(const Key('server-storage-zone-system'));
+          final first = tester.getRect(data);
+          final second = tester.getRect(media);
+          final third = tester.getRect(system);
+          if (layout.columns > 1) {
+            expect(first.top, second.top);
+            expect(second.left, greaterThan(first.right));
+          } else {
+            expect(first.left, second.left);
+            expect(second.top, greaterThan(first.bottom));
+          }
+          if (layout.columns == 3) {
+            expect(third.top, first.top);
+            expect(third.left, greaterThan(second.right));
+          }
+          expect(first.width, lessThanOrEqualTo(layout.width));
+          final details = find.descendant(
+            of: data,
+            matching: find.byType(UtenCollapsibleSection),
+          );
+          expect(
+            tester.widget<UtenCollapsibleSection>(details).expanded,
+            isFalse,
+          );
+          expect(
+            find.descendant(of: data, matching: find.text('展开明细')),
+            findsOneWidget,
+          );
+          await tester.ensureVisible(data);
+          await tester.pumpAndSettle();
+          await _capture(
+            tester,
+            'storage-collapsed-${layout.width.toInt()}.png',
+          );
+          await _toggleStorageDetails(tester, data, expand: true);
+          expect(tester.getSize(data).height, greaterThan(first.height));
+          expect(
+            tester
+                .widget<UtenCollapsibleSection>(
+                  find.descendant(
+                    of: media,
+                    matching: find.byType(UtenCollapsibleSection),
+                  ),
+                )
+                .expanded,
+            isFalse,
+          );
+          expect(repository.calls, 1);
+          expect(
+            find.descendant(of: data, matching: find.text('8 KiB')),
+            findsNWidgets(2),
+          );
+          expect(
+            find.descendant(of: data, matching: find.text('1016 KiB')),
+            findsOneWidget,
+          );
+          expect(
+            find.descendant(of: data, matching: find.text('0 B')),
+            findsOneWidget,
+          );
+          expect(find.text('重复统计（已扣除）'), findsOneWidget);
+          expect(find.text('400.3 KiB'), findsNothing);
+          expect(find.text('409939'), findsNothing);
+          expect(_hintContaining('未定位到存储卷'), findsOneWidget);
+          expect(
+            find.descendant(of: data, matching: find.text('—')),
+            findsOneWidget,
+          );
+          expect(tester.takeException(), isNull);
+          await tester.ensureVisible(data);
+          await tester.pumpAndSettle();
+          await _capture(
+            tester,
+            'storage-accounting-${layout.width.toInt()}.png',
+          );
+          await tester.pump(const Duration(seconds: 15));
+          await tester.pumpAndSettle();
+          expect(
+            tester.widget<UtenCollapsibleSection>(details).expanded,
+            isTrue,
+          );
+          final readCalls = repository.calls;
+          tester.view.physicalSize = Size(
+            layout.width > 1000 ? 390 : 1800,
+            1600,
+          );
+          await tester.pumpAndSettle();
+          expect(
+            tester.widget<UtenCollapsibleSection>(details).expanded,
+            isTrue,
+          );
+          for (var repeat = 0; repeat < 3; repeat++) {
+            await _toggleStorageDetails(tester, data, expand: false);
+            expect(
+              tester.widget<UtenCollapsibleSection>(details).expanded,
+              isFalse,
+            );
+            await _toggleStorageDetails(tester, data, expand: true);
+          }
+          await _toggleStorageDetails(tester, data, expand: false);
+          expect(repository.calls, readCalls);
+          await tester.pumpWidget(const SizedBox.shrink());
+        });
+      },
+    );
+  }
+
+  testWidgets(
+    'manual refresh waits for storage, bypasses cache and guards repeated clicks',
+    (tester) async {
+      await withClock(Clock.fixed(sampledAt), () async {
+        var storageCalls = 0;
+        final storageRead = Completer<ServerStorageSummary>();
+        final statusRead = Completer<ServerStatusSnapshot>();
+        final repository = _Repository(() async => _sample(sampledAt));
+        await _pump(
+          tester,
+          repository,
+          storage: _StorageRepository(() async {
+            storageCalls++;
+            return storageCalls == 1
+                ? _accountingStorage()
+                : storageRead.future;
+          }),
+        );
+        repository.handler = () => statusRead.future;
+        final refresh = find.byKey(const Key('server-status-refresh'));
+        final callback = tester
+            .widget<UtenAppBarActionButton>(refresh)
+            .onPressed!;
+        await tester.tap(refresh);
+        await tester.pump();
+        expect(find.byType(UtenBusyOverlay), findsWidgets);
+        expect(repository.calls, 2);
+        // The request has started; direct repeated callbacks are guarded as well.
+        await callback();
+        expect(repository.calls, 2);
+        statusRead.complete(_sample(sampledAt));
+        await tester.pump();
+        await tester.pump();
+        expect(storageCalls, 2);
+        expect(find.byType(UtenBusyOverlay), findsWidgets);
+        storageRead.complete(_accountingStorage());
+        await tester.pumpAndSettle();
+        expect(find.byType(UtenBusyOverlay), findsNothing);
+        expect(repository.peak, 1);
+        await tester.pumpWidget(const SizedBox.shrink());
+        expect(tester.takeException(), isNull);
+      });
+    },
+  );
+
+  testWidgets(
+    'compact refresh joins the read resumed while closing its actions panel',
+    (tester) async {
+      await withClock(Clock.fixed(sampledAt), () async {
+        final statusRead = Completer<ServerStatusSnapshot>();
+        final storageRead = Completer<ServerStorageSummary>();
+        var storageCalls = 0;
+        final repository = _Repository(() async => _sample(sampledAt));
+        await _pump(
+          tester,
+          repository,
+          compact: true,
+          storage: _StorageRepository(
+            () async =>
+                ++storageCalls == 1 ? _accountingStorage() : storageRead.future,
+          ),
+        );
+        repository.handler = () => statusRead.future;
+        await tester.tap(find.byTooltip('更多操作'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('刷新').hitTestable());
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+        expect(find.byTooltip('关闭操作面板'), findsNothing);
+        expect(find.byType(UtenBusyOverlay), findsWidgets);
+        expect(repository.calls, 2);
+        statusRead.complete(_sample(sampledAt));
+        await tester.pump();
+        await tester.pump();
+        expect(storageCalls, 2);
+        expect(find.byType(UtenBusyOverlay), findsWidgets);
+        storageRead.complete(_accountingStorage());
+        await tester.pumpAndSettle();
+        expect(find.byType(UtenBusyOverlay), findsNothing);
+        expect(repository.peak, 1);
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox.shrink());
+      });
+    },
+  );
+
+  testWidgets('zero pool usage retains its measured connection counts', (
+    tester,
+  ) async {
+    await withClock(Clock.fixed(sampledAt), () async {
+      final json = _json(sampledAt);
+      final metrics = (json['metrics'] as List)
+          .whereType<Map<String, dynamic>>()
+          .toList();
+      metrics.removeWhere((row) => row['key'] == 'db_pool');
+      metrics.add({
+        'key': 'db_pool',
+        'label': '数据库连接池',
+        'value': 0,
+        'unit': 'PERCENT',
+        'status': 'NORMAL',
+        'activeConnections': 0,
+        'maxConnections': 50,
+        'idleConnections': 10,
+        'waitingThreads': 0,
+        'detail': '采样时没有正在使用的连接，空闲连接仍可用。',
+      });
+      json['metrics'] = metrics;
+      await _pump(
+        tester,
+        _Repository(() async => ServerStatusSnapshot.fromJson(json)),
+      );
+      final pool = find.byKey(const Key('server-metric-db_pool'));
+      expect(
+        find.descendant(of: pool, matching: find.text('0 个')),
+        findsNWidgets(2),
+      );
+      expect(
+        find.descendant(of: pool, matching: find.text('50 个')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: pool, matching: find.text('10 个')),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  });
+
+  testWidgets('failed storage refresh withdraws the old inventory', (
+    tester,
+  ) async {
+    await withClock(Clock.fixed(sampledAt), () async {
+      var calls = 0;
+      await _pump(
+        tester,
+        _Repository(() async => _sample(sampledAt)),
+        storage: _StorageRepository(() async {
+          if (++calls == 1) return _accountingStorage();
+          throw NetworkException();
+        }),
+      );
+      expect(find.byKey(const Key('server-storage-zone-data')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('server-status-refresh')));
+      await tester.pumpAndSettle();
+      expect(calls, 2);
+      expect(find.byKey(const Key('server-storage-zone-data')), findsNothing);
+      expect(
+        find.byKey(Key('server-disk-${_sample(sampledAt).disks.first.key}')),
+        findsOneWidget,
+      );
+      expect(find.byType(UtenBusyOverlay), findsNothing);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  });
+
   testWidgets('storage section groups volumes by where content is stored', (
     tester,
   ) async {
@@ -269,6 +570,7 @@ void main() {
               'label': '数据库目录',
               'status': 'NORMAL',
               'logicalBytes': 19000000000,
+              'allocatedBytes': 19000000000,
               'volumeId': 'v-data',
             },
             {
@@ -276,6 +578,7 @@ void main() {
               'label': '数据库与上传文件配套备份',
               'status': 'NORMAL',
               'logicalBytes': 165000000000,
+              'allocatedBytes': 165000000000,
               'volumeId': 'v-data',
             },
             {
@@ -291,6 +594,7 @@ void main() {
               'label': '当前上传目录',
               'status': 'NORMAL',
               'logicalBytes': 389000000,
+              'allocatedBytes': 389000000,
               'volumeId': 'v-media',
             },
           ],
@@ -303,12 +607,22 @@ void main() {
       expect(find.text('上传文件区'), findsOneWidget);
       expect(find.text('存储卷 1'), findsNothing);
       // 剩余量与占用明细按通俗单位展示。
-      expect(find.text('剩余 1.4T'), findsOneWidget);
-      expect(find.text('剩余 185.9G'), findsOneWidget);
+      expect(find.text('剩余 1.4 TiB'), findsOneWidget);
+      expect(find.text('剩余 185.9 GiB'), findsOneWidget);
+      await _toggleStorageDetails(
+        tester,
+        find.byKey(const Key('server-storage-zone-v-data')),
+        expand: true,
+      );
+      await _toggleStorageDetails(
+        tester,
+        find.byKey(const Key('server-storage-zone-v-media')),
+        expand: true,
+      );
       expect(find.text('配套备份（数据库＋附件）'), findsOneWidget);
-      expect(find.text('153.7G'), findsOneWidget);
+      expect(find.text('153.7 GiB'), findsOneWidget);
       expect(find.text('上传的附件'), findsOneWidget);
-      expect(find.text('371M'), findsOneWidget);
+      expect(find.text('371.0 MiB'), findsOneWidget);
       // SYSTEM 概览类与数据库卷里的重叠，不单独占一行。
       expect(find.text('系统目录'), findsNothing);
       expect(tester.takeException(), isNull);
@@ -356,7 +670,7 @@ void main() {
           findsOneWidget,
         );
         expect(
-          find.descendant(of: backup, matching: find.text('检查未通过')),
+          find.descendant(of: backup, matching: _hintContaining('检查未通过')),
           findsOneWidget,
         );
         expect(find.text('备份失败'), findsNothing);
@@ -492,10 +806,7 @@ void main() {
         expect(
           tester
               .widget<UtenAppBarActionButton>(
-                find.descendant(
-                  of: find.byKey(const Key('server-status-refresh')),
-                  matching: find.byType(UtenAppBarActionButton),
-                ),
+                find.byKey(const Key('server-status-refresh')),
               )
               .onPressed,
           isNull,
@@ -793,10 +1104,11 @@ Future<ProviderContainer> _pump(
   ServerStatusSnapshot? cached,
   BadgeSummary? badgeSummary,
   ServerStorageRepository? storage,
+  Size? size,
+  double? textScale,
 }) async {
-  tester.view.physicalSize = compact
-      ? const Size(390, 1000)
-      : const Size(1500, 1450);
+  tester.view.physicalSize =
+      size ?? (compact ? const Size(390, 1000) : const Size(1500, 1450));
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
@@ -837,9 +1149,9 @@ Future<ProviderContainer> _pump(
           fontFamily: 'NotoSansSC',
         ),
         builder: (context, child) => MediaQuery(
-          data: MediaQuery.of(
-            context,
-          ).copyWith(textScaler: TextScaler.linear(compact ? 1.35 : 1)),
+          data: MediaQuery.of(context).copyWith(
+            textScaler: TextScaler.linear(textScale ?? (compact ? 1.35 : 1)),
+          ),
           child: child!,
         ),
         home: const RepaintBoundary(
@@ -877,6 +1189,78 @@ Future<void> _capture(WidgetTester tester, String name) async {
     image.dispose();
   });
 }
+
+Finder _hintContaining(String text) => find.byWidgetPredicate(
+  (widget) =>
+      widget is UtenFieldHintIcon && (widget.info?.contains(text) ?? false),
+);
+
+Future<void> _toggleStorageDetails(
+  WidgetTester tester,
+  Finder card, {
+  required bool expand,
+}) async {
+  final toggle = find.descendant(
+    of: card,
+    matching: find.text(expand ? '展开明细' : '收起明细'),
+  );
+  await tester.ensureVisible(toggle);
+  await tester.tap(toggle);
+  await tester.pumpAndSettle();
+}
+
+ServerStorageSummary _accountingStorage() => ServerStorageSummary.fromJson({
+  'revision': 'accounting',
+  'status': 'NORMAL',
+  'capabilities': {'available': true},
+  'volumes': [
+    for (final volume in [
+      ('data', '/data'),
+      ('media', '/var/lib/uten-imp-media'),
+      ('system', '/'),
+    ])
+      {
+        'id': volume.$1,
+        'mount': volume.$2,
+        'label': volume.$1,
+        'totalBytes': 1073741824,
+        'usedBytes': 1048576,
+        'freeBytes': 1072693248,
+        'reconciliation': {
+          'status': 'PARTIAL',
+          'classifiedBytes': 8192,
+          'otherBytes': 1040384,
+          'reservedBytes': 0,
+          'overlapBytes': volume.$1 == 'data' ? 4096 : 0,
+          'detail': '已统计内容已去重；其他占用含未完成统计的目录。',
+        },
+      },
+  ],
+  'categories': [
+    {'kind': 'LOGS', 'status': 'UNKNOWN', 'detail': '日志目录暂时无法定位'},
+    {
+      'kind': 'DATABASE',
+      'status': 'NORMAL',
+      'logicalBytes': 409939,
+      'allocatedBytes': 8192,
+      'volumeId': 'data',
+    },
+    {
+      'kind': 'LEGACY_UPLOADS',
+      'status': 'WARNING',
+      'logicalBytes': 100,
+      'allocatedBytes': 4096,
+      'volumeId': 'data',
+    },
+    {
+      'kind': 'PAIRED_BACKUPS',
+      'status': 'UNKNOWN',
+      'logicalBytes': 500,
+      'volumeId': 'data',
+      'detail': '扫描未完成',
+    },
+  ],
+});
 
 class _Repository extends ServerStatusRepository {
   _Repository(this.handler) : super(ApiClient(Dio()));

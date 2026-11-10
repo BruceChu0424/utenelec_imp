@@ -1,0 +1,32 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp/test/features/admin/server_status_page_test.dart
+00:00 +0: (setUpAll)
+00:00 +0: background retirement releases the pending status owner and resumes without its result
+00:05 +1: overview guidance opens by hover without hiding current alerts
+00:07 +2: overview guidance opens by tap without hiding current alerts
+00:07 +3: unknown capacity stays null and stale samples are not current health
+00:07 +4: desktop light shows actual measurements and unknown reasons without overflow
+00:08 +5: compact dark shows actual measurements and unknown reasons without overflow
+00:09 +6: view permission is independent from system administration and prevents any unauthorized request
+00:10 +7: storage accounting adapts at 1800.0, text 1.0
+00:15 +8: storage accounting adapts at 900.0, text 1.0
+00:19 +9: storage accounting adapts at 390.0, text 1.35
+00:23 +10: storage accounting adapts at 320.0, text 2.0
+00:26 +11: manual refresh waits for storage, bypasses cache and guards repeated clicks
+00:28 +12: compact refresh joins the read resumed while closing its actions panel
+00:29 +13: zero pool usage retains its measured connection counts
+00:30 +14: failed storage refresh withdraws the old inventory
+00:31 +15: storage section groups volumes by where content is stored
+00:32 +16: overall unknown preserves fresh metric states and backup check failure wording
+00:33 +17: system management shows the status card only to its viewer and opens the page
+00:34 +18: 服务器更新按钮按待更新数显示徽章，无数时不占位
+00:34 +19: slow reads never overlap and polling pauses off-route, in background and after disposal
+00:36 +20: stale data and refresh failure immediately lose old healthy colors
+00:36 +21: extra counters pick ring or number by unit and scheduled jobs list their last run
+00:38 +22: job headers filter health and order runs by date
+00:41 +23: stale samples grey every ring and the live pulse dot
+00:42 +24: 进页面第一帧就用共享缓存画出总览，不等自己那趟请求回来
+00:43 +25: 过期的缓存不入画：宁可占位，也不摆一个下一帧就被标成已过期的读数
+00:44 +26: 页面自己拉到的快照会回写缓存，供下次进页面第一帧复用
+00:44 +27: (tearDownAll)
+00:44 +27: All tests passed!

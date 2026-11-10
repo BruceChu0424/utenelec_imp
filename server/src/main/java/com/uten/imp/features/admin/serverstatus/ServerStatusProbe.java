@@ -170,10 +170,7 @@ public class ServerStatusProbe {
                 ? "当前环境不提供进程常驻内存；Java 堆内存单独显示。"
                 : "当前后端进程驻留在系统内存中的实际用量，包含 Java 堆、线程和本地内存。",
                 residentPercent == null ? null : memoryTotal, resident, null));
-        double active=meters.find("hikaricp.connections.active").gauges().stream().mapToDouble(g->g.value()).sum();
-        double maximum=meters.find("hikaricp.connections.max").gauges().stream().mapToDouble(g->g.value()).sum();
-        metrics.add(metric("db_pool","平台数据库连接占用",percent(active,maximum),80,95,
-                "正在处理业务的连接占连接池上限的比例；持续偏高可能使页面等待。"));
+        metrics.add(connectionPool());
         List<Disk> disks=disks();
         Database database=database();
         Backup backup=backup(now);
@@ -208,6 +205,40 @@ public class ServerStatusProbe {
     static Double percent(double used,double total) {
         if (!Double.isFinite(used)||!Double.isFinite(total)||total<=0||used<0||used>total) return null;
         return used/total*100;
+    }
+
+    /** Missing active gauges must never become a fabricated healthy zero. */
+    Metric connectionPool() {
+        Map<String,Long> active=poolGauges("hikaricp.connections.active");
+        Map<String,Long> maximum=poolGauges("hikaricp.connections.max");
+        String detail="采样瞬间正在借用的连接占连接池上限的比例；0 表示此刻没有借用连接，不代表数据库没有连接。空闲连接仍可保留，持续偏高可能使页面等待。";
+        if(active==null||maximum==null||active.isEmpty()||!active.keySet().equals(maximum.keySet())
+                ||active.entrySet().stream().anyMatch(e->maximum.get(e.getKey())<=0||e.getValue()>maximum.get(e.getKey())))
+            return metric("db_pool","平台数据库连接占用",null,80,95,"暂未取得完整的连接池采样，不能据此判断连接占用为 0。 "+detail);
+        long used=active.values().stream().mapToLong(Long::longValue).sum();
+        long limit=maximum.values().stream().mapToLong(Long::longValue).sum();
+        return new Metric("db_pool","平台数据库连接占用",percent(used,limit),"PERCENT",80d,95d,
+                severity(percent(used,limit),80,95),detail,null,null,null,used,limit,
+                optionalPoolTotal("hikaricp.connections.idle",maximum),
+                optionalPoolTotal("hikaricp.connections.pending",maximum));
+    }
+
+    private Long optionalPoolTotal(String name,Map<String,Long> maximum) {
+        Map<String,Long> values=poolGauges(name);
+        if(values==null||!values.keySet().equals(maximum.keySet()))return null;
+        if(name.endsWith(".idle")&&values.entrySet().stream().anyMatch(e->e.getValue()>maximum.get(e.getKey())))return null;
+        return values.values().stream().mapToLong(Long::longValue).sum();
+    }
+
+    private Map<String,Long> poolGauges(String name) {
+        Map<String,Long> values=new LinkedHashMap<>();
+        for(var gauge:meters.find(name).gauges()) {
+            String pool=gauge.getId().getTag("pool");
+            double value=gauge.value();
+            if(pool==null||!Double.isFinite(value)||value<0||value!=Math.rint(value)||value>Integer.MAX_VALUE
+                    ||values.putIfAbsent(pool,(long)value)!=null)return null;
+        }
+        return values;
     }
     static String severity(Double value,double warning,double critical) {
         if (value==null||!Double.isFinite(value)||value<0) return "UNKNOWN";

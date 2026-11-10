@@ -22,9 +22,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：`clients/windows_legacy/progress/evidence/notice-ack-read-badge-20261103.json`。
+证据：`clients/windows_legacy/progress/evidence/notice-ack-read-badge-20261103.json`；`clients/windows_legacy/progress/evidence/notice-type-stack-20261110.json`。
 
-接续/限制：尚未迁移；先做动作/合同审计。；2026-11-03 通知收到/未读合同增量：当前 WPF 通知列表、详情、外壳未读徽标及收到动作均未迁移；MainWindow 仅工作台/货品/单位入口，DashboardView 仅 GET /dashboard/overview，未接通知回执。后续迁移须由服务端同事务保存本人收到与已读，列表/详情/筛选/未读计数/弹窗同一权威状态；重复收到幂等，未知结果不盲重放。卡片红点与未读文字移至顶行右侧、与类型 icon 同排并放大；异步动作复用原生等待层及防连点，保留身份/权限/读取代次隔离。仅登记待迁移合同，不新增原生写入口，不提高任务状态或 Win7/完整 ERP 验收；见 E-NOTICE-ACK-READ-BADGE-20261103。。
+接续/限制：尚未迁移；先做动作/合同审计。；2026-11-03 通知收到/未读合同增量：当前 WPF 通知列表、详情、外壳未读徽标及收到动作均未迁移；MainWindow 仅工作台/货品/单位入口，DashboardView 仅 GET /dashboard/overview，未接通知回执。后续迁移须由服务端同事务保存本人收到与已读，列表/详情/筛选/未读计数/弹窗同一权威状态；重复收到幂等，未知结果不盲重放。卡片红点与未读文字移至顶行右侧、与类型 icon 同排并放大；异步动作复用原生等待层及防连点，保留身份/权限/读取代次隔离。仅登记待迁移合同，不新增原生写入口，不提高任务状态或 Win7/完整 ERP 验收；见 E-NOTICE-ACK-READ-BADGE-20261103。；2026-11-10 同主题通知叠放及卡片重设计：已重新核实原生 MainWindow/DashboardView，通知列表、详情和卡片仍未迁移，无可同步的既有 WPF 消费者。后续须沿用业务锚点优先、系统来源事件/精确主题兜底的展示归组，保留类型、重要度、互动、发布者及目的路由；危急与恢复、不同指标、不同更新版本不得误并。采用中性表面、局部类型色、轻边框、极轻中性贴边阴影与错位底卡，底卡仅边框，展示真实条数和未读数；展开不代替单条已读、收到或办结。未新增原生写入口，原状态/owner/DoD/依赖/nativeTargets 保留，完整 ERP 与 Win7 真机未验收。见 E-NOTICE-TYPE-STACK-20261110。。
 
 ## W7-BIZ-085
 
@@ -46,9 +46,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：`clients/windows_legacy/progress/evidence/plural-page-source-inventory-20261101.json`；`clients/windows_legacy/progress/evidence/notice-ack-read-badge-20261103.json`。
+证据：`clients/windows_legacy/progress/evidence/plural-page-source-inventory-20261101.json`；`clients/windows_legacy/progress/evidence/notice-ack-read-badge-20261103.json`；`clients/windows_legacy/progress/evidence/notice-type-stack-20261110.json`。
 
-接续/限制：2026-10-31 新增报价/订货销售负责人居中审核提醒。WPF 通知与业务审核仍未迁移；须同步 SALES_QUOTE_PENDING_MANAGER_REVIEW / SALES_ORDER_PENDING_MANAGER_REVIEW、登录及在线授权补发、认领心跳和办结撤回，不能仅显示普通通知。；2026-11-01 必要合同增量仍未迁移：V982仓库通知按真实指定supervisor与相关child keeper并集后交精确业务资格池；隐式SA不成为负责人，历史read/ack/身份不重写。原通知及销售审核迁移要求保留。；2026-11-03 通知收到/未读合同增量：当前 WPF 通知列表、详情、外壳未读徽标及收到动作均未迁移；MainWindow 仅工作台/货品/单位入口，DashboardView 仅 GET /dashboard/overview，未接通知回执。后续迁移须由服务端同事务保存本人收到与已读，列表/详情/筛选/未读计数/弹窗同一权威状态；重复收到幂等，未知结果不盲重放。卡片红点与未读文字移至顶行右侧、与类型 icon 同排并放大；异步动作复用原生等待层及防连点，保留身份/权限/读取代次隔离。仅登记待迁移合同，不新增原生写入口，不提高任务状态或 Win7/完整 ERP 验收；见 E-NOTICE-ACK-READ-BADGE-20261103。。
+接续/限制：2026-10-31 新增报价/订货销售负责人居中审核提醒。WPF 通知与业务审核仍未迁移；须同步 SALES_QUOTE_PENDING_MANAGER_REVIEW / SALES_ORDER_PENDING_MANAGER_REVIEW、登录及在线授权补发、认领心跳和办结撤回，不能仅显示普通通知。；2026-11-01 必要合同增量仍未迁移：V982仓库通知按真实指定supervisor与相关child keeper并集后交精确业务资格池；隐式SA不成为负责人，历史read/ack/身份不重写。原通知及销售审核迁移要求保留。；2026-11-03 通知收到/未读合同增量：当前 WPF 通知列表、详情、外壳未读徽标及收到动作均未迁移；MainWindow 仅工作台/货品/单位入口，DashboardView 仅 GET /dashboard/overview，未接通知回执。后续迁移须由服务端同事务保存本人收到与已读，列表/详情/筛选/未读计数/弹窗同一权威状态；重复收到幂等，未知结果不盲重放。卡片红点与未读文字移至顶行右侧、与类型 icon 同排并放大；异步动作复用原生等待层及防连点，保留身份/权限/读取代次隔离。仅登记待迁移合同，不新增原生写入口，不提高任务状态或 Win7/完整 ERP 验收；见 E-NOTICE-ACK-READ-BADGE-20261103。；2026-11-10 同主题通知叠放及卡片重设计：已重新核实原生 MainWindow/DashboardView，通知列表、详情和卡片仍未迁移，无可同步的既有 WPF 消费者。后续须沿用业务锚点优先、系统来源事件/精确主题兜底的展示归组，保留类型、重要度、互动、发布者及目的路由；危急与恢复、不同指标、不同更新版本不得误并。采用中性表面、局部类型色、轻边框、极轻中性贴边阴影与错位底卡，底卡仅边框，展示真实条数和未读数；展开不代替单条已读、收到或办结。未新增原生写入口，原状态/owner/DoD/依赖/nativeTargets 保留，完整 ERP 与 Win7 真机未验收。见 E-NOTICE-TYPE-STACK-20261110。。
 
 ## W7-BIZ-086
 

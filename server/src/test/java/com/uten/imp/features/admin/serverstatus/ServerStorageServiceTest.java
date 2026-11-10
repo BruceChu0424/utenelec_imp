@@ -87,6 +87,23 @@ class ServerStorageServiceTest {
         assertThat(result.uploads().count()).isEqualTo(3L);assertThat(result.uploads().logicalBytes()).isEqualTo(90L);
         assertThat(result.uploads().storedBytes()).isEqualTo(100L);
     }
+    @Test void volumeMountAndPhysicalReconciliationSurviveTypedProjection() throws Exception {
+        when(host.call(eq(STORAGE_SUMMARY),anyMap(),eq(actor.getId()),any())).thenReturn(mapper.readTree("""
+                {"sampledAt":"2026-11-10T18:00:00Z","status":"NORMAL","revision":"abc",
+                 "capabilities":{"available":true,"canCleanup":false},"categories":[],
+                 "volumes":[{"id":"data","label":"存储卷 2","mount":"/data",
+                   "totalBytes":1000,"usedBytes":400,"freeBytes":600,
+                   "reconciliation":{"status":"PARTIAL","classifiedBytes":200,"otherBytes":150,
+                     "reservedBytes":50,"overlapBytes":20,"detail":"部分目录未完成统计",
+                     "privatePath":"do-not-expose"}}]}
+                """));
+        var volume=service.summary().volumes().getFirst();
+        assertThat(volume.mount()).isEqualTo("/data");
+        assertThat(volume.reconciliation().status()).isEqualTo("PARTIAL");
+        assertThat(volume.reconciliation().classifiedBytes()+volume.reconciliation().otherBytes()
+                +volume.reconciliation().reservedBytes()).isEqualTo(volume.usedBytes());
+        assertThat(mapper.writeValueAsString(volume)).doesNotContain("do-not-expose");
+    }
     @Test void helperCapabilitiesCannotForgeALocalPlatformLimitationOrLeakUnreviewedReasons() throws Exception {
         when(host.call(eq(STORAGE_SUMMARY),anyMap(),eq(actor.getId()),any())).thenReturn(mapper.readTree("""
                 {"sampledAt":"2026-10-15T18:00:00Z","status":"UNKNOWN","revision":"abc",

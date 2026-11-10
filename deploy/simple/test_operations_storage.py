@@ -113,6 +113,81 @@ class StorageTest(unittest.TestCase):
         self.assertEqual(result['status'], 'UNKNOWN')
         self.assertTrue(all(r['logicalBytes'] is None and not r['canList'] for r in result['categories']))
 
+    def test_reconciliation_deduplicates_nested_directories_hardlinks_and_reserved_space(self):
+        volume = {'usedBytes': 1000, '_reservedBytes': 100}
+        first = {'allocatedBytes': 300, 'allocatedNodes': [[1, 1, 100], [1, 2, 200]]}
+        nested = {'allocatedBytes': 250, 'allocatedNodes': [[1, 2, 200], [1, 3, 50]]}
+        result = storage._reconcile_volume(volume, [first, nested])
+        self.assertEqual(result['status'], 'NORMAL')
+        self.assertEqual(result['classifiedBytes'], 350)
+        self.assertEqual(result['otherBytes'], 550)
+        self.assertEqual(result['reservedBytes'], 100)
+        self.assertEqual(result['overlapBytes'], 200)
+        self.assertEqual(sum(result[k] for k in ('classifiedBytes', 'otherBytes', 'reservedBytes')), volume['usedBytes'])
+        self.assertIn('不能直接相加', result['detail'])
+
+    def test_partial_or_changed_inventory_does_not_fabricate_complete_space_accounting(self):
+        volume = {'usedBytes': 1000, '_reservedBytes': 100}
+        first = {'allocatedBytes': 300, 'allocatedNodes': [[1, 1, 100], [1, 2, 200]]}
+        self.assertEqual(storage._reconcile_volume(volume, [first], True)['status'], 'PARTIAL')
+        changed = {'allocatedBytes': 301, 'allocatedNodes': [[1, 1, 101], [1, 2, 200]]}
+        overflow = {'allocatedBytes': 1001, 'allocatedNodes': [[1, 3, 1001]]}
+        for rows in ([first, changed], [overflow], [{'allocatedBytes': None, 'allocatedNodes': []}]):
+            result = storage._reconcile_volume(volume, rows)
+            self.assertEqual(result['status'], 'UNKNOWN')
+            self.assertIsNone(result['classifiedBytes'])
+            self.assertIsNone(result['otherBytes'])
+
+    @unittest.skipUnless(hasattr(os, 'statvfs'), 'requires filesystem capacity probe')
+    def test_failed_category_keeps_its_volume_and_is_part_of_incomplete_accounting(self):
+        actual_measure = storage._measure
+
+        def fail_uploads(path, deadline=None):
+            if path == Path(self.config['uploads_root']):
+                raise storage.StorageError('SCAN_LIMIT', 'bounded test')
+            return actual_measure(path, deadline)
+
+        with patch.object(storage, '_measure', side_effect=fail_uploads):
+            result = storage.dispatch('STORAGE_SUMMARY', {}, self.context)
+        uploads = next(c for c in result['categories'] if c['kind'] == 'UPLOADS')
+        self.assertEqual(uploads['status'], 'UNKNOWN')
+        self.assertIsNotNone(uploads['volumeId'])
+        volume = next(v for v in result['volumes'] if v['id'] == uploads['volumeId'])
+        self.assertEqual(volume['reconciliation']['status'], 'PARTIAL')
+        self.assertNotIn('_reservedBytes', volume)
+
+    @unittest.skipUnless(os.name == 'posix', 'requires inode allocation and hardlinks')
+    def test_real_files_reconcile_by_allocated_blocks_instead_of_logical_bytes(self):
+        root = Path(self.config['uploads_root'])
+        nested = root / 'nested'
+        nested.mkdir()
+        original = nested / 'original'
+        original.write_bytes(b'x' * 8192)
+        os.link(original, nested / 'hardlink')
+        whole, child = storage._measure(root), storage._measure(nested)
+        self.assertGreater(whole['logicalBytes'], original.stat().st_size)
+        volume = {'usedBytes': 100000, '_reservedBytes': 1000}
+        result = storage._reconcile_volume(volume, [whole, child])
+        self.assertEqual(result['classifiedBytes'], whole['allocatedBytes'])
+        self.assertEqual(result['overlapBytes'], child['allocatedBytes'])
+
+    @unittest.skipUnless(os.name == 'posix', 'requires inode allocation and hardlinks')
+    def test_overlap_matches_visible_categories_after_release_internal_hardlink_deduplication(self):
+        releases = Path(self.config['releases_root'])
+        first, second = releases / 'v2.5.1', releases / 'v2.5.2'
+        first.mkdir()
+        second.mkdir()
+        (first / 'app.jar').write_bytes(b'x' * 8192)
+        os.link(first / 'app.jar', second / 'app.jar')
+        result = storage.dispatch('STORAGE_SUMMARY', {}, self.context)
+        for volume in result['volumes']:
+            visible = sum(c['allocatedBytes'] for c in result['categories']
+                          if c['volumeId'] == volume['id'] and c['kind'] != 'SYSTEM')
+            reconciliation = volume['reconciliation']
+            self.assertEqual(reconciliation['status'], 'NORMAL')
+            self.assertEqual(reconciliation['overlapBytes'], visible - reconciliation['classifiedBytes'])
+            self.assertEqual(reconciliation['overlapBytes'], 0)
+
     def test_uploads_database_and_caches_are_always_protected(self):
         for kind, key in [('UPLOADS', 'uploads_root'), ('LEGACY_UPLOADS', 'legacy_uploads_root'),
                           ('DATABASE', 'database_root'), ('CACHE', 'cache_root')]:

@@ -77,13 +77,32 @@ class ServerStorageVolume {
       mount = _optionalText(json['mount']),
       totalBytes = _size(json['totalBytes']),
       usedBytes = _size(json['usedBytes']),
-      freeBytes = _size(json['freeBytes']);
+      freeBytes = _size(json['freeBytes']),
+      reconciliation = ServerStorageReconciliation.fromJson(
+        _map(json['reconciliation']),
+      );
 
   final String id, label;
 
   /// Linux 挂载点（如 /data）；主机助手旧版本未提供时为 null。
   final String? mount;
   final int? totalBytes, usedBytes, freeBytes;
+  final ServerStorageReconciliation reconciliation;
+}
+
+/// Volume accounting comes from the host's scan; clients never infer missing use.
+class ServerStorageReconciliation {
+  ServerStorageReconciliation.fromJson(Map<String, dynamic> json)
+    : status = _text(json['status']),
+      classifiedBytes = _size(json['classifiedBytes']),
+      otherBytes = _size(json['otherBytes']),
+      reservedBytes = _size(json['reservedBytes']),
+      overlapBytes = _size(json['overlapBytes']),
+      detail = _optionalText(json['detail']);
+
+  final String status;
+  final int? classifiedBytes, otherBytes, reservedBytes, overlapBytes;
+  final String? detail;
 }
 
 class ServerStorageCategory {

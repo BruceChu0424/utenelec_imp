@@ -1,3 +1,5 @@
+import '../../../components/inputs/uten_filter_field_theme.dart';
+import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../shared/paging/read_view_activity.dart';
 import '../../../core/performance/ui_work_budget.dart';
 import '../../../shared/paging/paged_query_identity.dart';
@@ -16,7 +18,6 @@ import 'package:uten_imp/shared/paging/scoped_paged_read.dart'
 // 筛选口径（类别导航/显示方式/日期范围/排序）按账号服务端持久化
 // （report.finance.arApOverview，ReportFilterPrefs：docType=categoryType、extra={categoryId,displayMode}）；
 // 关键字不持久化。
-import '../../../components/inputs/uten_dropdown_scroll_scope.dart';
 import 'dart:async';
 
 import 'package:collection/collection.dart';
@@ -938,20 +939,22 @@ class _FinanceArApOverviewPageState
   }
 
   List<Widget> _buildFilters() => [
-    UtenDropdownScrollScope(
-      nativeDropdown: true,
-      child: DropdownButton<String>(
-        key: const ValueKey('finance-ar-ap-layout'),
-        value: _layout,
-        isDense: true,
-        items: const [
-          DropdownMenuItem(
-            value: _receivableSummaryLayout,
-            child: Text('应收款汇总表'),
-          ),
-          DropdownMenuItem(value: _balanceLayout, child: Text('往来余额')),
-        ],
-        onChanged: _onLayoutChanged,
+    UtenFilterFieldTheme(
+      child: SizedBox(
+        width: 200,
+        child: UtenDropdownField(
+          key: const ValueKey('finance-ar-ap-layout'),
+          label: '报表视图',
+          value: _layout,
+          allowClear: false,
+          searchable: false,
+          menuMatchContentWidth: true,
+          items: const [
+            UtenDropdownItem(value: _receivableSummaryLayout, label: '应收款汇总表'),
+            UtenDropdownItem(value: _balanceLayout, label: '往来余额'),
+          ],
+          onChanged: _onLayoutChanged,
+        ),
       ),
     ),
     FinanceDateRangeFilter(
@@ -965,25 +968,30 @@ class _FinanceArApOverviewPageState
         return _persistAndReload();
       },
     ),
-    UtenDropdownScrollScope(
-      nativeDropdown: true,
-      child: DropdownButton<String>(
-        key: const ValueKey('finance-ar-ap-display-mode'),
-        value: _displayMode,
-        isDense: true,
-        items: [
-          const DropdownMenuItem(value: 'ALL', child: Text('全部显示')),
-          if (!_isReceivableSummary)
-            const DropdownMenuItem(value: 'ANY', child: Text('应收≠0或应付≠0')),
-          const DropdownMenuItem(value: 'AR_ONLY', child: Text('只应收≠0')),
-          if (!_isReceivableSummary)
-            const DropdownMenuItem(value: 'AP_ONLY', child: Text('只应付≠0')),
-        ],
-        onChanged: (value) {
-          if (value == null) return;
-          setState(() => _displayMode = value);
-          _persistAndReload();
-        },
+    UtenFilterFieldTheme(
+      child: SizedBox(
+        width: 200,
+        child: UtenDropdownField(
+          key: const ValueKey('finance-ar-ap-display-mode'),
+          value: _displayMode,
+          allowClear: false,
+          label: '显示范围',
+          searchable: false,
+          menuMatchContentWidth: true,
+          items: [
+            const UtenDropdownItem(value: 'ALL', label: '全部显示'),
+            if (!_isReceivableSummary)
+              const UtenDropdownItem(value: 'ANY', label: '应收≠0或应付≠0'),
+            const UtenDropdownItem(value: 'AR_ONLY', label: '只应收≠0'),
+            if (!_isReceivableSummary)
+              const UtenDropdownItem(value: 'AP_ONLY', label: '只应付≠0'),
+          ],
+          onChanged: (value) {
+            if (value == null) return;
+            setState(() => _displayMode = value);
+            _persistAndReload();
+          },
+        ),
       ),
     ),
     if (_acceptedQueryCurrent)

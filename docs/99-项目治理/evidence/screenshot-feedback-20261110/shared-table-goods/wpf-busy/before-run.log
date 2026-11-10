@@ -1,0 +1,5 @@
+FAIL InvalidOperationException: Busy dialog progress: Stage withdraws the old percentage and switches to unknown
+   在 Uten.Legacy.Desktop.Shared.BusyDialogProgressChecks.<>c__DisplayClass0_0.<Run>b__0(Boolean condition, String label) 位置 D:\Projects\uten_imp_worktrees\screenshot-feedback-20261110\clients\windows_legacy\Uten.Legacy.Desktop\Shared\BusyDialogProgressChecks.cs:行号 24
+   在 Uten.Legacy.Desktop.Shared.BusyDialogProgressChecks.Run() 位置 D:\Projects\uten_imp_worktrees\screenshot-feedback-20261110\clients\windows_legacy\Uten.Legacy.Desktop\Shared\BusyDialogProgressChecks.cs:行号 40
+   在 Uten.Legacy.Tests.Program.RunUi[T](Func`1 check) 位置 D:\Projects\uten_imp_worktrees\screenshot-feedback-20261110\clients\windows_legacy\Uten.Legacy.Tests\Program.cs:行号 200
+   在 Uten.Legacy.Tests.Program.Main(String[] args) 位置 D:\Projects\uten_imp_worktrees\screenshot-feedback-20261110\clients\windows_legacy\Uten.Legacy.Tests\Program.cs:行号 24

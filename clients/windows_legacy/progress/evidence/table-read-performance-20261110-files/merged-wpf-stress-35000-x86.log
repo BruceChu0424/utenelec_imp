@@ -1,0 +1,2 @@
+OBSERVE native functional fixture rows=35000; completeLoadMs=2004; realizedRowsMax=18; scrollCycles=50; httpReads=1; finalRow=35000; no low-end hardware or production latency claim
+PASS native complete-list functional stress; goodsRows=35000; assertions=64; process=x86; synthetic in-memory transport on this host; not Win7 target or latency acceptance

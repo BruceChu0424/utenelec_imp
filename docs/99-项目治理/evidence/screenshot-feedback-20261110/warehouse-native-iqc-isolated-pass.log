@@ -1,0 +1,7 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/integration_test/warehouse_feedback_runtime_test.dart
+Building Windows application...                                    30.4s
+√ Built build\windows\x64\runner\Debug\uten_imp.exe
+00:00 +0: quality-runtime atomic IQC report keeps truthful moving unknown progress while delayed and retries the frozen report
+00:09 +1: (tearDownAll)
+00:09 +1: All tests passed!

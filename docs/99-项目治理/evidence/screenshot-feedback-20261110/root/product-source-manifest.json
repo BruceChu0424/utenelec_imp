@@ -1,0 +1,628 @@
+{
+  "productRevision": "7413a81f434e1b591c36733ab56fd1490abad339",
+  "integratedMain": "69e35d96bf0ddd9c8ba7992bf0a609ee9191ef98",
+  "originalBaseline": "cb6e9ad263401078832701072051cf89c5e165ba",
+  "productVersion": "2.5.52+2552",
+  "sources": [
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Controls/UtenBusyDialog.cs",
+      "gitBlob": "fd1d323aabd1f969c58aaf57d6ba15fcc5b922a6",
+      "canonicalSha256": "edbee7295dea7e7256ff5b792d363edb2a2625663bba579fe1b92171b8407740"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Controls/UtenDateRangeDialog.cs",
+      "gitBlob": "6a204a782e2c30947459d758f6df0714efa0d2b4",
+      "canonicalSha256": "16fb006a281335f3bc4095d27852e30b5a465737e7b89ac0c42f6e1bd653e6b1"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Controls/UtenDialogWindow.cs",
+      "gitBlob": "1adbaee98ea7a97b2cef47adcdc6e17c25070286",
+      "canonicalSha256": "22a1de763845f67dd94429a0133fecc9b3b8d4f70837ce5f890179dcadabb68e"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Shared/BusyDialogProgressChecks.cs",
+      "gitBlob": "0f8e9dce86e2ac3db5be25e06c118c9e532e5177",
+      "canonicalSha256": "4d42a2e848cb03013cce682842bc5ad6dd18775c589ff78329d8b8fb77ddb146"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Shared/DateRangeDialogChecks.cs",
+      "gitBlob": "ddfd033b61db110845ff80be2859f7a9fd6645d9",
+      "canonicalSha256": "3fc741470530f6edc05d1962377be87e4766a3fdf712244e7ad76cea09fc090c"
+    },
+    {
+      "path": "lib/components/buttons/uten_export_button.dart",
+      "gitBlob": "415f4572cd07a773bad4660c7fdc09db72c30b4e",
+      "canonicalSha256": "925b5e5c4039a82b275c4b54eb0ffc7f2e3db489bce685d551dfd92585eba8da"
+    },
+    {
+      "path": "lib/components/buttons/uten_year_selection_button.dart",
+      "gitBlob": "a9aebb61d0cf2b98063d1b84beedb85868955851",
+      "canonicalSha256": "5418f416d6e30e75ae16903d96861548a99ce221ac0e11738b6a0497e67eaf08"
+    },
+    {
+      "path": "lib/components/data_display/uten_totals_summary_bar.dart",
+      "gitBlob": "2fd99deb04c94d3d77e107a86e5ea1a980404573",
+      "canonicalSha256": "b3c1751d3576f65ca018fbdbf042bb2751110e279259d6a02dadd5dcebd2d272"
+    },
+    {
+      "path": "lib/components/feedback/uten_confirmation_summary.dart",
+      "gitBlob": "e9973900a77373ba52c12029a9a085d9812f081e",
+      "canonicalSha256": "0932d96aa1ec806dbfc76f6fe939849325adf02aac2d3c27a3ccbfc2be648fe4"
+    },
+    {
+      "path": "lib/components/feedback/uten_date_range_picker.dart",
+      "gitBlob": "abdcba526d29974c40677a84399186a6d1f560ea",
+      "canonicalSha256": "2ed4faba8a5855a9201d74cbbb677f0698ae519bc81ec54a96966c9be4636158"
+    },
+    {
+      "path": "lib/components/feedback/uten_progress_dialog.dart",
+      "gitBlob": "5ce9ede9030430ba54404c91d4f5d819e7a1efc3",
+      "canonicalSha256": "e1d8f24500b1c8a6986eb3c1430b84baf754ed9a1181418b6f6bafc23c882a08"
+    },
+    {
+      "path": "lib/components/feedback/uten_reviewer_responsibility_notice.dart",
+      "gitBlob": "22178c8e9bfb01010b6a95c535783261245f4bc4",
+      "canonicalSha256": "32c8e254f9b9c5aba79fc3f4d937141f4ffa72624d24070d3cfd29e0ff24dc04"
+    },
+    {
+      "path": "lib/components/inputs/uten_dropdown_field.dart",
+      "gitBlob": "298bda9f03d8d13abb1b8f9dde3d59d5f0afab3c",
+      "canonicalSha256": "0efac46975619707345137bf4ec2a9f4d25acee44a130866e520014b44838570"
+    },
+    {
+      "path": "lib/components/inputs/uten_employee_picker.dart",
+      "gitBlob": "bb9a38ca8bfaaaaba69136821a18a6f1c42c88d4",
+      "canonicalSha256": "0604225b71b487801057478db22aeb15378b8b7e7cdf59eabed79986cda19c82"
+    },
+    {
+      "path": "lib/components/inputs/uten_employee_selection_panel.dart",
+      "gitBlob": "3d68e4d1b7ce76e24f65ef652875f7a7041d6a72",
+      "canonicalSha256": "378b1943fa3ffad9330b3741321bdeb0160cbbdd3fbf2a0af1ec64547b78d995"
+    },
+    {
+      "path": "lib/components/inputs/uten_selected_value_theme.dart",
+      "gitBlob": "40f6515da63849593e9942ab9289f092dc490d25",
+      "canonicalSha256": "e0cabb61a66bd881e63762174f0cba235ae0e77e3244a56197fec515a125ddb8"
+    },
+    {
+      "path": "lib/components/layout/uten_doc_link_picker_sheet.dart",
+      "gitBlob": "a3dbd56cefd01284df4c72c18188d082a343ce8a",
+      "canonicalSha256": "26adcd17e4f453e735a570a3d8c6a2982487582dda23f1358b4d7b673eae2650"
+    },
+    {
+      "path": "lib/components/layout/uten_editable_grid.dart",
+      "gitBlob": "dbe5dbf2a14230ad8247fabcc516856abc484d93",
+      "canonicalSha256": "01a4d877f5892e08df82a4e3c80cb5911a58334fa0f6f2c266ca6bf3871b19be"
+    },
+    {
+      "path": "lib/components/layout/uten_h_scroll_area.dart",
+      "gitBlob": "af160e08cb71a4ee6b70d521a13d2aeccacc36aa",
+      "canonicalSha256": "8cf73f404ecb6c8bd2bca311c22237d928a39eef41b5ec2b679fa2ed2c898d23"
+    },
+    {
+      "path": "lib/components/layout/uten_segment_row.dart",
+      "gitBlob": "fe4305ea0c00df0219e0153e07e5fc449542edc1",
+      "canonicalSha256": "1491a7b9029a7ad6d14d91cc55bc2928d2f8804bf2177e58069a7fdd90f0ddd0"
+    },
+    {
+      "path": "lib/features/admin/widgets/page_permission_drawer.dart",
+      "gitBlob": "5cf47e57ab7a42326edb72d561976b1e8bed813c",
+      "canonicalSha256": "7fb8e7cbfd5f4f61e12d3a582d34bd007018f2bf7eafd052126de391b777797c"
+    },
+    {
+      "path": "lib/features/basic_data/pages/product_category_page.dart",
+      "gitBlob": "ef8336c82ce56739559a6a9c28d4fc7038a468c2",
+      "canonicalSha256": "5435793bfeeb39366621a8206c6cbf00e49f66a3d5a3d42dc884ada22ad16539"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/master_data_table_view.dart",
+      "gitBlob": "6d9d06d05dcf6b10a9eddffeb346fae1ea7d06a8",
+      "canonicalSha256": "5757477bbb2d5e39568e93e5bc1db3d650358aa67d93aa69d15e609772e074b5"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/master_entity_detail_pane.dart",
+      "gitBlob": "fbc968abb30d439147e13dda8bdc8387c3c19f78",
+      "canonicalSha256": "f33de0db382c85d2cc5dbdd985709cc66f3344b7ecdd60fd2fab03cdc18efafa"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/uten_master_picker.dart",
+      "gitBlob": "533635d95c2eeb3209f3dd46cd02d36060c21380",
+      "canonicalSha256": "58f4cf778f7c550c79e9bcba1f1ebb954445a646de84b1f87d5b4878844ce327"
+    },
+    {
+      "path": "lib/features/department/widgets/uten_position_picker.dart",
+      "gitBlob": "462963a4b9a51e57b6c2c812863f1bdc28ac6ef6",
+      "canonicalSha256": "6bb4deca5fabeb5bf29b426e6be4556775d731e691441af9d2e2d77daec5f9eb"
+    },
+    {
+      "path": "lib/features/employee/widgets/department_employee_picker.dart",
+      "gitBlob": "bfbbaa39c20bdfc76fca1d17e580d0855c8d12aa",
+      "canonicalSha256": "af64f8075b871f71d43ec426c73cfe23ac5af30f6673be75767d11db357fa665"
+    },
+    {
+      "path": "lib/features/expense/widgets/expense_invoice_section.dart",
+      "gitBlob": "d24225f770ca08702e1a4ec0a78c9c94633c62bc",
+      "canonicalSha256": "8fbc75ec0c7804acb8d9ed3d6c1e9a07952353b6aa3c5b5932c3cbe07cf7fa30"
+    },
+    {
+      "path": "lib/features/finance/models/finance_procurement_workflow.dart",
+      "gitBlob": "1d11bf667d13390e5944a69f69b8c29ed75023a8",
+      "canonicalSha256": "1857fee9a79a2d3895d6893c0c9f068bb6b567f974785ea6373e5c82747a2961"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_account_flow_page.dart",
+      "gitBlob": "48b2054067e82d8e3527ff7c705e3cecfa3d031e",
+      "canonicalSha256": "bebc64432606199988afd01eec7be4b0790b179d3b1b7525789ea6f03b6e1616"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_application_continuation_page.dart",
+      "gitBlob": "20e355f4842f64ee027beae579200ef6f79fe8fc",
+      "canonicalSha256": "952750c40aa0a8281c6881d919b630c8235bfe4119dc8069f6b65b3240f451c9"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_application_edit_page.dart",
+      "gitBlob": "468c5db86bdc5095a3cf2ecdb668c7d8da4510be",
+      "canonicalSha256": "892ac8228a063f6cb284800bbe36ca0ff0d958359147323f1e3bce76ca53ebcb"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_ar_ap_overview_page.dart",
+      "gitBlob": "33963092163c69fca9eadae620dc3f66b2273d5e",
+      "canonicalSha256": "d63a56eaf606f611164e831712e78a954cbd2f52c7aea627aadb4a143583f596"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_doc_batch_entry.dart",
+      "gitBlob": "74e1967ae1a44bf6d08f66376c852b7024a8b135",
+      "canonicalSha256": "bf67d3a6f6d7738d49ed01a826c8e0d73a42dbd02b74d0e391ea9f6972e0b346"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_doc_detail_page.dart",
+      "gitBlob": "1b17e86bd35a0ea0951c3ee988455afb7e3b62c5",
+      "canonicalSha256": "fa95750b638e7d5986cd2a544b0176ddb686820c856fd731ad2fc8fb34028842"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_doc_edit_page.dart",
+      "gitBlob": "6e33240d82fd72b7db8431d92d41cab01d5dce90",
+      "canonicalSha256": "7f31ce42cb6c25c71fa632768f27aedbe5f87e88acb57a66bf210340c65328f7"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_procurement_approval_review_page.dart",
+      "gitBlob": "ffc2f6cab9afb798c6e136653492c531428ba19b",
+      "canonicalSha256": "cd86d260c3f53a8b3690eb7d398d1fddf1c3acc4bd662d16e5e7b991e5168031"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_procurement_approval_tasks_page.dart",
+      "gitBlob": "f475d3276e25aa772b5be2ef8c4af0a0e2ca5c17",
+      "canonicalSha256": "3066468bd35580f1b6ee41f7b7c3132af57124d1eeaa82f78fa44e8a90d3d76e"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_report_table_page.dart",
+      "gitBlob": "a86249982b856a6168b6de683e1b7ac20e8cfbd5",
+      "canonicalSha256": "09141151e1c0d7225b2faf61726db3448e4467d4a046b16ca740c84bdfc177a4"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_sales_order_confirmation_page.dart",
+      "gitBlob": "038316e35b3e75112f5142b17254ac443046dd29",
+      "canonicalSha256": "9fd446fd78571d9690d98d483c0f9a2a2fa53d876540ef9d1304bf499299a0c7"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_sales_order_review_page.dart",
+      "gitBlob": "68a7b158492980de77ffe5750821503bf7811d26",
+      "canonicalSha256": "f5882df1a9bb25768c69e041aaefaa43ddba4d125d510c33d36b2b0b82b97a82"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_sales_shipment_audit_review_page.dart",
+      "gitBlob": "55d22bd64383792e829b519a6540a267651d1e26",
+      "canonicalSha256": "f6f8bf7adc02441444ef8f5adeb50e42deed1250dc12019eae001b548b6e0fbb"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_statement_page.dart",
+      "gitBlob": "f209a7042f7c843a1517ad59f2b184468fceb862",
+      "canonicalSha256": "4c1c352a3229830aaea2807079a28937b348e7ee155a609fe05dd9b58bcfeb23"
+    },
+    {
+      "path": "lib/features/finance/payables/widgets/supplier_settlement_actions.dart",
+      "gitBlob": "323efc4a733afe09098180c1add092b7c477c337",
+      "canonicalSha256": "2497725bcc282f60c39b4e25d02981c81b5fc7fe85ce25ad0c07ad39bcab448f"
+    },
+    {
+      "path": "lib/features/finance/payables/widgets/supplier_settlement_panel.dart",
+      "gitBlob": "cc317af21126789c5dc2b93624b656754da46d7d",
+      "canonicalSha256": "86c3a89087e236c288d988fd30772aa08c6eada0f9cf9b33d662ced40572cdf6"
+    },
+    {
+      "path": "lib/features/finance/widgets/customer_prepayment_receipt_fields.dart",
+      "gitBlob": "d4cd442ef95039ab16074f1f3452f46f034885f0",
+      "canonicalSha256": "94bb813b9b8cf217d0434cc4c13e1122630dbcb6fdadf57ba97618a6e40a1972"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_account_picker_panel.dart",
+      "gitBlob": "c76339b946936cdc7ea14c074d811b498bb4854a",
+      "canonicalSha256": "910bbe37eb466ff8a8a166cb29d7c96cd1510cb5fba1d480380c9bda0f6c7f12"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_accounting_import_dialog.dart",
+      "gitBlob": "a01f3fcc216385f2c0a595386357f593d7ce6b20",
+      "canonicalSha256": "eaa40168b3ebf171906cf85cc19b0268cf519ebed853bd3e8385920581b1a07c"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_actual_receipt_context.dart",
+      "gitBlob": "ffb4b7f9af1806802a1bdc2897c1e408ebda4c66",
+      "canonicalSha256": "93f7575b2d71120741136111f9acf6339ec81037be82e559c2b76ad5b4ff3c13"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_asset_detail.dart",
+      "gitBlob": "e5e67d5a9a18cb8441314965f043f833a8c89fe4",
+      "canonicalSha256": "19c1f4722c8ef16bcab0596db3302bf40b269cfb80ebfaa77733d17cbbd58dff"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_asset_form_v2.dart",
+      "gitBlob": "6db57b34de39459abdf5167941ab363ad6eb27e4",
+      "canonicalSha256": "0e75238fe858a253f6c4dd8380e6b76ddaa2111fbd9cbd85a2c7e9697333cd39"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_asset_opening_group_dialog.dart",
+      "gitBlob": "673645774606fa9d75e59e7ead8b566a0b0784c3",
+      "canonicalSha256": "b9a92c6860ab1f07862833b7c25eca046f011b0b2e2a7dacaf72f8b54f8becdf"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_asset_policy_dialog.dart",
+      "gitBlob": "9bd3a02125088bb6881dc5e14a4f6605484db468",
+      "canonicalSha256": "b78ccb1026f066efb8a8279ede1886cf8b4512558d1ef96d28ba3df92250f54f"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_asset_posting_panel.dart",
+      "gitBlob": "1eaed0936e9ffcacc6bce1d94dfa01aa90ee3cbd",
+      "canonicalSha256": "d0a79e5240aeb01e01bb0e6d079afd1c6449138d108ecbd7520594447f7127c3"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_auxiliary_import_dialog.dart",
+      "gitBlob": "d872e8b4ed06ee1ef0e41413af5d538d1a070479",
+      "canonicalSha256": "c9dc4369b83d3bbc58ecec4f53c69f542d95a33bc1594d3858a9f86e31680626"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_chart_metadata_dialog.dart",
+      "gitBlob": "d6f571d1d775c8335e80b6e780dfae85c0393425",
+      "canonicalSha256": "b5a754a1d8a4bcdd3e21fec591d65b5142c8e34250189f249ecf91674529308e"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_durable_command_dialog.dart",
+      "gitBlob": "f0f772efb1080bbbddd0dbe340f4cf423a9a31e8",
+      "canonicalSha256": "e7c105f753bcae216ead9e6dc1952f39444cbaa6998690d0a55617fa86ed6e98"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_entry_columns.dart",
+      "gitBlob": "ceb4ba6bcfa72750138b7616ad3fb0a8be869609",
+      "canonicalSha256": "0b3070fda9e069d083bff06ef939e26bb10e05e5f08363b63894cc159f41c75a"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_expense_analysis_dialog.dart",
+      "gitBlob": "4fec9e5df1d35ed4a70178b41d524c0c243ab06a",
+      "canonicalSha256": "4b712fb10e07932a6f1dcb084f4638ac9c05f07c5064f24dc1c941bd9ec434b8"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_material_statement_dialog.dart",
+      "gitBlob": "fabe3b4e80f2d5590cdb0bb71de153c9a30d531e",
+      "canonicalSha256": "138438f0b054120977db8f3382535fa1cf14771268c100f8140e9dc16abcaf57"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_material_statement_editor.dart",
+      "gitBlob": "c8a645ba8308485fb982c23a06f9ad2f8f0b8493",
+      "canonicalSha256": "c6780173c12b67278bfb4659c042b8d06e0d88b759a60ea3fb90b10082a1c296"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_native_legacy_opening_dialog.dart",
+      "gitBlob": "d9bdc3df3424eabf4db791a994760871ee3aa3db",
+      "canonicalSha256": "2a5a1edfe7536e9f5f3060c33885d8582ee48f825c5969a40b007f4253ccbc6c"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_payable_statement_adjustment_dialog.dart",
+      "gitBlob": "4a8ed18a75b35de2ebb7f365dd1899553ee6b50c",
+      "canonicalSha256": "bcc9746cc94141496ed714c688f728b4587b18e2211dcc4cd0b7d227ad1ed746"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_payroll_preparation.dart",
+      "gitBlob": "080de5db6d60d1abcfc21605134150cc4c2b942c",
+      "canonicalSha256": "8a01741c080cdc5555ac359f5b7491bcf116c468285d2a53441d3254a826afd8"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_subcontract_loss_policy_dialog.dart",
+      "gitBlob": "92e7bf65d7ebf33ba19bbdfe7607b3b67d8b31e1",
+      "canonicalSha256": "b2eedaa994fff6659aefb981daec1e6c76ed9efc5538a38a9a6587375d5a7b59"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_subcontract_quantity_evidence_dialog.dart",
+      "gitBlob": "5c0861eb28a172cf51efabaf1e77d49c3a390254",
+      "canonicalSha256": "62716f0e6f7cee3465926ebaafa63ce4d7ee78eef5ccd79f1a5069fc5a8c3187"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_template_input_dialog.dart",
+      "gitBlob": "7a94400bd1deb9997a8418b041138e5cbe17b276",
+      "canonicalSha256": "133c17a9108d992774a79112089605aaa831004c49a27c679b7a2f44a2375520"
+    },
+    {
+      "path": "lib/features/production/models/production_draw_request.dart",
+      "gitBlob": "f55b102f02a5826eaaf01bdf47a99cc519bb7aef",
+      "canonicalSha256": "b42e91c14463b1e7d9f99cde413761b2282d50d7fa8de8dea23ab56ee978925a"
+    },
+    {
+      "path": "lib/features/production/pages/material_analysis_material_table.dart",
+      "gitBlob": "fd0d0e2dba28cb29530ec8c6d750ffb383625f69",
+      "canonicalSha256": "9c4b9b955ce970ec4bb40b36a5ab03c1ad0b3b691ababb6ea09d14aabffda241"
+    },
+    {
+      "path": "lib/features/production/pages/production_draw_request_page.dart",
+      "gitBlob": "be332c8dd6408cdecf708cc0615438befcb8ecc5",
+      "canonicalSha256": "3fac8afd9105aa4b362811304f01370b6351bc6156e6af52525f36b6e5b9da92"
+    },
+    {
+      "path": "lib/features/production/pages/production_material_increment_pages.dart",
+      "gitBlob": "be1b2f36eaf604f69ccf87a7a5660495f814165b",
+      "canonicalSha256": "2e37c22449d965b27b196e8bf55b76691aea68c1051e279499efba3600f5d885"
+    },
+    {
+      "path": "lib/features/production/pages/production_overproduction_rate_pages.dart",
+      "gitBlob": "d37c0042ff234aa6be4b92e4ac44957dff3c1dcb",
+      "canonicalSha256": "19526049ac582d22fcbe172f002f64738409c2a040504dc8859b8c9f29c7c9f7"
+    },
+    {
+      "path": "lib/features/production/pages/production_plan_detail_page.dart",
+      "gitBlob": "5b3e748f9f7653b9f18cc4124cea586439c9d2ce",
+      "canonicalSha256": "1201b830acebd07f9f2bb76defbed95506d82282d3b7f54e852bc8c85a6592af"
+    },
+    {
+      "path": "lib/features/production/widgets/production_daily_grid_columns.dart",
+      "gitBlob": "7feabf212ada85453adc8370f8809cfdae717c13",
+      "canonicalSha256": "67af36c706a55a2281d331e39074ebe9163e7020d066cf4e9f65803deca2450b"
+    },
+    {
+      "path": "lib/features/production/widgets/production_material_return_request_sheet.dart",
+      "gitBlob": "5d9232618d98cd9fb8a58dc5d4c928c24103f04a",
+      "canonicalSha256": "d8ac982afb880838f8ee663956771c99e85fcd42570f6d99cbe451d99f9b11e7"
+    },
+    {
+      "path": "lib/features/production/widgets/production_material_settlement_sheet.dart",
+      "gitBlob": "eccb19a6b7ec440a29bf93c24246974f4ee993f3",
+      "canonicalSha256": "b52504f8f3132be914f4fb6fc2099d385f63c09e1f6fdaf6ecd31e954ee87ec8"
+    },
+    {
+      "path": "lib/features/production/widgets/start_confirmation_sheet.dart",
+      "gitBlob": "16fb43176602fb0cbc053e6b7f223553f41d66c1",
+      "canonicalSha256": "d73753d7da126fa5d7769cbc8f03b0b2e90e534a83b5d5f14228ac547fe7d80a"
+    },
+    {
+      "path": "lib/features/production/widgets/workshop_task_material_table.dart",
+      "gitBlob": "593a72ece5f3aaaa2b5ff6b01a1e96be8672727d",
+      "canonicalSha256": "a2634f9e260c06c0582379966252a8eb8a6c5dbb75717169601e20a38d73c6fb"
+    },
+    {
+      "path": "lib/features/quality/pages/quality_batch_approval_page.dart",
+      "gitBlob": "8a4a0c270abf1f53f05b9f986f16803841b3292c",
+      "canonicalSha256": "5f8c4edf4f82a15f51c1d4d730aa7a8a5b82f8c0fee21c00390b5fd5fc3ad18c"
+    },
+    {
+      "path": "lib/features/sales/models/sales_source_discount.dart",
+      "gitBlob": "535e2629a3bc21d0c20cc67fa570bfe5a83ca161",
+      "canonicalSha256": "a84f24ce327a8d716cc35eeae600da29b16968fd82340b8309ae420917da34d7"
+    },
+    {
+      "path": "lib/features/sales/pages/sales_doc_detail_page.dart",
+      "gitBlob": "0737f514411dd7b82438b390a90bb7571130471a",
+      "canonicalSha256": "98082ba4bf051bcc36963a9480afc54654515a3cae57308261b0c01525aeea3f"
+    },
+    {
+      "path": "lib/features/sales/pages/sales_doc_edit_page.dart",
+      "gitBlob": "8c0b3f20bb9ff44e29bf74a14917586624132fbe",
+      "canonicalSha256": "55356f6317fc4518145997a1f1296b957c5abb339ad1aaa8faadeb617725e1b8"
+    },
+    {
+      "path": "lib/features/sales/widgets/sales_doc_link_picker.dart",
+      "gitBlob": "62f6d286182b01123dab77ecf3cefc2dcf2da952",
+      "canonicalSha256": "cd08932d3a4c623fd7d086867b6d466b7c0673830b91b8644d02e9e7eabe84f7"
+    },
+    {
+      "path": "lib/features/sales/widgets/sales_grid_columns.dart",
+      "gitBlob": "7425cdcdbdcf9297a814ea7774e8a27e563766ef",
+      "canonicalSha256": "c456e347e48d38c1f35b56baf7c4ffc2c4e05b140b937ef3aac042d13696c848"
+    },
+    {
+      "path": "lib/features/sales/widgets/sales_shipment_task_workbench.dart",
+      "gitBlob": "436ac94c1aa67dc47d9693aa3e933be3a3517a32",
+      "canonicalSha256": "4ea7a284efd80c38945b0b960a587f1bc9a4b2cbaba7122cb6d7c42c290ee170"
+    },
+    {
+      "path": "lib/features/stock/pages/instant_inventory_page.dart",
+      "gitBlob": "1ef665d8984b77acd78079f8eba99f5b3035c669",
+      "canonicalSha256": "ec4d5a6ac71492592f200083ae93f2a996ce4c826ecadbe210cad0094aa79963"
+    },
+    {
+      "path": "lib/features/warehouse/materialbin/pages/workshop_material_issue_page.dart",
+      "gitBlob": "08794237feb7b7697a554c5598b62a51036bd187",
+      "canonicalSha256": "96feb83def8a6bd65ed0cb8d74b2d3b942301c351b8280f97885ec925b37b04c"
+    },
+    {
+      "path": "lib/features/warehouse/materialbin/widgets/workshop_material_request_dialog.dart",
+      "gitBlob": "27a3a86717d47a467f5d2b60528834a905a4cb06",
+      "canonicalSha256": "61d4b9b9b5141d7b4dcfb58091abce6d5607431c84cea3aa9e7f290311693e82"
+    },
+    {
+      "path": "lib/features/warehouse/models/warehouse_task_center_record.dart",
+      "gitBlob": "ee01026f9a8f24b4eb0399bca2b36751e173cedd",
+      "canonicalSha256": "0b290ec2be555715f5b0303bd04ec4d26b3a2e752d5c0800284367c0428a2da2"
+    },
+    {
+      "path": "lib/features/warehouse/pages/inbound_arrival_registration_page.dart",
+      "gitBlob": "cb42891996b704cd3ea20cb519c833c85e9ec182",
+      "canonicalSha256": "31bfc6a638b14aa8f2272e497a8ad4ddc634fc6470336be96f6b72c5fc0d0fbc"
+    },
+    {
+      "path": "lib/features/warehouse/pages/production_finished_arrival_registration_page.dart",
+      "gitBlob": "4efed7306955b61a83f5ddba49f58918843a27d7",
+      "canonicalSha256": "124ae4ad30e97727fa01c7122a3609db46f03d9b2b72f366b45affe4a28738f3"
+    },
+    {
+      "path": "lib/features/warehouse/pages/production_finished_batch_stock_in_page.dart",
+      "gitBlob": "c98f6f252a7d882cdefc016b2deb2c5b15ad291e",
+      "canonicalSha256": "eb6be56bf75ce19a219f5940542376e76adaf710da12e7cc562fec6e0935b104"
+    },
+    {
+      "path": "lib/features/warehouse/pages/warehouse_quality_result_detail_page.dart",
+      "gitBlob": "c93eb9ea6e3bb4effded07db47edba8b28cdcb5f",
+      "canonicalSha256": "580b14246fe80dfaadf4dcee857b4bf17bf4433199adef2b658de0db07564aea"
+    },
+    {
+      "path": "lib/features/warehouse/widgets/warehouse_inbound_allocation_view.dart",
+      "gitBlob": "f9d039cb484f151f1cd223c97bf6b32dee02251f",
+      "canonicalSha256": "ee5e6f0eec26366efb99c3c121fd11b45dac4ac5aadc51e68408c1561b7e285d"
+    },
+    {
+      "path": "lib/features/warehouse/widgets/warehouse_inbound_expectations_view.dart",
+      "gitBlob": "24068369323ad916c38527842768234d4981d046",
+      "canonicalSha256": "d5b51596fe6f8153b043673628596fe8f79815610c74c131f1fb8024f3d8447e"
+    },
+    {
+      "path": "lib/features/warehouse/widgets/warehouse_task_record_actions.dart",
+      "gitBlob": "1a5d539ec37570a2546844f324c75778a83970aa",
+      "canonicalSha256": "54d7449300a565da813b326e967256bad3a69cf1c64724b24e8c6288909ab157"
+    },
+    {
+      "path": "lib/features/warehouse/widgets/warehouse_task_records_view.dart",
+      "gitBlob": "9cf15506295da19901e4f75207eb567e2c4bcd10",
+      "canonicalSha256": "3f1394d5ce41024ff5591a53664ad6311ed6f29b7f12ae2dfc1783c5b05a56b3"
+    },
+    {
+      "path": "lib/shared/stock_inventory/instant_inventory_row.dart",
+      "gitBlob": "bc4e72bd596860b0c1ca3725acc4753aae80cba1",
+      "canonicalSha256": "331826e9011c81c33b5daafbf3ed582634e3605051785db4a5d433d76de3d283"
+    },
+    {
+      "path": "lib/shared/warehouse/warehouse_task_badges.dart",
+      "gitBlob": "ff8d19ad4f397dca12e8a07aee6591a72537b4db",
+      "canonicalSha256": "3812a64ed08d81f2f299034c54bb9237f2a246f8f8a44826e1e7ddc1fcdc13d8"
+    },
+    {
+      "path": "lib/shared/widgets/uten_department_picker.dart",
+      "gitBlob": "32152cb32d775f12f70680cc153f2cb6f8ff582a",
+      "canonicalSha256": "c73e0f6117d15d4d867baff4978a1274bbb33f98e90ec68033ab395683d14b2a"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/procurement/ProcurementApprovalContracts.java",
+      "gitBlob": "67487138649fae2a5b784b5d5205418b35303316",
+      "canonicalSha256": "299b11ef897760fde6db3d7207badd6af1c3391f803224d50f346f80ed8ade0a"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/procurement/ProcurementApprovalTaskSummary.java",
+      "gitBlob": "cc5120777d03f31f0049a45ad4df7f4cf3242453",
+      "canonicalSha256": "9700ddd4c6bb835a01589f20cea09c65b5ca7d0a7d56f9d596f507fc18bbba4d"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/procurement/ProcurementFinanceApprovalService.java",
+      "gitBlob": "8cf69a1355dea203d090f178a26618bb501e10cf",
+      "canonicalSha256": "1c14e77031e551129642057799526fce6c29c1437fa62eb0b74514c02f9ad6e2"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/receivables/ShipmentReceivablePositionAdapter.java",
+      "gitBlob": "49f8a61011e47b94de2005b876016849add6e062",
+      "canonicalSha256": "5afcbcba70374b751af8de35ca7e165ccbc33349c4286d852886469c415a102c"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/report/FinancePartySummaryTemplate.java",
+      "gitBlob": "88878f9730e4aea6f69c4f8547f28e26831329d5",
+      "canonicalSha256": "348189539d3db44354bcbb3b78a589ae74333ea3499b4b416b95f8ba6a9ba22d"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/report/FinanceReportController.java",
+      "gitBlob": "fcc701035c90052eba58cd98be8290196a980a44",
+      "canonicalSha256": "33e26d0d20712db2a03fb42df7b77d7d5d735d59f982a0b8768fc83d614f177d"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/report/FinanceReportService.java",
+      "gitBlob": "b12f4685679991725e4052bf5d2688a9b2706902",
+      "canonicalSha256": "62ec8cd261d13471dd1c98a0cc77057dd8f6d56cde02f28dc9916ba25be45584"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/statement/FinanceAuxiliaryReports.java",
+      "gitBlob": "15cb40fbd64a1586d13491e89348c20972237449",
+      "canonicalSha256": "31f90c40f3f83db4489b26dbf9b8582d6a6d89d5963fd48f0fe8cf46210e8d6e"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/master/lifecycle/MasterReferenceCatalog.java",
+      "gitBlob": "36adef487ed9c29a43c7b0b353adcafb3f010d4a",
+      "canonicalSha256": "c5ea9bccc9468608e1dffae37238b70103882eaa0548d28f1e6883d43dd5cabb"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/master/lifecycle/MasterReferenceGuard.java",
+      "gitBlob": "2b6d9315b8e0061bd8503adf99a0f5a1086c5ce2",
+      "canonicalSha256": "ca2af9df6c7070a927f5690a63272716de711f12c442186e5a7ff72b2dd53c0e"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/production/execution/ProductionDrawRequest.java",
+      "gitBlob": "de84999045f86bf30947f9abda867da60796614d",
+      "canonicalSha256": "a11fcd1b6ae93de8ed712daa4507519adc4517349d9f18655d25495d9916e631"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/production/execution/ProductionDrawRequestService.java",
+      "gitBlob": "bf0b8e1cb2dcb8970310d3166f4ce51e67dcf7d4",
+      "canonicalSha256": "05af04a7f98ad10c38f000333c525267dd001cc8d20c240e77620307e87bbddd"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/stock/StockQueryService.java",
+      "gitBlob": "ad9221b1d758cdc7634e0660e0babd1360e15a6a",
+      "canonicalSha256": "395674cf0c09b225f825332a13ae0cc48653eacdfcced50eb602ff80cee537af"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/stock/dto/InstantInventoryRow.java",
+      "gitBlob": "3f18541ba092a112925b0e472f6febb6bc1a70b6",
+      "canonicalSha256": "bd80fadb2fe4b86d84f5e794a7b87159dfa700664fbce573301d9b58be9500e1"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/warehouse/taskcenter/WarehouseInboundTaskCenterQueryService.java",
+      "gitBlob": "74ea111d5cb2ace190abc857380c78d257112d5c",
+      "canonicalSha256": "6ea4d6d69f4e41acbca82e91a65020046d2f655ddb046f4589da925681518561"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/warehouse/taskcenter/WarehouseInboundTaskCenterSql.java",
+      "gitBlob": "59f41140ad70a0b94e8fa810a67207d4fb68a7f0",
+      "canonicalSha256": "101be0ae504ebbf95c0fcf2dda1b2f76775e7c86145962cfcb0c781c4dbcb85d"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/warehouse/taskcenter/WarehouseOutboundTaskCenterQueryService.java",
+      "gitBlob": "1c65309a1be60735eb62fc6d5764f2a163a056ed",
+      "canonicalSha256": "775a1742e30e532f5089a2e44e39762f50183d26908cba635f196eb288149af2"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/warehouse/taskcenter/WarehouseOutboundTaskCenterSql.java",
+      "gitBlob": "e3e739f2096b6c8a95b0ad41fa400150c3e03936",
+      "canonicalSha256": "6153cbefb3d40c1c85375eb40ddb50b7754e0d9499c731e39b79e0a24fe35253"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/warehouse/taskcenter/WarehouseTaskCenterContracts.java",
+      "gitBlob": "67525f0e3d7251d905a5c64af8a561e61733fef4",
+      "canonicalSha256": "a1c16463308ba6e1dd958bebec6fe7fc374797c51f72d7e3c3c5022c23576ead"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/warehouse/taskcenter/WarehouseTaskCenterExportService.java",
+      "gitBlob": "91facadc299a6d161aa2bfe371651b246ee90fc9",
+      "canonicalSha256": "76c34175413d782c3d94a7ff0a2f3b91451312a819da3ea49240d2e0cf4ed1e5"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/warehouse/taskcenter/WarehouseTaskHeaderQuery.java",
+      "gitBlob": "397f7a582eacc5a9a9ce3dc3f5484b576c367166",
+      "canonicalSha256": "8fd283485aa995826d39cc7a47b465797ba3d01f4e61b8bde0407997c02300ed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/warehouse/taskcenter/WarehouseWorkshopMaterialTaskProjection.java",
+      "gitBlob": "1981d81a3c90adbb4287d93d2f59985d25a18822",
+      "canonicalSha256": "074cffeebda8efe57a069955f499ba91b356d228174b25e23d73f10c67fc56e1"
+    },
+    {
+      "path": "server/src/main/resources/db/migration/V1128__goods_used_identity_delete_guard.sql",
+      "gitBlob": "85c1ce4bac03e736a6af34802de7f9c9c8574506",
+      "canonicalSha256": "b88eefe0388108a45c8d6f79d9814bd24068b4395440ec7b09f97c1db3d7834a"
+    },
+    {
+      "path": "server/src/main/resources/permission-help.json",
+      "gitBlob": "bd7db6cf453965a3fa80b901f01215878e33e4ac",
+      "canonicalSha256": "159852f96d4029945ee800b68a55e884494db8a6e1a6440205d44b2197a2e20e"
+    }
+  ]
+}

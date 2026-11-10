@@ -1,0 +1,133 @@
+// Temporary native route: same original test functions, isolated preferences.
+import 'dart:ffi';
+import 'dart:io';
+
+import 'package:ffi/ffi.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:integration_test/integration_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
+import 'package:win32/win32.dart';
+
+import '../shared_table_pointer_runtime_test.dart' as pointer;
+
+final _windows = <int>[];
+int _ownVisibleWindow(int window, int unused) {
+  final owner = calloc<Uint32>();
+  try {
+    GetWindowThreadProcessId(window, owner);
+    if (owner.value == pid && IsWindowVisible(window) != 0) _windows.add(window);
+  } finally {
+    calloc.free(owner);
+  }
+  return 1;
+}
+
+void main() {
+  final binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
+  SharedPreferences.setMockInitialValues({});
+  final oldWorkObserver = debugMasterTableWorkObserver;
+  var probeQueued = false;
+  var observedOverflow = false;
+  debugMasterTableWorkObserver = (operation, count) {
+    oldWorkObserver?.call(operation, count);
+    if (operation != 'collectRows' || probeQueued || observedOverflow) return;
+    probeQueued = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      probeQueued = false;
+      var hasTarget = false;
+      final ranges = <Map<String, double>>[];
+      void inspect(Element element) {
+        final widget = element.widget;
+        if (widget is Text && widget.data == 'r59-2') hasTarget = true;
+        if (widget is Scrollbar && widget.controller != null) {
+          for (final position in widget.controller!.positions) {
+            if (position.hasContentDimensions && position.hasViewportDimension &&
+                position.axis == Axis.horizontal) {
+              ranges.add({'max':position.maxScrollExtent,'pixels':position.pixels,'viewport':position.viewportDimension});
+            }
+          }
+        }
+        element.visitChildElements(inspect);
+      }
+      final root = binding.rootElement;
+      if (root != null) inspect(root);
+      if (hasTarget && ranges.any((range) => range['max']! > 50)) {
+        observedOverflow = true;
+        print('NATIVE_TARGET_OVERFLOW_CONFIRMED $ranges');
+      }
+    });
+  };
+  tearDownAll(() {
+    debugMasterTableWorkObserver = oldWorkObserver;
+    expect(observedOverflow, isTrue, reason: 'Original drag assertion requires measured horizontal overflow >50');
+  });
+  final originalReporter = reportTestException;
+  reportTestException = (details, description) {
+    try {
+      final evidence = <Map<String, Object?>>[];
+      void inspect(Element element) {
+        final widget = element.widget;
+        if (widget is Scrollbar && widget.controller != null) {
+          evidence.add({'scrollbar': widget.controller.hashCode, 'positions': [
+            for (final position in widget.controller!.positions)
+              {'axis':position.axis.name,'pixels':position.pixels,'max':position.maxScrollExtent,
+               'viewport':position.viewportDimension},
+          ]});
+        }
+        if (widget is Text && widget.data == 'r59-2') {
+          final box = element.findRenderObject();
+          evidence.add({'target':'synthetic-r59-2','dragDevices':ScrollConfiguration.of(element).dragDevices.map((kind)=>kind.name).toList(),
+            'box':box is RenderBox ? '${box.localToGlobal(Offset.zero)} ${box.size}' : null});
+        }
+        element.visitChildElements(inspect);
+      }
+      final root = binding.rootElement;
+      if (root != null) inspect(root);
+      print('NATIVE_POINTER_FAILURE_GEOMETRY $evidence');
+    } catch (diagnostic) {
+      print('NATIVE_POINTER_DIAGNOSTIC_FAILED ${diagnostic.runtimeType}');
+    } finally {
+      originalReporter(details, description);
+    }
+  };
+  setUpAll(() async {
+    expect(const bool.fromEnvironment('UTEN_LOCAL_TEST'), isTrue);
+    EnumWindows(Pointer.fromFunction<Uint32 Function(IntPtr, IntPtr)>(_ownVisibleWindow, 0), 0);
+    expect(_windows, hasLength(1), reason: 'Only this test process owns the resized window');
+    final client = calloc<RECT>();
+    final outer = calloc<RECT>();
+    try {
+      expect(GetClientRect(_windows.single, client), isNot(0));
+      expect(GetWindowRect(_windows.single, outer), isNot(0));
+      final view = binding.platformDispatcher.views.single;
+      final ratio = view.devicePixelRatio;
+      // Native font metrics make the short-label table fit at 800 logical px.
+      // Use a real 640px client to satisfy its existing horizontal-overflow
+      // precondition, keeping the original 600px vertical assertions unchanged.
+      final width = (640 * ratio).round();
+      final height = (600 * ratio).round();
+      final frameWidth = outer.ref.right - outer.ref.left - client.ref.right;
+      final frameHeight = outer.ref.bottom - outer.ref.top - client.ref.bottom;
+      expect(SetWindowPos(_windows.single, 0, 0, 0, width + frameWidth,
+        height + frameHeight, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE), isNot(0));
+      final deadline = DateTime.now().add(const Duration(seconds: 5));
+      while (DateTime.now().isBefore(deadline) &&
+          ((view.physicalSize.width / view.devicePixelRatio - 640).abs() > .5 ||
+           (view.physicalSize.height / view.devicePixelRatio - 600).abs() > .5)) {
+        await Future<void>.delayed(const Duration(milliseconds: 25));
+      }
+      expect(GetClientRect(_windows.single, client), isNot(0));
+      expect(client.ref.right, width);
+      expect(client.ref.bottom, height);
+      expect(view.physicalSize.width / view.devicePixelRatio, closeTo(640, .5));
+      expect(view.physicalSize.height / view.devicePixelRatio, closeTo(600, .5));
+      print('NATIVE_POINTER_VIEWPORT client=${client.ref.right}x${client.ref.bottom} logical=640x600 ownPid=$pid');
+    } finally {
+      calloc.free(client);
+      calloc.free(outer);
+    }
+  });
+  pointer.main();
+}

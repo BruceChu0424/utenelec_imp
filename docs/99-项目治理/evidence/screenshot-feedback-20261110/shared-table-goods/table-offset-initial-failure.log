@@ -1,0 +1,531 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart
+00:00 +0: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart: 内容少：自然横滚条底边距最后一行 11
+内容少：横滚条与最后一行的间距 = 11.0
+00:02 +1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/uten_editable_grid_hscrollbar_test.dart: 空编辑表保留超宽表头横滚且空态保持在可视区
+00:02 +1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart: 内容多：横滚条钉在表体区域底部（视口底）
+内容多：横滚条底边 = 600.0（视口高 600）
+00:02 +2: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/uten_editable_grid_hscrollbar_test.dart: 空编辑表保留超宽表头横滚且空态保持在可视区
+00:03 +2: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart: 带悬浮批量按钮（颜色主档同款）：内容少时横滚条仍隔 11 不被 200 留白顶开
+批量表内容少：横滚条与最后一行的间距 = 11.0（应 11，非 200）
+00:03 +3: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/uten_editable_grid_hscrollbar_test.dart: 空编辑表保留超宽表头横滚且空态保持在可视区
+00:03 +4: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/uten_editable_grid_hscrollbar_test.dart: 空编辑表保留超宽表头横滚且空态保持在可视区
+00:04 +5: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/uten_editable_grid_hscrollbar_test.dart: 空编辑表保留超宽表头横滚且空态保持在可视区
+00:04 +6: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/uten_editable_grid_hscrollbar_test.dart: 空编辑表保留超宽表头横滚且空态保持在可视区
+00:04 +7: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/uten_editable_grid_hscrollbar_test.dart: 空编辑表保留超宽表头横滚且空态保持在可视区
+00:04 +8: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/uten_editable_grid_hscrollbar_test.dart: 空编辑表保留超宽表头横滚且空态保持在可视区
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: a numeric value within <1> of <320>
+  Actual: <0.0>
+   Which:  differs by <320.0>
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/uten_editable_grid_hscrollbar_test.dart:61:5)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/uten_editable_grid_hscrollbar_test.dart line 61
+The test description was:
+  空编辑表保留超宽表头横滚且空态保持在可视区
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:05 +8 -1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart: 长表滚到底保留实际操作组让位，横滚条跟随实际末行
+00:05 +8 -1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/uten_editable_grid_hscrollbar_test.dart: 空编辑表保留超宽表头横滚且空态保持在可视区 [E]
+  Test failed. See exception logs above.
+  The test description was: 空编辑表保留超宽表头横滚且空态保持在可视区
+  
+00:05 +9 -1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart: 长表滚到底保留实际操作组让位，横滚条跟随实际末行
+00:05 +10 -1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart: 长表滚到底保留实际操作组让位，横滚条跟随实际末行
+00:05 +11 -1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart: 长表滚到底保留实际操作组让位，横滚条跟随实际末行
+00:06 +12 -1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart: 长表滚到底保留实际操作组让位，横滚条跟随实际末行
+00:06 +13 -1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart: 长表滚到底保留实际操作组让位，横滚条跟随实际末行
+00:06 +14 -1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart: 长表滚到底保留实际操作组让位，横滚条跟随实际末行
+00:06 +15 -1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart: 长表滚到底保留实际操作组让位，横滚条跟随实际末行
+00:07 +16 -1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart: 长表滚到底保留实际操作组让位，横滚条跟随实际末行
+00:07 +17 -1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart: 长表滚到底保留实际操作组让位，横滚条跟随实际末行
+00:07 +17 -1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/uten_editable_grid_hscrollbar_test.dart: 内容少：自然横滚条在最后一行下方且有间距
+内容少：横滚条与最后一行的间距 = 11.0
+00:07 +18 -1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart: 长表滚到底保留实际操作组让位，横滚条跟随实际末行
+
+Warning: A call to drag() with finder "Found 1 widget with type "ListView": [
+  ListView(scrollDirection: vertical, ScrollController#ab0b0(one client, offset 0.0), ClampingScrollPhysics, shrinkWrap: shrink-wrapping, scrollCacheExtent: ScrollCacheExtent.pixels(240.0), padding: EdgeInsets(0.0, 0.0, 0.0, 75.0), dependencies: [ScrollConfiguration]),
+]" derived an Offset (Offset(1056.0, 352.5)) that would not hit test on the specified widget.
+Maybe the widget is actually off-screen, or another widget is obscuring it, or the widget cannot receive pointer events.
+Indeed, Offset(1056.0, 352.5) is outside the bounds of the root of the render tree, Size(800.0, 600.0).
+The finder corresponds to this RenderBox: RenderClipRect#e3c65 relayoutBoundary=up14
+The hit test result at that offset is: HitTestResult(HitTestEntry<HitTestTarget>#84b90(_ReusableRenderView#8e4b5), HitTestEntry<HitTestTarget>#7da37(<AutomatedTestWidgetsFlutterBinding>))
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2165:25)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1947:12)
+#2      WidgetController.drag (package:flutter_test/src/controller.dart:1604:7)
+#3      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart:248:20)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+#6      StackZoneSpecification._registerCallback.<anonymous closure> (package:stack_trace/src/stack_zone_specification.dart:114:42)
+<asynchronous suspension>
+To silence this warning, pass "warnIfMissed: false" to "drag()".
+To make this warning fatal, set WidgetController.hitTestWarningShouldBeFatal to true.
+
+
+Warning: A call to drag() with finder "Found 1 widget with type "ListView": [
+  ListView(scrollDirection: vertical, ScrollController#ab0b0(one client, offset 0.0), ClampingScrollPhysics, shrinkWrap: shrink-wrapping, scrollCacheExtent: ScrollCacheExtent.pixels(240.0), padding: EdgeInsets(0.0, 0.0, 0.0, 75.0), dependencies: [ScrollConfiguration]),
+]" derived an Offset (Offset(1056.0, 352.5)) that would not hit test on the specified widget.
+Maybe the widget is actually off-screen, or another widget is obscuring it, or the widget cannot receive pointer events.
+Indeed, Offset(1056.0, 352.5) is outside the bounds of the root of the render tree, Size(800.0, 600.0).
+The finder corresponds to this RenderBox: RenderClipRect#e3c65 relayoutBoundary=up14
+The hit test result at that offset is: HitTestResult(HitTestEntry<HitTestTarget>#dc10d(_ReusableRenderView#8e4b5), HitTestEntry<HitTestTarget>#60457(<AutomatedTestWidgetsFlutterBinding>))
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2165:25)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1947:12)
+#2      WidgetController.drag (package:flutter_test/src/controller.dart:1604:7)
+#3      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart:248:20)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+#6      StackZoneSpecification._registerCallback.<anonymous closure> (package:stack_trace/src/stack_zone_specification.dart:114:42)
+<asynchronous suspension>
+To silence this warning, pass "warnIfMissed: false" to "drag()".
+To make this warning fatal, set WidgetController.hitTestWarningShouldBeFatal to true.
+
+
+Warning: A call to drag() with finder "Found 1 widget with type "ListView": [
+  ListView(scrollDirection: vertical, ScrollController#ab0b0(one client, offset 0.0), ClampingScrollPhysics, shrinkWrap: shrink-wrapping, scrollCacheExtent: ScrollCacheExtent.pixels(240.0), padding: EdgeInsets(0.0, 0.0, 0.0, 75.0), dependencies: [ScrollConfiguration]),
+]" derived an Offset (Offset(1056.0, 352.5)) that would not hit test on the specified widget.
+Maybe the widget is actually off-screen, or another widget is obscuring it, or the widget cannot receive pointer events.
+Indeed, Offset(1056.0, 352.5) is outside the bounds of the root of the render tree, Size(800.0, 600.0).
+The finder corresponds to this RenderBox: RenderClipRect#e3c65 relayoutBoundary=up14
+The hit test result at that offset is: HitTestResult(HitTestEntry<HitTestTarget>#0666c(_ReusableRenderView#8e4b5), HitTestEntry<HitTestTarget>#8af25(<AutomatedTestWidgetsFlutterBinding>))
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2165:25)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1947:12)
+#2      WidgetController.drag (package:flutter_test/src/controller.dart:1604:7)
+#3      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart:248:20)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+#6      StackZoneSpecification._registerCallback.<anonymous closure> (package:stack_trace/src/stack_zone_specification.dart:114:42)
+<asynchronous suspension>
+To silence this warning, pass "warnIfMissed: false" to "drag()".
+To make this warning fatal, set WidgetController.hitTestWarningShouldBeFatal to true.
+
+
+Warning: A call to drag() with finder "Found 1 widget with type "ListView": [
+  ListView(scrollDirection: vertical, ScrollController#ab0b0(one client, offset 0.0), ClampingScrollPhysics, shrinkWrap: shrink-wrapping, scrollCacheExtent: ScrollCacheExtent.pixels(240.0), padding: EdgeInsets(0.0, 0.0, 0.0, 75.0), dependencies: [ScrollConfiguration]),
+]" derived an Offset (Offset(1056.0, 352.5)) that would not hit test on the specified widget.
+Maybe the widget is actually off-screen, or another widget is obscuring it, or the widget cannot receive pointer events.
+Indeed, Offset(1056.0, 352.5) is outside the bounds of the root of the render tree, Size(800.0, 600.0).
+The finder corresponds to this RenderBox: RenderClipRect#e3c65 relayoutBoundary=up14
+The hit test result at that offset is: HitTestResult(HitTestEntry<HitTestTarget>#b39ff(_ReusableRenderView#8e4b5), HitTestEntry<HitTestTarget>#dab2e(<AutomatedTestWidgetsFlutterBinding>))
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2165:25)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1947:12)
+#2      WidgetController.drag (package:flutter_test/src/controller.dart:1604:7)
+#3      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart:248:20)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+#6      StackZoneSpecification._registerCallback.<anonymous closure> (package:stack_trace/src/stack_zone_specification.dart:114:42)
+<asynchronous suspension>
+To silence this warning, pass "warnIfMissed: false" to "drag()".
+To make this warning fatal, set WidgetController.hitTestWarningShouldBeFatal to true.
+
+
+Warning: A call to drag() with finder "Found 1 widget with type "ListView": [
+  ListView(scrollDirection: vertical, ScrollController#ab0b0(one client, offset 0.0), ClampingScrollPhysics, shrinkWrap: shrink-wrapping, scrollCacheExtent: ScrollCacheExtent.pixels(240.0), padding: EdgeInsets(0.0, 0.0, 0.0, 75.0), dependencies: [ScrollConfiguration]),
+]" derived an Offset (Offset(1056.0, 352.5)) that would not hit test on the specified widget.
+Maybe the widget is actually off-screen, or another widget is obscuring it, or the widget cannot receive pointer events.
+Indeed, Offset(1056.0, 352.5) is outside the bounds of the root of the render tree, Size(800.0, 600.0).
+The finder corresponds to this RenderBox: RenderClipRect#e3c65 relayoutBoundary=up14
+The hit test result at that offset is: HitTestResult(HitTestEntry<HitTestTarget>#041a6(_ReusableRenderView#8e4b5), HitTestEntry<HitTestTarget>#7c988(<AutomatedTestWidgetsFlutterBinding>))
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2165:25)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1947:12)
+#2      WidgetController.drag (package:flutter_test/src/controller.dart:1604:7)
+#3      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart:248:20)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+#6      StackZoneSpecification._registerCallback.<anonymous closure> (package:stack_trace/src/stack_zone_specification.dart:114:42)
+<asynchronous suspension>
+To silence this warning, pass "warnIfMissed: false" to "drag()".
+To make this warning fatal, set WidgetController.hitTestWarningShouldBeFatal to true.
+
+
+Warning: A call to drag() with finder "Found 1 widget with type "ListView": [
+  ListView(scrollDirection: vertical, ScrollController#ab0b0(one client, offset 0.0), ClampingScrollPhysics, shrinkWrap: shrink-wrapping, scrollCacheExtent: ScrollCacheExtent.pixels(240.0), padding: EdgeInsets(0.0, 0.0, 0.0, 75.0), dependencies: [ScrollConfiguration]),
+]" derived an Offset (Offset(1056.0, 352.5)) that would not hit test on the specified widget.
+Maybe the widget is actually off-screen, or another widget is obscuring it, or the widget cannot receive pointer events.
+Indeed, Offset(1056.0, 352.5) is outside the bounds of the root of the render tree, Size(800.0, 600.0).
+The finder corresponds to this RenderBox: RenderClipRect#e3c65 relayoutBoundary=up14
+The hit test result at that offset is: HitTestResult(HitTestEntry<HitTestTarget>#967b5(_ReusableRenderView#8e4b5), HitTestEntry<HitTestTarget>#3348c(<AutomatedTestWidgetsFlutterBinding>))
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2165:25)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1947:12)
+#2      WidgetController.drag (package:flutter_test/src/controller.dart:1604:7)
+#3      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart:248:20)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+#6      StackZoneSpecification._registerCallback.<anonymous closure> (package:stack_trace/src/stack_zone_specification.dart:114:42)
+<asynchronous suspension>
+To silence this warning, pass "warnIfMissed: false" to "drag()".
+To make this warning fatal, set WidgetController.hitTestWarningShouldBeFatal to true.
+
+
+Warning: A call to drag() with finder "Found 1 widget with type "ListView": [
+  ListView(scrollDirection: vertical, ScrollController#ab0b0(one client, offset 0.0), ClampingScrollPhysics, shrinkWrap: shrink-wrapping, scrollCacheExtent: ScrollCacheExtent.pixels(240.0), padding: EdgeInsets(0.0, 0.0, 0.0, 75.0), dependencies: [ScrollConfiguration]),
+]" derived an Offset (Offset(1056.0, 352.5)) that would not hit test on the specified widget.
+Maybe the widget is actually off-screen, or another widget is obscuring it, or the widget cannot receive pointer events.
+Indeed, Offset(1056.0, 352.5) is outside the bounds of the root of the render tree, Size(800.0, 600.0).
+The finder corresponds to this RenderBox: RenderClipRect#e3c65 relayoutBoundary=up14
+The hit test result at that offset is: HitTestResult(HitTestEntry<HitTestTarget>#38861(_ReusableRenderView#8e4b5), HitTestEntry<HitTestTarget>#b6379(<AutomatedTestWidgetsFlutterBinding>))
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2165:25)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1947:12)
+#2      WidgetController.drag (package:flutter_test/src/controller.dart:1604:7)
+#3      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart:248:20)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+#6      StackZoneSpecification._registerCallback.<anonymous closure> (package:stack_trace/src/stack_zone_specification.dart:114:42)
+<asynchronous suspension>
+To silence this warning, pass "warnIfMissed: false" to "drag()".
+To make this warning fatal, set WidgetController.hitTestWarningShouldBeFatal to true.
+
+
+Warning: A call to drag() with finder "Found 1 widget with type "ListView": [
+  ListView(scrollDirection: vertical, ScrollController#ab0b0(one client, offset 0.0), ClampingScrollPhysics, shrinkWrap: shrink-wrapping, scrollCacheExtent: ScrollCacheExtent.pixels(240.0), padding: EdgeInsets(0.0, 0.0, 0.0, 75.0), dependencies: [ScrollConfiguration]),
+]" derived an Offset (Offset(1056.0, 352.5)) that would not hit test on the specified widget.
+Maybe the widget is actually off-screen, or another widget is obscuring it, or the widget cannot receive pointer events.
+Indeed, Offset(1056.0, 352.5) is outside the bounds of the root of the render tree, Size(800.0, 600.0).
+The finder corresponds to this RenderBox: RenderClipRect#e3c65 relayoutBoundary=up14
+The hit test result at that offset is: HitTestResult(HitTestEntry<HitTestTarget>#03afc(_ReusableRenderView#8e4b5), HitTestEntry<HitTestTarget>#03007(<AutomatedTestWidgetsFlutterBinding>))
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2165:25)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1947:12)
+#2      WidgetController.drag (package:flutter_test/src/controller.dart:1604:7)
+#3      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart:248:20)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+#6      StackZoneSpecification._registerCallback.<anonymous closure> (package:stack_trace/src/stack_zone_specification.dart:114:42)
+<asynchronous suspension>
+To silence this warning, pass "warnIfMissed: false" to "drag()".
+To make this warning fatal, set WidgetController.hitTestWarningShouldBeFatal to true.
+
+
+Warning: A call to drag() with finder "Found 1 widget with type "ListView": [
+  ListView(scrollDirection: vertical, ScrollController#ab0b0(one client, offset 0.0), ClampingScrollPhysics, shrinkWrap: shrink-wrapping, scrollCacheExtent: ScrollCacheExtent.pixels(240.0), padding: EdgeInsets(0.0, 0.0, 0.0, 75.0), dependencies: [ScrollConfiguration]),
+]" derived an Offset (Offset(1056.0, 352.5)) that would not hit test on the specified widget.
+Maybe the widget is actually off-screen, or another widget is obscuring it, or the widget cannot receive pointer events.
+Indeed, Offset(1056.0, 352.5) is outside the bounds of the root of the render tree, Size(800.0, 600.0).
+The finder corresponds to this RenderBox: RenderClipRect#e3c65 relayoutBoundary=up14
+The hit test result at that offset is: HitTestResult(HitTestEntry<HitTestTarget>#15a66(_ReusableRenderView#8e4b5), HitTestEntry<HitTestTarget>#8390e(<AutomatedTestWidgetsFlutterBinding>))
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2165:25)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1947:12)
+#2      WidgetController.drag (package:flutter_test/src/controller.dart:1604:7)
+#3      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart:248:20)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+#6      StackZoneSpecification._registerCallback.<anonymous closure> (package:stack_trace/src/stack_zone_specification.dart:114:42)
+<asynchronous suspension>
+To silence this warning, pass "warnIfMissed: false" to "drag()".
+To make this warning fatal, set WidgetController.hitTestWarningShouldBeFatal to true.
+
+
+Warning: A call to drag() with finder "Found 1 widget with type "ListView": [
+  ListView(scrollDirection: vertical, ScrollController#ab0b0(one client, offset 0.0), ClampingScrollPhysics, shrinkWrap: shrink-wrapping, scrollCacheExtent: ScrollCacheExtent.pixels(240.0), padding: EdgeInsets(0.0, 0.0, 0.0, 75.0), dependencies: [ScrollConfiguration]),
+]" derived an Offset (Offset(1056.0, 352.5)) that would not hit test on the specified widget.
+Maybe the widget is actually off-screen, or another widget is obscuring it, or the widget cannot receive pointer events.
+Indeed, Offset(1056.0, 352.5) is outside the bounds of the root of the render tree, Size(800.0, 600.0).
+The finder corresponds to this RenderBox: RenderClipRect#e3c65 relayoutBoundary=up14
+The hit test result at that offset is: HitTestResult(HitTestEntry<HitTestTarget>#6c688(_ReusableRenderView#8e4b5), HitTestEntry<HitTestTarget>#1397d(<AutomatedTestWidgetsFlutterBinding>))
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2165:25)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1947:12)
+#2      WidgetController.drag (package:flutter_test/src/controller.dart:1604:7)
+#3      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart:248:20)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+#6      StackZoneSpecification._registerCallback.<anonymous closure> (package:stack_trace/src/stack_zone_specification.dart:114:42)
+<asynchronous suspension>
+To silence this warning, pass "warnIfMissed: false" to "drag()".
+To make this warning fatal, set WidgetController.hitTestWarningShouldBeFatal to true.
+
+
+Warning: A call to drag() with finder "Found 1 widget with type "ListView": [
+  ListView(scrollDirection: vertical, ScrollController#ab0b0(one client, offset 0.0), ClampingScrollPhysics, shrinkWrap: shrink-wrapping, scrollCacheExtent: ScrollCacheExtent.pixels(240.0), padding: EdgeInsets(0.0, 0.0, 0.0, 75.0), dependencies: [ScrollConfiguration]),
+]" derived an Offset (Offset(1056.0, 352.5)) that would not hit test on the specified widget.
+Maybe the widget is actually off-screen, or another widget is obscuring it, or the widget cannot receive pointer events.
+Indeed, Offset(1056.0, 352.5) is outside the bounds of the root of the render tree, Size(800.0, 600.0).
+The finder corresponds to this RenderBox: RenderClipRect#e3c65 relayoutBoundary=up14
+The hit test result at that offset is: HitTestResult(HitTestEntry<HitTestTarget>#4e33b(_ReusableRenderView#8e4b5), HitTestEntry<HitTestTarget>#07147(<AutomatedTestWidgetsFlutterBinding>))
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2165:25)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1947:12)
+#2      WidgetController.drag (package:flutter_test/src/controller.dart:1604:7)
+#3      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart:248:20)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+#6      StackZoneSpecification._registerCallback.<anonymous closure> (package:stack_trace/src/stack_zone_specification.dart:114:42)
+<asynchronous suspension>
+To silence this warning, pass "warnIfMissed: false" to "drag()".
+To make this warning fatal, set WidgetController.hitTestWarningShouldBeFatal to true.
+
+
+Warning: A call to drag() with finder "Found 1 widget with type "ListView": [
+  ListView(scrollDirection: vertical, ScrollController#ab0b0(one client, offset 0.0), ClampingScrollPhysics, shrinkWrap: shrink-wrapping, scrollCacheExtent: ScrollCacheExtent.pixels(240.0), padding: EdgeInsets(0.0, 0.0, 0.0, 75.0), dependencies: [ScrollConfiguration]),
+]" derived an Offset (Offset(1056.0, 352.5)) that would not hit test on the specified widget.
+Maybe the widget is actually off-screen, or another widget is obscuring it, or the widget cannot receive pointer events.
+Indeed, Offset(1056.0, 352.5) is outside the bounds of the root of the render tree, Size(800.0, 600.0).
+The finder corresponds to this RenderBox: RenderClipRect#e3c65 relayoutBoundary=up14
+The hit test result at that offset is: HitTestResult(HitTestEntry<HitTestTarget>#f4059(_ReusableRenderView#8e4b5), HitTestEntry<HitTestTarget>#a99d7(<AutomatedTestWidgetsFlutterBinding>))
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2165:25)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1947:12)
+#2      WidgetController.drag (package:flutter_test/src/controller.dart:1604:7)
+#3      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart:248:20)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+#6      StackZoneSpecification._registerCallback.<anonymous closure> (package:stack_trace/src/stack_zone_specification.dart:114:42)
+<asynchronous suspension>
+To silence this warning, pass "warnIfMissed: false" to "drag()".
+To make this warning fatal, set WidgetController.hitTestWarningShouldBeFatal to true.
+
+
+Warning: A call to drag() with finder "Found 1 widget with type "ListView": [
+  ListView(scrollDirection: vertical, ScrollController#ab0b0(one client, offset 0.0), ClampingScrollPhysics, shrinkWrap: shrink-wrapping, scrollCacheExtent: ScrollCacheExtent.pixels(240.0), padding: EdgeInsets(0.0, 0.0, 0.0, 75.0), dependencies: [ScrollConfiguration]),
+]" derived an Offset (Offset(1056.0, 352.5)) that would not hit test on the specified widget.
+Maybe the widget is actually off-screen, or another widget is obscuring it, or the widget cannot receive pointer events.
+Indeed, Offset(1056.0, 352.5) is outside the bounds of the root of the render tree, Size(800.0, 600.0).
+The finder corresponds to this RenderBox: RenderClipRect#e3c65 relayoutBoundary=up14
+The hit test result at that offset is: HitTestResult(HitTestEntry<HitTestTarget>#d98f5(_ReusableRenderView#8e4b5), HitTestEntry<HitTestTarget>#d11f1(<AutomatedTestWidgetsFlutterBinding>))
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2165:25)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1947:12)
+#2      WidgetController.drag (package:flutter_test/src/controller.dart:1604:7)
+#3      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart:248:20)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+#6      StackZoneSpecification._registerCallback.<anonymous closure> (package:stack_trace/src/stack_zone_specification.dart:114:42)
+<asynchronous suspension>
+To silence this warning, pass "warnIfMissed: false" to "drag()".
+To make this warning fatal, set WidgetController.hitTestWarningShouldBeFatal to true.
+
+
+Warning: A call to drag() with finder "Found 1 widget with type "ListView": [
+  ListView(scrollDirection: vertical, ScrollController#ab0b0(one client, offset 0.0), ClampingScrollPhysics, shrinkWrap: shrink-wrapping, scrollCacheExtent: ScrollCacheExtent.pixels(240.0), padding: EdgeInsets(0.0, 0.0, 0.0, 75.0), dependencies: [ScrollConfiguration]),
+]" derived an Offset (Offset(1056.0, 352.5)) that would not hit test on the specified widget.
+Maybe the widget is actually off-screen, or another widget is obscuring it, or the widget cannot receive pointer events.
+Indeed, Offset(1056.0, 352.5) is outside the bounds of the root of the render tree, Size(800.0, 600.0).
+The finder corresponds to this RenderBox: RenderClipRect#e3c65 relayoutBoundary=up14
+The hit test result at that offset is: HitTestResult(HitTestEntry<HitTestTarget>#78cce(_ReusableRenderView#8e4b5), HitTestEntry<HitTestTarget>#2bed7(<AutomatedTestWidgetsFlutterBinding>))
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2165:25)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1947:12)
+#2      WidgetController.drag (package:flutter_test/src/controller.dart:1604:7)
+#3      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart:248:20)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+#6      StackZoneSpecification._registerCallback.<anonymous closure> (package:stack_trace/src/stack_zone_specification.dart:114:42)
+<asynchronous suspension>
+To silence this warning, pass "warnIfMissed: false" to "drag()".
+To make this warning fatal, set WidgetController.hitTestWarningShouldBeFatal to true.
+
+
+Warning: A call to drag() with finder "Found 1 widget with type "ListView": [
+  ListView(scrollDirection: vertical, ScrollController#ab0b0(one client, offset 0.0), ClampingScrollPhysics, shrinkWrap: shrink-wrapping, scrollCacheExtent: ScrollCacheExtent.pixels(240.0), padding: EdgeInsets(0.0, 0.0, 0.0, 75.0), dependencies: [ScrollConfiguration]),
+]" derived an Offset (Offset(1056.0, 352.5)) that would not hit test on the specified widget.
+Maybe the widget is actually off-screen, or another widget is obscuring it, or the widget cannot receive pointer events.
+Indeed, Offset(1056.0, 352.5) is outside the bounds of the root of the render tree, Size(800.0, 600.0).
+The finder corresponds to this RenderBox: RenderClipRect#e3c65 relayoutBoundary=up14
+The hit test result at that offset is: HitTestResult(HitTestEntry<HitTestTarget>#dd96c(_ReusableRenderView#8e4b5), HitTestEntry<HitTestTarget>#c0f9f(<AutomatedTestWidgetsFlutterBinding>))
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2165:25)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1947:12)
+#2      WidgetController.drag (package:flutter_test/src/controller.dart:1604:7)
+#3      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart:248:20)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+#6      StackZoneSpecification._registerCallback.<anonymous closure> (package:stack_trace/src/stack_zone_specification.dart:114:42)
+<asynchronous suspension>
+To silence this warning, pass "warnIfMissed: false" to "drag()".
+To make this warning fatal, set WidgetController.hitTestWarningShouldBeFatal to true.
+
+
+Warning: A call to drag() with finder "Found 1 widget with type "ListView": [
+  ListView(scrollDirection: vertical, ScrollController#ab0b0(one client, offset 0.0), ClampingScrollPhysics, shrinkWrap: shrink-wrapping, scrollCacheExtent: ScrollCacheExtent.pixels(240.0), padding: EdgeInsets(0.0, 0.0, 0.0, 75.0), dependencies: [ScrollConfiguration]),
+]" derived an Offset (Offset(1056.0, 352.5)) that would not hit test on the specified widget.
+Maybe the widget is actually off-screen, or another widget is obscuring it, or the widget cannot receive pointer events.
+Indeed, Offset(1056.0, 352.5) is outside the bounds of the root of the render tree, Size(800.0, 600.0).
+The finder corresponds to this RenderBox: RenderClipRect#e3c65 relayoutBoundary=up14
+The hit test result at that offset is: HitTestResult(HitTestEntry<HitTestTarget>#e1083(_ReusableRenderView#8e4b5), HitTestEntry<HitTestTarget>#cdf18(<AutomatedTestWidgetsFlutterBinding>))
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2165:25)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1947:12)
+#2      WidgetController.drag (package:flutter_test/src/controller.dart:1604:7)
+#3      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart:248:20)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+#6      StackZoneSpecification._registerCallback.<anonymous closure> (package:stack_trace/src/stack_zone_specification.dart:114:42)
+<asynchronous suspension>
+To silence this warning, pass "warnIfMissed: false" to "drag()".
+To make this warning fatal, set WidgetController.hitTestWarningShouldBeFatal to true.
+
+
+Warning: A call to drag() with finder "Found 1 widget with type "ListView": [
+  ListView(scrollDirection: vertical, ScrollController#ab0b0(one client, offset 0.0), ClampingScrollPhysics, shrinkWrap: shrink-wrapping, scrollCacheExtent: ScrollCacheExtent.pixels(240.0), padding: EdgeInsets(0.0, 0.0, 0.0, 75.0), dependencies: [ScrollConfiguration]),
+]" derived an Offset (Offset(1056.0, 352.5)) that would not hit test on the specified widget.
+Maybe the widget is actually off-screen, or another widget is obscuring it, or the widget cannot receive pointer events.
+Indeed, Offset(1056.0, 352.5) is outside the bounds of the root of the render tree, Size(800.0, 600.0).
+The finder corresponds to this RenderBox: RenderClipRect#e3c65 relayoutBoundary=up14
+The hit test result at that offset is: HitTestResult(HitTestEntry<HitTestTarget>#0e4d9(_ReusableRenderView#8e4b5), HitTestEntry<HitTestTarget>#b4881(<AutomatedTestWidgetsFlutterBinding>))
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2165:25)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1947:12)
+#2      WidgetController.drag (package:flutter_test/src/controller.dart:1604:7)
+#3      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart:248:20)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+#6      StackZoneSpecification._registerCallback.<anonymous closure> (package:stack_trace/src/stack_zone_specification.dart:114:42)
+<asynchronous suspension>
+To silence this warning, pass "warnIfMissed: false" to "drag()".
+To make this warning fatal, set WidgetController.hitTestWarningShouldBeFatal to true.
+
+
+Warning: A call to drag() with finder "Found 1 widget with type "ListView": [
+  ListView(scrollDirection: vertical, ScrollController#ab0b0(one client, offset 0.0), ClampingScrollPhysics, shrinkWrap: shrink-wrapping, scrollCacheExtent: ScrollCacheExtent.pixels(240.0), padding: EdgeInsets(0.0, 0.0, 0.0, 75.0), dependencies: [ScrollConfiguration]),
+]" derived an Offset (Offset(1056.0, 352.5)) that would not hit test on the specified widget.
+Maybe the widget is actually off-screen, or another widget is obscuring it, or the widget cannot receive pointer events.
+Indeed, Offset(1056.0, 352.5) is outside the bounds of the root of the render tree, Size(800.0, 600.0).
+The finder corresponds to this RenderBox: RenderClipRect#e3c65 relayoutBoundary=up14
+The hit test result at that offset is: HitTestResult(HitTestEntry<HitTestTarget>#41c10(_ReusableRenderView#8e4b5), HitTestEntry<HitTestTarget>#f7f20(<AutomatedTestWidgetsFlutterBinding>))
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2165:25)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1947:12)
+#2      WidgetController.drag (package:flutter_test/src/controller.dart:1604:7)
+#3      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart:248:20)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+#6      StackZoneSpecification._registerCallback.<anonymous closure> (package:stack_trace/src/stack_zone_specification.dart:114:42)
+<asynchronous suspension>
+To silence this warning, pass "warnIfMissed: false" to "drag()".
+To make this warning fatal, set WidgetController.hitTestWarningShouldBeFatal to true.
+
+
+Warning: A call to drag() with finder "Found 1 widget with type "ListView": [
+  ListView(scrollDirection: vertical, ScrollController#ab0b0(one client, offset 0.0), ClampingScrollPhysics, shrinkWrap: shrink-wrapping, scrollCacheExtent: ScrollCacheExtent.pixels(240.0), padding: EdgeInsets(0.0, 0.0, 0.0, 75.0), dependencies: [ScrollConfiguration]),
+]" derived an Offset (Offset(1056.0, 352.5)) that would not hit test on the specified widget.
+Maybe the widget is actually off-screen, or another widget is obscuring it, or the widget cannot receive pointer events.
+Indeed, Offset(1056.0, 352.5) is outside the bounds of the root of the render tree, Size(800.0, 600.0).
+The finder corresponds to this RenderBox: RenderClipRect#e3c65 relayoutBoundary=up14
+The hit test result at that offset is: HitTestResult(HitTestEntry<HitTestTarget>#46d62(_ReusableRenderView#8e4b5), HitTestEntry<HitTestTarget>#04566(<AutomatedTestWidgetsFlutterBinding>))
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2165:25)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1947:12)
+#2      WidgetController.drag (package:flutter_test/src/controller.dart:1604:7)
+#3      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart:248:20)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+#6      StackZoneSpecification._registerCallback.<anonymous closure> (package:stack_trace/src/stack_zone_specification.dart:114:42)
+<asynchronous suspension>
+To silence this warning, pass "warnIfMissed: false" to "drag()".
+To make this warning fatal, set WidgetController.hitTestWarningShouldBeFatal to true.
+
+
+Warning: A call to drag() with finder "Found 1 widget with type "ListView": [
+  ListView(scrollDirection: vertical, ScrollController#ab0b0(one client, offset 0.0), ClampingScrollPhysics, shrinkWrap: shrink-wrapping, scrollCacheExtent: ScrollCacheExtent.pixels(240.0), padding: EdgeInsets(0.0, 0.0, 0.0, 75.0), dependencies: [ScrollConfiguration]),
+]" derived an Offset (Offset(1056.0, 352.5)) that would not hit test on the specified widget.
+Maybe the widget is actually off-screen, or another widget is obscuring it, or the widget cannot receive pointer events.
+Indeed, Offset(1056.0, 352.5) is outside the bounds of the root of the render tree, Size(800.0, 600.0).
+The finder corresponds to this RenderBox: RenderClipRect#e3c65 relayoutBoundary=up14
+The hit test result at that offset is: HitTestResult(HitTestEntry<HitTestTarget>#193a9(_ReusableRenderView#8e4b5), HitTestEntry<HitTestTarget>#e0276(<AutomatedTestWidgetsFlutterBinding>))
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2165:25)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1947:12)
+#2      WidgetController.drag (package:flutter_test/src/controller.dart:1604:7)
+#3      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart:248:20)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+#6      StackZoneSpecification._registerCallback.<anonymous closure> (package:stack_trace/src/stack_zone_specification.dart:114:42)
+<asynchronous suspension>
+To silence this warning, pass "warnIfMissed: false" to "drag()".
+To make this warning fatal, set WidgetController.hitTestWarningShouldBeFatal to true.
+
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: a numeric value within <0.1> of <1980.0>
+  Actual: <0.0>
+   Which:  differs by <1980.0>
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart:251:5)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart line 251
+The test description was:
+  长表滚到底保留实际操作组让位，横滚条跟随实际末行
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:10 +18 -2: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/uten_editable_grid_hscrollbar_test.dart: 内容多：横滚条钉在视口底部
+00:10 +18 -2: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart: 长表滚到底保留实际操作组让位，横滚条跟随实际末行 [E]
+  Test failed. See exception logs above.
+  The test description was: 长表滚到底保留实际操作组让位，横滚条跟随实际末行
+  
+00:10 +19 -2: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/uten_editable_grid_hscrollbar_test.dart: 内容多：横滚条钉在视口底部
+00:11 +20 -2: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/uten_editable_grid_hscrollbar_test.dart: 内容多：横滚条钉在视口底部
+00:11 +21 -2: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/uten_editable_grid_hscrollbar_test.dart: 内容多：横滚条钉在视口底部
+内容多：可见 Scrollbar 数 = 2
+内容多：钉底条 top = 589.0，期望 589
+00:11 +22 -2: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart: 空表（流内路径）：保留可拖动横向滚动条
+00:12 +23 -2: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/uten_editable_grid_hscrollbar_test.dart: 空编辑表保留超宽表头横滚且空态保持在可视区
+  D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart: 长表滚到底保留实际操作组让位，横滚条跟随实际末行

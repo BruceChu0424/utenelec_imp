@@ -64,6 +64,7 @@ import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -111,6 +112,7 @@ import '../../../shared/ai/page_context/ai_page_context.dart';
 import '../../../shared/ai/ai_job_repository.dart';
 import '../../../shared/ai/ai_job_models.dart';
 import '../models/sales_doc.dart';
+import '../models/sales_source_discount.dart';
 import '../models/sales_shipment_prefill.dart';
 import '../providers/master_name_provider.dart';
 import '../../../shared/widgets/warehouse_hierarchy_dropdown.dart';
@@ -207,6 +209,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
       widget.docType == SalesDocType.order ||
       widget.docType == SalesDocType.quote ||
       widget.docType == SalesDocType.returnDoc ||
+      widget.docType == SalesDocType.shipment ||
       _isCustomerShipment;
 
   bool get _allowPricingInput =>
@@ -1139,14 +1142,18 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
                   ) ??
                   '';
             }
-            if (it.discount != null) {
-              // 旧订单用 null/0 表示不打折；编辑页统一展示为明确的 1 倍，金额语义不变。
-              final discount =
-                  widget.docType == SalesDocType.order && it.discount == 0
-                  ? 1
-                  : it.discount;
-              row.discount.text =
-                  widget.docType == SalesDocType.order && it.discount == 0
+            if (widget.docType == SalesDocType.shipment &&
+                !_isCustomerShipment &&
+                !d.priceMasked) {
+              row.discount.text = salesSourceDiscountText(
+                it.exactDecimals['discount'] ?? it.discount?.toString(),
+              );
+            } else if (it.discount != null) {
+              // 历史订单及履约出货用 null/0 表示原价，不能把旧0重算成免费。
+              final legacyNoDiscount =
+                  widget.docType == SalesDocType.order && it.discount == 0;
+              final discount = legacyNoDiscount ? 1 : it.discount;
+              row.discount.text = legacyNoDiscount
                   ? '1'
                   : financeExactTrimmed(
                           it.exactDecimals['discount'] ?? discount.toString(),
@@ -1261,7 +1268,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
     _currencyId = order.currencyId;
     await prepareEditableGridRows(
       order.items.where((item) => prefill.quantities.containsKey(item.id)),
-      create: (_) => SalesGridRow(),
+      create: (_) => SalesGridRow(amountUsesDiscount: _amountUsesDiscount),
       initialize: (row, item) {
         final quantity = prefill.quantities[item.id]!;
         if (item.goodsId == null) {
@@ -1272,6 +1279,9 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
             goodsId: item.goodsId!,
             qty: quantity,
             price: item.price,
+            priceText: item.exactDecimals['price'] ?? item.price?.toString(),
+            discountText:
+                item.exactDecimals['discount'] ?? item.discount?.toString(),
             orderItemId: item.id,
             colorId: item.colorId,
             unitId: item.unitId,
@@ -4387,43 +4397,6 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
                                   ),
                                 ),
                                 const SizedBox(height: UtenSpacing.s12),
-                                if (_requiresLinkedSalesShipment)
-                                  Container(
-                                    key: const ValueKey(
-                                      'sales-shipment-order-link-guidance',
-                                    ),
-                                    margin: const EdgeInsets.only(
-                                      top: UtenSpacing.s8,
-                                      bottom: UtenSpacing.s4,
-                                    ),
-                                    padding: const EdgeInsets.all(
-                                      UtenSpacing.s8,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: theme.colorScheme.primaryContainer
-                                          .withValues(alpha: 0.45),
-                                      borderRadius: BorderRadius.circular(
-                                        UtenRadius.md,
-                                      ),
-                                    ),
-                                    child: Row(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Icon(
-                                          Icons.link_outlined,
-                                          size: 18,
-                                          color: theme.colorScheme.primary,
-                                        ),
-                                        const SizedBox(width: UtenSpacing.s8),
-                                        const Expanded(
-                                          child: Text(
-                                            '订货发货必须从订货单引入；没有订货单的客户发货请使用“客户零星发货”。',
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
                                 // 订货单附件（2026-09-09 编辑态就地上传；2026-09-10 新建态保存前暂存）：
                                 // 已有单据直接挂 SALES_ORDER；新建单先在本地暂存，保存拿到 UUID 后
                                 // 逐个确认上传（ADR-074 附件只挂已保存的业务 UUID）。
@@ -4598,11 +4571,25 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
                                         ),
                                         toolbarActions: [
                                           if (_cfg.hasUpstreamLink)
-                                            UtenImportButton(
-                                              label: '从上游引入',
-                                              onPressed: _saving
-                                                  ? null
-                                                  : _importFromUpstream,
+                                            Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                UtenImportButton(
+                                                  label: '从上游引入',
+                                                  onPressed: _saving
+                                                      ? null
+                                                      : _importFromUpstream,
+                                                ),
+                                                if (_requiresLinkedSalesShipment)
+                                                  const UtenFieldHintIcon(
+                                                    key: ValueKey(
+                                                      'sales-shipment-order-link-guidance',
+                                                    ),
+                                                    dense: true,
+                                                    info:
+                                                        '订货发货必须从订货单引入；没有订货单的客户发货请使用“客户零星发货”。',
+                                                  ),
+                                              ],
                                             ),
                                           // 「识别客户文件」已于 2026-09-29 统一进
                                           // 附件卡片区，表头上方按钮退役。

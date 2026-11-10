@@ -163,6 +163,7 @@ class WarehouseTaskLine {
     this.quantity,
     this.quantityText,
     this.weight,
+    this.stockPlace,
   });
 
   final String key;
@@ -176,6 +177,7 @@ class WarehouseTaskLine {
   final num? quantity;
   final String? quantityText;
   final num? weight;
+  final String? stockPlace;
 
   String get quantityLabel {
     if (quantityText != null) {
@@ -204,6 +206,7 @@ class WarehouseTaskLine {
             ? null
             : json['quantityText'] as String?,
         weight: num.tryParse('${json['weight']}'),
+        stockPlace: json['stockPlace']?.toString(),
       );
 }
 

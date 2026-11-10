@@ -1,3 +1,4 @@
+import '../../../components/inputs/uten_selected_value_theme.dart';
 import '../shared/finance_complete_summary_read.dart';
 import 'finance_summary_scope_field.dart';
 import '../shared/finance_workbench_panel.dart';
@@ -2268,5 +2269,5 @@ class _FinanceAccountingImportSurfaceState
           ),
       ],
     ),
-  );
+  ).withSelectedValueHighlights();
 }

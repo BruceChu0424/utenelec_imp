@@ -1,4 +1,5 @@
 # Preserve the raw regression output whose byte hashes are recorded in receipts.
-logs/*.log -text
-browser/*.json -text
-checkpoint-native-jit.jsonl -text
+logs/*.log -text -whitespace
+browser/*.json -text whitespace=cr-at-eol
+checkpoint-native-jit.jsonl -text whitespace=cr-at-eol
+windows-pointer-wrapper.dart.txt -text whitespace=cr-at-eol

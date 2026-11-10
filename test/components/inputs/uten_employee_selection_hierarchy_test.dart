@@ -355,14 +355,16 @@ void main() {
     expect(queries, contains(('B', '旧营销中心')));
     expect(
       find.byKey(_tableKey),
-      findsNothing,
-      reason: '同一部门ID不能沿用A范围祖先名称补回B范围候选',
+      findsOneWidget,
+      reason: '空候选仍保留表头；同一部门ID不能沿用A范围祖先名称补回B范围候选',
     );
+    expect(_visibleCandidateIds(tester), isEmpty);
     expect(find.text('未找到匹配的人员'), findsOneWidget);
 
     pendingTree.complete(scopedTree('新营销中心'));
     await tester.pumpAndSettle();
-    expect(find.byKey(_tableKey), findsNothing);
+    expect(find.byKey(_tableKey), findsOneWidget);
+    expect(_visibleCandidateIds(tester), isEmpty);
     await tester.enterText(_search(), '新营销中心');
     await tester.pump(const Duration(milliseconds: 301));
     await tester.pumpAndSettle();

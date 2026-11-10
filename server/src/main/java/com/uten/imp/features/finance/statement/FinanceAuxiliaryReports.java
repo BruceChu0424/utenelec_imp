@@ -64,17 +64,18 @@ public final class FinanceAuxiliaryReports {
                     .withHeaderGroups(FinanceTemplateContract.headerGroups(template,i));
             if(!text){column=column.withUnitLabel("元");}result.add(column);
         }
+        result.add(4, ReportColumn.text("currencyCode", "币别", 90));
         return List.copyOf(result);
     }
     static String sql(boolean receivable) {
         String select=receivable?"""
-                code AS "accountCode",name AS "accountName",source_code AS "partyCode",source_name AS "partyName",
+                code AS "accountCode",name AS "accountName",source_code AS "partyCode",source_name AS "partyName",currency_label AS "currencyCode",
                 CASE WHEN opening IS NULL THEN NULL WHEN opening>0 THEN '借' WHEN opening<0 THEN '贷' ELSE '平' END AS "openingDirection",
                 CASE WHEN opening IS NOT NULL THEN greatest(opening,0) END AS "openingDebit",CASE WHEN opening IS NOT NULL THEN greatest(-opening,0) END AS "openingCredit",abs(opening) AS "openingBalance",
                 debit,credit,CASE WHEN closing IS NOT NULL THEN greatest(closing,0) END AS "closingDebit",CASE WHEN closing IS NOT NULL THEN greatest(-closing,0) END AS "closingCredit",
                 CASE WHEN closing IS NULL THEN NULL WHEN closing>0 THEN '借' WHEN closing<0 THEN '贷' ELSE '平' END AS "closingDirection",abs(closing) AS "closingBalance"
                 """:"""
-                code AS "accountCode",name AS "accountName",source_code AS "partyCode",source_name AS "partyName",
+                code AS "accountCode",name AS "accountName",source_code AS "partyCode",source_name AS "partyName",currency_label AS "currencyCode",
                 CASE WHEN opening IS NOT NULL THEN greatest(opening,0) END AS "openingDebit",CASE WHEN opening IS NOT NULL THEN greatest(-opening,0) END AS "openingCredit",
                 CASE WHEN opening IS NULL THEN NULL WHEN opening>0 THEN '借' WHEN opening<0 THEN '贷' ELSE '平' END AS "openingDirection",abs(opening) AS "openingBalance",
                 debit,credit,CASE WHEN closing IS NOT NULL THEN greatest(closing,0) END AS "closingDebit",CASE WHEN closing IS NOT NULL THEN greatest(-closing,0) END AS "closingCredit",
@@ -149,6 +150,7 @@ public final class FinanceAuxiliaryReports {
                     GROUP BY coverage_scope.account_code,coverage_scope.currency_id
                 ), complete AS (
                     SELECT chart.code,COALESCE(path.source_account_path_name,labels.source_account_name,chart.name) AS name,labels.*,
+                           COALESCE(NULLIF(currency.name,''),currency.code) AS currency_label,
                            path.source_account_path_name,
                            COALESCE(coverage.opening_missing,0)+COALESCE(coverage.movement_missing,0)>0 AS missing_auxiliary_allocation,
                            CAST(:scopeOpening AS boolean) AND NOT scopes.missing_nonzero AND scopes.currency_id IS NOT NULL AND COALESCE(coverage.opening_missing,0)=0 AS opening_known,
@@ -159,6 +161,7 @@ public final class FinanceAuxiliaryReports {
                            CASE WHEN period.period_known AND scopes.currency_id IS NOT NULL AND COALESCE(coverage.movement_missing,0)=0 THEN COALESCE(amounts.credit,0) END AS credit,
                            CASE WHEN CAST(:scopeClosing AS boolean) AND NOT scopes.missing_nonzero AND scopes.currency_id IS NOT NULL AND COALESCE(coverage.opening_missing,0)+COALESCE(coverage.movement_missing,0)=0 THEN COALESCE(amounts.closing,0) END AS closing
                     FROM scopes JOIN labels USING(account_code,auxiliary_id,currency_id)
+                    LEFT JOIN currencies currency ON currency.id=scopes.currency_id
                     LEFT JOIN amounts USING(account_code,auxiliary_id,currency_id)
                     LEFT JOIN path_labels path USING(account_code,auxiliary_id,currency_id)
                     CROSS JOIN period_check period

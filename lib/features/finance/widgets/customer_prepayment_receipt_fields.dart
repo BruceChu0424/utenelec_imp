@@ -58,12 +58,18 @@ class CustomerPrepaymentReceiptFields extends ConsumerWidget {
               decoration: UtenInputDecoration(
                 InputDecoration(
                   label: requiredLabel('销售订单', theme, required: true),
+                  filled: salesOrderId != null,
+                  fillColor: salesOrderId == null
+                      ? null
+                      : theme.colorScheme.primaryContainer,
                   suffixIcon: Padding(
                     padding: const EdgeInsets.only(right: UtenSpacing.s4),
                     child: SizedBox(
                       height: UtenPageField.heightOf(context),
                       child: UtenButton(
-                        type: UtenButtonType.secondary,
+                        type: salesOrderId == null
+                            ? UtenButtonType.secondary
+                            : UtenButtonType.tonal,
                         size: UtenButtonSize.small,
                         icon: Icons.search_rounded,
                         onPressed: enabled

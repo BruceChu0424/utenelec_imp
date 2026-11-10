@@ -479,13 +479,15 @@ final class WarehouseInboundTaskCenterSql {
                 CROSS JOIN LATERAL (
                     SELECT goods.code AS goods_code,goods.name AS goods_name,warehouse.name AS warehouse_name,
                            ARRAY[goods.owning_warehouse_id] AS warehouse_ids,
-                           jsonb_build_object('sourceReportItemId',item.id,'lotId',item.output_lot_id,
-                               'pendingQty',item.qty,
-                               'publicQty',CASE WHEN item.is_public_output AND NOT item.is_actual_surplus THEN item.qty ELSE 0 END,
-                               'actualSurplusQty',CASE WHEN item.is_actual_surplus THEN item.qty ELSE 0 END) AS action_data,
-                           jsonb_build_object('key',item.id,'itemId',item.id,'lineNo',item.line_no,
+                           jsonb_build_object('sourceReportItemId',MIN(item.id::text),'lotId',item.output_lot_id,
+                               'sourceReportItemIds',jsonb_agg(item.id ORDER BY item.line_no,item.id),
+                               'pendingQty',SUM(item.qty),
+                               'publicQty',SUM(CASE WHEN item.is_public_output AND NOT item.is_actual_surplus THEN item.qty ELSE 0 END),
+                               'actualSurplusQty',SUM(CASE WHEN item.is_actual_surplus THEN item.qty ELSE 0 END)) AS action_data,
+                           jsonb_build_object('key',COALESCE(item.output_lot_id,item.id),'itemId',MIN(item.id::text),'lineNo',MIN(item.line_no),
                                'goodsCode',goods.code,'goodsName',goods.name,'specification',goods.spec,
-                               'colorName',color.name,'unitName',unit.name,'quantity',item.qty,'weight',item.weight) AS line_data
+                               'colorName',color.name,'unitName',unit.name,'quantity',SUM(item.qty),
+                               'weight',CASE WHEN bool_or(item.weight IS NULL) THEN NULL ELSE SUM(item.weight) END) AS line_data
                     FROM %1$s item
                     JOIN v_production_report_items_pending_registration pending ON pending.report_item_id=item.id
                     JOIN goods ON goods.id=item.goods_id
@@ -494,21 +496,33 @@ final class WarehouseInboundTaskCenterSql {
                     LEFT JOIN warehouses warehouse ON warehouse.id=goods.owning_warehouse_id
                     WHERE task.task_stage='ARRIVAL_REGISTRATION' AND item.report_id=task.report_id
                       AND item.destination='WAREHOUSE'
+                    GROUP BY COALESCE(item.output_lot_id,item.id),item.output_lot_id,item.goods_id,
+                             COALESCE(item.color_id,goods.color_id),COALESCE(item.unit_id,goods.unit_id),
+                             goods.code,goods.name,goods.spec,goods.owning_warehouse_id,color.name,unit.name,warehouse.name
                     UNION ALL
                     SELECT COALESCE(NULLIF(item.goods_code_snapshot,''),goods.code),
                            COALESCE(NULLIF(item.goods_name_snapshot,''),goods.name),warehouse.name,
                            ARRAY[COALESCE(item.warehouse_id,document.warehouse_id)],
-                           jsonb_build_object('documentItemId',item.id,'sourceReportItemId',item.source_daily_report_item_id),
-                           jsonb_build_object('key',item.id,'itemId',item.id,'lineNo',item.line_no,
+                           jsonb_build_object('documentItemId',MIN(item.id::text),'sourceReportItemId',MIN(item.source_daily_report_item_id::text),
+                               'documentItemIds',jsonb_agg(item.id ORDER BY item.line_no,item.id),'lotId',source.output_lot_id,
+                               'pendingQty',SUM(item.qty),
+                               'publicQty',SUM(CASE WHEN source.is_public_output AND NOT source.is_actual_surplus THEN item.qty ELSE 0 END),
+                               'actualSurplusQty',SUM(CASE WHEN source.is_actual_surplus THEN item.qty ELSE 0 END)),
+                           jsonb_build_object('key',COALESCE(source.output_lot_id,item.id),'itemId',MIN(item.id::text),'lineNo',MIN(item.line_no),
                                'goodsCode',COALESCE(NULLIF(item.goods_code_snapshot,''),goods.code),
                                'goodsName',COALESCE(NULLIF(item.goods_name_snapshot,''),goods.name),'specification',goods.spec,
-                               'colorName',color.name,'unitName',unit.name,'quantity',item.qty,'weight',item.weight)
+                               'colorName',color.name,'unitName',unit.name,'quantity',SUM(item.qty),
+                               'weight',CASE WHEN bool_or(item.weight IS NULL) THEN NULL ELSE SUM(item.weight) END)
                     FROM %2$s item JOIN %3$s document ON document.id=item.doc_id
+                    LEFT JOIN %1$s source ON source.id=item.source_daily_report_item_id
                     LEFT JOIN goods ON goods.id=item.goods_id LEFT JOIN colors color ON color.id=item.color_id
                     LEFT JOIN units unit ON unit.id=item.unit_id
                     LEFT JOIN warehouses warehouse ON warehouse.id=COALESCE(item.warehouse_id,document.warehouse_id)
                     WHERE task.task_stage='FINAL_COUNT' AND item.doc_id=task.document_id AND NOT item.is_deleted
                       AND (item.source_daily_report_item_id IS NOT NULL OR item.execution_segment_id IS NOT NULL)
+                    GROUP BY COALESCE(source.output_lot_id,item.id),source.output_lot_id,item.goods_id,item.color_id,item.unit_id,
+                             COALESCE(NULLIF(item.goods_code_snapshot,''),goods.code),COALESCE(NULLIF(item.goods_name_snapshot,''),goods.name),
+                             goods.spec,color.name,unit.name,warehouse.name,COALESCE(item.warehouse_id,document.warehouse_id)
                 ) physical WHERE TRUE
                 """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_daily_report_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("stock_document_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("stock_documents")) + scope(scope,"physical.warehouse_ids");
     }

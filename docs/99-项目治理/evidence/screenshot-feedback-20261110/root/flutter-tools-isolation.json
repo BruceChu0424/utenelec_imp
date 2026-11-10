@@ -1,0 +1,34 @@
+{
+  "sdk": "D:/Software/Flutter/flutter",
+  "isolated": "D:\\Projects\\uten_imp_worktrees\\screenshot-feedback-20261110\\tmp\\flutter-tools-feedback",
+  "relative": "lib/src/test/flutter_web_platform.dart",
+  "originalSha256": "7f986a70ec05e496051cfceae0537e4fd3963f8e609b1e8ea04caa3d362a4f41",
+  "isolatedSha256": "bf106dea1f25c006065a430f2891ac1e91755ce8817f024cc3681ccffb0bd294",
+  "originalUnchanged": true,
+  "replacements": [
+    [
+      "request.requestedUri.path.contains('host.dart.js')",
+      "request.requestedUri.path == '/static/host.dart.js'"
+    ],
+    [
+      "final String fullPath = _fileSystem.path.fromUri(request.url);",
+      "final String fullPath = request.url.path;"
+    ],
+    [
+      "final String path = _fileSystem.path.fromUri(request.url);",
+      "final String path = request.url.path;"
+    ],
+    [
+      "window.testSelector = \"$test\";",
+      "window.testSelector = ${jsonEncode(test)};"
+    ],
+    [
+      "fileSystem.path.join(Cache.flutterRoot!, 'packages', 'flutter_tools')",
+      "\"D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/tmp/flutter-tools-feedback\""
+    ],
+    [
+      "canvasKitBaseUrl: \"/canvaskit/\",",
+      "canvasKitBaseUrl: \"/canvaskit/\",\n                assetBase: \"/\","
+    ]
+  ]
+}

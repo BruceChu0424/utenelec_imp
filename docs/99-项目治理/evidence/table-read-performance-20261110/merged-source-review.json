@@ -1,0 +1,16 @@
+{
+  "candidate": "e16f4fb2268dc2ac01f5611c3079c246806a0925",
+  "integratedMain": "e9713e539a97a0fca5e579ce1cab633002af960a",
+  "head": "e16f4fb2268dc2ac01f5611c3079c246806a0925",
+  "review": "Automatic merge retains all candidate algorithms and exact main scrollbar/permission-label hunks; no product edits by reviewer",
+  "files": [
+    {
+      "path": "lib/features/basic_data/widgets/master_data_table_view.dart",
+      "sha256": "65068D91C092C75BB1045ED59BF9974F5FA37480418A0B026AA8EF406D867075"
+    },
+    {
+      "path": "lib/features/basic_data/pages/product_category_page.dart",
+      "sha256": "5544B001C311CB892EB4604DFD94D21C0D6163F25B074A9BD14CDF2D9D6CBEF0"
+    }
+  ]
+}

@@ -1,3 +1,4 @@
+import '../../../components/inputs/uten_selected_value_theme.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -455,6 +456,6 @@ class _ContinuationState
           ],
         ),
       ),
-    );
+    ).withSelectedValueHighlights();
   }
 }

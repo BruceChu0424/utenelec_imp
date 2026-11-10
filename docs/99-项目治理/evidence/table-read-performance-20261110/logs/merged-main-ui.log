@@ -1,0 +1,226 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_view_hscrollbar_test.dart
+00:00 +0: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_view_hscrollbar_test.dart: 内容少：自然横滚条底边距最后一行 11
+内容少：横滚条与最后一行的间距 = 11.0
+00:01 +1: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_view_primary_hscrollbar_test.dart: 内容少：横滚条贴最后一行下方（隔 11），不钉屏幕底
+00:01 +1: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_view_hscrollbar_test.dart: 内容多：横滚条钉在表体区域底部（视口底）
+内容多：横滚条底边 = 600.0（视口高 600）
+00:01 +2: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_view_primary_hscrollbar_test.dart: 内容少：横滚条贴最后一行下方（隔 11），不钉屏幕底
+内容少：横滚条 top=313.0，最后一行底=313.0（条 box 占位 [行底, 行底+11]，滑块上缘距行底约 1px）
+00:02 +3: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_view_hscrollbar_test.dart: 带悬浮批量按钮（颜色主档同款）：内容少时横滚条仍隔 11 不被 200 留白顶开
+批量表内容少：横滚条与最后一行的间距 = 11.0（应 11，非 200）
+00:02 +4: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_view_primary_hscrollbar_test.dart: 内容多：横滚条钉在表体区底（视口底）
+内容多：横滚条 top=689.0，期望 689.0
+00:02 +5: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_view_hscrollbar_test.dart: 外置悬浮按钮留白可以移除并恢复自然横滚条
+00:02 +6: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_view_primary_hscrollbar_test.dart: 折叠手势不受影响：表格上上滑仍收起顶部卡片
+折叠手势：工具行 y 70.0 → 10.0（卡片收起后应顶到 0）
+00:03 +7: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_view_hscrollbar_test.dart: 悬浮操作移除后撤掉旧留白，短表横滚条仍贴末行
+00:03 +8: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_view_primary_hscrollbar_test.dart: 带悬浮批量按钮（货品资料同款）：内容少时横滚条仍贴末行
+批量表内容少：横滚条 top=325.0，最后一行底=325.0（应贴合，非 +200）
+00:03 +9: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_view_hscrollbar_test.dart: 长表滚到底保留实际操作组让位，横滚条跟随实际末行
+00:04 +10: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_view_hscrollbar_test.dart: 长表滚到底保留实际操作组让位，横滚条跟随实际末行
+00:06 +11: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_view_frozen_selection_test.dart: 横滚后表头全选框仍在视口左缘且点得动
+00:07 +12: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_view_frozen_selection_test.dart: 横滚后表头全选框仍在视口左缘且点得动
+00:07 +13: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_view_hscrollbar_test.dart: 空表（覆盖层路径）：横滚条可拖动表头且贴提示行
+00:07 +14: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_view_hscrollbar_test.dart: 空表（覆盖层路径）：横滚条可拖动表头且贴提示行
+00:07 +15: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_view_hscrollbar_test.dart: 空表与有数据往返时横滚条及位置保持
+00:07 +16: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_view_hscrollbar_test.dart: 空表（流内路径）：保留可拖动横向滚动条
+00:08 +17: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_view_background_menu_test.dart: empty list blank space can paste
+00:10 +18: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/uten_editable_grid_hscrollbar_test.dart: 空编辑表保留超宽表头横滚且空态保持在可视区
+00:10 +19: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/uten_editable_grid_hscrollbar_test.dart: 空编辑表保留超宽表头横滚且空态保持在可视区
+00:11 +20: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/uten_editable_grid_hscrollbar_test.dart: 空编辑表保留超宽表头横滚且空态保持在可视区
+00:11 +21: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/uten_editable_grid_hscrollbar_test.dart: 空编辑表保留超宽表头横滚且空态保持在可视区
+00:11 +22: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/uten_editable_grid_hscrollbar_test.dart: 横滚选中行冻结勾选列不透字 Brightness.dark
+00:11 +23: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/uten_editable_grid_hscrollbar_test.dart: 横滚选中行冻结勾选列不透字 Brightness.light
+00:12 +24: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/uten_editable_grid_hscrollbar_test.dart: 内容少：自然横滚条在最后一行下方且有间距
+内容少：横滚条与最后一行的间距 = 11.0
+00:12 +25: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/uten_editable_grid_hscrollbar_test.dart: 内容多：横滚条钉在视口底部
+内容多：可见 Scrollbar 数 = 2
+内容多：钉底条 top = 589.0，期望 589
+00:14 +26: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/uten_doc_link_picker_sheet_test.dart: party field opens paged picker, refreshes exact UUID and preloads list/detail references
+00:15 +27: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/uten_doc_link_picker_sheet_test.dart: unknown source quantities do not hide known selectable lines or become completed
+00:15 +28: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/inputs/uten_year_and_master_filter_test.dart: year picker cancels and reopens, selected filter matches search at width 1440.0
+00:16 +29: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/inputs/uten_year_and_master_filter_test.dart: year picker cancels and reopens, selected filter matches search at width 1440.0
+00:17 +30: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/inputs/uten_year_and_master_filter_test.dart: year picker cancels and reopens, selected filter matches search at width 1440.0
+00:17 +31: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/uten_doc_link_picker_sheet_test.dart: detail read failure is visible and recoverable in ko
+00:18 +32: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/inputs/uten_year_and_master_filter_test.dart: year picker cancels and reopens, selected filter matches search at width 375.0
+00:18 +33: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/inputs/uten_year_and_master_filter_test.dart: year picker cancels and reopens, selected filter matches search at width 375.0
+00:18 +34: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/uten_doc_link_picker_sheet_test.dart: exact positive remainder remains visible when binary subtraction reached zero
+00:18 +35: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/uten_doc_link_picker_sheet_test.dart: new-order source can replace one charged item by an extra gift despite declared gift zero
+00:19 +36: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/uten_doc_link_picker_sheet_test.dart: default approved-source gift limit stays strict quota=1
+00:19 +37: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/uten_doc_link_picker_sheet_test.dart: default approved-source gift limit stays strict quota=1
+00:20 +38: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 开通账号标题使用员工表格，父级部门同时展示子部门授权员工
+00:20 +39: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 开通账号标题使用员工表格，父级部门同时展示子部门授权员工
+00:20 +40: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 开通账号标题使用员工表格，父级部门同时展示子部门授权员工
+00:21 +41: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 开通账号标题使用员工表格，父级部门同时展示子部门授权员工
+00:21 +42: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 开通账号标题使用员工表格，父级部门同时展示子部门授权员工
+00:22 +43: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 开通账号标题使用员工表格，父级部门同时展示子部门授权员工
+00:22 +44: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 开通账号标题使用员工表格，父级部门同时展示子部门授权员工
+00:22 +45: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/uten_doc_link_picker_sheet_test.dart: Step2 货品表头筛选收敛明细行
+00:22 +46: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 同名部门分别选择不会串组，搜索父级名称与姓名保留真实祖先
+00:23 +47: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 同名部门分别选择不会串组，搜索父级名称与姓名保留真实祖先
+00:23 +48: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 同名部门分别选择不会串组，搜索父级名称与姓名保留真实祖先
+00:24 +49: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 同名部门分别选择不会串组，搜索父级名称与姓名保留真实祖先
+00:24 +50: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 审计外部及未知部门候选保留在其它候选分组，不能混入公司树
+00:25 +51: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 跨部门多选与表头全选只选择授权且可用人员，确认前不返回
+00:25 +52: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 跨部门多选与表头全选只选择授权且可用人员，确认前不返回
+00:25 +53: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 跨部门多选与表头全选只选择授权且可用人员，确认前不返回
+00:25 +54: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 跨部门多选与表头全选只选择授权且可用人员，确认前不返回
+00:26 +55: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 跨部门多选与表头全选只选择授权且可用人员，确认前不返回
+00:26 +56: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 跨部门多选与表头全选只选择授权且可用人员，确认前不返回
+00:26 +57: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 组织树加载失败可重试且不会把候选扩成全员
+00:26 +58: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 隐藏部门筛选的专用候选不请求组织树
+00:26 +59: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 候选范围切换后等待新树时不得用旧祖先名称补回新候选
+00:27 +60: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/feedback/uten_progress_dialog_test.dart: shared progress bar stays clearly visible in unknown and counted stages
+00:28 +61: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 员工组织表格真实中文预览 light
+00:28 +62: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 员工组织表格真实中文预览 light
+00:28 +63: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 员工组织表格真实中文预览 light
+00:28 +64: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/feedback/uten_progress_dialog_test.dart: count and percent clamp out-of-range input
+00:28 +65: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/feedback/uten_progress_dialog_test.dart: cancel closes at once, returns null and flags the session; later errors are swallowed
+00:28 +66: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 员工组织表格真实中文预览 dark
+00:28 +67: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 员工组织表格真实中文预览 dark
+00:28 +68: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 员工组织表格真实中文预览 dark
+00:28 +69: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 员工组织表格真实中文预览 dark
+00:29 +70: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 员工组织表格真实中文预览 dark
+00:29 +71: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 员工组织表格真实中文预览 dark
+00:29 +72: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 员工组织表格真实中文预览 dark
+00:29 +73: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 员工组织表格真实中文预览 dark
+00:29 +74: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/feedback/uten_progress_dialog_test.dart: afterCurrent (write batches) system back drains the same way as the cancel button
+00:29 +75: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 员工组织表格真实中文预览 narrow
+00:29 +76: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 员工组织表格真实中文预览 narrow
+00:29 +77: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 员工组织表格真实中文预览 narrow
+00:30 +78: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 员工组织表格真实中文预览 compact
+00:31 +79: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/product_category_delete_safety_test.dart: 货品删除范围预检失败不能退回通用确认：ApiException
+00:32 +80: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/product_category_page_column_permissions_test.dart: 导入入口独立于导出权限且快速重复点击只打开一次
+00:33 +81: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/product_category_page_column_permissions_test.dart: 导入入口独立于导出权限且快速重复点击只打开一次
+00:33 +82: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/product_category_page_column_permissions_test.dart: 导入入口独立于导出权限且快速重复点击只打开一次
+00:33 +83: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/product_category_page_column_permissions_test.dart: 导入入口独立于导出权限且快速重复点击只打开一次
+00:34 +84: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/product_category_page_column_permissions_test.dart: 导入入口独立于导出权限且快速重复点击只打开一次
+00:34 +85: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/product_category_page_column_permissions_test.dart: 导入入口独立于导出权限且快速重复点击只打开一次
+00:34 +86: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/product_category_page_column_permissions_test.dart: 导入入口独立于导出权限且快速重复点击只打开一次
+00:35 +87: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/product_category_page_column_permissions_test.dart: 导入入口独立于导出权限且快速重复点击只打开一次
+00:35 +88: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/product_category_page_column_permissions_test.dart: 未授权导入时工具条与页头均不开放入口
+00:36 +89: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/product_category_page_column_permissions_test.dart: 货品默认编号在名称前且未授权价格折扣列不进入表格
+00:37 +90: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/product_category_page_column_permissions_test.dart: 货品币种紧随价格且沿用权限 goods:price:view
+00:38 +91: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/product_category_page_column_permissions_test.dart: 货品币种紧随价格且沿用权限 goods:price:edit
+00:38 +92: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/product_category_page_column_permissions_test.dart: 货品价格列展示和精确值保留全部小数，旧响应回退也不舍入
+00:39 +93: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/product_category_page_column_permissions_test.dart: 新增行详情表单按原始精度回传价格字符串
+00:40 +94: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/product_category_page_column_permissions_test.dart: 只有货品查看权限时远程候选和导出与含禁用品列表同范围
+00:40 +95: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/product_category_page_column_permissions_test.dart: 只有查看权限也能添加本人关联列，不能新建共享文字数字或计算列
+00:42 +96: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/product_category_page_column_permissions_test.dart: 货品页面创建个人模具关联列，刷新同步且撤回权限立即清除展示值
+00:44 +97: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/product_category_page_column_permissions_test.dart: goods edit permission enables adding a real master_goods column
+00:45 +98: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/finance/finance_batch_entry_test.dart: actual expense batch account then exact amount then currency and method retain selected source values (touch)
+00:46 +99: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/finance/finance_batch_entry_test.dart: actual expense batch account then exact amount then currency and method retain selected source values (touch)
+00:46 +100: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/finance/finance_batch_entry_test.dart: actual expense batch account then exact amount then currency and method retain selected source values (touch)
+00:48 +101: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/finance/finance_batch_entry_test.dart: actual expense batch account then exact amount then currency and method retain selected source values (touch)
+00:49 +102: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/finance/finance_batch_entry_test.dart: actual expense batch account then exact amount then currency and method retain selected source values (mouse-hover)
+00:51 +103: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/production/pages/production_draw_request_page_test.dart: stock reference preserves exact warehouse quantity and stock unit through source selection
+00:52 +104: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/finance/finance_batch_entry_test.dart: actual expense batch account then exact amount then currency and method retain selected source values (semantics)
+00:52 +105: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/production/pages/production_draw_request_page_test.dart: reused page cannot apply an old preview to changed source selection
+00:53 +106: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/finance/finance_batch_entry_test.dart: actual expense batch account then exact amount then currency and method retain selected source values (width-during-menu)
+00:53 +107: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/finance/finance_batch_entry_test.dart: actual expense batch account then exact amount then currency and method retain selected source values (width-during-menu)
+00:53 +108: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/finance/finance_batch_entry_test.dart: actual expense batch account then exact amount then currency and method retain selected source values (width-during-menu)
+00:54 +109: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/production/pages/production_draw_request_page_test.dart: scope invalidation during submit retains original unknown command draft
+00:54 +110: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/finance/finance_batch_entry_test.dart: rejected dispatched batch stays sealed through GET false and lost cancel, then explicit new review preserves every row and exact amount
+00:55 +111: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/finance/finance_batch_entry_test.dart: rejected dispatched batch stays sealed through GET false and lost cancel, then explicit new review preserves every row and exact amount
+00:55 +112: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/finance/finance_batch_entry_test.dart: rejected dispatched batch stays sealed through GET false and lost cancel, then explicit new review preserves every row and exact amount
+00:55 +113: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/finance/finance_batch_entry_test.dart: rejected dispatched batch stays sealed through GET false and lost cancel, then explicit new review preserves every row and exact amount
+00:55 +114: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/finance/finance_batch_entry_test.dart: rejected dispatched batch stays sealed through GET false and lost cancel, then explicit new review preserves every row and exact amount
+00:57 +115: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/finance/finance_batch_entry_test.dart: rejected dispatched batch stays sealed through GET false and lost cancel, then explicit new review preserves every row and exact amount
+00:57 +116: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/production/pages/production_draw_request_page_test.dart: empty selection and invalid quantities block submission inside the field
+00:58 +117: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/finance/finance_batch_entry_test.dart: batch success lost reply is adopted from legacy original-body proof without another create
+00:58 +118: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/production/pages/production_draw_request_page_test.dart: quantity column keeps guidance in the header only (no cell caption, no per-cell info icon)
+00:59 +119: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/finance/finance_batch_entry_test.dart: loss of create retains a private family-view recovery through the real application guard and builder
+00:59 +120: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/finance/finance_batch_entry_test.dart: loss of create retains a private family-view recovery through the real application guard and builder
+00:59 +121: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/production/pages/production_draw_request_page_test.dart: explicit submit uses preview versions and refreshes both workflows
+01:00 +122: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/finance/finance_batch_entry_test.dart: legacy receipt editor selects a physical batch, preserves its old source and saves a partial receipt
+01:00 +123: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/finance/finance_batch_entry_test.dart: legacy receipt editor selects a physical batch, preserves its old source and saves a partial receipt
+01:01 +124: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/finance/finance_batch_entry_test.dart: legacy receipt editor selects a physical batch, preserves its old source and saves a partial receipt
+01:01 +125: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/finance/finance_batch_entry_test.dart: legacy receipt editor selects a physical batch, preserves its old source and saves a partial receipt
+01:01 +126: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/finance/finance_batch_entry_test.dart: legacy receipt editor selects a physical batch, preserves its old source and saves a partial receipt
+01:01 +127: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/finance/finance_batch_entry_test.dart: legacy receipt editor selects a physical batch, preserves its old source and saves a partial receipt
+01:02 +128: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/production/pages/production_draw_request_page_test.dart: pending submission blocks duplicate clicks and navigation
+01:02 +129: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/finance/finance_batch_entry_test.dart: ordinary receipt explicitly chooses one shipment batch and amount400 without consuming the same orders other batch
+01:02 +130: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/finance/finance_batch_entry_test.dart: ordinary receipt explicitly chooses one shipment batch and amount400 without consuming the same orders other batch
+01:03 +131: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/finance/finance_batch_entry_test.dart: ordinary receipt explicitly chooses one shipment batch and amount400 without consuming the same orders other batch
+01:03 +132: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/finance/finance_batch_entry_test.dart: ordinary receipt explicitly chooses one shipment batch and amount400 without consuming the same orders other batch
+01:04 +133: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/finance/finance_batch_entry_test.dart: explicit order deposit accepts real1000 for order735 without silently routing through ordinary AR auto allocation
+01:05 +134: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/finance/finance_batch_entry_test.dart: shipment receipt fee200-10-190 preserves actual bank facts
+01:07 +135: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/warehouse/production_finished_arrival_registration_page_test.dart: selected merged output lot defaults and submits the entire 20000 plus 1000 physical quantity
+01:10 +136: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/finance/finance_batch_entry_test.dart: ordinary receipts keep two chosen batches in one document and preserve a verified independent opening source
+01:10 +137: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/warehouse/production_finished_arrival_registration_page_test.dart: 成品到货以行单位单重录入，包装换算不重复乘，提交本批总重
+01:11 +138: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/warehouse/production_finished_arrival_registration_page_test.dart: 成品到货以行单位单重录入，包装换算不重复乘，提交本批总重
+01:11 +139: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/finance/finance_batch_entry_test.dart: receipt settlement compact panel keeps amount and cancel accessible at width1440.0
+01:12 +140: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/finance/finance_batch_entry_test.dart: receipt settlement compact panel keeps amount and cancel accessible at width1440.0
+01:12 +141: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/warehouse/production_finished_arrival_registration_page_test.dart: sparse superadmin finished arrival form requires explicit extra (true)
+01:13 +142: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/finance/finance_batch_entry_test.dart: shipment source full-width footer preserves cancel and explicit multi-selection at width375.0
+01:13 +143: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/finance/finance_batch_entry_test.dart: shipment source full-width footer preserves cancel and explicit multi-selection at width375.0
+01:14 +144: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/finance/finance_batch_entry_test.dart: shipment source full-width footer preserves cancel and explicit multi-selection at width375.0
+01:14 +145: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/warehouse/production_finished_arrival_registration_page_test.dart: 实称重量: 随登记行提交千克并进幂等键，按报工数量核对 (ADR-135)
+01:15 +146: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/finance/finance_batch_entry_test.dart: shipment source full-width footer preserves cancel and explicit multi-selection at width1440.0
+01:16 +147: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/finance/finance_batch_entry_test.dart: shipment source full-width footer preserves cancel and explicit multi-selection at width1440.0
+01:17 +148: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/warehouse/production_finished_arrival_registration_page_test.dart: 报工单位本身按重量计时只读精确换算, 提交不带重量
+01:17 +149: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/finance/finance_batch_entry_test.dart: the published limit leaves all 501 unsent rows intact and dispatches no batch
+01:17 +150: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/finance/finance_batch_entry_test.dart: the published limit leaves all 501 unsent rows intact and dispatches no batch
+01:20 +151: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/finance/finance_batch_entry_test.dart: the published limit leaves all 501 unsent rows intact and dispatches no batch
+01:22 +152: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/warehouse/production_finished_arrival_registration_page_test.dart: 自制单张登记右键移出一行后仅送检剩余行
+01:22 +153: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/warehouse/production_finished_arrival_registration_page_test.dart: 自制单张登记右键移出一行后仅送检剩余行
+01:22 +154: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/warehouse/production_finished_arrival_registration_page_test.dart: 自制单张登记右键移出一行后仅送检剩余行
+01:22 +155: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/finance/finance_batch_entry_test.dart: receipt creation puts settlement terms in the common selectable grid
+01:22 +156: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/warehouse/production_finished_arrival_registration_page_test.dart: arrival registration is operable at 375px and posts exact warehouse places
+01:23 +157: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/warehouse/production_finished_arrival_registration_page_test.dart: arrival registration is operable at 375px and posts exact warehouse places
+01:23 +158: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/warehouse/production_finished_arrival_registration_page_test.dart: arrival registration is operable at 375px and posts exact warehouse places
+01:24 +159: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/finance/finance_batch_entry_test.dart: otherIncome creation puts settlement terms in the common selectable grid
+01:24 +160: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/warehouse/production_finished_arrival_registration_page_test.dart: view-only arrival task exposes no editable promise
+01:24 +161: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/finance/finance_batch_entry_test.dart: bankTransfer creation puts settlement terms in the common selectable grid
+01:24 +162: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/warehouse/production_finished_arrival_registration_page_test.dart: formal route derives permission and refreshes pending count after save
+01:25 +163: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/warehouse/production_finished_arrival_registration_page_test.dart: formal route derives permission and refreshes pending count after save
+01:25 +164: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/finance/finance_batch_entry_test.dart: payment settlement settings preserve cancel and calculate same-currency bank facts
+01:26 +165: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/warehouse/production_finished_arrival_registration_page_test.dart: place is editable before a warehouse is chosen; submit waits for suggestions
+01:26 +166: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/finance/finance_batch_entry_test.dart: project selected last refreshes grouping totals on the next frame
+01:27 +167: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/warehouse/production_finished_arrival_registration_page_test.dart: global default stays editable and manual input changes source
+01:27 +168: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/finance/finance_batch_entry_test.dart: row reference imports its hidden supplier and preserves entered bank reference
+01:28 +169: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/warehouse/production_finished_arrival_registration_page_test.dart: warehouse change posts shared place suggestions and fills a yellow place
+01:28 +170: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/finance/finance_batch_entry_test.dart: new row rejects a supplier hidden while its picker was open
+01:29 +171: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/finance/finance_batch_entry_test.dart: new row rejects a supplier hidden while its picker was open
+01:29 +172: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/warehouse/production_finished_arrival_registration_page_test.dart: warehouse preference replaces untouched global suggestion
+01:29 +173: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/finance/finance_batch_entry_test.dart: batch fill applies only selected rows and cancel preserves input
+01:30 +174: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/finance/finance_batch_entry_test.dart: batch fill applies only selected rows and cancel preserves input
+01:31 +175: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/warehouse/production_finished_arrival_registration_page_test.dart: manual input survives retry for the same warehouse
+01:31 +176: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/finance/finance_batch_entry_test.dart: mixed suppliers preview two documents and submit one atomic batch
+01:31 +177: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/warehouse/production_finished_arrival_registration_page_test.dart: switching warehouse discards the previous manual place
+01:32 +178: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/warehouse/production_finished_arrival_registration_page_test.dart: switching warehouse discards the previous manual place
+01:33 +179: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/finance/finance_batch_entry_test.dart: receipt unknown result keeps original source command across hard close and replays exactly
+01:34 +180: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/warehouse/production_finished_arrival_registration_page_test.dart: new warehouse drops the old auto place and takes the server goods-master fallback
+01:34 +181: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/finance/finance_batch_entry_test.dart: 1000 rapid edits preserve distinct currencies, selection and draft values
+01:36 +182: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/finance/finance_batch_entry_test.dart: 1000 rapid edits preserve distinct currencies, selection and draft values
+01:37 +183: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/finance/finance_batch_entry_test.dart: 1000 rapid edits preserve distinct currencies, selection and draft values
+01:40 +184: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/finance/finance_batch_entry_test.dart: 1000 rapid edits preserve distinct currencies, selection and draft values
+01:40 +185: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/warehouse/production_finished_arrival_registration_page_test.dart: 登记失败整批不落：停在原页，重试原样提交同一个命令
+01:42 +186: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/finance/finance_batch_entry_test.dart: desktop and narrow layouts retain the row grid and save action
+01:43 +187: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/finance/finance_batch_entry_test.dart: desktop and narrow layouts retain the row grid and save action
+01:44 +188: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/finance/finance_batch_entry_test.dart: desktop and narrow layouts retain the row grid and save action
+01:48 +189: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/sales/pages/sales_doc_edit_v187_test.dart: sales return own line locator with empty metadata loaded=false
+01:50 +190: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/sales/pages/sales_doc_edit_v187_test.dart: sales return own line locator with empty metadata loaded=true
+01:51 +191: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/sales/pages/sales_doc_edit_v187_test.dart: sales picker accepts a selectable client after fresh lookup
+01:52 +192: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/sales/pages/sales_doc_edit_v187_test.dart: sales picker rejects a newly hidden client after fresh lookup
+01:54 +193: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/sales/pages/sales_doc_edit_v187_test.dart: shipment order prefill retains the exact discount and locked preview through quantity edits
+01:55 +194: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/sales/pages/sales_doc_edit_v187_test.dart: selected order products prefill partial shipment and save without warehouse
+01:56 +195: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/sales/pages/sales_doc_edit_v187_test.dart: existing shipment retains legacy original-price semantics for discount null
+01:56 +196: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/sales/pages/sales_doc_edit_v187_test.dart: existing shipment retains legacy original-price semantics for discount 0
+01:56 +197: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/sales/pages/sales_doc_edit_v187_test.dart: existing shipment retains legacy original-price semantics for discount 0.8
+01:57 +198: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/sales/pages/sales_doc_edit_v187_test.dart: unconfirmed multi-shipment creation retries identical intent and then shows created documents
+01:58 +199: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/sales/pages/sales_doc_edit_v187_test.dart: stale product availability blocks prefill with a recovery message
+01:58 +200: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/sales/pages/sales_doc_edit_v187_test.dart: direct customer edit retains exact decimals and stable row revision
+01:59 +201: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/sales/pages/sales_doc_edit_v187_test.dart: direct customer total amount reverses exact price and submits decimal strings
+02:00 +202: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/sales/pages/sales_doc_edit_v187_test.dart: direct customer inexact total blocks save without silently rounding price
+02:00 +203: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/sales/pages/sales_doc_edit_v187_test.dart: unlinked sales return includes its stored discount when reversing total
+02:01 +204: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/sales/pages/sales_doc_edit_v187_test.dart: explicit free dispatch hides unnecessary price and currency inputs
+02:01 +205: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/sales/pages/sales_doc_edit_v187_test.dart: new order uses partial shipment without a policy input
+02:02 +206: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/sales/pages/sales_doc_edit_v187_test.dart: 375px order editor has no deposit or advance receipt input
+02:02 +207: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/sales/pages/sales_doc_edit_v187_test.dart: legacy order keeps shipment policy read-only
+02:03 +208: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/sales/pages/sales_doc_edit_v187_test.dart: non-order currency document keeps exchange rate editor
+02:03 +209: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/sales/pages/sales_doc_edit_v187_test.dart: order save omits exchange rate but keeps currency and tax rate
+02:04 +210: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/sales/pages/sales_doc_edit_v187_test.dart: new sales shipment explains mandatory order linkage
+02:04 +211: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/sales/pages/sales_doc_edit_v187_test.dart: finance-rejected order shows reason and save explains reapproval
+02:05 +212: All tests passed!

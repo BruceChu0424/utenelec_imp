@@ -89,6 +89,7 @@ import '../../../shared/widgets/sales_order_money_summary_card.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../config/sales_doc_config.dart';
 import '../models/sales_doc.dart';
+import '../models/sales_source_discount.dart';
 import '../models/sales_return_quality.dart';
 import '../providers/master_name_provider.dart';
 import '../repositories/sales_repository.dart';
@@ -2535,13 +2536,21 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
                         : p;
                   },
                 ),
-                if (pricedLikeOrder)
+                if (pricedLikeOrder || _cfg.type == SalesDocType.shipment)
                   MasterColumnDef(
                     key: 'discount',
                     label: '折扣',
+                    info: _cfg.type == SalesDocType.shipment
+                        ? '沿用来源订单的折扣；金额以服务端分配的来源订单金额为准。'
+                        : null,
                     width: 80,
                     value: (it) => masked
                         ? '***'
+                        : _cfg.type == SalesDocType.shipment
+                        ? salesSourceDiscountText(
+                            it.exactDecimals['discount'] ??
+                                it.discount?.toString(),
+                          )
                         : financeExactTrimmed(
                             it.exactDecimals['discount'] ??
                                 it.discount?.toString(),

@@ -1,0 +1,76 @@
+{
+  "status": "passed",
+  "headAtStart": "e16f4fb2268dc2ac01f5611c3079c246806a0925",
+  "mergeHeadAtStart": "e9713e539a97a0fca5e579ce1cab633002af960a",
+  "headAfter": "e16f4fb2268dc2ac01f5611c3079c246806a0925",
+  "sourceChecks": [
+    {
+      "path": "lib/features/basic_data/widgets/master_data_table_view.dart",
+      "before": "65068D91C092C75BB1045ED59BF9974F5FA37480418A0B026AA8EF406D867075",
+      "after": "65068D91C092C75BB1045ED59BF9974F5FA37480418A0B026AA8EF406D867075",
+      "unchanged": true
+    },
+    {
+      "path": "lib/components/layout/uten_ancestor_row_window.dart",
+      "before": "D4F6B565044307FC3B58BA14A3B33A7DADEDD160D390AAE43D2EAE94CFFE649D",
+      "after": "D4F6B565044307FC3B58BA14A3B33A7DADEDD160D390AAE43D2EAE94CFFE649D",
+      "unchanged": true
+    },
+    {
+      "path": "lib/components/layout/src/row_extent_index.dart",
+      "before": "E1AD1D2F14ABD3A656F6E63C24FFAF340C9EC696AA31E0E85C4382F959650BB9",
+      "after": "E1AD1D2F14ABD3A656F6E63C24FFAF340C9EC696AA31E0E85C4382F959650BB9",
+      "unchanged": true
+    },
+    {
+      "path": "lib/shared/models/immutable_paged_rows.dart",
+      "before": "571207FB79FFE321D3EAC31AF658CCAE7C4D6F2F7FF268F1F915F182B2262E54",
+      "after": "571207FB79FFE321D3EAC31AF658CCAE7C4D6F2F7FF268F1F915F182B2262E54",
+      "unchanged": true
+    },
+    {
+      "path": "integration_test/table_complete_read_stability_test.dart",
+      "before": "E4E1AA121A88B16C763C321CB359CD997DA6DAD1D637512B32043D57F94CF1EC",
+      "after": "E4E1AA121A88B16C763C321CB359CD997DA6DAD1D637512B32043D57F94CF1EC",
+      "unchanged": true
+    }
+  ],
+  "synthetic": {
+    "syntheticOnly": true,
+    "surface": "native integration window",
+    "rows": 35000,
+    "rapidEnterQueries": 20,
+    "cancelActions": 5,
+    "scrollRoundTrips": 3,
+    "selectedAfterScroll": 1,
+    "siblingInputRetained": true,
+    "inputScope": "Flutter text-input/composing channel, not OS IME candidate UI",
+    "businessScope": "synthetic readonly DTOs, no financial calculation or persisted draft claim",
+    "metrics": {
+      "phase": "完成",
+      "rows": 35000,
+      "total": 35000,
+      "firstMs": 12,
+      "completeMs": 2371,
+      "settledMs": 17037,
+      "syntheticBatchCalls": 164,
+      "active": 0,
+      "cancelled": 20,
+      "selected": 1,
+      "errors": 0,
+      "maxEventLoopGapMs": 853
+    }
+  },
+  "runtime": {
+    "schemaVersion": 1,
+    "buildProfile": "local_test",
+    "applicationId": "com.uten.uten_imp.local_test",
+    "nativeProductName": "UTEN Local Test",
+    "displayName": "UTEN 本地测试",
+    "runtimeFamily": "flutter",
+    "networkScope": "loopback-only",
+    "selfUpdatesAllowed": false
+  },
+  "performanceAcceptance": false,
+  "log": "windows-integration-merged-main-run1.log"
+}

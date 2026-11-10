@@ -1,3 +1,4 @@
+import '../../../components/inputs/uten_selected_value_theme.dart';
 import '../shared/finance_complete_summary_read.dart';
 import 'finance_summary_scope_field.dart';
 import '../../../shared/paging/versioned_summary_read.dart';
@@ -1200,7 +1201,7 @@ class _EditorState extends ConsumerState<FinanceExpenseAnalysisSurface>
         ],
       ),
     ),
-  );
+  ).withSelectedValueHighlights();
 }
 
 class _AllocationRow extends EditableGridRow {

@@ -93,6 +93,8 @@ class ProductionDrawRequestSummary {
     this.colorName,
     this.unitId,
     this.unitName,
+    this.stockQuantityText,
+    this.stockUnitName,
   });
 
   final String warehouseId;
@@ -104,6 +106,8 @@ class ProductionDrawRequestSummary {
   final String? colorName;
   final String? unitId;
   final String? unitName;
+  final String? stockQuantityText;
+  final String? stockUnitName;
   final double qty;
 
   String get identity =>
@@ -120,6 +124,10 @@ class ProductionDrawRequestSummary {
         colorName: json['colorName'] as String?,
         unitId: json['unitId'] as String?,
         unitName: json['unitName'] as String?,
+        stockQuantityText:
+            json['stockQuantityText']?.toString() ??
+            json['stockQuantity']?.toString(),
+        stockUnitName: json['stockUnitName'] as String?,
         qty: (json['qty'] as num).toDouble(),
       );
 
@@ -246,6 +254,8 @@ class ProductionDrawRequestPreview {
           colorName: summary.colorName,
           unitId: summary.unitId,
           unitName: summary.unitName,
+          stockQuantityText: summary.stockQuantityText,
+          stockUnitName: summary.stockUnitName,
         ),
       );
     }

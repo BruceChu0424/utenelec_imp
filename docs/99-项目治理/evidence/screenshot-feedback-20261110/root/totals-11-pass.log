@@ -1,0 +1,14 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/uten_totals_summary_bar_test.dart
+00:00 +0: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/uten_totals_summary_bar_test.dart: 圆角红底、白字，金额大于标签，紧凑=false
+00:00 +1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/uten_totals_summary_bar_test.dart: 圆角红底、白字，金额大于标签，紧凑=true
+00:00 +2: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/uten_totals_summary_bar_test.dart: 换行合计仅在每行实际内容后铺红底，不铺满第二行空白
+00:00 +3: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/uten_totals_summary_bar_test.dart: 条目内部换行与旁侧短条目不把两行背景连成卡片
+00:01 +4: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/uten_totals_summary_bar_test.dart: 窄屏和两倍字体完整显示多币种长精度金额，不裁切或缩字
+00:09 +5: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/uten_editable_grid_totals_layout_test.dart: 桌面添加行在左、汇总在同一行最右，连续添加保留全部行
+00:13 +6: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/uten_editable_grid_totals_layout_test.dart: 桌面添加行在左、汇总在同一行最右，连续添加保留全部行
+00:14 +7: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/uten_editable_grid_totals_layout_test.dart: 桌面添加行在左、汇总在同一行最右，连续添加保留全部行
+00:14 +8: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/uten_editable_grid_totals_layout_test.dart: 桌面添加行在左、汇总在同一行最右，连续添加保留全部行
+00:16 +9: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/uten_editable_grid_totals_layout_test.dart: 宽390.0 字体1.0时先显示添加行，再右对齐完整汇总
+00:16 +10: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/uten_editable_grid_totals_layout_test.dart: 宽640.0 字体2.0时先显示添加行，再右对齐完整汇总
+00:16 +11: All tests passed!

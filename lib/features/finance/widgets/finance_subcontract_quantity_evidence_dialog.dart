@@ -1,3 +1,4 @@
+import '../../../components/inputs/uten_selected_value_theme.dart';
 import 'dart:typed_data';
 import '../shared/finance_workbench_panel.dart';
 import 'dart:convert';
@@ -973,7 +974,7 @@ class _EvidenceEditorState extends ConsumerState<_EvidenceEditor>
           title: const Text('原表数量资料'),
           content: const Text('身份或权限已变化，原草稿、附件和请求已保留。'),
         ),
-      );
+      ).withSelectedValueHighlights();
     }
     final editable = _editing && !_busy && !_frozen && _canEdit,
         original = _map(_source?['source']);
@@ -1354,7 +1355,7 @@ class _EvidenceEditorState extends ConsumerState<_EvidenceEditor>
           ],
         ),
       ),
-    );
+    ).withSelectedValueHighlights();
   }
 }
 

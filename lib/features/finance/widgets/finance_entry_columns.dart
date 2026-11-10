@@ -28,6 +28,7 @@ List<EditableGridColumn<FinanceGridRow>> financeEntryColumns({
     String label,
     String Function(FinanceGridRow) text,
     Future<void> Function(FinanceGridRow) pick,
+    bool Function(FinanceGridRow) selected,
   ) => EditableGridColumn<FinanceGridRow>(
     key: key,
     label: label,
@@ -38,7 +39,7 @@ List<EditableGridColumn<FinanceGridRow>> financeEntryColumns({
     cellBuilder: (_, row) => ListenableBuilder(
       listenable: row.entry,
       builder: (_, _) => UtenButton(
-        type: UtenButtonType.secondary,
+        type: selected(row) ? UtenButtonType.tonal : UtenButtonType.secondary,
         size: UtenButtonSize.small,
         onPressed: () => pick(row),
         child: Text(text(row)),
@@ -142,6 +143,7 @@ List<EditableGridColumn<FinanceGridRow>> financeEntryColumns({
                       ? names.client(row.entry.partyId)
                       : names.supplier(row.entry.partyId)),
         pickParty,
+        (row) => row.entry.partyId != null,
       ),
     picker(
       'entryAccount',
@@ -150,6 +152,7 @@ List<EditableGridColumn<FinanceGridRow>> financeEntryColumns({
           ? '选择${config.accountLabel}'
           : names.account(row.entry.accountId),
       pickAccount,
+      (row) => row.entry.accountId != null,
     ),
     // The cash amount is an essential entry fact. Keep it in the first screen;
     // optional quantity/price inputs retain their original shared calculator.
@@ -233,6 +236,9 @@ List<EditableGridColumn<FinanceGridRow>> financeEntryColumns({
                   row.appliedBillNo ??
                   (config.isClient ? '选出货单' : '引用应付'),
         pickSource,
+        (row) => row.entry.receiptKind == 'CUSTOMER_PREPAYMENT'
+            ? row.entry.salesOrderId != null
+            : row.appliedLedgerId != null,
       ),
       if (config.type != FinanceDocType.receipt) balanceColumn,
     ],

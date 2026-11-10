@@ -1,0 +1,38 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/table-read-performance-20261110/integration_test/.local-artifacts/merged_pointer_localtest_test.dart
+Building Windows application...                                    49.8s
+√ Built build\windows\x64\runner\Debug\uten_imp.exe
+00:00 +0: (setUpAll)
+NATIVE_POINTER_VIEWPORT client=1600x1200 logical=800x600 ownPid=11872
+00:00 +0: shared-pointer-table 长表滚到底保留实际操作组让位，横滚条跟随实际末行
+NATIVE_POINTER_FAILURE_GEOMETRY [{scrollbar: 906298758, positions: [{axis: vertical, pixels: 0.0, max: 0.0, viewport: 600.0}]}, {scrollbar: 906298758, positions: [{axis: vertical, pixels: 0.0, max: 0.0, viewport: 600.0}]}, {scrollbar: 381737685, positions: [{axis: vertical, pixels: 0.0, max: 0.0, viewport: 56.0}]}, {scrollbar: 381737685, positions: [{axis: vertical, pixels: 0.0, max: 0.0, viewport: 56.0}]}, {target: synthetic-r59-2, dragDevices: [touch, stylus, invertedStylus, trackpad, unknown], box: Offset(210.0, 495.0) Size(34.4, 20.0)}, {scrollbar: 882655459, positions: [{axis: horizontal, pixels: 0.0, max: 0.0, viewport: 784.0}]}, {scrollbar: 341029400, positions: [{axis: vertical, pixels: 0.0, max: 0.0, viewport: 48.0}]}, {scrollbar: 341029400, positions: [{axis: vertical, pixels: 0.0, max: 0.0, viewport: 48.0}]}]
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: a value greater than <50.0>
+  Actual: <0.0>
+   Which: is not a value greater than <50.0>
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_view_hscrollbar_test.dart:300:5)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_view_hscrollbar_test.dart line 300
+The test description was:
+  长表滚到底保留实际操作组让位，横滚条跟随实际末行
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:16 +0 -1: shared-pointer-table 长表滚到底保留实际操作组让位，横滚条跟随实际末行 [E]
+  Test failed. See exception logs above.
+  The test description was: 长表滚到底保留实际操作组让位，横滚条跟随实际末行
+  
+00:16 +0 -1: (tearDownAll)
+00:16 +0 -1: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/table-read-performance-20261110/integration_test/.local-artifacts/merged_pointer_localtest_test.dart: shared-pointer-table 长表滚到底保留实际操作组让位，横滚条跟随实际末行

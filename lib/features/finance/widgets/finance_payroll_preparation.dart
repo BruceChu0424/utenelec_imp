@@ -1,3 +1,4 @@
+import '../../../components/inputs/uten_selected_value_theme.dart';
 import '../../../shared/paging/read_view_activity.dart';
 import '../../../shared/paging/scoped_paged_read.dart'
     show pagedReadAccessDenied;
@@ -958,7 +959,7 @@ class _PayrollPreparationState extends ConsumerState<FinancePayrollPreparation>
           ],
         ),
       ),
-    );
+    ).withSelectedValueHighlights();
   }
 }
 

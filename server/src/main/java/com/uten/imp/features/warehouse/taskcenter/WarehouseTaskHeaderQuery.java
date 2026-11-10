@@ -22,6 +22,7 @@ final class WarehouseTaskHeaderQuery {
         });
         fields.put("quantity", SqlColumnSearch.Field.decimal(inbound
                 ? "CAST(line_data->>'quantity' AS numeric)" : "quantity"));
+        if (!inbound) fields.put("stockPlace", SqlColumnSearch.Field.text("coalesce(stock_place,'—')"));
         if (inbound) for (String key:java.util.List.of("stockedQty","pendingStockInQty","pendingReturnQty")) {
             fields.put(key,SqlColumnSearch.Field.decimal("CAST(action_data->>'"+key+"' AS numeric)"));
         }
@@ -52,6 +53,7 @@ final class WarehouseTaskHeaderQuery {
             case "colorName" -> inbound ? "line_data->>'colorName'" : "color_name";
             case "specification" -> inbound ? "line_data->>'specification'" : "specification";
             case "quantity" -> inbound ? "CAST(line_data->>'quantity' AS numeric)" : "quantity";
+            case "stockPlace" -> "stock_place";
             case "stockedQty" -> "CAST(action_data->>'stockedQty' AS numeric)";
             case "pendingStockInQty" -> "CAST(action_data->>'pendingStockInQty' AS numeric)";
             case "pendingReturnQty" -> "CAST(action_data->>'pendingReturnQty' AS numeric)";

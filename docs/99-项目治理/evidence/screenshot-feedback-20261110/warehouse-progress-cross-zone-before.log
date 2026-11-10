@@ -1,0 +1,32 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/feedback/uten_progress_dialog_test.dart
+00:00 +0: cross error-zone frame returns the original failure to the caller exactly once
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: empty
+  Actual: [StateError:Bad state: request rejected]
+the request failure must reach its caller, not escape its error zone
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/feedback/uten_progress_dialog_test.dart:345:9)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/feedback/uten_progress_dialog_test.dart line 345
+The test description was:
+  cross error-zone frame returns the original failure to the caller exactly once
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:01 +0 -1: cross error-zone frame returns the original failure to the caller exactly once [E]
+  Test failed. See exception logs above.
+  The test description was: cross error-zone frame returns the original failure to the caller exactly once
+  
+00:01 +0 -1: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/feedback/uten_progress_dialog_test.dart: cross error-zone frame returns the original failure to the caller exactly once

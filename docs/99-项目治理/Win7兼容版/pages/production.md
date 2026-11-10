@@ -184,7 +184,7 @@
 
 ## W7-BIZ-104 · lib/features/production/pages/production_draw_request_page.dart
 
-模块 `production`；891 行；SHA256 `9a6577e5022579e6c05cbbd54e0c3b66d1f348245917c447f0f5fb9498c0c41f`。
+模块 `production`；903 行；SHA256 `3fac8afd9105aa4b362811304f01370b6351bc6156e6af52525f36b6e5b9da92`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|

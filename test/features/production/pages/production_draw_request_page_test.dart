@@ -22,6 +22,7 @@ import 'package:uten_imp/core/theme/dark_theme.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/production/models/production_draw_request.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/production/pages/production_draw_request_page.dart';
 import 'package:uten_imp/features/production/providers/production_execution_refresh.dart';
 import 'package:uten_imp/features/production/repositories/production_draw_request_repository.dart';
@@ -231,6 +232,31 @@ Future<ProviderContainer> _pump(
 }
 
 void main() {
+  testWidgets(
+    'stock reference preserves exact warehouse quantity and stock unit through source selection',
+    (tester) async {
+      final repository = _Repository();
+      await _pump(
+        tester,
+        repository,
+        initialDrawItemIds: {'line-b'},
+        size: const Size(1800, 900),
+      );
+      final table = tester
+          .widget<MasterDataTableView<ProductionDrawRequestSummary>>(
+            find.byKey(const Key('production-draw-request-summary-table')),
+          );
+      final stock = table.columns.singleWhere(
+        (column) => column.key == 'stockQuantity',
+      );
+      expect(table.items, hasLength(1));
+      expect(table.items.single.qty, 4);
+      expect(stock.value(table.items.single), '123456.789 千克');
+      expect(stock.exactValueOf!(table.items.single), '123456.7890');
+      expect(stock.info, contains('包含已预留量'));
+      expect(tester.takeException(), isNull);
+    },
+  );
   testWidgets(
     'reused page cannot apply an old preview to changed source selection',
     (tester) async {
@@ -483,7 +509,7 @@ void main() {
       final repository = _Repository();
       await _pump(tester, repository);
       // 表头：应领数量列带列头 ⓘ——列含义说明的唯一入口（全站口径）。
-      expect(find.byType(UtenColumnHintIcon), findsOneWidget);
+      expect(find.byType(UtenColumnHintIcon), findsNWidgets(2));
       // 单元格：不再有浮动标签「本次领料」角标；格内 ⓘ（非紧凑
       // UtenFieldHintIcon）在数据合法时不应出现（表头 ⓘ 是 dense 态）。
       expect(find.text('本次领料'), findsNothing);

@@ -133,6 +133,28 @@ Future<DateTime?> showUtenMonthPicker({
   ),
 );
 
+/// Year precision shares the calendar's virtualised year selector.
+Future<int?> showUtenYearPicker({
+  required BuildContext context,
+  required int firstYear,
+  required int lastYear,
+  required int initialYear,
+  String? helpText,
+}) async {
+  final selected = await _showUtenCalendar<DateTime>(
+    context: context,
+    dialog: UtenDateRangePickerDialog(
+      firstDate: DateTime(firstYear),
+      lastDate: DateTime(lastYear, 12, 31),
+      initialStart: DateTime(initialYear),
+      singleDate: true,
+      yearOnly: true,
+      helpText: helpText ?? '选择年份',
+    ),
+  );
+  return selected?.year;
+}
+
 enum _CalendarView { days, years, months }
 
 /// 区间选择的交互语义与 Material 一致：首击定起点；再击不早于起点则定
@@ -153,6 +175,7 @@ class UtenDateRangePickerDialog extends StatefulWidget {
     this.openEndLabel,
     this.singleDate = false,
     this.monthOnly = false,
+    this.yearOnly = false,
     this.returnSelection = false,
   });
 
@@ -171,6 +194,7 @@ class UtenDateRangePickerDialog extends StatefulWidget {
   final String? openEndLabel;
   final bool singleDate;
   final bool monthOnly;
+  final bool yearOnly;
   final bool returnSelection;
 
   @override
@@ -206,6 +230,7 @@ class _UtenDateRangePickerDialogState extends State<UtenDateRangePickerDialog> {
   void initState() {
     super.initState();
     if (widget.monthOnly) _view = _CalendarView.months;
+    if (widget.yearOnly) _view = _CalendarView.years;
     final now = widget.currentDate ?? ChinaDateTime.today();
     _today = _dateOnly(now);
     _firstDate = _dateOnly(widget.firstDate);
@@ -437,7 +462,7 @@ class _UtenDateRangePickerDialogState extends State<UtenDateRangePickerDialog> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           if (widget.allowOpenRange) _buildOpenEnds(),
-          _buildMonthNav(scheme, localizations),
+          if (!widget.yearOnly) _buildMonthNav(scheme, localizations),
           if (_view == _CalendarView.days) ...[
             _buildWeekdayRow(scheme, localizations),
             _buildGrid(scheme),
@@ -462,13 +487,19 @@ class _UtenDateRangePickerDialogState extends State<UtenDateRangePickerDialog> {
                     lastYear: _lastDate.year,
                     selectedYear: _displayedMonth.year,
                     currentYear: _today.year,
-                    onSelected: (year) => setState(() {
-                      final next = _clampDate(
-                        DateTime(year, _displayedMonth.month),
-                      );
-                      _displayedMonth = DateTime(next.year, next.month);
-                      _view = _CalendarView.months;
-                    }),
+                    onSelected: (year) {
+                      if (widget.yearOnly) {
+                        Navigator.of(context).pop(DateTime(year));
+                        return;
+                      }
+                      setState(() {
+                        final next = _clampDate(
+                          DateTime(year, _displayedMonth.month),
+                        );
+                        _displayedMonth = DateTime(next.year, next.month);
+                        _view = _CalendarView.months;
+                      });
+                    },
                   );
                 },
               ),
@@ -483,7 +514,7 @@ class _UtenDateRangePickerDialogState extends State<UtenDateRangePickerDialog> {
           onPressed: () => Navigator.of(context).pop(),
           child: Text(localizations.cancelButtonLabel),
         ),
-        if (!widget.monthOnly)
+        if (!widget.monthOnly && !widget.yearOnly)
           UtenButton(
             onPressed: _canConfirm ? _confirm : null,
             child: Text(_t(context, '确定', 'OK', '확인')),
@@ -564,7 +595,7 @@ class _UtenDateRangePickerDialogState extends State<UtenDateRangePickerDialog> {
         '${value.year.toString().padLeft(4, '0')}/'
         '${value.month.toString().padLeft(2, '0')}/'
         '${value.day.toString().padLeft(2, '0')}';
-    if (widget.monthOnly) return null;
+    if (widget.monthOnly || widget.yearOnly) return null;
     if (widget.singleDate) {
       return _startDate == null ? null : [date(_startDate!)];
     }

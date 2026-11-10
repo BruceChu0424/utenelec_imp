@@ -1433,6 +1433,22 @@ extension _FinanceBatchEntry on _FinanceDocEditPageState {
                           ),
                         ),
                         const SizedBox(height: UtenSpacing.s12),
+                        if (_createdBatchIds.isNotEmpty)
+                          PendingAttachmentRetryNotice(
+                            documentLabel: _cfg.label,
+                            controller: _pendingFiles,
+                          ),
+                        BusinessAttachmentSection.draft(
+                          controller: _pendingFiles,
+                          canManage:
+                              !_saving &&
+                              ref
+                                  .watch(currentPermissionsProvider)
+                                  .contains(_cfg.createPerm),
+                          title: '单据和凭证',
+                          categories: const ['银行回单', '发票', '其他凭证'],
+                        ),
+                        const SizedBox(height: UtenSpacing.s12),
                         _freezeEntry(
                           absorbing:
                               frozen || _preparingLedgerRows || _intakeBusy,
@@ -1510,21 +1526,6 @@ extension _FinanceBatchEntry on _FinanceDocEditPageState {
                           ),
                         ),
                         const SizedBox(height: UtenSpacing.s12),
-                        if (_createdBatchIds.isNotEmpty)
-                          PendingAttachmentRetryNotice(
-                            documentLabel: _cfg.label,
-                            controller: _pendingFiles,
-                          ),
-                        BusinessAttachmentSection.draft(
-                          controller: _pendingFiles,
-                          canManage:
-                              !_saving &&
-                              ref
-                                  .watch(currentPermissionsProvider)
-                                  .contains(_cfg.createPerm),
-                          title: '单据和凭证',
-                          categories: const ['银行回单', '发票', '其他凭证'],
-                        ),
                       ],
                     ),
                   ),

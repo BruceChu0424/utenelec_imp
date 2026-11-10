@@ -1,0 +1,14 @@
+-------------------------------------------------------------------------------
+Test set: com.uten.imp.common.mastercode.GoodsIdentifierReuseSafetyPostgresTest
+-------------------------------------------------------------------------------
+Tests run: 15, Failures: 2, Errors: 0, Skipped: 0, Time elapsed: 189.0 s <<< FAILURE! -- in com.uten.imp.common.mastercode.GoodsIdentifierReuseSafetyPostgresTest
+com.uten.imp.common.mastercode.GoodsIdentifierReuseSafetyPostgresTest.rolledBackFirstUseDoesNotPreventAnOtherwiseUnusedGoodsDelete -- Time elapsed: 0.784 s <<< FAILURE!
+java.lang.AssertionError: Competing write completed before lock wait: OK; no SQL failure
+	at com.uten.imp.common.mastercode.GoodsIdentifierReuseSafetyPostgresTest.awaitBlocked(GoodsIdentifierReuseSafetyPostgresTest.java:553)
+	at com.uten.imp.common.mastercode.GoodsIdentifierReuseSafetyPostgresTest.rolledBackFirstUseDoesNotPreventAnOtherwiseUnusedGoodsDelete(GoodsIdentifierReuseSafetyPostgresTest.java:276)
+
+com.uten.imp.common.mastercode.GoodsIdentifierReuseSafetyPostgresTest.firstBusinessUseThatCommitsBeforeDeleteRetainsTheGoodsIdentity -- Time elapsed: 0.759 s <<< FAILURE!
+java.lang.AssertionError: Competing write completed before lock wait: OK; no SQL failure
+	at com.uten.imp.common.mastercode.GoodsIdentifierReuseSafetyPostgresTest.awaitBlocked(GoodsIdentifierReuseSafetyPostgresTest.java:553)
+	at com.uten.imp.common.mastercode.GoodsIdentifierReuseSafetyPostgresTest.firstBusinessUseThatCommitsBeforeDeleteRetainsTheGoodsIdentity(GoodsIdentifierReuseSafetyPostgresTest.java:256)
+

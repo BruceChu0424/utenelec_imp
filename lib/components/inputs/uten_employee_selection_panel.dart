@@ -745,12 +745,6 @@ class _UtenEmployeeSelectionPanelState extends State<UtenEmployeeSelectionPanel>
               directory.contains(_department, item),
         )
         .toList(growable: false);
-    if (items.isEmpty) {
-      return UtenEmpty(
-        icon: Icons.table_rows_outlined,
-        message: _query.isEmpty ? widget.emptyMessage : '未找到匹配的人员',
-      );
-    }
     final businessReference =
         widget.presentation == UtenEmployeePickerPresentation.businessReference;
     final showNotes =
@@ -760,6 +754,7 @@ class _UtenEmployeeSelectionPanelState extends State<UtenEmployeeSelectionPanel>
         );
     return MasterDataTableView<UtenEmployeePickerItem>(
       expensiveRowMounts: false,
+      emptyMessage: _query.isEmpty ? widget.emptyMessage : '未找到匹配的人员',
       key: const Key('uten-employee-picker-candidates'),
       columns: [
         if (businessReference)

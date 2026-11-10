@@ -1210,19 +1210,6 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
   Widget _itemsCard(ThemeData theme, FinanceNameService names) {
     final detail = _detail!;
     final items = detail.items;
-    if (items.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
-        child: Text(
-          _cfg.type == FinanceDocType.payment
-              ? '无应付核销明细(直接/预付款)'
-              : '无明细(直接${_cfg.shortLabel}，未指定核销/分摊)',
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
-      );
-    }
     final styleCat = _cfg.type == FinanceDocType.expense ? 'EXPENSE' : 'INCOME';
     final cnyReceiptAccount =
         names.accountIsBaseCurrency(detail.accountId ?? detail.outAccountId) ==
@@ -1493,7 +1480,9 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
             onFilterChanged: (_, _) {},
             // 右下悬浮操作组让位：末行可滚出按钮区。
             bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
-            emptyMessage: '(无明细)',
+            emptyMessage: _cfg.type == FinanceDocType.payment
+                ? '无应付核销明细(直接/预付款)'
+                : '无明细(直接${_cfg.shortLabel}，未指定核销/分摊)',
             summaryBar: _totalsBar(names, items),
           ),
         ),

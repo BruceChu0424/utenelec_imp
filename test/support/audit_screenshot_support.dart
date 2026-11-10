@@ -7,9 +7,23 @@ import 'package:flutter_test/flutter_test.dart';
 import 'audit_font_asset_loader_io.dart'
     if (dart.library.js_interop) 'audit_font_asset_loader_web.dart';
 
+/// Automated tests need to escape their fake clock for font/image IO. A live
+/// engine already uses real async: keep IO and failures on the caller's chain
+/// instead of routing them through runAsync's separate error reporting.
+Future<void> _runAuditIo(
+  WidgetTester tester,
+  Future<void> Function() action,
+) async {
+  if (tester.binding is AutomatedTestWidgetsFlutterBinding) {
+    await tester.runAsync(action);
+  } else {
+    await action();
+  }
+}
+
 Future<void> loadAuditScreenshotFonts(WidgetTester tester) {
   enableAuditFontMetrics();
-  return tester.runAsync(() async {
+  return _runAuditIo(tester, () async {
     final fontData = await loadAuditFontAsset(
       'assets/fonts/NotoSansSCFull.ttf',
     );
@@ -42,7 +56,7 @@ Future<String?> loadAuditKoreanScreenshotFont(
     return null;
   }
   const family = 'UtenAuditKorean';
-  await tester.runAsync(() async {
+  await _runAuditIo(tester, () async {
     final font = File(path);
     if (!await font.exists()) {
       throw StateError(
@@ -62,14 +76,18 @@ Future<void> saveAuditScreenshot(
 ) async {
   final boundary =
       key.currentContext!.findRenderObject()! as RenderRepaintBoundary;
-  await tester.runAsync(() async {
+  await _runAuditIo(tester, () async {
     final image = await boundary.toImage();
-    final png = await image.toByteData(format: ui.ImageByteFormat.png);
-    final directory = Directory('build/ui-audit')..createSync(recursive: true);
-    File(
-      '${directory.path}/$name.png',
-    ).writeAsBytesSync(png!.buffer.asUint8List());
-    image.dispose();
+    try {
+      final png = await image.toByteData(format: ui.ImageByteFormat.png);
+      final directory = Directory('build/ui-audit')
+        ..createSync(recursive: true);
+      File(
+        '${directory.path}/$name.png',
+      ).writeAsBytesSync(png!.buffer.asUint8List());
+    } finally {
+      image.dispose();
+    }
   });
 }
 

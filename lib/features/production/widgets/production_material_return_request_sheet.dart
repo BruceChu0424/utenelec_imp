@@ -407,11 +407,6 @@ class _MaterialReturnRequestState
                 actionLabel: '重试',
                 onAction: _load,
               )
-            : _grid.rows.isEmpty
-            ? const UtenEmpty(
-                message: '当前没有可退仓余料',
-                description: '已申请退仓的数量正在等待仓库收料。',
-              )
             : Stack(
                 children: [
                   UtenPageEdgePadding.scroll(
@@ -452,6 +447,7 @@ class _MaterialReturnRequestState
                             ),
                           ),
                           UtenEditableGrid<_ReturnRow>(
+                            emptyMessage: '当前没有可退仓余料',
                             tableKey:
                                 'features.production.widgets.production_material_return_request_sheet.MaterialReturnRequestState.build.1',
                             controller: _grid,

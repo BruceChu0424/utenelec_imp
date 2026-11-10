@@ -1,3 +1,4 @@
+import 'package:uten_imp/shared/attachments/business_attachment_section.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:ui' show PointerDeviceKind, SemanticsAction;
 import '../../support/finance_command_test_support.dart'
@@ -101,6 +102,12 @@ void registerFinanceBatchEntryTests({bool browserDomOnly = false}) {
           await tester.pumpAndSettle();
           final row = _table(tester).controller.rows.single;
           expect(row.entry.accountId, 'account-cny');
+          expect(
+            tester
+                .widget<UtenButton>(find.widgetWithText(UtenButton, '人民币账户'))
+                .type,
+            UtenButtonType.tonal,
+          );
           const amount = '2.000000000000000000000001';
           final amountField = find.byWidgetPredicate(
             (widget) =>
@@ -965,6 +972,15 @@ void registerFinanceBatchEntryTests({bool browserDomOnly = false}) {
         final env = await _open(tester, type, methodOptionsAvailable: true);
         final table = _table(tester);
         expect(table.selectable, isTrue);
+        final attachments = find.byType(BusinessAttachmentSection);
+        expect(attachments, findsOneWidget);
+        expect(
+          tester.getTopLeft(attachments).dy,
+          lessThan(
+            tester.getTopLeft(find.byType(UtenEditableGrid<FinanceGridRow>)).dy,
+          ),
+        );
+
         if (type != FinanceDocType.bankTransfer) {
           expect(
             table.columns.singleWhere((c) => c.key == 'entryMethod').required,

@@ -92,6 +92,18 @@ class MasterReferenceCatalogShapeTest {
     }
 
     @Test
+    void permanentGoodsUsageIsADeleteBlockerEvenAfterSourceBusinessDisappears() {
+        assertThat(MasterReferenceCatalog.references(MasterEntityKind.GOODS).stream()
+                .filter(reference -> reference.table().equals("goods_code_usage_facts")).toList())
+                .singleElement().satisfies(reference -> {
+                    assertThat(reference.kind()).isEqualTo(MasterReferenceGuard.RefKind.GOODS_USAGE);
+                    assertThat(reference.sql()).doesNotContain("is_deleted", "status", "is_closed");
+                });
+        assertThat(MasterReferenceCatalog.exemptions())
+                .noneMatch(exemption -> exemption.table().equals("goods_code_usage_facts"));
+    }
+
+    @Test
     void monthlyStockProjectionKeepsLedgerHistoryWithoutInventingOpenBusinessReferences() {
         var monthly = MasterReferenceCatalog.exemptions().stream()
                 .filter(exemption -> exemption.table().equals("stock_monthly_summaries")).toList();

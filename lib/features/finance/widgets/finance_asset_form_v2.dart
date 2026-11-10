@@ -1,3 +1,4 @@
+import '../../../components/inputs/uten_selected_value_theme.dart';
 import '../../../shared/repositories/employee_reference_repository.dart';
 import '../../../shared/models/employee_reference.dart';
 import 'package:uten_imp/components/feedback/uten_modal_bottom_sheet.dart';
@@ -916,7 +917,7 @@ class _FinanceAssetFormSurfaceState
           ],
         ),
       ),
-    );
+    ).withSelectedValueHighlights();
   }
 
   Widget _formActionLayout({required Widget body}) {

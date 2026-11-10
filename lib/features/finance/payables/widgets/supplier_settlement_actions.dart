@@ -1,3 +1,4 @@
+import '../../../../components/inputs/uten_selected_value_theme.dart';
 import 'package:uten_imp/components/feedback/uten_date_range_picker.dart';
 import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
@@ -339,6 +340,6 @@ class _SupplierSettlementCreatePanelState
           ),
         ],
       ),
-    );
+    ).withSelectedValueHighlights();
   }
 }

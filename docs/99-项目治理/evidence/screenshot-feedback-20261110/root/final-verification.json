@@ -1,0 +1,71 @@
+{
+  "productRevision": "7413a81f434e1b591c36733ab56fd1490abad339",
+  "pendingChecks": [],
+  "backendMerged": {
+    "suites": 9,
+    "tests": 115,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "database": "isolated PostgreSQL 16.15",
+    "migration": "V1128"
+  },
+  "chromeMerged": {
+    "files": 10,
+    "tests": 19,
+    "passed": 19,
+    "realEngine": true,
+    "fixtures": "synthetic",
+    "isolatedToolRouter": true,
+    "sharedSdkUnmodified": true
+  },
+  "windowsFlutterMerged": {
+    "runtimeFamily": "flutter",
+    "architecture": "x64",
+    "withCapture": 27,
+    "withoutCapture": 27,
+    "qualityLast": 5,
+    "allPassed": true,
+    "realEngine": true
+  },
+  "wpfMerged": {
+    "candidateOnly": true,
+    "architectures": [
+      "x86",
+      "x64"
+    ],
+    "warningsAsErrors": true,
+    "eachArchitecture": {
+      "busy": 65,
+      "date": 64,
+      "historyUi": 16
+    },
+    "peClrVerified": true
+  },
+  "static": {
+    "changedDartFilesBothRounds": 140,
+    "issues": 0,
+    "finalWebFixtureFiles": 2,
+    "finalWebFixtureIssues": 0
+  },
+  "javascriptWebRelease": {
+    "exitCode": 0,
+    "seconds": 313.1,
+    "wasmAccepted": false,
+    "existingWasmDryRunDependencyWarningsRetained": true
+  },
+  "parallelPreservation": {
+    "mainAncestor": "69e35d96bf0ddd9c8ba7992bf0a609ee9191ef98",
+    "metadataProof": "metadata-merge-proof.json",
+    "statusOwnerDodDependencyTargetConflicts": 0
+  },
+  "sourceDifferenceAfterProductRevision": [],
+  "publication": {
+    "pushed": false,
+    "deployed": false,
+    "formalPackagePublished": false,
+    "companyDatabaseChanged": false,
+    "win7BusinessAccepted": false
+  },
+  "scope": "Fourteen-image fixes and applicable shared consumers; targeted verification is not full CI, company UAT or complete Win7 ERP acceptance."
+}

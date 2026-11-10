@@ -1,0 +1,130 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_employee_selection_panel_test.dart
+00:00 +0: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_employee_selection_panel_test.dart: single picker uses the customer width and confirms explicitly
+00:01 +1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_employee_selection_panel_test.dart: single picker uses the customer width and confirms explicitly
+00:05 +2: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 开通账号标题使用员工表格，父级部门同时展示子部门授权员工
+00:09 +3: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 开通账号标题使用员工表格，父级部门同时展示子部门授权员工
+00:09 +4: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 开通账号标题使用员工表格，父级部门同时展示子部门授权员工
+00:12 +5: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 开通账号标题使用员工表格，父级部门同时展示子部门授权员工
+00:12 +6: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 开通账号标题使用员工表格，父级部门同时展示子部门授权员工
+00:13 +7: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 开通账号标题使用员工表格，父级部门同时展示子部门授权员工
+00:13 +8: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 开通账号标题使用员工表格，父级部门同时展示子部门授权员工
+00:13 +9: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 开通账号标题使用员工表格，父级部门同时展示子部门授权员工
+00:13 +10: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 开通账号标题使用员工表格，父级部门同时展示子部门授权员工
+00:14 +11: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/employee/department_employee_picker_test.dart: relationship picker headers query all candidates within the fixed department and status eligibility
+00:15 +12: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/employee/department_employee_picker_test.dart: relationship picker headers query all candidates within the fixed department and status eligibility
+00:16 +13: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/admin/widgets/page_permission_drawer_picker_layout_test.dart: delegated staff directory reads all 101 authorized rows once without a more button
+00:16 +14: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/admin/widgets/page_permission_drawer_picker_layout_test.dart: delegated staff directory reads all 101 authorized rows once without a more button
+00:16 +15: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/admin/widgets/page_permission_drawer_picker_layout_test.dart: delegated staff directory reads all 101 authorized rows once without a more button
+00:16 +16: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/production/widgets/workshop_task_material_dialog_test.dart: material selection returns only its exact source UUIDs and no write
+00:16 +17: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/production/widgets/workshop_task_material_dialog_test.dart: material selection returns only its exact source UUIDs and no write
+00:16 +18: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/production/widgets/workshop_task_material_dialog_test.dart: material selection returns only its exact source UUIDs and no write
+00:17 +19: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/production/widgets/workshop_task_material_dialog_test.dart: material selection returns only its exact source UUIDs and no write
+00:17 +20: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/production/widgets/workshop_task_material_dialog_test.dart: material selection returns only its exact source UUIDs and no write
+00:17 +21: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/production/widgets/workshop_task_material_dialog_test.dart: material selection returns only its exact source UUIDs and no write
+00:18 +22: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/production/widgets/workshop_task_material_dialog_test.dart: material selection returns only its exact source UUIDs and no write
+00:18 +23: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/production/widgets/workshop_task_material_dialog_test.dart: material selection returns only its exact source UUIDs and no write
+00:20 +24: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/production/widgets/workshop_task_material_dialog_test.dart: material selection returns only its exact source UUIDs and no write
+00:20 +25: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/production/widgets/workshop_task_material_dialog_test.dart: material selection returns only its exact source UUIDs and no write
+00:21 +26: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/production/widgets/workshop_task_material_dialog_test.dart: material selection returns only its exact source UUIDs and no write
+00:21 +27: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/production/widgets/workshop_task_material_dialog_test.dart: material selection returns only its exact source UUIDs and no write
+00:21 +28: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/production/widgets/workshop_task_material_dialog_test.dart: material selection returns only its exact source UUIDs and no write
+00:21 +29: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/production/widgets/workshop_task_material_dialog_test.dart: material selection returns only its exact source UUIDs and no write
+00:22 +30: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_doc_detail_collapsing_header_test.dart: 收款单详情：上滚先收表头卡，明细表接着内滚
+00:22 +31: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_doc_detail_collapsing_header_test.dart: 收款单详情：上滚先收表头卡，明细表接着内滚
+00:22 +32: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_doc_detail_collapsing_header_test.dart: 收款单详情：上滚先收表头卡，明细表接着内滚
+00:23 +33: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_doc_detail_collapsing_header_test.dart: 收款单详情：上滚先收表头卡，明细表接着内滚
+00:23 +34: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_doc_detail_collapsing_header_test.dart: 收款单详情：上滚先收表头卡，明细表接着内滚
+00:23 +35: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_doc_detail_collapsing_header_test.dart: 收款单详情：上滚先收表头卡，明细表接着内滚
+00:23 +36: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_doc_detail_collapsing_header_test.dart: 收款单详情：上滚先收表头卡，明细表接着内滚
+00:23 +37: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_doc_detail_collapsing_header_test.dart: 收款单详情：上滚先收表头卡，明细表接着内滚
+00:23 +38: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_doc_detail_collapsing_header_test.dart: 收款单详情：上滚先收表头卡，明细表接着内滚
+00:23 +39: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_doc_detail_collapsing_header_test.dart: 收款单详情：上滚先收表头卡，明细表接着内滚
+00:24 +40: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_doc_detail_collapsing_header_test.dart: 收款单详情：上滚先收表头卡，明细表接着内滚
+00:24 +41: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_doc_detail_collapsing_header_test.dart: 收款单详情：上滚先收表头卡，明细表接着内滚
+00:24 +42: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_doc_detail_collapsing_header_test.dart: 收款单详情：上滚先收表头卡，明细表接着内滚
+00:24 +43: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_doc_detail_collapsing_header_test.dart: 收款单详情：上滚先收表头卡，明细表接着内滚
+00:25 +44: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_doc_detail_collapsing_header_test.dart: 收款单详情：上滚先收表头卡，明细表接着内滚
+00:25 +45: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_doc_detail_collapsing_header_test.dart: 收款单详情：上滚先收表头卡，明细表接着内滚
+00:25 +46: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_doc_detail_collapsing_header_test.dart: 收款单详情：上滚先收表头卡，明细表接着内滚
+00:25 +47: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_doc_detail_collapsing_header_test.dart: 收款单详情：上滚先收表头卡，明细表接着内滚
+00:25 +48: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_doc_detail_collapsing_header_test.dart: 收款单详情：上滚先收表头卡，明细表接着内滚
+00:25 +49: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_doc_detail_collapsing_header_test.dart: 收款单详情：上滚先收表头卡，明细表接着内滚
+00:26 +50: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_doc_detail_collapsing_header_test.dart: 收款单详情：上滚先收表头卡，明细表接着内滚
+00:26 +51: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_doc_detail_collapsing_header_test.dart: 收款单详情：上滚先收表头卡，明细表接着内滚
+00:27 +52: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_doc_detail_collapsing_header_test.dart: 收款单详情：上滚先收表头卡，明细表接着内滚
+00:27 +53: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_doc_detail_collapsing_header_test.dart: 收款单详情：上滚先收表头卡，明细表接着内滚
+00:27 +54: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/warehouse/workshop_material_issue_page_test.dart: 部分办完申请的已办明细可只读查看，显示真实实发量且不再提供确认
+00:27 +55: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/warehouse/workshop_material_issue_page_test.dart: 部分办完申请的已办明细可只读查看，显示真实实发量且不再提供确认
+00:27 +56: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/warehouse/workshop_material_issue_page_test.dart: 部分办完申请的已办明细可只读查看，显示真实实发量且不再提供确认
+00:27 +57: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/warehouse/workshop_material_issue_page_test.dart: 部分办完申请的已办明细可只读查看，显示真实实发量且不再提供确认
+00:27 +58: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 跨部门多选与表头全选只选择授权且可用人员，确认前不返回
+00:27 +59: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 跨部门多选与表头全选只选择授权且可用人员，确认前不返回
+00:27 +60: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 跨部门多选与表头全选只选择授权且可用人员，确认前不返回
+00:28 +61: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/admin/widgets/page_permission_drawer_picker_layout_test.dart: 权限选人 390.0 窄屏保留部门和未开通员工状态且不溢出
+00:28 +62: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/admin/widgets/page_permission_drawer_picker_layout_test.dart: 权限选人 390.0 窄屏保留部门和未开通员工状态且不溢出
+00:28 +63: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/warehouse/workshop_material_issue_page_test.dart: 只核对和提交本次所选原始明细，不能扩大到同单其它行
+00:28 +64: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/warehouse/workshop_material_issue_page_test.dart: 只核对和提交本次所选原始明细，不能扩大到同单其它行
+00:29 +65: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/warehouse/workshop_material_issue_page_test.dart: 只核对和提交本次所选原始明细，不能扩大到同单其它行
+00:29 +66: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/warehouse/workshop_material_issue_page_test.dart: 只核对和提交本次所选原始明细，不能扩大到同单其它行
+00:29 +67: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_doc_detail_collapsing_header_test.dart: 收款单详情 desktop 1280x900 · textScale 1.5 不溢出
+00:29 +68: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_doc_detail_collapsing_header_test.dart: 收款单详情 desktop 1280x900 · textScale 1.5 不溢出
+00:29 +69: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_doc_detail_collapsing_header_test.dart: 收款单详情 desktop 1280x900 · textScale 1.5 不溢出
+00:30 +70: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_doc_detail_collapsing_header_test.dart: 收款单详情 desktop 1280x900 · textScale 1.5 不溢出
+00:30 +71: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 候选范围切换后等待新树时不得用旧祖先名称补回新候选
+00:30 +72: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 候选范围切换后等待新树时不得用旧祖先名称补回新候选
+00:30 +73: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 候选范围切换后等待新树时不得用旧祖先名称补回新候选
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: no matching candidates
+  Actual: _KeyWidgetFinder:<Found 1 widget with key [<'uten-employee-picker-candidates'>]: [
+            MasterDataTableView<UtenEmployeePickerItem>-[<'uten-employee-picker-candidates'>](dependencies:
+[DefaultSelectionStyle, Directionality, InheritedCupertinoTheme, MediaQuery, _InheritedTheme,
+_LocalizationsScope-[GlobalKey#da64d], _OpeningReadiness], state:
+_MasterDataTableViewState<UtenEmployeePickerItem>#8a925),
+          ]>
+   Which: means one was found but none were expected
+同一部门ID不能沿用A范围祖先名称补回B范围候选
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart:356:5)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart line 356
+The test description was:
+  候选范围切换后等待新树时不得用旧祖先名称补回新候选
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:31 +73 -1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/warehouse/workshop_material_issue_page_test.dart: first use previews global BOM impact and sends one atomic fulfil with the acknowledged material version
+00:31 +73 -1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 候选范围切换后等待新树时不得用旧祖先名称补回新候选 [E]
+  Test failed. See exception logs above.
+  The test description was: 候选范围切换后等待新树时不得用旧祖先名称补回新候选
+  
+00:32 +74 -1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/warehouse/workshop_material_issue_page_test.dart: first use previews global BOM impact and sends one atomic fulfil with the acknowledged material version
+00:32 +75 -1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_doc_detail_collapsing_header_test.dart: 收款单详情 phone portrait 390x844 · textScale 1.5 不溢出
+00:32 +76 -1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/admin/widgets/page_permission_drawer_picker_layout_test.dart: 权限部门栏缩到160后搜索清除和层级操作保持可用
+00:32 +77 -1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 员工组织表格真实中文预览 light
+00:32 +78 -1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 员工组织表格真实中文预览 light
+00:33 +79 -1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/warehouse/workshop_material_issue_page_test.dart: blocked or unversioned preview never enables material setup
+00:33 +80 -1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/finance/finance_doc_detail_collapsing_header_test.dart: 收款单详情 phone landscape 844x390 · textScale 1.5 不溢出
+00:33 +81 -1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/employee/department_employee_picker_test.dart: 部门窄栏保留搜索清除和子部门，选员工后仍需确认
+00:34 +82 -1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/employee/department_employee_picker_test.dart: 部门窄栏保留搜索清除和子部门，选员工后仍需确认
+00:34 +83 -1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 员工组织表格真实中文预览 dark
+00:34 +84 -1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/warehouse/workshop_material_issue_page_test.dart: failed fulfil retains acknowledgement and input; retry uses the same key while a new purpose requires reconfirmation
+00:36 +85 -1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 员工组织表格真实中文预览 narrow
+00:36 +86 -1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/warehouse/workshop_material_issue_page_test.dart: return receipts keep their original flow without first-use setup
+00:37 +87 -1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 员工组织表格真实中文预览 compact
+00:38 +88 -1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/warehouse/workshop_material_issue_page_test.dart: 领料人默认上一次, 盘点中提示这批料算到下一期
+00:39 +89 -1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/warehouse/workshop_material_issue_page_test.dart: 袋数与公斤联动, 同一种料从两个仓库出就是两行
+00:43 +90 -1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/warehouse/workshop_material_issue_page_test.dart: 勾"这批料是上一期漏录的"后出现补到哪一期与原因
+00:45 +91 -1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/warehouse/workshop_material_issue_page_test.dart: 失败保留输入, 原样重试用同一个请求号
+00:47 +92 -1: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_employee_selection_hierarchy_test.dart: 候选范围切换后等待新树时不得用旧祖先名称补回新候选

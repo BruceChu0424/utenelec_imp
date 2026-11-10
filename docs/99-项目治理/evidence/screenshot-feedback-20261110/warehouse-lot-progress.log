@@ -1,0 +1,7 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/quality/quality_batch_approval_recovery_test.dart
+00:00 +0: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/quality/quality_batch_approval_recovery_test.dart: completed IQC selection retains empty table headers and blocked submit
+00:05 +1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/warehouse/production_finished_arrival_registration_page_test.dart: selected merged output lot defaults and submits the entire 20000 plus 1000 physical quantity
+00:05 +2: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/warehouse/production_finished_arrival_registration_page_test.dart: selected merged output lot defaults and submits the entire 20000 plus 1000 physical quantity
+00:11 +3: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/quality/quality_batch_approval_recovery_test.dart: atomic IQC report keeps truthful moving unknown progress while delayed and retries the frozen report
+00:11 +4: All tests passed!

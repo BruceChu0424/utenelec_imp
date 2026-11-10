@@ -252,7 +252,10 @@ public class ProductionDrawRequestService {
                        item.goods_code_snapshot, item.goods_name_snapshot, item.color_id, color.name,
                        item.unit_id, unit.name, fn_production_draw_item_effective_qty(item.id), document.status,
                        fn_production_draw_item_requested_qty(item.id),
-                       COALESCE(warehouse.is_line_side, FALSE), demand.id
+                       COALESCE(warehouse.is_line_side, FALSE), demand.id,
+                       CASE WHEN stock_unit.id IS NOT NULL
+                                  AND fn_stock_measurement_usable(document.warehouse_id,item.goods_id,item.color_id)
+                            THEN COALESCE(balance.qty,0) END AS stock_quantity, stock_unit.name AS stock_unit_name
                 FROM production_planning_package_documents mapping
                 JOIN %1$s document ON document.id=mapping.document_id
                   AND document.doc_type='DRAW' AND NOT document.is_deleted AND document.status IN (0,1)
@@ -264,10 +267,15 @@ public class ProductionDrawRequestService {
                 LEFT JOIN warehouses warehouse ON warehouse.id=document.warehouse_id
                 LEFT JOIN colors color ON color.id=item.color_id
                 LEFT JOIN units unit ON unit.id=item.unit_id
+                LEFT JOIN goods stock_goods ON stock_goods.id=item.goods_id
+                LEFT JOIN units stock_unit ON stock_unit.id=stock_goods.unit_id
+                LEFT JOIN stock_balances balance ON balance.warehouse_id=document.warehouse_id
+                  AND balance.goods_id=item.goods_id AND balance.color_id IS NOT DISTINCT FROM item.color_id
                 WHERE mapping.execution_segment_id IN (:ids) AND mapping.document_type='DRAW'
                 ORDER BY mapping.execution_segment_id, document.warehouse_id, document.id, item.id
                 """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("stock_documents"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("stock_document_items"))).setParameter("ids", segmentIds));
         List<Line> lines = new ArrayList<>();
+        Map<Dimension, StockQuantity> stock = new LinkedHashMap<>();
         java.util.Set<UUID> segmentsWithDraws = new java.util.HashSet<>();
         for (Object[] row : rows) {
             // Existing issued/requested sibling warehouses continue their own
@@ -281,6 +289,8 @@ public class ProductionDrawRequestService {
             lines.add(new Line(uuid(row[0]), uuid(row[1]), str(row[2]), uuid(row[3]),
                     uuid(row[4]), str(row[5]), uuid(row[6]), str(row[7]), str(row[8]),
                     uuid(row[9]), str(row[10]), uuid(row[11]), str(row[12]), qty, uuid(row[17])));
+            stock.put(new Dimension(uuid(row[4]),uuid(row[6]),uuid(row[9]),uuid(row[11])),
+                    new StockQuantity(row[18] == null ? null : decimal(row[18]),str(row[19])));
         }
         if (segmentsWithDraws.size() != items.size()) {
             throw conflict("所选任务目前没有需要仓库发料的未申请明细，请刷新任务；车间直送料会自动投入");
@@ -295,8 +305,16 @@ public class ProductionDrawRequestService {
                 segment.planNo(), segment.code(), segment.workshopId(), segment.workshopName(),
                 segment.productCode(), segment.productName(), segment.qty(), segment.version())).toList();
         return new Preview(fingerprint(tasks, lines), tasks.size(),
-                (int) lines.stream().map(Line::drawId).distinct().count(), lines.size(), tasks, lines, summarize(lines));
+                (int) lines.stream().map(Line::drawId).distinct().count(), lines.size(), tasks, lines,
+                summarize(lines).stream().map(summary -> {
+                    var quantity=stock.get(new Dimension(summary.warehouseId(),summary.goodsId(),summary.colorId(),summary.unitId()));
+                    return new Summary(summary.warehouseId(),summary.warehouseName(),summary.goodsId(),summary.goodsCode(),
+                            summary.goodsName(),summary.colorId(),summary.colorName(),summary.unitId(),summary.unitName(),summary.qty(),
+                            quantity.quantity(),quantity.unitName());
+                }).toList());
     }
+
+    private record StockQuantity(BigDecimal quantity, String unitName) {}
 
     static List<Summary> summarize(List<Line> lines) {
         Map<Dimension, Summary> result = new LinkedHashMap<>();

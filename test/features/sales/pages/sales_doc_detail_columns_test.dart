@@ -12,6 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/sales/models/sales_doc.dart';
 import 'package:uten_imp/features/sales/pages/sales_doc_detail_page.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/sales/providers/master_name_provider.dart';
 
 const _detail = {
@@ -41,6 +42,56 @@ const _detail = {
 };
 
 void main() {
+  for (final legacyDiscount in [null, 0, 0.8]) {
+    testWidgets(
+      'shipment detail presents source discount $legacyDiscount without changing its source',
+      (tester) async {
+        final api = _ColumnsApi(
+          detail: {
+            ..._detail,
+            'warehouseWorkStatus': 'PENDING_PICK',
+            'items': [
+              {
+                'id': 'ship-line',
+                'goodsId': 'goods-1',
+                'qty': 10,
+                'price': 10,
+                'discount': ?legacyDiscount,
+              },
+            ],
+          },
+        );
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              ...nativeDetailReaderOverrides(),
+              apiClientProvider.overrideWithValue(api),
+              salesMasterNameServiceProvider.overrideWithValue(
+                SalesMasterNameService(api),
+              ),
+            ],
+            child: const MaterialApp(
+              home: SalesDocDetailPage(
+                id: 'order-1',
+                docType: SalesDocType.shipment,
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final table = tester.widget<MasterDataTableView<SalesDocItem>>(
+          find.byType(MasterDataTableView<SalesDocItem>),
+        );
+        final column = table.columns.singleWhere((c) => c.key == 'discount');
+        expect(
+          column.value(table.items.single),
+          legacyDiscount == 0.8 ? '0.8' : '1',
+        );
+        expect(table.items.single.discount, legacyDiscount);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
   testWidgets('订货单详情明细列与编辑页对齐', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1600, 1200));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -89,14 +140,15 @@ void main() {
 }
 
 class _ColumnsApi extends ApiClient {
-  _ColumnsApi() : super(Dio());
+  _ColumnsApi({this.detail = _detail}) : super(Dio());
+  final Map<String, dynamic> detail;
 
   @override
   Future<Map<String, dynamic>> get(
     String path, {
     Map<String, dynamic>? query,
   }) async {
-    if (path.endsWith('/order-1')) return _detail;
+    if (path.endsWith('/order-1')) return detail;
     return const {
       'items': <Map<String, dynamic>>[],
       'page': 1,

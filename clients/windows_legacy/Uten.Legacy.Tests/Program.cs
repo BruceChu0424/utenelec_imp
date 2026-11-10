@@ -19,6 +19,13 @@ namespace Uten.Legacy.Tests
         {
             try
             {
+                if (args.Length == 1 && args[0] == "--busy-dialog-progress-contracts")
+                {
+                    int progress = RunUi(BusyDialogProgressChecks.Run);
+                    Console.WriteLine("PASS native busy/progress mode transitions; assertions=" + progress
+                        + "; process=" + (Environment.Is64BitProcess ? "x64" : "x86"));
+                    return 0;
+                }
                 if (args.Length == 1 && args[0] == "--complete-summary-stream-contracts")
                 {
                     Uten.Legacy.Core.Tests.ManagedHttp11Checks.Run();
@@ -167,6 +174,7 @@ namespace Uten.Legacy.Tests
                 RunUi(UiContractChecks.Run);
                 RunUi(UiContractChecks.RunTableContentFit);
                 RunUi(DateRangeDialogChecks.Run);
+                RunUi(BusyDialogProgressChecks.Run);
                 int historyUiAssertions = RunUi(UnitHistoryContractChecks.RunUi);
                 int printAssertions = RunUi(NativePrintContractChecks.Run);
                 int draftAssertions = RunUi(DurableDraftDialogChecks.Run);

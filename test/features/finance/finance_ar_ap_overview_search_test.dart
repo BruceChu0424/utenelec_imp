@@ -1,3 +1,5 @@
+import 'package:uten_imp/components/inputs/uten_dropdown_geometry.dart';
+import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/shared/paging/paged_read_intent.dart';
 import 'dart:async';
 import 'dart:io';
@@ -39,15 +41,17 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
 import '../../support/native_detail_reader_overrides.dart';
+import '../../support/audit_font_asset_loader_io.dart'
+    if (dart.library.js_interop) '../../support/audit_font_asset_loader_web.dart';
 
 void main() {
   setUpAll(() async {
     await (FontLoader(
       'MaterialIcons',
-    )..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'))).load();
+    )..addFont(loadAuditFontAsset('fonts/MaterialIcons-Regular.otf'))).load();
     await (FontLoader(
       'NotoSansSC',
-    )..addFont(rootBundle.load('assets/fonts/NotoSansSC.ttf'))).load();
+    )..addFont(loadAuditFontAsset('assets/fonts/NotoSansSC.ttf'))).load();
   });
 
   testWidgets(
@@ -570,7 +574,7 @@ void main() {
     expect(restoredDates.to, dates.to);
     expect(
       tester
-          .widget<DropdownButton<String>>(
+          .widget<UtenDropdownField>(
             find.byKey(const ValueKey('finance-ar-ap-display-mode')),
           )
           .value,
@@ -767,8 +771,40 @@ void main() {
         await tester.ensureVisible(mode);
         await tester.pumpAndSettle();
         expect(mode.hitTestable(), findsOneWidget);
+        expect(
+          tester
+              .widget<UtenDropdownField>(mode)
+              .items
+              .map((item) => item.value),
+          ['ALL', 'AR_ONLY'],
+        );
+        expect(
+          tester
+              .widget<UtenDropdownField>(
+                find.byKey(const ValueKey('finance-ar-ap-layout')),
+              )
+              .value,
+          'RECEIVABLE_SUMMARY',
+        );
         await tester.tap(mode);
         await tester.pumpAndSettle();
+        if (const bool.fromEnvironment('UI_CAPTURE')) {
+          await _captureOverview(
+            tester,
+            capture,
+            '${variant.size.width.toInt()}-${variant.scale}-mode-menu',
+          );
+        }
+        await tester.scrollUntilVisible(
+          find.text('只应收≠0'),
+          100,
+          scrollable: find
+              .descendant(
+                of: find.byType(UtenDropdownResizeFrame),
+                matching: find.byType(Scrollable),
+              )
+              .last,
+        );
         await tester.tap(find.text('只应收≠0').last);
         await tester.pumpAndSettle();
         expect(api.reportQueries.last['displayMode'], 'AR_ONLY');
@@ -776,6 +812,31 @@ void main() {
         await tester.ensureVisible(count);
         await tester.pumpAndSettle();
         expect(count.hitTestable(), findsOneWidget);
+        await _pickOverviewOption(tester, 'finance-ar-ap-layout', '往来余额');
+        expect(api.reportQueries.last['layout'], 'BALANCE');
+        expect(_table(tester).columns.map((column) => column.label), ['往来单位']);
+        final balanceMode = tester.widget<UtenDropdownField>(
+          find.byKey(const ValueKey('finance-ar-ap-display-mode')),
+        );
+        expect(balanceMode.items.map((item) => item.value), [
+          'ALL',
+          'ANY',
+          'AR_ONLY',
+          'AP_ONLY',
+        ]);
+        await _pickOverviewOption(
+          tester,
+          'finance-ar-ap-display-mode',
+          '只应付≠0',
+        );
+        expect(api.reportQueries.last['displayMode'], 'AP_ONLY');
+        await _pickOverviewOption(tester, 'finance-ar-ap-layout', '应收款汇总表');
+        expect(api.reportQueries.last['layout'], 'RECEIVABLE_SUMMARY');
+        expect(api.reportQueries.last['displayMode'], 'ALL');
+        expect(
+          _table(tester).columns.map((column) => column.label),
+          _summaryLabels,
+        );
         expect(tester.takeException(), isNull, reason: '$variant filters');
         if (const bool.fromEnvironment('UI_CAPTURE')) {
           await _captureOverview(
@@ -1048,6 +1109,30 @@ void _expectGlobal(Map<String, dynamic> query, String keyword) {
   expect(query['keyword'], keyword);
   expect(query, isNot(contains('categoryType')));
   expect(query, isNot(contains('categoryId')));
+}
+
+Future<void> _pickOverviewOption(
+  WidgetTester tester,
+  String key,
+  String label,
+) async {
+  final trigger = find.byKey(ValueKey(key));
+  await tester.ensureVisible(trigger);
+  await tester.pumpAndSettle();
+  await tester.tap(trigger);
+  await tester.pumpAndSettle();
+  await tester.scrollUntilVisible(
+    find.text(label),
+    100,
+    scrollable: find
+        .descendant(
+          of: find.byType(UtenDropdownResizeFrame),
+          matching: find.byType(Scrollable),
+        )
+        .last,
+  );
+  await tester.tap(find.text(label).last);
+  await tester.pumpAndSettle();
 }
 
 Future<void> _pumpPage(

@@ -1,0 +1,65 @@
+{
+  "parents": [
+    "aa646f7cf806d1ac42ae73266660ff52040addcf",
+    "69e35d96bf0ddd9c8ba7992bf0a609ee9191ef98"
+  ],
+  "tasks": 373,
+  "semanticConflicts": [
+    {
+      "id": "W7-BIZ-034",
+      "field": "evidence"
+    },
+    {
+      "id": "W7-BIZ-034",
+      "field": "notes"
+    },
+    {
+      "id": "W7-BIZ-034",
+      "field": "lastUpdated"
+    },
+    {
+      "id": "W7-BIZ-058",
+      "field": "evidence"
+    },
+    {
+      "id": "W7-BIZ-058",
+      "field": "notes"
+    },
+    {
+      "id": "W7-BIZ-058",
+      "field": "lastUpdated"
+    },
+    {
+      "id": "W7-BIZ-135",
+      "field": "evidence"
+    },
+    {
+      "id": "W7-BIZ-135",
+      "field": "notes"
+    },
+    {
+      "id": "W7-BIZ-135",
+      "field": "lastUpdated"
+    },
+    {
+      "id": "W7-FLOW-019",
+      "field": "evidence"
+    },
+    {
+      "id": "W7-FLOW-019",
+      "field": "notes"
+    },
+    {
+      "id": "W7-FLOW-019",
+      "field": "lastUpdated"
+    }
+  ],
+  "coreFieldsConflictCount": 0,
+  "historyCounts": {
+    "base": 444,
+    "main": 467,
+    "candidate": 467,
+    "merged": 490
+  },
+  "rule": "Three-way merge by stable task ID. Notes/evidence union; status, owner, DoD, dependencies and nativeTargets require exact non-conflicting provenance."
+}

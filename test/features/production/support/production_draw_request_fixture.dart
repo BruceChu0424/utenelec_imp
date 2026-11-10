@@ -59,6 +59,8 @@ Map<String, dynamic> _material(String warehouseId, num qty) => {
   'unitId': 'unit',
   'unitName': '个',
   'qty': qty,
+  'stockQuantityText': warehouseId == 'warehouse-a' ? '123456.7890' : '8.0000',
+  'stockUnitName': '千克',
 };
 
 const productionDrawRequestResultFixture = {

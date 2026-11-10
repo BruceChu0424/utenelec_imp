@@ -1,0 +1,83 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart
+00:00 +0: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart: 内容少：自然横滚条底边距最后一行 11
+内容少：横滚条与最后一行的间距 = 11.0
+00:01 +1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/uten_editable_grid_hscrollbar_test.dart: 空编辑表保留超宽表头横滚且空态保持在可视区
+00:02 +1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart: 内容多：横滚条钉在表体区域底部（视口底）
+内容多：横滚条底边 = 600.0（视口高 600）
+00:02 +2: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/uten_editable_grid_hscrollbar_test.dart: 空编辑表保留超宽表头横滚且空态保持在可视区
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: a value greater than <0>
+  Actual: <0.0>
+   Which: is not a value greater than <0>
+实际拖动零行编辑表滑块必须移动列头
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/uten_editable_grid_hscrollbar_test.dart:81:5)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/uten_editable_grid_hscrollbar_test.dart line 81
+The test description was:
+  空编辑表保留超宽表头横滚且空态保持在可视区
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:02 +2 -1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart: 带悬浮批量按钮（颜色主档同款）：内容少时横滚条仍隔 11 不被 200 留白顶开
+00:02 +2 -1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/uten_editable_grid_hscrollbar_test.dart: 空编辑表保留超宽表头横滚且空态保持在可视区 [E]
+  Test failed. See exception logs above.
+  The test description was: 空编辑表保留超宽表头横滚且空态保持在可视区
+  
+00:02 +2 -1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart: 带悬浮批量按钮（颜色主档同款）：内容少时横滚条仍隔 11 不被 200 留白顶开
+批量表内容少：横滚条与最后一行的间距 = 11.0（应 11，非 200）
+00:02 +3 -1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/uten_editable_grid_hscrollbar_test.dart: 横滚选中行冻结勾选列不透字 Brightness.dark
+00:03 +4 -1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/uten_editable_grid_hscrollbar_test.dart: 横滚选中行冻结勾选列不透字 Brightness.dark
+00:03 +5 -1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/uten_editable_grid_hscrollbar_test.dart: 横滚选中行冻结勾选列不透字 Brightness.dark
+00:03 +6 -1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart: 长表滚到底保留实际操作组让位，横滚条跟随实际末行
+00:04 +7 -1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart: 长表滚到底保留实际操作组让位，横滚条跟随实际末行
+00:04 +7 -1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/uten_editable_grid_hscrollbar_test.dart: 内容少：自然横滚条在最后一行下方且有间距
+内容少：横滚条与最后一行的间距 = 11.0
+00:04 +8 -1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart: 长表滚到底保留实际操作组让位，横滚条跟随实际末行
+00:06 +9 -1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/uten_editable_grid_hscrollbar_test.dart: 内容多：横滚条钉在视口底部
+内容多：可见 Scrollbar 数 = 2
+内容多：钉底条 top = 589.0，期望 589
+00:06 +10 -1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart: 悬浮横滚条与表头表体同步，切换留白保留横向位置
+00:07 +11 -1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart: 空表（覆盖层路径）：横滚条可拖动表头且贴提示行
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: a value greater than <0>
+  Actual: <0.0>
+   Which: is not a value greater than <0>
+实际拖动空表滑块必须移动列头
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart:369:5)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart line 369
+The test description was:
+  空表（覆盖层路径）：横滚条可拖动表头且贴提示行
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:07 +11 -2: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart: 空表（覆盖层路径）：横滚条可拖动表头且贴提示行 [E]
+  Test failed. See exception logs above.
+  The test description was: 空表（覆盖层路径）：横滚条可拖动表头且贴提示行
+  
+00:07 +11 -2: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart: 空表与有数据往返时横滚条及位置保持
+00:08 +12 -2: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart: 空表（流内路径）：保留可拖动横向滚动条
+00:08 +13 -2: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/uten_editable_grid_hscrollbar_test.dart: 空编辑表保留超宽表头横滚且空态保持在可视区
+  D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart: 空表（覆盖层路径）：横滚条可拖动表头且贴提示行

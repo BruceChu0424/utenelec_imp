@@ -1,0 +1,10 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/table-read-performance-20261110/integration_test/.local-artifacts/merged_pointer_localtest_test.dart
+Building Windows application...                                    33.3s
+√ Built build\windows\x64\runner\Debug\uten_imp.exe
+00:00 +0: (setUpAll)
+NATIVE_POINTER_VIEWPORT client=1280x1200 logical=640x600 ownPid=51868
+00:00 +0: shared-pointer-table 长表滚到底保留实际操作组让位，横滚条跟随实际末行
+NATIVE_TARGET_OVERFLOW_CONFIRMED [{max: 80.0, pixels: 0.0, viewport: 624.0}]
+00:05 +1: (tearDownAll)
+00:05 +1: All tests passed!

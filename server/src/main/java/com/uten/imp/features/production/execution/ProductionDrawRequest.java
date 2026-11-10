@@ -34,7 +34,14 @@ public final class ProductionDrawRequest {
     }
     public record Summary(UUID warehouseId, String warehouseName, UUID goodsId, String goodsCode,
                           String goodsName, UUID colorId, String colorName, UUID unitId,
-                          String unitName, BigDecimal qty) {}
+                          String unitName, BigDecimal qty, BigDecimal stockQuantity, String stockUnitName) {
+        public Summary(UUID warehouseId, String warehouseName, UUID goodsId, String goodsCode,
+                       String goodsName, UUID colorId, String colorName, UUID unitId,
+                       String unitName, BigDecimal qty) {
+            this(warehouseId,warehouseName,goodsId,goodsCode,goodsName,colorId,colorName,unitId,unitName,qty,null,null);
+        }
+        public String getStockQuantityText() { return stockQuantity == null ? null : stockQuantity.toPlainString(); }
+    }
     public record Preview(String fingerprint, int taskCount, int documentCount, int lineCount,
                           List<Task> tasks, List<Line> lines, List<Summary> summaries) {}
     public record Result(List<UUID> segmentIds, List<UUID> documentIds,

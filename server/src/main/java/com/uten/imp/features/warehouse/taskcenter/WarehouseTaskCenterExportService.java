@@ -42,7 +42,9 @@ public class WarehouseTaskCenterExportService {
 
     private ExportPayload collect(WarehouseTaskCenterContracts.Filter filter, boolean outboundDirection) {
         var sink = ExportPageSink.current();
-        List<ExportColumn> columns = columns(outboundDirection);
+        List<ExportColumn> columns = columns(outboundDirection).stream()
+                .filter(column -> !outboundDirection || "DRAW".equals(filter.source()) || "ALL".equals(filter.source())
+                        || !"productionOrderNo".equals(column.key())).toList();
         List<Map<String, Object>> all = sink == null ? new ArrayList<>() : null;
         int seen = 0;
         long expected = -1;
@@ -96,9 +98,8 @@ public class WarehouseTaskCenterExportService {
         if (outboundDirection) {
             columns.add(new ExportColumn("productionOrderNo", "生产工单", ExportColumn.TEXT, 150d));
         }
-        columns.add(new ExportColumn("sourceDocNo", "来源单据", ExportColumn.TEXT, 180d));
-        columns.add(new ExportColumn("partyName", "客户 / 供应商 / 委外商", ExportColumn.TEXT, 200d));
         columns.add(new ExportColumn("warehouseName", "仓库", ExportColumn.TEXT, 180d));
+        if (outboundDirection) columns.add(new ExportColumn("stockPlace", "库位号", ExportColumn.TEXT, 140d));
         columns.add(new ExportColumn("businessDate", "业务日期", ExportColumn.DATE, 120d));
         columns.add(new ExportColumn("responsibleName", "负责人", ExportColumn.TEXT, 150d));
         columns.add(new ExportColumn("makerName", "制单人", ExportColumn.TEXT, 150d));
@@ -128,6 +129,7 @@ public class WarehouseTaskCenterExportService {
         values.put("sourceDocNo", row.sourceDocNo());
         values.put("partyName", row.partyName());
         values.put("warehouseName", row.warehouseName());
+        if (outboundDirection) values.put("stockPlace", line == null ? null : line.stockPlace());
         values.put("businessDate", row.businessDate() == null ? null : row.businessDate().toString());
         values.put("responsibleName", row.responsibleName());
         values.put("makerName", row.makerName());

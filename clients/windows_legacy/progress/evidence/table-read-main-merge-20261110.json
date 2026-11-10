@@ -1,0 +1,262 @@
+{
+  "id": "E-WPF-TABLE-READ-MAIN-MERGE-20261110",
+  "atUtc": "2026-11-10T17:52:22.773873+00:00",
+  "classification": "Semantic merge of parallel local work; source/governance proof only, no new business acceptance",
+  "baseCommit": "69e35d96bf0ddd9c8ba7992bf0a609ee9191ef98",
+  "candidateCommit": "e16f4fb2268dc2ac01f5611c3079c246806a0925",
+  "mainCommit": "e9713e539a97a0fca5e579ce1cab633002af960a",
+  "protectedTaskCount": 373,
+  "protectedFields": [
+    "status",
+    "owner",
+    "definitionOfDone",
+    "dependencies",
+    "nativeTargets"
+  ],
+  "protectedDifferences": [],
+  "noteAndEvidenceUnions": [
+    {
+      "id": "W7-CORE-003",
+      "bothNotesAppended": false,
+      "mainEvidencePreserved": true,
+      "ourEvidencePreserved": true
+    },
+    {
+      "id": "W7-UI-004",
+      "bothNotesAppended": true,
+      "mainEvidencePreserved": true,
+      "ourEvidencePreserved": true
+    },
+    {
+      "id": "W7-BIZ-025",
+      "bothNotesAppended": true,
+      "mainEvidencePreserved": true,
+      "ourEvidencePreserved": true
+    },
+    {
+      "id": "W7-BIZ-034",
+      "bothNotesAppended": true,
+      "mainEvidencePreserved": true,
+      "ourEvidencePreserved": true
+    },
+    {
+      "id": "W7-BIZ-037",
+      "bothNotesAppended": false,
+      "mainEvidencePreserved": true,
+      "ourEvidencePreserved": true
+    },
+    {
+      "id": "W7-BIZ-057",
+      "bothNotesAppended": false,
+      "mainEvidencePreserved": true,
+      "ourEvidencePreserved": true
+    },
+    {
+      "id": "W7-BIZ-230",
+      "bothNotesAppended": false,
+      "mainEvidencePreserved": true,
+      "ourEvidencePreserved": true
+    },
+    {
+      "id": "W7-BIZ-231",
+      "bothNotesAppended": false,
+      "mainEvidencePreserved": true,
+      "ourEvidencePreserved": true
+    },
+    {
+      "id": "W7-BIZ-058",
+      "bothNotesAppended": false,
+      "mainEvidencePreserved": true,
+      "ourEvidencePreserved": true
+    },
+    {
+      "id": "W7-BIZ-063",
+      "bothNotesAppended": false,
+      "mainEvidencePreserved": true,
+      "ourEvidencePreserved": true
+    },
+    {
+      "id": "W7-BIZ-064",
+      "bothNotesAppended": false,
+      "mainEvidencePreserved": true,
+      "ourEvidencePreserved": true
+    },
+    {
+      "id": "W7-BIZ-072",
+      "bothNotesAppended": false,
+      "mainEvidencePreserved": true,
+      "ourEvidencePreserved": true
+    },
+    {
+      "id": "W7-BIZ-075",
+      "bothNotesAppended": false,
+      "mainEvidencePreserved": true,
+      "ourEvidencePreserved": true
+    },
+    {
+      "id": "W7-BIZ-077",
+      "bothNotesAppended": false,
+      "mainEvidencePreserved": true,
+      "ourEvidencePreserved": true
+    },
+    {
+      "id": "W7-BIZ-078",
+      "bothNotesAppended": false,
+      "mainEvidencePreserved": true,
+      "ourEvidencePreserved": true
+    },
+    {
+      "id": "W7-BIZ-104",
+      "bothNotesAppended": false,
+      "mainEvidencePreserved": true,
+      "ourEvidencePreserved": true
+    },
+    {
+      "id": "W7-BIZ-130",
+      "bothNotesAppended": false,
+      "mainEvidencePreserved": true,
+      "ourEvidencePreserved": true
+    },
+    {
+      "id": "W7-BIZ-135",
+      "bothNotesAppended": false,
+      "mainEvidencePreserved": true,
+      "ourEvidencePreserved": true
+    },
+    {
+      "id": "W7-BIZ-136",
+      "bothNotesAppended": false,
+      "mainEvidencePreserved": true,
+      "ourEvidencePreserved": true
+    },
+    {
+      "id": "W7-BIZ-176",
+      "bothNotesAppended": false,
+      "mainEvidencePreserved": true,
+      "ourEvidencePreserved": true
+    },
+    {
+      "id": "W7-BIZ-182",
+      "bothNotesAppended": false,
+      "mainEvidencePreserved": true,
+      "ourEvidencePreserved": true
+    },
+    {
+      "id": "W7-BIZ-194",
+      "bothNotesAppended": false,
+      "mainEvidencePreserved": true,
+      "ourEvidencePreserved": true
+    },
+    {
+      "id": "W7-BIZ-197",
+      "bothNotesAppended": false,
+      "mainEvidencePreserved": true,
+      "ourEvidencePreserved": true
+    },
+    {
+      "id": "W7-BIZ-210",
+      "bothNotesAppended": false,
+      "mainEvidencePreserved": true,
+      "ourEvidencePreserved": true
+    },
+    {
+      "id": "W7-FLOW-019",
+      "bothNotesAppended": false,
+      "mainEvidencePreserved": true,
+      "ourEvidencePreserved": true
+    }
+  ],
+  "historyUnion": {
+    "base": 467,
+    "main": 490,
+    "ours": 474,
+    "mergedBeforeAudit": 497,
+    "lostEvents": 0,
+    "mergedAfterMergeAudit": 498
+  },
+  "manualPlanTextOutsideGeneratedSummaryUnchanged": true,
+  "programChecks": {
+    "mainBusyProgressOption": true,
+    "stress35000Option": true,
+    "stress100000Option": true,
+    "busyProgressDedicatedAndDefaultCalls": true
+  },
+  "programSha256": "16d624c3dce508b56de2c3658d935cc148f229690e120df64426fbb483b7e7b8",
+  "counts": {
+    "businessPagePackages": 230,
+    "retainedBusinessPagePackages": 3,
+    "commonAndFlowPackages": 140,
+    "workPackages": 373
+  },
+  "inventorySummary": {
+    "pageFiles": 230,
+    "featureGroups": 36,
+    "controllerFiles": 293,
+    "routeConstructorCandidates": 292,
+    "pagesWithDirectRouterBinding": 208,
+    "pagesWithPossibleAliases": 39,
+    "directPartUnits": 23,
+    "methodDeclarationActionCandidates": 568,
+    "actionUiFactoryCandidates": 22,
+    "retiredPortalPagesNeedingScopeConfirmation": 5
+  },
+  "registrySha256": "f00579f6b58fef13304628e7a0194c9cba6169bb2969a0fbec6d4b28f1d113ad",
+  "inventorySha256": "a48d245a83dcd9fe4a5e67a8a585bf976dae0977172d26d0d4c555ff73df2393",
+  "actualRuns": [
+    {
+      "command": [
+        "C:\\Program Files\\LibreOffice\\program\\python.EXE",
+        "clients/windows_legacy/tools/business_inventory.py",
+        "--write"
+      ],
+      "actualExitCode": 0,
+      "log": "clients/windows_legacy/progress/evidence/table-read-performance-20261110-files/merge-inventory-owning-write.log",
+      "logSha256": "624b1c9b39d7dc810a1f0aeff10bdc45fc179c1c4861b4250f80537bcb72271e"
+    },
+    {
+      "command": [
+        "C:\\Program Files\\LibreOffice\\program\\python.EXE",
+        "clients/windows_legacy/tools/progress_tracker.py",
+        "sync"
+      ],
+      "actualExitCode": 0,
+      "log": "clients/windows_legacy/progress/evidence/table-read-performance-20261110-files/merge-registry-owning-sync.log",
+      "logSha256": "c7d2a9e9c6cfb797ddb9c1650693b629bb836b27d834dd1f7c057b3b8afe0aa9"
+    },
+    {
+      "command": [
+        "C:\\Program Files\\LibreOffice\\program\\python.EXE",
+        "clients/windows_legacy/tools/progress_tracker.py",
+        "check"
+      ],
+      "actualExitCode": 0,
+      "log": "clients/windows_legacy/progress/evidence/table-read-performance-20261110-files/merge-governance-current-check.log",
+      "logSha256": "c7d2a9e9c6cfb797ddb9c1650693b629bb836b27d834dd1f7c057b3b8afe0aa9"
+    }
+  ],
+  "limitations": [
+    "Merge commit is not created by this subtask",
+    "Earlier performance/UI evidence remains bound to its original source",
+    "Current merged WPF compilation/runtime regression belongs to root follow-up; Program entries here are statically verified",
+    "No push, deployment, company connection or formal package"
+  ],
+  "historySha256": "3cb5d6d799b2c1567e9026ecb335e12c69a462cfa75fb353eaa3f1fb22f16196",
+  "completedAtUtc": "2026-11-10T17:52:46.811375+00:00",
+  "subsequentWpfValidation": {
+    "proof": "clients/windows_legacy/progress/evidence/table-read-main-merge-validation-20261110.json",
+    "actualExitCode": 0,
+    "architectures": [
+      "x86",
+      "x64"
+    ],
+    "configuration": "Debug /warnaserror fresh Rebuild",
+    "busyProgressAssertionsPerArchitecture": 65,
+    "completeListRows": [
+      35000,
+      100000
+    ],
+    "completeListAssertionsPerMatrixCell": 64,
+    "performanceAcceptance": false,
+    "win7TargetAcceptance": false
+  }
+}

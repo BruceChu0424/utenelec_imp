@@ -193,7 +193,7 @@ class _WorkshopTaskMaterialTableState
           );
         }
         final rows = snapshot.data ?? const [];
-        if (rows.isEmpty) {
+        if (rows.isEmpty && widget.compact) {
           return Text(
             '本任务不需要领用物料',
             style: theme.textTheme.bodySmall?.copyWith(
@@ -226,6 +226,7 @@ class _WorkshopTaskMaterialTableState
             _qty(value, row.unitName, widget.unitFallback);
         return MasterDataTableView<ProductionWorkshopTaskMaterial>(
           expensiveRowMounts: false,
+          emptyMessage: '本任务不需要领用物料',
           key: const Key('workshop-task-material-table'),
           tableKey: 'production.workshopTask.materials',
           embedded: true,

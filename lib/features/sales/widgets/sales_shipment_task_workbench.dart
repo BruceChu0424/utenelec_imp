@@ -39,6 +39,7 @@ import '../../../shared/formatters/money_display.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/concurrency/task_claim_session.dart';
 import '../../../shared/widgets/finance_review_claim_notice.dart';
+import '../../../shared/widgets/shipment_receivable_position_view.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../basic_data/widgets/master_server_column_filters.dart';
 import '../config/sales_doc_config.dart';
@@ -1319,6 +1320,19 @@ class _SalesShipmentTaskWorkbenchState
       type: 'money',
       value: (item) => _amount(item, names.currency(item.currencyId)),
     ),
+    if (_isFinance)
+      MasterColumnDef(
+        key: 'confirmedPaidOriginal',
+        label: '已收金额',
+        width: 170,
+        type: 'money',
+        info: shipmentReceivableHint,
+        value: (item) => item.priceMasked
+            ? '***'
+            : item.receivablePosition == null
+            ? '需核对'
+            : shipmentPaidLabel(item.receivablePosition!),
+      ),
   ];
 }
 

@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:flutter/rendering.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -9,8 +10,9 @@ import 'package:flutter_test/flutter_test.dart';
 const _captureKey = Key('dialog-fixture-capture');
 
 final dialogFixtureCaptureEnabled =
-    const bool.fromEnvironment('UI_CAPTURE') ||
-    Platform.environment['UI_CAPTURE'] == '1';
+    !kIsWeb &&
+    (const bool.fromEnvironment('UI_CAPTURE') ||
+        Platform.environment['UI_CAPTURE'] == '1');
 
 Widget dialogFixtureBoundary(Widget child) =>
     RepaintBoundary(key: _captureKey, child: child);

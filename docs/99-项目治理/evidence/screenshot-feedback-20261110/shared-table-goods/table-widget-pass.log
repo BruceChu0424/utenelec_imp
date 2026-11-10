@@ -1,0 +1,37 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart
+00:00 +0: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart: 内容少：自然横滚条底边距最后一行 11
+内容少：横滚条与最后一行的间距 = 11.0
+00:02 +1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/uten_editable_grid_hscrollbar_test.dart: 空编辑表保留超宽表头横滚且空态保持在可视区
+00:03 +1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart: 内容多：横滚条钉在表体区域底部（视口底）
+内容多：横滚条底边 = 600.0（视口高 600）
+00:03 +2: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/uten_editable_grid_hscrollbar_test.dart: 空编辑表保留超宽表头横滚且空态保持在可视区
+00:03 +3: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/uten_editable_grid_hscrollbar_test.dart: 空编辑表保留超宽表头横滚且空态保持在可视区
+00:04 +3: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart: 带悬浮批量按钮（颜色主档同款）：内容少时横滚条仍隔 11 不被 200 留白顶开
+批量表内容少：横滚条与最后一行的间距 = 11.0（应 11，非 200）
+00:04 +4: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/uten_editable_grid_hscrollbar_test.dart: 空编辑表保留超宽表头横滚且空态保持在可视区
+00:04 +5: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/features/basic_data/widgets/master_data_table_view_empty_state_test.dart: empty state keeps the table skeleton with business actions: embedded=false
+00:05 +6: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart: 外置悬浮按钮留白可以移除并恢复自然横滚条
+00:05 +7: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/uten_editable_grid_hscrollbar_test.dart: 横滚选中行冻结勾选列不透字 Brightness.dark
+00:06 +8: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/uten_editable_grid_hscrollbar_test.dart: 横滚选中行冻结勾选列不透字 Brightness.dark
+00:06 +9: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart: 悬浮操作移除后撤掉旧留白，短表横滚条仍贴末行
+00:06 +10: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart: 悬浮操作移除后撤掉旧留白，短表横滚条仍贴末行
+00:07 +11: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart: 悬浮操作移除后撤掉旧留白，短表横滚条仍贴末行
+00:07 +12: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/uten_editable_grid_hscrollbar_test.dart: 横滚选中行冻结勾选列不透字 Brightness.light
+00:07 +13: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/uten_editable_grid_hscrollbar_test.dart: 横滚选中行冻结勾选列不透字 Brightness.light
+00:08 +14: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/uten_editable_grid_hscrollbar_test.dart: 横滚选中行冻结勾选列不透字 Brightness.light
+00:08 +15: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart: 长表滚到底保留实际操作组让位，横滚条跟随实际末行
+00:08 +16: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart: 长表滚到底保留实际操作组让位，横滚条跟随实际末行
+00:09 +16: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/uten_editable_grid_hscrollbar_test.dart: 内容少：自然横滚条在最后一行下方且有间距
+内容少：横滚条与最后一行的间距 = 11.0
+00:09 +17: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart: 长表滚到底保留实际操作组让位，横滚条跟随实际末行
+00:09 +18: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart: 长表滚到底保留实际操作组让位，横滚条跟随实际末行
+00:09 +19: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart: 长表滚到底保留实际操作组让位，横滚条跟随实际末行
+00:14 +20: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/uten_editable_grid_hscrollbar_test.dart: 内容多：横滚条钉在视口底部
+内容多：可见 Scrollbar 数 = 2
+内容多：钉底条 top = 589.0，期望 589
+00:14 +21: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart: 悬浮横滚条与表头表体同步，切换留白保留横向位置
+00:15 +22: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart: 空表（覆盖层路径）：横滚条可拖动表头且贴提示行
+00:15 +23: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart: 空表与有数据往返时横滚条及位置保持
+00:15 +24: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/master_data_table_view_hscrollbar_test.dart: 空表（流内路径）：保留可拖动横向滚动条
+00:16 +25: All tests passed!

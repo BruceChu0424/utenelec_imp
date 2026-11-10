@@ -1,0 +1,9 @@
+        headers: <String, String>{'Content-Type': 'text/javascript'},
+      );
+    } else if (request.requestedUri.path.contains('host.dart.js')) {
+      return shelf.Response.ok(
+        _testHostDartJs.openRead(),
+        headers: <String, String>{'Content-Type': 'text/javascript'},
+      );
+    } else if (request.requestedUri.path.contains('flutter.js')) {
+      return shelf.Response.ok(

@@ -1,0 +1,27 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/table-read-performance-20261110/integration_test/.local-artifacts/merged_pointer_localtest_test.dart
+Building Windows application...                                 
+integration_test/.local-artifacts/merged_pointer_localtest_test.dart(30,25): error GC2F972A8: The argument type 'Pointer<NativeFunction<Int32 Function(IntPtr, IntPtr)>>' can't be assigned to the parameter type 'Pointer<NativeFunction<Uint32 Function(IntPtr, IntPtr)>>'. [D:\Projects\uten_imp_worktrees\table-read-performance-20261110\build\windows\x64\flutter\flutter_assemble.vcxproj]
+D:\Software\Visual Studio Installe\MSBuild\Microsoft\VC\v180\Microsoft.CppCommon.targets(254,5): error MSB8066: “D:\Projects\uten_imp_worktrees\table-read-performance-20261110\build\windows\x64\CMakeFiles\a034a4f1493a0898d50d8588ce933691\flutter_windows.dll.rule;D:\Projects\uten_imp_worktrees\table-read-performance-20261110\build\windows\x64\CMakeFiles\ab701ce61674de7fdafebd64f671504b\flutter_assemble.rule”的自定义生成已退出，代码为 1。 [D:\Projects\uten_imp_worktrees\table-read-performance-20261110\build\windows\x64\flutter\flutter_assemble.vcxproj]
+Building Windows application...                                    29.4s
+00:00 +0 -1: loading D:/Projects/uten_imp_worktrees/table-read-performance-20261110/integration_test/.local-artifacts/merged_pointer_localtest_test.dart [E]
+  Failed to load "D:/Projects/uten_imp_worktrees/table-read-performance-20261110/integration_test/.local-artifacts/merged_pointer_localtest_test.dart": Build process failed.
+  package:flutter_tools/src/base/common.dart 34:3                    throwToolExit
+  package:flutter_tools/src/windows/build_windows.dart 262:5         _runBuild
+  ===== asynchronous gap ===========================
+  package:flutter_tools/src/windows/build_windows.dart 118:5         buildWindows
+  ===== asynchronous gap ===========================
+  package:flutter_tools/src/windows/windows_device.dart 57:5         WindowsDevice.buildForDevice
+  ===== asynchronous gap ===========================
+  package:flutter_tools/src/desktop_device.dart 108:7                DesktopDevice.startApp
+  ===== asynchronous gap ===========================
+  package:flutter_tools/src/test/integration_test_device.dart 57:39  IntegrationTestTestDevice.start
+  ===== asynchronous gap ===========================
+  package:flutter_tools/src/test/flutter_platform.dart 680:51        FlutterPlatform._startTest.<fn>
+  ===== asynchronous gap ===========================
+  package:flutter_tools/src/base/async_guard.dart 108:24             asyncGuard.<fn>
+  
+00:00 +0 -1: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/table-read-performance-20261110/integration_test/.local-artifacts/merged_pointer_localtest_test.dart: loading D:/Projects/uten_imp_worktrees/table-read-performance-20261110/integration_test/.local-artifacts/merged_pointer_localtest_test.dart

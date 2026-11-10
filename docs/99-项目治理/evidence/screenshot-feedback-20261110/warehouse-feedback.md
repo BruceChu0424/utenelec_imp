@@ -1,0 +1,66 @@
+# 仓库与品质截图反馈验证
+
+范围：图 1、3、10、11、13，并补图 7 涉及的仓库/品质空表。源码位于 `uimp/screenshot-feedback-20261110`；未发布、未打包上传。
+
+## 根因与实现
+
+| 原图 | 根因/修改 | 保留边界 |
+|---|---|---|
+| 1 | 返回任务中心会刷新本人仓库范围；刷新期 `confirmedMyWarehouseScope` 返回空，连带把已确认的分类徽章投影为空。仅展示投影在同身份/权限/服务器/读取修订下沿用刷新前快照；确认撤权、失败或身份边界后撤下。 | 命令入口仍要求当前确认的仓库范围；不以旧展示数授权写入。 |
+| 3 | 任务表删除来源单据、往来方列；销售等非领料分类删除生产工单列，生产领料/全部任务保留相关工单入口。数量使用公共 `emphasized` 红色粗体。出库库位号由精确行货品的 `goods.stock_place` 带回，表头说明其为货品资料参考库位，实际出库仍须核对。 | 服务端来源、客户、生产链仍保留；删除列不删除溯源事实。库位搜索/排序/导出同步。已删除列的旧搜索不继续作为隐藏条件。 |
+| 10 | 入库任务中心此前按归属份额逐行展开，正常/计划公共/实际超产因此拆成多行。登记与最终点收均按真实 `output_lot_id` 及仓、货品、颜色、单位合成物理批；无批号的历史行保持独立。 | 份额不合并落账、不改变库存归属；行带完整来源/库存明细 ID。登记按 `lotIds` 办理；点收展开本批全部 `documentItemIds`，不只处理代表行。详情仍能展开全部真实份额。 |
+| 11 | 已有不确定进度协议正确，但公共 `_SweepBar` 的短条没有高度，实测为 0，轨道可见而扫动短条不可见。唯一组件加 `heightFactor: 1`，并保留合并主线后的 S12 条高。后续组合验收还发现公共进度组件跨错误 Zone 的监听遗漏，最终结论见下文。 | IQC 整份报告单事务、单 HTTP，不伪造逐单完成百分比。等待显示扫动条与已用时间；失败正确返回调用方，保留原报告及原幂等键重试。 |
+| 13 | 领料预览原合同只有待申请量，未返回实存参考。服务端同一预览查询增加精确仓/货/色实存量及库存基本单位；客户端单独列显示完整十进制。 | 实存含预留，不冒充可领量，不限制申请；不把库存参考放入提交指纹。单位缺失/计量待核返回未知而不是 0；筛选来源后库存值保留。 |
+| 7 | IQC 批量审批和成品批量点收在无行时绕过表格。改为保留原列及空表；IQC 无选中行时禁提交。 | 无行不会扩大写入范围，也不构造来源或可办理数据。 |
+
+## 已完成的 Flutter 验证
+
+- 9 套扩展回归 244 项通过：`warehouse-flutter-244.log`。覆盖大于 2000 行完整读取/打印、滚动不请求、切来源/身份/仓库/服务器后迟到结果退休、草稿恢复、取消返回、原请求重试、产成品整批登记与权限边界。
+- `same-owner scope refresh keeps badges across rapid rechecks and confirmed removal`：连续 5 次范围重查不清徽章；授权闸门在重查期仍关闭；确认仓库从范围移除后撤下徽章。
+- `selected merged output lot defaults and submits the entire 20000 plus 1000 physical quantity`：选择物理批进入登记，默认实收及提交均为 21000，提交按批号，不按代表份额 ID。
+- `merged final-count row opens both physical source items under the original document`：最终点收页同时收到正常、超产两份明细 ID 及同一原单号；见 `build/warehouse-feedback-count-route-v3.log`。
+- 修改涉及的 13 个 Dart 源码/测试入口静态分析：`build/warehouse-feedback-analyze-final.log`，`No issues found!`。
+- IQC 缺陷先红：`warehouse-iqc-band-before.log` 断言扫动条实际高度得到 `0.0`。修后同一延迟/超时/重试测试通过：`warehouse-iqc-band-after.log`。校验短条高度大于 0、800ms 与 3800ms 位置不同、无假百分比、无等待重放。
+
+渲染证据：
+
+- 修前：[仅有轨道](warehouse-iqc-before-invisible-band.png)
+- 初次修后：[800ms](warehouse-iqc-after-0800ms.png)、[3800ms](warehouse-iqc-after-3800ms.png)；这些是合并主线 S12 条高前的初验，最终原生截图见下文。
+
+以上为实际 Flutter 页/公共组件渲染、受控合成数据及延迟响应；不作为公司业务数据 UAT 或 Win7 真机验收。根会话另做运行时整合检查。
+
+## 服务端与多端状态
+
+最新版服务端 9 套 94 项通过，0 失败、0 错误、0 跳过，`BUILD SUCCESS`；逐套回执见 [warehouse-backend-receipt.json](warehouse-backend-receipt.json)，完整本地日志为 `build/warehouse-feedback-db-latest.log`。已核对编译类包含最新 FINAL_COUNT 聚合及完整明细 ID；首轮编译期间的旧类结果未用作最终证据。两类迁移夹具均实际从空库完成 1067 个迁移到 V1128。
+
+真实链路 `WorkshopPublicSurplusEndToEndTest#handoffLotOf1100IsOneInboundOneCountTaskOneNoticeAndShortCountTrimsActualSurplusFirst` 已通过：从合法正常/超产报工，任务中心同批一行，到两份全登记、同键无重复、FQC 后仍一行、实际点收 1060 并保留超产余量 40。精确仓货色库存、缺失基本单位返回未知及库存参考不进入业务提交指纹也在本轮真 PostgreSQL 用例中通过。
+
+### 原生运行：中间判断与最终根因
+
+早期独立 `integration_test/warehouse_feedback_runtime_test.dart` 将品质用例放在首位，5 场景通过，Debug 构建 33.6 秒、场景运行 16 秒，回执 [warehouse-native-five-pass.log](warehouse-native-five-pass.log)。这是阶段性证据，不能替代后续合并主线、改变用例顺序后的全组合验证。
+
+保留两处中间定位，不把它们改写成最终产品结论：
+
+- **已被推翻的中间判断：“仅测试 Zone 问题”。** 最初把 IQC 异常外逸归因于网络 gate 在外层测试 error Zone 创建；改为在请求 Zone 创建/完成后，独立验证通过，[原失败节选](warehouse-native-iqc-before.log)、[独立通过](warehouse-native-iqc-isolated-pass.log)均保留。随后原顺序全组合仍在第 15 项 IQC 失败；即使改为请求自身 `await` 成功 gate 后抛错、Live 截图直接 `await`，公共动作的失败仍未正确返回。[仅修夹具/截图工具仍失败的全组合日志](warehouse-native-combo-helper-only-failed.log)证明该中间判断不足。独立带截图也曾通过，因此截图开关不是已证明的必然根因。
+- 成品登记夹具在异步 API 回调中用 `flutter_test.expect`，与 live `pumpAndSettle` 的 guard 冲突；改用 `expectSync`，仍严格校验原 reportIds。加载等待以实际表格到达为准，边界为 5 秒，不用“没有待绘制帧”推定 IO 已完成。[原失败与定位栈](warehouse-native-arrival-before.log)。定位时的临时生产诊断已全部撤销，该生产页没有本次差异。
+
+**最终已证明的公共组件根因：** `_UtenProgressDialogState._start` 原先只在 `callerZone.run` 内启动 `action`，却在持久帧回调所在 Zone 注册 `future.then(onValue, onError)`。当调用方与帧回调属于不同 error Zone 时，动作 Future 的错误不能跨界进入该 `onError`，导致错误外逸、等待未正常收尾。单独运行与放在其他页面之后的组合，暴露了不同的帧/错误域上下文。
+
+最终修复把动作启动、同步失败捕获、成功/失败监听注册整个流程放在同一调用方 Zone。原错误及堆栈仍交回调用方；立即取消后的迟到错误、`afterCurrent` 的真实失败/部分结果、owner 退休和精确路由关闭按原合同收尾，不重放写入。主线 S12 条高与扫动短条的 `heightFactor: 1` 同时保留。测试 gate 在请求自身的续体抛错，Live 直接等待字体/截图 IO，Automated 测试仍用 `runAsync` 处理真实 IO；这些辅助修正没有替代公共组件修复。
+
+合并主线后的最终验证回执：
+
+| 验证 | 结果 | 持久证据 |
+|---|---|---|
+| 公共跨错误 Zone 回归，修前 | 失败：`escaped` 实际收到 `StateError(request rejected)`，调用方未收到原失败 | [先红日志](warehouse-progress-cross-zone-before.log) |
+| 公共进度组件 + IQC 完整回归，修后 | 32 项通过；覆盖同步/异步跨错误域失败回传、只执行一次、立即取消迟到错误、`afterCurrent` 失败及 owner 边界 | [32 项通过](warehouse-progress-pipeline-all.log) |
+| 独立原生运行器，品质放最后，带截图 | 5/5 通过，15 秒；覆盖先经过其他页面再进入 IQC 的顺序 | [品质末位 5 项通过](warehouse-native-quality-last-pipeline-fixed.log) |
+| 原顺序原生全组合，带截图 | 27/27 通过，44 秒；第 15 项 IQC 正确失败收尾并重试，后续用例无污染 | [带截图 27 项通过](warehouse-native-combo-pipeline-fixed.log) |
+| 同一原生全组合，不带截图 | 27/27 通过，41 秒 | [不带截图 27 项通过](warehouse-native-combo-no-capture-pipeline-fixed.log) |
+| 公共组件、测试及截图工具静态分析 | 无问题 | [静态分析回执](warehouse-progress-pipeline-analyze.log) |
+
+最终原生截图：[800ms](warehouse-native-pipeline-0800ms.png)、[3800ms](warehouse-native-pipeline-3800ms.png)。可见 S12 轨道内的扫动短条与实际已用时间，没有伪造百分比或转圈。
+
+以上原生结果仍是合成夹具的真实 Flutter 引擎验证，不等于公司业务数据 UAT 或 Win7/WPF 真机业务验收。早期 244 项、94 项后端及旧原生回执各自保留原验证阶段，未冒充后续合并源码的完整验收；最终公共 Zone 结论以本节先红后绿及两种全组合回执为准。
+
+Web/现有 Flutter 桌面/移动共用修改后的 Dart 实现。WPF 相关业务入口尚未迁移，以下项目维持 `todo`，不提高完成状态、不开放占位写入口：`W7-BIZ-104`（领料汇总）、`W7-BIZ-130`（品质批量审批）、`W7-BIZ-182`（成品入库任务）、`W7-BIZ-194`（入库任务中心）、`W7-BIZ-197`（出库任务中心）、`W7-BIZ-210`（仓库任务中心）。WPF 公共 `UtenBusyDialog` 使用显式 `Height=4` 的原生 ProgressBar，不受此次 Flutter 短条零高度问题影响。

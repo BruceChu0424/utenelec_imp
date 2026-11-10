@@ -7,6 +7,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/layout/uten_floating_action_group.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 
+import 'support/scrollbar_pointer.dart';
+
 class _Row {
   const _Row(this.id);
   final String id;
@@ -16,6 +18,7 @@ MasterDataTableView<_Row> _table(
   List<_Row> items, {
   bool withBatch = false,
   double bottomContentPadding = 0,
+  bool longHeaders = false,
   Set<String> selectedIds = const {},
   ValueChanged<Set<String>>? onSelectedIdsChanged,
 }) {
@@ -25,7 +28,7 @@ MasterDataTableView<_Row> _table(
       for (var i = 0; i < 8; i++)
         MasterColumnDef<_Row>(
           key: 'c$i',
-          label: '列$i',
+          label: longHeaders ? '列$i／需要查看的完整字段名称' : '列$i',
           width: 160,
           value: (item) => '${item.id}-$i',
         ),
@@ -344,43 +347,75 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  // 2026-10-10 空表口径：0 数据行且 0 前导分组行时表格骨架（工具条+表头）仍在，
-  // 但内容宽=列宽和>视口会让 thumb 恒显成噪音 → 空表不画横向滚动条；
-  // 加载/错误态的提示行同理。有数据时行为与原来完全一致（回归保护）。
-  testWidgets('空表（覆盖层路径）：不渲染横向滚动条', (tester) async {
-    await tester.pumpWidget(_wrap(_table(const [], bottomContentPadding: 200)));
+  // 2026-11-10：空表仍须能拖动超宽表头，不能因没有数据隐藏横滚入口。
+  testWidgets('空表（覆盖层路径）：横滚条可拖动表头且贴提示行', (tester) async {
+    await tester.pumpWidget(
+      _wrap(_table(const [], bottomContentPadding: 200, longHeaders: true)),
+    );
     await tester.pumpAndSettle();
 
+    expect(_horizontalBars(), findsOneWidget);
+    final bar = _hBarBox(tester);
+    expect(bar.size.height, 11);
+    expect(bar.localToGlobal(Offset.zero).dy, lessThan(200));
+    await dragHorizontalScrollbarThumb(tester, _horizontalBars());
     expect(
-      _horizontalBars(),
-      findsNothing,
-      reason: '空表（0 行、无前导分组）不应有框架横滚条（覆盖层分支不挂）',
+      _horizontalController(tester).offset,
+      greaterThan(0),
+      reason: '实际拖动空表滑块必须移动列头',
     );
+    _horizontalController(tester).jumpTo(160);
+    await tester.pumpAndSettle();
+    final horizontal = tester
+        .widgetList<SingleChildScrollView>(find.byType(SingleChildScrollView))
+        .where((scroll) => scroll.scrollDirection == Axis.horizontal);
+    for (final scroll in horizontal) {
+      expect(scroll.controller!.offset, closeTo(160, 1));
+    }
+    expect(find.text('暂无数据').hitTestable(), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('空表补一行数据后覆盖层横滚条恢复（回归保护）', (tester) async {
-    await tester.pumpWidget(_wrap(_table(const [], bottomContentPadding: 200)));
+  testWidgets('空表与有数据往返时横滚条及位置保持', (tester) async {
+    await tester.pumpWidget(
+      _wrap(_table(const [], bottomContentPadding: 200, longHeaders: true)),
+    );
     await tester.pumpAndSettle();
-    expect(_horizontalBars(), findsNothing);
+    expect(_horizontalBars(), findsOneWidget);
+    _horizontalController(tester).jumpTo(160);
+    await tester.pumpAndSettle();
 
     await tester.pumpWidget(
-      _wrap(_table(const [_Row('a')], bottomContentPadding: 200)),
+      _wrap(
+        _table(const [_Row('a')], bottomContentPadding: 200, longHeaders: true),
+      ),
     );
     await tester.pumpAndSettle();
     // 恢复后恰好一个业务横向滚动条。
     expect(_hBarBox(tester).size.height, 11);
+    expect(_horizontalController(tester).offset, closeTo(160, 1));
+    await tester.pumpWidget(
+      _wrap(_table(const [], bottomContentPadding: 200, longHeaders: true)),
+    );
+    await tester.pumpAndSettle();
+    expect(_horizontalBars(), findsOneWidget);
+    expect(_horizontalController(tester).offset, closeTo(160, 1));
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('空表（流内路径）：不渲染横向滚动条，来数据后恢复', (tester) async {
-    await tester.pumpWidget(_wrap(_table(const [])));
+  testWidgets('空表（流内路径）：保留可拖动横向滚动条', (tester) async {
+    await tester.pumpWidget(_wrap(_table(const [], longHeaders: true)));
     await tester.pumpAndSettle();
-    expect(_horizontalBars(), findsNothing, reason: '空表不包流内横向 Scrollbar');
+    expect(_horizontalBars(), findsOneWidget);
+    _horizontalController(tester).jumpTo(160);
+    await tester.pumpAndSettle();
 
-    await tester.pumpWidget(_wrap(_table(const [_Row('a')])));
+    await tester.pumpWidget(
+      _wrap(_table(const [_Row('a')], longHeaders: true)),
+    );
     await tester.pumpAndSettle();
     expect(_hBarBox(tester).size.height, greaterThanOrEqualTo(11));
+    expect(_horizontalController(tester).offset, closeTo(160, 1));
     expect(tester.takeException(), isNull);
   });
 }

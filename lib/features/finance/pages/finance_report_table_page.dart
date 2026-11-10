@@ -1,3 +1,4 @@
+import '../../../components/inputs/uten_filter_field_theme.dart';
 import '../../../core/network/data_write_revision.dart';
 import '../../../shared/paging/versioned_summary_read.dart';
 import '../../../shared/paging/read_view_activity.dart';
@@ -358,18 +359,14 @@ class _FinanceReportTablePageState extends ConsumerState<FinanceReportTablePage>
     if ((_partyStatement || _materialStatement) && _partyId != null)
       'partyId': _partyId,
     if (_copperReport && _partyId != null) 'supplierId': _partyId,
-    if ((_partyStatement || _materialStatement || _auxiliaryReport) &&
-        _currencyId != null)
+    if ((_partyStatement || _materialStatement) && _currencyId != null)
       'currencyId': _currencyId,
     if (_exportReport == 'cost/plastic' && _binId != null)
       'binWarehouseId': _binId,
   };
 
   Future<void> _loadContexts() async {
-    if (!_partyStatement &&
-        !_copperReport &&
-        !_auxiliaryReport &&
-        _exportReport != 'cost/plastic') {
+    if (!_partyStatement && !_copperReport && _exportReport != 'cost/plastic') {
       return;
     }
     final plastic = _exportReport == 'cost/plastic';
@@ -427,7 +424,7 @@ class _FinanceReportTablePageState extends ConsumerState<FinanceReportTablePage>
           _acceptedBinContextQuery = contextQuery;
           if (!_bins.any((r) => r['id'] == _binId)) _binId = null;
         });
-      } else if (_partyStatement || _auxiliaryReport) {
+      } else if (_partyStatement) {
         final result = await ref
             .read(masterDictionaryRepositoryProvider)
             .load(ApiEndpoints.currenciesDict);
@@ -633,7 +630,7 @@ class _FinanceReportTablePageState extends ConsumerState<FinanceReportTablePage>
     if (_exportReport == 'cost/plastic' && (background || refreshContexts)) {
       _acceptedBinContextQuery = null;
     }
-    if ((_partyStatement || _auxiliaryReport) && _currencies.isEmpty ||
+    if (_partyStatement && _currencies.isEmpty ||
         _exportReport == 'cost/plastic' && !_binsCurrent) {
       if (!_loadingContexts ||
           _exportReport == 'cost/plastic' &&
@@ -1012,14 +1009,15 @@ class _FinanceReportTablePageState extends ConsumerState<FinanceReportTablePage>
   }
 
   Future<void> _openAuxiliaryImport() async {
-    if (_currencyId == null) {
-      context.appWarning('请先选择原表币别');
+    final currencyId = _filters['currencyCode'];
+    if (currencyId == null || currencyId == kMasterFilterNullValue) {
+      context.appWarning('请先在币别列头选择原表币别');
       return;
     }
     final changed = await showFinanceAuxiliaryImportDialog(
       context,
       receivable: _exportReport == 'auxiliary/receivable',
-      currencyId: _currencyId!,
+      currencyId: currencyId,
       dateFrom: _fmt(_queryFrom),
       dateTo: _fmt(_queryTo),
     );
@@ -1425,171 +1423,174 @@ class _FinanceReportTablePageState extends ConsumerState<FinanceReportTablePage>
   }
 
   Widget _buildFilterPane(ThemeData theme) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          UtenFilterToolbar<int>(
-            compactBreakpoint: UtenBreakpoints.mediumStart,
-            segments: [
-              for (int i = 0; i < _card.variants.length; i++)
-                UtenFilterSegment(value: i, label: _card.variants[i].label),
-            ],
-            selected: {_variantIndex},
-            onSelectionChanged: _changeVariant,
-            searchHint:
-                _isCustomerPrepaymentEvents || _statementReviewId != null
-                ? null
-                : '搜索单号 / 名称',
-            initialSearchValue: _keyword,
-            onSearchChanged: (value) {
-              _keyword = value;
-              _persistAndReload();
-            },
-            onSearchSubmitted: (value) {
-              _keyword = value;
-              _persistAndReload();
-            },
-          ),
-          const SizedBox(height: UtenSpacing.s8),
-          Wrap(
-            spacing: UtenSpacing.s12,
-            runSpacing: UtenSpacing.s8,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              if (_exportReport == 'statements/client')
-                UtenButton(
-                  key: const Key('finance-client-statement-view-toggle'),
-                  onPressed: _toggleClientStatementDetail,
-                  child: Text(_clientStatementDetail ? '查看原表' : '查看业务明细'),
-                ),
-              if (_isCustomerPrepaymentEvents)
-                SizedBox(
-                  width: 240,
-                  child: ClientPickerField(
-                    key: ValueKey(
-                      'prepayment-report-client-${_clientId ?? 'all'}',
+    return UtenFilterFieldTheme(
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            UtenFilterToolbar<int>(
+              compactBreakpoint: UtenBreakpoints.mediumStart,
+              segments: [
+                for (int i = 0; i < _card.variants.length; i++)
+                  UtenFilterSegment(value: i, label: _card.variants[i].label),
+              ],
+              selected: {_variantIndex},
+              onSelectionChanged: _changeVariant,
+              searchHint:
+                  _isCustomerPrepaymentEvents || _statementReviewId != null
+                  ? null
+                  : '搜索单号 / 名称',
+              initialSearchValue: _keyword,
+              onSearchChanged: (value) {
+                _keyword = value;
+                _persistAndReload();
+              },
+              onSearchSubmitted: (value) {
+                _keyword = value;
+                _persistAndReload();
+              },
+            ),
+            const SizedBox(height: UtenSpacing.s8),
+            Wrap(
+              spacing: UtenSpacing.s12,
+              runSpacing: UtenSpacing.s8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                if (_exportReport == 'statements/client')
+                  UtenButton(
+                    key: const Key('finance-client-statement-view-toggle'),
+                    onPressed: _toggleClientStatementDetail,
+                    child: Text(_clientStatementDetail ? '查看原表' : '查看业务明细'),
+                  ),
+                if (_isCustomerPrepaymentEvents)
+                  SizedBox(
+                    width: 240,
+                    child: ClientPickerField(
+                      key: ValueKey(
+                        'prepayment-report-client-${_clientId ?? 'all'}',
+                      ),
+                      initialId: _clientId,
+                      initialName: _clientName,
+                      onPick: () async {
+                        final selected = await _pickClient();
+                        if (selected != null) _clientName = selected.name;
+                        return selected;
+                      },
+                      onChanged: _onClientChanged,
                     ),
-                    initialId: _clientId,
-                    initialName: _clientName,
-                    onPick: () async {
-                      final selected = await _pickClient();
-                      if (selected != null) _clientName = selected.name;
-                      return selected;
-                    },
-                    onChanged: _onClientChanged,
                   ),
-                ),
-              if (_materialStatement)
-                UtenButton(
-                  key: const Key('finance-material-maintain'),
-                  onPressed: _openMaterialSourceData,
-                  child: const Text('原表资料'),
-                ),
-              if (_materialStatement)
-                UtenButton(
-                  key: const Key('finance-material-context-select'),
-                  onPressed: _pickMaterialContext,
-                  child: Text(_materialContextName ?? '选择对账资料'),
-                ),
-              if (_materialStatement && _materialContextId != null)
-                UtenButton(
-                  onPressed: () {
-                    setState(() {
-                      _materialContextId = _materialContextName =
-                          _materialPartyRole = null;
-                      _partyId = _partyName = _currencyId = null;
-                      _statementReviewId = null;
-                    });
-                    _persistAndReload();
-                  },
-                  child: const Text('清除资料'),
-                ),
-              if (_partyStatement || _copperReport)
-                UtenButton(
-                  key: const Key('finance-report-party'),
-                  onPressed: _pickStatementParty,
-                  child: Text(
-                    _partyName ??
-                        (_exportReport == 'statements/client'
-                            ? '选择客户'
-                            : '选择供应商/加工商'),
+                if (_materialStatement)
+                  UtenButton(
+                    key: const Key('finance-material-maintain'),
+                    onPressed: _openMaterialSourceData,
+                    child: const Text('原表资料'),
                   ),
-                ),
-              if (_partyId != null && (_partyStatement || _copperReport))
-                UtenButton(
-                  onPressed: () {
-                    setState(() {
-                      _partyId = _partyName = null;
-                      _statementReviewId = null;
-                    });
-                    _persistAndReload();
-                  },
-                  child: const Text('清除往来'),
-                ),
-              if (_partyStatement || _auxiliaryReport)
-                SizedBox(
-                  width: 200,
-                  child: UtenDropdownField(
-                    key: const Key('finance-report-currency'),
-                    label: '币别',
-                    value: _currencyId,
-                    items: [
-                      for (final c in _currencies)
-                        UtenDropdownItem(
-                          value: c['id'].toString(),
-                          label: (c['name'] ?? c['code'] ?? '').toString(),
-                        ),
-                    ],
-                    onChanged: (value) {
+                if (_materialStatement)
+                  UtenButton(
+                    key: const Key('finance-material-context-select'),
+                    onPressed: _pickMaterialContext,
+                    child: Text(_materialContextName ?? '选择对账资料'),
+                  ),
+                if (_materialStatement && _materialContextId != null)
+                  UtenButton(
+                    onPressed: () {
                       setState(() {
-                        _currencyId = value;
+                        _materialContextId = _materialContextName =
+                            _materialPartyRole = null;
+                        _partyId = _partyName = _currencyId = null;
                         _statementReviewId = null;
                       });
                       _persistAndReload();
                     },
+                    child: const Text('清除资料'),
                   ),
-                ),
-              if (_exportReport == 'cost/plastic')
-                SizedBox(
-                  width: 240,
-                  child: UtenDropdownField(
-                    key: const Key('finance-report-bin'),
-                    label: '内料仓',
-                    value: _binId,
-                    items: [
-                      for (final b in _bins)
-                        UtenDropdownItem(
-                          value: b['id'].toString(),
-                          label: '${b['code'] ?? ''} ${b['name'] ?? ''}'.trim(),
-                        ),
-                    ],
-                    onChanged: (value) {
-                      setState(() => _binId = value);
+                if (_partyStatement || _copperReport)
+                  UtenButton(
+                    key: const Key('finance-report-party'),
+                    onPressed: _pickStatementParty,
+                    child: Text(
+                      _partyName ??
+                          (_exportReport == 'statements/client'
+                              ? '选择客户'
+                              : '选择供应商/加工商'),
+                    ),
+                  ),
+                if (_partyId != null && (_partyStatement || _copperReport))
+                  UtenButton(
+                    onPressed: () {
+                      setState(() {
+                        _partyId = _partyName = null;
+                        _statementReviewId = null;
+                      });
                       _persistAndReload();
                     },
+                    child: const Text('清除往来'),
                   ),
-                ),
-              if (_contextError != null)
-                UtenButton(
-                  key: const Key('finance-report-context-retry'),
-                  onPressed: _loadContexts,
-                  child: Text(_contextError!),
-                ),
-              if (widget.cardId == 'gl')
-                TextButton.icon(
-                  key: const ValueKey('gl-line-bindings'),
-                  onPressed: _openLineBindings,
-                  icon: const Icon(Icons.tune_outlined, size: 18),
-                  label: const Text('报表取数设置'),
-                ),
-            ],
-          ),
-          if (_acceptedQueryCurrent &&
-              _data?.documentMetadata.isNotEmpty == true)
-            _documentMetadata(_data!, header: true),
-        ],
+                if (_partyStatement)
+                  SizedBox(
+                    width: 200,
+                    child: UtenDropdownField(
+                      key: const Key('finance-report-currency'),
+                      label: '币别',
+                      value: _currencyId,
+                      items: [
+                        for (final c in _currencies)
+                          UtenDropdownItem(
+                            value: c['id'].toString(),
+                            label: (c['name'] ?? c['code'] ?? '').toString(),
+                          ),
+                      ],
+                      onChanged: (value) {
+                        setState(() {
+                          _currencyId = value;
+                          _statementReviewId = null;
+                        });
+                        _persistAndReload();
+                      },
+                    ),
+                  ),
+                if (_exportReport == 'cost/plastic')
+                  SizedBox(
+                    width: 240,
+                    child: UtenDropdownField(
+                      key: const Key('finance-report-bin'),
+                      label: '内料仓',
+                      value: _binId,
+                      items: [
+                        for (final b in _bins)
+                          UtenDropdownItem(
+                            value: b['id'].toString(),
+                            label: '${b['code'] ?? ''} ${b['name'] ?? ''}'
+                                .trim(),
+                          ),
+                      ],
+                      onChanged: (value) {
+                        setState(() => _binId = value);
+                        _persistAndReload();
+                      },
+                    ),
+                  ),
+                if (_contextError != null)
+                  UtenButton(
+                    key: const Key('finance-report-context-retry'),
+                    onPressed: _loadContexts,
+                    child: Text(_contextError!),
+                  ),
+                if (widget.cardId == 'gl')
+                  TextButton.icon(
+                    key: const ValueKey('gl-line-bindings'),
+                    onPressed: _openLineBindings,
+                    icon: const Icon(Icons.tune_outlined, size: 18),
+                    label: const Text('报表取数设置'),
+                  ),
+              ],
+            ),
+            if (_acceptedQueryCurrent &&
+                _data?.documentMetadata.isNotEmpty == true)
+              _documentMetadata(_data!, header: true),
+          ],
+        ),
       ),
     );
   }
@@ -1641,7 +1642,9 @@ class _FinanceReportTablePageState extends ConsumerState<FinanceReportTablePage>
                     c.unitKey != 'currencyCode' ||
                     (_filters['currencyCode'] != null &&
                         _filters['currencyCode'] != kMasterFilterNullValue)),
-            info: c.unitKey == 'currencyCode' && c.type == 'money'
+            info: _auxiliaryReport && c.key == 'currencyCode'
+                ? '按真实会计币别身份筛选；本表金额仍为已记账本币金额。'
+                : c.unitKey == 'currencyCode' && c.type == 'money'
                 ? '原币金额检索与排序请先选择一个币别；合计按币种分别列出'
                 : _exportReport == 'statements/subcontract' &&
                       const {

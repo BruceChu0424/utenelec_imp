@@ -1,0 +1,73 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/currency_header_query_test.dart
+00:00 +0: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/currency_header_query_test.dart: currency rate header sends exact original rate before paging and to export
+00:04 +1: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/account_workspace_batch_test.dart: concurrent clean stale callbacks open one confirmation and write one batch
+00:04 +2: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/account_workspace_batch_test.dart: concurrent clean stale callbacks open one confirmation and write one batch
+00:09 +3: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/color_inline_edit_test.dart: a permission boundary change discards the old pending list
+00:11 +4: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/color_inline_edit_test.dart: a permission boundary change discards the old pending list
+00:13 +5: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/account_workspace_batch_test.dart: canceling either delete or status confirmation sends no request and retains selection
+00:14 +6: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/color_inline_edit_test.dart: saved rows are not resent when readback fails before the next row
+00:16 +7: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/color_inline_edit_test.dart: saved rows are not resent when readback fails before the next row
+00:17 +8: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/account_workspace_batch_test.dart: explicit 禁用 batch uses native status-only PATCH bodies
+00:18 +9: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/color_inline_edit_test.dart: color table edits ordinary name with CAS while code and status stay read only
+00:20 +10: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/account_workspace_batch_test.dart: explicit 使用 batch uses native status-only PATCH bodies
+00:20 +11: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/account_workspace_batch_test.dart: identity A-B-A while confirmation is open closes it and sends nothing
+00:22 +12: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/account_workspace_batch_test.dart: identity change during first write stops remaining commands and old outcome
+00:23 +13: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/account_workspace_batch_test.dart: identity change during first write stops remaining commands and old outcome
+00:25 +14: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/unit_page_simple_fields_test.dart: 日常单位表格仅显示名称编号状态
+00:27 +15: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/unit_page_simple_fields_test.dart: 日常单位表格仅显示名称编号状态
+00:28 +16: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/unit_page_simple_fields_test.dart: 日常单位表格仅显示名称编号状态
+00:29 +17: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/account_workspace_batch_test.dart: dirty inline edits require discard before any destructive confirmation
+00:30 +18: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/account_workspace_batch_test.dart: dirty inline edits require discard before any destructive confirmation
+00:31 +19: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/unit_page_simple_fields_test.dart: 表格编辑同样只允许日常字段，不提供技术分类编辑入口
+00:32 +20: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/account_workspace_batch_test.dart: continuous rows keep selections while refresh and filters clear them
+00:34 +21: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/unit_inline_busy_once_test.dart: pending unit inline save has one root busy card and semantic node desktop
+00:35 +22: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/unit_inline_busy_once_test.dart: pending unit inline save has one root busy card and semantic node desktop
+UNIT-BUSY desktop frames=60 maxActions=1 maxHosts=1 maxRootCards=1 maxSemanticNodes=1
+00:39 +23: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: settlement completes all batches and search retires a delayed old refresh
+00:42 +23: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/unit_inline_busy_once_test.dart: pending unit inline save has one root busy card and semantic node compact-large
+UNIT-BUSY compact-large frames=60 maxActions=1 maxHosts=1 maxRootCards=1 maxSemanticNodes=1
+00:42 +24: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: settlement completes all batches and search retires a delayed old refresh
+00:44 +24: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/unit_inline_busy_once_test.dart: pending unit inline save has one root busy card and semantic node fullscreen
+UNIT-BUSY fullscreen frames=60 maxActions=1 maxHosts=1 maxRootCards=1 maxSemanticNodes=1
+00:44 +25: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: settlement completes all batches and search retires a delayed old refresh
+00:48 +26: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_filter_race_test.dart: old result cannot replace cleared status
+00:49 +27: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: same-reader scope ABA retires old reads and late responses without resetting auth
+00:51 +28: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: same-reader scope ABA retires old reads and late responses without resetting auth
+00:57 +29: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: same-reader scope ABA retires old reads and late responses without resetting auth
+00:59 +30: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_layout_parity_test.dart: 结算方式多选和编辑共用悬浮组，系统行只读且不伪造删除 390.0
+01:00 +31: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: a terms modal keeps its form but a scope ABA cannot submit the old callback
+01:01 +32: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: a terms modal keeps its form but a scope ABA cannot submit the old callback
+01:03 +33: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: a terms modal keeps its form but a scope ABA cannot submit the old callback
+01:04 +34: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: a terms modal keeps its form but a scope ABA cannot submit the old callback
+01:05 +35: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: a terms modal keeps its form but a scope ABA cannot submit the old callback
+01:08 +36: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: a terms modal keeps its form but a scope ABA cannot submit the old callback
+01:09 +37: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: a terms modal keeps its form but a scope ABA cannot submit the old callback
+01:09 +38: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: a terms modal keeps its form but a scope ABA cannot submit the old callback
+01:09 +39: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: a terms modal keeps its form but a scope ABA cannot submit the old callback
+01:09 +40: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: a terms modal keeps its form but a scope ABA cannot submit the old callback
+01:10 +41: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: a terms modal keeps its form but a scope ABA cannot submit the old callback
+01:11 +42: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_view_scroll_to_end_test.dart: primary owner replacement rebinds the position without remounting editors
+01:12 +43: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_view_selection_lifecycle_test.dart: kept-alive selected text stays copyable while new text waits for row geometry (fixedExtent=false)
+01:13 +44: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_view_scroll_to_end_test.dart: primary fullscreen preserves the live editor and scrollable in both directions
+01:13 +45: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_view_scroll_to_end_test.dart: primary fullscreen preserves the live editor and scrollable in both directions
+01:13 +46: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_view_scroll_to_end_test.dart: primary fullscreen preserves the live editor and scrollable in both directions
+01:13 +47: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_view_selection_lifecycle_test.dart: retained scrollable unregisters before the next selection sort
+01:13 +48: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_view_scroll_to_end_test.dart: normal: empty to populated request reveals final row once
+01:14 +49: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_view_selection_lifecycle_test.dart: 500 editable rows scroll and replace without detached selections (variant: TargetPlatform.windows)
+01:14 +50: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_view_selection_lifecycle_test.dart: 500 editable rows scroll and replace without detached selections (variant: TargetPlatform.windows)
+01:15 +51: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_view_selection_lifecycle_test.dart: 500 editable rows scroll and replace without detached selections (variant: TargetPlatform.windows)
+01:16 +52: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_view_selection_lifecycle_test.dart: 500 editable rows scroll and replace without detached selections (variant: TargetPlatform.windows)
+01:16 +53: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_view_selection_lifecycle_test.dart: 500 editable rows scroll and replace without detached selections (variant: TargetPlatform.windows)
+01:17 +54: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_view_selection_lifecycle_test.dart: 500 editable rows scroll and replace without detached selections (variant: TargetPlatform.windows)
+01:17 +55: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_view_selection_lifecycle_test.dart: 500 editable rows scroll and replace without detached selections (variant: TargetPlatform.windows)
+01:18 +56: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_view_selection_lifecycle_test.dart: 500 editable rows scroll and replace without detached selections (variant: TargetPlatform.windows)
+01:21 +57: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_plain_row_geometry_test.dart: single-line fast geometry equals measured controls TargetPlatform.windows/1.0/false
+01:22 +58: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_plain_row_geometry_test.dart: single-line fast geometry equals measured controls TargetPlatform.windows/1.0/true
+01:23 +59: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_plain_row_geometry_test.dart: single-line fast geometry equals measured controls TargetPlatform.windows/2.0/false
+01:23 +60: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_plain_row_geometry_test.dart: single-line fast geometry equals measured controls TargetPlatform.windows/2.0/true
+01:24 +61: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_plain_row_geometry_test.dart: single-line fast geometry equals measured controls TargetPlatform.android/1.0/false
+01:24 +62: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_plain_row_geometry_test.dart: single-line fast geometry equals measured controls TargetPlatform.android/1.0/true
+01:24 +63: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_plain_row_geometry_test.dart: single-line fast geometry equals measured controls TargetPlatform.android/2.0/false
+01:25 +64: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_plain_row_geometry_test.dart: single-line fast geometry equals measured controls TargetPlatform.android/2.0/true
+01:25 +65: All tests passed!

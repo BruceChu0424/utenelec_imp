@@ -3589,13 +3589,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   /// 触发重测。（不能用 maxScrollExtent+viewportDimension：primary 表体被强制
   /// 填满联动区，量出来恒等于区高。）
   void _updateHBar() {
-    // 空表不定位覆盖层：post-frame 量测会把 _hBarY 拉回非 null，而 Offstage
-    // 只是显示兜底——ValueNotifier 状态也须归位，否则空表换有数据前一直挂着
-    // 悬浮条状态。提示行（加载/错误）同样不需要横滚条（见 _hasRowContent）。
-    if (!_hasRowContent) {
-      if (_hBarY.value != null) _hBarY.value = null;
-      return;
-    }
+    // Empty/loading/error rows still own the same horizontal canvas as the
+    // header. Keep its scrollbar available so every column remains reachable.
     final areaCtx = _bodyAreaKey.currentContext;
     final areaBox = areaCtx?.findRenderObject() as RenderBox?;
     if (areaCtx == null || areaBox == null || !areaBox.attached) {
@@ -5417,11 +5412,14 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       // 行区提示（空结果/加载/错误/「无符合」条）：跨满宽钉在视口横滚位，
       // 不随表格内容横向滚动。
       if (row.notice != null) {
-        return _ViewportPinnedRow(
-          controller: _bodyH,
-          contentWidth: total,
-          fallbackViewportWidth: viewportWidth,
-          child: row.notice!,
+        return KeyedSubtree(
+          key: !_hasRowContent && i == plan.length - 1 ? _lastRowKey : null,
+          child: _ViewportPinnedRow(
+            controller: _bodyH,
+            contentWidth: total,
+            fallbackViewportWidth: viewportWidth,
+            child: row.notice!,
+          ),
         );
       }
       if (row.header) {
@@ -5676,17 +5674,16 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       ),
     );
     // 普通无悬浮留白表使用流内横滚条；联动/悬浮表使用独立覆盖层，
-    // 避免 ListView 底部留白把横滚条推离末行。空表不包 Scrollbar
-    // （0 行时 extent 仍 >0，thumbVisibility:true 会让 thumb 恒显成噪音）。
+    // 避免 ListView 底部留白把横滚条推离末行。空表也保留横滚条，
+    // 列宽超过视口时可直接拖动查看和筛选后面的表头。
     final hWrapped = _usesOverlayHBar
         ? hArea
-        : (_hasRowContent
-              ? Scrollbar(
-                  controller: _bodyH,
-                  thumbVisibility: true,
-                  child: hArea,
-                )
-              : hArea);
+        : Scrollbar(
+            controller: _bodyH,
+            thumbVisibility: true,
+            interactive: true,
+            child: hArea,
+          );
     // 竖向滚动条（上下）已改为表体 Stack 上的覆盖层
     // （见 body Stack children），此处只产出表体本体。
     //
@@ -5855,11 +5852,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       _hasFloatingBatchActions ||
       widget.bottomContentPadding > 0;
 
-  /// 空表不画横向滚动条（2026-10-10 用户口径）：没有任何数据行（含钉顶的
-  /// unpagedItems，它们已并入 _items）也没有前导分组行时，表头骨架仍在但
-  /// 内容宽=列宽和>视口会让 thumb 恒显（thumbVisibility:true 且无滚动事件
-  /// 永不隐藏），纯属噪音；加载中/错误态的提示行同理不需要横滚条（有意
-  /// 降噪）。有任意行内容时行为与原来完全一致。
+  /// Whether the row plan contains business/group content, independently of
+  /// its horizontal overflow. Empty-state notices stay pinned to the viewport.
   bool get _hasRowContent =>
       _appendRows.isNotEmpty ||
       _displayItems.isNotEmpty ||
@@ -6821,9 +6815,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                   ),
                 // 横滚条覆盖层：按内容高度定位（[_hBarY] 为底边 local top）。
                 // 内容少 → 贴末行下方（约 1px 空隙）；超高 → 钉表体区底。与 _bodyH 双向同步，
-                // 表头经既有 _sync 跟随，底部额外留白不参与定位。空表不挂覆盖层
-                // （0 行/仅提示行时 thumb 是噪音，见 _hasRowContent）。
-                if (_usesOverlayHBar && _hasRowContent)
+                // 表头经既有 _sync 跟随，底部额外留白不参与定位。空表同样
+                // 贴提示行下方，让用户能访问超宽表头。
+                if (_usesOverlayHBar)
                   ValueListenableBuilder<double?>(
                     valueListenable: _hBarY,
                     builder: (context, y, _) => Positioned(
@@ -6837,6 +6831,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                           child: Scrollbar(
                             controller: _overlayH,
                             thumbVisibility: true,
+                            interactive: true,
                             child: SingleChildScrollView(
                               controller: _overlayH,
                               scrollDirection: Axis.horizontal,

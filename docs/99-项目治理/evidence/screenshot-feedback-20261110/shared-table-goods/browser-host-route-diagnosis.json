@@ -1,0 +1,12 @@
+{
+  "oldSource": "lib/components/layout/uten_page_scrollbar_host.dart",
+  "newSource": "lib/components/layout/uten_page_scrollbar_owner.dart",
+  "oldGitBlob": "05a4eacdfad37bd6f4c86238458f0ada45eb14b1",
+  "newGitBlob": "05a4eacdfad37bd6f4c86238458f0ada45eb14b1",
+  "migratedImportFiles": 24,
+  "sdkOwningSource": "D:/Software/Flutter/flutter/packages/flutter_tools/lib/src/test/flutter_web_platform.dart:391",
+  "rootCause": "path.contains('host.dart.js') matches the application's *_host.dart.js module and substitutes the test host's non-AMD script",
+  "renameExperiment": "reverted by exact path-string replacement in all 24 current imports; parallel file changes preserved",
+  "finalProductionSource": "lib/components/layout/uten_page_scrollbar_host.dart",
+  "finalResolution": "task-isolated flutter_tools test-host routing fix; shared SDK unchanged"
+}

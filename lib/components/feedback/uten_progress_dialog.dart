@@ -324,34 +324,38 @@ class _UtenProgressDialogState<T> extends State<_UtenProgressDialog<T>> {
       _cancel();
       return;
     }
-    final Future<T> future;
-    try {
-      // 回到调用方的 Zone 启动: 见 showUtenProgress 里的 callerZone 注释。
-      future = widget.callerZone.run(() => widget.action(widget.session));
-    } catch (error, stackTrace) {
-      _close(_Outcome<T>.failure(error, stackTrace));
-      return;
-    }
-    future.then(
-      (value) {
-        if (!mounted || _closed) return;
-        // 立即取消模式: 用户已取消则结果不再呈现; 「完成当前项」模式照常交回真实结果。
-        _close(
-          widget.session.isCancelled && !_drains
-              ? null
-              : _Outcome<T>.value(value),
-        );
-      },
-      onError: (Object error, StackTrace stackTrace) {
-        if (!mounted || _closed) return;
-        // 取消引发的异常(如 Dio cancel)不再打扰用户; 写入类的真实失败照常抛出。
-        if (widget.session.isCancelled && !_drains) {
-          _close(null);
-          return;
-        }
+    // The engine's persistent frame callback may run in a different error zone.
+    // Start AND subscribe in the caller's zone: a Future failure cannot cross
+    // error-zone boundaries merely because then(onError:) exists elsewhere.
+    widget.callerZone.run<void>(() {
+      final Future<T> future;
+      try {
+        future = widget.action(widget.session);
+      } catch (error, stackTrace) {
         _close(_Outcome<T>.failure(error, stackTrace));
-      },
-    );
+        return;
+      }
+      future.then(
+        (value) {
+          if (!mounted || _closed) return;
+          // 立即取消模式: 用户已取消则结果不再呈现; 「完成当前项」模式照常交回真实结果。
+          _close(
+            widget.session.isCancelled && !_drains
+                ? null
+                : _Outcome<T>.value(value),
+          );
+        },
+        onError: (Object error, StackTrace stackTrace) {
+          if (!mounted || _closed) return;
+          // 取消引发的异常(如 Dio cancel)不再打扰用户; 写入类的真实失败照常抛出。
+          if (widget.session.isCancelled && !_drains) {
+            _close(null);
+            return;
+          }
+          _close(_Outcome<T>.failure(error, stackTrace));
+        },
+      );
+    });
   }
 
   bool get _drains => widget.cancelMode == UtenProgressCancel.afterCurrent;
@@ -776,6 +780,7 @@ class _SweepBarState extends State<_SweepBar>
                     alignment: Alignment(-1.0 + 2.0 * t, 0.0),
                     child: FractionallySizedBox(
                       widthFactor: band,
+                      heightFactor: 1,
                       child: ColoredBox(color: widget.color),
                     ),
                   );

@@ -1,0 +1,6 @@
+clients/windows_legacy/Uten.Legacy.Desktop\Controls\UtenBusyDialog.cs
+clients/windows_legacy/Uten.Legacy.Desktop\MainWindow.xaml.cs
+clients/windows_legacy/Uten.Legacy.Desktop\Features\Units\UnitExportWindow.cs
+clients/windows_legacy/Uten.Legacy.Desktop\Features\Units\UnitHistoryWindows.cs
+clients/windows_legacy/Uten.Legacy.Desktop\Features\Goods\GoodsWorkspaceView.cs
+clients/windows_legacy/Uten.Legacy.Desktop\Features\Units\UnitRecordHistoryWindow.cs

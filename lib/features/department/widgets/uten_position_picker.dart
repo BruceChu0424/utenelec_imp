@@ -226,23 +226,12 @@ class _PositionListSheetState extends ConsumerState<_PositionListSheet> {
                     ],
                   ),
                 )
-              : positions!.isEmpty
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Text(
-                      '该部门暂无岗位，请联系 HR 添加',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ),
-                )
               : MasterDataTableView<Position>(
                   key: const Key('position-candidates-table'),
+                  emptyMessage: '该部门暂无岗位，请联系 HR 添加',
                   columns: positionPickerTableColumns(),
                   items: [
-                    for (final group in _group(positions)) ...group.items,
+                    for (final group in _group(positions!)) ...group.items,
                   ],
                   rowKeyOf: (position) => position.id,
                   rowWidgetKeyOf: (position) =>

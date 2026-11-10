@@ -56,7 +56,7 @@ public class ShipmentReceivablePositionAdapter implements ShipmentReceivablePosi
     @Override @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
     public Map<UUID,Position> read(Collection<UUID> shipmentIds) {
         List<UUID> ids=shipmentIds==null?List.of():shipmentIds.stream().filter(Objects::nonNull).distinct().toList();
-        if(ids.size()>200)throw new ApiException(ErrorCode.VALIDATION_FAILED,"批次资金每次最多查询200张出货单");
+        if(ids.size()>Pageables.MAX_PAGE_SIZE)throw new ApiException(ErrorCode.VALIDATION_FAILED,"批次资金每次最多查询"+Pageables.MAX_PAGE_SIZE+"张出货单");
         Map<UUID,Position> result=new LinkedHashMap<>();if(ids.isEmpty())return result;
         Integer level=TransactionSynchronizationManager.getCurrentTransactionIsolationLevel();
         if(!TransactionSynchronizationManager.isActualTransactionActive() ||

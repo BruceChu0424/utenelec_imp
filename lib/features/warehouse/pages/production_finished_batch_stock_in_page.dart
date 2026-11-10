@@ -14,7 +14,6 @@ import 'package:uuid/uuid.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_dialog.dart';
-import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_progress_dialog.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
@@ -482,17 +481,7 @@ class _ProductionFinishedBatchStockInPageState
               child: UtenContentContainer.wide(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Expanded(
-                      child: rows.isEmpty
-                          ? const UtenEmpty(
-                              icon: Icons.inventory_rounded,
-                              message: '所选任务状态已变化',
-                              description: '请返回任务中心刷新后重新选择。',
-                            )
-                          : _buildTable(rows),
-                    ),
-                  ],
+                  children: [Expanded(child: _buildTable(rows))],
                 ),
               ),
             ),

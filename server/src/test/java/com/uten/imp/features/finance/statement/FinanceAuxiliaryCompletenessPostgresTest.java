@@ -20,7 +20,7 @@ class FinanceAuxiliaryCompletenessPostgresTest {
     UUID style,currency;
     @BeforeAll static void start(){
         PG.start();db=new JdbcTemplate(new DriverManagerDataSource(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword()));
-        MigratedProjectionSchema.createCurrentTables(db,"gl_entries","gl_vouchers","finance_chart_code_styles","finance_gl_entry_allocations","finance_chart_codes","finance_gl_auxiliary_opening_evidence");
+        MigratedProjectionSchema.createCurrentTables(db,"currencies","gl_entries","gl_vouchers","finance_chart_code_styles","finance_gl_entry_allocations","finance_chart_codes","finance_gl_auxiliary_opening_evidence");
         MigratedProjectionSchema.createCurrentFunctions(db,"fn_finance_gl_voucher_is_booked");
     }
     @AfterAll static void stop(){PG.stop();}
@@ -52,6 +52,15 @@ class FinanceAuxiliaryCompletenessPostgresTest {
         allocate(reversal,1,"-7",currency);
         assertThat(FinanceAuxiliaryCompleteness.read(db,"2202",currency,FROM,TO).closingComplete()).isTrue();
     }
+    @Test void sameNamedCurrenciesKeepDistinctRowsAndExactUuidScope(){
+        UUID other=UUID.randomUUID();
+        db.update("INSERT INTO currencies(id,code,name) VALUES(?,?,'同名币别'),(?,?,'同名币别')",currency,"A"+currency.toString().substring(0,6),other,"B"+other.toString().substring(0,6));
+        allocate(entry("2026-09-05","10.0000001",1),1,"10.0000001",currency);
+        allocate(entry("2026-09-06","20.0000001",1),1,"20.0000001",other);
+        assertThat(reportRows(null)).hasSize(2).allSatisfy(row->assertThat(row.get("currencyCode")).isEqualTo("同名币别"));
+        assertThat(reportRows(currency)).hasSize(1).allSatisfy(row->assertThat(row.get("__currencyId")).isEqualTo(currency));
+        assertThat(reportRows(other)).hasSize(1).allSatisfy(row->assertThat(row.get("__currencyId")).isEqualTo(other));
+    }
     UUID entry(String date,String amount,int status){
         UUID voucher=UUID.randomUUID();db.update("INSERT INTO gl_vouchers(id,voucher_no,period,voucher_date,source,source_type,status) VALUES(?,?,?,?::date,'MANUAL','ANONYMOUS',?)",voucher,voucher.toString(),date.substring(0,7),date,status);
         return db.queryForObject("INSERT INTO gl_entries(voucher_id,style_id,direction,amount,entry_date,period) VALUES(?,?,1,?::numeric,?::date,?) RETURNING id",UUID.class,voucher,style,amount,date,date.substring(0,7));
@@ -59,9 +68,10 @@ class FinanceAuxiliaryCompletenessPostgresTest {
     void allocate(UUID entry,int number,String amount,UUID book){
         db.update("INSERT INTO finance_gl_entry_allocations(entry_id,allocation_no,account_code,source_account_code,auxiliary_id,currency_id,amount_local,auxiliary_role,party_id_snapshot,source_entry_id,source_row,source_snapshot,created_by,source_system,source_code,source_name,source_account_path_name) VALUES(?,?,'2202','2202',gen_random_uuid(),?,?::numeric,'SUPPLIER',gen_random_uuid(),?,1,'{}',gen_random_uuid(),'ANON','ANON','匿名往来','匿名科目路径')",entry,number,book,amount,entry.toString());
     }
-    List<Map<String,Object>> reportRows(){
+    List<Map<String,Object>> reportRows(){return reportRows(currency);}
+    List<Map<String,Object>> reportRows(UUID requestedCurrency){
         var args=new HashMap<String,Object>();args.put("from",FROM);args.put("to",TO);args.put("prefix","2202");args.put("role","SUPPLIER");
-        args.put("accountCode",null);args.put("auxiliaryId",null);args.put("auxiliaryIds",null);args.put("currencyId",currency);args.put("sourceSystem",null);
+        args.put("accountCode",null);args.put("auxiliaryId",null);args.put("auxiliaryIds",null);args.put("currencyId",requestedCurrency);args.put("sourceSystem",null);
         args.put("scopeOpening",true);args.put("scopePeriod",true);args.put("scopeClosing",true);
         return new NamedParameterJdbcTemplate(db).queryForList(FinanceAuxiliaryReports.sql(false),args);
     }

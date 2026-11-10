@@ -90,6 +90,8 @@ UtenDocLinkPickerConfig<_Doc, _Item, Null> _config({
       colorId: (_) => null,
       unitId: (_) => null,
       price: (_) => 1.5,
+      priceText: (_) => '1.500000000001',
+      discountText: (_) => '0.8765',
       upstreamItemId: (it) => it.id,
     ),
     docColumns: (_) => [
@@ -632,6 +634,8 @@ void main() {
     expect(result.items.single.qty, 4);
     expect(result.items.single.maxQty, 4);
     expect(result.items.single.price, 1.5);
+    expect(result.items.single.priceText, '1.500000000001');
+    expect(result.items.single.discountText, '0.8765');
     expect(result.items.single.upstreamItemId, 'i1');
     expect(result.partyId, 's1');
     expect(find.text('从测试单引入'), findsNothing);

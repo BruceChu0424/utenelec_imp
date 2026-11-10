@@ -1,0 +1,33 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/integration_test/screenshot_feedback_runtime_test.dart
+Building Windows application...                                    94.6s
+√ Built build\windows\x64\runner\Debug\uten_imp.exe
+00:00 +0: editor-runtime shipment order prefill retains the exact discount and locked preview through quantity edits
+00:04 +1: editor-runtime existing shipment retains legacy original-price semantics for discount null
+00:05 +2: editor-runtime existing shipment retains legacy original-price semantics for discount 0
+00:06 +3: editor-runtime existing shipment retains legacy original-price semantics for discount 0.8
+00:07 +4: detail-runtime shipment detail presents source discount null without changing its source
+00:09 +5: detail-runtime shipment detail presents source discount 0 without changing its source
+00:10 +6: detail-runtime shipment detail presents source discount 0.8 without changing its source
+00:11 +7: shipment-runtime finance task page defaults to pending and uses desktop table
+00:12 +8: table-runtime 空表（覆盖层路径）：横滚条可拖动表头且贴提示行
+00:13 +9: table-runtime 空表与有数据往返时横滚条及位置保持
+00:14 +10: table-runtime 空表（流内路径）：保留可拖动横向滚动条
+00:15 +11: grid-runtime 空编辑表保留超宽表头横滚且空态保持在可视区
+00:16 +12: totals-runtime 换行合计仅在每行实际内容后铺红底，不铺满第二行空白
+00:16 +13: totals-runtime 条目内部换行与旁侧短条目不把两行背景连成卡片
+00:17 +14: quality-runtime atomic IQC report keeps truthful moving unknown progress while delayed and retries the frozen report
+00:24 +15: warehouse-scope-runtime same-owner scope refresh keeps badges across rapid rechecks and confirmed removal
+00:24 +16: arrival-runtime selected merged output lot defaults and submits the entire 20000 plus 1000 physical quantity
+00:27 +17: count-route-runtime merged final-count row opens both physical source items under the original document
+00:28 +18: draw-runtime stock reference preserves exact warehouse quantity and stock unit through source selection
+00:28 +19: year-runtime year picker cancels and reopens, selected filter matches search at width 1440.0
+00:31 +20: year-runtime year picker cancels and reopens, selected filter matches search at width 375.0
+00:33 +21: finance-entry-runtime receipt creation puts settlement terms in the common selectable grid
+00:35 +22: finance-entry-runtime payment creation puts settlement terms in the common selectable grid
+00:36 +23: finance-entry-runtime expense creation puts settlement terms in the common selectable grid
+00:38 +24: finance-entry-runtime otherIncome creation puts settlement terms in the common selectable grid
+00:39 +25: finance-entry-runtime bankTransfer creation puts settlement terms in the common selectable grid
+00:40 +26: monthly-runtime 375px monthly list remains usable
+00:41 +27: (tearDownAll)
+00:41 +27: All tests passed!

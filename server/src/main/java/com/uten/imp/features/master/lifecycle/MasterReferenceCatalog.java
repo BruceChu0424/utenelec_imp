@@ -158,6 +158,14 @@ final class MasterReferenceCatalog {
 
     private static List<Reference> buildReferences() {
         List<Reference> out = new ArrayList<>();
+        // The append-only first-use proof survives closed/reversed/deleted
+        // source documents and business-data maintenance. Do not infer nonuse
+        // from current quantities or only the remaining open references.
+        out.add(new Reference(GOODS, "goods_code_usage_facts", "goods_id", RefKind.GOODS_USAGE, """
+                SELECT f.goods_id, 'GOODS_USAGE', 'permanent-goods-usage-' || f.goods_id::text,
+                       '已保留的业务使用记录', NULL::uuid, 'public'
+                FROM goods_code_usage_facts f WHERE f.goods_id IN (SELECT id FROM targets)
+                """));
         // Applications retain a relational supplier identity and frozen fields.
         // Master-data editors may see the existence/count, never a private
         // application number, title or UUID without its independent object ACL.
@@ -711,7 +719,6 @@ final class MasterReferenceCatalog {
                 "仅在核验完成后记录的证据单位；当前单位依赖由货品及库存检查，历史核验 UUID 保留",
                 "stock_measurement_holds", "verified_unit_id");
         exempt(out, ExemptReason.HISTORY, "货品编号完整生命周期证明，不是业务在办引用", "goods_code_lifecycles", "goods_id");
-        exempt(out, ExemptReason.HISTORY, "货品终身业务使用证据，跨软删和清业务保留", "goods_code_usage_facts", "goods_id");
         exempt(out, ExemptReason.HISTORY, "未使用货品编号复用归属证据，旧新 UUID 独立保留", "goods_code_reuse_releases", "old_goods_id", "new_goods_id");
         exempt(out, ExemptReason.HISTORY, "库存流水", "stock_movements",
                 "goods_id", "color_id", "unit_id", "warehouse_id");

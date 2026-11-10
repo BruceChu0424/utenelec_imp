@@ -1,3 +1,4 @@
+import 'uten_selected_value_theme.dart';
 // UtenEmployeePicker - 抽屉式人员选择器（通用组件）
 //
 // 触发形态与 UtenDepartmentPicker 对齐：只读输入框样式 field
@@ -344,6 +345,7 @@ class _UtenEmployeePickerState extends State<UtenEmployeePicker>
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final sel = _selected;
+    final highlighted = sel != null && UtenSelectedValueTheme.contains(context);
     final String? display = sel?.displayName;
     final requiredEmpty = widget.enabled && widget.required && sel == null;
     final iconExtent = UtenTableCellInputTheme.contains(context)
@@ -367,6 +369,10 @@ class _UtenEmployeePickerState extends State<UtenEmployeePicker>
               decoration: applyRequiredEmpty(
                 UtenInputDecoration(
                   InputDecoration(
+                    filled: highlighted ? true : null,
+                    fillColor: highlighted
+                        ? theme.colorScheme.primaryContainer
+                        : null,
                     label: widget.label == null
                         ? null
                         : fieldLabel(
@@ -415,7 +421,11 @@ class _UtenEmployeePickerState extends State<UtenEmployeePicker>
                       display,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodyLarge,
+                      style: theme.textTheme.bodyLarge?.copyWith(
+                        color: highlighted
+                            ? theme.colorScheme.onPrimaryContainer
+                            : null,
+                      ),
                     ),
             ),
           ),

@@ -447,6 +447,16 @@ class WorkshopPublicSurplusEndToEndTest {
         var arrival=tasks.list(detail.getBillNo(),"ARRIVAL_REGISTRATION",null,1,40).getItems();
         assertEquals(1,arrival.size());assertEquals(1,arrival.getFirst().lineCount());
         qty("100",arrival.getFirst().actualSurplusQty());assertEquals("其中实际超产 100 个",arrival.getFirst().actualSurplusNote());
+        var center=beans.getBean(com.uten.imp.features.warehouse.taskcenter.WarehouseInboundTaskCenterQueryService.class);
+        var centerFilter=new com.uten.imp.features.warehouse.taskcenter.WarehouseTaskCenterContracts.Filter(
+                "FINISHED","",detail.getBillNo(),null,null,null,null,1,50);
+        var centerPending=center.list(centerFilter);
+        assertEquals(1,centerPending.total(),"任务中心也按同一实物批合并正常与超产");
+        var centerLot=centerPending.items().getFirst();
+        assertEquals(lot.toString(),centerLot.line().key());
+        qty("1100",centerLot.line().quantity());
+        assertEquals(lot.toString(),centerLot.actionData().get("lotId").toString());
+        assertEquals(2,((List<?>)centerLot.actionData().get("sourceReportItemIds")).size());
         var pending=arrivals.batchDetail(List.of(report)).getFirst();
         assertEquals(1,pending.lots().size());
         var lotView=pending.lots().getFirst();
@@ -455,7 +465,9 @@ class WorkshopPublicSurplusEndToEndTest {
         // 部分登记被数据库整批守卫拒绝(绕过服务直接写登记行)。
         assertWholeLotGuardRejectsPartialRegistration(c,report,demand);
         FinishedArrivalTestSupport.registerAll(arrivals,report,"handoff-arrival-"+report,c.world().warehouseId(),"A-01",null,false);
+        FinishedArrivalTestSupport.registerAll(arrivals,report,"handoff-arrival-"+report,c.world().warehouseId(),"A-01",null,false);
         assertEquals(1,db.queryForObject("SELECT count(DISTINCT place_snapshot) FROM production_finished_arrival_registration_items WHERE source_report_item_id IN (?,?)",Integer.class,demand,surplus));
+        assertEquals(2,db.queryForObject("SELECT count(*) FROM production_finished_arrival_registration_items WHERE source_report_item_id IN (?,?)",Integer.class,demand,surplus),"同批两份均登记且重试不重复");
         // 分成几份的批不能逐份判定。
         UUID demandInspection=db.queryForObject("SELECT id FROM production_fqc_inspections WHERE source_report_item_id=? AND status<>'CANCELLED'",UUID.class,demand);
         ApiException single=assertThrows(ApiException.class,()->quality.decide(demandInspection,
@@ -477,6 +489,10 @@ class WorkshopPublicSurplusEndToEndTest {
         assertEquals(1,count.size(),"恰好一个待最终点收任务");
         assertEquals(doc,count.getFirst().documentId());assertEquals(1,count.getFirst().lineCount());
         qty("100",count.getFirst().actualSurplusQty());
+        var centerCount=center.list(centerFilter);
+        assertEquals(1,centerCount.total(),"最终点收仍以整批一行显示");
+        qty("1100",centerCount.items().getFirst().line().quantity());
+        assertEquals(2,((List<?>)centerCount.items().getFirst().actionData().get("documentItemIds")).size());
         var stockDetail=stock.detail(doc);
         assertEquals(1,stockDetail.getFinishedLots().size());
         assertEquals("其中实际超产 100",stockDetail.getFinishedLots().getFirst().actualSurplusNote());

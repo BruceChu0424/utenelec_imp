@@ -1506,7 +1506,7 @@ class _MaterialEditorState extends ConsumerState<_MaterialEditor>
     if (!formDraftIdentityIsCurrent) {
       return withFormDraft(
         const Material(child: Center(child: Text('登录身份、权限或服务器已变化，原草稿已保留。'))),
-      );
+      ).withSelectedValueHighlights();
     }
     return withFormDraft(
       Material(
@@ -1693,7 +1693,7 @@ class _MaterialEditorState extends ConsumerState<_MaterialEditor>
           ],
         ),
       ),
-    );
+    ).withSelectedValueHighlights();
   }
 }
 

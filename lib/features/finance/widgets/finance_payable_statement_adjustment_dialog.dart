@@ -1,3 +1,4 @@
+import '../../../components/inputs/uten_selected_value_theme.dart';
 import '../shared/finance_workbench_panel.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
@@ -754,6 +755,9 @@ class _AdjustmentState extends ConsumerState<_Adjustment>
         label: '对方真实辅助',
         width: 200,
         cellBuilder: (_, r) => UtenButton(
+          type: r.auxiliary == null
+              ? UtenButtonType.secondary
+              : UtenButtonType.tonal,
           onPressed: _editable && r.decision == 'RELEASED' && r.styleId != null
               ? () => _pickAuxiliary(r)
               : null,
@@ -903,24 +907,24 @@ class _AdjustmentState extends ConsumerState<_Adjustment>
                             onSelectedIdsChanged: _select,
                           ),
                         ),
-                        if (_grid.rows.isNotEmpty)
-                          UtenEditableGrid<_Line>(
-                            tableKey:
-                                'finance.payable-statement-adjustments.lines',
-                            controller: _grid,
-                            columns: columns,
-                            showAddRow: false,
-                            showColumnSettings: false,
-                            stickyHeader: false,
-                            selectionEnabled: _editable,
-                            showRowDelete: _editable,
-                            showRemoveRowsAction: _editable,
-                            onDeleteRow: (_, index) {
-                              if (!_editable) return;
-                              _grid.removeAt(index);
-                              setState(_changed);
-                            },
-                          ),
+                        UtenEditableGrid<_Line>(
+                          emptyMessage: '请在上表选择本次处理的应付行',
+                          tableKey:
+                              'finance.payable-statement-adjustments.lines',
+                          controller: _grid,
+                          columns: columns,
+                          showAddRow: false,
+                          showColumnSettings: false,
+                          stickyHeader: false,
+                          selectionEnabled: _editable,
+                          showRowDelete: _editable,
+                          showRemoveRowsAction: _editable,
+                          onDeleteRow: (_, index) {
+                            if (!_editable) return;
+                            _grid.removeAt(index);
+                            setState(_changed);
+                          },
+                        ).withSelectedValueHighlights(),
                         UtenInput(
                           label: '本次处理依据',
                           controller: _reference,

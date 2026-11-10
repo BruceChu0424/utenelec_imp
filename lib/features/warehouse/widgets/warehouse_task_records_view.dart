@@ -421,6 +421,9 @@ class _WarehouseTaskRecordsViewState
       if (_billNo == value) return;
       _billNo = value;
     } else if (key.startsWith('search.')) {
+      if (!_buildColumns().any((column) => column.key == key.substring(7))) {
+        return;
+      }
       if (_headerColumns[key] == value) return;
       if (value == null || value.trim().isEmpty) {
         _headerColumns.remove(key);
@@ -1058,6 +1061,7 @@ class _WarehouseTaskRecordsViewState
     ),
     MasterColumnDef(
       key: 'quantity',
+      emphasized: true,
       label: widget.direction == WarehouseTaskDirection.inbound
           ? '申报 / 单据数量'
           : '数量',
@@ -1113,16 +1117,10 @@ class _WarehouseTaskRecordsViewState
               : () => _open(row),
         ),
       ),
-    MasterColumnDef(
-      key: 'sourceDocNo',
-      sortable: true,
-      label: '来源单据',
-      width: 180,
-      value: (row) => row.sourceDocNo ?? '—',
-    ),
     // 领料单关联的生产工单（2026-10-29 用户批注）：链路 = 计划包单据/明细行执行段/
     // 计划包明细-需求 → production_execution_segments.segment_code；非领料行为「—」。
-    if (widget.direction == WarehouseTaskDirection.outbound)
+    if (widget.direction == WarehouseTaskDirection.outbound &&
+        (widget.source == 'DRAW' || widget.source == 'ALL'))
       MasterColumnDef(
         key: 'productionOrderNo',
         sortable: true,
@@ -1158,19 +1156,21 @@ class _WarehouseTaskRecordsViewState
         },
       ),
     MasterColumnDef(
-      key: 'partyName',
-      sortable: true,
-      label: '客户 / 供应商 / 委外商',
-      width: 200,
-      value: (row) => row.partyName ?? '—',
-    ),
-    MasterColumnDef(
       key: 'warehouseName',
       sortable: true,
       label: '仓库',
       width: 180,
       value: (row) => row.warehouseName ?? '未确定',
     ),
+    if (widget.direction == WarehouseTaskDirection.outbound)
+      MasterColumnDef(
+        key: 'stockPlace',
+        sortable: true,
+        label: '库位号',
+        info: '货品资料中的库位号，实际出库库位仍须在办理时核对。',
+        width: 140,
+        value: (row) => row.line?.stockPlace ?? '—',
+      ),
     MasterColumnDef(
       key: 'businessDate',
       label: '业务日期',

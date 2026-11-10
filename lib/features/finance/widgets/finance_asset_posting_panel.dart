@@ -743,9 +743,9 @@ class _FinanceAssetPostingPanelState
   }
 
   Widget _previewLines(List<AssetPostingLine> lines) {
-    if (lines.isEmpty) return const UtenEmpty(message: '暂无可计提项目');
     return MasterDataTableView<AssetPostingLine>(
       expensiveRowMounts: false,
+      emptyMessage: '暂无可计提项目',
       tableKey: 'finance.asset.postingPreview',
       embedded: true,
       platformBinding: PlatformTableBinding(

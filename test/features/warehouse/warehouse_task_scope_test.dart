@@ -10,6 +10,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart';
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
@@ -31,6 +32,7 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/warehouse/warehouse_task_scope.dart';
 import 'package:uten_imp/shared/warehouse/warehouse_task_badges.dart';
 import 'package:uten_imp/shared/warehouse/warehouse_scope_recovery_host.dart';
+import 'package:uten_imp/shared/badges/badge_registry.dart';
 
 // Riverpod 3 将 copyWithPrevious 标记为 @internal；跨 family 实例手动保页/保旧值是既有架构，等上游公开等价 API 后再迁移。
 // ignore_for_file: invalid_use_of_internal_member
@@ -51,6 +53,72 @@ class _SilentApi extends ApiClient {
   Future<Map<String, dynamic>> put(String path, {Object? body}) async =>
       const {};
 }
+
+class _BadgeApi extends _SilentApi {
+  @override
+  Future<Map<String, dynamic>> get(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async => path == ApiEndpoints.workbenchBadges
+      ? {
+          'facts': {'productionDraw.readyToPick': 11},
+        }
+      : const {};
+}
+
+class _StaleBadgeApi extends _SilentApi {
+  Map<String, dynamic> next = _selectedBadgeResponse(11);
+  int reads = 0;
+
+  @override
+  Future<Map<String, dynamic>> get(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async {
+    if (path != ApiEndpoints.workbenchBadges) return const {};
+    reads++;
+    expect(query?['scopeWarehouseId'], 'hw');
+    return next;
+  }
+}
+
+Map<String, dynamic> _selectedBadgeResponse(int count, {bool stale = false}) =>
+    {
+      'entries': {
+        'warehouseOutboundCenter': {'todo': count, 'inProgress': 0},
+      },
+      'modules': {
+        'warehouse': {'todo': count, 'inProgress': 0},
+      },
+      'total': {'todo': count, 'inProgress': 0},
+      'facts': {
+        if (!stale) BadgeFact.productionDrawReady: count,
+        'warehouseSalesOutbound.PENDING_PICK': count,
+      },
+      if (stale) 'staleEntries': ['warehouseOutboundCenter'],
+      if (stale) 'staleSources': ['productionDraw'],
+    };
+
+final _badgeIdentity = StateProvider<AuthenticatedScope?>(
+  (_) => const AuthenticatedScope(userId: 'warehouse-reader'),
+);
+final _badgePermissions = StateProvider<Set<String>>(
+  (_) => const {'subcontract_outbound:view'},
+);
+
+List<Override> _staleBadgeOverrides(ApiClient api) => [
+  sharedPreferencesProvider.overrideWithValue(_preferences),
+  apiClientProvider.overrideWithValue(api),
+  authenticatedScopeProvider.overrideWith((ref) => ref.watch(_badgeIdentity)),
+  currentPermissionsProvider.overrideWith(
+    (ref) => ref.watch(_badgePermissions),
+  ),
+  isSuperAdminProvider.overrideWithValue(false),
+  myWarehouseScopeProvider.overrideWith((ref) async => _supervisor),
+  warehouseTaskScopeProvider.overrideWithValue(
+    const WarehouseTaskScope.warehouse('hw'),
+  ),
+];
 
 /// 真实 my-scope provider 的替身网络：记录每次范围读取；[failFirst] 决定第一次读取怎样失败。
 /// READ_SCOPE_CHANGED 时与拦截器同序：先退役读取范围版本号，再拒掉这次读取。
@@ -189,6 +257,177 @@ Widget _app({
 );
 
 void main() {
+  testWidgets(
+    'same-owner selected warehouse stale response preserves counts and then recovers',
+    (tester) async {
+      final api = _StaleBadgeApi();
+      final container = ProviderContainer(
+        overrides: _staleBadgeOverrides(api),
+        retry: apiProviderRetry,
+      );
+      try {
+        late WidgetRef widgetRef;
+        const projection = WarehouseTaskScope.warehouse('hw');
+        await tester.pumpWidget(
+          UncontrolledProviderScope(
+            container: container,
+            child: Consumer(
+              builder: (_, ref, _) {
+                widgetRef = ref;
+                ref.watch(warehouseScopedBadgesProvider(projection));
+                return const SizedBox.shrink();
+              },
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        BadgeSummary read() =>
+            container.read(warehouseScopedBadgesProvider(projection));
+        expect(read().fact(BadgeFact.productionDrawReady), 11);
+        api.next = _selectedBadgeResponse(4, stale: true);
+        await refreshSelectedWarehouseBadges(widgetRef);
+        await tester.pumpAndSettle();
+        expect(read().fact(BadgeFact.productionDrawReady), 11);
+        expect(read().entryTodo(BadgeEntry.warehouseOutboundCenter), 11);
+        expect(read().total.todo, 11);
+        expect(
+          read().facts['warehouseSalesOutbound.PENDING_PICK'],
+          4,
+          reason: 'a healthy source still publishes its fresh result',
+        );
+        expect(read().staleSources, {'productionDraw'});
+        api.next = _selectedBadgeResponse(9);
+        await refreshSelectedWarehouseBadges(widgetRef);
+        await tester.pumpAndSettle();
+        expect(read().fact(BadgeFact.productionDrawReady), 9);
+        expect(read().entryTodo(BadgeEntry.warehouseOutboundCenter), 9);
+        expect(read().staleSources, isEmpty);
+        expect(api.reads, 3);
+      } finally {
+        await tester.pumpWidget(const SizedBox.shrink());
+        container.dispose();
+      }
+    },
+  );
+
+  for (final boundary in ['identity', 'permission', 'revision']) {
+    testWidgets(
+      'selected warehouse stale response cannot reuse a previous $boundary boundary',
+      (tester) async {
+        final api = _StaleBadgeApi();
+        final container = ProviderContainer(
+          overrides: _staleBadgeOverrides(api),
+          retry: apiProviderRetry,
+        );
+        try {
+          const projection = WarehouseTaskScope.warehouse('hw');
+          await tester.pumpWidget(
+            UncontrolledProviderScope(
+              container: container,
+              child: Consumer(
+                builder: (_, ref, _) {
+                  ref.watch(warehouseScopedBadgesProvider(projection));
+                  return const SizedBox.shrink();
+                },
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          expect(
+            container
+                .read(warehouseScopedBadgesProvider(projection))
+                .fact(BadgeFact.productionDrawReady),
+            11,
+          );
+          api.next = _selectedBadgeResponse(0, stale: true);
+          switch (boundary) {
+            case 'identity':
+              container.read(_badgeIdentity.notifier).state =
+                  const AuthenticatedScope(userId: 'other-reader');
+            case 'permission':
+              container.read(_badgePermissions.notifier).state = const {
+                'stock_doc:view',
+              };
+            case 'revision':
+              container.read(readScopeRevisionProvider.notifier).state++;
+          }
+          await tester.pumpAndSettle();
+          final summary = container.read(
+            warehouseScopedBadgesProvider(projection),
+          );
+          expect(
+            summary.facts.containsKey(BadgeFact.productionDrawReady),
+            isFalse,
+          );
+          expect(summary.entryTodo(BadgeEntry.warehouseOutboundCenter), 0);
+          expect(summary.total.todo, 0);
+          expect(api.reads, 2);
+        } finally {
+          await tester.pumpWidget(const SizedBox.shrink());
+          container.dispose();
+        }
+      },
+    );
+  }
+
+  test(
+    'same-owner scope refresh keeps badges across rapid rechecks and confirmed removal',
+    () async {
+      var next = Future.value(_supervisor);
+      final container = ProviderContainer(
+        overrides: [
+          ..._scopeOverrides(_BadgeApi()),
+          myWarehouseScopeProvider.overrideWith((ref) => next),
+        ],
+        retry: apiProviderRetry,
+      );
+      addTearDown(container.dispose);
+      await container.read(myWarehouseScopeProvider.future);
+      const scope = WarehouseTaskScope.warehouse('hw');
+      final projection = warehouseScopedBadgesProvider(scope);
+      final subscription = container.listen(projection, (_, _) {});
+      addTearDown(subscription.close);
+      for (var i = 0; i < 10 && container.read(projection).facts.isEmpty; i++) {
+        await Future<void>.delayed(Duration.zero);
+      }
+      expect(container.read(projection).facts.values, [11]);
+      for (var turn = 0; turn < 5; turn++) {
+        final recheck = Completer<MyWarehouseScope>();
+        next = recheck.future;
+        container.invalidate(myWarehouseScopeProvider);
+        await Future<void>.delayed(Duration.zero);
+        expect(
+          container.read(projection).facts.values,
+          [11],
+          reason: 'rapid recheck $turn cannot clear the badge',
+        );
+        recheck.complete(_supervisor);
+        await container.read(myWarehouseScopeProvider.future);
+      }
+      final refreshed = Completer<MyWarehouseScope>();
+      next = refreshed.future;
+      container.invalidate(myWarehouseScopeProvider);
+      await Future<void>.delayed(Duration.zero);
+      expect(container.read(myWarehouseScopeProvider).isLoading, isTrue);
+      expect(
+        confirmedMyWarehouseScope(container.read(myWarehouseScopeProvider)),
+        isNull,
+        reason: 'operation authority remains unavailable during recheck',
+      );
+      expect(
+        container.read(projection).facts.values,
+        [11],
+        reason: 'a display refresh must not flash empty',
+      );
+      refreshed.complete(const MyWarehouseScope(selectable: [_fg]));
+      await container.read(myWarehouseScopeProvider.future);
+      expect(
+        container.read(projection).facts,
+        isEmpty,
+        reason: 'confirmed removal withdraws the badge',
+      );
+    },
+  );
   test(
     'all-warehouse browsing preserves the keeper role and physical badge selection',
     () async {

@@ -6,6 +6,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/components/layout/uten_table_column_kit.dart';
 
+import '../support/scrollbar_pointer.dart';
+
 class _NoteRow extends EditableGridRow {
   final TextEditingController note = TextEditingController();
 
@@ -20,14 +22,17 @@ class _NoteRow extends EditableGridRow {
   }
 }
 
-UtenEditableGrid<_NoteRow> _grid(UtenEditableGridController<_NoteRow> c) {
+UtenEditableGrid<_NoteRow> _grid(
+  UtenEditableGridController<_NoteRow> c, {
+  bool longHeaders = false,
+}) {
   return UtenEditableGrid<_NoteRow>(
     controller: c,
     columns: [
       for (var i = 0; i < 8; i++)
         EditableGridColumn<_NoteRow>(
           key: 'col$i',
-          label: '列$i',
+          label: longHeaders ? '列$i／需要查看的完整字段名称' : '列$i',
           width: 160,
           cellBuilder: (context, row) => TextField(
             controller: row.note,
@@ -43,7 +48,43 @@ Widget _wrap(UtenEditableGrid<_NoteRow> grid) => MaterialApp(
   home: Scaffold(body: ListView(children: [grid])),
 );
 
+// The desktop MaterialApp may add a vertical scrollbar to the host ListView.
+// Assert ownership/count only for the horizontal business canvas.
+Finder _horizontalBars() => find.byWidgetPredicate((widget) {
+  if (widget is! Scrollbar) return false;
+  final controller = widget.controller;
+  return controller != null &&
+      controller.hasClients &&
+      controller.positions.every(
+        (position) => position.axis == Axis.horizontal,
+      );
+});
+
 void main() {
+  testWidgets('空编辑表保留超宽表头横滚且空态保持在可视区', (tester) async {
+    final c = UtenEditableGridController<_NoteRow>();
+    await tester.pumpWidget(_wrap(_grid(c, longHeaders: true)));
+    await tester.pumpAndSettle();
+    final bar = _horizontalBars();
+    expect(bar, findsOneWidget);
+    final horizontal = tester.widget<Scrollbar>(bar).controller!;
+    expect(horizontal.position.maxScrollExtent, greaterThan(0));
+    await dragHorizontalScrollbarThumb(tester, bar);
+    expect(horizontal.offset, greaterThan(0), reason: '实际拖动零行编辑表滑块必须移动列头');
+    horizontal.jumpTo(320);
+    await tester.pumpAndSettle();
+    expect(find.text('暂无明细，点击下方按钮添加').hitTestable(), findsOneWidget);
+    expect(find.text('列0／需要查看的完整字段名称'), findsOneWidget);
+    c.addRow(_NoteRow('草稿不丢失'));
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<Scrollbar>(_horizontalBars()).controller!.offset,
+      closeTo(320, 1),
+    );
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+    c.dispose();
+  });
   for (final brightness in Brightness.values) {
     testWidgets('横滚选中行冻结勾选列不透字 $brightness', (tester) async {
       final controller = UtenEditableGridController<_NoteRow>(
@@ -92,7 +133,7 @@ void main() {
     await tester.pumpWidget(_wrap(_grid(c)));
 
     // 自然横滚条 = 包着横向 SingleChildScrollView 的 Scrollbar（钉底条此刻 Offstage）。
-    final bars = find.byType(Scrollbar);
+    final bars = _horizontalBars();
     expect(bars.evaluate().length, 1, reason: '内容不超高时只有自然滚动条');
     final barBox = tester.renderObject(bars) as RenderBox;
     final barBottom = barBox.localToGlobal(Offset.zero).dy + barBox.size.height;
@@ -127,7 +168,7 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    final bars = find.byType(Scrollbar);
+    final bars = _horizontalBars();
     debugPrint('内容多：可见 Scrollbar 数 = ${bars.evaluate().length}');
     expect(bars.evaluate().length, 2, reason: '自然条 + 钉底条（Offstage 已揭开会出现在树里）');
 

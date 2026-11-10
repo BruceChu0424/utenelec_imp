@@ -1,3 +1,4 @@
+import '../../../components/inputs/uten_selected_value_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
@@ -505,6 +506,6 @@ class _ChartMetadataDialogState extends ConsumerState<_ChartMetadataDialog>
           ),
         ],
       ),
-    );
+    ).withSelectedValueHighlights();
   }
 }

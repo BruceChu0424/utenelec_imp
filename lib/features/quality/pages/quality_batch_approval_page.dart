@@ -950,16 +950,6 @@ class _QualityBatchApprovalPageState
             _ApprovalRow.fqc(inspection, sheetNo: group.sheet.sheetNo),
       for (final inspection in looseFqc) _ApprovalRow.fqc(inspection),
     ];
-    if (rows.isEmpty) {
-      return UtenEmpty(
-        icon: Icons.fact_check_outlined,
-        message: '所选任务都已处理',
-        description: '请返回待检处置重新选择。',
-        actionLabel: '返回待检处置',
-        onAction: () =>
-            popOrBackTo(context, defaultPath: RouteName.warehouseInspections),
-      );
-    }
     final failures = <String>[
       for (final group in groups)
         if (group.loadError != null) '${group.label} 明细加载失败：${group.loadError}',
@@ -1274,7 +1264,12 @@ class _QualityBatchApprovalPageState
           type: UtenButtonType.danger,
           size: UtenButtonSize.large,
           icon: Icons.fact_check_outlined,
-          onPressed: _submitting || _confirming ? null : _submitReport,
+          onPressed:
+              _submitting ||
+                  _confirming ||
+                  (_submission == null && selectedCount == 0)
+              ? null
+              : _submitReport,
           child: Text(_submission == null ? '提交报告' : '重试原报告'),
         ),
       ],

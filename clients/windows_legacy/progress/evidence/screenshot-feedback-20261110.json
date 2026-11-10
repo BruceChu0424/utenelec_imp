@@ -1,0 +1,49 @@
+{
+  "id": "E-SCREENSHOT-FEEDBACK-20261110",
+  "baseline": "cb6e9ad26",
+  "ledger": "docs/99-项目治理/2026-11-10-十四张截图反馈修复.md",
+  "groups": {
+    "公共空表/横滚及终身使用货品删除合同": [
+      "W7-UI-004",
+      "W7-BIZ-025",
+      "W7-BIZ-034",
+      "W7-BIZ-063",
+      "W7-BIZ-176"
+    ],
+    "财务显式选中视觉、附件上置、币别列头与年度筛选合同": [
+      "W7-BIZ-057",
+      "W7-BIZ-058",
+      "W7-BIZ-064",
+      "W7-BIZ-072",
+      "W7-BIZ-077",
+      "W7-BIZ-078",
+      "W7-BIZ-230",
+      "W7-BIZ-231"
+    ],
+    "本批已收与来源折扣展示合同": [
+      "W7-BIZ-075",
+      "W7-BIZ-135",
+      "W7-BIZ-136"
+    ],
+    "仓库徽章、库位、物理批次合并、领料库存及品质原子进度合同": [
+      "W7-BIZ-104",
+      "W7-BIZ-130",
+      "W7-BIZ-182",
+      "W7-BIZ-194",
+      "W7-BIZ-197",
+      "W7-BIZ-210"
+    ],
+    "WPF公共确定/未知进度模式切换": [
+      "W7-FLOW-019"
+    ]
+  },
+  "supportedFlutter": [
+    "Web",
+    "Windows existing Flutter runtime"
+  ],
+  "nativeBusinessAcceptance": false,
+  "win7TargetAcceptance": false,
+  "formalPackageOrDeployment": false,
+  "note": "同责未迁移业务只登记新增合同；原生公共等待窗有本机双架构独立证据，不能据此提升业务或Win7验收。",
+  "nativeCommonEvidence": "docs/99-项目治理/evidence/screenshot-feedback-20261110/shared-table-goods/wpf-busy/README.md"
+}

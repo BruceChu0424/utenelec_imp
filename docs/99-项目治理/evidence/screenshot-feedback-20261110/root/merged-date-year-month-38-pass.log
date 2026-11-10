@@ -1,0 +1,41 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/feedback/uten_date_range_picker_test.dart
+00:00 +0: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/feedback/uten_date_range_picker_test.dart: 弹窗形态：20 圆角、右上关闭、底部居中确定、无铅笔无应用
+00:00 +1: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/feedback/uten_date_range_picker_test.dart: 弹窗形态：20 圆角、右上关闭、底部居中确定、无铅笔无应用
+00:01 +2: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_month_field_test.dart: 年月允许手输和清空，值变化实时回传
+00:02 +3: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_month_field_test.dart: 年月允许手输和清空，值变化实时回传
+00:02 +4: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/feedback/uten_date_range_picker_test.dart: 单日未选时标题不显示日期占位，选中后随标题显示
+00:02 +5: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_month_field_test.dart: 共享日期控件可安全打开区间外已有值 2001-01-01 00:00:00.000
+00:02 +6: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/feedback/uten_date_range_picker_test.dart: 月份模式标题不显示日期，年月只在导航行出现一次
+00:02 +7: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_month_field_test.dart: 共享日期控件可安全打开区间外已有值 2200-01-01 00:00:00.000
+00:03 +8: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/feedback/uten_date_range_picker_test.dart: 点两天再确定：返回本地 date-only 区间
+00:03 +9: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_year_and_master_filter_test.dart: year picker cancels and reopens, selected filter matches search at width 1440.0
+00:03 +10: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_year_and_master_filter_test.dart: year picker cancels and reopens, selected filter matches search at width 1440.0
+00:04 +11: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_year_and_master_filter_test.dart: year picker cancels and reopens, selected filter matches search at width 1440.0
+00:04 +12: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_year_and_master_filter_test.dart: year picker cancels and reopens, selected filter matches search at width 1440.0
+00:05 +13: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_year_and_master_filter_test.dart: year picker cancels and reopens, selected filter matches search at width 1440.0
+00:05 +14: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_year_and_master_filter_test.dart: year picker cancels and reopens, selected filter matches search at width 1440.0
+00:05 +15: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_year_and_master_filter_test.dart: year picker cancels and reopens, selected filter matches search at width 1440.0
+00:05 +16: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_year_and_master_filter_test.dart: year picker cancels and reopens, selected filter matches search at width 1440.0
+00:05 +17: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/inputs/uten_year_and_master_filter_test.dart: year picker cancels and reopens, selected filter matches search at width 1440.0
+00:06 +18: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/feedback/uten_date_range_tooltip_test.dart: touch long press reads dates without opening the calendar
+00:06 +19: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/feedback/uten_date_range_picker_test.dart: 年月标题跨几十年跳选，不改草稿直到选择日期
+00:06 +20: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/feedback/uten_date_range_picker_test.dart: 年月标题跨几十年跳选，不改草稿直到选择日期
+00:06 +21: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/feedback/uten_date_range_picker_test.dart: 年月标题跨几十年跳选，不改草稿直到选择日期
+00:06 +22: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/feedback/uten_date_range_picker_test.dart: 年月标题跨几十年跳选，不改草稿直到选择日期
+00:06 +23: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/feedback/uten_date_range_picker_test.dart: 年月标题跨几十年跳选，不改草稿直到选择日期
+00:07 +24: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/feedback/uten_date_range_picker_test.dart: 年月标题跨几十年跳选，不改草稿直到选择日期
+00:07 +25: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/feedback/uten_date_range_picker_test.dart: 年月标题跨几十年跳选，不改草稿直到选择日期
+00:07 +26: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/feedback/uten_date_range_picker_test.dart: 年月标题跨几十年跳选，不改草稿直到选择日期
+00:07 +27: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/feedback/uten_date_range_picker_test.dart: 年月标题跨几十年跳选，不改草稿直到选择日期
+00:07 +28: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/buttons/uten_date_range_selection_button_test.dart: owner change while the calendar is open cannot publish the old draft
+00:08 +29: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/feedback/uten_date_range_picker_test.dart: 跨年跳选后接续结束日期
+00:08 +30: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/feedback/uten_date_range_picker_test.dart: 跨年跳选后接续结束日期
+00:08 +31: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/feedback/uten_date_range_picker_test.dart: 跨年跳选后接续结束日期
+00:08 +32: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/feedback/uten_date_range_picker_test.dart: 跨年跳选后接续结束日期
+00:08 +33: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/feedback/uten_date_range_picker_test.dart: 跳选年月仍严格遵守可选年月和日期界限
+00:08 +34: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/feedback/uten_date_range_picker_test.dart: 反复开关与切换年月，取消不发布选择
+00:14 +35: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/feedback/uten_date_range_picker_test.dart: 开放端切回有限端不会发布隐藏逆序值 start=true
+00:15 +36: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/feedback/uten_date_range_picker_test.dart: 开放端切回有限端不会发布隐藏逆序值 start=false
+00:15 +37: D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110/test/components/feedback/uten_date_range_picker_test.dart: 单日字段也从年月标题跳选并只返回一天
+00:16 +38: All tests passed!

@@ -185,6 +185,16 @@ void main() {
     // 全项目进度弹窗不出现转圈(规范: 导出/下载/批量等待用进度条)。
     expect(find.byType(CircularProgressIndicator), findsNothing);
 
+    final sweep = find.descendant(
+      of: find.byType(UtenProgressBar),
+      matching: find.byType(FractionallySizedBox),
+    );
+    final band = find.descendant(of: sweep, matching: find.byType(ColoredBox));
+    expect(tester.getSize(band).height, greaterThan(0));
+    final initialX = tester.getTopLeft(band).dx;
+    await tester.pump(const Duration(milliseconds: 700));
+    expect(tester.getTopLeft(band).dx, isNot(initialX));
+
     driver.session!.count(3, 5, detail: '3,200 / 5,300 行');
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 600));
@@ -279,6 +289,82 @@ void main() {
     expect(find.text('正在导出货品资料'), findsNothing);
     expect(launch.error, isA<StateError>());
   });
+
+  for (final synchronous in [false, true]) {
+    testWidgets(
+      'cross error-zone frame returns ${synchronous ? 'synchronous' : 'asynchronous'} original failure to the caller exactly once',
+      (tester) async {
+        final failure = StateError('request rejected');
+        final escaped = <Object>[];
+        late Completer<void> release;
+        late Zone callerZone;
+        Zone? actionZone;
+        Zone? resultZone;
+        Object? received;
+        var calls = 0;
+        await tester.pumpWidget(
+          _app(
+            Builder(
+              builder: (context) => TextButton(
+                onPressed: () => runZonedGuarded<void>(() {
+                  callerZone = Zone.current;
+                  showUtenProgress<String>(
+                    context,
+                    title: '跨错误域请求',
+                    action: (progress) {
+                      calls++;
+                      actionZone = Zone.current;
+                      if (synchronous) throw failure;
+                      release = Completer<void>();
+                      return release.future.then<String>((_) => throw failure);
+                    },
+                  ).then<void>(
+                    (_) {},
+                    onError: (Object error, StackTrace stack) {
+                      received = error;
+                      resultZone = Zone.current;
+                    },
+                  );
+                }, (error, stack) => escaped.add(error)),
+                child: const Text('start cross-zone request'),
+              ),
+            ),
+          ),
+        );
+        await tester.tap(find.text('start cross-zone request'));
+        await tester.pump();
+        await tester.pump();
+        expect(calls, 1);
+        expect(actionZone, same(callerZone));
+        if (!synchronous) release.complete();
+        // Do not use pumpAndSettle here: the broken listener leaves an animated
+        // dialog open. A bounded frame window must expose that regression.
+        for (var frame = 0; frame < 6; frame++) {
+          await tester.pump(const Duration(milliseconds: 100));
+        }
+        try {
+          expect(
+            escaped,
+            isEmpty,
+            reason:
+                'the request failure must reach its caller, not escape its error zone',
+          );
+          expect(received, same(failure));
+          expect(resultZone, same(callerZone));
+          expect(
+            calls,
+            1,
+            reason: 'handling a failed response cannot replay the command',
+          );
+          expect(find.text('跨错误域请求'), findsNothing);
+          expect(tester.takeException(), isNull);
+        } finally {
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.pump();
+        }
+      },
+    );
+  }
 
   testWidgets('long waits show a reassurance line', (tester) async {
     final driver = _Driver();

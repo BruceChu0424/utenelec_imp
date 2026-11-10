@@ -50,6 +50,15 @@ namespace Uten.Legacy.Tests
                         + "; process=" + (Environment.Is64BitProcess ? "x64" : "x86"));
                     return 0;
                 }
+                if (args.Length == 1 && (args[0] == "--complete-list-stress-35000" || args[0] == "--complete-list-stress-100000"))
+                {
+                    int rows = args[0] == "--complete-list-stress-35000" ? 35000 : 100000;
+                    int complete = RunUi(() => UiContractChecks.RunCompleteListStress(rows));
+                    Console.WriteLine("PASS native complete-list functional stress; goodsRows=" + rows + "; assertions=" + complete
+                        + "; process=" + (Environment.Is64BitProcess ? "x64" : "x86")
+                        + "; synthetic in-memory transport on this host; not Win7 target or latency acceptance");
+                    return 0;
+                }
                 if (args.Length == 1 && args[0] == "--unit-history-contracts")
                 {
                     int historyContractReadChecks = UnitHistoryContractChecks.Run();

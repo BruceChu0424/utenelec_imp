@@ -183,6 +183,7 @@ class MasterEntityPaneConfig<TItem, TDetail> {
     required this.loadCategory,
     required this.loadPage,
     this.loadComplete,
+    this.immutableSummaryRows = false,
     required this.loadFacets,
     this.loadGlobalFacets,
     this.loadQueryFacets,
@@ -261,6 +262,10 @@ class MasterEntityPaneConfig<TItem, TDetail> {
   /// pane still owns activity, cancellation, publication and row interaction.
   final Future<PagedResult<TItem>> Function(MasterPaneQuery query)?
   loadComplete;
+
+  /// Reviewed read-only DTO values; inline editors retain their mutable path.
+  /// This is explicit per master configuration, never inferred from TItem.
+  final bool immutableSummaryRows;
   final Future<MasterPaneFacets> Function(String categoryId) loadFacets;
   final Future<MasterPaneFacets> Function()? loadGlobalFacets;
   final Future<MasterPaneFacets> Function(MasterPaneQuery query)?
@@ -1968,6 +1973,9 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
                 rowsController: _tableRows,
                 expensiveRowMounts: _inlineEdit.active,
                 paginationRevision: _page,
+                immutableRows: _c.immutableSummaryRows && !_inlineEdit.active,
+                presentationRevision:
+                    _c.immutableSummaryRows && !_inlineEdit.active ? _c : null,
                 paginationScope: (
                   widget.categoryId,
                   _keyword,
@@ -1979,22 +1987,25 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
                 scrollToEndRequest: _scrollToEndRequest,
                 revealItemId: _revealItemId,
                 revealRequest: _revealRequest,
-                columns: _inlineEdit.columns(
-                  idOf: _c.idOf,
-                  preferenceNamespace: _c.batchEntityPath,
-                  columns: _c.columns,
-                  fields: _c.canEdit ? _c.inlineFields : const {},
-                  enabled:
-                      !_queryPending &&
-                      _error == null &&
-                      !_listLoading &&
-                      _listError == null,
-                  writableOf: _c.writableOf,
-                ),
+                columns: !_inlineEdit.active
+                    ? _c.columns
+                    : _inlineEdit.columns(
+                        idOf: _c.idOf,
+                        preferenceNamespace: _c.batchEntityPath,
+                        columns: _c.columns,
+                        fields: _c.canEdit ? _c.inlineFields : const {},
+                        enabled:
+                            !_queryPending &&
+                            _error == null &&
+                            !_listLoading &&
+                            _listError == null,
+                        writableOf: _c.writableOf,
+                      ),
                 items: _page?.items ?? <TItem>[],
                 // 多选：最前列勾选框 + 表头三态全选；选中非空时工具条出批量操作区。
                 selectable: true,
                 idOf: _c.idOf,
+                rowKeyOf: _c.immutableSummaryRows ? _c.idOf : null,
                 selectedIds: _selectedIds,
                 onSelectedIdsChanged: (s) {
                   if (!_queryPending && _error == null) {

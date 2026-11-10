@@ -22,25 +22,25 @@
 
 ## W7-BIZ-085 · lib/features/notice/pages/notice_list_page.dart
 
-模块 `notice`；428 行；SHA256 `76d8f544b411c52140a2f680454ffc4800bcaa9786cd203307892c820a0f07ad`。
+模块 `notice`；441 行；SHA256 `e2e0f9c1e1fc6601334f3e39ec177d073fa5c10b8c8a2755c9be85cc44d6dddf`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
-| 页面/状态类 | NoticeListPage @42 (page-class)<br>_NoticeListPageState @53 (state-class) |
+| 页面/状态类 | NoticeListPage @43 (page-class)<br>_NoticeListPageState @54 (state-class) |
 | 真实路由绑定 | /notice；router @830；builder ['NoticeListPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | 未静态确认；不能当作不存在 |
-| 动作处理 | addPostFrameCallback @66 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>remove @102 [action-like-invocation] 提示 ['remove']；if (!_selected.add(id)) _selected.remove(id);<br>_deleteSelected @107 [method-declaration-candidate] 提示 ['delete']；Future<void> _deleteSelected() async {<br>deleteNotices @135 [action-like-invocation] 提示 ['delete']；action: () => deleteNotices(ref, _selected.toList()),<br>removeAll @350 [action-like-invocation] 提示 ['remove']；? _selected.removeAll(group.ids)<br>_deleteSelected @419 [callback-reference] 提示 ['delete']；onAction |
+| 动作处理 | addPostFrameCallback @67 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>remove @103 [action-like-invocation] 提示 ['remove']；if (!_selected.add(id)) _selected.remove(id);<br>_deleteSelected @108 [method-declaration-candidate] 提示 ['delete']；Future<void> _deleteSelected() async {<br>deleteNotices @141 [action-like-invocation] 提示 ['delete']；action: (_) => deleteNotices(ref, _selected.toList()),<br>removeAll @363 [action-like-invocation] 提示 ['remove']；? _selected.removeAll(group.ids)<br>_deleteSelected @432 [callback-reference] 提示 ['delete']；onAction |
 | 控制器候选（人工核实） | 未静态确认；不能当作不存在 |
 | 审计限制 | 存在委托组件/provider；页面内操作和权限引用不是完整链路清单，需沿导入继续审查。 |
 
-直接源依赖：`lib/components/feedback/uten_dialog.dart` (sharedComponents)；`lib/components/buttons/uten_button.dart` (sharedComponents)；`lib/components/data_display/uten_selection_summary_pill.dart` (sharedComponents)；`lib/components/feedback/uten_empty.dart` (sharedComponents)；`lib/components/feedback/uten_skeleton.dart` (sharedComponents)；`lib/components/layout/uten_content_container.dart` (sharedComponents)；`lib/components/layout/uten_filter_toolbar.dart` (sharedComponents)；`lib/components/layout/uten_floating_action_group.dart` (sharedComponents)；`lib/components/layout/uten_paged_grid.dart` (sharedComponents)；`lib/core/responsive/breakpoint.dart` (core)；`lib/core/theme/uten_colors.dart` (core)；`lib/core/theme/uten_tokens.dart` (core)；`lib/core/ui/app_notification.dart` (core)；`lib/core/ui/capsule_nav_metrics.dart` (core)；`lib/core/ui/human_error_message.dart` (core)；`lib/components/buttons/click_guard.dart` (sharedComponents)；`lib/features/notice/models/notice.dart` (models)；`lib/features/notice/models/notice_group.dart` (models)；`lib/features/notice/providers/notice_providers.dart` (providers)；`lib/features/notice/widgets/notice_card.dart` (featureWidgets)；`lib/features/notice/widgets/notice_action_busy.dart` (featureWidgets)；`lib/features/notice/widgets/notice_detail_dialog.dart` (featureWidgets)；`lib/features/notice/widgets/notice_group_dialog.dart` (featureWidgets)；`lib/features/notice/widgets/notice_popup_settings_dialog.dart` (featureWidgets)。
+直接源依赖：`lib/components/feedback/uten_dialog.dart` (sharedComponents)；`lib/components/buttons/uten_button.dart` (sharedComponents)；`lib/components/data_display/uten_selection_summary_pill.dart` (sharedComponents)；`lib/components/feedback/uten_empty.dart` (sharedComponents)；`lib/components/feedback/uten_skeleton.dart` (sharedComponents)；`lib/components/layout/uten_content_container.dart` (sharedComponents)；`lib/components/layout/uten_filter_toolbar.dart` (sharedComponents)；`lib/components/layout/uten_floating_action_group.dart` (sharedComponents)；`lib/components/layout/uten_paged_grid.dart` (sharedComponents)；`lib/core/responsive/breakpoint.dart` (core)；`lib/core/theme/uten_colors.dart` (core)；`lib/core/theme/uten_tokens.dart` (core)；`lib/core/ui/app_notification.dart` (core)；`lib/core/ui/capsule_nav_metrics.dart` (core)；`lib/core/ui/human_error_message.dart` (core)；`lib/components/buttons/click_guard.dart` (sharedComponents)；`lib/features/notice/models/notice.dart` (models)；`lib/features/notice/models/notice_group.dart` (models)；`lib/features/notice/providers/notice_providers.dart` (providers)；`lib/features/notice/widgets/notice_card.dart` (featureWidgets)；`lib/components/feedback/uten_progress_dialog.dart` (sharedComponents)；`lib/features/notice/widgets/notice_action_busy.dart` (featureWidgets)；`lib/features/notice/widgets/notice_detail_dialog.dart` (featureWidgets)；`lib/features/notice/widgets/notice_group_dialog.dart` (featureWidgets)；`lib/features/notice/widgets/notice_popup_settings_dialog.dart` (featureWidgets)。
 
 ## W7-BIZ-086 · lib/features/notice/pages/notice_publish_page.dart
 
-模块 `notice`；951 行；SHA256 `80ee278dc036a6781d7bf4a272dd9d8b929e0634535a6ab76ef49f9ce234d8ec`。
+模块 `notice`；951 行；SHA256 `8375e46ee7503cd261c1219310bc05b57dd73a94615e24bbffc7c4f7885f7506`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|

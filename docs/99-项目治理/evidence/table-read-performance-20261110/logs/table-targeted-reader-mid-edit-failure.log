@@ -1,0 +1,1605 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_incremental_snapshot_test.dart
+lib/shared/paging/complete_paged_snapshot.dart:201:45: Error: Property 'items' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+          queued?.rows ?? List<T>.of(result.items, growable: false);
+                                            ^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:202:26: Error: The argument type 'PagedResult<T>?' can't be assigned to the parameter type 'PagedResult<T>'.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+      pipeline?.validate(result, batch, pageRows);
+                         ^
+lib/shared/paging/complete_paged_snapshot.dart:203:33: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+      final knownTotal = result.total >= 0;
+                                ^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:213:47: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+          ? offset + pageRows.length < result.total
+                                              ^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:214:20: Error: Property 'page' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+          : result.page < result.totalPages;
+                   ^^^^
+lib/shared/paging/complete_paged_snapshot.dart:214:34: Error: Property 'totalPages' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+          : result.page < result.totalPages;
+                                 ^^^^^^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:215:60: Error: Property 'page' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+      if (pipeline == null && serverSize == null && result.page == page) {
+                                                           ^^^^
+lib/shared/paging/complete_paged_snapshot.dart:217:23: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+            ? (result.total - offset).clamp(0, size)
+                      ^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:222:21: Error: Property 'size' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+            (result.size == size ||
+                    ^^^^
+lib/shared/paging/complete_paged_snapshot.dart:224:28: Error: Property 'totalPages' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+                    result.totalPages == (result.total + size - 1) ~/ size)) &&
+                           ^^^^^^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:224:50: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+                    result.totalPages == (result.total + size - 1) ~/ size)) &&
+                                                 ^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:232:32: Error: Property 'size' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+            final own = result.size >= pageRows.length
+                               ^^^^
+lib/shared/paging/complete_paged_snapshot.dart:233:26: Error: Property 'size' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+                ? result.size
+                         ^^^^
+lib/shared/paging/complete_paged_snapshot.dart:237:29: Error: Property 'size' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+          } else if (result.size >= 1 &&
+                            ^^^^
+lib/shared/paging/complete_paged_snapshot.dart:238:22: Error: Property 'size' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+              result.size < size &&
+                     ^^^^
+lib/shared/paging/complete_paged_snapshot.dart:239:38: Error: Property 'size' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+              (cap == null || result.size < cap)) {
+                                     ^^^^
+lib/shared/paging/complete_paged_snapshot.dart:242:26: Error: Property 'size' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+            cap = result.size;
+                         ^^^^
+lib/shared/paging/complete_paged_snapshot.dart:250:18: Error: Property 'page' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+      if (result.page != page ||
+                 ^^^^
+lib/shared/paging/complete_paged_snapshot.dart:251:18: Error: Property 'totalPages' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+          result.totalPages < 0 ||
+                 ^^^^^^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:252:57: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+          (!knownTotal && (!allowUnknownTotal || result.total != -1)) ||
+                                                        ^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:255:22: Error: Property 'totalPages' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+              result.totalPages != page &&
+                     ^^^^^^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:256:22: Error: Property 'totalPages' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+              result.totalPages != page + 1) ||
+                     ^^^^^^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:260:27: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+                  (result.total - offset).clamp(0, effectiveSize)) ||
+                          ^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:261:19: Error: Property 'totalPages' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+          (result.totalPages == 0 && pageRows.isNotEmpty)) {
+                  ^^^^^^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:268:48: Error: Property 'readScopeVersion' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+        if (initial.readScopeVersion != result.readScopeVersion ||
+                                               ^^^^^^^^^^^^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:271:60: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+            (requireStableTotal && initial.total != result.total) ||
+                                                           ^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:274:40: Error: Property 'size' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+                initial.size == result.size &&
+                                       ^^^^
+lib/shared/paging/complete_paged_snapshot.dart:275:46: Error: Property 'totalPages' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+                initial.totalPages != result.totalPages)) {
+                                             ^^^^^^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:280:54: Error: Method 'createRowsBuilder' cannot be called on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try calling using ?. instead.
+        if (overlapRows == null) rowBuilder = result.createRowsBuilder();
+                                                     ^^^^^^^^^^^^^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:318:45: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+      if (knownTotal && rowCount() > result.total) throw _snapshotChanged();
+                                            ^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:319:73: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+      final incomplete = !hasMore && knownTotal && rowCount() != result.total;
+                                                                        ^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:323:40: Error: The argument type 'PagedResult<T>?' can't be assigned to the parameter type 'PagedResult<T>'.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+      if (onPage != null) await onPage(result);
+                                       ^
+lib/shared/paging/complete_paged_snapshot.dart:327:16: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+        result.total,
+               ^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:332:36: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+        total: knownTotal ? result.total : null,
+                                   ^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:341:43: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+        final total = knownTotal ? result.total : boundary;
+                                          ^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:346:25: Error: Method 'withRowsFrom' cannot be called on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try calling using ?. instead.
+          () => initial.withRowsFrom(
+                        ^^^^^^^^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:361:38: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+          total: knownTotal ? result.total : rowCount(),
+                                     ^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:359:38: Error: Method 'withRowsFromResponsive' cannot be called on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try calling using ?. instead.
+        final combined = await first.withRowsFromResponsive(
+                                     ^^^^^^^^^^^^^^^^^^^^^^
+00:00 +0 -1: loading D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_incremental_snapshot_test.dart [E]
+  Failed to load "D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_incremental_snapshot_test.dart":
+  Compilation failed for testPath=D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_incremental_snapshot_test.dart: lib/shared/paging/complete_paged_snapshot.dart:201:45: Error: Property 'items' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+            queued?.rows ?? List<T>.of(result.items, growable: false);
+                                              ^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:202:26: Error: The argument type 'PagedResult<T>?' can't be assigned to the parameter type 'PagedResult<T>'.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+        pipeline?.validate(result, batch, pageRows);
+                           ^
+  lib/shared/paging/complete_paged_snapshot.dart:203:33: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+        final knownTotal = result.total >= 0;
+                                  ^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:213:47: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+            ? offset + pageRows.length < result.total
+                                                ^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:214:20: Error: Property 'page' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+            : result.page < result.totalPages;
+                     ^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:214:34: Error: Property 'totalPages' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+            : result.page < result.totalPages;
+                                   ^^^^^^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:215:60: Error: Property 'page' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+        if (pipeline == null && serverSize == null && result.page == page) {
+                                                             ^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:217:23: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+              ? (result.total - offset).clamp(0, size)
+                        ^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:222:21: Error: Property 'size' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+              (result.size == size ||
+                      ^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:224:28: Error: Property 'totalPages' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+                      result.totalPages == (result.total + size - 1) ~/ size)) &&
+                             ^^^^^^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:224:50: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+                      result.totalPages == (result.total + size - 1) ~/ size)) &&
+                                                   ^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:232:32: Error: Property 'size' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+              final own = result.size >= pageRows.length
+                                 ^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:233:26: Error: Property 'size' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+                  ? result.size
+                           ^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:237:29: Error: Property 'size' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+            } else if (result.size >= 1 &&
+                              ^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:238:22: Error: Property 'size' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+                result.size < size &&
+                       ^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:239:38: Error: Property 'size' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+                (cap == null || result.size < cap)) {
+                                       ^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:242:26: Error: Property 'size' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+              cap = result.size;
+                           ^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:250:18: Error: Property 'page' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+        if (result.page != page ||
+                   ^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:251:18: Error: Property 'totalPages' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+            result.totalPages < 0 ||
+                   ^^^^^^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:252:57: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+            (!knownTotal && (!allowUnknownTotal || result.total != -1)) ||
+                                                          ^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:255:22: Error: Property 'totalPages' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+                result.totalPages != page &&
+                       ^^^^^^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:256:22: Error: Property 'totalPages' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+                result.totalPages != page + 1) ||
+                       ^^^^^^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:260:27: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+                    (result.total - offset).clamp(0, effectiveSize)) ||
+                            ^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:261:19: Error: Property 'totalPages' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+            (result.totalPages == 0 && pageRows.isNotEmpty)) {
+                    ^^^^^^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:268:48: Error: Property 'readScopeVersion' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+          if (initial.readScopeVersion != result.readScopeVersion ||
+                                                 ^^^^^^^^^^^^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:271:60: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+              (requireStableTotal && initial.total != result.total) ||
+                                                             ^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:274:40: Error: Property 'size' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+                  initial.size == result.size &&
+                                         ^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:275:46: Error: Property 'totalPages' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+                  initial.totalPages != result.totalPages)) {
+                                               ^^^^^^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:280:54: Error: Method 'createRowsBuilder' cannot be called on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try calling using ?. instead.
+          if (overlapRows == null) rowBuilder = result.createRowsBuilder();
+                                                       ^^^^^^^^^^^^^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:318:45: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+        if (knownTotal && rowCount() > result.total) throw _snapshotChanged();
+                                              ^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:319:73: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+        final incomplete = !hasMore && knownTotal && rowCount() != result.total;
+                                                                          ^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:323:40: Error: The argument type 'PagedResult<T>?' can't be assigned to the parameter type 'PagedResult<T>'.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+        if (onPage != null) await onPage(result);
+                                         ^
+  lib/shared/paging/complete_paged_snapshot.dart:327:16: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+          result.total,
+                 ^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:332:36: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+          total: knownTotal ? result.total : null,
+                                     ^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:341:43: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+          final total = knownTotal ? result.total : boundary;
+                                            ^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:346:25: Error: Method 'withRowsFrom' cannot be called on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try calling using ?. instead.
+            () => initial.withRowsFrom(
+                          ^^^^^^^^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:361:38: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+            total: knownTotal ? result.total : rowCount(),
+                                       ^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:359:38: Error: Method 'withRowsFromResponsive' cannot be called on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try calling using ?. instead.
+          final combined = await first.withRowsFromResponsive(
+                                       ^^^^^^^^^^^^^^^^^^^^^^
+  .
+  Error: The Dart compiler exited unexpectedly.
+  package:flutter_tools/src/base/common.dart 34:3  throwToolExit
+  package:flutter_tools/src/compile.dart 1009:11   DefaultResidentCompiler._compile.<fn>
+  dart:async/zone_root.dart 48:47                  _rootRunUnary
+  dart:async/zone.dart 733:19                      _CustomZone.runUnary
+  dart:async/future_impl.dart 948:45               Future._propagateToListeners.handleValueCallback
+  dart:async/future_impl.dart 977:13               Future._propagateToListeners
+  dart:async/future_impl.dart 862:9                Future._propagateToListeners
+  dart:async/future_impl.dart 720:5                Future._completeWithValue
+  dart:async/future_impl.dart 804:7                Future._asyncCompleteWithValue.<fn>
+  dart:async/zone_root.dart 35:13                  _rootRun
+  dart:async/zone.dart 726:19                      _CustomZone.run
+  dart:async/zone.dart 625:7                       _CustomZone.runGuarded
+  dart:async/zone.dart 666:23                      _CustomZone.bindCallbackGuarded.<fn>
+  dart:async/schedule_microtask.dart 40:35         _microtaskLoop
+  dart:async/schedule_microtask.dart 49:5          _startMicrotaskLoop
+  dart:isolate-patch/isolate_patch.dart 127:13     _runPendingImmediateCallback
+  dart:isolate-patch/isolate_patch.dart 193:5      _RawReceivePort._handleMessage
+  
+lib/shared/paging/complete_paged_snapshot.dart:201:45: Error: Property 'items' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+          queued?.rows ?? List<T>.of(result.items, growable: false);
+                                            ^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:202:26: Error: The argument type 'PagedResult<T>?' can't be assigned to the parameter type 'PagedResult<T>'.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+      pipeline?.validate(result, batch, pageRows);
+                         ^
+lib/shared/paging/complete_paged_snapshot.dart:203:33: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+      final knownTotal = result.total >= 0;
+                                ^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:213:47: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+          ? offset + pageRows.length < result.total
+                                              ^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:214:20: Error: Property 'page' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+          : result.page < result.totalPages;
+                   ^^^^
+lib/shared/paging/complete_paged_snapshot.dart:214:34: Error: Property 'totalPages' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+          : result.page < result.totalPages;
+                                 ^^^^^^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:215:60: Error: Property 'page' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+      if (pipeline == null && serverSize == null && result.page == page) {
+                                                           ^^^^
+lib/shared/paging/complete_paged_snapshot.dart:217:23: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+            ? (result.total - offset).clamp(0, size)
+                      ^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:222:21: Error: Property 'size' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+            (result.size == size ||
+                    ^^^^
+lib/shared/paging/complete_paged_snapshot.dart:224:28: Error: Property 'totalPages' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+                    result.totalPages == (result.total + size - 1) ~/ size)) &&
+                           ^^^^^^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:224:50: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+                    result.totalPages == (result.total + size - 1) ~/ size)) &&
+                                                 ^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:232:32: Error: Property 'size' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+            final own = result.size >= pageRows.length
+                               ^^^^
+lib/shared/paging/complete_paged_snapshot.dart:233:26: Error: Property 'size' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+                ? result.size
+                         ^^^^
+lib/shared/paging/complete_paged_snapshot.dart:237:29: Error: Property 'size' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+          } else if (result.size >= 1 &&
+                            ^^^^
+lib/shared/paging/complete_paged_snapshot.dart:238:22: Error: Property 'size' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+              result.size < size &&
+                     ^^^^
+lib/shared/paging/complete_paged_snapshot.dart:239:38: Error: Property 'size' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+              (cap == null || result.size < cap)) {
+                                     ^^^^
+lib/shared/paging/complete_paged_snapshot.dart:242:26: Error: Property 'size' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+            cap = result.size;
+                         ^^^^
+lib/shared/paging/complete_paged_snapshot.dart:250:18: Error: Property 'page' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+      if (result.page != page ||
+                 ^^^^
+lib/shared/paging/complete_paged_snapshot.dart:251:18: Error: Property 'totalPages' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+          result.totalPages < 0 ||
+                 ^^^^^^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:252:57: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+          (!knownTotal && (!allowUnknownTotal || result.total != -1)) ||
+                                                        ^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:255:22: Error: Property 'totalPages' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+              result.totalPages != page &&
+                     ^^^^^^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:256:22: Error: Property 'totalPages' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+              result.totalPages != page + 1) ||
+                     ^^^^^^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:260:27: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+                  (result.total - offset).clamp(0, effectiveSize)) ||
+                          ^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:261:19: Error: Property 'totalPages' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+          (result.totalPages == 0 && pageRows.isNotEmpty)) {
+                  ^^^^^^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:268:48: Error: Property 'readScopeVersion' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+        if (initial.readScopeVersion != result.readScopeVersion ||
+                                               ^^^^^^^^^^^^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:271:60: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+            (requireStableTotal && initial.total != result.total) ||
+                                                           ^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:274:40: Error: Property 'size' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+                initial.size == result.size &&
+                                       ^^^^
+lib/shared/paging/complete_paged_snapshot.dart:275:46: Error: Property 'totalPages' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+                initial.totalPages != result.totalPages)) {
+                                             ^^^^^^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:280:54: Error: Method 'createRowsBuilder' cannot be called on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try calling using ?. instead.
+        if (overlapRows == null) rowBuilder = result.createRowsBuilder();
+                                                     ^^^^^^^^^^^^^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:318:45: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+      if (knownTotal && rowCount() > result.total) throw _snapshotChanged();
+                                            ^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:319:73: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+      final incomplete = !hasMore && knownTotal && rowCount() != result.total;
+                                                                        ^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:323:40: Error: The argument type 'PagedResult<T>?' can't be assigned to the parameter type 'PagedResult<T>'.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+      if (onPage != null) await onPage(result);
+                                       ^
+lib/shared/paging/complete_paged_snapshot.dart:327:16: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+        result.total,
+               ^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:332:36: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+        total: knownTotal ? result.total : null,
+                                   ^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:341:43: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+        final total = knownTotal ? result.total : boundary;
+                                          ^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:346:25: Error: Method 'withRowsFrom' cannot be called on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try calling using ?. instead.
+          () => initial.withRowsFrom(
+                        ^^^^^^^^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:361:38: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+          total: knownTotal ? result.total : rowCount(),
+                                     ^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:359:38: Error: Method 'withRowsFromResponsive' cannot be called on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try calling using ?. instead.
+        final combined = await first.withRowsFromResponsive(
+                                     ^^^^^^^^^^^^^^^^^^^^^^
+00:00 +0 -2: loading D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_view_local_work_budget_test.dart [E]
+  Failed to load "D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_view_local_work_budget_test.dart":
+  Compilation failed for testPath=D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_view_local_work_budget_test.dart: lib/shared/paging/complete_paged_snapshot.dart:201:45: Error: Property 'items' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+            queued?.rows ?? List<T>.of(result.items, growable: false);
+                                              ^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:202:26: Error: The argument type 'PagedResult<T>?' can't be assigned to the parameter type 'PagedResult<T>'.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+        pipeline?.validate(result, batch, pageRows);
+                           ^
+  lib/shared/paging/complete_paged_snapshot.dart:203:33: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+        final knownTotal = result.total >= 0;
+                                  ^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:213:47: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+            ? offset + pageRows.length < result.total
+                                                ^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:214:20: Error: Property 'page' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+            : result.page < result.totalPages;
+                     ^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:214:34: Error: Property 'totalPages' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+            : result.page < result.totalPages;
+                                   ^^^^^^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:215:60: Error: Property 'page' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+        if (pipeline == null && serverSize == null && result.page == page) {
+                                                             ^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:217:23: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+              ? (result.total - offset).clamp(0, size)
+                        ^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:222:21: Error: Property 'size' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+              (result.size == size ||
+                      ^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:224:28: Error: Property 'totalPages' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+                      result.totalPages == (result.total + size - 1) ~/ size)) &&
+                             ^^^^^^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:224:50: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+                      result.totalPages == (result.total + size - 1) ~/ size)) &&
+                                                   ^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:232:32: Error: Property 'size' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+              final own = result.size >= pageRows.length
+                                 ^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:233:26: Error: Property 'size' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+                  ? result.size
+                           ^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:237:29: Error: Property 'size' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+            } else if (result.size >= 1 &&
+                              ^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:238:22: Error: Property 'size' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+                result.size < size &&
+                       ^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:239:38: Error: Property 'size' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+                (cap == null || result.size < cap)) {
+                                       ^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:242:26: Error: Property 'size' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+              cap = result.size;
+                           ^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:250:18: Error: Property 'page' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+        if (result.page != page ||
+                   ^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:251:18: Error: Property 'totalPages' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+            result.totalPages < 0 ||
+                   ^^^^^^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:252:57: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+            (!knownTotal && (!allowUnknownTotal || result.total != -1)) ||
+                                                          ^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:255:22: Error: Property 'totalPages' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+                result.totalPages != page &&
+                       ^^^^^^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:256:22: Error: Property 'totalPages' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+                result.totalPages != page + 1) ||
+                       ^^^^^^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:260:27: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+                    (result.total - offset).clamp(0, effectiveSize)) ||
+                            ^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:261:19: Error: Property 'totalPages' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+            (result.totalPages == 0 && pageRows.isNotEmpty)) {
+                    ^^^^^^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:268:48: Error: Property 'readScopeVersion' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+          if (initial.readScopeVersion != result.readScopeVersion ||
+                                                 ^^^^^^^^^^^^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:271:60: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+              (requireStableTotal && initial.total != result.total) ||
+                                                             ^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:274:40: Error: Property 'size' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+                  initial.size == result.size &&
+                                         ^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:275:46: Error: Property 'totalPages' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+                  initial.totalPages != result.totalPages)) {
+                                               ^^^^^^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:280:54: Error: Method 'createRowsBuilder' cannot be called on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try calling using ?. instead.
+          if (overlapRows == null) rowBuilder = result.createRowsBuilder();
+                                                       ^^^^^^^^^^^^^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:318:45: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+        if (knownTotal && rowCount() > result.total) throw _snapshotChanged();
+                                              ^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:319:73: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+        final incomplete = !hasMore && knownTotal && rowCount() != result.total;
+                                                                          ^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:323:40: Error: The argument type 'PagedResult<T>?' can't be assigned to the parameter type 'PagedResult<T>'.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+        if (onPage != null) await onPage(result);
+                                         ^
+  lib/shared/paging/complete_paged_snapshot.dart:327:16: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+          result.total,
+                 ^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:332:36: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+          total: knownTotal ? result.total : null,
+                                     ^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:341:43: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+          final total = knownTotal ? result.total : boundary;
+                                            ^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:346:25: Error: Method 'withRowsFrom' cannot be called on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try calling using ?. instead.
+            () => initial.withRowsFrom(
+                          ^^^^^^^^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:361:38: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+            total: knownTotal ? result.total : rowCount(),
+                                       ^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:359:38: Error: Method 'withRowsFromResponsive' cannot be called on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try calling using ?. instead.
+          final combined = await first.withRowsFromResponsive(
+                                       ^^^^^^^^^^^^^^^^^^^^^^
+  .
+00:00 +0 -2: loading D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_incremental_snapshot_test.dart [E]
+  Error: The Dart compiler exited unexpectedly.
+  package:flutter_tools/src/base/common.dart 34:3  throwToolExit
+  package:flutter_tools/src/compile.dart 1009:11   DefaultResidentCompiler._compile.<fn>
+  dart:async/zone_root.dart 48:47                  _rootRunUnary
+  dart:async/zone.dart 733:19                      _CustomZone.runUnary
+  dart:async/future_impl.dart 948:45               Future._propagateToListeners.handleValueCallback
+  dart:async/future_impl.dart 977:13               Future._propagateToListeners
+  dart:async/future_impl.dart 862:9                Future._propagateToListeners
+  dart:async/future_impl.dart 720:5                Future._completeWithValue
+  dart:async/future_impl.dart 804:7                Future._asyncCompleteWithValue.<fn>
+  dart:async/zone_root.dart 35:13                  _rootRun
+  dart:async/zone.dart 726:19                      _CustomZone.run
+  dart:async/zone.dart 625:7                       _CustomZone.runGuarded
+  dart:async/zone.dart 666:23                      _CustomZone.bindCallbackGuarded.<fn>
+  dart:async/schedule_microtask.dart 40:35         _microtaskLoop
+  dart:async/schedule_microtask.dart 49:5          _startMicrotaskLoop
+  dart:isolate-patch/isolate_patch.dart 127:13     _runPendingImmediateCallback
+  dart:isolate-patch/isolate_patch.dart 193:5      _RawReceivePort._handleMessage
+  
+lib/shared/paging/complete_paged_snapshot.dart:201:45: Error: Property 'items' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+          queued?.rows ?? List<T>.of(result.items, growable: false);
+                                            ^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:202:26: Error: The argument type 'PagedResult<T>?' can't be assigned to the parameter type 'PagedResult<T>'.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+      pipeline?.validate(result, batch, pageRows);
+                         ^
+lib/shared/paging/complete_paged_snapshot.dart:203:33: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+      final knownTotal = result.total >= 0;
+                                ^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:213:47: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+          ? offset + pageRows.length < result.total
+                                              ^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:214:20: Error: Property 'page' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+          : result.page < result.totalPages;
+                   ^^^^
+lib/shared/paging/complete_paged_snapshot.dart:214:34: Error: Property 'totalPages' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+          : result.page < result.totalPages;
+                                 ^^^^^^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:215:60: Error: Property 'page' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+      if (pipeline == null && serverSize == null && result.page == page) {
+                                                           ^^^^
+lib/shared/paging/complete_paged_snapshot.dart:217:23: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+            ? (result.total - offset).clamp(0, size)
+                      ^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:222:21: Error: Property 'size' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+            (result.size == size ||
+                    ^^^^
+lib/shared/paging/complete_paged_snapshot.dart:224:28: Error: Property 'totalPages' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+                    result.totalPages == (result.total + size - 1) ~/ size)) &&
+                           ^^^^^^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:224:50: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+                    result.totalPages == (result.total + size - 1) ~/ size)) &&
+                                                 ^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:232:32: Error: Property 'size' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+            final own = result.size >= pageRows.length
+                               ^^^^
+lib/shared/paging/complete_paged_snapshot.dart:233:26: Error: Property 'size' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+                ? result.size
+                         ^^^^
+lib/shared/paging/complete_paged_snapshot.dart:237:29: Error: Property 'size' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+          } else if (result.size >= 1 &&
+                            ^^^^
+lib/shared/paging/complete_paged_snapshot.dart:238:22: Error: Property 'size' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+              result.size < size &&
+                     ^^^^
+lib/shared/paging/complete_paged_snapshot.dart:239:38: Error: Property 'size' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+              (cap == null || result.size < cap)) {
+                                     ^^^^
+lib/shared/paging/complete_paged_snapshot.dart:242:26: Error: Property 'size' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+            cap = result.size;
+                         ^^^^
+lib/shared/paging/complete_paged_snapshot.dart:250:18: Error: Property 'page' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+      if (result.page != page ||
+                 ^^^^
+lib/shared/paging/complete_paged_snapshot.dart:251:18: Error: Property 'totalPages' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+          result.totalPages < 0 ||
+                 ^^^^^^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:252:57: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+          (!knownTotal && (!allowUnknownTotal || result.total != -1)) ||
+                                                        ^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:255:22: Error: Property 'totalPages' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+              result.totalPages != page &&
+                     ^^^^^^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:256:22: Error: Property 'totalPages' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+              result.totalPages != page + 1) ||
+                     ^^^^^^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:260:27: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+                  (result.total - offset).clamp(0, effectiveSize)) ||
+                          ^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:261:19: Error: Property 'totalPages' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+          (result.totalPages == 0 && pageRows.isNotEmpty)) {
+                  ^^^^^^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:268:48: Error: Property 'readScopeVersion' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+        if (initial.readScopeVersion != result.readScopeVersion ||
+                                               ^^^^^^^^^^^^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:271:60: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+            (requireStableTotal && initial.total != result.total) ||
+                                                           ^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:274:40: Error: Property 'size' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+                initial.size == result.size &&
+                                       ^^^^
+lib/shared/paging/complete_paged_snapshot.dart:275:46: Error: Property 'totalPages' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+                initial.totalPages != result.totalPages)) {
+                                             ^^^^^^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:280:54: Error: Method 'createRowsBuilder' cannot be called on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try calling using ?. instead.
+        if (overlapRows == null) rowBuilder = result.createRowsBuilder();
+                                                     ^^^^^^^^^^^^^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:318:45: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+      if (knownTotal && rowCount() > result.total) throw _snapshotChanged();
+                                            ^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:319:73: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+      final incomplete = !hasMore && knownTotal && rowCount() != result.total;
+                                                                        ^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:323:40: Error: The argument type 'PagedResult<T>?' can't be assigned to the parameter type 'PagedResult<T>'.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+      if (onPage != null) await onPage(result);
+                                       ^
+lib/shared/paging/complete_paged_snapshot.dart:327:16: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+        result.total,
+               ^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:332:36: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+        total: knownTotal ? result.total : null,
+                                   ^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:341:43: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+        final total = knownTotal ? result.total : boundary;
+                                          ^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:346:25: Error: Method 'withRowsFrom' cannot be called on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try calling using ?. instead.
+          () => initial.withRowsFrom(
+                        ^^^^^^^^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:361:38: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+          total: knownTotal ? result.total : rowCount(),
+                                     ^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:359:38: Error: Method 'withRowsFromResponsive' cannot be called on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try calling using ?. instead.
+        final combined = await first.withRowsFromResponsive(
+                                     ^^^^^^^^^^^^^^^^^^^^^^
+00:00 +0 -3: loading D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_view_width_cache_test.dart [E]
+  Failed to load "D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_view_width_cache_test.dart":
+  Compilation failed for testPath=D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_view_width_cache_test.dart: lib/shared/paging/complete_paged_snapshot.dart:201:45: Error: Property 'items' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+            queued?.rows ?? List<T>.of(result.items, growable: false);
+                                              ^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:202:26: Error: The argument type 'PagedResult<T>?' can't be assigned to the parameter type 'PagedResult<T>'.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+        pipeline?.validate(result, batch, pageRows);
+                           ^
+  lib/shared/paging/complete_paged_snapshot.dart:203:33: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+        final knownTotal = result.total >= 0;
+                                  ^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:213:47: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+            ? offset + pageRows.length < result.total
+                                                ^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:214:20: Error: Property 'page' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+            : result.page < result.totalPages;
+                     ^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:214:34: Error: Property 'totalPages' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+            : result.page < result.totalPages;
+                                   ^^^^^^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:215:60: Error: Property 'page' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+        if (pipeline == null && serverSize == null && result.page == page) {
+                                                             ^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:217:23: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+              ? (result.total - offset).clamp(0, size)
+                        ^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:222:21: Error: Property 'size' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+              (result.size == size ||
+                      ^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:224:28: Error: Property 'totalPages' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+                      result.totalPages == (result.total + size - 1) ~/ size)) &&
+                             ^^^^^^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:224:50: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+                      result.totalPages == (result.total + size - 1) ~/ size)) &&
+                                                   ^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:232:32: Error: Property 'size' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+              final own = result.size >= pageRows.length
+                                 ^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:233:26: Error: Property 'size' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+                  ? result.size
+                           ^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:237:29: Error: Property 'size' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+            } else if (result.size >= 1 &&
+                              ^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:238:22: Error: Property 'size' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+                result.size < size &&
+                       ^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:239:38: Error: Property 'size' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+                (cap == null || result.size < cap)) {
+                                       ^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:242:26: Error: Property 'size' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+              cap = result.size;
+                           ^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:250:18: Error: Property 'page' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+        if (result.page != page ||
+                   ^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:251:18: Error: Property 'totalPages' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+            result.totalPages < 0 ||
+                   ^^^^^^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:252:57: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+            (!knownTotal && (!allowUnknownTotal || result.total != -1)) ||
+                                                          ^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:255:22: Error: Property 'totalPages' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+                result.totalPages != page &&
+                       ^^^^^^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:256:22: Error: Property 'totalPages' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+                result.totalPages != page + 1) ||
+                       ^^^^^^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:260:27: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+                    (result.total - offset).clamp(0, effectiveSize)) ||
+                            ^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:261:19: Error: Property 'totalPages' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+            (result.totalPages == 0 && pageRows.isNotEmpty)) {
+                    ^^^^^^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:268:48: Error: Property 'readScopeVersion' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+          if (initial.readScopeVersion != result.readScopeVersion ||
+                                                 ^^^^^^^^^^^^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:271:60: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+              (requireStableTotal && initial.total != result.total) ||
+                                                             ^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:274:40: Error: Property 'size' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+                  initial.size == result.size &&
+                                         ^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:275:46: Error: Property 'totalPages' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+                  initial.totalPages != result.totalPages)) {
+                                               ^^^^^^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:280:54: Error: Method 'createRowsBuilder' cannot be called on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try calling using ?. instead.
+          if (overlapRows == null) rowBuilder = result.createRowsBuilder();
+                                                       ^^^^^^^^^^^^^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:318:45: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+        if (knownTotal && rowCount() > result.total) throw _snapshotChanged();
+                                              ^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:319:73: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+        final incomplete = !hasMore && knownTotal && rowCount() != result.total;
+                                                                          ^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:323:40: Error: The argument type 'PagedResult<T>?' can't be assigned to the parameter type 'PagedResult<T>'.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+        if (onPage != null) await onPage(result);
+                                         ^
+  lib/shared/paging/complete_paged_snapshot.dart:327:16: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+          result.total,
+                 ^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:332:36: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+          total: knownTotal ? result.total : null,
+                                     ^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:341:43: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+          final total = knownTotal ? result.total : boundary;
+                                            ^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:346:25: Error: Method 'withRowsFrom' cannot be called on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try calling using ?. instead.
+            () => initial.withRowsFrom(
+                          ^^^^^^^^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:361:38: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+            total: knownTotal ? result.total : rowCount(),
+                                       ^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:359:38: Error: Method 'withRowsFromResponsive' cannot be called on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try calling using ?. instead.
+          final combined = await first.withRowsFromResponsive(
+                                       ^^^^^^^^^^^^^^^^^^^^^^
+  .
+00:00 +0 -3: loading D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_incremental_snapshot_test.dart [E]
+  Error: The Dart compiler exited unexpectedly.
+  package:flutter_tools/src/base/common.dart 34:3  throwToolExit
+  package:flutter_tools/src/compile.dart 1009:11   DefaultResidentCompiler._compile.<fn>
+  dart:async/zone_root.dart 48:47                  _rootRunUnary
+  dart:async/zone.dart 733:19                      _CustomZone.runUnary
+  dart:async/future_impl.dart 948:45               Future._propagateToListeners.handleValueCallback
+  dart:async/future_impl.dart 977:13               Future._propagateToListeners
+  dart:async/future_impl.dart 862:9                Future._propagateToListeners
+  dart:async/future_impl.dart 720:5                Future._completeWithValue
+  dart:async/future_impl.dart 804:7                Future._asyncCompleteWithValue.<fn>
+  dart:async/zone_root.dart 35:13                  _rootRun
+  dart:async/zone.dart 726:19                      _CustomZone.run
+  dart:async/zone.dart 625:7                       _CustomZone.runGuarded
+  dart:async/zone.dart 666:23                      _CustomZone.bindCallbackGuarded.<fn>
+  dart:async/schedule_microtask.dart 40:35         _microtaskLoop
+  dart:async/schedule_microtask.dart 49:5          _startMicrotaskLoop
+  dart:isolate-patch/isolate_patch.dart 127:13     _runPendingImmediateCallback
+  dart:isolate-patch/isolate_patch.dart 193:5      _RawReceivePort._handleMessage
+  
+lib/shared/paging/complete_paged_snapshot.dart:201:45: Error: Property 'items' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+          queued?.rows ?? List<T>.of(result.items, growable: false);
+                                            ^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:202:26: Error: The argument type 'PagedResult<T>?' can't be assigned to the parameter type 'PagedResult<T>'.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+      pipeline?.validate(result, batch, pageRows);
+                         ^
+lib/shared/paging/complete_paged_snapshot.dart:203:33: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+      final knownTotal = result.total >= 0;
+                                ^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:213:47: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+          ? offset + pageRows.length < result.total
+                                              ^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:214:20: Error: Property 'page' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+          : result.page < result.totalPages;
+                   ^^^^
+lib/shared/paging/complete_paged_snapshot.dart:214:34: Error: Property 'totalPages' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+          : result.page < result.totalPages;
+                                 ^^^^^^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:215:60: Error: Property 'page' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+      if (pipeline == null && serverSize == null && result.page == page) {
+                                                           ^^^^
+lib/shared/paging/complete_paged_snapshot.dart:217:23: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+            ? (result.total - offset).clamp(0, size)
+                      ^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:222:21: Error: Property 'size' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+            (result.size == size ||
+                    ^^^^
+lib/shared/paging/complete_paged_snapshot.dart:224:28: Error: Property 'totalPages' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+                    result.totalPages == (result.total + size - 1) ~/ size)) &&
+                           ^^^^^^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:224:50: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+                    result.totalPages == (result.total + size - 1) ~/ size)) &&
+                                                 ^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:232:32: Error: Property 'size' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+            final own = result.size >= pageRows.length
+                               ^^^^
+lib/shared/paging/complete_paged_snapshot.dart:233:26: Error: Property 'size' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+                ? result.size
+                         ^^^^
+lib/shared/paging/complete_paged_snapshot.dart:237:29: Error: Property 'size' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+          } else if (result.size >= 1 &&
+                            ^^^^
+lib/shared/paging/complete_paged_snapshot.dart:238:22: Error: Property 'size' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+              result.size < size &&
+                     ^^^^
+lib/shared/paging/complete_paged_snapshot.dart:239:38: Error: Property 'size' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+              (cap == null || result.size < cap)) {
+                                     ^^^^
+lib/shared/paging/complete_paged_snapshot.dart:242:26: Error: Property 'size' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+            cap = result.size;
+                         ^^^^
+lib/shared/paging/complete_paged_snapshot.dart:250:18: Error: Property 'page' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+      if (result.page != page ||
+                 ^^^^
+lib/shared/paging/complete_paged_snapshot.dart:251:18: Error: Property 'totalPages' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+          result.totalPages < 0 ||
+                 ^^^^^^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:252:57: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+          (!knownTotal && (!allowUnknownTotal || result.total != -1)) ||
+                                                        ^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:255:22: Error: Property 'totalPages' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+              result.totalPages != page &&
+                     ^^^^^^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:256:22: Error: Property 'totalPages' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+              result.totalPages != page + 1) ||
+                     ^^^^^^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:260:27: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+                  (result.total - offset).clamp(0, effectiveSize)) ||
+                          ^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:261:19: Error: Property 'totalPages' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+          (result.totalPages == 0 && pageRows.isNotEmpty)) {
+                  ^^^^^^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:268:48: Error: Property 'readScopeVersion' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+        if (initial.readScopeVersion != result.readScopeVersion ||
+                                               ^^^^^^^^^^^^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:271:60: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+            (requireStableTotal && initial.total != result.total) ||
+                                                           ^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:274:40: Error: Property 'size' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+                initial.size == result.size &&
+                                       ^^^^
+lib/shared/paging/complete_paged_snapshot.dart:275:46: Error: Property 'totalPages' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+                initial.totalPages != result.totalPages)) {
+                                             ^^^^^^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:280:54: Error: Method 'createRowsBuilder' cannot be called on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try calling using ?. instead.
+        if (overlapRows == null) rowBuilder = result.createRowsBuilder();
+                                                     ^^^^^^^^^^^^^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:318:45: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+      if (knownTotal && rowCount() > result.total) throw _snapshotChanged();
+                                            ^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:319:73: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+      final incomplete = !hasMore && knownTotal && rowCount() != result.total;
+                                                                        ^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:323:40: Error: The argument type 'PagedResult<T>?' can't be assigned to the parameter type 'PagedResult<T>'.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+      if (onPage != null) await onPage(result);
+                                       ^
+lib/shared/paging/complete_paged_snapshot.dart:327:16: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+        result.total,
+               ^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:332:36: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+        total: knownTotal ? result.total : null,
+                                   ^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:341:43: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+        final total = knownTotal ? result.total : boundary;
+                                          ^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:346:25: Error: Method 'withRowsFrom' cannot be called on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try calling using ?. instead.
+          () => initial.withRowsFrom(
+                        ^^^^^^^^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:361:38: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try accessing using ?. instead.
+          total: knownTotal ? result.total : rowCount(),
+                                     ^^^^^
+lib/shared/paging/complete_paged_snapshot.dart:359:38: Error: Method 'withRowsFromResponsive' cannot be called on 'PagedResult<T>?' because it is potentially null.
+ - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+Try calling using ?. instead.
+        final combined = await first.withRowsFromResponsive(
+                                     ^^^^^^^^^^^^^^^^^^^^^^
+00:00 +0 -4: loading D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/master_data_table_progressive_batch_actions_test.dart [E]
+  Failed to load "D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/master_data_table_progressive_batch_actions_test.dart":
+  Compilation failed for testPath=D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/master_data_table_progressive_batch_actions_test.dart: lib/shared/paging/complete_paged_snapshot.dart:201:45: Error: Property 'items' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+            queued?.rows ?? List<T>.of(result.items, growable: false);
+                                              ^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:202:26: Error: The argument type 'PagedResult<T>?' can't be assigned to the parameter type 'PagedResult<T>'.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+        pipeline?.validate(result, batch, pageRows);
+                           ^
+  lib/shared/paging/complete_paged_snapshot.dart:203:33: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+        final knownTotal = result.total >= 0;
+                                  ^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:213:47: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+            ? offset + pageRows.length < result.total
+                                                ^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:214:20: Error: Property 'page' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+            : result.page < result.totalPages;
+                     ^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:214:34: Error: Property 'totalPages' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+            : result.page < result.totalPages;
+                                   ^^^^^^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:215:60: Error: Property 'page' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+        if (pipeline == null && serverSize == null && result.page == page) {
+                                                             ^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:217:23: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+              ? (result.total - offset).clamp(0, size)
+                        ^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:222:21: Error: Property 'size' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+              (result.size == size ||
+                      ^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:224:28: Error: Property 'totalPages' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+                      result.totalPages == (result.total + size - 1) ~/ size)) &&
+                             ^^^^^^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:224:50: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+                      result.totalPages == (result.total + size - 1) ~/ size)) &&
+                                                   ^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:232:32: Error: Property 'size' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+              final own = result.size >= pageRows.length
+                                 ^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:233:26: Error: Property 'size' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+                  ? result.size
+                           ^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:237:29: Error: Property 'size' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+            } else if (result.size >= 1 &&
+                              ^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:238:22: Error: Property 'size' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+                result.size < size &&
+                       ^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:239:38: Error: Property 'size' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+                (cap == null || result.size < cap)) {
+                                       ^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:242:26: Error: Property 'size' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+              cap = result.size;
+                           ^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:250:18: Error: Property 'page' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+        if (result.page != page ||
+                   ^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:251:18: Error: Property 'totalPages' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+            result.totalPages < 0 ||
+                   ^^^^^^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:252:57: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+            (!knownTotal && (!allowUnknownTotal || result.total != -1)) ||
+                                                          ^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:255:22: Error: Property 'totalPages' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+                result.totalPages != page &&
+                       ^^^^^^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:256:22: Error: Property 'totalPages' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+                result.totalPages != page + 1) ||
+                       ^^^^^^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:260:27: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+                    (result.total - offset).clamp(0, effectiveSize)) ||
+                            ^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:261:19: Error: Property 'totalPages' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+            (result.totalPages == 0 && pageRows.isNotEmpty)) {
+                    ^^^^^^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:268:48: Error: Property 'readScopeVersion' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+          if (initial.readScopeVersion != result.readScopeVersion ||
+                                                 ^^^^^^^^^^^^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:271:60: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+              (requireStableTotal && initial.total != result.total) ||
+                                                             ^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:274:40: Error: Property 'size' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+                  initial.size == result.size &&
+                                         ^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:275:46: Error: Property 'totalPages' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+                  initial.totalPages != result.totalPages)) {
+                                               ^^^^^^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:280:54: Error: Method 'createRowsBuilder' cannot be called on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try calling using ?. instead.
+          if (overlapRows == null) rowBuilder = result.createRowsBuilder();
+                                                       ^^^^^^^^^^^^^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:318:45: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+        if (knownTotal && rowCount() > result.total) throw _snapshotChanged();
+                                              ^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:319:73: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+        final incomplete = !hasMore && knownTotal && rowCount() != result.total;
+                                                                          ^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:323:40: Error: The argument type 'PagedResult<T>?' can't be assigned to the parameter type 'PagedResult<T>'.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+        if (onPage != null) await onPage(result);
+                                         ^
+  lib/shared/paging/complete_paged_snapshot.dart:327:16: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+          result.total,
+                 ^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:332:36: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+          total: knownTotal ? result.total : null,
+                                     ^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:341:43: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+          final total = knownTotal ? result.total : boundary;
+                                            ^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:346:25: Error: Method 'withRowsFrom' cannot be called on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try calling using ?. instead.
+            () => initial.withRowsFrom(
+                          ^^^^^^^^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:361:38: Error: Property 'total' cannot be accessed on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try accessing using ?. instead.
+            total: knownTotal ? result.total : rowCount(),
+                                       ^^^^^
+  lib/shared/paging/complete_paged_snapshot.dart:359:38: Error: Method 'withRowsFromResponsive' cannot be called on 'PagedResult<T>?' because it is potentially null.
+   - 'PagedResult' is from 'package:uten_imp/shared/models/paged_result.dart' ('lib/shared/models/paged_result.dart').
+  Try calling using ?. instead.
+          final combined = await first.withRowsFromResponsive(
+                                       ^^^^^^^^^^^^^^^^^^^^^^
+  .
+00:00 +0 -4: loading D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_incremental_snapshot_test.dart [E]
+  Error: The Dart compiler exited unexpectedly.
+  package:flutter_tools/src/base/common.dart 34:3  throwToolExit
+  package:flutter_tools/src/compile.dart 1009:11   DefaultResidentCompiler._compile.<fn>
+  dart:async/zone_root.dart 48:47                  _rootRunUnary
+  dart:async/zone.dart 733:19                      _CustomZone.runUnary
+  dart:async/future_impl.dart 948:45               Future._propagateToListeners.handleValueCallback
+  dart:async/future_impl.dart 977:13               Future._propagateToListeners
+  dart:async/future_impl.dart 862:9                Future._propagateToListeners
+  dart:async/future_impl.dart 720:5                Future._completeWithValue
+  dart:async/future_impl.dart 804:7                Future._asyncCompleteWithValue.<fn>
+  dart:async/zone_root.dart 35:13                  _rootRun
+  dart:async/zone.dart 726:19                      _CustomZone.run
+  dart:async/zone.dart 625:7                       _CustomZone.runGuarded
+  dart:async/zone.dart 666:23                      _CustomZone.bindCallbackGuarded.<fn>
+  dart:async/schedule_microtask.dart 40:35         _microtaskLoop
+  dart:async/schedule_microtask.dart 49:5          _startMicrotaskLoop
+  dart:isolate-patch/isolate_patch.dart 127:13     _runPendingImmediateCallback
+  dart:isolate-patch/isolate_patch.dart 193:5      _RawReceivePort._handleMessage
+  
+00:00 +0 -4: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/master_data_table_rows_controller_test.dart: typed adaptation forwards reading intent and real layout wait
+00:00 +1 -4: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/master_data_table_progressive_batch_actions_test.dart: loading D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/master_data_table_progressive_batch_actions_test.dart
+  D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_incremental_snapshot_test.dart: loading D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_incremental_snapshot_test.dart
+  D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_view_local_work_budget_test.dart: loading D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_view_local_work_budget_test.dart
+  D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_view_width_cache_test.dart: loading D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_view_width_cache_test.dart

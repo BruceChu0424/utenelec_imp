@@ -1,0 +1,5 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/shared/paging/complete_read_late_cancellation_test.dart
+00:00 +0: 100k read cancelled at 99k rejects a deliberately late final reply
+00:07 +1: 24 rapidly superseded reads publish only the final 100k owner
+00:10 +2: All tests passed!

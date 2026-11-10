@@ -111,7 +111,7 @@ def build_registry(previous=None) -> dict:
             next_page += 1
         task = page_task(page, identifier, labels)
         if prior:
-            for field in ("title", "status", "owner", "evidence", "notes", "nativeTargets", "definitionOfDone", "lastUpdated"):
+            for field in ("title", "status", "owner", "evidence", "notes", "nativeTargets", "definitionOfDone", "dependencies", "lastUpdated"):
                 task[field] = prior[field]
             source_changed = (prior.get("sourceProofSha256") != task["sourceProofSha256"] if prior.get("sourceProofSha256")
                               else prior.get("sourceSha256") != page["sha256"])
@@ -122,7 +122,7 @@ def build_registry(previous=None) -> dict:
         current_sources.add(page["source"])
     for task in tasks:
         if task["group"] != "BIZ" and task["id"] in old:
-            for field in ("title", "status", "owner", "evidence", "notes", "nativeTargets", "definitionOfDone", "lastUpdated"):
+            for field in ("title", "status", "owner", "evidence", "notes", "nativeTargets", "definitionOfDone", "dependencies", "lastUpdated"):
                 task[field] = old[task["id"]][field]
     for prior in old_pages.values():
         if prior["businessSource"] not in current_sources:
@@ -133,6 +133,13 @@ def build_registry(previous=None) -> dict:
                 if notice not in retained["notes"].splitlines():
                     retained["notes"] += "\n" + notice
             tasks.append(retained)
+    # The catalog seeds new common work; it is not authority to delete a stable
+    # package registered later (for example a reviewed cross-platform flow).
+    # Keep its full history and contract, just as removed page packages remain.
+    catalog_ids = {item["id"] for item in catalog["tasks"]}
+    for prior in old.values():
+        if prior["group"] != "BIZ" and prior["id"] not in catalog_ids:
+            tasks.append(json.loads(json.dumps(prior)))
     registry = {"schemaVersion": 1, "project": "UTEN Win7 native WPF complete migration",
             "branch": "uimp/win7-wpf-client-20261028", "baselineDate": "2026-10-28",
             "taskUnit": "稳定工作包；不等于页面、动作、工时或等权风险",
@@ -140,7 +147,7 @@ def build_registry(previous=None) -> dict:
             "inventorySha256": hashlib.sha256((STATE / "business-inventory.json").read_bytes()).hexdigest(),
             "baselineCounts": {"businessPagePackages": len(source["pages"]),
                                "retainedBusinessPagePackages": len(set(old_pages) - current_sources),
-                               "commonAndFlowPackages": len(catalog["tasks"]), "workPackages": len(tasks)},
+                               "commonAndFlowPackages": sum(item["group"] != "BIZ" for item in tasks), "workPackages": len(tasks)},
             "groups": catalog["groups"] + [{"id": "BIZ", "title": "全部业务页面迁移", "phase": "D"}],
             "tasks": tasks}
     reopen_dependents(registry)

@@ -800,6 +800,11 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage>
                       ),
                     Expanded(
                       child: MasterDataTableView<SettlementMethodAdminItem>(
+                        immutableRows: !inlineEdit.active,
+                        presentationRevision: inlineEdit.active
+                            ? null
+                            : _columns,
+                        rowKeyOf: inlineIdOf,
                         rowsController: _readViewportRows,
                         expensiveRowMounts: inlineEdit.active,
                         appendRowsSource: inlineAppendRowsSource,
@@ -809,7 +814,9 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage>
                         columnEditingEnabled: _canEdit,
                         tableKey:
                             'features.basic_data.pages.settlement_method_page.SettlementMethodPageState._buildDraftHost.1',
-                        columns: inlineColumns(_columns),
+                        columns: inlineEdit.active
+                            ? inlineColumns(_columns)
+                            : _columns,
                         requiredLeadingColumnKeys: const ['code', 'name'],
                         items: items,
                         selectable: true,

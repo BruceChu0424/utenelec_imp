@@ -1,0 +1,2687 @@
+{
+  "baseline": "69e35d96bf0ddd9c8ba7992bf0a609ee9191ef98",
+  "root": "D:/Projects/uten_imp_worktrees/table-read-performance-20261110",
+  "method": "Dart analyzer AST instance creation and unresolved constructor invocation, lib/**/*.dart",
+  "count": 235,
+  "calls": [
+    {
+      "path": "lib/components/data_display/uten_cell_revision_table.dart",
+      "line": 45,
+      "type": "MasterDataTableView<UtenCellRevisionRow<T>>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "rows"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/components/data_display/uten_revision_table.dart",
+      "line": 193,
+      "type": "MasterDataTableView<UtenRevisionRow<T>>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "filterContextRows": "(all, matched) => retainMatchedPreorderGroups(all, matched, isGroupStart: (row) => !(row.kind == UtenRevisionKind.added && row.changedKeys.isNotEmpty))",
+        "idOf": "idOf == null ? null : (row) => row.kind == UtenRevisionKind.removed ? null : idOf!(row.value)",
+        "items": "rows"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/components/inputs/uten_employee_selection_panel.dart",
+      "line": 761,
+      "type": "MasterDataTableView<UtenEmployeePickerItem>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "items",
+        "rowKeyOf": "(item) => item.id",
+        "idOf": "(item) => item.enabled || _selected.containsKey(item.id) ? item.id : null"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/components/layout/uten_doc_link_picker_sheet.dart",
+      "line": 868,
+      "type": "MasterDataTableView<D>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_readViewportRows",
+        "items": "_docPage?.items ?? const []"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/components/layout/uten_paged_picker_list.dart",
+      "line": 52,
+      "type": "MasterDataTableView<T>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "items",
+        "rowKeyOf": "idOf",
+        "rowsController": "rowsController"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/admin/pages/admin_ai_usage_page.dart",
+      "line": 448,
+      "type": "MasterDataTableView<AiUsagePerson>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "people",
+        "rowKeyOf": "(person) => person.userId"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/admin/pages/admin_ai_usage_records_page.dart",
+      "line": 610,
+      "type": "MasterDataTableView<AiUsageAuditRecord>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_recordRows",
+        "items": "data?.records ?? const <AiUsageAuditRecord>[]",
+        "rowKeyOf": "(record) => record.id"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/admin/pages/admin_ai_usage_records_page.dart",
+      "line": 766,
+      "type": "MasterDataTableView<AiUsageAuditUser>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "_users",
+        "rowKeyOf": "(user) => user.userId"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/admin/pages/audit_overview_widgets.dart",
+      "line": 1062,
+      "type": "MasterDataTableView<AuditLogEntry>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "idOf": "(row) => row.id.toString()",
+        "rowsController": "rowsController",
+        "items": "items",
+        "rowKeyOf": "(row) => row.id.toString()"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/admin/pages/audit_overview_widgets.dart",
+      "line": 1308,
+      "type": "MasterDataTableView<AuditSessionSummary>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "idOf": "(row) => row.sessionId",
+        "rowsController": "rowsController",
+        "items": "sessions",
+        "rowKeyOf": "(row) => row.sessionId"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/admin/pages/server_status_page.dart",
+      "line": 898,
+      "type": "MasterDataTableView<ServerJob>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "jobs"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/admin/widgets/page_permission_drawer.dart",
+      "line": 1181,
+      "type": "MasterDataTableView<PagePermissionStaffSummary>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "_staff",
+        "rowKeyOf": "(employee) => employee.employeeId"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/applications/pages/business_application_list_page.dart",
+      "line": 528,
+      "type": "MasterDataTableView<BusinessApplication>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "applications.value?.items ?? const []"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/approvals/pages/approval_policy_settings_page.dart",
+      "line": 129,
+      "type": "MasterDataTableView<ApprovalDepartmentPolicy>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "policies?.value ?? const []"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/basic_data/pages/account_detail_page.dart",
+      "line": 1128,
+      "type": "MasterDataTableView<AccountStatementRow>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_readViewportRows",
+        "items": "_statement?.rows ?? const []"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/basic_data/pages/account_workspace_page.dart",
+      "line": 1579,
+      "type": "MasterDataTableView<AccountListItem>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "immutableRows": "!inlineEdit.active",
+        "rowKeyOf": "inlineIdOf",
+        "rowsController": "_readViewportRows",
+        "items": "_page?.items ?? const []",
+        "idOf": "(account) => account.id",
+        "leadingGroups": "_leadingGroups"
+      },
+      "incrementalContract": "explicit-gated"
+    },
+    {
+      "path": "lib/features/basic_data/pages/color_page.dart",
+      "line": 992,
+      "type": "MasterDataTableView<ColorListItem>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "immutableRows": "!inlineEdit.active",
+        "presentationRevision": "inlineEdit.active ? null : _columns",
+        "rowKeyOf": "inlineIdOf",
+        "rowsController": "_readViewportRows",
+        "items": "_page?.items ?? const []",
+        "idOf": "(c) => c.id"
+      },
+      "incrementalContract": "explicit-gated"
+    },
+    {
+      "path": "lib/features/basic_data/pages/currency_page.dart",
+      "line": 1074,
+      "type": "MasterDataTableView<CurrencyListItem>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "immutableRows": "!inlineEdit.active",
+        "presentationRevision": "inlineEdit.active ? null : _columns",
+        "rowKeyOf": "inlineIdOf",
+        "rowsController": "_readViewportRows",
+        "items": "_page?.items ?? const []",
+        "idOf": "(currency) => currency.baseCurrency ? null : currency.id"
+      },
+      "incrementalContract": "explicit-gated"
+    },
+    {
+      "path": "lib/features/basic_data/pages/goods_import_preview_page.dart",
+      "line": 1120,
+      "type": "MasterDataTableView<GoodsImportProblemRow>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "visible",
+        "idOf": "(row) => '${row.rowNum}'",
+        "rowKeyOf": "(row) => '${row.rowNum}'"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/basic_data/pages/goods_price_analysis_page.dart",
+      "line": 1440,
+      "type": "MasterDataTableView<PriceObservation>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_readViewportRows",
+        "items": "rows",
+        "rowKeyOf": "(row) => row.identity"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/basic_data/pages/import_review_page.dart",
+      "line": 395,
+      "type": "MasterDataTableView<ImportReviewRow>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "widget.rows",
+        "idOf": "(row) => row.selectable && !_ignored.contains(row.rowKey) ? row.rowKey : null",
+        "rowKeyOf": "(row) => row.rowKey"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/basic_data/pages/payment_style_page.dart",
+      "line": 1223,
+      "type": "MasterDataTableView<_PaymentStyleWorkspaceRow>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "rows",
+        "idOf": "(row) => row.node.id"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/basic_data/pages/settlement_method_page.dart",
+      "line": 802,
+      "type": "MasterDataTableView<SettlementMethodAdminItem>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "immutableRows": "!inlineEdit.active",
+        "presentationRevision": "inlineEdit.active ? null : _columns",
+        "rowKeyOf": "inlineIdOf",
+        "rowsController": "_readViewportRows",
+        "items": "items",
+        "idOf": "(method) => method.id"
+      },
+      "incrementalContract": "explicit-gated"
+    },
+    {
+      "path": "lib/features/basic_data/pages/unit_page.dart",
+      "line": 956,
+      "type": "MasterDataTableView<UnitListItem>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "immutableRows": "!inlineEdit.active",
+        "presentationRevision": "inlineEdit.active ? null : _columns",
+        "rowKeyOf": "inlineIdOf",
+        "rowsController": "_readViewportRows",
+        "items": "_page?.items ?? const []",
+        "idOf": "(unit) => unit.id"
+      },
+      "incrementalContract": "explicit-gated"
+    },
+    {
+      "path": "lib/features/basic_data/pages/warehouse_page.dart",
+      "line": 1501,
+      "type": "MasterDataTableView<WarehouseDetail>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "_warehouseTableRows",
+        "idOf": "(row) => row.isMain || row.lineSide ? null : row.id",
+        "rowKeyOf": "(row) => row.id"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/goods_bom_comparison_table.dart",
+      "line": 904,
+      "type": "MasterDataTableView<_ComparisonTableRow>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "rows",
+        "idOf": "(row) => widget.enabled && row.depth == 0 && row.comparison.difference != BomDifference.same ? row.comparison.key : null",
+        "rowKeyOf": "(row) => row.key"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/goods_bom_learning_panel.dart",
+      "line": 333,
+      "type": "MasterDataTableView<GoodsBomLearningComponent>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "rows"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/goods_bom_material_evidence.dart",
+      "line": 52,
+      "type": "MasterDataTableView<GoodsBomMaterialEvidence>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "rows"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/goods_bom_tab.dart",
+      "line": 3997,
+      "type": "MasterDataTableView<_BomRow>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "visible",
+        "filterContextRows": "(all, matched) => retainMatchedPreorderAncestors(all, matched, depthOf: (row) => row.depth)",
+        "idOf": "(row) => row.isPlaceholder ? null : _rowId(row)",
+        "rowKeyOf": "(row) => row.occurrenceKey"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/goods_cost_actual_panel.dart",
+      "line": 327,
+      "type": "MasterDataTableView<Map<String, dynamic>>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "pending"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/goods_cost_actual_panel.dart",
+      "line": 458,
+      "type": "MasterDataTableView<Map<String, dynamic>>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "values"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/goods_cost_actual_panel.dart",
+      "line": 800,
+      "type": "MasterDataTableView<Map<String, dynamic>>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "rows",
+        "rowKeyOf": "(r) => (r['inputNodeId'] ?? r['sourceNodeId'] ?? r['costObjectId'] ?? r['id'] ?? '').toString()"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/goods_cost_editor.dart",
+      "line": 1178,
+      "type": "MasterDataTableView<Map<String, dynamic>>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "visible",
+        "filterContextRows": "(all, matched) => retainMatchedPreorderAncestors(all, matched, depthOf: (row) => _onlyPending ? 0 : treeByPath[row['path']]?.depth ?? 0)",
+        "rowKeyOf": "(r) => r['path'].toString()",
+        "idOf": "(r) => r['path'].toString()"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/goods_cost_editor.dart",
+      "line": 2066,
+      "type": "MasterDataTableView<Map<String, dynamic>>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "items"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/goods_cost_editor.dart",
+      "line": 2236,
+      "type": "MasterDataTableView<Map<String, dynamic>>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "_snapshots"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/goods_cost_import_dialog.dart",
+      "line": 152,
+      "type": "MasterDataTableView<_CostImportRow>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "_rows"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/goods_cost_production_evidence.dart",
+      "line": 196,
+      "type": "MasterDataTableView<Map<String, dynamic>>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "rows"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/goods_cost_tab.dart",
+      "line": 1416,
+      "type": "MasterDataTableView<Map<String, dynamic>>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "rows"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/goods_cost_tab.dart",
+      "line": 1627,
+      "type": "MasterDataTableView<Map<String, dynamic>>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_versionRows",
+        "items": "page?.items ?? const []",
+        "rowKeyOf": "(r) => r['id'].toString()"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/goods_price_facet_picker.dart",
+      "line": 318,
+      "type": "MasterDataTableView<MasterFacetBucket>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_readViewportRows",
+        "items": "nativeReadAccessConfirmed && _allowed ? _rows : const []",
+        "rowKeyOf": "(row) => row.value"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/goods_price_observation_detail.dart",
+      "line": 239,
+      "type": "MasterDataTableView<Map<String, dynamic>>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "[for (final field in detail.fields) if (!{'unitName', 'currencyName'}.contains(field['key'])) {...field, if ({'quantity', 'amount', 'unitPrice'}.contains(field['key'])) 'value' : priceObservationValue(detail.observation, field['key'] as String)}]",
+        "rowKeyOf": "(row) => row['key']?.toString()"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/goods_quote_history_tab.dart",
+      "line": 331,
+      "type": "MasterDataTableView<GoodsQuoteHistoryRow>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_readViewportRows",
+        "items": "result?.items ?? const []",
+        "rowKeyOf": "(row) => row.text('id')"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/goods_subcontract_supplier_table.dart",
+      "line": 105,
+      "type": "MasterDataTableView<Map<String, dynamic>>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "groups",
+        "rowKeyOf": "(row) => _text(row, 'key')"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/goods_subcontract_supplier_table.dart",
+      "line": 389,
+      "type": "MasterDataTableView<Map<String, dynamic>>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "priceMaps(group['lines'])",
+        "rowKeyOf": "(row) => '${row['orderId']}|${row['orderItemId']}'"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/master_entity_detail_pane.dart",
+      "line": 1966,
+      "type": "MasterDataTableView<TItem>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_tableRows",
+        "immutableRows": "_c.immutableSummaryRows && !_inlineEdit.active",
+        "presentationRevision": "_c.immutableSummaryRows && !_inlineEdit.active ? _c : null",
+        "items": "_page?.items ?? <TItem>[]",
+        "idOf": "_c.idOf",
+        "rowKeyOf": "_c.immutableSummaryRows ? _c.idOf : null",
+        "leadingGroups": "_displayedGroups"
+      },
+      "incrementalContract": "explicit-gated"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/mould_picker_field.dart",
+      "line": 654,
+      "type": "MasterDataTableView<MouldListItem>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_rows",
+        "items": "_results",
+        "idOf": "(m) => m.id",
+        "rowKeyOf": "(m) => m.id"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/uten_goods_picker.dart",
+      "line": 1835,
+      "type": "MasterDataTableView<GoodsListItem>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_pickerRows",
+        "items": "_paged?.items ?? const []",
+        "rowKeyOf": "(goods) => goods.id",
+        "idOf": "(goods) => selectable(goods) ? goods.id : null"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/uten_master_picker.dart",
+      "line": 766,
+      "type": "MasterDataTableView<TItem>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "_items ?? <TItem>[]",
+        "rowKeyOf": "_spec.idOf",
+        "rowsController": "_pickerRows"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/warehouse_inventory_panel.dart",
+      "line": 512,
+      "type": "MasterDataTableView<InstantInventoryRow>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_readViewportRows",
+        "idOf": "(row) => row.readIdentity",
+        "items": "_result?.items ?? const []",
+        "rowKeyOf": "(row) => '${row.goodsId}|${row.colorId}'"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/department/widgets/department_overview_pane.dart",
+      "line": 570,
+      "type": "MasterDataTableView<EmployeeSummary>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "_visibleEmployees(l10n)"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/department/widgets/uten_position_entry_picker.dart",
+      "line": 383,
+      "type": "MasterDataTableView<Position>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "filtered",
+        "rowKeyOf": "(position) => position.id"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/department/widgets/uten_position_picker.dart",
+      "line": 241,
+      "type": "MasterDataTableView<Position>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "[for (final group in _group(positions)) ...group.items]",
+        "rowKeyOf": "(position) => position.id"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/employee/pages/employee_list_page.dart",
+      "line": 323,
+      "type": "MasterDataTableView<EmployeeSummary>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "_visibleItems",
+        "leadingGroups": "_similar.isEmpty ? null : [MasterDataGroup<EmployeeSummary>(id: 'employee-similar', title: '类似人员（${_similar.length}）', subtitle: '没有精确匹配，按相似度推荐', icon: Icons.group_work_rounded, items: _similar, initiallyExpanded: true)]"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/employee/widgets/department_employee_picker.dart",
+      "line": 727,
+      "type": "MasterDataTableView<UtenEmployeePickerItem>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "_items",
+        "rowKeyOf": "(employee) => employee.id"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/expense/pages/expense_approval_detail_page.dart",
+      "line": 610,
+      "type": "MasterDataTableView<ExpenseItem>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "claim.items"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/expense/pages/expense_approval_list_page.dart",
+      "line": 441,
+      "type": "MasterDataTableView<ExpenseClaim>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_tableRows",
+        "items": "page.items",
+        "idOf": "(claim) => eligibility.canReviewClaim(claim) ? claim.id : null",
+        "rowKeyOf": "(claim) => claim.id"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/expense/pages/expense_detail_page.dart",
+      "line": 609,
+      "type": "MasterDataTableView<ExpenseItem>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "claim.items"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/expense/pages/expense_list_page.dart",
+      "line": 264,
+      "type": "MasterDataTableView<ExpenseClaim>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "page.items",
+        "rowsController": "_tableRows",
+        "idOf": "(claim) => !draftDeleteBusy && _isOwnDraft(claim) ? claim.id : null",
+        "rowKeyOf": "(claim) => claim.id"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/expense/widgets/expense_invoice_section.dart",
+      "line": 151,
+      "type": "MasterDataTableView<ExpenseClaimInvoice>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "invoices"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_account_flow_page.dart",
+      "line": 553,
+      "type": "MasterDataTableView<Map<String, dynamic>>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_tableRows",
+        "items": "data.rows"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_application_settings_page.dart",
+      "line": 237,
+      "type": "MasterDataTableView<Map<String, dynamic>>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "rows",
+        "rowKeyOf": "(r) => r['id'].toString()"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_applications_page.dart",
+      "line": 418,
+      "type": "MasterDataTableView<Map<String, dynamic>>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "current ? _rows : []",
+        "rowKeyOf": "(r) => r['id'].toString()"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_applications_page.dart",
+      "line": 690,
+      "type": "MasterDataTableView<Map<String, dynamic>>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "current ? _rows : []",
+        "rowKeyOf": "(r) => '${r['sourceKind'] ?? widget.kind}|${r['id']}'"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_ar_ap_overview_page.dart",
+      "line": 1104,
+      "type": "MasterDataTableView<Map<String, dynamic>>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_tableRows",
+        "items": "data?.rows ?? const []"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_ar_ap_page.dart",
+      "line": 726,
+      "type": "MasterDataTableView<ArApLedgerItem>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_tableRows",
+        "items": "_page?.items ?? const []"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_doc_detail_page.dart",
+      "line": 1479,
+      "type": "MasterDataTableView<FinanceDocItem>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "items"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_doc_list_page.dart",
+      "line": 743,
+      "type": "MasterDataTableView<FinanceDocListItem>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_tableRows",
+        "idOf": "(item) => !draftDeleteBusy && !_list.loading && _isDeletableDraft(item) ? item.id : null",
+        "rowKeyOf": "(item) => item.id",
+        "items": "_list.page?.items ?? const []"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_procurement_approval_tasks_page.dart",
+      "line": 934,
+      "type": "MasterDataTableView<FinanceProcurementApprovalTask>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_tableRows",
+        "items": "result.items",
+        "idOf": "(task) => _canSelectTask(task) ? task.caseId : null"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_quote_review_list_page.dart",
+      "line": 481,
+      "type": "MasterDataTableView<SalesQuoteFinanceListItem>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_tableRows",
+        "items": "result.items"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_quote_review_page.dart",
+      "line": 1394,
+      "type": "MasterDataTableView<SalesQuoteFinanceLine>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "idOf": "(line) => line.itemId",
+        "items": "items"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_reconciliation_page.dart",
+      "line": 454,
+      "type": "MasterDataTableView<ReconciliationItem>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_tableRows",
+        "items": "_page?.items ?? const []"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_report_table_page.dart",
+      "line": 1692,
+      "type": "MasterDataTableView<Map<String, dynamic>>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "data.rows"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_sales_order_confirmation_page.dart",
+      "line": 1052,
+      "type": "MasterDataTableView<SalesOrderFinancePendingItem>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_tableRows",
+        "idOf": "(item) => _taskDrafts(item).isEmpty ? item.orderId : null",
+        "items": "result.items"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_sales_order_review_page.dart",
+      "line": 1326,
+      "type": "MasterDataTableView<SalesOrderFinanceReviewLine>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "idOf": "(it) => it.itemId.isEmpty ? null : it.itemId",
+        "items": "r.items"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_sales_shipment_audit_review_page.dart",
+      "line": 1475,
+      "type": "MasterDataTableView<SalesDocItem>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "idOf": "(it) => (it.id == null || it.id!.isEmpty) ? null : it.id",
+        "items": "items"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_statement_page.dart",
+      "line": 658,
+      "type": "MasterDataTableView<Map<String, dynamic>>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_tableRows",
+        "items": "data.rows"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/finance/payables/pages/finance_payables_page.dart",
+      "line": 1036,
+      "type": "MasterDataTableView<FinancePayableItem>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_tableRows",
+        "items": "pageItems",
+        "idOf": "(item) => item.id"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/finance/payables/widgets/subcontract_loss_claim_detail_panel.dart",
+      "line": 424,
+      "type": "MasterDataTableView<SubcontractLossClaimLine>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "lines"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/finance/payables/widgets/subcontract_loss_claim_panel.dart",
+      "line": 400,
+      "type": "MasterDataTableView<SubcontractLossClaimSummary>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_tableRows",
+        "items": "_result?.items ?? const []"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/finance/payables/widgets/supplier_settlement_panel.dart",
+      "line": 437,
+      "type": "MasterDataTableView<SupplierSettlementSummary>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_tableRows",
+        "items": "_result?.items ?? const []"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/finance/payables/widgets/supplier_settlement_panel.dart",
+      "line": 752,
+      "type": "MasterDataTableView<SupplierSettlementLine>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "detail.lines"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_account_picker_panel.dart",
+      "line": 145,
+      "type": "MasterDataTableView<FinanceAccountReference>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "accounts",
+        "rowKeyOf": "(a) => a.id"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_accounting_import_dialog.dart",
+      "line": 1205,
+      "type": "MasterDataTableView<Map<String, dynamic>>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "filtered",
+        "rowKeyOf": "(row) {final id = row['__sourceEntryId'] ?? row['sourceEntryId'] ?? row['key'] ?? row['accountCode'] ?? row['2']; return id == null ? null : '${_accountingId(_vouchers)}|${key ?? _tab}|$id';}"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_actual_receipt_context.dart",
+      "line": 136,
+      "type": "MasterDataTableView<CustomerActualReceipt>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "data.receipts"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_application_detail.dart",
+      "line": 208,
+      "type": "MasterDataTableView<Map<String, dynamic>>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "rows"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_asset_detail.dart",
+      "line": 653,
+      "type": "MasterDataTableView<FinanceAssetScheduleLine>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "detail.schedule"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_asset_ledger_panel.dart",
+      "line": 571,
+      "type": "MasterDataTableView<FinanceAssetSummary>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_tableRows",
+        "items": "result?.items ?? const []"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_asset_opening_group_dialog.dart",
+      "line": 1106,
+      "type": "MasterDataTableView<Map<String, dynamic>>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "rows",
+        "rowKeyOf": "(r) => (r['id'] ?? r['sourceRow'])?.toString()"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_asset_opening_group_dialog.dart",
+      "line": 1894,
+      "type": "MasterDataTableView<Map<String, dynamic>>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "_rows",
+        "rowKeyOf": "(r) => r['id']?.toString()"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_asset_posting_panel.dart",
+      "line": 747,
+      "type": "MasterDataTableView<AssetPostingLine>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "lines"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_chart_dialog.dart",
+      "line": 429,
+      "type": "MasterDataTableView<Map<String, dynamic>>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "visible"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_chart_import_workbench.dart",
+      "line": 870,
+      "type": "MasterDataTableView<Map<String, dynamic>>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "issues.isEmpty ? rows : issues"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_expense_analysis_dialog.dart",
+      "line": 523,
+      "type": "MasterDataTableView<Map<String, dynamic>>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "_rows"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_payroll_preparation.dart",
+      "line": 1353,
+      "type": "MasterDataTableView<Map<String, dynamic>>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "_rows",
+        "rowKeyOf": "(r) => widget.kind == 'EXISTING_NON_CASH_VOUCHER' ? r['voucherId'].toString() : '${r['entryId']}:${r['allocationNo']}'"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_source_table.dart",
+      "line": 26,
+      "type": "MasterDataTableView<Map<String, dynamic>>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "rows",
+        "idOf": "idOf"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/finance/widgets/inventory_cost_posting_dialog.dart",
+      "line": 669,
+      "type": "MasterDataTableView<Map<String, dynamic>>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "_rows",
+        "rowKeyOf": "(row) => row['postingId']?.toString() ?? ''"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/hr_profile/pages/hr_profile_changes_list_page.dart",
+      "line": 441,
+      "type": "MasterDataTableView<HrProfileChangeListItem>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_tableRows",
+        "items": "page.items",
+        "idOf": "(item) => item.batchId"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/hr_task/pages/hr_reconcile_page.dart",
+      "line": 1261,
+      "type": "MasterDataTableView<HrReconcileRow>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "plan.rows",
+        "idOf": "(row) => row.kind == HrReconcileRowKind.update && !row.claimedByOther && row.result == null && editable ? row.employee.id : null",
+        "rowKeyOf": "(row) => row.employee.id"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/hr_task/pages/hr_task_list_page.dart",
+      "line": 347,
+      "type": "MasterDataTableView<HrTaskItem>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "visible",
+        "idOf": "(item) => _type == HrTaskType.identity && item.claimedByOther ? null : item.employeeId",
+        "rowKeyOf": "(item) => item.employeeId"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/hr_task/widgets/hr_celebration_history_panel.dart",
+      "line": 148,
+      "type": "MasterDataTableView<HrCelebrationPublication>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_tableRows",
+        "items": "page.items",
+        "rowKeyOf": "(row) => row.id"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/operations_workbench/pages/operations_workbench_page.dart",
+      "line": 1581,
+      "type": "MasterDataTableView<OperationsWorkbenchTask>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "rowsController",
+        "idOf": "(item) => item.id",
+        "rowKeyOf": "(item) => item.taskId",
+        "items": "items"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/payroll/pages/payroll_review_page.dart",
+      "line": 514,
+      "type": "MasterDataTableView<PayrollSlip>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "batch.slips",
+        "idOf": "(s) => s.id"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/payroll/pages/payroll_review_page.dart",
+      "line": 556,
+      "type": "MasterDataTableView<PayrollSlip>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "const []"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/payroll/pages/payroll_slip_list_page.dart",
+      "line": 76,
+      "type": "MasterDataTableView<PayrollSlip>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_tableRows",
+        "items": "page.items"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/procurement_iqc_rejection/pages/procurement_iqc_rejection_list_page.dart",
+      "line": 587,
+      "type": "MasterDataTableView<ProcurementIqcRejectionCase>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_tableRows",
+        "items": "result.items",
+        "idOf": "(item) => item.id.isEmpty ? null : item.id"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/production/delivery_processing/delivery_processing_tasks_button.dart",
+      "line": 428,
+      "type": "MasterDataTableView<DeliveryProcessingTarget>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "task.processingTargets",
+        "idOf": "(target) => target.id"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/production/delivery_processing/delivery_processing_tasks_button.dart",
+      "line": 664,
+      "type": "MasterDataTableView<DeliveryProcessingTask>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "page?.items ?? const []",
+        "idOf": "(task) => task.id"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/production/pages/material_analysis_bucket_detail.dart",
+      "line": 777,
+      "type": "MasterDataTableView<_BucketRow>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "filtered",
+        "idOf": "(row) => _canSelectTask(row) ? row.id : null",
+        "rowKeyOf": "(row) => row.id"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/production/pages/material_analysis_candidates.dart",
+      "line": 770,
+      "type": "MasterDataTableView<MaterialAnalysisSalesCandidateLine>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_candidateTableRows",
+        "items": "lines",
+        "idOf": "(line) => (line.remainingQty ?? 0) > 0 ? line.salesOrderItemId : null"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/production/pages/material_analysis_child_shortage_page.dart",
+      "line": 307,
+      "type": "MasterDataTableView<_MaterialTableRow>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "byRow.keys.toList(growable: false)",
+        "rowKeyOf": "(row) => row.key",
+        "idOf": "(row) => blocked[row.group!.key] == null ? row.group!.key : null"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/production/pages/material_analysis_material_table.dart",
+      "line": 1510,
+      "type": "MasterDataTableView<_MaterialTableRow>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "filterContextRows": "(all, matched) => retainMatchedPreorderGroups(all, matched, isGroupStart: (row) => row.depth == 0)",
+        "idOf": "(row) => selectableGroups(row).isNotEmpty ? row.key : null",
+        "items": "rows",
+        "rowKeyOf": "(row) => row.key"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/production/pages/material_analysis_order_page.dart",
+      "line": 188,
+      "type": "MasterDataTableView<_MaterialTableRow>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "rows",
+        "rowKeyOf": "(row) => row.key",
+        "idOf": "(row) => _host._materialRowSelectableGroups(row).isEmpty ? null : row.key"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/production/pages/production_analysis_sales_order_page.dart",
+      "line": 200,
+      "type": "MasterDataTableView<AnalysisLinkedSalesOrderLine>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "lines",
+        "rowKeyOf": "(line) => line.orderItemId"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/production/pages/production_board_page.dart",
+      "line": 1100,
+      "type": "MasterDataTableView<SchedulePendingRow>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_tableRows",
+        "items": "rows",
+        "idOf": "(row) => _canSelectForAnalysis(row) ? row.orderItemId : null"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/production/pages/production_chain_health_page.dart",
+      "line": 188,
+      "type": "MasterDataTableView<_ChainHealthRow>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowKeyOf": "(row) => row.key",
+        "items": "rows"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/production/pages/production_daily_report_detail_page.dart",
+      "line": 1527,
+      "type": "MasterDataTableView<ProductionDailyReportDetailGroupRow>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "rows"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/production/pages/production_daily_report_list_page.dart",
+      "line": 413,
+      "type": "MasterDataTableView<ProductionDailyReportListItem>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_tableRows",
+        "items": "_list.page?.items ?? const []",
+        "idOf": "(it) => !draftDeleteBusy && !_list.loading && it.status == kProductionStatusDraft ? it.id : null",
+        "rowKeyOf": "(it) => it.id"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/production/pages/production_draw_request_page.dart",
+      "line": 653,
+      "type": "MasterDataTableView<ProductionDrawRequestSummary>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "idOf": "(row) => row.identity",
+        "rowKeyOf": "(row) => row.identity",
+        "items": "preview.summaries"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/production/pages/production_draw_request_page.dart",
+      "line": 795,
+      "type": "MasterDataTableView<ProductionDrawRequestLine>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "preview.sourcesFor(summary)"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/production/pages/production_execution_batch_page.dart",
+      "line": 804,
+      "type": "MasterDataTableView<ProductionDrawRequestSummary>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "preview.summaries",
+        "rowKeyOf": "(row) => '${row.warehouseId}:${row.goodsId}:${row.colorId}:${row.unitId}'"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/production/pages/production_material_analysis_history_page.dart",
+      "line": 385,
+      "type": "MasterDataTableView<MaterialAnalysisListItem>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_tableRows",
+        "items": "items"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/production/pages/production_material_analysis_page.dart",
+      "line": 2827,
+      "type": "MasterDataTableView<MaterialAnalysisSourceInput>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "_sources",
+        "idOf": "(source) => source.canonicalKey"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/production/pages/production_material_discovery_request_page.dart",
+      "line": 808,
+      "type": "MasterDataTableView<DiscoveryRequestMaterialRow>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "List.unmodifiable(_rows)",
+        "rowKeyOf": "(row) => row.id"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/production/pages/production_material_increment_create.dart",
+      "line": 449,
+      "type": "MasterDataTableView<Map<String, dynamic>>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "_demands",
+        "rowKeyOf": "(row) => row['originalDemandId'] as String",
+        "idOf": "(row) => _editable && _eligible(row) ? row['originalDemandId'] as String : null"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/production/pages/production_material_increment_pages.dart",
+      "line": 177,
+      "type": "MasterDataTableView<ProductionMaterialIncrementRequest>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_tableRows",
+        "items": "_data?.items ?? const []"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/production/pages/production_over_limit_pages.dart",
+      "line": 242,
+      "type": "MasterDataTableView<ProductionOverLimitDisposition>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_tableRows",
+        "items": "_data?.items ?? const []"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/production/pages/production_overproduction_rate_pages.dart",
+      "line": 211,
+      "type": "MasterDataTableView<ProductionOverproductionRateRequest>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_tableRows",
+        "items": "_data?.items ?? const []"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/production/pages/production_plan_list_page.dart",
+      "line": 597,
+      "type": "MasterDataTableView<ProductionPlanListItem>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "_list.page?.items ?? const []",
+        "idOf": "(it) => !_batching && !_list.loading && it.status == kProductionStatusDraft ? it.id : null",
+        "rowKeyOf": "(it) => it.id"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/production/pages/production_report_page.dart",
+      "line": 552,
+      "type": "MasterDataTableView<Map<String, dynamic>>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "data.rows"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/production/pages/production_workshop_tasks_page.dart",
+      "line": 3082,
+      "type": "MasterDataTableView<ProductionExecutionWorkbenchSegment>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_tableRows",
+        "items": "_displayItems",
+        "idOf": "(task) => _selectable && _selectableTask(task) ? task.segmentId : null",
+        "rowKeyOf": "(task) => task.segmentId"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/production/pages/where_used_report_page.dart",
+      "line": 1531,
+      "type": "MasterDataTableView<Map<String, dynamic>>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_tableRows",
+        "idOf": "(row) => row['__productId']?.toString()",
+        "items": "data.rows"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/production/pages/workshop_material_reports_page.dart",
+      "line": 770,
+      "type": "MasterDataTableView<WmBinUsageRow>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "rows"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/production/pages/workshop_material_reports_page.dart",
+      "line": 904,
+      "type": "MasterDataTableView<WmProductUsageRow>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "rows"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/production/pages/workshop_material_reports_page.dart",
+      "line": 1153,
+      "type": "MasterDataTableView<WmMissingWeightRow>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "rows"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/production/pages/workshop_material_reports_page.dart",
+      "line": 1243,
+      "type": "MasterDataTableView<WmLedgerRow>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_ledgerRows",
+        "items": "rows"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/production/widgets/daily_report_material_review_section.dart",
+      "line": 146,
+      "type": "MasterDataTableView<DailyReportMaterialReviewRow>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "review.rows",
+        "idOf": "(row) => row.demandId"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/production/widgets/plan_order_import_sheet.dart",
+      "line": 273,
+      "type": "MasterDataTableView<ScheduleBomComponent>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "line.bom"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/production/widgets/production_execution_group_panel.dart",
+      "line": 239,
+      "type": "MasterDataTableView<ProductionExecutionWorkbenchGroup>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_tableRows",
+        "items": "_items",
+        "rowKeyOf": "(row) => row.id"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/production/widgets/reportable_plan_line_picker.dart",
+      "line": 261,
+      "type": "MasterDataTableView<ReportablePlanLine>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_tableRows",
+        "rowKeyOf": "_lineKey",
+        "items": "items",
+        "idOf": "(item) => item.canReport ? _lineKey(item) : null"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/production/widgets/workshop_task_material_table.dart",
+      "line": 227,
+      "type": "MasterDataTableView<ProductionWorkshopTaskMaterial>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowKeyOf": "(row) => row.demandId",
+        "idOf": "(row) => widget.selectableDemandIds.contains(row.demandId) ? row.demandId : null",
+        "items": "rows"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/profile/pages/my_profile_changes_page.dart",
+      "line": 235,
+      "type": "MasterDataTableView<MyProfileChangeListItem>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_tableRows",
+        "items": "page.items"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/purchase/pages/purchase_doc_detail_page.dart",
+      "line": 1651,
+      "type": "MasterDataTableView<PurchaseDocItem>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "idOf": "(item) => _canSelectRequestItem(item) ? item.id : null",
+        "rowKeyOf": "(item) => item.id",
+        "items": "items"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/purchase/pages/purchase_doc_list_page.dart",
+      "line": 978,
+      "type": "MasterDataTableView<PurchaseDocListItem>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_tableRows",
+        "items": "_list.page?.items ?? const []",
+        "idOf": "(row) => !draftDeleteBusy && _deletableDraft(row) ? row.id : null",
+        "rowKeyOf": "(row) => row.id"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/purchase/pages/purchase_report_table_page.dart",
+      "line": 530,
+      "type": "MasterDataTableView<Map<String, dynamic>>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "data.rows"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/quality/pages/production_fqc_handling_page.dart",
+      "line": 1224,
+      "type": "MasterDataTableView<FqcReportRow>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "activeRows",
+        "idOf": "(row) => row.inspection.id"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/quality/pages/production_fqc_handling_page.dart",
+      "line": 1332,
+      "type": "MasterDataTableView<_SheetHeaderRow>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "[_SheetHeaderRow(warehouseName: sheet.warehouseName ?? '—', receiverName: sheet.receiverName ?? '—', reportNos: sheet.reportNos ?? '—', pending: '$activeCount 行待检' '${sheet.pendingQtyText == null ? '' : ' · ${sheet.pendingQtyText}'}', createdAt: ChinaDateTime.formatInstant(sheet.createdAt))]"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/quality/pages/production_fqc_handling_page.dart",
+      "line": 2100,
+      "type": "MasterDataTableView<_FactRow>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "[_FactRow(planNo: inspection.planNo ?? '—', goodsName: inspection.goodsName, goodsCode: inspection.goodsCode, colorName: inspection.colorName, sheetNo: inspection.sheetNo ?? '无检查单', warehouse: inspection.warehouseName ?? '—', place: fqcStorageText(inspection), receiver: inspection.receiverName ?? '—', qty: '${fqty(inspection.reportedQty)} / ' '${fqty(inspection.passedQty)} / ' '${fqty(inspection.failedQty)} / ' '${fqty(inspection.remainingQty)} / ' '${fqty(inspection.authorizedInboundQty)}' '${inspection.unitName == null ? '' : ' ${inspection.unitName}'}', time: '${ChinaDateTime.formatInstant(inspection.createdAt)}' ' / ${ChinaDateTime.formatInstant(inspection.updatedAt)}')]"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/quality/pages/production_fqc_handling_page.dart",
+      "line": 2239,
+      "type": "MasterDataTableView<FqcReportRow>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "[row]"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/quality/pages/production_fqc_inspections_page.dart",
+      "line": 427,
+      "type": "MasterDataTableView<ProductionFqcInspection>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_tableRows",
+        "items": "result.items",
+        "idOf": "(inspection) => inspection.active ? inspection.id : null"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/quality/pages/quality_batch_approval_page.dart",
+      "line": 1050,
+      "type": "MasterDataTableView<_ApprovalRow>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "rows",
+        "idOf": "(row) => row.selectable ? row.selectId : null"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/quality/pages/quality_inspection_records_page.dart",
+      "line": 637,
+      "type": "MasterDataTableView<QualityInspectionRecord>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_readingRows",
+        "items": "data.items",
+        "idOf": "(record) => record.recordId"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/quality/pages/quality_inspection_records_page.dart",
+      "line": 1145,
+      "type": "MasterDataTableView<_DetailQuantityRow>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "[_DetailQuantityRow(item: '合格', current: record.passQty, cumulative: record.currentPassedQty), _DetailQuantityRow(item: '不合格', current: record.failQty, cumulative: record.currentFailedQty), _DetailQuantityRow(item: '送检', current: null, cumulative: record.inspectedQty), _DetailQuantityRow(item: '剩余待检', current: null, cumulative: record.currentRemainingQty)]"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/quality/pages/quality_inspection_records_page.dart",
+      "line": 1272,
+      "type": "MasterDataTableView<_DetailField>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "fields"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/quality/pages/quality_pending_disposal_page.dart",
+      "line": 589,
+      "type": "MasterDataTableView<_DisposalRow>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "pageItems",
+        "idOf": "(row) => row.isSheet ? (_canDecideFqc && row.sheet!.active ? row.identity : null) : row.isFqc ? (_canDecideFqc && row.inspection!.active ? row.identity : null) : (_canHandleIqc ? row.identity : null)",
+        "rowKeyOf": "(row) => row.identity"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/quality/pages/quality_pending_disposal_page.dart",
+      "line": 1676,
+      "type": "MasterDataTableView<_ReceiptHeaderRow>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "[_ReceiptHeaderRow(supplierName: receipt.supplierName ?? '—', billDate: receipt.billDate ?? '—', lastReceivedAt: _fmtDateTime(receipt.lastReceivedAt) ?? '—', pending: '${_items.length} 行明细 · 待检量 $_pendingSummary')]"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/quality/pages/quality_pending_disposal_page.dart",
+      "line": 1757,
+      "type": "MasterDataTableView<ProcurementInspectionItem>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "_items",
+        "idOf": "(item) => _isOpenItem(item) ? item.id : null"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/rd_task/pages/rd_task_page.dart",
+      "line": 996,
+      "type": "MasterDataTableView<RdTaskRow>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "rowsController",
+        "items": "items"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/sales/pages/sales_doc_detail_page.dart",
+      "line": 2419,
+      "type": "MasterDataTableView<SalesDocItem>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "items"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/sales/pages/sales_doc_list_page.dart",
+      "line": 1552,
+      "type": "MasterDataTableView<SalesDocListItem>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_tableRows",
+        "idOf": "(row) => !draftDeleteBusy && !_list.loading && isDeletableSalesDraftRow(row, widget.docType) ? row.id : null",
+        "rowKeyOf": "(row) => row.id",
+        "items": "_list.page?.items ?? const []"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/sales/pages/sales_manager_review_page.dart",
+      "line": 743,
+      "type": "MasterDataTableView<SalesManagerReviewTask>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "_result?.items ?? []",
+        "rowKeyOf": "(r) => '${r.kind}:${r.id}'",
+        "idOf": "(r) => r.kind == 'order' && r.state == 'PENDING' && _allowed('order', 'confirm') ? r.id : null"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/sales/pages/sales_order_progress_page.dart",
+      "line": 762,
+      "type": "MasterDataTableView<SalesOrderProgressRow>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_tableRows",
+        "idOf": "(row) => !draftDeleteBusy && !_loading && _isDraftRow(row) ? row.orderId : null",
+        "rowKeyOf": "(row) => row.orderId",
+        "items": "_result?.items ?? const <SalesOrderProgressRow>[]"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/sales/pages/sales_report_page.dart",
+      "line": 574,
+      "type": "MasterDataTableView<Map<String, dynamic>>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "data.rows"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/sales/pages/sales_report_page.dart",
+      "line": 1069,
+      "type": "MasterDataTableView<Map<String, dynamic>>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_tableRows",
+        "items": "data.rows"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/sales/widgets/sales_plan_progress_panel.dart",
+      "line": 448,
+      "type": "MasterDataTableView<OrderPlanProgressLine>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "lines",
+        "idOf": "(line) => (line.availableShipmentQty ?? 0) > 0 ? line.orderItemId : null",
+        "rowKeyOf": "(line) => line.orderItemId"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/sales/widgets/sales_shipment_task_workbench.dart",
+      "line": 1007,
+      "type": "MasterDataTableView<SalesDocListItem>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_tableRows",
+        "items": "result.items",
+        "idOf": "(item) => _canSelectItem(item) ? item.id : null"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/security/pages/security_blacklist_page.dart",
+      "line": 169,
+      "type": "MasterDataTableView<VisitorBlacklistItem>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_tableRows",
+        "items": "page.items"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/stock/counts/pages/stock_count_review_page.dart",
+      "line": 818,
+      "type": "MasterDataTableView<StockCountRequest>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_readingRows",
+        "items": "_page?.items ?? const []",
+        "idOf": "(r) => r.id.isEmpty || (widget.reviewRoute != null && !_batchSelectable(r)) ? null : r.id"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/stock/counts/pages/stock_count_review_page.dart",
+      "line": 1062,
+      "type": "MasterDataTableView<StockCountRequestLine>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "idOf": "(r) => r.key",
+        "items": "detail.lines"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/stock/counts/pages/stock_count_session_page.dart",
+      "line": 1016,
+      "type": "MasterDataTableView<CountStockRow>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_readingRows",
+        "items": "_items",
+        "rowKeyOf": "(row) => row.key"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/stock/counts/widgets/stock_count_batch_approval_dialog.dart",
+      "line": 218,
+      "type": "MasterDataTableView<_CountReviewRow>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowKeyOf": "(row) => '${row.request.id}:${row.line.key}'",
+        "items": "[for (final request in requests) for (final line in request.lines) (request: request, line: line)]"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/stock/pages/instant_inventory_page.dart",
+      "line": 1186,
+      "type": "MasterDataTableView<InstantInventoryRow>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "immutableRows": "!inlineEdit.active",
+        "rowsController": "_readingRows",
+        "items": "_page?.items ?? const []",
+        "idOf": "(row) => row.readIdentity",
+        "rowKeyOf": "_tableRowKey"
+      },
+      "incrementalContract": "explicit-gated"
+    },
+    {
+      "path": "lib/features/stock/widgets/instant_inventory_overview_content.dart",
+      "line": 832,
+      "type": "MasterDataTableView<InventoryUnitSummary>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "rows"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/subcontract/pages/subcontract_business_list_pages.dart",
+      "line": 1110,
+      "type": "MasterDataTableView<SubcontractDocListItem>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_tableRows",
+        "items": "_controller.page?.items ?? const <SubcontractDocListItem>[]",
+        "idOf": "(row) => !draftDeleteBusy && _deletableDraft(row) ? row.id : null",
+        "rowKeyOf": "(row) => row.id"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/subcontract/pages/subcontract_decomposition_page.dart",
+      "line": 2114,
+      "type": "MasterDataTableView<OperationsWorkbenchTask>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_taskRows",
+        "items": "_displayItems",
+        "idOf": "(task) => task.id",
+        "rowKeyOf": "(task) => task.taskId"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/subcontract/pages/subcontract_decomposition_page.dart",
+      "line": 2518,
+      "type": "MasterDataTableView<SubcontractPendingRow>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_pendingRows",
+        "unpagedItems": "drawRows",
+        "items": "applicationRows",
+        "idOf": "(row) {final id = rowId(row); return id.isEmpty ? null : id;}",
+        "rowKeyOf": "(row) => row.rowKey"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/subcontract/pages/subcontract_doc_detail_page.dart",
+      "line": 1155,
+      "type": "MasterDataTableView<SubcontractDocItem>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "items"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/subcontract/pages/subcontract_doc_detail_page.dart",
+      "line": 1706,
+      "type": "MasterDataTableView<SubcontractOrderMaterialLine>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "materials"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/subcontract/pages/subcontract_draw_request_page.dart",
+      "line": 801,
+      "type": "MasterDataTableView<SubcontractDrawPreviewLine>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowKeyOf": "(line) => line.identity",
+        "items": "_rows"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/subcontract/pages/subcontract_report_table_page.dart",
+      "line": 544,
+      "type": "MasterDataTableView<Map<String, dynamic>>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "data.rows"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/subcontract/pages/subcontract_short_delivery_page.dart",
+      "line": 574,
+      "type": "MasterDataTableView<SubcontractShortDeliveryCase>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_readingRows",
+        "items": "result?.items ?? const []"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/subcontract/widgets/subcontract_application_kit_dialog.dart",
+      "line": 273,
+      "type": "MasterDataTableView<SubcontractKitMaterial>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "kit.materials"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/subcontract/widgets/subcontract_draw_task_detail_dialog.dart",
+      "line": 299,
+      "type": "MasterDataTableView<SubcontractDrawMaterial>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "detail.materials"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/subcontract/widgets/subcontract_order_progress.dart",
+      "line": 333,
+      "type": "MasterDataTableView<SubcontractDrawMaterial>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "item.materials"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/subcontract/widgets/subcontract_order_progress.dart",
+      "line": 442,
+      "type": "MasterDataTableView<SubcontractSupplierLedgerLine>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "p.supplierLedger"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/suggestion/pages/suggestion_list_page.dart",
+      "line": 99,
+      "type": "MasterDataTableView<Suggestion>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_tableRows",
+        "items": "page.items"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/visitor/pages/visitor_home_page.dart",
+      "line": 215,
+      "type": "MasterDataTableView<VisitorApplication>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_tableRows",
+        "items": "page.items"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/visitor_approval/pages/my_visitors_page.dart",
+      "line": 309,
+      "type": "MasterDataTableView<VisitorApplication>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "page.items",
+        "rowsController": "_tableRows",
+        "idOf": "(app) => app.id"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/visitor_approval/pages/visitor_approval_list_page.dart",
+      "line": 472,
+      "type": "MasterDataTableView<VisitorApplication>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "page.items",
+        "rowsController": "_tableRows",
+        "idOf": "(app) => app.id"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/warehouse/materialbin/pages/workshop_material_bin_page.dart",
+      "line": 1232,
+      "type": "MasterDataTableView<WmPositionRow>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "_stockRows(position)",
+        "rowKeyOf": "(r) => r.key"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/warehouse/materialbin/pages/workshop_material_bin_page.dart",
+      "line": 1418,
+      "type": "MasterDataTableView<WmRequisition>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "page?.items ?? const []",
+        "rowKeyOf": "(r) => r.rowKey"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/warehouse/materialbin/widgets/workshop_material_overview.dart",
+      "line": 368,
+      "type": "MasterDataTableView<WmSetting>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "rows",
+        "rowKeyOf": "(s) => s.workshopDepartmentId",
+        "idOf": "(s) => s.workshopDepartmentId"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/warehouse/materialbin/widgets/workshop_material_summary_table.dart",
+      "line": 36,
+      "type": "MasterDataTableView<Map<String, dynamic>>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "items",
+        "rowKeyOf": "(row) => row['productGoodsId'] as String?"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/warehouse/materialbin/widgets/workshop_material_task_center.dart",
+      "line": 275,
+      "type": "MasterDataTableView<_BinStatusRow>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "rows",
+        "rowKeyOf": "(r) => r.setting.workshopDepartmentId"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/warehouse/materialbin/widgets/workshop_request_material_picker.dart",
+      "line": 399,
+      "type": "MasterDataTableView<WmMaterialOption>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "_page?.items ?? const []",
+        "rowsController": "_rows",
+        "idOf": "(material) => material.key"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/warehouse/pages/production_finished_batch_stock_in_page.dart",
+      "line": 514,
+      "type": "MasterDataTableView<ProductionFinishedInboundTask>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "rows",
+        "idOf": "(task) => task.documentId"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/warehouse/pages/production_material_discovery_page.dart",
+      "line": 636,
+      "type": "MasterDataTableView<DiscoveryMaterialRow>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "List.unmodifiable(_grid.rows)",
+        "rowKeyOf": "(row) => row.id"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/warehouse/pages/shelf_label_page.dart",
+      "line": 553,
+      "type": "MasterDataTableView<ShelfLabelRow>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowKeyOf": "(row) => row.rowKey",
+        "idOf": "(row) => row.rowKey",
+        "items": "_tableRows"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/warehouse/pages/stock_doc_detail_page.dart",
+      "line": 1624,
+      "type": "MasterDataTableView<StockDocItem>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowKeyOf": "(item) => item.id",
+        "items": "detail.items"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/warehouse/pages/stock_doc_list_page.dart",
+      "line": 693,
+      "type": "MasterDataTableView<StockDocListItem>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_tableRows",
+        "idOf": "(item) => !draftDeleteBusy && !_list.loading && isStockDraftDeleteCandidate(item) ? item.id : null",
+        "rowKeyOf": "(item) => item.id",
+        "items": "_list.page?.items ?? const []"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/warehouse/pages/warehouse_document_history_detail_page.dart",
+      "line": 191,
+      "type": "MasterDataTableView<WarehouseDocumentPhysicalItem>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "detail.items"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/warehouse/pages/warehouse_insight_page.dart",
+      "line": 1107,
+      "type": "MasterDataTableView<InsightHealthRow>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "rows?.items ?? const []",
+        "rowKeyOf": "(r) => r.rowKey"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/warehouse/pages/warehouse_insight_page.dart",
+      "line": 1174,
+      "type": "MasterDataTableView<InsightCycleCountRow>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "rows?.items ?? const []",
+        "idOf": "(r) => r.rowKey"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/warehouse/pages/warehouse_insight_page.dart",
+      "line": 1227,
+      "type": "MasterDataTableView<InsightWeightAlertRow>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "rows?.items ?? const []",
+        "rowKeyOf": "(r) => r.id"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/warehouse/pages/warehouse_insight_page.dart",
+      "line": 1267,
+      "type": "MasterDataTableView<InsightCounterpartSummary>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "[...?alerts?.supplierSummary, ...?alerts?.workshopSummary]",
+        "rowKeyOf": "(s) => s.rowKey"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/warehouse/pages/warehouse_insight_page.dart",
+      "line": 1297,
+      "type": "MasterDataTableView<InsightLearningRow>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "items",
+        "rowKeyOf": "(r) => r.goodsId"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/warehouse/pages/warehouse_quality_results_page.dart",
+      "line": 734,
+      "type": "MasterDataTableView<WarehouseQualityResultTask>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_readingRows",
+        "items": "result.items",
+        "idOf": "_taskId",
+        "rowKeyOf": "_taskId"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/warehouse/pages/warehouse_report_table_page.dart",
+      "line": 559,
+      "type": "MasterDataTableView<Map<String, dynamic>>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "data.rows"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/warehouse/pages/warehouse_sales_outbound_batch_page.dart",
+      "line": 958,
+      "type": "MasterDataTableView<WarehouseSalesOutboundTableRow>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "rows",
+        "rowKeyOf": "(row) => row.key"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/warehouse/pages/warehouse_sales_outbound_detail_page.dart",
+      "line": 523,
+      "type": "MasterDataTableView<WarehouseSalesOutboundTableRow>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "rows",
+        "rowKeyOf": "(row) => row.key"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/warehouse/widgets/production_draw_detail_table.dart",
+      "line": 317,
+      "type": "MasterDataTableView<ProductionDrawDetailRow>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowKeyOf": "(row) => row.stableRowKey",
+        "items": "viewRows"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/warehouse/widgets/production_finished_inbound_tasks_view.dart",
+      "line": 595,
+      "type": "MasterDataTableView<ProductionFinishedInboundTask>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_tableRows",
+        "items": "result.items",
+        "idOf": "(task) => task.isArrivalRegistration ? (task.reportId?.isNotEmpty == true ? 'reg:${task.reportId}' : null) : ((task.documentId ?? '').isEmpty ? null : 'doc:${task.documentId}')"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/warehouse/widgets/warehouse_arrival_exceptions_view.dart",
+      "line": 607,
+      "type": "MasterDataTableView<ProcurementArrivalException>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_readingRows",
+        "items": "result.items",
+        "idOf": "(task) => task.canStockIn ? task.id : null"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/warehouse/widgets/warehouse_delivery_components_table.dart",
+      "line": 56,
+      "type": "MasterDataTableView<({WarehouseSalesOutboundDetail detail, WarehouseDeliveryComponent component})>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "rows",
+        "idOf": "(row) => row.component.id"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/warehouse/widgets/warehouse_document_history_view.dart",
+      "line": 372,
+      "type": "MasterDataTableView<WarehouseDocumentHistorySummary>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_readingRows",
+        "items": "result.items",
+        "rowKeyOf": "(item) => item.rowKey"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/warehouse/widgets/warehouse_draw_task_segment.dart",
+      "line": 635,
+      "type": "MasterDataTableView<WarehouseDrawTask>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_readingRows",
+        "items": "tasks",
+        "idOf": "_idOf"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/warehouse/widgets/warehouse_inbound_expectations_view.dart",
+      "line": 831,
+      "type": "MasterDataTableView<InboundExpectation>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_tableRows",
+        "items": "result.items",
+        "idOf": "(expectation) => _canBatchOperate(expectation) ? expectation.id : null"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/warehouse/widgets/warehouse_sales_outbound_workbench.dart",
+      "line": 549,
+      "type": "MasterDataTableView<WarehouseSalesOutboundSummary>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_tableRows",
+        "items": "result.items",
+        "idOf": "(item) => _canSelect(item) ? item.id : null",
+        "rowKeyOf": "(item) => item.id"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/warehouse/widgets/warehouse_stock_doc_segment.dart",
+      "line": 794,
+      "type": "MasterDataTableView<StockDocListItem>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_tableRows",
+        "rowKeyOf": "(d) => d.id",
+        "idOf": "(d) => !_outboundBusy && !draftDeleteBusy && !_list.loading && _list.error == null && _isSelectableDraft(d) ? d.id : null",
+        "items": "_list.page?.items ?? const []"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/warehouse/widgets/warehouse_stock_outbound_detail_table.dart",
+      "line": 48,
+      "type": "MasterDataTableView<WarehouseStockOutboundRow>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "[for (final document in documents) for (final item in document.items) WarehouseStockOutboundRow(document, item)]",
+        "idOf": "(row) => canSelect?.call(row.document) == false ? null : row.document.id",
+        "rowKeyOf": "(row) => '${row.document.id}:${row.item.id ?? row.item.lineNo}'"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/warehouse/widgets/warehouse_subcontract_outbound_workbench.dart",
+      "line": 340,
+      "type": "MasterDataTableView<OutboundTask>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_tableRows",
+        "items": "result.items",
+        "idOf": "(task) => task.issueId",
+        "rowKeyOf": "(task) => task.issueId"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/warehouse/widgets/warehouse_task_physical_detail_dialog.dart",
+      "line": 492,
+      "type": "MasterDataTableView<Map<String, dynamic>>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "lines"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/features/warehouse/widgets/warehouse_task_records_view.dart",
+      "line": 1311,
+      "type": "MasterDataTableView<WarehouseTaskCenterRecord>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_rows",
+        "items": "result?.items ?? const []",
+        "unpagedItems": "_localRows",
+        "idOf": "(row) => _canSelect(row) ? row.rowKey : null",
+        "rowKeyOf": "(row) => row.rowKey"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/shared/delivery/order_delivery_window.dart",
+      "line": 452,
+      "type": "MasterDataTableView<_DeliveryRow>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "rows",
+        "unfilteredRows": "_unfilteredRows",
+        "filterContextRows": "(all, matched) {final keys = <String>{}; for (final row in matched) {for (var depth = 0; depth <= row.node.path.length; depth++) {keys.add(OrderDeliveryPlan.pathKey(row.node.path.take(depth)));}} return all.where((row) => keys.contains(row.node.key)).map((row) => row.forFilter()).toList();}",
+        "idOf": "(row) => row.node.key"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/shared/drafts/draft_workspace_table.dart",
+      "line": 660,
+      "type": "MasterDataTableView<DraftWorkspaceRow>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "rows",
+        "rowKeyOf": "(row) => row.key",
+        "idOf": "(row) => complete && _canSelect(row) ? row.key : null"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/shared/drafts/form_draft_category_table.dart",
+      "line": 408,
+      "type": "MasterDataTableView<FormDraftCategoryRow<T>>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowVisible": "table.rowVisible == null ? null : (row) => row.isLocal || table.rowVisible!(row.record as T)",
+        "rowsController": "table.rowsController?.adapt<FormDraftCategoryRow<T>>((rows) => rows.where((row) => !row.isLocal).map((row) => row.record as T))",
+        "unpagedItems": "[if (pinLocal) for (final draft in local) FormDraftCategoryRow<T>(draft: draft), for (final item in table.unpagedItems) FormDraftCategoryRow<T>(record: item, draft: recovering[_id(item)])]",
+        "items": "rows",
+        "filterContextRows": "table.filterContextRows == null ? null : (all, matched) {final recordMatches = Set<T>.identity()..addAll(table.filterContextRows!([for (final row in all) if (row.record != null) row.record as T], [for (final row in matched) if (row.record != null) row.record as T])); final draftMatches = Set<FormDraftCategoryRow<T>>.identity()..addAll(matched.where((row) => row.isLocal)); return all.where((row) => row.record != null ? recordMatches.contains(row.record) : draftMatches.contains(row)).toList();}",
+        "unfilteredRows": "table.unfilteredRows == null ? null : (all) {final visibleRecords = Set<T>.identity()..addAll(table.unfilteredRows!([for (final row in all) if (row.record != null) row.record as T])); return all.where((row) => row.isLocal || visibleRecords.contains(row.record)).toList();}",
+        "idOf": "(row) => row.isLocal ? '$_prefix${row.draft!.id}' : table.idOf?.call(row.record as T)",
+        "rowKeyOf": "(row) => row.isLocal ? '$_prefix${row.draft!.id}' : _id(row.record as T)",
+        "leadingGroups": "table.leadingGroups?.map((group) => MasterDataGroup<FormDraftCategoryRow<T>>(id: group.id, title: group.title, subtitle: group.subtitle, tint: group.tint, icon: group.icon, items: group.items.map((item) => FormDraftCategoryRow<T>(record: item, draft: recovering[_id(item)])).toList(), total: group.total, detailLabel: group.detailLabel, loading: group.loading, error: group.error, onExpand: group.onExpand, onRetry: group.onRetry)).toList()"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/shared/drafts/form_draft_category_table.dart",
+      "line": 1002,
+      "type": "MasterDataTableView<Object>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "const []",
+        "idOf": "(_) => null"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/shared/history/record_history_page.dart",
+      "line": 644,
+      "type": "MasterDataTableView<MasterRecordRevision>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "hasAccess ? _rows : const []",
+        "idOf": "(row) => row.id"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/shared/stock_ledger/widgets/goods_production_trace_view.dart",
+      "line": 384,
+      "type": "MasterDataTableView<GoodsProductionTraceRow>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_readViewportRows",
+        "items": "_data?.items ?? const []",
+        "rowKeyOf": "(row) => row.id"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/shared/stock_ledger/widgets/goods_stock_balance_view.dart",
+      "line": 277,
+      "type": "MasterDataTableView<BalanceRow>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_readViewportRows",
+        "items": "rows"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/shared/stock_ledger/widgets/goods_stock_ledger_view.dart",
+      "line": 388,
+      "type": "MasterDataTableView<StockLedgerRow>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_readViewportRows",
+        "items": "rows",
+        "rowKeyOf": "(row) => '${row.rowKind}:${row.id}'"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/shared/stock_ledger/widgets/goods_weight_learning_view.dart",
+      "line": 585,
+      "type": "MasterDataTableView<WeightObservation>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_readViewportRows",
+        "items": "rows",
+        "rowKeyOf": "(o) => o.id"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/shared/stock_ledger/widgets/goods_weight_learning_view.dart",
+      "line": 831,
+      "type": "MasterDataTableView<GoodsWeightEstimateRow>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "rows",
+        "rowKeyOf": "(r) => r.supplierId"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/shared/stock_ledger/widgets/material_trace_subject_picker.dart",
+      "line": 248,
+      "type": "MasterDataTableView<MaterialTraceSubject>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "_data?.items ?? const []",
+        "rowsController": "_rows",
+        "idOf": "(item) => '${item.type}:${item.id}'"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/shared/widgets/sales_order_picker.dart",
+      "line": 377,
+      "type": "MasterDataTableView<SalesDocListItem>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "rowsController": "_pickerRows",
+        "items": "_page?.items ?? const []"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    },
+    {
+      "path": "lib/shared/widgets/warehouse_picker_panel.dart",
+      "line": 508,
+      "type": "MasterDataTableView<WarehouseDictEntry>",
+      "sharedBaseChanges": true,
+      "parameters": {
+        "items": "entries",
+        "rowKeyOf": "(entry) => entry.id"
+      },
+      "incrementalContract": "conservative-pending-owner-contract-review"
+    }
+  ]
+}

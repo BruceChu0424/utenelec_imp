@@ -9,6 +9,9 @@ import 'dart:collection';
 import '../../features/basic_data/models/master_facet.dart';
 import '../../core/performance/ui_work_budget.dart';
 import '../report/report_total.dart';
+import 'immutable_paged_rows.dart';
+
+export 'immutable_paged_rows.dart' show pagedRowsAppendStart;
 
 /// Optional immutable proof carried by a typed response across internal batches.
 abstract interface class PagedResultRevision {
@@ -23,9 +26,10 @@ abstract interface class VersionedPagedResultProof
   String? get readDataVersion;
 }
 
-List<T> freezePagedRows<T>(Iterable<T> rows) => _IndependentPagedRows<T>(rows);
+List<T> freezePagedRows<T>(Iterable<T> rows) =>
+    independentImmutablePagedRows<T>(rows) ?? _IndependentPagedRows<T>(rows);
 bool isIndependentPagedRows(Object? rows) =>
-    rows is _IndependentPagedRows<Object?>;
+    rows is _IndependentPagedRows<Object?> || isImmutablePagedRows(rows);
 
 /// Unique response identity even when there are no rows. Never bind a shared
 /// const empty list to a reader; its authorization belongs to this response.
@@ -66,6 +70,11 @@ class PagedResult<T> {
   /// 各 facet 字段的空值行数（"(空)(N)" 桶用）；与 [facets] 成对出现。
   final Map<String, int> facetNullCounts;
 
+  /// Preserve the actual response's row type even when a caller reads a base
+  /// type. Only this owner can add new rows; published chunks stay immutable.
+  ImmutablePagedRowsBuilder<T> createRowsBuilder() =>
+      ImmutablePagedRowsBuilder<T>();
+
   /// The response's reified row type builds the typed list. A Base reader may
   /// legally receive a Child page without passing `List<Base>` to `List<Child>`.
   PagedResult<T> withRowsFrom(
@@ -75,7 +84,9 @@ class PagedResult<T> {
     int? total,
     int? totalPages,
   }) => withRows(
-    List<T>.of(rows.cast<T>()),
+    rows is List<T> && isImmutablePagedRows(rows)
+        ? rows
+        : List<T>.of(rows.cast<T>()),
     page: page,
     size: size,
     total: total,
@@ -90,6 +101,16 @@ class PagedResult<T> {
     int? totalPages,
     UiWorkBudget? budget,
   }) async {
+    if (rows is List<T> && isImmutablePagedRows(rows)) {
+      budget?.ensureCurrent();
+      return withRows(
+        rows,
+        page: page,
+        size: size,
+        total: total,
+        totalPages: totalPages,
+      );
+    }
     final typed = await mapInUiSlices<Object?, T>(
       rows,
       (row) => row as T,

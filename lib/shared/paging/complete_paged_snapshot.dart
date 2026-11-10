@@ -2,6 +2,7 @@ import 'dart:async';
 
 import '../../core/network/api_exception.dart';
 import '../../core/performance/ui_work_budget.dart';
+import '../models/immutable_paged_rows.dart';
 import '../models/paged_result.dart';
 import 'complete_read_progress.dart';
 import 'paged_read_intent.dart';
@@ -152,7 +153,12 @@ Future<PagedResult<T>> loadCompletePagedResult<T>({
       ? null
       : CompleteReadProgressReporter.start(owner: progressOwner);
   final work = budget ?? UiWorkBudget(isCurrent: current);
-  final rows = <T>[];
+  // Overlap readers may replace an earlier row: they keep the original mutable
+  // accumulator and deliberately offer no append proof. Exact readers seal
+  // only each new batch, never copying the already published prefix again.
+  final overlapRows = deduplicateOverlaps ? <T>[] : null;
+  ImmutablePagedRowsBuilder<T>? rowBuilder;
+  int rowCount() => overlapRows?.length ?? rowBuilder?.length ?? 0;
   final identities = <Object, int>{};
   PagedResult<T>? first;
   Object? firstRevision;
@@ -177,16 +183,23 @@ Future<PagedResult<T>> loadCompletePagedResult<T>({
           serverSize != null ||
           (cap == null && batches.firstBatchSize == batches.maxBatchSize);
       final page = fixedSize ? batch + 1 : offset ~/ size + 1;
-      final result = pipeline != null && batch > 0
+      final queued = pipeline != null && batch > 0
           ? await pipeline.take(batch)
-          : await PagedReadIntent.scopedRead(
+          : null;
+      final PagedResult<T> result = queued != null
+          ? queued.value!
+          : await PagedReadIntent.scopedRead<Future<PagedResult<T>>>(
               logicalCurrent,
               () => loadPage(page, size),
               bootstrap: batch == 0,
             );
-      pipeline?.validate(result, batch);
       if (!current()) throw const UiWorkCancelled();
       progressive?.throwIfFailed();
+      // Network/model callers can reuse a mutable page list. Freeze this
+      // bounded batch before the first UI yield, not the whole read prefix.
+      final pageRows =
+          queued?.rows ?? List<T>.of(result.items, growable: false);
+      pipeline?.validate(result, batch, pageRows);
       final knownTotal = result.total >= 0;
       final exactTotal = knownTotal && requireStableTotal;
       if (batch == 0 && !exactTotal) {
@@ -197,7 +210,7 @@ Future<PagedResult<T>> loadCompletePagedResult<T>({
         serverSize = size;
       }
       final hasMore = exactTotal
-          ? offset + result.items.length < result.total
+          ? offset + pageRows.length < result.total
           : result.page < result.totalPages;
       if (pipeline == null && serverSize == null && result.page == page) {
         final expectedRows = exactTotal
@@ -209,16 +222,16 @@ Future<PagedResult<T>> loadCompletePagedResult<T>({
             (result.size == size ||
                 (exactTotal &&
                     result.totalPages == (result.total + size - 1) ~/ size)) &&
-            result.items.length <= size &&
-            (expectedRows == null || result.items.length == expectedRows);
+            pageRows.length <= size &&
+            (expectedRows == null || pageRows.length == expectedRows);
         if (!honored) {
           if (batch == 0) {
             // The first page starts at row 0 whatever its size: a smaller
             // server maximum, a loader with its own page size or one complete
             // nested result. Any continuation keeps exactly that size.
-            final own = result.size >= result.items.length
+            final own = result.size >= pageRows.length
                 ? result.size
-                : result.items.length;
+                : pageRows.length;
             if (own < 1 && hasMore) throw _invalidPagination();
             serverSize = own < 1 ? size : own;
           } else if (result.size >= 1 &&
@@ -241,11 +254,11 @@ Future<PagedResult<T>> loadCompletePagedResult<T>({
               unknownPageCountIsHorizon &&
               result.totalPages != page &&
               result.totalPages != page + 1) ||
-          (hasMore && result.items.isEmpty) ||
+          (hasMore && pageRows.isEmpty) ||
           (exactTotal &&
-              result.items.length !=
+              pageRows.length !=
                   (result.total - offset).clamp(0, effectiveSize)) ||
-          (result.totalPages == 0 && result.items.isNotEmpty)) {
+          (result.totalPages == 0 && pageRows.isNotEmpty)) {
         throw _invalidPagination();
       }
       if (first case final initial?) {
@@ -264,13 +277,14 @@ Future<PagedResult<T>> loadCompletePagedResult<T>({
         }
       } else {
         first = result;
+        if (overlapRows == null) rowBuilder = result.createRowsBuilder();
         firstRevision = freezePagedReadQuery(
           result is PagedResultRevision
               ? (result as PagedResultRevision).snapshotRevision
               : null,
         );
       }
-      for (final row in result.items) {
+      for (final row in pageRows) {
         if (pipeline == null && idOf != null) {
           final identity = idOf(row);
           if (identity == null || identity == '') {
@@ -284,32 +298,37 @@ Future<PagedResult<T>> loadCompletePagedResult<T>({
                 '记录身份重复或分页发生变化，请刷新后核对完整结果',
               );
             }
-            rows[previous] = row;
+            overlapRows![previous] = row;
             await work.checkpoint();
             if (!current()) throw const UiWorkCancelled();
             continue;
           }
-          identities[identity] = rows.length;
+          identities[identity] = rowCount();
         }
-        rows.add(row);
+        if (overlapRows != null) {
+          overlapRows.add(row);
+        } else {
+          rowBuilder!.add(row);
+        }
         await work.checkpoint();
         if (!current()) throw const UiWorkCancelled();
       }
-      offset += result.items.length;
+      offset += pageRows.length;
       batch++;
-      if (knownTotal && rows.length > result.total) throw _snapshotChanged();
-      final incomplete = !hasMore && knownTotal && rows.length != result.total;
+      if (knownTotal && rowCount() > result.total) throw _snapshotChanged();
+      final incomplete = !hasMore && knownTotal && rowCount() != result.total;
       if (!current()) throw const UiWorkCancelled();
       pipeline?.throwIfFailed();
+      final sealedRows = rowBuilder?.snapshot();
       if (onPage != null) await onPage(result);
       if (!current()) throw const UiWorkCancelled();
       onBatch?.call(
-        List<T>.unmodifiable(rows),
+        sealedRows ?? List<T>.unmodifiable(overlapRows!),
         result.total,
         hasMore || incomplete,
       );
       progress?.update(
-        loaded: rows.length,
+        loaded: rowCount(),
         total: knownTotal ? result.total : null,
       );
       if (incomplete) throw _snapshotChanged();
@@ -318,11 +337,14 @@ Future<PagedResult<T>> loadCompletePagedResult<T>({
         // The accumulated validated prefix; the server's exact total rides
         // along unchanged and the complete result replaces it.
         final initial = first;
-        final boundary = rows.length;
+        final boundary = rowCount();
         final total = knownTotal ? result.total : boundary;
+        // Capture an immutable prefix, never the builder or a mutable list
+        // whose previous rows a later overlap could replace during the timer.
+        final prefix = sealedRows ?? freezePagedRows<T>(overlapRows!);
         progressive.offer(
-          () => initial.withRows(
-            List<T>.of(rows.take(boundary)),
+          () => initial.withRowsFrom(
+            prefix,
             page: 1,
             size: boundary,
             total: total,
@@ -335,9 +357,9 @@ Future<PagedResult<T>> loadCompletePagedResult<T>({
         progressive?.close();
         work.ensureCurrent();
         final combined = await first.withRowsFromResponsive(
-          rows,
-          total: knownTotal ? result.total : rows.length,
-          totalPages: rows.isEmpty ? 0 : 1,
+          sealedRows ?? overlapRows!,
+          total: knownTotal ? result.total : rowCount(),
+          totalPages: rowCount() == 0 ? 0 : 1,
           budget: work,
         );
         if (!current()) throw const UiWorkCancelled();
@@ -458,7 +480,7 @@ Future<S> loadCompleteCursorSnapshot<R, S, C>({
   final progress = onBatch == null || !CompleteReadProgressReporter.hasListeners
       ? null
       : CompleteReadProgressReporter.start();
-  final rows = <R>[];
+  final rows = ImmutablePagedRowsBuilder<R>();
   final identities = <Object>{};
   final cursors = <PagedReadQueryKey>{};
   try {
@@ -497,7 +519,7 @@ class _CursorReadState<R, S, C> {
     required this.identities,
     required this.cursors,
   });
-  final List<R> rows;
+  final ImmutablePagedRowsBuilder<R> rows;
   final Set<Object> identities;
   final Set<PagedReadQueryKey> cursors;
   C? cursor;
@@ -543,7 +565,7 @@ Future<S> _cursorBatches<R, S, C>({
         !samePagedReadQuery(state.firstRevision, revisionOf(response))) {
       throw ApiException('SNAPSHOT_CHANGED', '历史读取范围已变化，请刷新后重新核对');
     }
-    final batch = rowsOf(response);
+    final batch = List<R>.of(rowsOf(response), growable: false);
     final next = nextCursorOf(response);
     if (next != null &&
         (batch.isEmpty ||
@@ -571,14 +593,12 @@ Future<S> _cursorBatches<R, S, C>({
       if (!current()) throw const UiWorkCancelled();
     }
     if (!current()) throw const UiWorkCancelled();
-    onBatch?.call(List<R>.unmodifiable(state.rows), next != null);
+    final sealedRows = state.rows.snapshot();
+    onBatch?.call(sealedRows, next != null);
     // total 省缺即 null：游标读取无总量语义，卡片走不定进度。
     progress?.update(loaded: state.rows.length);
     if (next == null) {
-      final combined = rebuildSnapshot(
-        state.first as S,
-        List<R>.unmodifiable(state.rows),
-      );
+      final combined = rebuildSnapshot(state.first as S, sealedRows);
       if (!current()) throw const UiWorkCancelled();
       progress?.finish(succeeded: true);
       return combined;
@@ -630,7 +650,7 @@ class _CompletePagePipeline<T> {
       ? _batches[batch]
       : throw ApiException('INVALID_PAGINATION', '完整列表并发批次不完整，请重新读取');
 
-  void validate(PagedResult<T> value, int batch) {
+  void validate(PagedResult<T> value, int batch, List<T> rows) {
     final proof = value is VersionedPagedResultProof
         ? value as VersionedPagedResultProof
         : null;
@@ -654,7 +674,7 @@ class _CompletePagePipeline<T> {
         value.page != planned.page ||
         value.size != planned.size ||
         value.totalPages != pages ||
-        value.items.length != expectedRows) {
+        rows.length != expectedRows) {
       throw ApiException('INVALID_PAGINATION', '完整列表并发批次不完整，请重新读取');
     }
     final first = _first;
@@ -684,7 +704,7 @@ class _CompletePagePipeline<T> {
     }
     if (_validatedIdentityBatches.add(batch)) {
       final batchIdentities = <Object>{};
-      for (final row in value.items) {
+      for (final row in rows) {
         final identity = idOf(row);
         if (identity == null ||
             identity is String && identity.trim().isEmpty ||
@@ -726,8 +746,11 @@ class _CompletePagePipeline<T> {
       );
       throwIfFailed();
       if (!_networkCurrent()) throw const UiWorkCancelled();
-      validate(result, batch);
-      return _CompletePageReply.value(result);
+      // A completed tail can wait behind an earlier batch. Retain the exact
+      // membership validated now, even if its producer later reuses its list.
+      final rows = List<T>.of(result.items, growable: false);
+      validate(result, batch, rows);
+      return _CompletePageReply.value(result, rows);
     } catch (error, stack) {
       final reply = _CompletePageReply<T>.error(error, stack);
       if (!_closed && _failure == null) {
@@ -739,7 +762,7 @@ class _CompletePagePipeline<T> {
     }
   }
 
-  Future<PagedResult<T>> take(int batch) async {
+  Future<_CompletePageReply<T>> take(int batch) async {
     throwIfFailed();
     final pending = _waiting.remove(batch);
     if (pending == null) throw StateError('Complete batch was not scheduled');
@@ -756,7 +779,7 @@ class _CompletePagePipeline<T> {
         Error.throwWithStackTrace(reply.error!, reply.stack!);
       }
       throwIfFailed();
-      return reply.value!;
+      return reply;
     } finally {
       if (identical(_reader, reader)) _reader = null;
     }
@@ -768,9 +791,10 @@ class _CompletePagePipeline<T> {
 }
 
 class _CompletePageReply<T> {
-  _CompletePageReply.value(this.value) : error = null, stack = null;
-  _CompletePageReply.error(this.error, this.stack) : value = null;
+  _CompletePageReply.value(this.value, this.rows) : error = null, stack = null;
+  _CompletePageReply.error(this.error, this.stack) : value = null, rows = null;
   final PagedResult<T>? value;
+  final List<T>? rows;
   final Object? error;
   final StackTrace? stack;
 }

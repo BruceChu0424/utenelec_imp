@@ -1,0 +1,54 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_incremental_snapshot_test.dart
+00:00 +0: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_incremental_snapshot_test.dart: 35k progressive rows collect each immutable identity only once
+00:05 +1: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_incremental_snapshot_test.dart: 35k progressive rows collect each immutable identity only once
+00:06 +2: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_incremental_snapshot_test.dart: 35k progressive rows collect each immutable identity only once
+00:07 +3: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_incremental_snapshot_test.dart: 35k progressive rows collect each immutable identity only once
+00:08 +4: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_incremental_snapshot_test.dart: 35k progressive rows collect each immutable identity only once
+00:08 +5: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_incremental_snapshot_test.dart: 35k progressive rows collect each immutable identity only once
+00:09 +6: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_incremental_snapshot_test.dart: 35k progressive rows collect each immutable identity only once
+00:10 +7: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_incremental_snapshot_test.dart: 35k progressive rows collect each immutable identity only once
+00:10 +8: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_incremental_snapshot_test.dart: 35k progressive rows collect each immutable identity only once
+00:11 +9: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_incremental_snapshot_test.dart: 35k progressive rows collect each immutable identity only once
+00:11 +9: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_view_local_work_budget_test.dart: local sorting reads values linearly and reuses the view for selection chrome
+master-local-sort rows=600 valueReads=613
+00:11 +10: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_incremental_snapshot_test.dart: 35k progressive rows collect each immutable identity only once
+00:11 +11: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_incremental_snapshot_test.dart: 35k progressive rows collect each immutable identity only once
+00:11 +12: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_incremental_snapshot_test.dart: 35k progressive rows collect each immutable identity only once
+00:11 +13: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_incremental_snapshot_test.dart: 35k progressive rows collect each immutable identity only once
+00:12 +14: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_incremental_snapshot_test.dart: 35k progressive rows collect each immutable identity only once
+00:12 +15: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_incremental_snapshot_test.dart: 35k progressive rows collect each immutable identity only once
+00:12 +16: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/master_data_table_progressive_batch_actions_test.dart: the fullscreen table applies the same wait and recovery
+00:13 +17: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/components/master_data_table_progressive_batch_actions_test.dart: the fullscreen table applies the same wait and recovery
+00:14 +18: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_incremental_snapshot_test.dart: row visibility and live eligibility remain current on the same snapshot
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: Set:['1']
+  Actual: <null>
+   Which: is not Iterable
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_incremental_snapshot_test.dart:183:7)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_incremental_snapshot_test.dart line 183
+The test description was:
+  row visibility and live eligibility remain current on the same snapshot
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:14 +18 -1: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_incremental_snapshot_test.dart: row visibility and live eligibility remain current on the same snapshot [E]
+  Test failed. See exception logs above.
+  The test description was: row visibility and live eligibility remain current on the same snapshot
+  
+00:14 +18 -1: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_incremental_snapshot_test.dart: explicit presentation revision reuses facets then retires external values
+00:14 +19 -1: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_incremental_snapshot_test.dart: hidden column waits for reveal before scanning row widths
+00:16 +20 -1: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/master_data_table_incremental_snapshot_test.dart: row visibility and live eligibility remain current on the same snapshot

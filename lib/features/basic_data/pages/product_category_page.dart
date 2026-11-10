@@ -612,6 +612,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
     final includeRelated = _includeRelated;
     final categoryBrowsing = shellCanViewCategories;
     return MasterEntityPaneConfig<GoodsListItem, GoodsDetail>(
+      immutableSummaryRows: true,
       filterParamOfColumn: const {
         'colorLegacyId': 'colorRef',
         'unitLegacyId': 'unitRef',

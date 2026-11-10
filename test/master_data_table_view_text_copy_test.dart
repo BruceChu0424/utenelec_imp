@@ -8,8 +8,24 @@ import 'package:uten_imp/components/feedback/uten_context_menu_policy.dart';
 import 'package:uten_imp/core/theme/dark_theme.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
+import 'package:uten_imp/shared/models/immutable_paged_rows.dart';
+import 'package:uten_imp/shared/models/paged_result.dart';
+import 'package:uten_imp/shared/paging/paged_read_window_binding.dart';
 
-Future<void> _select(WidgetTester tester, String first, {String? last}) async {
+String _stableTextKey(String row) => row;
+
+Future<void> _advanceGrowingFrames(WidgetTester tester) async {
+  for (var frame = 0; frame < 12; frame++) {
+    await tester.pump(const Duration(milliseconds: 16));
+  }
+}
+
+Future<void> _select(
+  WidgetTester tester,
+  String first, {
+  String? last,
+  bool growing = false,
+}) async {
   Offset edge(String text, bool end) {
     final paragraph = tester.renderObject<RenderParagraph>(
       find.descendant(
@@ -34,14 +50,22 @@ Future<void> _select(WidgetTester tester, String first, {String? last}) async {
     await tester.pump(const Duration(milliseconds: 20));
   }
   await mouse.up();
-  await tester.pumpAndSettle();
+  if (growing) {
+    await _advanceGrowingFrames(tester);
+  } else {
+    await tester.pumpAndSettle();
+  }
 }
 
-Future<void> _copy(WidgetTester tester) async {
+Future<void> _copy(WidgetTester tester, {bool growing = false}) async {
   await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
   await tester.sendKeyEvent(LogicalKeyboardKey.keyC);
   await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
-  await tester.pumpAndSettle();
+  if (growing) {
+    await _advanceGrowingFrames(tester);
+  } else {
+    await tester.pumpAndSettle();
+  }
 }
 
 void main() {
@@ -61,6 +85,88 @@ void main() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(SystemChannels.platform, null);
   });
+
+  testWidgets(
+    'dragged text survives immutable prefix and footer completion but not owner replacement',
+    (tester) async {
+      final rows = ImmutablePagedRowsBuilder<String>();
+      rows.add('KEEP-SELECTED');
+      for (var i = 1; i < 50; i++) {
+        rows.add('ROW-$i');
+      }
+      final owner = PagedReadWindowSession<String>(isCurrent: () => true);
+      PagedResult<String> page(
+        PagedReadWindowSession<String> session,
+        bool growing,
+      ) => session.bindResult(
+        PagedResult<String>(
+          items: rows.snapshot(),
+          page: 1,
+          size: rows.length,
+          total: 100,
+          totalPages: 1,
+        ),
+        pending: growing,
+        growing: growing,
+      );
+      var current = page(owner, true);
+      const columns = [
+        MasterColumnDef<String>(
+          key: 'name',
+          label: '名称',
+          width: 240,
+          value: _stableTextKey,
+        ),
+      ];
+      Widget app() => MaterialApp(
+        home: Scaffold(
+          body: MasterDataTableView<String>(
+            items: current.items,
+            columns: columns,
+            immutableRows: true,
+            paginationRevision: current,
+            rowKeyOf: _stableTextKey,
+            virtualized: true,
+            facets: const {},
+            nullCounts: const {},
+            filters: const {},
+            onFilterChanged: (_, _) {},
+            showFullscreenToggle: false,
+          ),
+        ),
+      );
+      await tester.pumpWidget(app());
+      await _advanceGrowingFrames(tester);
+      await _select(tester, 'KEEP-SELECTED', growing: true);
+      await _copy(tester, growing: true);
+      expect(clipboard, 'KEEP-SELECTED');
+      for (var i = 50; i < 100; i++) {
+        rows.add('ROW-$i');
+      }
+      current = page(owner, true);
+      await tester.pumpWidget(app());
+      await _advanceGrowingFrames(tester);
+      clipboard = null;
+      await _copy(tester, growing: true);
+      expect(clipboard, 'KEEP-SELECTED');
+      current = page(owner, false);
+      await tester.pumpWidget(app());
+      await tester.pumpAndSettle();
+      clipboard = null;
+      await _copy(tester);
+      expect(clipboard, 'KEEP-SELECTED');
+      owner.invalidate();
+      final nextOwner = PagedReadWindowSession<String>(isCurrent: () => true);
+      current = page(nextOwner, false);
+      await tester.pumpWidget(app());
+      await tester.pumpAndSettle();
+      clipboard = null;
+      await _copy(tester);
+      expect(clipboard, isNull);
+      expect(tester.takeException(), isNull);
+    },
+    variant: const TargetPlatformVariant({TargetPlatform.windows}),
+  );
 
   testWidgets(
     'frozen column contributes each value once after horizontal scroll',

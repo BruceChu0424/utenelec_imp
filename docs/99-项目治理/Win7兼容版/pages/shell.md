@@ -4,17 +4,17 @@
 
 ## W7-BIZ-148 · lib/features/shell/pages/main_shell_page.dart
 
-模块 `shell`；473 行；SHA256 `19495fc970ffaf599b507023f14af5f8e21e08ceb0790393c9165c1c36dbf24f`。
+模块 `shell`；479 行；SHA256 `083eb7af23b4784035dbf04bc9d1f95d63bfb59bd4a46c2aed9b9ea745d1ca53`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
-| 页面/状态类 | MainShellPage @62 (page-class)<br>_MainShellPageState @77 (state-class)<br>_KeepAlivePage @454 (page-class)<br>_KeepAlivePageState @463 (state-class) |
+| 页面/状态类 | MainShellPage @62 (page-class)<br>_MainShellPageState @77 (state-class)<br>_KeepAlivePage @460 (page-class)<br>_KeepAlivePageState @469 (state-class) |
 | 真实路由绑定 | None；router @594；builder ['MainShellPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | 未静态确认；不能当作不存在 |
-| 动作处理 | removeObserver @117 [action-like-invocation] 提示 ['remove']；WidgetsBinding.instance.removeObserver(this); |
+| 动作处理 | removeObserver @117 [action-like-invocation] 提示 ['remove']；WidgetsBinding.instance.removeObserver(this);<br>addPostFrameCallback @230 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) { |
 | 控制器候选（人工核实） | 未静态确认；不能当作不存在 |
 | 审计限制 | 存在委托组件/provider；页面内操作和权限引用不是完整链路清单，需沿导入继续审查。 |
 

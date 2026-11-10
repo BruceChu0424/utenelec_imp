@@ -757,6 +757,9 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
         periodError: _error != null,
       );
 
+  String _tableRowKey(InstantInventoryRow row) =>
+      stockCountRowKey(row.goodsId ?? '', row.colorId);
+
   void _onSearchInput(String raw) {
     final q = raw.trim();
     if (q == _searchQuery) return;
@@ -1181,6 +1184,9 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
         ),
       ),
       body: MasterDataTableView<InstantInventoryRow>(
+        // Server DTOs are read-only; location edits are kept in inline drafts.
+        // Keep the mutable editing path conservative until it is closed.
+        immutableRows: !inlineEdit.active,
         rowsController: _readingRows,
         expensiveRowMounts: inlineEdit.active,
         tableKey:
@@ -1201,7 +1207,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
         items: _page?.items ?? const [],
         idOf: (row) => row.readIdentity,
         outputSelectorOf: (row) => row.identityFields,
-        rowKeyOf: (r) => stockCountRowKey(r.goodsId ?? '', r.colorId),
+        rowKeyOf: _tableRowKey,
         toolbarActions: [
           InstantInventoryPeriodButton(
             range: _period,

@@ -4,6 +4,24 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/data_display/master_data_table_rows_controller.dart';
 
 void main() {
+  test(
+    'immutable membership does not cache an adapter external projection',
+    () {
+      var prefix = 'before';
+      final rows = MasterDataTableRowsController<String>();
+      final adapted = rows.adapt<int>(
+        (items) => items.map((item) => '$prefix:$item'),
+      );
+      final snapshot = List<int>.unmodifiable([1, 2]);
+      adapted.updateSnapshot(snapshot);
+      expect(rows.items, ['before:1', 'before:2']);
+      prefix = 'after';
+      adapted.updateSnapshot(snapshot);
+      expect(rows.items, ['after:1', 'after:2']);
+      expect(snapshot, [1, 2]);
+    },
+  );
+
   testWidgets('typed adaptation forwards reading intent and real layout wait', (
     tester,
   ) async {

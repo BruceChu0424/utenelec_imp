@@ -1,0 +1,50 @@
+{
+  "status": "passed",
+  "test": "integration_test/table_complete_read_stability_test.dart",
+  "mode": "Debug LocalTest",
+  "sourceBaseline": "69e35d96bf0ddd9c8ba7992bf0a609ee9191ef98",
+  "workingTree": "uncommitted candidate",
+  "runtime": {
+    "schemaVersion": 1,
+    "buildProfile": "local_test",
+    "applicationId": "com.uten.uten_imp.local_test",
+    "nativeProductName": "UTEN Local Test",
+    "displayName": "UTEN 本地测试",
+    "runtimeFamily": "flutter",
+    "networkScope": "loopback-only",
+    "selfUpdatesAllowed": false
+  },
+  "synthetic": {
+    "syntheticOnly": true,
+    "surface": "native integration window",
+    "rows": 35000,
+    "rapidEnterQueries": 20,
+    "cancelActions": 5,
+    "scrollRoundTrips": 3,
+    "selectedAfterScroll": 1,
+    "siblingInputRetained": true,
+    "inputScope": "Flutter text-input/composing channel, not OS IME candidate UI",
+    "businessScope": "synthetic readonly DTOs, no financial calculation or persisted draft claim",
+    "metrics": {
+      "phase": "完成",
+      "rows": 35000,
+      "total": 35000,
+      "firstMs": 12,
+      "completeMs": 1281,
+      "settledMs": 15546,
+      "syntheticBatchCalls": 168,
+      "active": 0,
+      "cancelled": 20,
+      "selected": 1,
+      "errors": 0,
+      "maxEventLoopGapMs": 412
+    }
+  },
+  "performanceAcceptance": false,
+  "otherBuildsMayOverlap": true,
+  "remainingFixtureProcesses": 0,
+  "failedFirstRun": "windows-integration-run1.log",
+  "passedRun": "windows-integration-run2.log",
+  "testDriverRepair": "Tap query field to restore focus after native done; preserve all assertions and add input-value assertion",
+  "formalPackage": false
+}

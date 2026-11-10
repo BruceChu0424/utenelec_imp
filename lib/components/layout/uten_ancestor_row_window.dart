@@ -6,6 +6,11 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
 
 import '../../core/performance/ui_work_budget.dart';
+import '../../shared/models/immutable_paged_rows.dart';
+import 'src/row_extent_index.dart';
+
+/// Optional local structural counters; contains no row values or identities.
+void Function(String operation, int count)? debugAncestorRowWindowWorkObserver;
 
 /// Presentation access only. Row values, validation and selection stay with
 /// the business controller even while their widgets are outside the window.
@@ -281,7 +286,16 @@ class _UtenAncestorRowWindowState<T extends Object>
   final _admitted = HashSet<T>.identity();
   final _awaitingFirstLayout = HashSet<T>.identity();
   final _indices = HashMap<T, int>.identity();
-  List<double> _offsets = const [0];
+  final _offsets = RowExtentIndex(
+    onWork: (operation, count) =>
+        debugAncestorRowWindowWorkObserver?.call(operation, count),
+  );
+  List<T>? _indexedRows;
+  bool _duplicateRows = false;
+  int _measurementEpoch = 0;
+  TextScaler? _lastTextScaler;
+  TextTheme? _lastTextTheme;
+  TextDirection? _lastDirection;
   List<T> _mountedRows = const [];
   T? _lastInteracted;
   T? _requested;
@@ -376,6 +390,18 @@ class _UtenAncestorRowWindowState<T extends Object>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    final scaler = MediaQuery.textScalerOf(context);
+    final textTheme = Theme.of(context).textTheme;
+    final direction = Directionality.maybeOf(context);
+    if ((_lastTextScaler != null && _lastTextScaler != scaler) ||
+        (_lastTextTheme != null && _lastTextTheme != textTheme) ||
+        (_lastDirection != null && _lastDirection != direction)) {
+      _heights.clear();
+    }
+    _lastTextScaler = scaler;
+    _lastTextTheme = textTheme;
+    _lastDirection = direction;
+    _retireMeasurements();
     _presentationActive =
         TickerMode.valuesOf(context).enabled &&
         (ModalRoute.of(context)?.isCurrent ?? true);
@@ -415,9 +441,15 @@ class _UtenAncestorRowWindowState<T extends Object>
     final anchor = widget.preserveRowAnchorOnSourceChange
         ? _anchor(rows: oldWidget.rows)
         : null;
-    final oldAnchorOffset = anchor == null ? null : _offsets[_indices[anchor]!];
-    _children.clear(); // layout/columns changed; keyed elements still survive.
-    _reindex();
+    final oldAnchorIndex = anchor == null ? null : _indices[anchor];
+    final oldAnchorOffset = oldAnchorIndex == null
+        ? null
+        : _offsets[oldAnchorIndex];
+    _retireMeasurements(); // keyed elements still survive a source update.
+    final sameEstimate =
+        oldWidget.estimatedRowExtent == widget.estimatedRowExtent;
+    if (!sameEstimate) _heights.clear();
+    _reindex(allowIncremental: sameEstimate);
     if (anchor != null &&
         oldAnchorOffset != null &&
         _indices.containsKey(anchor)) {
@@ -427,45 +459,115 @@ class _UtenAncestorRowWindowState<T extends Object>
     _scheduleGeometry();
   }
 
-  void _reindex() {
-    _indices.clear();
-    for (var i = 0; i < widget.rows.length; i++) {
-      _indices[widget.rows[i]] = i;
+  void _retireMeasurements() {
+    _measurementEpoch++;
+    _pendingHeights.clear();
+    _children.clear();
+  }
+
+  void _reindex({bool allowIncremental = false}) {
+    final previous = _indexedRows;
+    final prefix = allowIncremental && !_duplicateRows
+        ? immutablePagedRowsCommonPrefix(previous, widget.rows)
+        : null;
+    if (previous != null &&
+        prefix != null &&
+        _offsets.rowCount == previous.length &&
+        previous.length - prefix <= 8) {
+      final removed = previous.getRange(prefix, previous.length);
+      for (var index = prefix; index < previous.length; index++) {
+        final row = previous[index];
+        if (_indices[row] == index) _indices.remove(row);
+      }
+      var index = prefix;
+      var duplicate = false;
+      for (final row in widget.rows.getRange(prefix, widget.rows.length)) {
+        if (_indices.containsKey(row)) {
+          duplicate = true;
+          break;
+        }
+        _indices[row] = index++;
+      }
+      if (!duplicate) {
+        debugAncestorRowWindowWorkObserver?.call(
+          'indexRows',
+          widget.rows.length - prefix,
+        );
+        _offsets.replaceTail(
+          common: prefix,
+          count: widget.rows.length,
+          deltas: widget.rows
+              .getRange(prefix, widget.rows.length)
+              .map(
+                (row) => (_heights[row] ?? _estimatedExtent) - _estimatedExtent,
+              ),
+        );
+        debugAncestorRowWindowWorkObserver?.call(
+          'offsetRows',
+          widget.rows.length - prefix,
+        );
+        for (final row in removed) {
+          if (!_indices.containsKey(row)) _forgetRow(row);
+        }
+        _indexedRows = widget.rows;
+        _clearMissingAnchors();
+        return;
+      }
+      // Duplicate presentation objects retain the old last-index behavior.
+      // Never partially accept an append whose identities are ambiguous.
     }
+    _indices.clear();
+    _duplicateRows = false;
+    var index = 0;
+    for (final row in widget.rows) {
+      if (_indices.containsKey(row)) _duplicateRows = true;
+      _indices[row] = index++;
+    }
+    debugAncestorRowWindowWorkObserver?.call('indexRows', widget.rows.length);
+    debugAncestorRowWindowWorkObserver?.call(
+      'fullReindexRows',
+      widget.rows.length,
+    );
     _heights.removeWhere((row, _) => !_indices.containsKey(row));
     _rowKeys.removeWhere((row, _) => !_indices.containsKey(row));
     _focused.removeWhere((row) => !_indices.containsKey(row));
     _retained.removeWhere((row) => !_indices.containsKey(row));
     _admitted.removeWhere((row) => !_indices.containsKey(row));
     _awaitingFirstLayout.removeWhere((row) => !_indices.containsKey(row));
+    _clearMissingAnchors();
+    _indexedRows = widget.rows;
+    _rebuildOffsets();
+  }
+
+  void _clearMissingAnchors() {
     if (!_indices.containsKey(_lastInteracted)) _lastInteracted = null;
     if (!_indices.containsKey(_requested)) _requested = null;
-    _rebuildOffsets();
+  }
+
+  void _forgetRow(T row) {
+    _heights.remove(row);
+    _rowKeys.remove(row);
+    _children.remove(row);
+    _pendingHeights.remove(row);
+    _focused.remove(row);
+    _retained.remove(row);
+    _admitted.remove(row);
+    _awaitingFirstLayout.remove(row);
   }
 
   void _rebuildOffsets() {
     final estimated = _estimatedExtent;
-    final offsets = List<double>.filled(widget.rows.length + 1, 0);
-    for (var i = 0; i < widget.rows.length; i++) {
-      offsets[i + 1] = offsets[i] + (_heights[widget.rows[i]] ?? estimated);
-    }
-    _offsets = offsets;
+    _offsets.reset(
+      count: widget.rows.length,
+      estimate: estimated,
+      deltas: widget.rows.map(
+        (row) => (_heights[row] ?? estimated) - estimated,
+      ),
+    );
+    debugAncestorRowWindowWorkObserver?.call('offsetRows', widget.rows.length);
   }
 
-  int _rowAt(double offset) {
-    var low = 0;
-    final count = _offsets.length - 1;
-    var high = count;
-    while (low < high) {
-      final middle = (low + high) >> 1;
-      if (_offsets[middle + 1] <= offset) {
-        low = middle + 1;
-      } else {
-        high = middle;
-      }
-    }
-    return low.clamp(0, math.max(0, count - 1));
-  }
+  int _rowAt(double offset) => _offsets.rowAt(offset);
 
   T? _anchor({List<T>? rows}) {
     // An explicit destination owns scrolling until its geometry is settled.
@@ -481,7 +583,8 @@ class _UtenAncestorRowWindowState<T extends Object>
     }
     final local = (_position!.pixels + _pendingCorrection) - _topInContent!;
     if (local < 0 || local >= _offsets.last) return null;
-    return source[_rowAt(local)];
+    final index = _rowAt(local);
+    return index < source.length ? source[index] : null;
   }
 
   void _setRange({bool notify = true}) {
@@ -598,9 +701,17 @@ class _UtenAncestorRowWindowState<T extends Object>
       final anchor = _anchor();
       final before = anchor == null ? null : _offsets[_indices[anchor]!];
       _pendingHeights.removeWhere((row, _) => !_indices.containsKey(row));
-      _heights.addAll(_pendingHeights);
+      if (_duplicateRows) {
+        _heights.addAll(_pendingHeights);
+        _rebuildOffsets();
+      } else {
+        for (final entry in _pendingHeights.entries) {
+          final index = _indices[entry.key];
+          if (index != null) _offsets.setHeight(index, entry.value);
+          _heights[entry.key] = entry.value;
+        }
+      }
       _pendingHeights.clear();
-      _rebuildOffsets();
       if (anchor != null && before != null && _indices.containsKey(anchor)) {
         _pendingCorrection += _offsets[_indices[anchor]!] - before;
       }
@@ -608,6 +719,13 @@ class _UtenAncestorRowWindowState<T extends Object>
       _scheduleGeometry();
       widget.onExtentChanged?.call();
     });
+  }
+
+  ValueChanged<double> _heightObserver(T row) {
+    final epoch = _measurementEpoch;
+    return (height) {
+      if (epoch == _measurementEpoch) _measured(row, height);
+    };
   }
 
   void _focusChanged(T row, bool focused) {
@@ -868,7 +986,7 @@ class _UtenAncestorRowWindowState<T extends Object>
           child: _children.putIfAbsent(
             row,
             () => _RowExtentObserver(
-              onHeight: (height) => _measured(row, height),
+              onHeight: _heightObserver(row),
               child: Focus(
                 canRequestFocus: false,
                 skipTraversal: true,

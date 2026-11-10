@@ -1,0 +1,430 @@
+{
+  "status": "local implementation and listed functional checks passed; integration with newer main pending",
+  "sourceBaseline": "69e35d96bf0ddd9c8ba7992bf0a609ee9191ef98",
+  "newerMainDetected": "e9713e539a97a0fca5e579ce1cab633002af960a",
+  "comparison": {
+    "kind": "single-pair synthetic observation, not statistical capacity/SLA acceptance",
+    "surface": "Codex in-app Chromium, same tab for final pair",
+    "viewport": {
+      "width": 1280,
+      "height": 800,
+      "devicePixelRatio": 1,
+      "visibility": "visible"
+    },
+    "rows": 100000,
+    "columns": 30,
+    "nominalBatchDelayMs": 1,
+    "before": {
+      "runId": "before-100k-fixed-final",
+      "servedBuildSha256": "383ffd3c0d5fffa70c852b3b3b4c58706506a3bb3c1b530661fb42da1e5d612a",
+      "completeReadMs": 18251,
+      "valueVisits": 4922170,
+      "profiles": {
+        "master.collect-rows": {
+          "calls": 66,
+          "micros": 976602,
+          "maxMicros": 45400
+        },
+        "master.sync-rows": {
+          "calls": 66,
+          "micros": 2394604,
+          "maxMicros": 78801
+        },
+        "master.selection-row-keys": {
+          "calls": 66,
+          "micros": 137796,
+          "maxMicros": 23801
+        },
+        "master.row-plan": {
+          "calls": 66,
+          "micros": 54204,
+          "maxMicros": 1600
+        },
+        "master.projected-table": {
+          "calls": 66,
+          "micros": 215795,
+          "maxMicros": 25401
+        },
+        "master.selection-ids": {
+          "calls": 66,
+          "micros": 1014105,
+          "maxMicros": 42799
+        },
+        "master.intrinsic-height": {
+          "calls": 3,
+          "micros": 3800,
+          "maxMicros": 2500
+        },
+        "master.stretch-layout": {
+          "calls": 3,
+          "micros": 7502,
+          "maxMicros": 3800
+        },
+        "master.body-stage": {
+          "calls": 66,
+          "micros": 4430597,
+          "maxMicros": 180300
+        },
+        "row-window-element-mount": {
+          "calls": 2,
+          "micros": 76201,
+          "maxMicros": 74101
+        },
+        "presentation": {
+          "calls": 1575,
+          "micros": 12970210,
+          "maxMicros": 4009901
+        },
+        "master.row-build": {
+          "calls": 1344,
+          "micros": 33891,
+          "maxMicros": 4000
+        },
+        "table-cell-theme-create": {
+          "calls": 1,
+          "micros": 201,
+          "maxMicros": 201
+        },
+        "table-cell-theme-build": {
+          "calls": 1344,
+          "micros": 25789,
+          "maxMicros": 500
+        },
+        "master.row-layout": {
+          "calls": 21,
+          "micros": 40597,
+          "maxMicros": 7800
+        }
+      }
+    },
+    "after": {
+      "runId": "after2-100k-fixed-final",
+      "servedBuildSha256": "c3994d71db1b81cbdc9be0a8d712794ef5c3de7713d850c057fa639358f1a465",
+      "completeReadMs": 5971,
+      "valueVisits": 550757,
+      "profiles": {
+        "master.collect-rows": {
+          "calls": 29,
+          "micros": 60100,
+          "maxMicros": 6600
+        },
+        "master.sync-rows": {
+          "calls": 29,
+          "micros": 63800,
+          "maxMicros": 6700
+        },
+        "master.selection-row-keys": {
+          "calls": 2,
+          "micros": 0,
+          "maxMicros": 0
+        },
+        "master.row-plan": {
+          "calls": 29,
+          "micros": 400,
+          "maxMicros": 200
+        },
+        "master.projected-table": {
+          "calls": 29,
+          "micros": 16900,
+          "maxMicros": 7100
+        },
+        "master.selection-ids": {
+          "calls": 3,
+          "micros": 22700,
+          "maxMicros": 22500
+        },
+        "master.intrinsic-height": {
+          "calls": 3,
+          "micros": 7000,
+          "maxMicros": 6000
+        },
+        "master.stretch-layout": {
+          "calls": 3,
+          "micros": 11800,
+          "maxMicros": 7900
+        },
+        "master.body-stage": {
+          "calls": 29,
+          "micros": 62500,
+          "maxMicros": 5100
+        },
+        "row-window-element-mount": {
+          "calls": 2,
+          "micros": 148300,
+          "maxMicros": 146600
+        },
+        "presentation": {
+          "calls": 1184,
+          "micros": 6135900,
+          "maxMicros": 4003800
+        },
+        "master.row-build": {
+          "calls": 567,
+          "micros": 15500,
+          "maxMicros": 1400
+        },
+        "table-cell-theme-create": {
+          "calls": 1,
+          "micros": 600,
+          "maxMicros": 600
+        },
+        "table-cell-theme-build": {
+          "calls": 567,
+          "micros": 16000,
+          "maxMicros": 900
+        },
+        "master.row-layout": {
+          "calls": 21,
+          "micros": 63600,
+          "maxMicros": 4500
+        }
+      }
+    },
+    "readDurationReductionFraction": 0.6728398443920881,
+    "limits": [
+      "Synthetic callbacks, not company HTTP/SQL. Timing begins before fixture load; ends when reader returns.",
+      "First batch acceptance is not first paint. layoutWaitReturnMs includes integrity loops and a capped layout wait; it is not full stable layout time.",
+      "Earlier free-viewport exploratory runs locate hotspots only; they are not the controlled final pair.",
+      "Development host Core Ultra 9 185H / about 64GiB; no 4GiB/8GiB target PC or production concurrency acceptance.",
+      "Full interaction <=1s requirement is unchanged and NOT established. 1000-row cold fixture also exceeded 1s."
+    ]
+  },
+  "functionalRuns": {
+    "after2-churn-35k-fixed": {
+      "phase": "PASS",
+      "targetRows": 35000,
+      "loadedRows": 35000,
+      "tableRows": 35000,
+      "activeReads": 0,
+      "cancelledReads": 23,
+      "lateRepliesDelivered": 23,
+      "expectedInterruptions": 0,
+      "errors": [],
+      "servedBuildSha256": "c3994d71db1b81cbdc9be0a8d712794ef5c3de7713d850c057fa639358f1a465"
+    },
+    "after2-interrupt-35k-fixed": {
+      "phase": "PASS",
+      "targetRows": 35000,
+      "loadedRows": 35000,
+      "tableRows": 35000,
+      "activeReads": 0,
+      "cancelledReads": 0,
+      "lateRepliesDelivered": 0,
+      "expectedInterruptions": 1,
+      "errors": [],
+      "servedBuildSha256": "c3994d71db1b81cbdc9be0a8d712794ef5c3de7713d850c057fa639358f1a465"
+    },
+    "after2-refresh-35k": {
+      "phase": "PASS",
+      "targetRows": 35000,
+      "loadedRows": 35000,
+      "tableRows": 35000,
+      "activeReads": 0,
+      "cancelledReads": 0,
+      "lateRepliesDelivered": 0,
+      "expectedInterruptions": 1,
+      "errors": [],
+      "servedBuildSha256": "c3994d71db1b81cbdc9be0a8d712794ef5c3de7713d850c057fa639358f1a465"
+    },
+    "after2-reopen-35k": {
+      "phase": "PASS",
+      "targetRows": 35000,
+      "loadedRows": 35000,
+      "tableRows": 35000,
+      "activeReads": 0,
+      "cancelledReads": 12,
+      "lateRepliesDelivered": 11,
+      "expectedInterruptions": 0,
+      "errors": [],
+      "servedBuildSha256": "c3994d71db1b81cbdc9be0a8d712794ef5c3de7713d850c057fa639358f1a465"
+    },
+    "after2-1000-fixed": {
+      "phase": "PASS",
+      "targetRows": 1000,
+      "loadedRows": 1000,
+      "tableRows": 1000,
+      "activeReads": 0,
+      "cancelledReads": 0,
+      "lateRepliesDelivered": 0,
+      "expectedInterruptions": 0,
+      "errors": [],
+      "servedBuildSha256": "c3994d71db1b81cbdc9be0a8d712794ef5c3de7713d850c057fa639358f1a465"
+    },
+    "after2-10000-fixed": {
+      "phase": "PASS",
+      "targetRows": 10000,
+      "loadedRows": 10000,
+      "tableRows": 10000,
+      "activeReads": 0,
+      "cancelledReads": 0,
+      "lateRepliesDelivered": 0,
+      "expectedInterruptions": 0,
+      "errors": [],
+      "servedBuildSha256": "c3994d71db1b81cbdc9be0a8d712794ef5c3de7713d850c057fa639358f1a465"
+    },
+    "after2-100k-fixed-final": {
+      "phase": "PASS",
+      "targetRows": 100000,
+      "loadedRows": 100000,
+      "tableRows": 100000,
+      "activeReads": 0,
+      "cancelledReads": 0,
+      "lateRepliesDelivered": 0,
+      "expectedInterruptions": 0,
+      "errors": [],
+      "servedBuildSha256": "c3994d71db1b81cbdc9be0a8d712794ef5c3de7713d850c057fa639358f1a465"
+    }
+  },
+  "manualBrowser": {
+    "rows": 100000,
+    "lastRowObserved": 99999,
+    "selectedAfterRoundTrip": 1,
+    "typedChineseInputRetained": true,
+    "rapidQueries": 3,
+    "cancelledReadsObserved": 3,
+    "recoveredRows": 100000,
+    "consoleErrors": [],
+    "scope": "Visible browser input, checkbox, scrollbar drag to last row and back, cancellation and recovery; sibling input only, not persisted business drafts or OS IME candidate UI."
+  },
+  "validation": {
+    "readerProtocolPrecisionTests": 147,
+    "sharedTableFinalGroup": 42,
+    "flatAndExistingInteractionGroup": 65,
+    "settlementAndIoHelperGroup": 7,
+    "rowWindowJointGroup": 26,
+    "fenwickFinalGroup": 7,
+    "countsOverlapAndMustNotBeSummed": true,
+    "flutterNativeWindow": {
+      "status": "passed",
+      "test": "integration_test/table_complete_read_stability_test.dart",
+      "mode": "Debug LocalTest",
+      "sourceBaseline": "69e35d96bf0ddd9c8ba7992bf0a609ee9191ef98",
+      "workingTree": "uncommitted candidate",
+      "runtime": {
+        "schemaVersion": 1,
+        "buildProfile": "local_test",
+        "applicationId": "com.uten.uten_imp.local_test",
+        "nativeProductName": "UTEN Local Test",
+        "displayName": "UTEN 本地测试",
+        "runtimeFamily": "flutter",
+        "networkScope": "loopback-only",
+        "selfUpdatesAllowed": false
+      },
+      "synthetic": {
+        "syntheticOnly": true,
+        "surface": "native integration window",
+        "rows": 35000,
+        "rapidEnterQueries": 20,
+        "cancelActions": 5,
+        "scrollRoundTrips": 3,
+        "selectedAfterScroll": 1,
+        "siblingInputRetained": true,
+        "inputScope": "Flutter text-input/composing channel, not OS IME candidate UI",
+        "businessScope": "synthetic readonly DTOs, no financial calculation or persisted draft claim",
+        "metrics": {
+          "phase": "完成",
+          "rows": 35000,
+          "total": 35000,
+          "firstMs": 12,
+          "completeMs": 1281,
+          "settledMs": 15546,
+          "syntheticBatchCalls": 168,
+          "active": 0,
+          "cancelled": 20,
+          "selected": 1,
+          "errors": 0,
+          "maxEventLoopGapMs": 412
+        }
+      },
+      "performanceAcceptance": false,
+      "otherBuildsMayOverlap": true,
+      "remainingFixtureProcesses": 0,
+      "failedFirstRun": "windows-integration-run1.log",
+      "passedRun": "windows-integration-run2.log",
+      "testDriverRepair": "Tap query field to restore focus after native done; preserve all assertions and add input-value assertion",
+      "formalPackage": false
+    },
+    "fullWebReleaseCompilation": true,
+    "formalPackage": false,
+    "push": false,
+    "deployment": false
+  },
+  "logs": [
+    {
+      "path": "docs/99-项目治理/evidence/table-read-performance-20261110/logs/final-reader-contracts.log",
+      "sha256": "5d43d5a0a7137958de7980476fb43de1d656a07198ceb66b4393dfe8ab0038f4"
+    },
+    {
+      "path": "docs/99-项目治理/evidence/table-read-performance-20261110/logs/root-final-analyze.log",
+      "sha256": "1674f4511e3b2a1617aca4ade4c3950c05347023f8116fb9333519e17fb47cb3"
+    },
+    {
+      "path": "docs/99-项目治理/evidence/table-read-performance-20261110/logs/full-web-build.log",
+      "sha256": "7c3496b430d7317a511001c4224cb3266754d8ca50cee9c314a684b610ee007f"
+    },
+    {
+      "path": "docs/99-项目治理/evidence/table-read-performance-20261110/logs/build-v2.log",
+      "sha256": "5d31696f0404e202f20f024bac60bf689ce4ae0b214351757b493ad52b1b80b5"
+    },
+    {
+      "path": "docs/99-项目治理/evidence/table-read-performance-20261110/logs/table-window-retirement-final.log",
+      "sha256": "a0d040e5639dd0ba55e126c00734a7e11bfe5ea625554e868968048514bd3406"
+    },
+    {
+      "path": "docs/99-项目治理/evidence/table-read-performance-20261110/logs/table-flat-callers-final.log",
+      "sha256": "b3a5e9312382bbeb11dc43da87f6b1592413c82aa9b1ceb81cd64f5b77cc7c09"
+    },
+    {
+      "path": "docs/99-项目治理/evidence/table-read-performance-20261110/logs/settlement-real-io-final.log",
+      "sha256": "4e859a63d342a16f32c9a235a777ab3faff2ed195ad11059bc6ec3ec92ca017b"
+    },
+    {
+      "path": "docs/99-项目治理/evidence/table-read-performance-20261110/logs/settlement-real-io-diagnosis-failure.log",
+      "sha256": "3ea1de3fe16fdb946d245f2668f76d9dc5a7eec9cbfdcbb3218e9d89bc555558"
+    },
+    {
+      "path": "docs/99-项目治理/evidence/table-read-performance-20261110/logs/table-flat-callers-stage2.log",
+      "sha256": "65cba9b984282fda110c25bf0049ea77b88023b52e2553883d9f8d473224bbef"
+    },
+    {
+      "path": "docs/99-项目治理/evidence/table-read-performance-20261110/logs/table-all-analyze-final.log",
+      "sha256": "990becad2ecbf53feedbef3c75ce8ab256bdf2706a41f713d7f74c939f989ae7"
+    },
+    {
+      "path": "docs/99-项目治理/evidence/table-read-performance-20261110/logs/table-analyze-lsp-unicode-failure.log",
+      "sha256": "eb32a7225fcfefc18055160239effaa8564965cac3fc77a1472a1ce5d4724780"
+    },
+    {
+      "path": "docs/99-项目治理/evidence/table-read-performance-20261110/logs/scanner-analyze-final.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/99-项目治理/evidence/table-read-performance-20261110/logs/table-targeted-reader-mid-edit-failure.log",
+      "sha256": "a4c0d6009f101e4cff83dfbbda715880ced1cbdc3d8205545d7496f4c6700540"
+    },
+    {
+      "path": "docs/99-项目治理/evidence/table-read-performance-20261110/logs/table-targeted-disabled-affordance-fixture-failure.log",
+      "sha256": "31911f5d03cd2314f3d83ab88ad032c15b661c21019ea91d202bcd4efae58a01"
+    },
+    {
+      "path": "docs/99-项目治理/evidence/table-read-performance-20261110/logs/fenwick-final.log",
+      "sha256": "2b6a9d667f886379d17bf2cb99d396a72418f7c48876ac7aba595b6ed03ee5be"
+    },
+    {
+      "path": "docs/99-项目治理/evidence/table-read-performance-20261110/logs/windows-integration-prebuild.log",
+      "sha256": "7f38caadf5d3795591e9e32067cfb0d4a8498b7be93219128070d59393f42e9a"
+    },
+    {
+      "path": "docs/99-项目治理/evidence/table-read-performance-20261110/logs/windows-integration-run1.log",
+      "sha256": "e9f5d2a1ade3dd43b4f2ef081b206a9decec61713b0cf8ce67fe7912cf75da47"
+    },
+    {
+      "path": "docs/99-项目治理/evidence/table-read-performance-20261110/logs/windows-integration-run2.log",
+      "sha256": "4217e8d4a687adaafbb452b663b2e4232343b3cb1160122722708f3c466a1755"
+    },
+    {
+      "path": "docs/99-项目治理/evidence/table-read-performance-20261110/logs/late-cancellation-reviewed.log",
+      "sha256": "06b81651431dae5ac1d579eb5429eca59789c8296feb2ebc8a56bba7014c10ab"
+    }
+  ]
+}

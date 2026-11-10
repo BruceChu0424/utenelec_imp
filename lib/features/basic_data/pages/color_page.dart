@@ -990,6 +990,11 @@ class _ColorPageState extends ConsumerState<ColorPage>
                           ),
                         Expanded(
                           child: MasterDataTableView<ColorListItem>(
+                            immutableRows: !inlineEdit.active,
+                            presentationRevision: inlineEdit.active
+                                ? null
+                                : _columns,
+                            rowKeyOf: inlineIdOf,
                             rowsController: _readViewportRows,
                             expensiveRowMounts: inlineEdit.active,
                             appendRowsSource: inlineAppendRowsSource,
@@ -999,7 +1004,9 @@ class _ColorPageState extends ConsumerState<ColorPage>
                             columnEditingEnabled: _canEdit,
                             tableKey:
                                 'features.basic_data.pages.color_page.ColorPageState._buildDraftHost.1',
-                            columns: inlineColumns(_columns),
+                            columns: inlineEdit.active
+                                ? inlineColumns(_columns)
+                                : _columns,
                             requiredLeadingColumnKeys: const [
                               'code',
                               'name',

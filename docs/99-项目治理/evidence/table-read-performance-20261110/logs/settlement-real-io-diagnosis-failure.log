@@ -1,0 +1,36 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart
+00:00 +0: settlement completes all batches and search retires a delayed old refresh
+SETTLEMENT_IO_BEFORE rows=1000 active=1 pending=0 frames=true
+SETTLEMENT_IO_AFTER rows=10000 active=0 pending=0 frames=false
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following assertion was thrown running a test:
+pumpAndSettle timed out
+
+When the exception was thrown, this was the stack:
+#0      WidgetTester.pumpAndSettle.<anonymous closure> (package:flutter_test/src/widget_tester.dart:717:11)
+<asynchronous suspension>
+#1      TestAsyncUtils.guard.<anonymous closure> (package:flutter_test/src/test_async_utils.dart:130:27)
+<asynchronous suspension>
+#2      _pump (file:///D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart:139:5)
+<asynchronous suspension>
+#3      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart:164:25)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+The test description was:
+  settlement completes all batches and search retires a delayed old refresh
+════════════════════════════════════════════════════════════════════════════════════════════════════
+01:22 +0 -1: settlement completes all batches and search retires a delayed old refresh [E]
+  Test failed. See exception logs above.
+  The test description was: settlement completes all batches and search retires a delayed old refresh
+  
+01:23 +0 -1: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: settlement completes all batches and search retires a delayed old refresh

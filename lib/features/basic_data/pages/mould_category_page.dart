@@ -392,6 +392,7 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
         ? gateway
         : null;
     return MasterEntityPaneConfig<MouldListItem, MouldDetail>(
+      immutableSummaryRows: true,
       noun: '模具', // TODO(l10n): 补 arb
       inlineCreation: (pane) => MasterInlineCreateConfig(
         namespace: 'moulds.${pane.categoryId}',

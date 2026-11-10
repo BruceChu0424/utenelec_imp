@@ -1,0 +1,105 @@
+{
+  "baseline": "69e35d96bf0ddd9c8ba7992bf0a609ee9191ef98",
+  "capturedUtc": "2026-11-10T16:36:06.2074937Z",
+  "files": [
+    {
+      "path": "lib/components/data_display/master_data_table_rows_controller.dart",
+      "sha256": "aa831a306f7ab4c23b75b3bf6a85c6b0fc1bd465f6585f61c371d1d5346fd787"
+    },
+    {
+      "path": "lib/components/layout/src/row_extent_index.dart",
+      "sha256": "e1ad1d2f14abd3a656f6e63c24ffaf340c9ec696aa31e0e85c4382f959650bb9"
+    },
+    {
+      "path": "lib/components/layout/uten_ancestor_row_window.dart",
+      "sha256": "d4f6b565044307fc3b58ba14a3b33a7dadedd160d390aae43d2eae94cffe649d"
+    },
+    {
+      "path": "lib/features/basic_data/pages/account_workspace_page.dart",
+      "sha256": "d9287c840a8acbf227e3f28facfbfe2ea4d56e757f4bfa2cbe52c662065edfd1"
+    },
+    {
+      "path": "lib/features/basic_data/pages/client_category_page.dart",
+      "sha256": "05fdfbc5d0a82e36ed26752ae293493647a730e49ea146529aa690e8acf80f90"
+    },
+    {
+      "path": "lib/features/basic_data/pages/color_page.dart",
+      "sha256": "8031f8d9eece7583f59f8662a4c767d652303feaa621ff944d747683a5b7f422"
+    },
+    {
+      "path": "lib/features/basic_data/pages/currency_page.dart",
+      "sha256": "ae64adb42806fcbe59adbacd07abdf66335cb54d5ab988a0e9bf67c151769667"
+    },
+    {
+      "path": "lib/features/basic_data/pages/mould_category_page.dart",
+      "sha256": "50a9b7834475851acdec97b3ec831060edad14cd12a2dbdd321c74af6d0dc208"
+    },
+    {
+      "path": "lib/features/basic_data/pages/product_category_page.dart",
+      "sha256": "bead45e7c111477240a480e295aae6204006cd0925e456591de869b50dd61abb"
+    },
+    {
+      "path": "lib/features/basic_data/pages/settlement_method_page.dart",
+      "sha256": "63fc988396fbe5b5bbce9ec76dc0dc449b643ae3a9b092804f3dba4a234492aa"
+    },
+    {
+      "path": "lib/features/basic_data/pages/supplier_category_page.dart",
+      "sha256": "3acc61a0eb63126b66161610874ccfb892aee851dc698ab229ce14e77e4cdf97"
+    },
+    {
+      "path": "lib/features/basic_data/pages/unit_page.dart",
+      "sha256": "bd3113a9b400074e70589e4e348bd9195a5f9415760bec59edf3b951f4dc101b"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/master_data_table_view.dart",
+      "sha256": "49506061794124dc34181f42b237264463d1c11bde14b6c93ea0208dcf1afa3e"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/master_entity_detail_pane.dart",
+      "sha256": "1c1db7a01417ec6234aee3b30fdf81571d9a36cca5f470b51e2f50baf92444b9"
+    },
+    {
+      "path": "lib/features/stock/pages/instant_inventory_page.dart",
+      "sha256": "f1fe3e1a9e9917a6996ed8d74d479987029ee75cb0d428922636473495d54192"
+    },
+    {
+      "path": "lib/shared/models/immutable_paged_rows.dart",
+      "sha256": "571207fb79ffe321d3eac31af658ccae7c4d6f2f7ff268f1f915f182b2262e54"
+    },
+    {
+      "path": "lib/shared/models/paged_result.dart",
+      "sha256": "ebbeb6f20d2f5cdf1efe213343137a090582ba1db524c077d6ac5e599b0215e3"
+    },
+    {
+      "path": "lib/shared/paging/complete_paged_snapshot.dart",
+      "sha256": "6a3eda5e639775aeee1f9c1f971665288f489c11207f1b6731283582cd30351e"
+    },
+    {
+      "path": "pubspec.lock",
+      "sha256": "1f8b96cd8bbca9792278a19b82426eb0458870b7d5af9fd86ae3dbc468b576f5"
+    },
+    {
+      "path": "tool/prepare_table_read_baseline.py",
+      "sha256": "9eb37ab6356dccf72ebddc3e53f97b41916230a601dc9287cd32f25a74ac91ce"
+    },
+    {
+      "path": "tool/serve_table_read_harness.py",
+      "sha256": "e451bf2f3d07c7fdcfc394fe2117f90c8ee3049a982689069f183cba80fa3c2c"
+    },
+    {
+      "path": "tool/table_complete_read_harness.dart",
+      "sha256": "57f8ed7d5d74873d2be17b3da59ae6c921414d7597f1e3243ea49254578167c6"
+    },
+    {
+      "path": "web/flutter_bootstrap.js",
+      "sha256": "3dd8d18e78e39a9d549412ade468959cad8295642079e1dd2af337e9e5f95058"
+    }
+  ],
+  "hostCpu": {
+    "Name": "Intel(R) Core(TM) Ultra 9 185H",
+    "NumberOfCores": 16,
+    "NumberOfLogicalProcessors": 22
+  },
+  "hostMemoryBytes": 68192145408,
+  "limits": "Development machine synthetic workload, not a 4GB/8GB target PC or production capacity benchmark"
+}

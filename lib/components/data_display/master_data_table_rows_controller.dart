@@ -149,6 +149,14 @@ class MasterDataTableRowsController<T> {
     _onChanged?.call(_items);
   }
 
+  /// Accepts a snapshot whose membership cannot change after publication.
+  /// The shared table uses this only for its proven immutable read snapshot;
+  /// mutable callers must keep using [update]'s defensive copy.
+  void updateSnapshot(List<T> items) {
+    _items = items;
+    _onChanged?.call(_items);
+  }
+
   /// Keeps typed business rows accessible through a presentation-row wrapper.
   MasterDataTableRowsController<S> adapt<S>(
     Iterable<T> Function(List<S>) convert,

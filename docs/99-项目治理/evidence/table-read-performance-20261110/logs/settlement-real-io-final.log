@@ -1,0 +1,10 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart
+00:00 +0: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: settlement completes all batches and search retires a delayed old refresh
+00:01 +1: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: settlement completes all batches and search retires a delayed old refresh
+00:01 +2: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: settlement completes all batches and search retires a delayed old refresh
+00:01 +3: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: settlement completes all batches and search retires a delayed old refresh
+00:01 +4: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: settlement completes all batches and search retires a delayed old refresh
+00:08 +5: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: same-reader scope ABA retires old reads and late responses without resetting auth
+00:17 +6: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: a terms modal keeps its form but a scope ABA cannot submit the old callback
+00:34 +7: All tests passed!

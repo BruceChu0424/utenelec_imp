@@ -301,6 +301,17 @@ namespace Uten.Legacy.Tests
 
         internal static int RunContinuousLists()
         {
+            return RunContinuousListsCore(10001, false);
+        }
+
+        internal static int RunCompleteListStress(int goodsRows)
+        {
+            if (goodsRows != 35000 && goodsRows != 100000) throw new ArgumentOutOfRangeException(nameof(goodsRows));
+            return RunContinuousListsCore(goodsRows, true);
+        }
+
+        private static int RunContinuousListsCore(int goodsRows, bool stress)
+        {
             if (Application.Current == null)
             {
                 var application = new App(); application.InitializeComponent();
@@ -311,7 +322,7 @@ namespace Uten.Legacy.Tests
             var configuration = new ClientConfiguration(new[] { new ServerEndpoint("first", "Fixture", "https://first.company.test/api") }, "first");
             foreach (bool goods in new[] { true, false })
             {
-                int totalRows = goods ? 10001 : 501, completeReads = (totalRows + 99) / 100;
+                int totalRows = goods ? goodsRows : 501, completeReads = (totalRows + 99) / 100;
                 var handler = new SearchReadUiHandler { TotalItems = totalRows };
                 using (var session = new SessionCoordinator(configuration, handler, new MemoryStore()))
                 {
@@ -319,22 +330,46 @@ namespace Uten.Legacy.Tests
                     FrameworkElement view = goods ? (FrameworkElement)new GoodsWorkspaceView(session) : new UnitsWorkspaceView(session);
                     var window = new Window { Content = view, Width = 1400, Height = 850, Opacity = 0, ShowActivated = false, ShowInTaskbar = false };
                     var held = new TaskCompletionSource<bool>();
+                    var loadTime = System.Diagnostics.Stopwatch.StartNew();
                     try
                     {
                         window.Show();
                         var table = FindVisual<DataGrid>(view, item => true);
-                        PumpUntil(() => table.Items.Count == totalRows && !ReadBusy(view, goods), "All native rows must arrive before the single result is accepted.");
+                        // A larger functional fixture gets its own explicit wait budget.
+                        // The application still uses its unchanged 30-second HTTP deadline;
+                        // this is not a relaxed production performance acceptance threshold.
+                        PumpUntil(() => table.Items.Count == totalRows && !ReadBusy(view, goods), "All native rows must arrive before the single result is accepted.", stress ? 45 : 8);
+                        loadTime.Stop();
                         check(handler.ListReads == 1 && handler.FramesRead == completeReads && handler.RequestedSizes.All(size => size == 100), "All native rows use one HTTP request with equal bounded 100-row frames.");
                         check(FindVisual<Button>(view, button => Equals(button.Content, "上一页") || Equals(button.Content, "下一页")) == null,
                             "Continuous native tables expose no page navigation buttons.");
                         check(table.EnableRowVirtualization && table.EnableColumnVirtualization, "Complete summaries retain native row and column virtualization.");
                         object source = table.ItemsSource;
-                        for (int index = 0; index < 12; index++)
+                        var columns = table.Columns.ToArray();
+                        int maximumRealizedRows = 0;
+                        for (int index = 0; index < (stress ? 50 : 12); index++)
                         {
                             table.ScrollIntoView(table.Items[index % 2 == 0 ? totalRows - 1 : 0]); window.UpdateLayout(); Pump(window);
+                            maximumRealizedRows = Math.Max(maximumRealizedRows, CountVisual<DataGridRow>(table));
                         }
                         check(handler.ListReads == 1 && ReferenceEquals(source, table.ItemsSource), "Scrolling a complete native result causes no network or ItemsSource replacement.");
+                        check(table.Columns.SequenceEqual(columns), "Scrolling cannot recreate native table columns.");
+                        check(maximumRealizedRows > 0 && maximumRealizedRows < 200,
+                            "Actual realized row containers stay bounded by the viewport, not the complete row count.");
                         check((goods ? ((GoodsRecord)table.Items[totalRows - 1]).Id : ((UnitRecord)table.Items[totalRows - 1]).Id).EndsWith(totalRows.ToString("D12")), "The final row remains reachable with its server identity.");
+                        if (stress && goods)
+                        {
+                            check(table.Items.Cast<GoodsRecord>().Select(item => item.Id).SequenceEqual(Enumerable.Range(1, totalRows)
+                                .Select(index => "00000000-0000-4000-8000-" + index.ToString("D12"))),
+                                "Every accepted stress row has the exact ordered server identity without omissions or duplicates.");
+                            window.WindowState = WindowState.Minimized; PumpFor(20);
+                            window.WindowState = WindowState.Normal; PumpFor(20);
+                            check(ReferenceEquals(source, table.ItemsSource) && handler.ListReads == 1,
+                                "Minimize/restore preserves the accepted snapshot without a new read.");
+                            Console.WriteLine("OBSERVE native functional fixture rows=" + totalRows + "; completeLoadMs=" + loadTime.ElapsedMilliseconds
+                                + "; realizedRowsMax=" + maximumRealizedRows + "; scrollCycles=50; httpReads=1; finalRow=" + totalRows
+                                + "; no low-end hardware or production latency claim");
+                        }
                         if (!goods)
                         {
                             table.SelectAll(); PumpFor(20);
@@ -352,7 +387,7 @@ namespace Uten.Legacy.Tests
                         PumpUntil(() => handler.ListReads == 2 && handler.FramesRead == completeReads + 1, "A replacement waits for its actual held second frame in the same HTTP request.");
                         check(ReferenceEquals(source, table.ItemsSource), "An incomplete replacement cannot publish its first batch over complete accepted rows.");
                         search.Text = "replacement"; RaiseEnter(search);
-                        PumpUntil(() => !ReadBusy(view, goods) && table.Items.Count == totalRows && ShownSearchName(table, goods).Contains("replacement"), "A superseding query must read and publish all its own rows.");
+                        PumpUntil(() => !ReadBusy(view, goods) && table.Items.Count == totalRows && ShownSearchName(table, goods).Contains("replacement"), "A superseding query must read and publish all its own rows.", stress ? 45 : 8);
                         int reads = handler.ListReads;
                         held.SetResult(true); PumpFor(60);
                         check(ShownSearchName(table, goods).Contains("replacement") && handler.ListReads == reads, "A retired later batch neither publishes nor dispatches the old query's remaining pages.");
@@ -360,26 +395,29 @@ namespace Uten.Legacy.Tests
                         if (goods)
                         {
                             object accepted = table.ItemsSource;
-                            int beforeRetry = handler.ListReads;
-                            handler.BeforeList = (uri, token) => Task.Delay(Timeout.Infinite, token);
-                            FindVisual<Button>(view, button => Equals(button.Content, "重新读取")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                            PumpUntil(() => handler.ListReads == beforeRetry + 1 && !window.IsEnabled,
-                                "The actual goods retry button must own the waiting dialog while its read is blocked.");
-                            var busy = Application.Current.Windows.OfType<UtenDialogWindow>()
-                                .Single(dialog => dialog.Owner == window && dialog.Title == "正在读取货品");
-                            check(Application.Current.Windows.OfType<UtenDialogWindow>().Count(dialog => dialog.Owner == window && dialog.Title == "正在读取货品") == 1,
-                                "One actual retry action owns exactly one existing Uten busy dialog.");
-                            FindVisual<Button>(busy, button => Equals(button.Content, "取消")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                            PumpUntil(() => window.IsEnabled && !ReadBusy(view, true) && !busy.IsVisible,
-                                "Cancellation must drain the owned read and remove the waiting dialog.");
-                            check(handler.ListReads == beforeRetry + 1 && ReferenceEquals(accepted, table.ItemsSource) && handler.BusinessWrites == 0,
-                                "Cancelling retry preserves the complete accepted result and never replays a write or starts tail pages.");
-                            var cancelledStatus = (TextBlock)view.GetType().GetField("status", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance).GetValue(view);
-                            check(cancelledStatus.Text.Contains("已取消读取") && !cancelledStatus.Text.Contains("正在读取"),
-                                "Cancelled native reads must finish their visible loading state while preserving accepted rows.");
+                            for (int cancellation = 0; cancellation < (stress ? 12 : 1); cancellation++)
+                            {
+                                int beforeRetry = handler.ListReads;
+                                handler.BeforeList = (uri, token) => Task.Delay(Timeout.Infinite, token);
+                                FindVisual<Button>(view, button => Equals(button.Content, "重新读取")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                                PumpUntil(() => handler.ListReads == beforeRetry + 1 && !window.IsEnabled,
+                                    "The actual goods retry button must own the waiting dialog while its read is blocked.");
+                                var busy = Application.Current.Windows.OfType<UtenDialogWindow>()
+                                    .Single(dialog => dialog.Owner == window && dialog.Title == "正在读取货品");
+                                check(Application.Current.Windows.OfType<UtenDialogWindow>().Count(dialog => dialog.Owner == window && dialog.Title == "正在读取货品") == 1,
+                                    "One actual retry action owns exactly one existing Uten busy dialog.");
+                                FindVisual<Button>(busy, button => Equals(button.Content, "取消")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                                PumpUntil(() => window.IsEnabled && !ReadBusy(view, true) && !busy.IsVisible,
+                                    "Cancellation must drain the owned read and remove the waiting dialog.");
+                                check(handler.ListReads == beforeRetry + 1 && ReferenceEquals(accepted, table.ItemsSource) && handler.BusinessWrites == 0,
+                                    "Cancelling retry preserves the complete accepted result and never replays a write or starts tail pages.");
+                                var cancelledStatus = (TextBlock)view.GetType().GetField("status", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance).GetValue(view);
+                                check(cancelledStatus.Text.Contains("已取消读取") && !cancelledStatus.Text.Contains("正在读取"),
+                                    "Cancelled native reads must finish their visible loading state while preserving accepted rows.");
+                            }
                             handler.BeforeList = null;
                         }
-                        Snapshot(view, goods ? "goods-continuous-list.png" : "units-continuous-list.png");
+                        Snapshot(view, (goods ? "goods-continuous-list" : "units-continuous-list") + (stress ? "-stress-" + goodsRows : "") + ".png");
                     }
                     finally { handler.BeforeList = null; held.TrySetResult(true); window.Close(); }
                 }
@@ -1256,17 +1294,24 @@ namespace Uten.Legacy.Tests
             }
             return null;
         }
+        private static int CountVisual<T>(DependencyObject root) where T : DependencyObject
+        {
+            int count = root is T ? 1 : 0;
+            for (int index = 0; index < VisualTreeHelper.GetChildrenCount(root); index++)
+                count += CountVisual<T>(VisualTreeHelper.GetChild(root, index));
+            return count;
+        }
         private static void Snapshot(FrameworkElement content, string fileName)
         {
             var bitmap = new RenderTargetBitmap((int)Math.Ceiling(content.ActualWidth), (int)Math.Ceiling(content.ActualHeight), 96, 96, PixelFormats.Pbgra32);
             bitmap.Render(content); var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(bitmap));
             using (var output = File.Create(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, fileName))) encoder.Save(output);
         }
-        private static void PumpUntil(Func<bool> complete, string failure)
+        private static void PumpUntil(Func<bool> complete, string failure, int timeoutSeconds = 8)
         {
             var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(10) };
             var deadline = System.Diagnostics.Stopwatch.StartNew(); var frame = new DispatcherFrame();
-            timer.Tick += (sender, args) => { if (complete() || deadline.Elapsed > TimeSpan.FromSeconds(8)) frame.Continue = false; };
+            timer.Tick += (sender, args) => { if (complete() || deadline.Elapsed > TimeSpan.FromSeconds(timeoutSeconds)) frame.Continue = false; };
             timer.Start();
             try { Dispatcher.PushFrame(frame); } finally { timer.Stop(); }
             if (!complete()) throw new InvalidOperationException(failure);

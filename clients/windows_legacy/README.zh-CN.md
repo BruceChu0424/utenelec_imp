@@ -112,6 +112,8 @@ Windows 按 `runtimeFamily` 区分：现有 Win10/11 为 `flutter`，Win7 WPF �
 
 各架构bootstrap、主runner、日志和源码前后SHA在私有build目录核验，不安装/降低SDK，不生成正式包或发布。只诊断UI时Debug测试EXE可传--ui-contracts-only，不能把它当整个runner结果。
 
+已有货品/单位完整列表的大数据功能回归可在本机 Debug 测试 EXE 执行 `--complete-list-stress-35000` 或 `--complete-list-stress-100000`：复用真实 WPF 控件与内存 HTTP fixture，检查全部行、50次虚拟滚动、查询退休、12次重读取消及原写入边界，不连接公司服务。记录的初载时间不是低配或 Win7 真机性能验收；当前差异和结果见[本次适用性证据](progress/evidence/table-read-performance-20261110.md)。
+
 当前检查包括双架构原生编译及 PE/CLR 位数、离线会话与存储竞态、读范围、UI 契约、精度/遮罩、真实本机 TLS/HTTP 以及安装/依赖/主题合同。测试不连接生产业务后端，也不导入系统证书。
 
 完整完成须逐项具备：全部适用页面与流程迁移、与现有前端同源契约样例、前后端业务链回归、Win7 SP1 x86/x64 真机交互与性能证据、现有 Win10 版本独立回归、安装及原生更新双链路验收、全部受支持组合的正式双包和授权发布回执。完成状态以这些证据为准，不能以阶段性编译或截图替代。

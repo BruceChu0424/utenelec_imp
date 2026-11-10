@@ -134,7 +134,9 @@ Future<ProviderContainer> _pump(WidgetTester tester, _Api api) async {
       ),
     ),
   );
-  await tester.pumpAndSettle();
+  // 1000-row NDJSON frames use the real native JSON isolate. Keep the same
+  // settle deadline/frame step while giving that worker actual I/O turns.
+  await pumpAndSettleWithIo(tester);
   return container;
 }
 
@@ -173,7 +175,7 @@ void main() {
       );
       final beforeScroll = api.keywords.length;
       await tester.drag(_table, const Offset(0, -700));
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(api.keywords, hasLength(beforeScroll));
       expect(
         find.byKey(const ValueKey('master-table-page-next')),
@@ -190,7 +192,7 @@ void main() {
       expect(api.keywords, ['', '']);
       await tester.enterText(_search, '末端');
       await tester.pump(const Duration(milliseconds: 301));
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(api.keywords, ['', '', '末端']);
       expect(
         tester
@@ -201,7 +203,7 @@ void main() {
         'method-9999',
       );
       gate.complete(api.rows());
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(api.keywords, hasLength(3));
       expect(
         tester
@@ -239,9 +241,9 @@ void main() {
       );
       api.marker = '新范围';
       container.read(readScopeRevisionProvider.notifier).state++;
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       gate.complete(stale);
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(container.read(authenticatedScopeProvider), identity);
       expect(container.read(currentPermissionsProvider), permissions);
       expect(
@@ -264,22 +266,22 @@ void main() {
           .widget<MasterDataTableView<SettlementMethodAdminItem>>(_table);
       expect(view.onRowTap, isNotNull);
       view.onRowTap!(view.items.first);
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       final form = tester.state(find.byType(MasterEditForm));
       final save = tester
           .widget<UtenButton>(find.widgetWithText(UtenButton, '保存'))
           .onPressed!;
       container.read(readScopeRevisionProvider.notifier).state++;
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       container.read(readScopeRevisionProvider.notifier).state++;
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(find.text('原输入已保留，此窗口不会提交'), findsOneWidget);
       expect(
         tester.state(find.byType(MasterEditForm, skipOffstage: false)),
         same(form),
       );
       await Future<void>.sync(save);
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(api.writes, 0);
       expect(tester.takeException(), isNull);
     },

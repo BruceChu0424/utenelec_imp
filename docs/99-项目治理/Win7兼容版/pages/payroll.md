@@ -40,21 +40,21 @@
 
 ## W7-BIZ-090 · lib/features/payroll/pages/payroll_slip_detail_page.dart
 
-模块 `payroll`；342 行；SHA256 `aa79b19a84e9a5925175d0e7326c5963994de65c5456686dee832daba13e029b`。
+模块 `payroll`；358 行；SHA256 `bda72cc3cfbe3c14cdccdea3ed44462e3d1db6851652d68c22b755e25761fc67`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
-| 页面/状态类 | PayrollSlipDetailPage @31 (page-class)<br>_PayrollSlipDetailPageState @41 (state-class)<br>_LoadingView @124 (supporting-class)<br>_DetailContent @138 (supporting-class) |
+| 页面/状态类 | PayrollSlipDetailPage @33 (page-class)<br>_PayrollSlipDetailPageState @43 (state-class)<br>_LoadingView @140 (supporting-class)<br>_DetailContent @154 (supporting-class) |
 | 真实路由绑定 | /payroll/slip/:id；router @672；builder ['PayrollSlipDetailPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | 未静态确认；不能当作不存在 |
-| 动作处理 | _download @56 [method-declaration-candidate] 提示 ['download']；Future<void> _download(PayrollSlip slip) async {<br>downloadPayrollSlip @58 [action-like-invocation] 提示 ['download']；final bytes = await downloadPayrollSlip(ref, slip.id);<br>saveBytes @62 [action-like-invocation] 提示 ['save']；final savedPath = await saveBytes(<br>addPostFrameCallback @98 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) => _markViewed());<br>_download @114 [action-like-invocation] 提示 ['download']；onAction: () => _download(slip),<br>copyWith @266 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith( |
+| 动作处理 | _download @58 [method-declaration-candidate] 提示 ['download']；Future<void> _download(PayrollSlip slip) async {<br>downloadPayrollSlip @67 [action-like-invocation] 提示 ['download']；action: (progress) => downloadPayrollSlip(<br>saveBytes @78 [action-like-invocation] 提示 ['save']；final savedPath = await saveBytes(<br>addPostFrameCallback @114 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) => _markViewed());<br>_download @130 [action-like-invocation] 提示 ['download']；onAction: () => _download(slip),<br>copyWith @282 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith( |
 | 控制器候选（人工核实） | 未静态确认；不能当作不存在 |
 | 审计限制 | 存在委托组件/provider；页面内操作和权限引用不是完整链路清单，需沿导入继续审查。 |
 
-直接源依赖：`lib/core/formatters/exact_number_text.dart` (core)；`lib/core/utils/china_datetime.dart` (core)；`lib/components/buttons/click_guard.dart` (sharedComponents)；`lib/components/cards/uten_card.dart` (sharedComponents)；`lib/components/data_display/uten_detail_summary_card.dart` (sharedComponents)；`lib/components/data_display/uten_info_row.dart` (sharedComponents)；`lib/components/data_display/uten_status_badge.dart` (sharedComponents)；`lib/components/feedback/uten_empty.dart` (sharedComponents)；`lib/components/feedback/uten_skeleton.dart` (sharedComponents)；`lib/components/layout/uten_app_bar.dart` (sharedComponents)；`lib/components/layout/uten_content_container.dart` (sharedComponents)；`lib/components/layout/uten_floating_action_group.dart` (sharedComponents)；`lib/components/layout/uten_section_header.dart` (sharedComponents)；`lib/core/io/file_saver.dart` (core)；`lib/core/theme/uten_tokens.dart` (core)；`lib/core/ui/app_notification.dart` (core)；`lib/core/ui/human_error_message.dart` (core)；`lib/features/payroll/models/payroll_download.dart` (models)；`lib/features/payroll/models/payroll_item.dart` (models)；`lib/features/payroll/models/payroll_slip.dart` (models)；`lib/features/payroll/providers/payroll_providers.dart` (providers)。
+直接源依赖：`lib/core/formatters/exact_number_text.dart` (core)；`lib/core/utils/china_datetime.dart` (core)；`lib/components/buttons/click_guard.dart` (sharedComponents)；`lib/components/feedback/uten_progress_dialog.dart` (sharedComponents)；`lib/components/cards/uten_card.dart` (sharedComponents)；`lib/components/data_display/uten_detail_summary_card.dart` (sharedComponents)；`lib/components/data_display/uten_info_row.dart` (sharedComponents)；`lib/components/data_display/uten_status_badge.dart` (sharedComponents)；`lib/components/feedback/uten_empty.dart` (sharedComponents)；`lib/components/feedback/uten_skeleton.dart` (sharedComponents)；`lib/components/layout/uten_app_bar.dart` (sharedComponents)；`lib/components/layout/uten_content_container.dart` (sharedComponents)；`lib/components/layout/uten_floating_action_group.dart` (sharedComponents)；`lib/components/layout/uten_section_header.dart` (sharedComponents)；`lib/core/io/file_saver.dart` (core)；`lib/core/theme/uten_tokens.dart` (core)；`lib/core/ui/app_notification.dart` (core)；`lib/core/ui/human_error_message.dart` (core)；`lib/features/payroll/models/payroll_download.dart` (models)；`lib/features/payroll/models/payroll_item.dart` (models)；`lib/features/payroll/models/payroll_slip.dart` (models)；`lib/features/payroll/providers/payroll_providers.dart` (providers)。
 
 ## W7-BIZ-091 · lib/features/payroll/pages/payroll_slip_list_page.dart
 

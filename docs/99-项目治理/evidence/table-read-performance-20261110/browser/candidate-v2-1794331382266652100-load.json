@@ -1,0 +1,113 @@
+{
+  "event": "read-complete",
+  "syntheticOnly": true,
+  "scenario": "load",
+  "runId": "after2-10000-fixed",
+  "variant": "candidate",
+  "targetRows": 10000,
+  "columns": 30,
+  "batchDelayMs": 1,
+  "phase": "完成",
+  "loadedRows": 10000,
+  "firstBatchAcceptedMs": 174,
+  "completeReadMs": 1066,
+  "layoutWaitReturnMs": 5703,
+  "timingBoundary": "accepted/reader-return/bounded-layout-wait; not first paint, full layout stability, INP or production SLA",
+  "generation": 1,
+  "syntheticBatchCalls": 16,
+  "transportScope": "synthetic batch callbacks, not HTTP/NDJSON latency",
+  "precisionScope": "exact display strings retained; numeric decoding/business calculations are separate regressions",
+  "activeReads": 1,
+  "maxActiveReads": 1,
+  "cancelledReads": 0,
+  "completeReads": 1,
+  "lateRepliesDelivered": 0,
+  "expectedInterruptions": 0,
+  "successfulGeneration": 1,
+  "tableRows": 10000,
+  "valueVisits": 157255,
+  "selectionIdentityVisits": 10105,
+  "maxEventLoopGapMs": 253,
+  "pulses": 320,
+  "siblingInputRetained": true,
+  "errors": [],
+  "profiles": {
+    "master.collect-rows": {
+      "calls": 7,
+      "micros": 4200,
+      "maxMicros": 2000
+    },
+    "master.sync-rows": {
+      "calls": 7,
+      "micros": 5200,
+      "maxMicros": 2000
+    },
+    "master.selection-row-keys": {
+      "calls": 2,
+      "micros": 0,
+      "maxMicros": 0
+    },
+    "master.row-plan": {
+      "calls": 7,
+      "micros": 201,
+      "maxMicros": 101
+    },
+    "master.projected-table": {
+      "calls": 7,
+      "micros": 8402,
+      "maxMicros": 6700
+    },
+    "master.selection-ids": {
+      "calls": 3,
+      "micros": 3499,
+      "maxMicros": 3400
+    },
+    "master.intrinsic-height": {
+      "calls": 3,
+      "micros": 3500,
+      "maxMicros": 2500
+    },
+    "master.stretch-layout": {
+      "calls": 3,
+      "micros": 6900,
+      "maxMicros": 4800
+    },
+    "master.body-stage": {
+      "calls": 7,
+      "micros": 6501,
+      "maxMicros": 2300
+    },
+    "row-window-element-mount": {
+      "calls": 2,
+      "micros": 103599,
+      "maxMicros": 101500
+    },
+    "presentation": {
+      "calls": 122,
+      "micros": 4689098,
+      "maxMicros": 4015600
+    },
+    "master.row-build": {
+      "calls": 105,
+      "micros": 2898,
+      "maxMicros": 400
+    },
+    "table-cell-theme-create": {
+      "calls": 1,
+      "micros": 200,
+      "maxMicros": 200
+    },
+    "table-cell-theme-build": {
+      "calls": 105,
+      "micros": 3099,
+      "maxMicros": 400
+    },
+    "master.row-layout": {
+      "calls": 21,
+      "micros": 62199,
+      "maxMicros": 9700
+    }
+  },
+  "servedBuildSha256": "c3994d71db1b81cbdc9be0a8d712794ef5c3de7713d850c057fa639358f1a465",
+  "observedAtUnixMs": 1794331382266
+}

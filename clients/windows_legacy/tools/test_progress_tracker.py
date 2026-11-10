@@ -111,6 +111,39 @@ class ProgressTrackerTest(unittest.TestCase):
         self.assertEqual("in_progress", updated["tasks"][0]["status"])
         self.assertEqual(["evidence.md"], updated["tasks"][0]["evidence"])
 
+    def test_sync_retains_later_registered_common_package_and_counts_it(self):
+        self.source_inputs([self.page("a")])
+        previous = tracker.build_registry()
+        registered = self.task("W7-FLOW-019", "implemented")
+        registered.update(group="FLOW", notes="reviewed later package; target-PC acceptance pending",
+                          owner="original owner", nativeTargets=["native/owned.cs"],
+                          definitionOfDone=["keep the original reviewed contract"], evidence=["evidence.md"])
+        previous["tasks"].append(registered)
+
+        updated = tracker.build_registry(previous)
+        retained = next(item for item in updated["tasks"] if item["id"] == "W7-FLOW-019")
+        self.assertEqual(registered, retained)
+        self.assertIsNot(registered, retained, "A candidate sync cannot mutate the previous registry by alias")
+        self.assertEqual(2, len(updated["tasks"]))
+        self.assertEqual(1, updated["baselineCounts"]["commonAndFlowPackages"])
+        self.assertEqual(len(updated["tasks"]), sum(updated["baselineCounts"][key] for key in
+                         ["businessPagePackages", "retainedBusinessPagePackages", "commonAndFlowPackages"]))
+        self.assertEqual(updated, tracker.build_registry(updated), "Repeated sync keeps the same stable package")
+
+    def test_sync_preserves_reviewed_page_and_common_dependencies(self):
+        self.source_inputs([self.page("a")])
+        catalog = {"tasks": [self.task("W7-ONE-001"), self.task("W7-TWO-001")], "groups": []}
+        (self.state / "infrastructure-catalog.json").write_text(json.dumps(catalog), encoding="utf-8")
+        previous = tracker.build_registry()
+        page = next(item for item in previous["tasks"] if item["group"] == "BIZ")
+        common = next(item for item in previous["tasks"] if item["id"] == "W7-TWO-001")
+        page["dependencies"] = ["W7-TWO-001"]
+        common["dependencies"] = ["W7-ONE-001"]
+
+        updated = tracker.build_registry(previous)
+        self.assertEqual(page["dependencies"], next(item for item in updated["tasks"] if item["id"] == page["id"])["dependencies"])
+        self.assertEqual(common["dependencies"], next(item for item in updated["tasks"] if item["id"] == common["id"])["dependencies"])
+
     def test_removed_page_stays_visible_until_manual_scope_review(self):
         self.source_inputs([self.page("a"), self.page("b")])
         previous = tracker.build_registry()

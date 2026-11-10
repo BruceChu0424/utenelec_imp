@@ -263,6 +263,7 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
         ? gateway
         : null;
     return MasterEntityPaneConfig<ClientListItem, ClientDetail>(
+      immutableSummaryRows: true,
       noun: '客户', // TODO(l10n): 补 arb
       inlineCreation: (pane) => MasterInlineCreateConfig(
         namespace: 'clients.${pane.categoryId}',

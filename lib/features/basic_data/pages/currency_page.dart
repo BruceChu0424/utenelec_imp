@@ -1072,6 +1072,11 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage>
                           ),
                         Expanded(
                           child: MasterDataTableView<CurrencyListItem>(
+                            immutableRows: !inlineEdit.active,
+                            presentationRevision: inlineEdit.active
+                                ? null
+                                : _columns,
+                            rowKeyOf: inlineIdOf,
                             rowsController: _readViewportRows,
                             expensiveRowMounts: inlineEdit.active,
                             appendRowsSource: inlineAppendRowsSource,
@@ -1081,7 +1086,9 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage>
                             columnEditingEnabled: _canEdit,
                             tableKey:
                                 'features.basic_data.pages.currency_page.CurrencyPageState._buildDraftHost.1',
-                            columns: inlineColumns(_columns),
+                            columns: inlineEdit.active
+                                ? inlineColumns(_columns)
+                                : _columns,
                             serverColumnSearchKeys: const {
                               'code',
                               'name',

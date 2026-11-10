@@ -4,6 +4,7 @@ import '../../../components/layout/uten_page_scrollbar_host.dart';
 import '../../../components/layout/uten_page_layout.dart';
 import '../../../shared/paging/complete_paged_snapshot.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/models/immutable_paged_rows.dart';
 import '../../../core/responsive/compact_presentation.dart';
 import '../../../components/layout/uten_action_overflow.dart';
 import '../../../components/layout/uten_table_action_scope.dart';
@@ -95,9 +96,45 @@ part 'master_data_table_view_ai.dart';
 /// immediately and unwind in finally; commands/events/awaits are never scoped.
 typedef MasterTableSelectionReadScope = R Function<R>(R Function() read);
 
+/// Optional local work counters. Never carries row values or identities.
+void Function(String label, int items)? debugMasterTableWorkObserver;
+
 class _MasterWindowSlot {
   _MasterWindowSlot(this.id);
   final Object id;
+}
+
+typedef _MasterRowPlan<T> = ({
+  bool header,
+  MasterDataGroup<T>? group,
+  T? item,
+  Widget? notice,
+});
+
+/// A flat read already owns its row order. Do not allocate an eager wrapper
+/// record for every old row on each progressive publication.
+class _FlatMasterRowPlan<T> extends ListBase<_MasterRowPlan<T>> {
+  _FlatMasterRowPlan(this.rows);
+  final List<T> rows;
+  @override
+  int get length => rows.length;
+  @override
+  set length(int value) => throw UnsupportedError('Read-only row plan');
+  @override
+  _MasterRowPlan<T> operator [](int index) =>
+      (header: false, group: null, item: rows[index], notice: null);
+  @override
+  void operator []=(int index, _MasterRowPlan<T> value) =>
+      throw UnsupportedError('Read-only row plan');
+}
+
+class _MasterFacetAccumulator<T> {
+  _MasterFacetAccumulator(this.column, this.revision);
+  final MasterColumnDef<T> column;
+  final Object revision;
+  List<T>? rows;
+  final Map<String, int> counts = {};
+  int nullCount = 0;
 }
 
 class _DeferredRowKey extends ValueKey<Key> {
@@ -477,6 +514,8 @@ class MasterDataTableView<T> extends StatefulWidget {
     this.requiredLeadingColumnKeys = const [],
     this.temporaryLeadingColumnKeys = const [],
     required this.items,
+    this.immutableRows = false,
+    this.presentationRevision,
     this.unpagedItems = const [],
     this.rowsController,
     this.rowVisible,
@@ -656,6 +695,16 @@ class MasterDataTableView<T> extends StatefulWidget {
   /// table state; layout changes to other columns still persist normally.
   final List<String> temporaryLeadingColumnKeys;
   final List<T> items;
+
+  /// Opt-in for immutable row values and a stable [rowKeyOf]. Only an immutable
+  /// append proof from the shared reader permits incremental collection. Live
+  /// selection eligibility ([idOf]) is never cached by this contract.
+  final bool immutableRows;
+
+  /// Non-null only when the host retires this token whenever external values
+  /// read by column/filter/sort callbacks change. Mutable editors omit it.
+  /// Data membership, columns, query and platform changes also invalidate caches.
+  final Object? presentationRevision;
   final Map<String, List<MasterFacetBucket>> facets;
 
   /// Optional full-scope candidate lookup for capped server facet previews.
@@ -1062,7 +1111,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     _fsTick.value++;
   }
 
-  final _pages = SplayTreeMap<int, List<T>>();
+  // Complete reads have one local snapshot. The old page map and its row-to-
+  // page index had no readers after continuous-list migration.
+  List<T> _pageRows = const [];
   PagedReadWindowBinding<T>? _readWindowBinding;
 
   void _bindReadWindow() {
@@ -1085,9 +1136,11 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
 
   final _selectedRows = <String, T>{};
   late List<T> _items;
+  List<T>? _collectedSource;
+  String? Function(T)? _collectedIdentity;
+  final Set<String> _collectedIds = {};
+  bool _collectedSnapshot = false;
   int? get _appendPage => null;
-  int? _visiblePage;
-  final _rowPages = <Object, int>{};
   int _pageLayoutGeneration = 0;
   String? get _appendError => null;
   int _appendGeneration = 0;
@@ -1123,7 +1176,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       return;
     }
     _withSelectionReadScope<void>(() {
-      for (final row in _pages.values.expand((rows) => rows)) {
+      for (final row in _pageRows) {
         final id = identity(row);
         if (id != null && _outputSelectedIds.contains(id)) {
           _selectedRows[id] = row;
@@ -1137,20 +1190,34 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     return scope == null ? read() : scope<R>(read);
   }
 
-  List<T> _collectRows(Map<int, List<T>> pages) => _profileMasterTableWork(
+  List<T> _collectRows(List<T> rows) => _profileMasterTableWork(
     'master.collect-rows',
-    () => _collectRowsImpl(pages),
+    () => _collectRowsImpl(rows),
   );
 
-  List<T> _collectRowsImpl(Map<int, List<T>> pages) {
-    if (_resultOwnerRetired) return <T>[];
-    final rows = pages[1] ?? <T>[];
+  List<T> _collectRowsImpl(List<T> rows) {
+    _collectedSnapshot = false;
+    if (_resultOwnerRetired) {
+      _collectedSource = null;
+      _collectedIdentity = null;
+      _collectedIds.clear();
+      return <T>[];
+    }
+    final frozen = _collectImmutableRows(rows);
+    if (frozen != null) return frozen;
     // Output content tokens are not business identities. Keep every report
     // occurrence unless the caller explicitly provides a real record key.
     final identity = widget.rowKeyOf ?? widget.idOf;
     final merged = <T>[];
     final indexes = <String, int>{};
-    for (final row in [...widget.unpagedItems, ...rows]) {
+    debugMasterTableWorkObserver?.call(
+      'collectRows',
+      widget.unpagedItems.length + rows.length,
+    );
+    for (final row in <Iterable<T>>[
+      widget.unpagedItems,
+      rows,
+    ].expand<T>((source) => source)) {
       final id = identity?.call(row);
       final index = id == null || id.isEmpty ? null : indexes[id];
       if (index == null) {
@@ -1165,41 +1232,74 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         : merged.where(widget.rowVisible!).toList();
   }
 
+  List<T>? _collectImmutableRows(List<T> rows) {
+    final identity = widget.rowKeyOf;
+    if (!widget.immutableRows ||
+        identity == null ||
+        widget.rowVisible != null ||
+        widget.unpagedItems.isNotEmpty ||
+        pagedRowsAppendStart(rows, rows) == null) {
+      _collectedSource = null;
+      _collectedIdentity = null;
+      _collectedIds.clear();
+      return null;
+    }
+    final start = identity == _collectedIdentity
+        ? pagedRowsAppendStart(_collectedSource, rows)
+        : null;
+    if (start == null) _collectedIds.clear();
+    final offset = start ?? 0;
+    debugMasterTableWorkObserver?.call('collectRows', rows.length - offset);
+    for (final row in rows.getRange(offset, rows.length)) {
+      final id = identity(row);
+      if (id != null && id.isNotEmpty && !_collectedIds.add(id)) {
+        // A presentation key can differ from the reader's identity. Duplicate
+        // keys still use the established last-value/first-position merge.
+        _collectedSource = null;
+        _collectedIdentity = null;
+        _collectedIds.clear();
+        return null;
+      }
+    }
+    _collectedSource = rows;
+    _collectedIdentity = identity;
+    _collectedSnapshot = true;
+    return rows;
+  }
+
   void _syncRows() =>
       _profileMasterTableWork('master.sync-rows', _syncRowsImpl);
 
   void _syncRowsImpl() {
     _bindReadWindow();
     if (_resultOwnerRetired || _readWindowBinding?.empty == true) {
-      _pages
-        ..clear()
-        ..[1] = <T>[];
+      _pageRows = <T>[];
       _selectedRows.clear();
     }
-    _items = _collectRows(_pages);
+    _items = _collectRows(_pageRows);
+    _retireUnusedFlatSnapshots();
     // This already runs at data/projection changes, never at a scroll tick.
     // Compare values rather than the newly collected List identity so selection
     // rebuilds do not discard a virtualized row's measured height.
-    if (!listEquals(_floatingBatchRowsSnapshot, _items)) {
+    final appendStart = _collectedSnapshot
+        ? pagedRowsAppendStart(_floatingBatchRowsSnapshot, _items)
+        : null;
+    final changed = appendStart != null
+        ? appendStart != _items.length
+        : !listEquals(_floatingBatchRowsSnapshot, _items);
+    if (changed) {
       _floatingBatchRowsSnapshot = _items;
       _floatingBatchDataRevision++;
-    }
-    if (_visiblePage != null && !_pages.containsKey(_visiblePage)) {
-      _visiblePage = null;
-    }
-    _rowPages.clear();
-    for (final entry in _pages.entries) {
-      for (final row in entry.value) {
-        // The first occurrence is the visible position after de-duplication;
-        // newer snapshots may update the value but do not move that position.
-        _rowPages.putIfAbsent(('data', _paginationRowId(row)), () => entry.key);
-      }
     }
     _retainSelectedRows();
     final controller = widget.rowsController;
     if (controller != null) {
       if (_selectedRows.isEmpty) {
-        controller.update(_items);
+        if (_collectedSnapshot) {
+          controller.updateSnapshot(_items);
+        } else {
+          controller.update(_items);
+        }
       } else {
         final liveIds = _withSelectionReadScope(
           () => _items.map((row) => _outputIdOf?.call(row)).toSet(),
@@ -1211,6 +1311,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         ]);
       }
     }
+    _pruneFacetAccumulators();
     _bindPagination();
   }
 
@@ -1265,7 +1366,6 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   /// Fetch position and reading position are separate. Wait for insertion /
   /// eviction compensation before resolving the actual visible business page.
   void _acceptPageIndicator(int page, {bool reset = false}) {
-    if (reset) _visiblePage = null;
     _pageLayoutGeneration++;
   }
 
@@ -1278,15 +1378,17 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     _appendGeneration++;
     _prependBottomSpace = 0;
     _acceptPageIndicator(widget.currentPage, reset: true);
-    _pages
-      ..clear()
-      ..[1] = widget.items;
+    _pageRows = widget.items;
     _syncRows();
   }
 
   List<T> _reuseUnchangedMapRows(List<T> incoming) {
-    final previous = _pages[1];
-    if (previous == null || identical(previous, incoming)) return incoming;
+    if (widget.immutableRows &&
+        pagedRowsAppendStart(incoming, incoming) != null) {
+      return incoming;
+    }
+    final previous = _pageRows;
+    if (identical(previous, incoming)) return incoming;
     const equality = DeepCollectionEquality();
     bool canReuse(T current, T before) {
       if (identical(current, before)) return true;
@@ -1330,13 +1432,10 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       _selectedRows.clear();
     }
     if (scopeChanged) _readWindowBinding = null;
-    _visiblePage = null;
     final incoming = scopeChanged
         ? widget.items
         : _reuseUnchangedMapRows(widget.items);
-    _pages
-      ..clear()
-      ..[1] = incoming;
+    _pageRows = incoming;
     _syncRows();
   }
 
@@ -1560,6 +1659,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       return _platformColumnCache!;
     }
     _platformBaseCache = widget.columns;
+    if (_platform.definitions.isEmpty) {
+      return _platformColumnCache = widget.columns;
+    }
     return _platformColumnCache = [
       ...widget.columns,
       for (final column in _platform.definitions)
@@ -1609,12 +1711,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         revision: (_items, _authorizedLeadingGroups),
         tableKey: widget.tableKey,
         columnKeys: widget.columns.map((c) => c.key).toList(),
-        rows: [
-          ..._items,
-          for (final group
-              in _authorizedLeadingGroups ?? <MasterDataGroup<T>>[])
-            ...group.items,
-        ],
+        rows: _rowsWithLeadingGroups(),
       ),
       explicitBinding: widget.platformBinding,
       columnEditingEnabled: widget.columnEditingEnabled,
@@ -1638,6 +1735,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   }
 
   void _applyPlatformLayout() {
+    _invalidateColumnIndexes();
     final columns = _columns;
     final keys = columns.map((c) => c.key).toSet();
     final saved = _platform.localLayout(
@@ -1714,6 +1812,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         _manualResized.add(i);
       }
     }
+    _pruneFacetAccumulators();
   }
 
   void _platformChanged() {
@@ -1723,6 +1822,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       _platformRefreshScheduled = false;
       if (!mounted) return;
       setState(() {
+        _displayRowsSource = null;
+        _rowFacetScope = null;
         _platformColumnCache = null;
         _applyPlatformLayout();
         _widthsDirty = true;
@@ -1734,6 +1835,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   }
 
   void _persistPlatformLayout() {
+    _invalidateColumnIndexes();
     _platform.saveLayout(
       knownKeys: _columns.map((c) => c.key).toList(),
       order: List.of(_columnOrder),
@@ -2574,6 +2676,12 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   final _textSelection = UtenTableTextSelection();
   final _localRowWindow = UtenAncestorRowWindowController<_MasterWindowSlot>();
   final _localWindowSlots = <Object, _MasterWindowSlot>{};
+  List<T>? _flatWindowSource;
+  ImmutablePagedRowsBuilder<_MasterWindowSlot>? _flatWindowBuilder;
+  List<_MasterWindowSlot>? _flatWindowSnapshot;
+  String? Function(T)? _flatWindowIdentity;
+  Object? _flatWindowScope;
+  PagedReadWindowBinding<T>? _flatWindowOwner;
   _MasterWindowSlot? _localWindowEnd;
   final _deferredRowMounts = <Object, UtenDeferredRowMountController>{};
   final _deferredRowHeights = <Object, double>{};
@@ -2590,6 +2698,10 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   int _deferredEdgePasses = 0;
   List<String>? _textSelectionColumnKeys;
   List<String>? _textSelectionRowKeys;
+  List<T>? _textSelectionSnapshot;
+  String? Function(T)? _textSelectionIdentity;
+  Object? _textSelectionScope;
+  PagedReadWindowBinding<T>? _textSelectionOwner;
 
   void _trackFallbackInsertion(List<Object> ids, {required bool eligible}) {
     if (listEquals(ids, _fallbackPlanIds)) {
@@ -2773,6 +2885,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   }
 
   void _normalizeRequiredLeadingColumns() {
+    _invalidateColumnIndexes();
     final required = _requiredLeadingKeys;
     _hiddenKeys.removeAll(required);
     _pinnedKeys.addAll(required);
@@ -3579,6 +3692,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         !current.isCurrent) {
       return false;
     }
+    if (pagedRowsAppendStart(before, after) == before.length) return true;
     final last = before.length - 1;
     return identical(before.first, after.first) &&
         identical(before[last ~/ 2], after[last ~/ 2]) &&
@@ -3593,6 +3707,12 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   void didUpdateWidget(covariant MasterDataTableView<T> oldWidget) {
     super.didUpdateWidget(oldWidget);
     final appended = _progressiveAppend(oldWidget);
+    final immutableAppend =
+        appended &&
+        widget.immutableRows &&
+        oldWidget.immutableRows &&
+        pagedRowsAppendStart(oldWidget.items, widget.items) ==
+            oldWidget.items.length;
     if (_ownsOutputSelection &&
         (!const DeepCollectionEquality().equals(
               oldWidget.paginationScope,
@@ -3609,15 +3729,39 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       oldWidget.appendRowsSource?.removeListener(_appendRowsChanged);
       widget.appendRowsSource?.addListener(_appendRowsChanged);
     }
-    // A host may edit a row in place before rebuilding. Retire computed views
-    // even when the List and column callbacks retained their identities.
-    _displayRowsSource = null;
-    _rowFacetScope = null;
+    // Mutable hosts can edit a row or a callback dependency in place. Only an
+    // explicit immutable presentation contract permits reuse across rebuilds.
+    final presentationUnchanged =
+        widget.immutableRows &&
+        oldWidget.immutableRows &&
+        widget.presentationRevision != null &&
+        oldWidget.presentationRevision == widget.presentationRevision &&
+        identical(oldWidget.items, widget.items) &&
+        listEquals(oldWidget.columns, widget.columns) &&
+        oldWidget.rowVisible == widget.rowVisible &&
+        oldWidget.filterContextRows == widget.filterContextRows &&
+        oldWidget.unfilteredRows == widget.unfilteredRows &&
+        oldWidget.serverColumnSearch == widget.serverColumnSearch &&
+        setEquals(
+          oldWidget.serverColumnSearchKeys,
+          widget.serverColumnSearchKeys,
+        ) &&
+        (oldWidget.onPageChange != null) == (widget.onPageChange != null) &&
+        (oldWidget.onLoadMore != null) == (widget.onLoadMore != null) &&
+        (oldWidget.totalPages > 1) == (widget.totalPages > 1) &&
+        oldWidget.paginationScope == widget.paginationScope &&
+        oldWidget.paginationRevision == widget.paginationRevision;
+    if (!presentationUnchanged) {
+      _displayRowsSource = null;
+      _rowFacetScope = null;
+    }
+    _invalidateColumnIndexes();
     // 拖拽能力被宿主摘除（如切到只读态）：就地取消进行中的拖拽。
     if (widget.rowDrag == null && _dragActive) _cancelRowDrag();
     if (!widget.enableTextSelection ||
         oldWidget.paginationScope != widget.paginationScope ||
-        oldWidget.paginationRevision != widget.paginationRevision ||
+        (oldWidget.paginationRevision != widget.paginationRevision &&
+            !immutableAppend) ||
         (!appended && !_sameTextSelectionRows(oldWidget))) {
       _textSelection.clear();
     }
@@ -3665,7 +3809,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       columnHeaderDragReset(); // 拖拽态/跟手浮层可能指向失效下标，重置（FM6）。
       _colLinks.clear(); // 旧下标的 LayerLink 作废，按新列集合下标重建。
     } else if (oldWidget.items != widget.items ||
-        oldWidget.leadingGroups != widget.leadingGroups) {
+        oldWidget.leadingGroups != widget.leadingGroups ||
+        oldWidget.presentationRevision != widget.presentationRevision) {
       // 数据变了(翻页/筛选/排序/加载更多/静默重拉)→ 帧后只补量新出现的值，
       // 超出当前宽度才加宽；已手动调整的列不动。
       // 逐批追加(同一读取会话)只续量新行：已量过的前缀不再重扫。
@@ -3973,7 +4118,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         listEquals(keys, _widthColumnKeys);
     _lastScale = scale;
     _widthColumnKeys = keys;
-    final pool = _widthSamplePool();
+    final pool = _rowsWithLeadingGroups();
     // First layout measures headers only. Even 256 cells can spend hundreds
     // of milliseconds shaping rich Chinese text; the tail is time-budgeted.
     final sample = <T>[];
@@ -4014,11 +4159,13 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
 
   /// 取样池：主数据 + 前导分组条目(分组行与主行共用同一套列宽，故一并参与测算，
   /// 保证展开/折叠分组时列宽不跳动；分组条目通常是禁用/不明货品，量小不影响性能)。
-  List<T> _widthSamplePool() => <T>[
-    ..._items,
-    for (final g in (_authorizedLeadingGroups ?? <MasterDataGroup<T>>[]))
-      ...g.items,
-  ];
+  List<T> _rowsWithLeadingGroups() {
+    final groups = _authorizedLeadingGroups;
+    // _items is either a table-owned collection or an immutable reader view;
+    // it is replaced, never appended in place. No full-prefix copy is needed.
+    if (groups == null || groups.isEmpty) return _items;
+    return <T>[..._items, for (final group in groups) ...group.items];
+  }
 
   /// 量一列：表头只量一次；取样行里没量过的值才量(按字符串去重)。
   _ColumnTextMeasure _measureColumn(
@@ -4106,9 +4253,11 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         if (_fullscreen) _fsTick.value++;
         return;
       }
-      final pool = _widthGrowthPool ??= _widthSamplePool();
+      final pool = _widthGrowthPool ??= _rowsWithLeadingGroups();
       final clock = Stopwatch()..start();
       var measuredCells = 0;
+      var visitedCells = 0;
+      final hidden = _presentationHiddenKeys;
       final next = _widthGrowthTarget ??= List<double>.of(_widths);
       while (_widthGrowthOffset < pool.length && _columns.isNotEmpty) {
         final i = _widthGrowthColumn;
@@ -4120,7 +4269,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
           _widthGrowthColumn = 0;
           _widthGrowthOffset++;
         }
-        if (!_manualResized.contains(i)) {
+        if (!_manualResized.contains(i) && !hidden.contains(_columns[i].key)) {
+          visitedCells++;
           final def = _columns[i];
           final previous = _textMeasures[def.key]?.bodyRevision ?? 0;
           final measure = _measureColumn(context, def, [row], textScaler);
@@ -4151,6 +4301,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
           break;
         }
       }
+      debugMasterTableWorkObserver?.call('widthCells', visitedCells);
       _widthGrowthPending =
           _columns.isNotEmpty && _widthGrowthOffset < pool.length;
       if (_widthGrowthPending) {
@@ -4319,12 +4470,28 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
 
   /// 当前可见列在原列集合中的下标：按 [_columnOrder] 顺序、隐藏列跳过
   /// （列宽仍按原下标存 [_widths]；[initState]/列集合变化时同步重建 _columnOrder）。
+  List<MasterColumnDef<T>>? _indexedColumns;
+  List<int>? _visibleColumnIndexes;
+  Map<String, MasterColumnDef<T>>? _columnsByKey;
+
+  void _invalidateColumnIndexes() {
+    _indexedColumns = null;
+    _visibleColumnIndexes = null;
+    _columnsByKey = null;
+  }
+
   List<int> get _visibleIndices {
+    final columns = _columns;
+    if (identical(_indexedColumns, columns) && _visibleColumnIndexes != null) {
+      return _visibleColumnIndexes!;
+    }
+    _indexedColumns = columns;
+    debugMasterTableWorkObserver?.call('visibleColumnIndexes', columns.length);
     final byKey = <String, int>{
-      for (var i = 0; i < _columns.length; i++) _columns[i].key: i,
+      for (var i = 0; i < columns.length; i++) columns[i].key: i,
     };
     final hidden = _presentationHiddenKeys;
-    return [
+    return _visibleColumnIndexes = [
       for (final key in _presentationColumnOrder)
         if (byKey.containsKey(key) && !hidden.contains(key)) byKey[key]!,
     ];
@@ -4340,6 +4507,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     setState(() {
       if (_hiddenKeys.contains(key)) {
         _hiddenKeys.remove(key);
+        _widthsDirty = true;
       } else if (_visibleCount > 1) {
         _hiddenKeys.add(key);
         _pinnedKeys.remove(key);
@@ -4354,6 +4522,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   /// 被隐藏的固定列一并解除固定。
   void _toggleAllColumns(bool selectAll) {
     setState(() {
+      if (selectAll) _widthsDirty = true;
       final temporary = _temporaryLeadingKeys.toSet();
       final retainedHidden = _hiddenKeys.intersection(temporary);
       _hiddenKeys.clear();
@@ -4529,9 +4698,15 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   /// 当前页可勾选的行 id 集合（主数据行 + 已展开的前导分组 items；过滤空 id）。
   // —— 本地取值筛选 / 本地排序的取值与显示行 ——
 
-  Map<String, MasterColumnDef<T>> get _columnByKey => {
-    for (final def in _columns) def.key: def,
-  };
+  List<MasterColumnDef<T>>? _columnsByKeySource;
+  Map<String, MasterColumnDef<T>> get _columnByKey {
+    final columns = _columns;
+    if (identical(_columnsByKeySource, columns) && _columnsByKey != null) {
+      return _columnsByKey!;
+    }
+    _columnsByKeySource = columns;
+    return _columnsByKey = {for (final def in columns) def.key: def};
+  }
 
   /// 筛选桶取值：trim 后空串或「—」占位算空（落「其他」桶）。
   String? _facetRawValue(MasterColumnDef<T> def, T item) {
@@ -4544,22 +4719,92 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   Object? _rowFacetScope;
   final Map<String, ({List<MasterFacetBucket> buckets, int nullCount})>
   _rowFacetCache = {};
+  final Map<String, _MasterFacetAccumulator<T>> _rowFacetAccumulators = {};
 
-  ({List<MasterFacetBucket> buckets, int nullCount})? _rowFacetsFor(
-    MasterColumnDef<T> def,
-  ) {
-    if (!def.filterFromRows || _serverPaged) return null;
-    if ((widget.facets[def.key] ?? const []).isNotEmpty) return null;
-    final scope = (_items, _columns);
+  bool _usesLocalFacets(MasterColumnDef<T>? column) =>
+      column != null &&
+      column.filterFromRows &&
+      !_serverPaged &&
+      (widget.facets[column.key] ?? const []).isEmpty;
+
+  void _reportFacetRetention() {
+    final observer = debugMasterTableWorkObserver;
+    if (observer == null) return;
+    observer(
+      'facetRetainedRows',
+      _rowFacetAccumulators.values.fold<int>(
+        0,
+        (count, value) => count + (value.rows?.length ?? 0),
+      ),
+    );
+  }
+
+  /// Runs independently of building a local facet header. Leaving local mode,
+  /// changing permission/query ownership or removing all facet columns must
+  /// release the previous rows even when _rowFacetsFor is no longer called.
+  void _pruneFacetAccumulators() {
+    final scope = (_items, _columns, _growing);
     if (_rowFacetScope != scope) {
       _rowFacetScope = scope;
       _rowFacetCache.clear();
     }
+    final columns = _columnByKey;
+    _rowFacetCache.removeWhere(
+      (key, _) => _resultOwnerRetired || !_usesLocalFacets(columns[key]),
+    );
+    _rowFacetAccumulators.removeWhere(
+      (key, value) =>
+          _resultOwnerRetired ||
+          !_usesLocalFacets(columns[key]) ||
+          !_collectedSnapshot ||
+          widget.presentationRevision == null ||
+          value.revision != widget.presentationRevision ||
+          !identical(value.column, columns[key]) ||
+          pagedRowsAppendStart(value.rows, _items) == null,
+    );
+    _reportFacetRetention();
+  }
+
+  ({List<MasterFacetBucket> buckets, int nullCount})? _rowFacetsFor(
+    MasterColumnDef<T> def,
+  ) {
+    if (!_usesLocalFacets(def)) return null;
     final cached = _rowFacetCache[def.key];
     if (cached != null) return cached;
-    final counts = <String, int>{};
-    var nullCount = 0;
-    for (final it in _items) {
+    final incremental =
+        _collectedSnapshot && widget.presentationRevision != null;
+    Map<String, int> counts;
+    int nullCount;
+    int offset;
+    _MasterFacetAccumulator<T>? accumulator;
+    if (incremental) {
+      final previous = _rowFacetAccumulators[def.key];
+      final prefix =
+          previous != null &&
+              identical(previous.column, def) &&
+              previous.revision == widget.presentationRevision
+          ? pagedRowsAppendStart(previous.rows, _items)
+          : null;
+      accumulator = prefix == null
+          ? _MasterFacetAccumulator<T>(def, widget.presentationRevision!)
+          : previous!;
+      _rowFacetAccumulators[def.key] = accumulator;
+      counts = accumulator.counts;
+      nullCount = accumulator.nullCount;
+      offset = prefix ?? 0;
+    } else {
+      _rowFacetAccumulators.clear();
+      // Partial local counts are not complete-query facts. A mutable source
+      // cannot safely accumulate them, so calculate once on final acceptance.
+      if (_growing) {
+        return _rowFacetCache[def.key] = (buckets: const [], nullCount: 0);
+      }
+      counts = <String, int>{};
+      nullCount = 0;
+      offset = 0;
+    }
+    debugMasterTableWorkObserver?.call('facetRows', _items.length - offset);
+    for (final it in _items.getRange(offset, _items.length)) {
       final v = _facetRawValue(def, it);
       if (v == null) {
         nullCount++;
@@ -4567,6 +4812,17 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         counts[v] = (counts[v] ?? 0) + 1;
       }
     }
+    if (accumulator != null) {
+      accumulator.rows = _items;
+      accumulator.nullCount = nullCount;
+      _reportFacetRetention();
+    }
+    if (_growing) {
+      // Keep accumulating validated prefixes, but do not sort or advertise
+      // incomplete totals. Completion publishes the exact existing facet rules.
+      return _rowFacetCache[def.key] = (buckets: const [], nullCount: 0);
+    }
+    debugMasterTableWorkObserver?.call('facetSortValues', counts.length);
     final values = counts.keys.toList()..sort();
     return _rowFacetCache[def.key] = (
       buckets: [
@@ -4612,6 +4868,13 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   }
 
   List<T> _applyRowView(List<T> source) {
+    if (_columnSearches.isNotEmpty ||
+        _rowFilters.isNotEmpty ||
+        _localSortColumn != null ||
+        widget.filterContextRows != null ||
+        widget.unfilteredRows != null) {
+      debugMasterTableWorkObserver?.call('projectionRows', source.length);
+    }
     var rows = source;
     if (_columnSearches.isNotEmpty) {
       final defs = _columnByKey;
@@ -4707,6 +4970,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                     exact == null),
           );
         }).toList();
+        debugMasterTableWorkObserver?.call('localSortRows', values.length);
         values.sort((a, b) {
           if (a.blank && b.blank) return 0;
           if (a.blank) return 1;
@@ -4744,7 +5008,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       if (id != null && id.isNotEmpty) ids.add(id);
     }
 
-    for (final it in _displayItems) {
+    final displayed = _displayItems;
+    debugMasterTableWorkObserver?.call('selectionIds', displayed.length);
+    for (final it in displayed) {
       add(it);
     }
     final leading = _authorizedLeadingGroups;
@@ -5023,8 +5289,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     plan,
     double total,
     double viewportWidth,
-    bool hasBoundedHeight,
-  ) {
+    bool hasBoundedHeight, {
+    List<T>? appendSource,
+  }) {
     // 合计条随表体滚动（summaryBarInline）：作为竖向滚动内容的
     // 最后一项（数据行与「加载更多」指示器之后），行少时紧跟末行。
     final summaryInline = widget.summaryBarInline && widget.summaryBar != null;
@@ -5256,27 +5523,39 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
             (!widget.embedded && hasBoundedHeight)) &&
         !_automaticPagination &&
         widget.rowDrag == null) {
-      final ids = <Object>[
-        // Anonymous report rows keep the same position identity as the
-        // fallback list; equal display values never become a business ID.
-        for (var i = 0; i < plan.length; i++) mountId(i),
-        if (hasFooter) const ('footer',),
-        for (final row in appendRows) ('append', row.key),
-        if (summaryInline) const ('summary',),
-      ];
-      if (ids.toSet().length != ids.length) {
-        for (var index = 0; index < ids.length; index++) {
-          ids[index] = ('local-row-position', ids[index], index);
+      if (appendSource != null && appendRows.isEmpty) {
+        windowSlots = _flatWindowRows(
+          appendSource,
+          hasFooter: hasFooter,
+          summaryInline: summaryInline,
+        );
+      } else {
+        _retireFlatWindowSnapshot();
+        final ids = <Object>[
+          // Anonymous report rows keep the same position identity as the
+          // fallback list; equal display values never become a business ID.
+          for (var i = 0; i < plan.length; i++) mountId(i),
+          if (hasFooter) const ('footer',),
+          for (final row in appendRows) ('append', row.key),
+          if (summaryInline) const ('summary',),
+        ];
+        var unique = ids.toSet();
+        if (unique.length != ids.length) {
+          for (var index = 0; index < ids.length; index++) {
+            ids[index] = ('local-row-position', ids[index], index);
+          }
+          unique = ids.toSet();
+        }
+        if (unique.length == ids.length) {
+          _localWindowSlots.removeWhere((id, _) => !unique.contains(id));
+          windowSlots = [
+            for (final id in ids)
+              _localWindowSlots.putIfAbsent(id, () => _MasterWindowSlot(id)),
+          ];
         }
       }
-      final unique = ids.toSet();
-      if (unique.length == ids.length) {
-        _localWindowSlots.removeWhere((id, _) => !unique.contains(id));
-        windowSlots = [
-          for (final id in ids)
-            _localWindowSlots.putIfAbsent(id, () => _MasterWindowSlot(id)),
-        ];
-      }
+    } else {
+      _retireFlatWindowSnapshot();
     }
     final bodyStyle = theme.textTheme.bodyMedium;
     final estimatedRowExtent =
@@ -5419,6 +5698,141 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     //
     // 表体内容超出视口即显示竖条，不再依赖折叠头置顶阶段。
     return hWrapped;
+  }
+
+  void _retireFlatWindowSnapshot() {
+    _flatWindowSource = null;
+    _flatWindowBuilder = null;
+    _flatWindowSnapshot = null;
+    _flatWindowOwner = null;
+    _flatWindowIdentity = null;
+    _flatWindowScope = null;
+    _reportFlatRetention();
+  }
+
+  bool get _flatSnapshotBaseEligible =>
+      _collectedSnapshot &&
+      _collectedIds.length == _items.length &&
+      !_resultOwnerRetired &&
+      widget.error == null &&
+      widget.listItemBuilder == null &&
+      (_authorizedLeadingGroups?.isEmpty ?? true) &&
+      widget.unpagedItems.isEmpty &&
+      widget.rowDrag == null &&
+      _appendRows.isEmpty;
+
+  void _reportFlatRetention() {
+    final observer = debugMasterTableWorkObserver;
+    if (observer == null) return;
+    observer('flatWindowRetainedRows', _flatWindowSource?.length ?? 0);
+    observer(
+      'flatWindowRetainedSlots',
+      math.max(
+        _flatWindowBuilder?.length ?? 0,
+        _flatWindowSnapshot?.length ?? 0,
+      ),
+    );
+    observer('textSnapshotRetainedRows', _textSelectionSnapshot?.length ?? 0);
+  }
+
+  /// Fast snapshots are caches, not editor state. Release their source and
+  /// builder even when a picker/notice path stops building a table body.
+  void _retireUnusedFlatSnapshots({List<T>? displayed}) {
+    final projected = displayed == null
+        ? _rowFilters.isNotEmpty ||
+              _columnSearches.isNotEmpty ||
+              widget.unfilteredRows != null ||
+              (_localSortColumn != null && widget.onSortChange == null)
+        : !identical(displayed, _items);
+    if (!_flatSnapshotBaseEligible || projected) {
+      _retireFlatWindowSnapshot();
+      _textSelectionSnapshot = null;
+      _textSelectionOwner = null;
+      _textSelectionIdentity = null;
+      _textSelectionScope = null;
+    }
+    final noRows =
+        _items.isEmpty &&
+        (_authorizedLeadingGroups?.isEmpty ?? true) &&
+        _appendRows.isEmpty;
+    if (widget.listItemBuilder != null) {
+      _localWindowSlots.clear();
+      _textSelectionRowKeys = null;
+    } else if (_resultOwnerRetired || noRows) {
+      // Release obsolete data identifiers, but keep the live notice/footer
+      // slots. Replacing a notice during a route rebuild disposes its error
+      // details dialog immediately after the user opens it.
+      _localWindowSlots.removeWhere(
+        (id, _) =>
+            id is (String, Object) &&
+                (id.$1 == 'data' || id.$1 == 'group' || id.$1 == 'slot') ||
+            id is (String, Object, int) && id.$1 == 'local-row-position',
+      );
+      _textSelectionRowKeys = null;
+    }
+    _reportFlatRetention();
+  }
+
+  bool _sameReadWindowOwner(
+    PagedReadWindowBinding<T>? before,
+    PagedReadWindowBinding<T>? after,
+  ) => before == null ? after == null : after?.sameSession(before) == true;
+
+  List<_MasterWindowSlot> _flatWindowRows(
+    List<T> source, {
+    required bool hasFooter,
+    required bool summaryInline,
+  }) {
+    final prefix =
+        _flatWindowIdentity == widget.rowKeyOf &&
+            _flatWindowScope == widget.paginationScope &&
+            _sameReadWindowOwner(_flatWindowOwner, _readWindowBinding)
+        ? pagedRowsAppendStart(_flatWindowSource, source)
+        : null;
+    if (prefix == null) {
+      _flatWindowBuilder = ImmutablePagedRowsBuilder<_MasterWindowSlot>();
+      _flatWindowSnapshot = null;
+      // A replacement still reuses the existing row-keyed slots where legal,
+      // preserving measured geometry just like the conservative window path.
+      _localWindowSlots.removeWhere(
+        (id, _) =>
+            id is! (String, String) ||
+            id.$1 != 'data' ||
+            !_collectedIds.contains(id.$2),
+      );
+    }
+    final builder = _flatWindowBuilder!;
+    final start = prefix ?? 0;
+    debugMasterTableWorkObserver?.call('windowSlotRows', source.length - start);
+    for (final row in source.getRange(start, source.length)) {
+      final id = ('data', widget.rowKeyOf!(row)!);
+      final slot = _localWindowSlots.putIfAbsent(
+        id,
+        () => _MasterWindowSlot(id),
+      );
+      builder.add(slot);
+    }
+    _flatWindowSource = source;
+    _flatWindowIdentity = widget.rowKeyOf;
+    _flatWindowScope = widget.paginationScope;
+    _flatWindowOwner = _readWindowBinding;
+    _reportFlatRetention();
+    final snapshot = _flatWindowSnapshot =
+        _flatWindowSnapshot != null && start == source.length
+        ? _flatWindowSnapshot!
+        : builder.snapshot();
+    if (!hasFooter) _localWindowSlots.remove(const ('footer',));
+    if (!summaryInline) _localWindowSlots.remove(const ('summary',));
+    return immutablePagedRowsWithTail(snapshot, [
+      if (hasFooter)
+        _localWindowSlots.putIfAbsent(const (
+          'footer',
+        ), () => _MasterWindowSlot(const ('footer',))),
+      if (summaryInline)
+        _localWindowSlots.putIfAbsent(const (
+          'summary',
+        ), () => _MasterWindowSlot(const ('summary',))),
+    ]);
   }
 
   /// 合计条容器：与表体同宽、左右对齐表格内容边距。
@@ -5875,7 +6289,60 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         () => _buildProjectedTableImpl(context, localLane),
       );
 
+  void _updateTextSelectionRows(
+    List<T> displayed,
+    List<MasterDataGroup<T>> groups, {
+    required bool flatSnapshot,
+  }) {
+    if (!widget.enableTextSelection) {
+      _textSelectionSnapshot = null;
+      _textSelectionOwner = null;
+      _textSelectionIdentity = null;
+      _textSelectionScope = null;
+      _textSelectionRowKeys = null;
+      _reportFlatRetention();
+      return;
+    }
+    if (flatSnapshot) {
+      final prefix =
+          _textSelectionIdentity == widget.rowKeyOf &&
+              _textSelectionScope == widget.paginationScope &&
+              _sameReadWindowOwner(_textSelectionOwner, _readWindowBinding)
+          ? pagedRowsAppendStart(_textSelectionSnapshot, displayed)
+          : null;
+      if (prefix == null) _textSelection.clear();
+      _textSelectionSnapshot = displayed;
+      _textSelectionIdentity = widget.rowKeyOf;
+      _textSelectionScope = widget.paginationScope;
+      _textSelectionOwner = _readWindowBinding;
+      _textSelectionRowKeys = null;
+      _reportFlatRetention();
+      debugMasterTableWorkObserver?.call('selectionRowKeys', 0);
+      return;
+    }
+    _textSelectionSnapshot = null;
+    _textSelectionOwner = null;
+    _textSelectionIdentity = null;
+    _textSelectionScope = null;
+    _reportFlatRetention();
+    final keys = _profileMasterTableWork(
+      'master.selection-row-keys',
+      () => <String>[
+        for (final group in groups)
+          if (_expandedGroups.contains(group.id) || group.initiallyExpanded)
+            for (final item in group.items) _textSelectionRowKey(item),
+        for (final item in displayed) _textSelectionRowKey(item),
+      ],
+    );
+    debugMasterTableWorkObserver?.call('selectionRowKeys', keys.length);
+    if (!listEquals(_textSelectionRowKeys, keys)) {
+      _textSelection.clear();
+      _textSelectionRowKeys = keys;
+    }
+  }
+
   Widget _buildProjectedTableImpl(BuildContext context, double localLane) {
+    _pruneFacetAccumulators();
     final columnKeys = _columns.map((column) => column.key).toSet();
     _selectedFacetBuckets.removeWhere(
       (key, bucket) =>
@@ -5897,19 +6364,10 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     final showFullscreen = widget.showFullscreenToggle ?? !widget.embedded;
     final groups = _authorizedLeadingGroups ?? <MasterDataGroup<T>>[];
     final displayItems = _displayItems;
-    final selectionRows = _profileMasterTableWork(
-      'master.selection-row-keys',
-      () => <String>[
-        for (final group in groups)
-          if (_expandedGroups.contains(group.id) || group.initiallyExpanded)
-            for (final item in group.items) _textSelectionRowKey(item),
-        for (final item in displayItems) _textSelectionRowKey(item),
-      ],
-    );
-    if (!listEquals(_textSelectionRowKeys, selectionRows)) {
-      _textSelection.clear();
-      _textSelectionRowKeys = selectionRows;
-    }
+    _retireUnusedFlatSnapshots(displayed: displayItems);
+    final flatSnapshot =
+        _flatSnapshotBaseEligible && identical(displayItems, _items);
+    _updateTextSelectionRows(displayItems, groups, flatSnapshot: flatSnapshot);
 
     // 行区提示（2026-10-09 用户口径「搜索无结果/加载/错误时表格骨架也要在，页面不许跳」）：
     // 不再整块换空态/错误/加载占位壳——统一渲染同一张表（工具条+表头+列），只有行区
@@ -6026,42 +6484,59 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     }
     _ensureWidths(context);
     final total = _totalWidth;
+    final appendSource =
+        flatSnapshot && bodyNotice == null && _appendRows.isEmpty
+        ? displayItems
+        : null;
     // 行计划：前导分组（表头下第一区）+ 主数据行。分组折叠=仅一条跨满宽标题行；
     // 展开=其 items 按主表同款列逐行渲染（与主行共用 _widths / _visibleIndices / 横滚）。
-    final plan = _profileMasterTableWork('master.row-plan', () {
-      final result =
-          <
-            ({bool header, MasterDataGroup<T>? group, T? item, Widget? notice})
-          >[];
-      if (bodyNotice != null) {
-        result.add((
-          header: false,
-          group: null,
-          item: null,
-          notice: bodyNotice,
-        ));
-      }
-      for (final g in groups) {
-        if (g.initiallyExpanded) _expandedGroups.add(g.id);
-        if (g.items.isEmpty &&
-            (g.total ?? 0) == 0 &&
-            !g.loading &&
-            g.error == null &&
-            g.onExpand == null) {
-          continue; // 明确 N=0 且不可加载的分组不渲染
+    final plan = _profileMasterTableWork<List<_MasterRowPlan<T>>>(
+      'master.row-plan',
+      () {
+        if (appendSource != null) {
+          debugMasterTableWorkObserver?.call('rowPlanRows', 0);
+          return _FlatMasterRowPlan<T>(appendSource);
         }
-        result.add((header: true, group: g, item: null, notice: null));
-        if (_expandedGroups.contains(g.id)) {
-          for (final it in g.items) {
-            result.add((header: false, group: g, item: it, notice: null));
+        debugMasterTableWorkObserver?.call('rowPlanRows', displayItems.length);
+        final result =
+            <
+              ({
+                bool header,
+                MasterDataGroup<T>? group,
+                T? item,
+                Widget? notice,
+              })
+            >[];
+        if (bodyNotice != null) {
+          result.add((
+            header: false,
+            group: null,
+            item: null,
+            notice: bodyNotice,
+          ));
+        }
+        for (final g in groups) {
+          if (g.initiallyExpanded) _expandedGroups.add(g.id);
+          if (g.items.isEmpty &&
+              (g.total ?? 0) == 0 &&
+              !g.loading &&
+              g.error == null &&
+              g.onExpand == null) {
+            continue; // 明确 N=0 且不可加载的分组不渲染
+          }
+          result.add((header: true, group: g, item: null, notice: null));
+          if (_expandedGroups.contains(g.id)) {
+            for (final it in g.items) {
+              result.add((header: false, group: g, item: it, notice: null));
+            }
           }
         }
-      }
-      for (final it in displayItems) {
-        result.add((header: false, group: null, item: it, notice: null));
-      }
-      return result;
-    });
+        for (final it in displayItems) {
+          result.add((header: false, group: null, item: it, notice: null));
+        }
+        return result;
+      },
+    );
     // stretch：列总宽 < 视口宽时（颜色/单位等列少主档）表头与表体撑满视口宽、
     // 内容靠左，而非整体水平居中（Column 默认 crossAxisAlignment.center 会把窄于
     // 视口的表格居中、左右留白）。仅作用于交叉轴（横向），不影响主轴 Flexible(loose)
@@ -6311,6 +6786,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                           math.max(total, c.maxWidth),
                           c.maxWidth,
                           c.hasBoundedHeight,
+                          appendSource: appendSource,
                         ),
                       );
                     },
@@ -7372,7 +7848,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     // 多选表头三态全选格（合成单元格）：false=本页全未选 / true=全选 / 空=部分。
     // 横滚时钉在视口左缘（[UtenFrozenLeadingColumn]），行内留等宽占位保持列对齐。
     // showSelectionColumn=false 时不渲染（该格与整列一起退场，本变量不再挂载）。
-    final pageIds = _hasSelectionColumn
+    final pageIds =
+        _hasSelectionColumn && !(_growing && _outputSelectedIds.isEmpty)
         ? _pageSelectableIds()
         : const <String>{};
     final headerSelectionCell = DecoratedBox(

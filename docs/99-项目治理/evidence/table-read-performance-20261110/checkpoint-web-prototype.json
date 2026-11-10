@@ -1,0 +1,209 @@
+{
+  "syntheticOnly": true,
+  "web": true,
+  "budgetMillis": 4,
+  "budgetItems": 256,
+  "rounds": 5,
+  "boundary": "microbenchmark including real zero-duration timer turns; not ERP load/paint latency",
+  "medians": [
+    {
+      "rows": 100000,
+      "originalMicros": 2011600,
+      "fastMicros": 1972900,
+      "reductionPercent": 1.9238417180353946
+    },
+    {
+      "rows": 100000,
+      "originalMicros": 2011600,
+      "fastMicros": 1972900,
+      "reductionPercent": 1.9238417180353946
+    }
+  ],
+  "samples": [
+    {
+      "mode": "original-await",
+      "rows": 100000,
+      "micros": 1995900,
+      "realTimerYields": 390,
+      "currentChecks": 100391,
+      "checksum": 20804749,
+      "round": 0
+    },
+    {
+      "mode": "nullable-fast",
+      "rows": 100000,
+      "micros": 1966000,
+      "realTimerYields": 390,
+      "currentChecks": 100391,
+      "checksum": 20804749,
+      "round": 0
+    },
+    {
+      "mode": "nullable-fast",
+      "rows": 100000,
+      "micros": 1984500,
+      "realTimerYields": 390,
+      "currentChecks": 100391,
+      "checksum": 20804749,
+      "round": 1
+    },
+    {
+      "mode": "original-await",
+      "rows": 100000,
+      "micros": 2018600,
+      "realTimerYields": 390,
+      "currentChecks": 100391,
+      "checksum": 20804749,
+      "round": 1
+    },
+    {
+      "mode": "original-await",
+      "rows": 100000,
+      "micros": 1996601,
+      "realTimerYields": 390,
+      "currentChecks": 100391,
+      "checksum": 20804749,
+      "round": 2
+    },
+    {
+      "mode": "nullable-fast",
+      "rows": 100000,
+      "micros": 1963100,
+      "realTimerYields": 390,
+      "currentChecks": 100391,
+      "checksum": 20804749,
+      "round": 2
+    },
+    {
+      "mode": "nullable-fast",
+      "rows": 100000,
+      "micros": 1973900,
+      "realTimerYields": 390,
+      "currentChecks": 100391,
+      "checksum": 20804749,
+      "round": 3
+    },
+    {
+      "mode": "original-await",
+      "rows": 100000,
+      "micros": 2021599,
+      "realTimerYields": 390,
+      "currentChecks": 100391,
+      "checksum": 20804749,
+      "round": 3
+    },
+    {
+      "mode": "original-await",
+      "rows": 100000,
+      "micros": 2026000,
+      "realTimerYields": 390,
+      "currentChecks": 100391,
+      "checksum": 20804749,
+      "round": 4
+    },
+    {
+      "mode": "nullable-fast",
+      "rows": 100000,
+      "micros": 1998100,
+      "realTimerYields": 390,
+      "currentChecks": 100391,
+      "checksum": 20804749,
+      "round": 4
+    },
+    {
+      "mode": "original-await",
+      "rows": 100000,
+      "micros": 2012500,
+      "realTimerYields": 390,
+      "currentChecks": 100391,
+      "checksum": 20804749,
+      "round": 0
+    },
+    {
+      "mode": "nullable-fast",
+      "rows": 100000,
+      "micros": 1966000,
+      "realTimerYields": 390,
+      "currentChecks": 100391,
+      "checksum": 20804749,
+      "round": 0
+    },
+    {
+      "mode": "nullable-fast",
+      "rows": 100000,
+      "micros": 1977000,
+      "realTimerYields": 390,
+      "currentChecks": 100391,
+      "checksum": 20804749,
+      "round": 1
+    },
+    {
+      "mode": "original-await",
+      "rows": 100000,
+      "micros": 2000901,
+      "realTimerYields": 390,
+      "currentChecks": 100391,
+      "checksum": 20804749,
+      "round": 1
+    },
+    {
+      "mode": "original-await",
+      "rows": 100000,
+      "micros": 2004099,
+      "realTimerYields": 390,
+      "currentChecks": 100391,
+      "checksum": 20804749,
+      "round": 2
+    },
+    {
+      "mode": "nullable-fast",
+      "rows": 100000,
+      "micros": 1947800,
+      "realTimerYields": 390,
+      "currentChecks": 100391,
+      "checksum": 20804749,
+      "round": 2
+    },
+    {
+      "mode": "nullable-fast",
+      "rows": 100000,
+      "micros": 1972900,
+      "realTimerYields": 390,
+      "currentChecks": 100391,
+      "checksum": 20804749,
+      "round": 3
+    },
+    {
+      "mode": "original-await",
+      "rows": 100000,
+      "micros": 2011600,
+      "realTimerYields": 390,
+      "currentChecks": 100391,
+      "checksum": 20804749,
+      "round": 3
+    },
+    {
+      "mode": "original-await",
+      "rows": 100000,
+      "micros": 1979701,
+      "realTimerYields": 390,
+      "currentChecks": 100391,
+      "checksum": 20804749,
+      "round": 4
+    },
+    {
+      "mode": "nullable-fast",
+      "rows": 100000,
+      "micros": 1928900,
+      "realTimerYields": 390,
+      "currentChecks": 100391,
+      "checksum": 20804749,
+      "round": 4
+    }
+  ],
+  "browser": "Chrome/157.0.8103.39",
+  "headless": true,
+  "realTimers": true,
+  "virtualTime": false,
+  "visibility": "visible"
+}

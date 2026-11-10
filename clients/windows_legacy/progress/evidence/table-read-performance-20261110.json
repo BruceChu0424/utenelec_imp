@@ -1,0 +1,319 @@
+{
+  "id": "E-WPF-TABLE-READ-PERFORMANCE-20261110",
+  "atUtc": "2026-11-10T15:26:09.446327+00:00",
+  "sourceHead": "69e35d96bf0ddd9c8ba7992bf0a609ee9191ef98",
+  "worktree": "D:/Projects/uten_imp_worktrees/table-read-performance-20261110",
+  "classification": "WPF caller applicability and existing complete-list synthetic native UI stress; product code unchanged",
+  "relevantSourceHashes": [
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Tests/Program.cs",
+      "sha256": "ea8a55012dd33aa1c0a893e08926c749cf7dac2dd8c1a6a05b495556d2fded33"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Tests/UiContractChecks.cs",
+      "sha256": "3cb9fed20004def274ffbaa9eabd030edb4d576cab858f2953a011b7325a9228"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Core/CompleteSummaryRead.cs",
+      "sha256": "612e420a7e0040021997bc01cc437b66aaf8db5c5b90ebd1849248fdebd6b1d7"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Core/HttpResponseSink.cs",
+      "sha256": "95553b29fc16bef0479b43898b93f6382afeab19ce2c4b4cfff0dd5fe40b066c"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Core/SessionCoordinator.cs",
+      "sha256": "1d8a53ac0c890d2bfba9549b46b964a4d50092709024cbe13d4e19b0cb038598"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Core/ManagedHttp11.cs",
+      "sha256": "d0f00f86d899be8558fb28e469823cea088944bb1cd741b93702571641b06f18"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Core/Tests/ManagedHttp11Checks.cs",
+      "sha256": "b8bd7259a367c250674c95089391404f894cc0930435343aa53dc59df5fc5620"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Shared/CompletePagedSnapshot.cs",
+      "sha256": "c32fc8332318ca777058039c09891c771ff5887235b6f6b82f6f4245f122bd58"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Shared/CompleteSummaryTransportChecks.cs",
+      "sha256": "4aa6c114ec33bcb7ee0f3ec151e657a40b66ead456fc029bb76ca8066ce29286"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Goods/GoodsReadService.cs",
+      "sha256": "b3d673e0c49d38360644a3b9a941025a23376c76e43a219c14431c008f617844"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Goods/GoodsWorkspaceView.cs",
+      "sha256": "cfa5587df4384848f15681abb0e99b4af1141612fb84eb0c701ac23c9fb46f0d"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitService.cs",
+      "sha256": "a0646c4614219d775fa4d4a169c9e7d65de136c41f60ee035ec5ab12d0af12df"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitsWorkspaceView.cs",
+      "sha256": "0febac6c53714c2b5c3a5b2acdb8143843cf471642968c82f68a26143b223b94"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Controls/UtenDataGrid.cs",
+      "sha256": "f709659941b17baf965286fa286f113f15ec30309cd9c96013eaedf40f3fb106"
+    },
+    {
+      "path": "contracts/complete-summary-stream-v1.json",
+      "sha256": "5e2c7f0aef1d36f6f3238e86ab0bf70944d15880beeac94efd158a0e4c3f4af3"
+    }
+  ],
+  "details": "clients/windows_legacy/progress/evidence/table-read-performance-20261110.md",
+  "actualRuns": [
+    {
+      "name": "build",
+      "architecture": "x86",
+      "actualExitCode": 0,
+      "command": [
+        "MSBuild.exe",
+        "clients/windows_legacy/Uten.Legacy.Tests/Uten.Legacy.Tests.csproj",
+        "/t:Build",
+        "/warnaserror",
+        "/m:1",
+        "/p:Configuration=Debug",
+        "/p:Platform=x86",
+        "/p:PlatformTarget=x86",
+        "/p:UtenBuildScope=table-read-perf-20261110"
+      ],
+      "log": "clients/windows_legacy/progress/evidence/table-read-performance-20261110-files/build-x86.log",
+      "logSha256": "2b6233ed9c9b4171be1fe9e4a158b7d73393549f6522d86da6f9e4c6a369514c"
+    },
+    {
+      "name": "complete-summary",
+      "architecture": "x86",
+      "actualExitCode": 0,
+      "command": [
+        "build/windows-wpf/table-read-performance-20261110/x86/Uten.Legacy.Tests.exe",
+        "--complete-summary-stream-contracts"
+      ],
+      "log": "clients/windows_legacy/progress/evidence/table-read-performance-20261110-files/complete-summary-x86.log",
+      "logSha256": "1039990aa3fb6386e17d23f5b8da60df49b40f00febbb8dcbb36b79f83ff01e6"
+    },
+    {
+      "name": "search-input",
+      "architecture": "x86",
+      "actualExitCode": 0,
+      "command": [
+        "build/windows-wpf/table-read-performance-20261110/x86/Uten.Legacy.Tests.exe",
+        "--search-input-contracts"
+      ],
+      "log": "clients/windows_legacy/progress/evidence/table-read-performance-20261110-files/search-input-x86.log",
+      "logSha256": "cec0e34d6fb09932d098b4b0f2f36283c73bf366224440bc82e4b61d955ca0f7"
+    },
+    {
+      "name": "stress-35000",
+      "architecture": "x86",
+      "actualExitCode": 0,
+      "command": [
+        "build/windows-wpf/table-read-performance-20261110/x86/Uten.Legacy.Tests.exe",
+        "--complete-list-stress-35000"
+      ],
+      "log": "clients/windows_legacy/progress/evidence/table-read-performance-20261110-files/stress-35000-x86.log",
+      "logSha256": "8e8ac89b8f4ac632f7d0a20da0890833daad0d19b0f699249d61de752481f016",
+      "singleSampleObservation": {
+        "rows": 35000,
+        "completeLoadMs": 2783,
+        "maximumRealizedRows": 18
+      },
+      "performanceAcceptance": false
+    },
+    {
+      "name": "stress-100000",
+      "architecture": "x86",
+      "actualExitCode": 0,
+      "command": [
+        "build/windows-wpf/table-read-performance-20261110/x86/Uten.Legacy.Tests.exe",
+        "--complete-list-stress-100000"
+      ],
+      "log": "clients/windows_legacy/progress/evidence/table-read-performance-20261110-files/stress-100000-x86.log",
+      "logSha256": "7dce0bd800052c76846ab2c7f1ef08f7c1ac2367e6a51ca2b5f49c7203e46576",
+      "singleSampleObservation": {
+        "rows": 100000,
+        "completeLoadMs": 3868,
+        "maximumRealizedRows": 18
+      },
+      "performanceAcceptance": false
+    },
+    {
+      "name": "build",
+      "architecture": "x64",
+      "actualExitCode": 0,
+      "command": [
+        "MSBuild.exe",
+        "clients/windows_legacy/Uten.Legacy.Tests/Uten.Legacy.Tests.csproj",
+        "/t:Build",
+        "/warnaserror",
+        "/m:1",
+        "/p:Configuration=Debug",
+        "/p:Platform=x64",
+        "/p:PlatformTarget=x64",
+        "/p:UtenBuildScope=table-read-perf-20261110"
+      ],
+      "log": "clients/windows_legacy/progress/evidence/table-read-performance-20261110-files/build-x64.log",
+      "logSha256": "c035744856fcc0a6a4109325fc706c716b67c76b12184105f88a22cedf3b99aa"
+    },
+    {
+      "name": "complete-summary",
+      "architecture": "x64",
+      "actualExitCode": 0,
+      "command": [
+        "build/windows-wpf/table-read-performance-20261110/x64/Uten.Legacy.Tests.exe",
+        "--complete-summary-stream-contracts"
+      ],
+      "log": "clients/windows_legacy/progress/evidence/table-read-performance-20261110-files/complete-summary-x64.log",
+      "logSha256": "bfc15d9732e87990804e62549fce9929cf8aef96a248b5fc5f1e4263dd03da3e"
+    },
+    {
+      "name": "search-input",
+      "architecture": "x64",
+      "actualExitCode": 0,
+      "command": [
+        "build/windows-wpf/table-read-performance-20261110/x64/Uten.Legacy.Tests.exe",
+        "--search-input-contracts"
+      ],
+      "log": "clients/windows_legacy/progress/evidence/table-read-performance-20261110-files/search-input-x64.log",
+      "logSha256": "c9e26062bd4d0b4c1384e7de6ab243d24ca56d75b78818b1d96037c98ae62c3d"
+    },
+    {
+      "name": "stress-35000",
+      "architecture": "x64",
+      "actualExitCode": 0,
+      "command": [
+        "build/windows-wpf/table-read-performance-20261110/x64/Uten.Legacy.Tests.exe",
+        "--complete-list-stress-35000"
+      ],
+      "log": "clients/windows_legacy/progress/evidence/table-read-performance-20261110-files/stress-35000-x64.log",
+      "logSha256": "b78ca094613bc6c241db2d33ad2c65d5a0cc1f603820428bb7eb53288d45d72f",
+      "singleSampleObservation": {
+        "rows": 35000,
+        "completeLoadMs": 2494,
+        "maximumRealizedRows": 18
+      },
+      "performanceAcceptance": false
+    },
+    {
+      "name": "stress-100000",
+      "architecture": "x64",
+      "actualExitCode": 0,
+      "command": [
+        "build/windows-wpf/table-read-performance-20261110/x64/Uten.Legacy.Tests.exe",
+        "--complete-list-stress-100000"
+      ],
+      "log": "clients/windows_legacy/progress/evidence/table-read-performance-20261110-files/stress-100000-x64.log",
+      "logSha256": "c9511f757a67f06b52a8b08028e0b53278a82c0a87b2a0335651873be52089a5",
+      "singleSampleObservation": {
+        "rows": 100000,
+        "completeLoadMs": 5194,
+        "maximumRealizedRows": 18
+      },
+      "performanceAcceptance": false
+    }
+  ],
+  "screenshots": [
+    {
+      "path": "clients/windows_legacy/progress/evidence/table-read-performance-20261110-files/goods-35000-x86.png",
+      "sha256": "203edf9f3dc06fb39c61d5c732012d297192655de2c9be0622be3e8d080aedfd"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/table-read-performance-20261110-files/goods-100000-x86.png",
+      "sha256": "8ff1ab596db97e80e5a2d95c0bb66dbd7ff588d266a929cf5f9dd29f1dabee5e"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/table-read-performance-20261110-files/goods-35000-x64.png",
+      "sha256": "203edf9f3dc06fb39c61d5c732012d297192655de2c9be0622be3e8d080aedfd"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/table-read-performance-20261110-files/goods-100000-x64.png",
+      "sha256": "8ff1ab596db97e80e5a2d95c0bb66dbd7ff588d266a929cf5f9dd29f1dabee5e"
+    }
+  ],
+  "assertions": {
+    "stressPerArchitecturePerSize": 64,
+    "transportPerArchitecture": 29,
+    "searchPerArchitecture": {
+      "ui": 5,
+      "leafRequestsAndResults": 16,
+      "goods": 174,
+      "units": 38
+    },
+    "httpRequestsPerCompleteQuery": 1,
+    "boundedFrameSize": 100,
+    "scrollCyclesPerStressFixture": 50,
+    "extraHttpRequestsDuringScroll": 0,
+    "sameItemsSourceAndColumnsDuringScroll": true,
+    "realizedRowsMaximum": 18,
+    "cancelRetryCyclesPerStressFixture": 12,
+    "minimizeRestorePreservesSnapshot": true,
+    "retiredQueryCannotPublish": true,
+    "allOrderedRowIdentitiesChecked": true,
+    "unitSelectionRows": 501,
+    "businessWriteLimitUnchanged": 500,
+    "businessWrites": 0
+  },
+  "sourceApplicability": {
+    "repeatedProgressivePrefixCopy": false,
+    "singleMutableCollectorThenReadonlyWrap": true,
+    "itemsSourcePublishedOnlyAfterTerminalAndHttpEof": true,
+    "existingNativeRowAndColumnVirtualization": true,
+    "productionCodeChanged": false,
+    "newProgressiveUiImplemented": false,
+    "remainingWpfDifferences": [
+      "no first-50-row progressive UI",
+      "fixed 100-row frames, not current Dart/Java adaptive plan",
+      "other business pages remain unmigrated"
+    ]
+  },
+  "governanceCheckBeforeEvidenceUpdate": {
+    "command": "python clients/windows_legacy/tools/progress_tracker.py check",
+    "actualExitCode": 1,
+    "message": "Business source inventory drifted; regenerate it explicitly",
+    "recorded": {
+      "pageFiles": 230,
+      "featureGroups": 36,
+      "controllerFiles": 291,
+      "methodDeclarationActionCandidates": 566
+    },
+    "observedCurrent": {
+      "pageFiles": 230,
+      "featureGroups": 36,
+      "controllerFiles": 293,
+      "methodDeclarationActionCandidates": 568
+    },
+    "existingLineDriftExamples": [
+      {
+        "path": "lib/core/router/route_names.dart",
+        "recorded": 608,
+        "current": 614
+      },
+      {
+        "path": "lib/core/router/app_router.dart",
+        "recorded": 2099,
+        "current": 2107
+      }
+    ],
+    "disposition": "Preserve failure. Root may reconcile with owning tools after source freeze; no task reset or speculative full inventory overwrite in this WPF subtask.",
+    "existingRegistryGenerationDrift": {
+      "headTaskCount": 373,
+      "oldGeneratedTaskCount": 372,
+      "existingTaskNotYetRendered": "W7-FLOW-019",
+      "registeredCommonAndFlowCount": 139,
+      "actualNonBusinessTaskCount": 140
+    }
+  },
+  "limitations": [
+    "Windows development host and in-memory synthetic HTTP; not Win7 SP1 x86/x64 target-PC UAT",
+    "One observed initial load per matrix cell; concurrent host work may affect values; not architecture comparison or low-end benchmark",
+    "Observed 2494..5194ms initial full-load times do not meet the project 1-second interaction target; no performance-acceptance claim",
+    "Only existing Goods/Units read callers, original transport and search contracts; not complete ERP business migration",
+    "No deployment, installer, update ZIP, push or company connection",
+    "Full business-inventory check failed before this evidence update; owning reconciliation remains root follow-up"
+  ]
+}

@@ -1,0 +1,93 @@
+{
+  "event": "cancelled-by-user",
+  "syntheticOnly": true,
+  "scenario": "reopen",
+  "runId": "after2-reopen-35k",
+  "variant": "candidate",
+  "targetRows": 35000,
+  "columns": 30,
+  "batchDelayMs": 1,
+  "phase": "已取消",
+  "loadedRows": 0,
+  "firstBatchAcceptedMs": 115,
+  "completeReadMs": -1,
+  "layoutWaitReturnMs": -1,
+  "timingBoundary": "accepted/reader-return/bounded-layout-wait; not first paint, full layout stability, INP or production SLA",
+  "generation": 4,
+  "syntheticBatchCalls": 3,
+  "transportScope": "synthetic batch callbacks, not HTTP/NDJSON latency",
+  "precisionScope": "exact display strings retained; numeric decoding/business calculations are separate regressions",
+  "activeReads": 1,
+  "maxActiveReads": 1,
+  "cancelledReads": 1,
+  "completeReads": 0,
+  "lateRepliesDelivered": 0,
+  "expectedInterruptions": 0,
+  "successfulGeneration": -1,
+  "tableRows": 0,
+  "valueVisits": 0,
+  "selectionIdentityVisits": 0,
+  "maxEventLoopGapMs": 61,
+  "pulses": 5,
+  "siblingInputRetained": true,
+  "errors": [],
+  "profiles": {
+    "master.collect-rows": {
+      "calls": 3,
+      "micros": 201,
+      "maxMicros": 101
+    },
+    "master.sync-rows": {
+      "calls": 3,
+      "micros": 701,
+      "maxMicros": 500
+    },
+    "master.selection-row-keys": {
+      "calls": 3,
+      "micros": 0,
+      "maxMicros": 0
+    },
+    "master.row-plan": {
+      "calls": 3,
+      "micros": 201,
+      "maxMicros": 201
+    },
+    "master.projected-table": {
+      "calls": 3,
+      "micros": 13498,
+      "maxMicros": 10199
+    },
+    "master.selection-ids": {
+      "calls": 3,
+      "micros": 100,
+      "maxMicros": 100
+    },
+    "master.intrinsic-height": {
+      "calls": 3,
+      "micros": 6400,
+      "maxMicros": 4000
+    },
+    "master.stretch-layout": {
+      "calls": 3,
+      "micros": 8700,
+      "maxMicros": 4201
+    },
+    "master.body-stage": {
+      "calls": 3,
+      "micros": 1799,
+      "maxMicros": 1299
+    },
+    "row-window-element-mount": {
+      "calls": 2,
+      "micros": 2100,
+      "maxMicros": 1600
+    },
+    "presentation": {
+      "calls": 2,
+      "micros": 224600,
+      "maxMicros": 137799
+    }
+  },
+  "servedBuildSha256": "c3994d71db1b81cbdc9be0a8d712794ef5c3de7713d850c057fa639358f1a465",
+  "observedAtUnixMs": 1794330442886
+}

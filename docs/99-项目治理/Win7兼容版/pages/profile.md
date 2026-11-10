@@ -4,12 +4,12 @@
 
 ## W7-BIZ-118 · lib/features/profile/pages/my_profile_changes_page.dart
 
-模块 `profile`；448 行；SHA256 `96c904924313bcfd9c1ea799a3f22e773b4ab007416ca94b0810fa3d621e14c7`。
+模块 `profile`；448 行；SHA256 `79dc2dde9a6308ae9b3ea391a7a31619cd3b007ef40f09e873d62f75ce21f8e9`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | MyProfileChangesPage @44 (page-class)<br>_MyProfileChangesPageState @52 (state-class)<br>_MyBatchDetailDialog @369 (supporting-class) |
-| 真实路由绑定 | /profile/me/changes；router @2500；builder ['MyProfileChangesPage']；redirect None |
+| 真实路由绑定 | /profile/me/changes；router @2508；builder ['MyProfileChangesPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -22,12 +22,12 @@
 
 ## W7-BIZ-119 · lib/features/profile/pages/profile_edit_page.dart
 
-模块 `profile`；641 行；SHA256 `a0675de721eae5a8aaeb29782f080d091b12bd91dea0c4a75c1c77fe74dd4384`。
+模块 `profile`；641 行；SHA256 `7cbebe650708b44ce4747a5c3c4b84adc7b7d13510672e3c80f7b24f4936f0bb`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | ProfileEditPage @51 (page-class)<br>_ProfileEditPageState @62 (state-class) |
-| 真实路由绑定 | /profile/edit；router @2485；builder ['ProfileEditPage']；redirect None |
+| 真实路由绑定 | /profile/edit；router @2493；builder ['ProfileEditPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |

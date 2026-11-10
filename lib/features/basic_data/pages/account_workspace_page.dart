@@ -1577,6 +1577,10 @@ class _AccountPageState extends ConsumerState<AccountPage>
                         _actionRow(),
                         Expanded(
                           child: MasterDataTableView<AccountListItem>(
+                            // Currency names and balance permissions stay live;
+                            // only immutable row membership is reused here.
+                            immutableRows: !inlineEdit.active,
+                            rowKeyOf: inlineIdOf,
                             rowsController: _readViewportRows,
                             expensiveRowMounts: inlineEdit.active,
                             appendRowsSource: inlineAppendRowsSource,

@@ -954,6 +954,11 @@ class _UnitPageState extends ConsumerState<UnitPage>
                           ),
                         Expanded(
                           child: MasterDataTableView<UnitListItem>(
+                            immutableRows: !inlineEdit.active,
+                            presentationRevision: inlineEdit.active
+                                ? null
+                                : _columns,
+                            rowKeyOf: inlineIdOf,
                             rowsController: _readViewportRows,
                             expensiveRowMounts: inlineEdit.active,
                             appendRowsSource: inlineAppendRowsSource,
@@ -963,7 +968,9 @@ class _UnitPageState extends ConsumerState<UnitPage>
                             columnEditingEnabled: _canEdit,
                             tableKey:
                                 'features.basic_data.pages.unit_page.UnitPageState._buildDraftHost.1',
-                            columns: inlineColumns(_columns),
+                            columns: inlineEdit.active
+                                ? inlineColumns(_columns)
+                                : _columns,
                             requiredLeadingColumnKeys: const [
                               'code',
                               'name',

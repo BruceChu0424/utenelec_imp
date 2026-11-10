@@ -241,6 +241,7 @@ class _SupplierCategoryPageState extends ConsumerState<SupplierCategoryPage>
         ? gateway
         : null;
     return MasterEntityPaneConfig<SupplierListItem, SupplierDetail>(
+      immutableSummaryRows: true,
       noun: '供应商', // TODO(l10n): 补 arb
       inlineCreation: (pane) => MasterInlineCreateConfig(
         namespace: 'suppliers.${pane.categoryId}',

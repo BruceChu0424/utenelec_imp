@@ -1,0 +1,159 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/currency_header_query_test.dart
+00:00 +0: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/currency_header_query_test.dart: currency rate header sends exact original rate before paging and to export
+00:03 +1: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/account_workspace_batch_test.dart: concurrent clean stale callbacks open one confirmation and write one batch
+00:03 +2: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/account_workspace_batch_test.dart: concurrent clean stale callbacks open one confirmation and write one batch
+00:04 +3: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/account_workspace_batch_test.dart: concurrent clean stale callbacks open one confirmation and write one batch
+00:06 +4: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/color_inline_edit_test.dart: a permission boundary change discards the old pending list
+00:06 +5: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/unit_page_simple_fields_test.dart: 日常单位表格仅显示名称编号状态
+00:07 +6: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/unit_inline_busy_once_test.dart: pending unit inline save has one root busy card and semantic node desktop
+00:08 +7: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/unit_inline_busy_once_test.dart: pending unit inline save has one root busy card and semantic node desktop
+00:09 +8: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/unit_inline_busy_once_test.dart: pending unit inline save has one root busy card and semantic node desktop
+00:10 +9: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/unit_inline_busy_once_test.dart: pending unit inline save has one root busy card and semantic node desktop
+00:10 +10: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/unit_inline_busy_once_test.dart: pending unit inline save has one root busy card and semantic node desktop
+00:11 +11: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/unit_inline_busy_once_test.dart: pending unit inline save has one root busy card and semantic node desktop
+UNIT-BUSY desktop frames=60 maxActions=1 maxHosts=1 maxRootCards=1 maxSemanticNodes=1
+00:12 +12: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: settlement completes all batches and search retires a delayed old refresh
+00:12 +13: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: settlement completes all batches and search retires a delayed old refresh
+00:13 +14: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: settlement completes all batches and search retires a delayed old refresh
+00:13 +15: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: settlement completes all batches and search retires a delayed old refresh
+00:14 +16: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: settlement completes all batches and search retires a delayed old refresh
+00:15 +17: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: settlement completes all batches and search retires a delayed old refresh
+00:15 +17: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/unit_inline_busy_once_test.dart: pending unit inline save has one root busy card and semantic node compact-large
+UNIT-BUSY compact-large frames=60 maxActions=1 maxHosts=1 maxRootCards=1 maxSemanticNodes=1
+00:15 +18: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: settlement completes all batches and search retires a delayed old refresh
+00:16 +19: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: settlement completes all batches and search retires a delayed old refresh
+00:17 +19: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/unit_inline_busy_once_test.dart: pending unit inline save has one root busy card and semantic node fullscreen
+UNIT-BUSY fullscreen frames=60 maxActions=1 maxHosts=1 maxRootCards=1 maxSemanticNodes=1
+00:17 +20: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: settlement completes all batches and search retires a delayed old refresh
+00:18 +21: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: settlement completes all batches and search retires a delayed old refresh
+00:19 +22: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: settlement completes all batches and search retires a delayed old refresh
+00:20 +23: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: settlement completes all batches and search retires a delayed old refresh
+00:20 +24: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: settlement completes all batches and search retires a delayed old refresh
+00:22 +25: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: settlement completes all batches and search retires a delayed old refresh
+00:22 +26: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: settlement completes all batches and search retires a delayed old refresh
+00:23 +27: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: settlement completes all batches and search retires a delayed old refresh
+00:23 +28: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: settlement completes all batches and search retires a delayed old refresh
+00:23 +29: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: settlement completes all batches and search retires a delayed old refresh
+00:24 +30: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: settlement completes all batches and search retires a delayed old refresh
+00:24 +31: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: settlement completes all batches and search retires a delayed old refresh
+00:24 +32: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: settlement completes all batches and search retires a delayed old refresh
+00:24 +33: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: settlement completes all batches and search retires a delayed old refresh
+00:25 +34: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: settlement completes all batches and search retires a delayed old refresh
+00:25 +35: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: settlement completes all batches and search retires a delayed old refresh
+00:25 +36: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: settlement completes all batches and search retires a delayed old refresh
+00:25 +37: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: settlement completes all batches and search retires a delayed old refresh
+00:26 +38: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: settlement completes all batches and search retires a delayed old refresh
+00:26 +39: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: settlement completes all batches and search retires a delayed old refresh
+00:26 +40: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: settlement completes all batches and search retires a delayed old refresh
+00:26 +41: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: settlement completes all batches and search retires a delayed old refresh
+00:26 +42: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: settlement completes all batches and search retires a delayed old refresh
+00:27 +43: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: settlement completes all batches and search retires a delayed old refresh
+00:27 +44: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: settlement completes all batches and search retires a delayed old refresh
+00:27 +45: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: settlement completes all batches and search retires a delayed old refresh
+00:28 +46: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: settlement completes all batches and search retires a delayed old refresh
+00:28 +47: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: settlement completes all batches and search retires a delayed old refresh
+00:28 +48: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: settlement completes all batches and search retires a delayed old refresh
+00:29 +49: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: settlement completes all batches and search retires a delayed old refresh
+00:29 +50: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: settlement completes all batches and search retires a delayed old refresh
+00:29 +51: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: settlement completes all batches and search retires a delayed old refresh
+00:30 +52: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: settlement completes all batches and search retires a delayed old refresh
+00:30 +53: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: settlement completes all batches and search retires a delayed old refresh
+00:30 +54: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: settlement completes all batches and search retires a delayed old refresh
+00:31 +55: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: settlement completes all batches and search retires a delayed old refresh
+00:31 +56: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: settlement completes all batches and search retires a delayed old refresh
+00:32 +57: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: settlement completes all batches and search retires a delayed old refresh
+00:32 +58: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: settlement completes all batches and search retires a delayed old refresh
+00:32 +59: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: settlement completes all batches and search retires a delayed old refresh
+00:32 +60: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: settlement completes all batches and search retires a delayed old refresh
+00:33 +61: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: settlement completes all batches and search retires a delayed old refresh
+00:35 +62: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: settlement completes all batches and search retires a delayed old refresh
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following assertion was thrown running a test:
+pumpAndSettle timed out
+
+When the exception was thrown, this was the stack:
+#0      WidgetTester.pumpAndSettle.<anonymous closure> (package:flutter_test/src/widget_tester.dart:717:11)
+<asynchronous suspension>
+#1      TestAsyncUtils.guard.<anonymous closure> (package:flutter_test/src/test_async_utils.dart:130:27)
+<asynchronous suspension>
+#2      _pump (file:///D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart:137:3)
+<asynchronous suspension>
+#3      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart:152:25)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+The test description was:
+  settlement completes all batches and search retires a delayed old refresh
+════════════════════════════════════════════════════════════════════════════════════════════════════
+01:07 +62 -1: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: settlement completes all batches and search retires a delayed old refresh [E]
+  Test failed. See exception logs above.
+  The test description was: settlement completes all batches and search retires a delayed old refresh
+  
+01:07 +62 -1: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: same-reader scope ABA retires old reads and late responses without resetting auth
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following assertion was thrown running a test:
+pumpAndSettle timed out
+
+When the exception was thrown, this was the stack:
+#0      WidgetTester.pumpAndSettle.<anonymous closure> (package:flutter_test/src/widget_tester.dart:717:11)
+<asynchronous suspension>
+#1      TestAsyncUtils.guard.<anonymous closure> (package:flutter_test/src/test_async_utils.dart:130:27)
+<asynchronous suspension>
+#2      _pump (file:///D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart:137:3)
+<asynchronous suspension>
+#3      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart:228:25)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+The test description was:
+  same-reader scope ABA retires old reads and late responses without resetting auth
+════════════════════════════════════════════════════════════════════════════════════════════════════
+02:08 +62 -2: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: same-reader scope ABA retires old reads and late responses without resetting auth [E]
+  Test failed. See exception logs above.
+  The test description was: same-reader scope ABA retires old reads and late responses without resetting auth
+  
+02:08 +62 -2: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: a terms modal keeps its form but a scope ABA cannot submit the old callback
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following assertion was thrown running a test:
+pumpAndSettle timed out
+
+When the exception was thrown, this was the stack:
+#0      WidgetTester.pumpAndSettle.<anonymous closure> (package:flutter_test/src/widget_tester.dart:717:11)
+<asynchronous suspension>
+#1      TestAsyncUtils.guard.<anonymous closure> (package:flutter_test/src/test_async_utils.dart:130:27)
+<asynchronous suspension>
+#2      _pump (file:///D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart:137:3)
+<asynchronous suspension>
+#3      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart:262:25)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+The test description was:
+  a terms modal keeps its form but a scope ABA cannot submit the old callback
+════════════════════════════════════════════════════════════════════════════════════════════════════
+02:53 +62 -3: D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: a terms modal keeps its form but a scope ABA cannot submit the old callback [E]
+  Test failed. See exception logs above.
+  The test description was: a terms modal keeps its form but a scope ABA cannot submit the old callback
+  
+02:53 +62 -3: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: a terms modal keeps its form but a scope ABA cannot submit the old callback
+  D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: same-reader scope ABA retires old reads and late responses without resetting auth
+  D:/Projects/uten_imp_worktrees/table-read-performance-20261110/test/features/basic_data/pages/settlement_method_paging_test.dart: settlement completes all batches and search retires a delayed old refresh

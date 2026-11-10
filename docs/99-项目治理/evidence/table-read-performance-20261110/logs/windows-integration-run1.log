@@ -1,0 +1,44 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/table-read-performance-20261110/integration_test/table_complete_read_stability_test.dart
+Building Windows application...                                    39.2s
+√ Built build\windows\x64\runner\Debug\uten_imp.exe
+00:00 +0: native complete table survives real window input, cancellation and scrolling
+TABLE_READ_RECEIPT {"event":"read-complete","syntheticOnly":true,"scenario":"load","runId":"manual","variant":"candidate","targetRows":35000,"columns":30,"batchDelayMs":10,"phase":"完成","loadedRows":35000,"firstBatchAcceptedMs":63,"completeReadMs":2588,"layoutWaitReturnMs":15483,"timingBoundary":"accepted/reader-return/bounded-layout-wait; not first paint, full layout stability, INP or production SLA","generation":1,"syntheticBatchCalls":41,"transportScope":"synthetic batch callbacks, not HTTP/NDJSON latency","precisionScope":"exact display strings retained; numeric decoding/business calculations are separate regressions","activeReads":1,"maxActiveReads":1,"cancelledReads":0,"completeReads":1,"lateRepliesDelivered":0,"expectedInterruptions":0,"successfulGeneration":1,"tableRows":35000,"valueVisits":600098,"selectionIdentityVisits":35132,"maxEventLoopGapMs":417,"pulses":859,"siblingInputRetained":true,"errors":[],"profiles":{"master.collect-rows":{"calls":13,"micros":15411,"maxMicros":4097},"master.sync-rows":{"calls":13,"micros":21264,"maxMicros":5760},"master.selection-row-keys":{"calls":1,"micros":95,"maxMicros":95},"master.row-plan":{"calls":13,"micros":618,"maxMicros":535},"master.projected-table":{"calls":13,"micros":24058,"maxMicros":17400},"master.selection-ids":{"calls":2,"micros":13483,"maxMicros":13089},"master.intrinsic-height":{"calls":2,"micros":8142,"maxMicros":7974},"master.stretch-layout":{"calls":2,"micros":24746,"maxMicros":24456},"master.body-stage":{"calls":13,"micros":42919,"maxMicros":14467},"row-window-element-mount":{"calls":2,"micros":180573,"maxMicros":168146},"presentation":{"calls":417,"micros":14620763,"maxMicros":12301967},"master.row-build":{"calls":132,"micros":18423,"maxMicros":4918},"table-cell-theme-create":{"calls":1,"micros":892,"maxMicros":892},"table-cell-theme-build":{"calls":132,"micros":8880,"maxMicros":1888},"master.row-layout":{"calls":11,"micros":46003,"maxMicros":9740}}}
+TABLE_READ_RECEIPT {"event":"scenario-finished","syntheticOnly":true,"scenario":"load","runId":"manual","variant":"candidate","targetRows":35000,"columns":30,"batchDelayMs":10,"phase":"PASS","loadedRows":35000,"firstBatchAcceptedMs":63,"completeReadMs":2588,"layoutWaitReturnMs":15483,"timingBoundary":"accepted/reader-return/bounded-layout-wait; not first paint, full layout stability, INP or production SLA","generation":1,"syntheticBatchCalls":41,"transportScope":"synthetic batch callbacks, not HTTP/NDJSON latency","precisionScope":"exact display strings retained; numeric decoding/business calculations are separate regressions","activeReads":0,"maxActiveReads":1,"cancelledReads":0,"completeReads":1,"lateRepliesDelivered":0,"expectedInterruptions":0,"successfulGeneration":1,"tableRows":35000,"valueVisits":615330,"selectionIdentityVisits":35132,"maxEventLoopGapMs":417,"pulses":889,"siblingInputRetained":true,"errors":[],"profiles":{"master.collect-rows":{"calls":13,"micros":15411,"maxMicros":4097},"master.sync-rows":{"calls":13,"micros":21264,"maxMicros":5760},"master.selection-row-keys":{"calls":1,"micros":95,"maxMicros":95},"master.row-plan":{"calls":13,"micros":618,"maxMicros":535},"master.projected-table":{"calls":13,"micros":24058,"maxMicros":17400},"master.selection-ids":{"calls":2,"micros":13483,"maxMicros":13089},"master.intrinsic-height":{"calls":2,"micros":8142,"maxMicros":7974},"master.stretch-layout":{"calls":2,"micros":24746,"maxMicros":24456},"master.body-stage":{"calls":13,"micros":42919,"maxMicros":14467},"row-window-element-mount":{"calls":2,"micros":180573,"maxMicros":168146},"presentation":{"calls":417,"micros":14620763,"maxMicros":12301967},"master.row-build":{"calls":132,"micros":18423,"maxMicros":4918},"table-cell-theme-create":{"calls":1,"micros":892,"maxMicros":892},"table-cell-theme-build":{"calls":132,"micros":8880,"maxMicros":1888},"master.row-layout":{"calls":11,"micros":46003,"maxMicros":9740}}}
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: '桌面快速查询 1'
+  Actual: '桌面快速查询 0'
+   Which: is different.
+          Expected: 桌面快速查询 1
+            Actual: 桌面快速查询 0
+                           ^
+           Differ at offset 7
+The native Enter action must execute the visible query control
+
+When the exception was thrown, this was the stack:
+#4      _enterQuery (file:///D:/Projects/uten_imp_worktrees/table-read-performance-20261110/integration_test/table_complete_read_stability_test.dart:70:3)
+<asynchronous suspension>
+#5      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/table-read-performance-20261110/integration_test/table_complete_read_stability_test.dart:206:9)
+<asynchronous suspension>
+#6      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#7      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/table-read-performance-20261110/integration_test/table_complete_read_stability_test.dart line 70
+The test description was:
+  native complete table survives real window input, cancellation and scrolling
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:19 +0 -1: native complete table survives real window input, cancellation and scrolling [E]
+  Test failed. See exception logs above.
+  The test description was: native complete table survives real window input, cancellation and scrolling
+  
+00:19 +0 -1: (tearDownAll)
+00:19 +0 -1: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/table-read-performance-20261110/integration_test/table_complete_read_stability_test.dart: native complete table survives real window input, cancellation and scrolling

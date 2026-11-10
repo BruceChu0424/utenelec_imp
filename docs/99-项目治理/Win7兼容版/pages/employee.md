@@ -40,17 +40,17 @@
 
 ## W7-BIZ-048 · lib/features/employee/pages/employee_list_page.dart
 
-模块 `employee`；499 行；SHA256 `f8ca533529d91efbcf3513d692d479ea45b53a55c3a9cb32c7c392c7875015b9`。
+模块 `employee`；495 行；SHA256 `229c048ed7a09003eb8683343250dd7131414184cba6668969fc2e7f73f7faa6`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | EmployeeListPage @50 (page-class)<br>_EmployeeListPageState @57 (state-class) |
 | 真实路由绑定 | /employee；router @906；builder ['EmployeeListPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
-| 权限 | employee:create @265；定义 lib/shared/auth/permissions.dart:13<br>employee:pii:edit @266；定义 lib/shared/auth/permissions.dart:134 |
+| 权限 | employee:create @261；定义 lib/shared/auth/permissions.dart:13<br>employee:pii:edit @262；定义 lib/shared/auth/permissions.dart:134 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | lib/features/employee/repositories/employee_repository.dart；接口：/org/employees、/org/employees/similar、/org/employees/{id}、/org/employees/{id}/account、/org/employees/{id}/account/lock、/org/employees/{id}/account/readiness、/org/employees/{id}/account/reset-password、/org/employees/{id}/account/unlock、/org/employees/{id}/avatar、/org/employees/{id}/change-identity、/org/employees/{id}/change-phone、/org/employees/{id}/confirm、/org/employees/{id}/contracts、/org/employees/{id}/offboard、/org/employees/{id}/rehire、/org/employees/{id}/secondary-departments、/org/employees/{id}/transfer、/profile/me<br>lib/features/employee/repositories/employee_roster_loader.dart；接口： |
-| 动作处理 | addPostFrameCallback @92 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) => _reload());<br>remove @202 [action-like-invocation] 提示 ['remove']；next.remove(key); // 选「所有」= 不筛 |
+| 动作处理 | addPostFrameCallback @92 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) => _reload());<br>remove @198 [action-like-invocation] 提示 ['remove']；next.remove(key); // 选「所有」= 不筛 |
 | 控制器候选（人工核实） | server/src/main/java/com/uten/imp/features/org/employee/EmployeeController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/org/employee/EmployeeSecondaryDepartmentController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/org/employee/MyProfileController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/org/employee/MyVehiclePhoneController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence |
 | 审计限制 | 存在委托组件/provider；页面内操作和权限引用不是完整链路清单，需沿导入继续审查。 |
 

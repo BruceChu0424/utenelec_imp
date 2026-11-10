@@ -62,6 +62,14 @@ void main() {
       final rate = table.columns.singleWhere(
         (column) => column.key == 'exchangeRate',
       );
+      const baseCurrency = CurrencyListItem(
+        id: 'base-currency',
+        code: 'BASE',
+        baseCurrency: true,
+      );
+      // Stable display identity must never become business selection authority.
+      expect(table.rowKeyOf!(baseCurrency), 'base-currency');
+      expect(table.idOf!(baseCurrency), isNull);
       expect(rate.exactValueOf!(repository.item), '123456789012.123456');
       expect(
         tester

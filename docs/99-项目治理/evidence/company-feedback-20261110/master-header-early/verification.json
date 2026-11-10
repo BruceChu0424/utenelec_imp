@@ -1,0 +1,20 @@
+{
+  "sourceCommit": "4c3b36613",
+  "sourcePath": "D:/Projects/uten_imp_worktrees/company-feedback-20261110/server/src/test/java/com/uten/imp/businesschain/MasterDirectoryExportPostgresTest.java",
+  "sourceSha256": "09315856dec2b3b2dc92fbe5d0266da5219cdcbc462ef38e6a8faae211d14094",
+  "classOverride": "D:/Projects/uten_imp_worktrees/company-material-order-20261110/build/override",
+  "method": "expandedSettlementAndWarehouseHeadersExportTheirAuthoritativeValues",
+  "found": 1,
+  "passed": 1,
+  "failed": 0,
+  "skipped": 0,
+  "exitCode": 0,
+  "compileOnlyTestClass": true,
+  "reran100k": false,
+  "resultLogSha256": "80e605c746fd1bab8583f08458f27445068d1daac7df85af355aea69f2284fb6",
+  "runner": "JUnit Platform Launcher single method; product compilation and Maven execution not performed",
+  "completeMigrations": 1068,
+  "migrationVersion": "1129",
+  "processTempRoot": "D:/Projects/uten_imp_worktrees/company-material-order-20261110/build/master-header-early/test-tmp",
+  "formalMavenVerification": false
+}

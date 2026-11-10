@@ -83,10 +83,13 @@ class MasterDirectoryExportPostgresTest extends AuthSessionPostgresTestSupport {
                 .contains("defaultDueDays","fixedDayOfMonth","monthsAhead");
         assertThat(terms.rows().getFirst()).containsEntry("defaultDueDays",0)
                 .containsEntry("fixedDayOfMonth",15).containsEntry("monthsAhead",2);
-        UUID warehouse=seed("warehouse",token,1).ids().getFirst();
+        // Global business identifiers span master domains; keep this second
+        // fixture distinct from the settlement-method code already claimed.
+        String warehouseToken=token+"W";
+        UUID warehouse=seed("warehouse",warehouseToken,1).ids().getFirst();
         jdbc.update("UPDATE warehouses SET remark=? WHERE id=?","完整备注龘",warehouse);
         exporter("warehouse");
-        var source=master.read(request("warehouse",Map.of("keyword",token)));
+        var source=master.read(request("warehouse",Map.of("keyword",warehouseToken)));
         assertThat(source.rows().getFirst()).containsEntry("remark","完整备注龘")
                 .containsEntry("workshopDepartmentName",null);
         var projection=new TableColumnProjection("master.warehouses","master_warehouse",
@@ -100,7 +103,7 @@ class MasterDirectoryExportPostgresTest extends AuthSessionPostgresTestSupport {
         assertThat(jdbc.update("INSERT INTO departments(id,code,name,parent_id,level) SELECT ?,?,? ,id,'二级班组' FROM departments WHERE code='DEPT_PROD' AND NOT is_deleted",
                 workshop,"MX-WORKSHOP-"+token,"导出铜柱车间")).isEqualTo(1);
         jdbc.update("UPDATE warehouses SET workshop_department_id=? WHERE id=?",workshop,warehouse);
-        var populated=master.read(request("warehouse",Map.of("keyword",token)));
+        var populated=master.read(request("warehouse",Map.of("keyword",warehouseToken)));
         assertThat(populated.rows().getFirst()).containsEntry("workshopDepartmentName","导出铜柱车间");
         var actual=context.getBean(ExportTableProjectionService.class)
                 .project(populated.columns(),populated.rows(),projection,"master_warehouse");

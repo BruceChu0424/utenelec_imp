@@ -1,0 +1,140 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/company-feedback-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart
+00:00 +0: goods actual export header has no unsupported display columns
+00:06 +1: clients actual export header has no unsupported display columns
+00:07 +2: suppliers actual export header has no unsupported display columns
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: contains all of ['code', 'name']
+  Actual: Set:[
+            'name',
+            'description',
+            'priceStyle',
+            'tday',
+            'lossRate',
+            'place',
+            'ownerEmployeeName',
+            'legalPerson',
+            'linkman',
+            'mobile',
+            'phone',
+            'phone2',
+            'fax',
+            'postcode',
+            'address',
+            'bank',
+            'bankAccount',
+            'taxId',
+            'website',
+            'shipVia',
+            'shipAddress'
+          ]
+   Which: has no match for 'code' at index 0
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/company-feedback-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart:260:7)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/company-feedback-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart line 260
+The test description was:
+  suppliers actual export header has no unsupported display columns
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:12 +2 -1: suppliers actual export header has no unsupported display columns [E]
+  Test failed. See exception logs above.
+  The test description was: suppliers actual export header has no unsupported display columns
+  
+00:12 +2 -1: accounts actual export header has no unsupported display columns
+00:13 +3 -1: currencies actual export header has no unsupported display columns
+00:14 +4 -1: colors actual export header has no unsupported display columns
+00:14 +5 -1: units actual export header has no unsupported display columns
+00:15 +6 -1: moulds actual export header has no unsupported display columns
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: empty
+  Actual: Set:['mouldType']
+moulds published a column absent from its server export schema
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/company-feedback-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart:258:7)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/company-feedback-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart line 258
+The test description was:
+  moulds actual export header has no unsupported display columns
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:18 +6 -2: moulds actual export header has no unsupported display columns [E]
+  Test failed. See exception logs above.
+  The test description was: moulds actual export header has no unsupported display columns
+  
+00:18 +6 -2: warehouses actual export header has no unsupported display columns
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: not null
+  Actual: <null>
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/company-feedback-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart:252:7)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/company-feedback-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart line 252
+The test description was:
+  warehouses actual export header has no unsupported display columns
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:19 +6 -3: warehouses actual export header has no unsupported display columns [E]
+  Test failed. See exception logs above.
+  The test description was: warehouses actual export header has no unsupported display columns
+  
+00:19 +6 -3: settlement_methods actual export header has no unsupported display columns
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: empty
+  Actual: Set:['defaultDueDays', 'fixedDayOfMonth', 'monthsAhead']
+settlement_methods published a column absent from its server export schema
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/company-feedback-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart:258:7)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/company-feedback-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart line 258
+The test description was:
+  settlement_methods actual export header has no unsupported display columns
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:22 +6 -4: settlement_methods actual export header has no unsupported display columns [E]
+  Test failed. See exception logs above.
+  The test description was: settlement_methods actual export header has no unsupported display columns
+  
+00:22 +6 -4: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/company-feedback-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: moulds actual export header has no unsupported display columns
+  D:/Projects/uten_imp_worktrees/company-feedback-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: settlement_methods actual export header has no unsupported display columns
+  D:/Projects/uten_imp_worktrees/company-feedback-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: suppliers actual export header has no unsupported display columns
+  D:/Projects/uten_imp_worktrees/company-feedback-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: warehouses actual export header has no unsupported display columns

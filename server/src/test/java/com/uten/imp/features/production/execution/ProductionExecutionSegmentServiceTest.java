@@ -497,8 +497,10 @@ class ProductionExecutionSegmentServiceTest {
                 viewRow("IN_PROGRESS", workshop, 3L, 2, 2, true)));
         Query manualStart = query(), cleanup = query();
         Query proof = noSupplementProof();
+        Query checkpoint = query();
+        when(checkpoint.getResultList()).thenReturn(List.of(true));
         when(em.createNativeQuery(anyString())).thenReturn(
-                lock, replay, before, proof, demands, manualStart, update, event, after, cleanup);
+                lock, replay, before, proof, demands, manualStart, checkpoint, update, event, after, cleanup);
         var result = service.start(planId, segmentId,
                 new SegmentTransitionRequest(2L, "start-planned-assignment"));
         assertThat(result.status()).isEqualTo("IN_PROGRESS");
@@ -508,8 +510,11 @@ class ProductionExecutionSegmentServiceTest {
         verify(event).setParameter("action", "START");
         verify(manualStart).setParameter("segmentId", segmentId.toString());
         verify(manualStart).setParameter("expectedVersion", "2");
-        var ordered = inOrder(manualStart, update, event, cleanup);
+        var ordered = inOrder(lock, manualStart, checkpoint, update, event, cleanup);
+        ordered.verify(lock).getResultList();
         ordered.verify(manualStart).getSingleResult();
+        ordered.verify(checkpoint).setParameter("segment", segmentId);
+        ordered.verify(checkpoint).getResultList();
         ordered.verify(update).executeUpdate();
         ordered.verify(event).executeUpdate();
         ordered.verify(cleanup).setParameter("segmentId", "");
@@ -546,8 +551,12 @@ class ProductionExecutionSegmentServiceTest {
         when(view.getResultList()).thenReturn(Collections.singletonList(
                 viewRow("IN_PROGRESS", null, 9L, 0, 0, true)));
         Query before = assignedView(8L);
+        Query discovery = query();
+        when(discovery.getSingleResult()).thenReturn(false);
+        Query checkpoint = query();
+        when(checkpoint.getResultList()).thenReturn(List.of(false));
         when(em.createNativeQuery(anyString())).thenReturn(
-                lock, replay, before, update, event, view);
+                lock, replay, before, discovery, checkpoint, update, event, view);
 
         assertDoesNotThrow(() -> service.start(
                 planId,
@@ -557,6 +566,11 @@ class ProductionExecutionSegmentServiceTest {
         verify(chainNotice).notifyExecutionSegmentTransition(segmentId, true);
         verify(chainNotice).resolveProductionWorkshopTasks(
                 List.of(segmentId), "STARTED");
+        var ordered = inOrder(lock, checkpoint, update);
+        ordered.verify(lock).getResultList();
+        ordered.verify(checkpoint).setParameter("segment", segmentId);
+        ordered.verify(checkpoint).getResultList();
+        ordered.verify(update).executeUpdate();
     }
 
     @Test
@@ -597,12 +611,15 @@ class ProductionExecutionSegmentServiceTest {
                 viewRow(secondId, "IN_PROGRESS", null, 8L, 1, 1, true)));
         Query firstBefore = assignedView(3L), secondBefore = assignedView(7L);
         Query firstProof = noSupplementProof(), secondProof = noSupplementProof();
+        Query firstCheckpoint = query(), secondCheckpoint = query();
+        when(firstCheckpoint.getResultList()).thenReturn(List.of(true));
+        when(secondCheckpoint.getResultList()).thenReturn(List.of(true));
         when(em.createNativeQuery(anyString())).thenReturn(
                 firstLock, secondLock,
                 firstReplay, firstBefore, firstProof, firstDemands,
                 secondReplay, secondBefore, secondProof, secondDemands,
-                firstUpdate, firstEvent, firstView,
-                secondUpdate, secondEvent, secondView);
+                firstCheckpoint, firstUpdate, firstEvent, firstView,
+                secondCheckpoint, secondUpdate, secondEvent, secondView);
 
         BatchStartRequest.Item first = new BatchStartRequest.Item(
                 firstId, 3L, "batch-start-first");
@@ -614,11 +631,18 @@ class ProductionExecutionSegmentServiceTest {
         assertEquals(List.of(firstId, secondId), result.stream()
                 .map(ExecutionSegmentView::id)
                 .toList());
-        var lockOrder = inOrder(firstLock, secondLock, firstUpdate);
+        var lockOrder = inOrder(firstLock, secondLock, firstCheckpoint, firstUpdate, secondCheckpoint, secondUpdate);
         lockOrder.verify(firstLock).setParameter("segmentId", firstId);
+        lockOrder.verify(firstLock).getResultList();
         lockOrder.verify(secondLock).setParameter("segmentId", secondId);
+        lockOrder.verify(secondLock).getResultList();
+        lockOrder.verify(firstCheckpoint).setParameter("segment", firstId);
+        lockOrder.verify(firstCheckpoint).getResultList();
         lockOrder.verify(firstUpdate).executeUpdate();
-        verify(em, times(16)).createNativeQuery(anyString());
+        lockOrder.verify(secondCheckpoint).setParameter("segment", secondId);
+        lockOrder.verify(secondCheckpoint).getResultList();
+        lockOrder.verify(secondUpdate).executeUpdate();
+        verify(em, times(18)).createNativeQuery(anyString());
         verify(chainNotice).notifyExecutionSegmentTransition(firstId, true);
         verify(chainNotice).notifyExecutionSegmentTransition(secondId, true);
         verify(chainNotice).resolveProductionWorkshopTasks(

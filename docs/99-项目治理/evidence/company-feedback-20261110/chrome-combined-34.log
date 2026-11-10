@@ -1,0 +1,41 @@
+00:00 +0: loading D:/Projects/uten_imp_worktrees/company-feedback-20261110/test/features/production/pages/material_analysis_order_page_test.dart
+00:00 +0: test\features\production\pages\material_analysis_order_page_test.dart: 公司截图ORDER_ALL需求50改500：原需求50与公共备货450合计后正常下单
+00:18 +1: test\features\production\pages\material_analysis_order_page_test.dart: 覆盖总量500扣除现货18.1517：合法新增481.8483可提交且输入保留
+00:45 +2: test\features\production\pages\material_analysis_order_page_test.dart: 覆盖总量500扣除现货18.1517：不接受错误份额
+01:10 +3: test\features\production\pages\material_analysis_order_page_test.dart: 公司核对页改单行数量500：服务端拒绝原因保留在最终结果，输入和选择不丢
+01:43 +4: test\features\production\pages\material_analysis_order_page_test.dart: 核对页500未知提交仍锁定原意图，不能改数重放
+02:05 +5: loading D:/Projects/uten_imp_worktrees/company-feedback-20261110/test/features/production/pages/production_daily_report_exact_segment_test.dart
+02:23 +5: test\features\production\pages\production_daily_report_exact_segment_test.dart: partial issue blocks over-kit reporting before preview and preserves repeated input
+02:32 +6: loading D:/Projects/uten_imp_worktrees/company-feedback-20261110/test/features/production/pages/production_workshop_tasks_readiness_test.dart
+02:46 +6: test\features\production\pages\production_workshop_tasks_readiness_test.dart: running task table visibly distinguishes partial kits from fully issued work
+02:50 +7: loading D:/Projects/uten_imp_worktrees/company-feedback-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart
+03:04 +7: test\features\basic_data\pages\master_complete_print_consumers_test.dart: mould actual export sends all 1626 identities with selected=false
+03:20 +8: test\features\basic_data\pages\master_complete_print_consumers_test.dart: mould actual export sends all 1626 identities with selected=true
+03:34 +9: test\features\basic_data\pages\master_complete_print_consumers_test.dart: goods actual export header has no unsupported display columns
+03:39 +10: test\features\basic_data\pages\master_complete_print_consumers_test.dart: clients actual export header has no unsupported display columns
+03:44 +11: test\features\basic_data\pages\master_complete_print_consumers_test.dart: suppliers actual export header has no unsupported display columns
+03:49 +12: test\features\basic_data\pages\master_complete_print_consumers_test.dart: accounts actual export header has no unsupported display columns
+03:54 +13: test\features\basic_data\pages\master_complete_print_consumers_test.dart: currencies actual export header has no unsupported display columns
+03:57 +14: test\features\basic_data\pages\master_complete_print_consumers_test.dart: colors actual export header has no unsupported display columns
+03:59 +15: test\features\basic_data\pages\master_complete_print_consumers_test.dart: units actual export header has no unsupported display columns
+04:02 +16: test\features\basic_data\pages\master_complete_print_consumers_test.dart: moulds actual export header has no unsupported display columns
+04:07 +17: test\features\basic_data\pages\master_complete_print_consumers_test.dart: warehouses actual export header has no unsupported display columns
+04:11 +18: test\features\basic_data\pages\master_complete_print_consumers_test.dart: settlement_methods actual export header has no unsupported display columns
+04:15 +19: test\features\basic_data\pages\master_complete_print_consumers_test.dart: goods actual page prints every authorized server page beyond 500
+04:25 +20: test\features\basic_data\pages\master_complete_print_consumers_test.dart: clients actual page prints every authorized server page beyond 500
+04:37 +21: test\features\basic_data\pages\master_complete_print_consumers_test.dart: suppliers actual page prints every authorized server page beyond 500
+04:46 +22: test\features\basic_data\pages\master_complete_print_consumers_test.dart: accounts actual page prints every authorized server page beyond 500
+04:52 +23: test\features\basic_data\pages\master_complete_print_consumers_test.dart: currencies actual page prints every authorized server page beyond 500
+04:56 +24: test\features\basic_data\pages\master_complete_print_consumers_test.dart: colors actual page prints every authorized server page beyond 500
+05:01 +25: test\features\basic_data\pages\master_complete_print_consumers_test.dart: units actual page prints every authorized server page beyond 500
+05:05 +26: test\features\basic_data\pages\master_complete_print_consumers_test.dart: moulds actual page prints every authorized server page beyond 500
+05:13 +27: test\features\basic_data\pages\master_complete_print_consumers_test.dart: warehouses actual page prints every authorized server page beyond 500
+05:16 +28: test\features\basic_data\pages\master_complete_print_consumers_test.dart: settlement_methods actual page prints every authorized server page beyond 500
+05:22 +29: test\features\basic_data\pages\master_complete_print_consumers_test.dart: a scope revision during a real shared pane print never publishes its late pages
+05:35 +30: loading D:/Projects/uten_imp_worktrees/company-feedback-20261110/test/features/purchase/purchase_goods_multi_pick_test.dart
+05:44 +30: test\features\purchase\purchase_goods_multi_pick_test.dart: 采购退货新建实际选择器反复开关均显示全部分类
+05:53 +31: test\features\purchase\purchase_goods_multi_pick_test.dart: 采购退货编辑实际选择器反复开关均显示全部分类
+06:00 +32: loading D:/Projects/uten_imp_worktrees/company-feedback-20261110/test/features/subcontract/subcontract_goods_multi_picker_test.dart
+06:09 +32: test\features\subcontract\subcontract_goods_multi_picker_test.dart: 委外退货新建实际选择器反复开关均显示全部分类
+06:17 +33: test\features\subcontract\subcontract_goods_multi_picker_test.dart: 委外退货编辑实际选择器反复开关均显示全部分类
+06:25 +34: All tests passed!

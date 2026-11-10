@@ -1,0 +1,6 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/company-feedback-20261110/test/features/production/pages/production_workshop_tasks_readiness_test.dart
+00:00 +0: running task table visibly distinguishes partial kits from fully issued work
+00:05 +1: preparing rows sort closest-to-startable first
+00:06 +2: AI snapshot lists each readiness colour with its status, meaning and row count
+00:08 +3: All tests passed!

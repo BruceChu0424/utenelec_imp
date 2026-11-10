@@ -74,7 +74,7 @@ public class FinanceAuxiliaryImportService {
         if(!previous.isEmpty()){
             files.checkLegacy("FINANCE_AUXILIARY_COMPARE_REPLAY",bytes);Preview original=imported(previous.getFirst());
             if(!original.directoryApplied()&&original.columnContractVersion()!=com.uten.imp.common.importing.ImportColumnGuard.VERSION){
-                throw invalid("原辅助文件及旧检测结果是不可改写证据；请将原Excel另存为新文件后重新检测，原来源和回执保留");
+                throw invalid(com.uten.imp.common.importing.ImportColumnGuard.retiredPreviewMessage());
             }
             if(requestId!=null){intake.complete(requestId,FinanceDocumentIntakeOperations.Family.AUXILIARY_STATEMENT_PREVIEW,payload,previous.getFirst());}return imported(previous.getFirst());
         }

@@ -13,7 +13,10 @@ public final class ImportColumnGuard {
     public record Issue(int rowNum, String column, String message) { }
     public static void requireValidated(int version) {
         if (version != VERSION) throw new com.uten.imp.common.web.ApiException(
-                com.uten.imp.common.web.ErrorCode.CONFLICT,"原导入预览缺少当前列映射安全校验，请重新检测原文件；原已完成结果仍按原回执核对");
+                com.uten.imp.common.web.ErrorCode.CONFLICT,retiredPreviewMessage());
+    }
+    public static String retiredPreviewMessage() {
+        return "旧检测缺少当前列映射安全校验。请保留旧批次，重新生成文件并重新检测通过后再导入；仅改文件名不会改变内容标识。原来源和回执保留";
     }
 
     public static List<Issue> inspect(List<Header> headers, Set<Integer> populated, int headerRow) {

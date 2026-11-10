@@ -1,0 +1,51 @@
+{
+  "command": [
+    "D:\\Software\\Flutter\\flutter\\bin\\cache\\dart-sdk\\bin\\dart.exe",
+    "--packages=D:\\Projects\\uten_imp_worktrees\\company-feedback-20261110\\build\\company-chrome-tools\\70d8797d63b94893\\package_config.json",
+    "D:\\Projects\\uten_imp_worktrees\\company-feedback-20261110\\build\\company-chrome-tools\\70d8797d63b94893\\flutter_tools_private.snapshot",
+    "test",
+    "--platform=chrome",
+    "--reporter=expanded",
+    "--name=\u516c\u53f8\u622a\u56feORDER_ALL|\u8986\u76d6\u603b\u91cf|\u516c\u53f8\u6838\u5bf9\u9875|\u6838\u5bf9\u9875500\u672a\u77e5|partial issue blocks|running task table|mould actual export|actual export header|actual page prints|scope revision|\u5b9e\u9645\u9009\u62e9\u5668\u53cd\u590d",
+    "test/features/production/pages/material_analysis_order_page_test.dart",
+    "test/features/production/pages/production_daily_report_exact_segment_test.dart",
+    "test/features/production/pages/production_workshop_tasks_readiness_test.dart",
+    "test/features/basic_data/pages/master_complete_print_consumers_test.dart",
+    "test/features/purchase/purchase_goods_multi_pick_test.dart",
+    "test/features/subcontract/subcontract_goods_multi_picker_test.dart"
+  ],
+  "exit_code": 0,
+  "isolated_tool": {
+    "kind": "isolated-pinned-web-test-tools",
+    "inputs": {
+      "version": 1,
+      "sdk_revision": "c9a6c484230f8b5e408ec57be1ef71dee1e77020",
+      "sdk_root": "D:\\Software\\Flutter\\flutter",
+      "sdk_source_normalized_sha256": "2b7ab129052f2ffceba5cadd2c738d9bb69a1dcd7acde1bdc0fb4ef77b6b7403",
+      "sdk_inputs": {
+        "packages/flutter_tools/lib/src/test/flutter_web_platform.dart": "7f986a70ec05e496051cfceae0537e4fd3963f8e609b1e8ea04caa3d362a4f41",
+        "packages/flutter_tools/.dart_tool/package_config.json": "ac1a28c160e0eccc5e155202f70a9d18c69bb1916c8db04818907fb60668eac9",
+        "bin/cache/flutter_tools.snapshot": "abe2cf3b9476521b972dedc1aa4fff032e099a3de94415fb3f843b91fcea73d8"
+      },
+      "bootstrap_sha256": "1575165bfa7f0df3414957ecce343155556a379c703baed58b73d9d06ca20c12",
+      "asset_fragment_sha256": "2837b228a556d06078a8f072cd037e9fcc11afbad72e116ec52de5b58779ab73",
+      "patched_source_sha256": "532bdcfb3ff4cf6df9fb3809a30e957df30b69a3fa2eff5af2e7b950ace96769"
+    },
+    "files": {
+      "package_config.json": "ad9359a442c9b1183d64398d9984d012906578a9d6f75a27e337569eed06b9af",
+      "flutter_tools_private.snapshot": "da89d513cab3c4c3605145d7c647ee95d838c71020022cba6e39b220fbc5a60e",
+      "framework/lib/src/test/flutter_web_platform.dart": "532bdcfb3ff4cf6df9fb3809a30e957df30b69a3fa2eff5af2e7b950ace96769"
+    },
+    "command_prefix": [
+      "D:\\Software\\Flutter\\flutter\\bin\\cache\\dart-sdk\\bin\\dart.exe",
+      "--packages=D:\\Projects\\uten_imp_worktrees\\company-feedback-20261110\\build\\company-chrome-tools\\70d8797d63b94893\\package_config.json",
+      "D:\\Projects\\uten_imp_worktrees\\company-feedback-20261110\\build\\company-chrome-tools\\70d8797d63b94893\\flutter_tools_private.snapshot"
+    ],
+    "sdk_inputs_after": {
+      "packages/flutter_tools/lib/src/test/flutter_web_platform.dart": "7f986a70ec05e496051cfceae0537e4fd3963f8e609b1e8ea04caa3d362a4f41",
+      "packages/flutter_tools/.dart_tool/package_config.json": "ac1a28c160e0eccc5e155202f70a9d18c69bb1916c8db04818907fb60668eac9",
+      "bin/cache/flutter_tools.snapshot": "abe2cf3b9476521b972dedc1aa4fff032e099a3de94415fb3f843b91fcea73d8"
+    },
+    "sdk_unchanged": true
+  }
+}

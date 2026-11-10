@@ -94,6 +94,7 @@ public class GoodsBomImportService {
         putAlias("尾包", "allowPartialPackage");
         for (String a : new String[]{"设计使用数量", "数量"}) putAlias(a, "qty");
         putAlias("真实使用数量", "actualQty"); // 只读列：导出带出，导入不读
+        putAlias("学习来源", "learned"); // 系统学习标识只供核对，不能由导入改成手工或系统边。
         for (String a : new String[]{"备注", "摘要"}) putAlias(a, "summary");
     }
 

@@ -41,7 +41,6 @@ public final class FinanceAuxiliaryWorkbookParser {
                 .findFirst().orElseThrow(()->invalid("未找到财务提供的14列表头"));
         for(int col=0;col<14;col++)if(!FinanceTemplateContract.header(key,col).equals(text(header,col)))
             throw invalid("第"+(col+1)+"列表头应为原文："+FinanceTemplateContract.header(key,col));
-        if(sheet.maxColumn()>13)throw invalid("辅助明细应为原14列，请核对额外列中的数据");
         var rows=new ArrayList<Row>();var issues=new ArrayList<Issue>();var identities=new HashSet<String>();
         for(var issue:com.uten.imp.common.importing.ImportColumnGuard.inspectExtraColumns(bytes,sheet,header.index0(),14))
             issues.add(new Issue(issue.rowNum(),issue.column(),issue.message()));

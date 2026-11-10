@@ -1,0 +1,13 @@
+-------------------------------------------------------------------------------
+Test set: com.uten.imp.features.finance.gl.FinanceExpenseAnalysisPostgresTest
+-------------------------------------------------------------------------------
+Tests run: 1, Failures: 0, Errors: 1, Skipped: 0, Time elapsed: 139.3 s <<< FAILURE! -- in com.uten.imp.features.finance.gl.FinanceExpenseAnalysisPostgresTest
+com.uten.imp.features.finance.gl.FinanceExpenseAnalysisPostgresTest.legacyNotePreviewsCannotWriteAndConfirmedNotesReplayAfterPeriodLocks -- Time elapsed: 3.852 s <<< ERROR!
+com.uten.imp.common.web.ApiException: 本期间归属已锁定，请先核对并解除锁定
+	at com.uten.imp.features.finance.gl.FinanceExpenseAnalysisService.conflict(FinanceExpenseAnalysisService.java:269)
+	at com.uten.imp.features.finance.gl.FinanceExpenseAnalysisService.editable(FinanceExpenseAnalysisService.java:38)
+	at com.uten.imp.features.finance.gl.FinanceExpenseAnalysisService.applyNotes(FinanceExpenseAnalysisService.java:249)
+	at com.uten.imp.features.finance.gl.FinanceExpenseAnalysisPostgresTest.lambda$legacyNotePreviewsCannotWriteAndConfirmedNotesReplayAfterPeriodLocks$15(FinanceExpenseAnalysisPostgresTest.java:171)
+	at org.springframework.transaction.support.TransactionTemplate.execute(TransactionTemplate.java:137)
+	at com.uten.imp.features.finance.gl.FinanceExpenseAnalysisPostgresTest.legacyNotePreviewsCannotWriteAndConfirmedNotesReplayAfterPeriodLocks(FinanceExpenseAnalysisPostgresTest.java:171)
+

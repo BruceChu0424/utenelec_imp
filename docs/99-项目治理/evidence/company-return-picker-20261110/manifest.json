@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "evidenceId": "E-COMPANY-RETURN-PICKER-20261110",
+  "baseCommit": "86dffb9db",
+  "sourceCommit": "19c2be5c8643e6929fa2deec563390155b119ebb",
+  "classification": "frontend behavior plus authority regression",
+  "platforms": [
+    "Flutter Web",
+    "Flutter desktop/mobile shared source"
+  ],
+  "rootCauses": [
+    "subcontract return fell through to sellable category exclusions",
+    "purchase return used fixed material-only picker"
+  ],
+  "sourceSha256": {
+    "lib/features/purchase/pages/purchase_doc_edit_page.dart": "ce4a9be3427ce89c55adbb7c94cf902b193ce185cdc3b1e661b2178b2281f537",
+    "lib/features/purchase/pages/purchase_order_edit_page.dart": "c4193b8ededc572bedf945178360e4eac225586a731a7c6403d0160fdd6d3098",
+    "lib/features/purchase/widgets/purchase_goods_picker.dart": "4db019c02b6b823a8eff550c6093c99de33f62c43aa8ce827247f0181c9da863",
+    "lib/features/subcontract/pages/subcontract_doc_edit_page.dart": "7aa7d9135ce18d12cf54b78d5c8e8f0d825a78c2ecc09d9ae14bc6d196229ef4",
+    "lib/features/subcontract/pages/subcontract_order_edit_page.dart": "b32470cd31dfa1c0b31268c64857b6f52e89d7255ab050e7fdab99c8d9d87531",
+    "lib/features/subcontract/widgets/subcontract_goods_picker.dart": "d4cb30e4a8bd58dc4dc772625f9c0e9ab38553407dbd0d2ca47abbfa284ab3f9",
+    "server/src/test/java/com/uten/imp/common/finance/ProcurementReturnHeaderAuthorityTest.java": "c0bcd728353a920b3c50e8187127ccb08691f949146d773e28799f83f20bfdeb",
+    "test/features/basic_data/widgets/uten_goods_picker_test.dart": "364ff3322e39557175aea92fb23515866f50c0eb14c8b29b2845bed44f259062",
+    "test/features/purchase/purchase_goods_multi_pick_test.dart": "40510cbe80fd0a95625f4a4d17d00f1b91dde197b0829b6bfa64433d3c02bf57",
+    "test/features/purchase/purchase_order_over_receipt_test.dart": "11dcd500777a8fbc7ce2d5ce61c24ce406d9aa9af0f28bc9870a581a9c3df5c8",
+    "test/features/subcontract/subcontract_goods_multi_picker_test.dart": "2cd9e6f951ae073a26c96eb04d08ab28d43f31fa3df6aa60c26382f7e47843c5"
+  },
+  "evidenceSha256": {
+    "after-fix.txt": "dd0d44fbb9acd8d95d476b81785c59dfd4a7725a95b819243f263bb4ac58a18d",
+    "analyze.txt": "8e1e482b50084c5ba5841547366cf5a0e53c72c9df6009cf4bfb29a238bf22ad",
+    "before-fix.txt": "527e201de09b90fa8b2f1f677f1f5c451930fc076e9d53dd22defcb978e26d0f",
+    "chrome-isolation.json": "e80388f1132e1868ad97c477dfcb14ec1ec53fda3f9cbb2cb301338fedafb3a2",
+    "chrome.txt": "11eb04a2e0ba7c57b362227dda0c31666d6bc9a649b1ee94801b13afce581249",
+    "fixture-expectation-failure.txt": "a399a14139884098a49d048cedb1e61d40dd1e4ea889d3a75c6365a838252e66",
+    "purchase-after-fix.txt": "2e8531af2227b877cc1231ba52eba450375dbdfaeadc8eccced6ff097507fc2d",
+    "real-page-fixture-target-failure.txt": "7c195d40f90fe354ab1f433a3784879611e1ef4b164e986653831fcd5e8b113c",
+    "real-page-picker.txt": "24d777962abd864c26050887a0e842e34cdeaa63bbf3ccb550573ebdd412974d",
+    "reproduce_chrome.py": "54029f832e2997227344ea65b41f8c10e9389b1808a9ab810c264217871ad606"
+  },
+  "validation": {
+    "beforeFix": "Expected all, actual sellable",
+    "finalPageVm": "23 passed",
+    "publicPickerAndSubcontractVm": "36 passed, overlaps finalPageVm",
+    "purchaseAndOverReceiptVm": "28 passed, overlaps finalPageVm",
+    "chrome": "4 passed, 12 actual open-cancel cycles, synthetic data",
+    "staticAnalysis": "no issues",
+    "java": "added null/empty/null-element source guards for both return families, execution delegated to final integration",
+    "sharedFlutterSdkUnchanged": true
+  },
+  "wpf": {
+    "taskIds": [
+      "W7-BIZ-122",
+      "W7-BIZ-125",
+      "W7-BIZ-156",
+      "W7-BIZ-159"
+    ],
+    "status": "todo",
+    "nativeTargets": [],
+    "migrationChanged": false
+  },
+  "limitations": [
+    "company deployment and company real-data UAT not executed",
+    "target hardware / Win7 UAT not executed",
+    "no push, deployment, formal packaging or company database write"
+  ]
+}

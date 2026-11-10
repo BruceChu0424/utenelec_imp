@@ -1,0 +1,8 @@
+{
+  "status": "interrupted-before-tests",
+  "reason": "Corrected missing workspace-owned TMP/TEMP and uten.test.tmpdir",
+  "observedTestReports": 0,
+  "originalMavenRawExitCode": 0,
+  "executionSuccess": false,
+  "original44ClassRunTouched": false
+}

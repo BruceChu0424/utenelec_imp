@@ -1,0 +1,327 @@
+{
+  "schemaVersion": 1,
+  "status": "finished",
+  "sourceBefore": {
+    "sha": "4c66bbffa99f3f9cb1f695fc5bd8b2e6d6201cef",
+    "fingerprint": "18c4dd99031a1da194b0dcabfb5c29dd3c8336c69048d93f4fd7a3c349dab9cf"
+  },
+  "requestedClasses": [
+    "GoodsCostWorkbookParserTest",
+    "GoodsCostImportRemappingPostgresTest",
+    "FinanceExpenseAnalysisPostgresTest",
+    "FinanceAccountingContinuationPostgresTest",
+    "FinanceAuxiliaryPostgresTest",
+    "FinanceChartImportPostgresTest",
+    "ImportColumnGuardTest",
+    "PlatformWorkbookSchemaTest"
+  ],
+  "command": [
+    "C:\\tools\\apache-maven-3.9.16\\bin\\mvn.CMD",
+    "-B",
+    "-ntp",
+    "-Duten.build.directory=D:\\Projects\\uten_imp_worktrees\\company-import-delta-20261110\\server\\target-company-delta",
+    "-Dtest=GoodsCostWorkbookParserTest,GoodsCostImportRemappingPostgresTest,FinanceExpenseAnalysisPostgresTest,FinanceAccountingContinuationPostgresTest,FinanceAuxiliaryPostgresTest,FinanceChartImportPostgresTest,ImportColumnGuardTest,PlatformWorkbookSchemaTest",
+    "-DskipTests=false",
+    "-Dmaven.test.skip=false",
+    "-Dmaven.test.failure.ignore=false",
+    "-DfailIfNoTests=true",
+    "-DfailIfNoSpecifiedTests=true",
+    "-DforkCount=1",
+    "-DreuseForks=true",
+    "-Djunit.jupiter.execution.parallel.enabled=false",
+    "-Duten.test.jvm.heap.args=-Xmx4g",
+    "-Duten.test.tmpdir=D:\\Projects\\uten_imp_worktrees\\company-import-delta-20261110\\build\\import-delta\\tmp",
+    "clean",
+    "test"
+  ],
+  "target": "D:\\Projects\\uten_imp_worktrees\\company-import-delta-20261110\\server\\target-company-delta",
+  "targetExistedBefore": true,
+  "temporaryDirectory": "D:\\Projects\\uten_imp_worktrees\\company-import-delta-20261110\\build\\import-delta\\tmp",
+  "priorSetupEvidence": "D:\\Projects\\uten_imp_worktrees\\company-import-delta-20261110\\build\\import-delta\\attempt-1\\retirement.json",
+  "UTEN_RUN_DB_TESTS": true,
+  "startedUtc": "2026-11-10T21:19:41.141267+00:00",
+  "exitCode": 0,
+  "sourceAfter": {
+    "sha": "4c66bbffa99f3f9cb1f695fc5bd8b2e6d6201cef",
+    "fingerprint": "18c4dd99031a1da194b0dcabfb5c29dd3c8336c69048d93f4fd7a3c349dab9cf"
+  },
+  "sourceUnchanged": true,
+  "completeRequestedInventory": true,
+  "elapsedSeconds": 908.893,
+  "reports": [
+    {
+      "file": "TEST-com.uten.imp.businesschain.FinanceAccountingContinuationPostgresTest.xml",
+      "class": "com.uten.imp.businesschain.FinanceAccountingContinuationPostgresTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": "218.382",
+      "cases": [
+        {
+          "name": "manualAccountsAndReviewedZeroEndingProfitOmissionRetainThePeriodOccurrenceAndPostExactlyOnce",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "file": "TEST-com.uten.imp.businesschain.FinanceAuxiliaryPostgresTest.xml",
+      "class": "com.uten.imp.businesschain.FinanceAuxiliaryPostgresTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": "242.35",
+      "cases": [
+        {
+          "name": "mixedAccountingCurrencyPropertiesFreezePerAccountAndRecheckCreatesAnotherImmutableVersion",
+          "status": "passed"
+        },
+        {
+          "name": "explicitAuxiliaryIdentityIsReplayableAndFourteenColumnsUseLocalLedgerFacts",
+          "status": "passed"
+        },
+        {
+          "name": "externalAuxiliaryImportStagesDraftsAndComparisonsWithoutPostingSourceAmounts",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "file": "TEST-com.uten.imp.businesschain.FinanceChartImportPostgresTest.xml",
+      "class": "com.uten.imp.businesschain.FinanceChartImportPostgresTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": "81.325",
+      "cases": [
+        {
+          "name": "metadataRenameKeepsTheOriginalImportAndMappingsWhileReplayingTheOriginalReceipt",
+          "status": "passed"
+        },
+        {
+          "name": "nativeAccountAndBothSelectedReportBindingsAreAtomicAndReplayable",
+          "status": "passed"
+        },
+        {
+          "name": "historicalChartPreviewCannotWriteOrRewriteItsSourceAndAnotherOwnerCannotUseIt",
+          "status": "passed"
+        },
+        {
+          "name": "all177OriginalCodesImportWithoutMoneyAndNativeMappingIsAtomicAndReplayable",
+          "status": "passed"
+        },
+        {
+          "name": "forwardFinancialAuditUsesRealHelpersAndNeverCopiesPrivateSourceBodies",
+          "status": "passed"
+        },
+        {
+          "name": "directoryReadKeepsOneSnapshotWhenAnotherTransactionAddsACodeBetweenItsQueries",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "file": "TEST-com.uten.imp.common.export.PlatformWorkbookSchemaTest.xml",
+      "class": "com.uten.imp.common.export.PlatformWorkbookSchemaTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": "1.595",
+      "cases": [
+        {
+          "name": "malformedAndFutureMarkersFailClosed",
+          "status": "passed"
+        },
+        {
+          "name": "evenOneCustomColumnNamedLikeABusinessFieldCarriesStableProvenance",
+          "status": "passed"
+        },
+        {
+          "name": "manyContinuationSheetsShareLongColumnDefinitionsInsteadOfMultiplyingTheSchema",
+          "status": "passed"
+        },
+        {
+          "name": "systemOnlyWorkbooksRemainOrdinaryFiles",
+          "status": "passed"
+        },
+        {
+          "name": "scopeContinuationAndPasswordProtectionPreserveTheSameColumnIdentity",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "file": "TEST-com.uten.imp.common.importing.ImportColumnGuardTest.xml",
+      "class": "com.uten.imp.common.importing.ImportColumnGuardTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": "0.09",
+      "cases": [
+        {
+          "name": "aBlankHeaderWithDataOrAnEmptyCachedFormulaIsStillAnUnmappedColumn",
+          "status": "passed"
+        },
+        {
+          "name": "stylingDoesNotTurnAnEmptyTailIntoBusinessData",
+          "status": "passed"
+        },
+        {
+          "name": "absentOrFutureValidationFactsCannotAuthorizeAPersistedPreview",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "file": "TEST-com.uten.imp.features.finance.gl.FinanceExpenseAnalysisPostgresTest.xml",
+      "class": "com.uten.imp.features.finance.gl.FinanceExpenseAnalysisPostgresTest",
+      "tests": 15,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": "129.152",
+      "cases": [
+        {
+          "name": "depreciationReversalRetainsOriginalPlusSignedReversalAndUnprovenLedgerIsUnknown",
+          "status": "passed"
+        },
+        {
+          "name": "versionedServiceCommandsReplayOnceAndPreserveNotesAcrossConflictsAndPeriodLocks",
+          "status": "passed"
+        },
+        {
+          "name": "noPayrollFactIsUnknownAndUnverifiedOrChangedPeriodIsNotZero",
+          "status": "passed"
+        },
+        {
+          "name": "approvedHistoricalDepreciationCanSupplyExpenseButPartialAssetProofCannotHideLedgerDifference",
+          "status": "passed"
+        },
+        {
+          "name": "negativeCreditAndMixedSignsCannotBeOffsetWithinOneSource",
+          "status": "passed"
+        },
+        {
+          "name": "postedOriginalAndRealOppositeReversalRemainTogetherForOrdinaryAndManufacturingFacts",
+          "status": "passed"
+        },
+        {
+          "name": "fiftyThousandSourceFactsAggregateWithoutDuplicateAmplification",
+          "status": "passed"
+        },
+        {
+          "name": "reversingCostTransferCreditDoesNotInventManufacturingExpenseAndSignedRedDebitsStaySigned",
+          "status": "passed"
+        },
+        {
+          "name": "laborDoublePoolsConserveEachDirectionAndExpiredSourceDoesNotSurviveAsZero",
+          "status": "passed"
+        },
+        {
+          "name": "creditAndDebitWrappersShareProvedDirectionReversalAndPreserveSignedRedFacts",
+          "status": "passed"
+        },
+        {
+          "name": "removedCostClassificationCannotTurnPreviouslyBoundRealManufacturingAmountIntoZero",
+          "status": "passed"
+        },
+        {
+          "name": "originalThirtyDecimalBookFactAndGroupBaseSurviveAttributionWithoutRounding",
+          "status": "passed"
+        },
+        {
+          "name": "allocationGuardPreservesExactSignedAmountAndSourceChangesInvalidateExistingAttribution",
+          "status": "passed"
+        },
+        {
+          "name": "manufacturingDebitOccurrenceExcludesApprovedClosingAndDoesNotUseZeroEndingBalance",
+          "status": "passed"
+        },
+        {
+          "name": "legacyNotePreviewsCannotWriteAndConfirmedNotesReplayAfterPeriodLocks",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "file": "TEST-com.uten.imp.features.master.goods.costing.GoodsCostImportRemappingPostgresTest.xml",
+      "class": "com.uten.imp.features.master.goods.costing.GoodsCostImportRemappingPostgresTest",
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": "7.798",
+      "cases": [
+        {
+          "name": "failureAfterReceiptInsertRollsBackTheEntireApply",
+          "status": "passed"
+        },
+        {
+          "name": "repeatedApplyAndChangingFileDoNotAccumulateImportedFees",
+          "status": "passed"
+        },
+        {
+          "name": "feeToSkipAndFeeToMaterialRemoveOnlyThePreviousImportFee",
+          "status": "passed"
+        },
+        {
+          "name": "materialToSkipRestoresPreexistingManualPriceAndKeepsUnrelatedQuantityEdit",
+          "status": "passed"
+        },
+        {
+          "name": "oldReceiptCustomerScopeIsRecheckedBeforeRestoringItsValues",
+          "status": "passed"
+        },
+        {
+          "name": "changedOwnedPriceConflictsWithoutRemovingManualEditsOrInsertingAReceipt",
+          "status": "passed"
+        },
+        {
+          "name": "missingOrZeroColumnValidationCannotApplyOrRewriteItsImmutablePreview",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "file": "TEST-com.uten.imp.features.master.goods.costing.GoodsCostWorkbookParserTest.xml",
+      "class": "com.uten.imp.features.master.goods.costing.GoodsCostWorkbookParserTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": "0.66",
+      "cases": [
+        {
+          "name": "duplicateAndPopulatedCustomColumnsRequireExplicitHandling",
+          "status": "passed"
+        },
+        {
+          "name": "hiddenCostInputsCannotDisappearBeforeColumnValidation",
+          "status": "passed"
+        },
+        {
+          "name": "hiddenStyledEmptyTailIsNotAdoptedOrMistakenForData",
+          "status": "passed"
+        },
+        {
+          "name": "discoversProductBlocksKeepsCachedFormulaEvidenceAndNeverFillsMissingPricesWithZero",
+          "status": "passed"
+        },
+        {
+          "name": "entirelyEmptyExtraCostColumnDoesNotBlockOrdinaryRows",
+          "status": "passed"
+        }
+      ]
+    }
+  ],
+  "totals": {
+    "tests": 45,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  }
+}

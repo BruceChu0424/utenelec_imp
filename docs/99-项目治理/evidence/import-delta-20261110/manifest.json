@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "evidenceId": "E-IMPORT-DELTA-CLEAN-20261110",
+  "validatedSource": {
+    "sha": "4c66bbffa99f3f9cb1f695fc5bd8b2e6d6201cef",
+    "fingerprint": "18c4dd99031a1da194b0dcabfb5c29dd3c8336c69048d93f4fd7a3c349dab9cf"
+  },
+  "sourceUnchanged": true,
+  "completeRequestedInventory": true,
+  "totals": {
+    "tests": 45,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "elapsedSeconds": 908.893,
+  "exitCode": 0,
+  "target": "D:\\Projects\\uten_imp_worktrees\\company-import-delta-20261110\\server\\target-company-delta",
+  "temporaryDirectory": "D:\\Projects\\uten_imp_worktrees\\company-import-delta-20261110\\build\\import-delta\\tmp",
+  "sourceIndexAlgorithm": "owning backend_test_shards.source_identity; canonical Git blobs plus SHA256 inventory fingerprint",
+  "rawSha256": {
+    "maven.log": "c6f5917ae3462534dc055dbedce970e3d74a25aaec7bb47431c1eb0b01f8bf4f",
+    "run.json": "3874702ea8797ed6bd4228a49e7c73e36de5501cc76611e178d7660755e7e0a1",
+    "runtime-isolation.json": "e83ce1a1c3ba71e3c0ab02470c56d374ab70a34001cb34adde84b65c582548b8",
+    "source-index.txt": "8f24a1b1297980a961ea4cae65b085e19dedb9630484a5db536ea4bdead366e8",
+    "attempt-1/maven.log": "3290fb698180eea82d664f3b20a0a372cc2a16ee17929a7dce775921d6f0ef64",
+    "attempt-1/retirement.json": "e5e73529df2dbec81395fdd9f30ddf5968871bdb62d3db9ac80e86806a40b802",
+    "attempt-1/run.json": "1ea60065b38f8087c5980e329ca27dd720307bb558a972f24e67604c8ac8fce9",
+    "attempt-1/source-index.txt": "8f24a1b1297980a961ea4cae65b085e19dedb9630484a5db536ea4bdead366e8",
+    "surefire-reports/2026-11-10T14-23-22_922.dumpstream": "20fed627793ce4b8ab0b54e0a5fdab589bd801a63c9fa68c10184013c88518bd",
+    "surefire-reports/com.uten.imp.businesschain.FinanceAccountingContinuationPostgresTest.txt": "b13852ed3f7c675e79f468b7d83083b5dfe769e70740f279b29bba9e01e85c49",
+    "surefire-reports/com.uten.imp.businesschain.FinanceAuxiliaryPostgresTest.txt": "ce8d3c5c7a7c64176529c6d79a85abf4d42f9d7a45196eb499cf4dd463046fd9",
+    "surefire-reports/com.uten.imp.businesschain.FinanceChartImportPostgresTest.txt": "a5dc655e514c41d0e28ec72b1baf6efc3ee1c39caf51b8af496fe2faecd36c5d",
+    "surefire-reports/com.uten.imp.common.export.PlatformWorkbookSchemaTest.txt": "2a652eb899f21203e9a5c924f0c86410a38f7348c50d9d32780da6fea24659c0",
+    "surefire-reports/com.uten.imp.common.importing.ImportColumnGuardTest.txt": "7f87be38d8cf0bb5a89f441f97a814d9210c179fe0aef2682eb3fcdd65103bea",
+    "surefire-reports/com.uten.imp.features.finance.gl.FinanceExpenseAnalysisPostgresTest.txt": "d407e18f02e7db51e1cb3bcf63dfb35ab504f0a21c2c43f9c713b399c786db49",
+    "surefire-reports/com.uten.imp.features.master.goods.costing.GoodsCostImportRemappingPostgresTest.txt": "8e0771437867ae209d638e7e043a8ac58500b2b2da4df2a9ef1a2a59128e90ee",
+    "surefire-reports/com.uten.imp.features.master.goods.costing.GoodsCostWorkbookParserTest.txt": "ae276875d8df5a008f6dd267f5fc28852118bf1840fc7e7109386296b5cbe4af",
+    "surefire-reports/TEST-com.uten.imp.businesschain.FinanceAccountingContinuationPostgresTest.xml": "b191ac24930ef40849cb39e0ea5342239d99bd8ef90d712fb340cde0b37934d8",
+    "surefire-reports/TEST-com.uten.imp.businesschain.FinanceAuxiliaryPostgresTest.xml": "e8380959205a49ec3e1a08e15ecb3d731ccf58c1eb398f7c79c4b77609bdc808",
+    "surefire-reports/TEST-com.uten.imp.businesschain.FinanceChartImportPostgresTest.xml": "d8d330f000829063dd857d68eea0e38c0d1d8aaa7bc832a016b18ccb5c9858fe",
+    "surefire-reports/TEST-com.uten.imp.common.export.PlatformWorkbookSchemaTest.xml": "2e30f4d82b8d1fedcf49af812cf2498d788b1d70a7daaec9011c871541c0ffe7",
+    "surefire-reports/TEST-com.uten.imp.common.importing.ImportColumnGuardTest.xml": "9731a1fa0cdf857c4fc0a77a8e32836d010b5cef26130fddfab5599274e41923",
+    "surefire-reports/TEST-com.uten.imp.features.finance.gl.FinanceExpenseAnalysisPostgresTest.xml": "11bbd7295f70f9e6b6d7a7c2b83226b8a73e48578482ba210b0a9641df79f367",
+    "surefire-reports/TEST-com.uten.imp.features.master.goods.costing.GoodsCostImportRemappingPostgresTest.xml": "8c8ec8c42ada3341a466289a1d0d90545bd0ca2d7da8f18be057e0155ae38ff0",
+    "surefire-reports/TEST-com.uten.imp.features.master.goods.costing.GoodsCostWorkbookParserTest.xml": "8e33c5b3ff917d2fd5b9c855346516bb31c305bd81e02f607a498bc1d11bfc94"
+  },
+  "peerEvidence": "docs/99-项目治理/evidence/import-columns-20261110/peer",
+  "notIncluded": "root original44 class run, any unselected test, company deployment, full custom field writeback, Win7 hardware UAT"
+}

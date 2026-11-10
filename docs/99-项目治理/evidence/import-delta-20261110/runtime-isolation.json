@@ -1,0 +1,47 @@
+{
+  "runtimeTemporaryDirectories": [
+    {
+      "class": "com.uten.imp.businesschain.FinanceAccountingContinuationPostgresTest",
+      "temporaryDirectory": "D:\\Projects\\uten_imp_worktrees\\company-import-delta-20261110\\build\\import-delta\\tmp",
+      "insideNewTree": true
+    },
+    {
+      "class": "com.uten.imp.businesschain.FinanceAuxiliaryPostgresTest",
+      "temporaryDirectory": "D:\\Projects\\uten_imp_worktrees\\company-import-delta-20261110\\build\\import-delta\\tmp",
+      "insideNewTree": true
+    },
+    {
+      "class": "com.uten.imp.businesschain.FinanceChartImportPostgresTest",
+      "temporaryDirectory": "D:\\Projects\\uten_imp_worktrees\\company-import-delta-20261110\\build\\import-delta\\tmp",
+      "insideNewTree": true
+    },
+    {
+      "class": "com.uten.imp.common.export.PlatformWorkbookSchemaTest",
+      "temporaryDirectory": "D:\\Projects\\uten_imp_worktrees\\company-import-delta-20261110\\build\\import-delta\\tmp",
+      "insideNewTree": true
+    },
+    {
+      "class": "com.uten.imp.common.importing.ImportColumnGuardTest",
+      "temporaryDirectory": "D:\\Projects\\uten_imp_worktrees\\company-import-delta-20261110\\build\\import-delta\\tmp",
+      "insideNewTree": true
+    },
+    {
+      "class": "com.uten.imp.features.finance.gl.FinanceExpenseAnalysisPostgresTest",
+      "temporaryDirectory": "D:\\Projects\\uten_imp_worktrees\\company-import-delta-20261110\\build\\import-delta\\tmp",
+      "insideNewTree": true
+    },
+    {
+      "class": "com.uten.imp.features.master.goods.costing.GoodsCostImportRemappingPostgresTest",
+      "temporaryDirectory": "D:\\Projects\\uten_imp_worktrees\\company-import-delta-20261110\\build\\import-delta\\tmp",
+      "insideNewTree": true
+    },
+    {
+      "class": "com.uten.imp.features.master.goods.costing.GoodsCostWorkbookParserTest",
+      "temporaryDirectory": "D:\\Projects\\uten_imp_worktrees\\company-import-delta-20261110\\build\\import-delta\\tmp",
+      "insideNewTree": true
+    }
+  ],
+  "allInsideNewTree": true,
+  "sensitiveKeywordLines": 15,
+  "keywordMatchesAreOnlyMigrationTitles": true
+}

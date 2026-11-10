@@ -94,10 +94,18 @@ class ServerMetric {
     this.totalBytes,
     this.usedBytes,
     this.freeBytes,
+    this.activeConnections,
+    this.maxConnections,
+    this.idleConnections,
+    this.waitingThreads,
   });
   final String key, label, unit, detail;
   final double? value, warningThreshold, criticalThreshold;
   final double? totalBytes, usedBytes, freeBytes;
+  final double? activeConnections,
+      maxConnections,
+      idleConnections,
+      waitingThreads;
   final ServerHealthStatus status;
   factory ServerMetric.fromJson(Map<String, dynamic> json) => ServerMetric(
     key: _text(json['key']),
@@ -111,6 +119,10 @@ class ServerMetric {
     totalBytes: _number(json['totalBytes']),
     usedBytes: _number(json['usedBytes']),
     freeBytes: _number(json['freeBytes']),
+    activeConnections: _number(json['activeConnections']),
+    maxConnections: _number(json['maxConnections']),
+    idleConnections: _number(json['idleConnections']),
+    waitingThreads: _number(json['waitingThreads']),
   );
 }
 

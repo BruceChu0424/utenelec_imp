@@ -1,0 +1,51 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp/test/features/admin/server_status_page_test.dart
+00:00 +0: D:/Projects/uten_imp/test/features/admin/server_status_page_test.dart: (setUpAll)
+00:00 +0: D:/Projects/uten_imp/test/features/admin/server_status_page_test.dart: background retirement releases the pending status owner and resumes without its result
+00:00 +1: D:/Projects/uten_imp/test/features/admin/server_status_page_test.dart: background retirement releases the pending status owner and resumes without its result
+00:00 +2: D:/Projects/uten_imp/test/features/admin/server_status_page_test.dart: background retirement releases the pending status owner and resumes without its result
+00:00 +3: D:/Projects/uten_imp/test/features/admin/server_status_page_test.dart: background retirement releases the pending status owner and resumes without its result
+00:00 +4: D:/Projects/uten_imp/test/features/admin/server_status_page_test.dart: background retirement releases the pending status owner and resumes without its result
+00:03 +5: D:/Projects/uten_imp/test/features/admin/server_storage_page_test.dart: a complete storage category is read once and its virtual resource scroll never fetches another batch
+00:05 +6: D:/Projects/uten_imp/test/features/admin/server_storage_page_test.dart: a complete storage category is read once and its virtual resource scroll never fetches another batch
+00:06 +7: D:/Projects/uten_imp/test/features/admin/server_storage_page_test.dart: a complete storage category is read once and its virtual resource scroll never fetches another batch
+00:06 +8: D:/Projects/uten_imp/test/features/admin/server_storage_page_test.dart: a complete storage category is read once and its virtual resource scroll never fetches another batch
+00:06 +9: D:/Projects/uten_imp/test/features/admin/server_status_page_test.dart: desktop light shows actual measurements and unknown reasons without overflow
+00:07 +10: D:/Projects/uten_imp/test/features/admin/server_status_page_test.dart: desktop light shows actual measurements and unknown reasons without overflow
+00:07 +11: D:/Projects/uten_imp/test/features/admin/server_status_page_test.dart: desktop light shows actual measurements and unknown reasons without overflow
+00:07 +12: D:/Projects/uten_imp/test/features/admin/server_storage_page_test.dart: reopening the page recovers persisted request by GET without another cleanup
+00:07 +13: D:/Projects/uten_imp/test/features/admin/server_status_page_test.dart: compact dark shows actual measurements and unknown reasons without overflow
+00:07 +14: D:/Projects/uten_imp/test/features/admin/server_storage_page_test.dart: missing receipt is never treated as not executed and GET polling is bounded
+00:08 +15: D:/Projects/uten_imp/test/features/admin/server_storage_page_test.dart: missing receipt is never treated as not executed and GET polling is bounded
+00:08 +16: D:/Projects/uten_imp/test/features/admin/server_status_page_test.dart: storage accounting adapts at 1800.0, text 1.0
+00:08 +17: D:/Projects/uten_imp/test/features/admin/server_status_page_test.dart: storage accounting adapts at 1800.0, text 1.0
+00:09 +18: D:/Projects/uten_imp/test/features/admin/server_status_page_test.dart: storage accounting adapts at 1800.0, text 1.0
+00:09 +19: D:/Projects/uten_imp/test/features/admin/server_status_page_test.dart: storage accounting adapts at 1800.0, text 1.0
+00:09 +20: D:/Projects/uten_imp/test/features/admin/server_storage_page_test.dart: entry is read-only; protected rows explain why and cannot be selected
+00:09 +21: D:/Projects/uten_imp/test/features/admin/server_status_page_test.dart: storage accounting adapts at 900.0, text 1.0
+00:10 +22: D:/Projects/uten_imp/test/features/admin/server_storage_page_test.dart: cleanup requires an authoritative preview and a second explicit confirmation
+00:10 +23: D:/Projects/uten_imp/test/features/admin/server_status_page_test.dart: storage accounting adapts at 390.0, text 1.35
+00:11 +24: D:/Projects/uten_imp/test/features/admin/server_status_page_test.dart: storage accounting adapts at 390.0, text 1.35
+00:11 +25: D:/Projects/uten_imp/test/features/admin/server_storage_page_test.dart: uncertain cleanup only queries the original receipt and never replays POST
+00:12 +26: D:/Projects/uten_imp/test/features/admin/server_storage_page_test.dart: uncertain cleanup only queries the original receipt and never replays POST
+00:12 +27: D:/Projects/uten_imp/test/features/admin/server_status_page_test.dart: manual refresh waits for storage, bypasses cache and guards repeated clicks
+00:12 +28: D:/Projects/uten_imp/test/features/admin/server_status_page_test.dart: manual refresh waits for storage, bypasses cache and guards repeated clicks
+00:13 +29: D:/Projects/uten_imp/test/features/admin/server_status_page_test.dart: manual refresh waits for storage, bypasses cache and guards repeated clicks
+00:13 +30: D:/Projects/uten_imp/test/features/admin/server_status_page_test.dart: manual refresh waits for storage, bypasses cache and guards repeated clicks
+00:13 +31: D:/Projects/uten_imp/test/features/admin/server_status_page_test.dart: compact refresh joins the read resumed while closing its actions panel
+00:15 +32: D:/Projects/uten_imp/test/features/admin/server_status_page_test.dart: zero pool usage retains its measured connection counts
+00:15 +33: D:/Projects/uten_imp/test/features/admin/server_status_page_test.dart: failed storage refresh withdraws the old inventory
+00:16 +34: D:/Projects/uten_imp/test/features/admin/server_status_page_test.dart: storage section groups volumes by where content is stored
+00:17 +35: D:/Projects/uten_imp/test/features/admin/server_status_page_test.dart: overall unknown preserves fresh metric states and backup check failure wording
+00:17 +36: D:/Projects/uten_imp/test/features/admin/server_status_page_test.dart: system management shows the status card only to its viewer and opens the page
+00:18 +37: D:/Projects/uten_imp/test/features/admin/server_status_page_test.dart: 服务器更新按钮按待更新数显示徽章，无数时不占位
+00:19 +38: D:/Projects/uten_imp/test/features/admin/server_status_page_test.dart: slow reads never overlap and polling pauses off-route, in background and after disposal
+00:21 +39: D:/Projects/uten_imp/test/features/admin/server_status_page_test.dart: stale data and refresh failure immediately lose old healthy colors
+00:22 +40: D:/Projects/uten_imp/test/features/admin/server_status_page_test.dart: extra counters pick ring or number by unit and scheduled jobs list their last run
+00:23 +41: D:/Projects/uten_imp/test/features/admin/server_status_page_test.dart: job headers filter health and order runs by date
+00:26 +42: D:/Projects/uten_imp/test/features/admin/server_status_page_test.dart: stale samples grey every ring and the live pulse dot
+00:27 +43: D:/Projects/uten_imp/test/features/admin/server_status_page_test.dart: 进页面第一帧就用共享缓存画出总览，不等自己那趟请求回来
+00:28 +44: D:/Projects/uten_imp/test/features/admin/server_status_page_test.dart: 过期的缓存不入画：宁可占位，也不摆一个下一帧就被标成已过期的读数
+00:29 +45: D:/Projects/uten_imp/test/features/admin/server_status_page_test.dart: 页面自己拉到的快照会回写缓存，供下次进页面第一帧复用
+00:30 +46: D:/Projects/uten_imp/test/features/admin/server_status_page_test.dart: (tearDownAll)
+00:30 +46: All tests passed!

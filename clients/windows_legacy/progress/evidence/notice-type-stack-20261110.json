@@ -1,0 +1,467 @@
+{
+  "id": "E-NOTICE-TYPE-STACK-20261110",
+  "reviewDateLocal": "2026-11-10",
+  "branch": "uimp/notice-type-stack-20261110",
+  "base": "d73f86e1eca5db796c610045bd9f63916a2523bf",
+  "classification": [
+    "frontend"
+  ],
+  "scope": "通知列表同主题叠放与卡片重设计的原生适用性审查；不新增尚未迁移的通知业务入口。",
+  "registryNote": "2026-11-10 同主题通知叠放及卡片重设计：已重新核实原生 MainWindow/DashboardView，通知列表、详情和卡片仍未迁移，无可同步的既有 WPF 消费者。后续须沿用业务锚点优先、系统来源事件/精确主题兜底的展示归组，保留类型、重要度、互动、发布者及目的路由；危急与恢复、不同指标、不同更新版本不得误并。采用中性表面、局部类型色、轻边框、极轻中性贴边阴影与错位底卡，底卡仅边框，展示真实条数和未读数；展开不代替单条已读、收到或办结。未新增原生写入口，原状态/owner/DoD/依赖/nativeTargets 保留，完整 ERP 与 Win7 真机未验收。见 E-NOTICE-TYPE-STACK-20261110。",
+  "wpfLegacy": {
+    "status": "not-migrated",
+    "tasks": [
+      "W7-BIZ-084",
+      "W7-BIZ-085"
+    ],
+    "audit": [
+      {
+        "source": "clients/windows_legacy/Uten.Legacy.Desktop/MainWindow.xaml",
+        "finding": "WorkspacePanel 的原生业务导航仍仅工作台、货品、单位，没有通知列表或通知卡片入口。",
+        "sha256": "e86598a9f338c286e0a88d18eaa55d1d4f071062689bb95c0729ccb9fbb0af62"
+      },
+      {
+        "source": "clients/windows_legacy/Uten.Legacy.Desktop/MainWindow.xaml.cs",
+        "finding": "OnDashboard、OnGoods、OnUnits 创建既有业务视图，没有 NoticeView、通知详情或通知路由。",
+        "sha256": "a60a8c61bee390bd38fd5831955ee84e154719ab8da999dcd7bd5cb20d8d9b72"
+      },
+      {
+        "source": "clients/windows_legacy/Uten.Legacy.Desktop/Views/DashboardView.cs",
+        "finding": "工作台仍只读取 /dashboard/overview，待办仅货品路由提供查看，不承载通知卡片、分组、已读或收到回执。",
+        "sha256": "c8662dd90e5ec695d9bcf5b3f0ac71342e935abc234d79578812605141f5ba96"
+      }
+    ],
+    "sourceSearch": {
+      "scope": [
+        "clients/windows_legacy/Uten.Legacy.Core",
+        "clients/windows_legacy/Uten.Legacy.Desktop"
+      ],
+      "extensions": [
+        ".cs",
+        ".xaml"
+      ],
+      "patterns": [
+        "/notices",
+        "/notice\\b",
+        "NoticeView",
+        "NoticeCard",
+        "NoticeGroup",
+        "UnreadCount",
+        "unreadCount"
+      ],
+      "matches": 0,
+      "limitation": "只用于核实不存在本次可同步的已实现消费者；静态审查不代表原生交互或 Win7 目标机验收。"
+    },
+    "requiredContracts": [
+      "复用 owning Flutter noticeGroupKeyOf 的展示归组优先级：真实服务端业务聚合、业务主键路由、无业务锚点系统通知的稳定主题；不得把所有系统或紧急通知混为一组。",
+      "系统主题必须保留通知类型、重要度、互动方式、发布者与目的路由边界。状态告警保留指标和严重档，恢复与危急分别叠放；主机告警忽略每次事件 UUID、按精确标题归组；更新通知保留版本标题。未知事件不猜测主键结构；无事件旧系统通知仅用精确标题兜底，公告、庆典和无业务锚点待办继续独立。",
+      "组卡采用克制的主题中性表面、局部类型色、轻边框、极轻中性贴边阴影与正确圆角，错位底卡仅保留边框，显示真实条数与未读数；标题、时间与每条动作保持可读和键盘访问。不得依靠大面积渐变、彩色光晕、厚阴影或重复优先级标签表现层级。",
+      "展开一组仅改变展示，不等于已读、收到或办结。组内每条原通知及各自时间、内容、已读、收到与业务落点保留；本人收到和已读仍由服务端同事务权威保存。",
+      "业务对象分组不得写入新的服务端 aggregate、扩大权限范围、把展示组当批量提交或重放未知写入。原生异步动作继续复用公共等待层、防连点以及身份、权限、读取代次和未知结果保护。"
+    ],
+    "nativeProductChanged": false,
+    "nativeTargetsAdded": false,
+    "writeEntryAdded": false,
+    "taskStatusChanged": false,
+    "targetPcAcceptance": false
+  },
+  "validation": {
+    "nativeBuildRequired": false,
+    "reason": "本次没有 C#、XAML 或原生产品实现变更，仅追加未迁移差异及接续合同证据。",
+    "registryProtectedFields": "状态、owner、DoD、依赖、nativeTargets 与所有无关任务必须逐项保持原值。",
+    "fullSourceInventoryRefresh": "Completed after final product-source freeze with owning business_inventory --write, progress_tracker sync and full check; static source provenance only, not native UI or Win7 acceptance.",
+    "registryValidationPassed": true,
+    "generatedDocumentValidationPassed": true,
+    "documentLinkValidationPassed": true,
+    "protectedFieldComparisonPassed": true,
+    "protectedFieldComparisonScope": "All 373 tasks; only W7-BIZ-084/085 notes, evidence and lastUpdated changed.",
+    "fullProgressTrackerCheckPassed": true
+  },
+  "fullErpEquivalent": false,
+  "win7Accepted": false,
+  "productionDeployment": false,
+  "finalSynchronization": {
+    "completedAtUtc": "2026-11-10T21:53:11.575512+00:00",
+    "classification": "Final frozen-source fingerprint refresh and reconciliation of pre-existing inventory drift; no product implementation change or task promotion.",
+    "initialFailurePreserved": true,
+    "beforeRegistryInventorySha256": "9e2c8ec959c037e2ddc6119324c2a864a7327256e7b2a66de5acda647bbc2e8e",
+    "beforeInventorySha256": "d47c6fd359855ff0afa8275f6f1f81b83e36d9ccd4f9f86f514dce7d85f7488a",
+    "afterInventorySha256": "8620d30cfa6a6b0826e193d4dd5de71382562e2f408d9f2062b93ab156a41920",
+    "beforeRegistrySha256": "0d1d76e1ece11347a67ae07440ad9f414aafbe5e8d52a41bb1f5db16d69dce1c",
+    "afterRegistrySha256": "80049698f5168d708b85e84aed857235e254f472a671a7d1943808b278a08df2",
+    "protectedTaskComparison": {
+      "countBefore": 373,
+      "countAfter": 373,
+      "fields": [
+        "status",
+        "owner",
+        "definitionOfDone",
+        "dependencies",
+        "nativeTargets"
+      ],
+      "removed": [],
+      "added": [],
+      "changed": []
+    },
+    "sourceFileChanges": {
+      "removed": [],
+      "added": [],
+      "changed": [
+        "lib/components/cards/uten_card.dart",
+        "lib/core/network/api_client.dart",
+        "lib/core/network/visitor_session_event_bus.dart",
+        "lib/core/security/secure_storage.dart",
+        "lib/features/admin/pages/server_status_page.dart",
+        "lib/features/admin/widgets/admin_department_perm_view.dart",
+        "lib/features/admin/widgets/audit_query_scope.dart",
+        "lib/features/applications/providers/business_application_providers.dart",
+        "lib/features/dashboard/providers/dashboard_overview_provider.dart",
+        "lib/features/department/pages/my_department_page.dart",
+        "lib/features/department/providers/my_department_providers.dart",
+        "lib/features/employee/pages/employee_onboarding_page.dart",
+        "lib/features/employee/providers/employee_picker_department_tree_provider.dart",
+        "lib/features/employee/widgets/department_employee_picker.dart",
+        "lib/features/expense/pages/expense_approval_list_page.dart",
+        "lib/features/expense/pages/expense_detail_page.dart",
+        "lib/features/expense/pages/expense_settings_page.dart",
+        "lib/features/expense/providers/expense_providers.dart",
+        "lib/features/expense/providers/expense_settings_provider.dart",
+        "lib/features/expense/widgets/expense_invoice_section.dart",
+        "lib/features/hr_task/providers/hr_task_summary_provider.dart",
+        "lib/features/notice/models/notice_group.dart",
+        "lib/features/notice/pages/notice_list_page.dart",
+        "lib/features/notice/providers/notice_providers.dart",
+        "lib/features/notice/providers/notice_unread_index_provider.dart",
+        "lib/features/notice/widgets/celebration_popup_gate.dart",
+        "lib/features/notice/widgets/notice_card.dart",
+        "lib/features/notice/widgets/notice_group_dialog.dart",
+        "lib/features/payroll/pages/payroll_review_page.dart",
+        "lib/features/payroll/pages/payroll_slip_detail_page.dart",
+        "lib/features/payroll/providers/payroll_providers.dart",
+        "lib/features/profile/pages/profile_edit_page.dart",
+        "lib/features/profile/providers/profile_change_providers.dart",
+        "lib/features/quality/providers/production_fqc_capability_provider.dart",
+        "lib/features/suggestion/providers/suggestion_providers.dart",
+        "lib/features/visitor/providers/visitor_providers.dart",
+        "lib/features/visitor/providers/visitor_session_provider.dart",
+        "lib/features/visitor/repositories/visitor_repository.dart",
+        "lib/features/visitor_approval/providers/visitor_approval_providers.dart",
+        "lib/features/webinquiry/providers/website_inquiry_providers.dart",
+        "lib/features/website_management/providers/website_management_providers.dart",
+        "lib/shared/paging/scoped_paged_read_provider.dart",
+        "lib/shared/paging/shared_read_provider_owner.dart",
+        "lib/shared/providers/document_status_counts_provider.dart"
+      ]
+    },
+    "thisTaskChangedSources": [
+      "lib/components/cards/uten_card.dart",
+      "lib/features/notice/models/notice_group.dart",
+      "lib/features/notice/pages/notice_list_page.dart",
+      "lib/features/notice/widgets/notice_card.dart",
+      "lib/features/notice/widgets/notice_group_dialog.dart"
+    ],
+    "preExistingChangedSourceCount": 39,
+    "changedPageEvidenceCount": 109,
+    "pageEvidenceChanges": {
+      "removed": [],
+      "added": [],
+      "changed": [
+        "lib/features/admin/pages/admin_ai_settings_page.dart",
+        "lib/features/admin/pages/admin_ai_usage_page.dart",
+        "lib/features/admin/pages/admin_ai_usage_person_page.dart",
+        "lib/features/admin/pages/admin_ai_usage_records_page.dart",
+        "lib/features/admin/pages/admin_audit_log_page.dart",
+        "lib/features/admin/pages/admin_permissions_page.dart",
+        "lib/features/admin/pages/admin_platform_settings_page.dart",
+        "lib/features/admin/pages/admin_sms_settings_page.dart",
+        "lib/features/admin/pages/server_operations_page.dart",
+        "lib/features/admin/pages/server_status_page.dart",
+        "lib/features/admin/pages/server_storage_page.dart",
+        "lib/features/applications/pages/business_application_detail_page.dart",
+        "lib/features/applications/pages/business_application_edit_page.dart",
+        "lib/features/applications/pages/business_application_list_page.dart",
+        "lib/features/approvals/pages/approval_center_page.dart",
+        "lib/features/auth/pages/change_password_page.dart",
+        "lib/features/auth/pages/login_page.dart",
+        "lib/features/basic_data/pages/account_detail_page.dart",
+        "lib/features/basic_data/pages/mould_category_page.dart",
+        "lib/features/basic_data/pages/party_detail_page.dart",
+        "lib/features/basic_data/pages/payment_style_page.dart",
+        "lib/features/client_update/client_release_publish_page.dart",
+        "lib/features/dashboard/pages/dashboard_page.dart",
+        "lib/features/department/pages/my_department_page.dart",
+        "lib/features/disaster_recovery/disaster_recovery_page.dart",
+        "lib/features/employee/pages/employee_detail_page.dart",
+        "lib/features/employee/pages/employee_edit_page.dart",
+        "lib/features/employee/pages/employee_onboarding_page.dart",
+        "lib/features/expense/pages/expense_approval_detail_page.dart",
+        "lib/features/expense/pages/expense_approval_list_page.dart",
+        "lib/features/expense/pages/expense_claim_edit_page.dart",
+        "lib/features/expense/pages/expense_detail_page.dart",
+        "lib/features/expense/pages/expense_list_page.dart",
+        "lib/features/expense/pages/expense_settings_page.dart",
+        "lib/features/finance/pages/finance_account_flow_page.dart",
+        "lib/features/finance/pages/finance_application_continuation_page.dart",
+        "lib/features/finance/pages/finance_application_edit_page.dart",
+        "lib/features/finance/pages/finance_application_settings_page.dart",
+        "lib/features/finance/pages/finance_applications_page.dart",
+        "lib/features/finance/pages/finance_ar_ap_overview_page.dart",
+        "lib/features/finance/pages/finance_doc_detail_page.dart",
+        "lib/features/finance/pages/finance_doc_edit_page.dart",
+        "lib/features/finance/pages/finance_doc_list_page.dart",
+        "lib/features/finance/pages/finance_report_table_page.dart",
+        "lib/features/finance/pages/finance_statement_page.dart",
+        "lib/features/hr_profile/pages/hr_profile_change_detail_page.dart",
+        "lib/features/hr_profile/pages/hr_profile_changes_list_page.dart",
+        "lib/features/hr_task/pages/hr_task_list_page.dart",
+        "lib/features/hr_task/pages/hr_workbench_page.dart",
+        "lib/features/notice/pages/notice_detail_page.dart",
+        "lib/features/notice/pages/notice_list_page.dart",
+        "lib/features/notice/pages/notice_publish_page.dart",
+        "lib/features/operations_workbench/pages/operations_workbench_page.dart",
+        "lib/features/payroll/pages/payroll_generate_page.dart",
+        "lib/features/payroll/pages/payroll_review_page.dart",
+        "lib/features/payroll/pages/payroll_slip_detail_page.dart",
+        "lib/features/payroll/pages/payroll_slip_list_page.dart",
+        "lib/features/production/pages/production_chain_health_page.dart",
+        "lib/features/production/pages/production_daily_report_detail_page.dart",
+        "lib/features/production/pages/production_daily_report_list_page.dart",
+        "lib/features/production/pages/production_execution_batch_page.dart",
+        "lib/features/production/pages/production_plan_list_page.dart",
+        "lib/features/production/pages/production_report_page.dart",
+        "lib/features/production/pages/where_used_report_page.dart",
+        "lib/features/profile/pages/my_profile_changes_page.dart",
+        "lib/features/profile/pages/profile_edit_page.dart",
+        "lib/features/profile/pages/profile_page.dart",
+        "lib/features/purchase/pages/purchase_doc_edit_page.dart",
+        "lib/features/purchase/pages/purchase_doc_list_page.dart",
+        "lib/features/purchase/pages/purchase_order_edit_page.dart",
+        "lib/features/purchase/pages/purchase_report_page.dart",
+        "lib/features/purchase/pages/purchase_report_table_page.dart",
+        "lib/features/quality/pages/production_fqc_handling_page.dart",
+        "lib/features/quality/pages/production_fqc_inspections_page.dart",
+        "lib/features/sales/pages/sales_doc_list_page.dart",
+        "lib/features/sales/pages/sales_manager_review_page.dart",
+        "lib/features/sales/pages/sales_report_page.dart",
+        "lib/features/sales/pages/sales_task_center_page.dart",
+        "lib/features/security/pages/security_blacklist_page.dart",
+        "lib/features/security/pages/security_scan_page.dart",
+        "lib/features/security/pages/visitor_check_result_page.dart",
+        "lib/features/settings/pages/device_audit_receipts_page.dart",
+        "lib/features/settings/pages/settings_page.dart",
+        "lib/features/shell/pages/main_shell_page.dart",
+        "lib/features/stock/pages/instant_inventory_overview_page.dart",
+        "lib/features/subcontract/pages/subcontract_business_list_pages.dart",
+        "lib/features/subcontract/pages/subcontract_decomposition_page.dart",
+        "lib/features/subcontract/pages/subcontract_report_table_page.dart",
+        "lib/features/suggestion/pages/suggestion_detail_page.dart",
+        "lib/features/suggestion/pages/suggestion_list_page.dart",
+        "lib/features/suggestion/pages/suggestion_new_page.dart",
+        "lib/features/visitor/pages/visitor_application_detail_page.dart",
+        "lib/features/visitor/pages/visitor_apply_page.dart",
+        "lib/features/visitor/pages/visitor_home_page.dart",
+        "lib/features/visitor/pages/visitor_login_page.dart",
+        "lib/features/visitor/pages/visitor_settings_page.dart",
+        "lib/features/visitor_approval/pages/my_visitors_page.dart",
+        "lib/features/visitor_approval/pages/visitor_approval_detail_page.dart",
+        "lib/features/visitor_approval/pages/visitor_approval_list_page.dart",
+        "lib/features/warehouse/pages/stock_doc_list_page.dart",
+        "lib/features/warehouse/pages/warehouse_report_table_page.dart",
+        "lib/features/warehouse/pages/warehouse_sales_outbound_batch_page.dart",
+        "lib/features/warehouse/pages/warehouse_stock_batch_outbound_page.dart",
+        "lib/features/warehouse/pages/warehouse_subcontract_outbound_batch_page.dart",
+        "lib/features/warehouse/pages/warehouse_subcontract_outbound_edit_page.dart",
+        "lib/features/warehouse/pages/warehouse_weigh_count_page.dart",
+        "lib/features/webinquiry/pages/website_inquiry_detail_page.dart",
+        "lib/features/webinquiry/pages/website_inquiry_list_page.dart",
+        "lib/features/website_management/pages/website_management_page.dart"
+      ]
+    },
+    "changedTaskFieldNames": [
+      "lastUpdated",
+      "notes",
+      "sourceProofSha256",
+      "sourceSha256"
+    ],
+    "inventorySummary": {
+      "pageFiles": 230,
+      "featureGroups": 36,
+      "controllerFiles": 293,
+      "routeConstructorCandidates": 292,
+      "pagesWithDirectRouterBinding": 208,
+      "pagesWithPossibleAliases": 39,
+      "directPartUnits": 23,
+      "methodDeclarationActionCandidates": 568,
+      "actionUiFactoryCandidates": 22,
+      "retiredPortalPagesNeedingScopeConfirmation": 5
+    },
+    "summary": {
+      "workPackages": 373,
+      "done": 10,
+      "remainingIncludingUnverified": 363,
+      "fullErpEquivalent": false,
+      "win7Accepted": false
+    },
+    "productSourceSha256": {
+      "lib/components/cards/uten_card.dart": "a308afd66d3bae644ed337fbe7fa16406960c26cbb011d1c45a61a42c06ea564",
+      "lib/features/notice/models/notice_group.dart": "fa45d297b6e6143fcfb18dea349c2faa80c2439323d2f34d8c9eee12eb09e554",
+      "lib/features/notice/pages/notice_list_page.dart": "bf9181996e8ac94ce7d2661518f1430e8d9a0dcc317346ee2827bcac5c5f4278",
+      "lib/features/notice/widgets/notice_card.dart": "3439b9651ddbd326ae425e787573f419490f72c7f9da53aefed6777db4f4e690",
+      "lib/features/notice/widgets/notice_group_dialog.dart": "f334aca9588e9ab689c2c1b82056c55a0217f5e2f471980ecfc33b657bad2ce3"
+    },
+    "owningToolSha256": {
+      "clients/windows_legacy/tools/business_inventory.py": "d576b913576c389625bb1ad8ce5b58a3132207b072216a93435dee286b3632af",
+      "clients/windows_legacy/tools/progress_tracker.py": "f33ff30b599b2e558782518eed18d606f4aacbee7864031d53cb4fd4b2d8a584"
+    },
+    "actualRuns": [
+      {
+        "command": [
+          "python",
+          "clients/windows_legacy/tools/progress_tracker.py",
+          "check"
+        ],
+        "actualExitCode": 2,
+        "log": "clients/windows_legacy/progress/evidence/notice-type-stack-20261110-files/governance-before-final-refresh.log",
+        "logSha256": "625ccaf7c01fd60c95d34ebbff89d06e281b3af0e73ea65fc069de92fdf3f184"
+      },
+      {
+        "command": [
+          "python",
+          "clients/windows_legacy/tools/business_inventory.py",
+          "--write"
+        ],
+        "actualExitCode": 0,
+        "log": "clients/windows_legacy/progress/evidence/notice-type-stack-20261110-files/inventory-final-owning-write.log",
+        "logSha256": "624b1c9b39d7dc810a1f0aeff10bdc45fc179c1c4861b4250f80537bcb72271e"
+      },
+      {
+        "command": [
+          "python",
+          "clients/windows_legacy/tools/progress_tracker.py",
+          "sync"
+        ],
+        "actualExitCode": 0,
+        "log": "clients/windows_legacy/progress/evidence/notice-type-stack-20261110-files/registry-final-owning-sync.log",
+        "logSha256": "c7d2a9e9c6cfb797ddb9c1650693b629bb836b27d834dd1f7c057b3b8afe0aa9"
+      },
+      {
+        "command": [
+          "python",
+          "clients/windows_legacy/tools/progress_tracker.py",
+          "check"
+        ],
+        "actualExitCode": 0,
+        "log": "clients/windows_legacy/progress/evidence/notice-type-stack-20261110-files/governance-final-frozen-check.log",
+        "logSha256": "c7d2a9e9c6cfb797ddb9c1650693b629bb836b27d834dd1f7c057b3b8afe0aa9"
+      }
+    ],
+    "currentSourceHashesMatchFrozenInventory": true,
+    "productChangesMadeByThisSynchronization": false,
+    "nativeUiRuns": false,
+    "targetPcAcceptance": false
+  },
+  "mainIntegration": {
+    "completedAtUtc": "2026-11-10T22:04:48.947837+00:00",
+    "classification": "Semantic union into the current local main workspace; preserve concurrent server-status-storage work, then regenerate owning source fingerprints and derived documents.",
+    "candidateHead": "f2dc1e0436b1567801832f03694b58c0f3bd7de6",
+    "mainHead": "d73f86e1eca5db796c610045bd9f63916a2523bf",
+    "candidateEvidenceSha256": "bb5ee6d972b7d417943ffe9ae74f34c8285766aad4008fbd418fd04367458ed7",
+    "candidateEvidenceSectionsPreserved": true,
+    "mainWorkspaceCommitted": false,
+    "noteEvidenceTargets": [
+      "W7-BIZ-084",
+      "W7-BIZ-085"
+    ],
+    "peerTargetsPreserved": [
+      "W7-BIZ-013",
+      "W7-BIZ-014"
+    ],
+    "allPreExistingMainTaskNotesEvidencePreserved": true,
+    "protectedTaskCount": 373,
+    "protectedFields": [
+      "status",
+      "owner",
+      "definitionOfDone",
+      "dependencies",
+      "nativeTargets"
+    ],
+    "protectedFieldsChanged": [],
+    "historyBytesPrefixPreserved": true,
+    "historyLineCountBefore": 500,
+    "candidateUniqueHistoryLinesAppended": 5,
+    "historyLineCountAfter": 505,
+    "latestRegistryReadRetries": 0,
+    "sourceFingerprintChangesBeforeRefresh": [
+      "lib/components/cards/uten_card.dart",
+      "lib/features/notice/models/notice_group.dart",
+      "lib/features/notice/pages/notice_list_page.dart",
+      "lib/features/notice/widgets/notice_card.dart",
+      "lib/features/notice/widgets/notice_group_dialog.dart"
+    ],
+    "mainInventorySha256": "2fc8c7da86601f02f6f3ba28538ceaba46d01cba7aa121181cfff1762e315e64",
+    "mainRegistrySha256": "6e18b04809f541b3698c2902b576ab407867f8ede8409c3bbe29f137e77a3fe4",
+    "mainHistorySha256": "d35ea4177a95487c4efb3b589cd84c778cfd7f0f824feb7a6e1c8c4f4d95b0a1",
+    "mainProductSourceSha256": {
+      "lib/components/cards/uten_card.dart": "a308afd66d3bae644ed337fbe7fa16406960c26cbb011d1c45a61a42c06ea564",
+      "lib/features/notice/models/notice_group.dart": "fa45d297b6e6143fcfb18dea349c2faa80c2439323d2f34d8c9eee12eb09e554",
+      "lib/features/notice/pages/notice_list_page.dart": "bf9181996e8ac94ce7d2661518f1430e8d9a0dcc317346ee2827bcac5c5f4278",
+      "lib/features/notice/widgets/notice_card.dart": "3439b9651ddbd326ae425e787573f419490f72c7f9da53aefed6777db4f4e690",
+      "lib/features/notice/widgets/notice_group_dialog.dart": "f334aca9588e9ab689c2c1b82056c55a0217f5e2f471980ecfc33b657bad2ce3"
+    },
+    "fiveProductSourcesMatchValidatedCandidate": true,
+    "currentSourceHashesMatchMainInventory": true,
+    "fullMainProgressTrackerCheckPassed": true,
+    "actualRuns": [
+      {
+        "command": [
+          "python",
+          "clients/windows_legacy/tools/business_inventory.py",
+          "--write"
+        ],
+        "actualExitCode": 0,
+        "log": "tmp/notice-type-stack-20261110-main-sync/inventory-owning-write.log",
+        "logSha256": "624b1c9b39d7dc810a1f0aeff10bdc45fc179c1c4861b4250f80537bcb72271e"
+      },
+      {
+        "command": [
+          "python",
+          "tmp/notice-type-stack-20261110-main-sync/registry-owning-sync.py"
+        ],
+        "actualExitCode": 0,
+        "log": "tmp/notice-type-stack-20261110-main-sync/registry-owning-sync.log",
+        "logSha256": "4bdf6d267fcd744be093f05a78baf8577b744556267c9e8ef5cd2bf85c4bb3d1"
+      },
+      {
+        "command": [
+          "python",
+          "clients/windows_legacy/tools/progress_tracker.py",
+          "check"
+        ],
+        "actualExitCode": 0,
+        "log": "tmp/notice-type-stack-20261110-main-sync/governance-main-final-check.log",
+        "logSha256": "c7d2a9e9c6cfb797ddb9c1650693b629bb836b27d834dd1f7c057b3b8afe0aa9"
+      }
+    ],
+    "summary": {
+      "totalWorkPackages": 373,
+      "done": 10,
+      "remainingIncludingUnverified": 363,
+      "notApplicable": 0,
+      "states": {
+        "todo": 282,
+        "in_progress": 32,
+        "implemented": 28,
+        "verified_local": 21,
+        "done": 10,
+        "blocked": 0,
+        "not_applicable": 0
+      },
+      "fullErpEquivalent": false,
+      "win7Accepted": false,
+      "mergeMainAllowed": false
+    },
+    "productChangedByGovernanceSync": false,
+    "nativeUiOrTargetPcRun": false,
+    "validationScope": "Candidate test evidence remains scoped to candidate product source. The main run here verifies static source inventory, registry preservation, generated documents and links; it does not declare concurrent server-status runtime acceptance or Win7 migration completion."
+  }
+}

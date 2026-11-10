@@ -19,10 +19,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/buttons/uten_close_button.dart';
 import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../components/feedback/uten_motion.dart';
+import '../../../components/feedback/uten_progress_dialog.dart';
 import '../../../core/performance/performance_tier.dart';
 import '../../../core/theme/uten_anim.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/providers/performance_provider.dart';
+import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/ui/human_error_message.dart';
 import '../models/notice.dart';
@@ -197,24 +199,44 @@ class _NoticeGroupPanelState extends State<_NoticeGroupPanel> {
       widget.originContext,
       listen: false,
     );
+    final identity = container.read(authenticatedScopeProvider);
+    bool current() =>
+        mounted &&
+        widget.originContext.mounted &&
+        identity == container.read(authenticatedScopeProvider);
     var failed = 0;
     try {
-      await runNoticeActionWithBusy(
+      await showUtenProgress<void>(
         context,
-        title: '正在标记已读',
-        action: () async {
+        title: '全部标记已读',
+        initialStatus: '正在标记已读',
+        icon: Icons.done_all_rounded,
+        cancelMode: UtenProgressCancel.afterCurrent,
+        isCurrent: current,
+        action: (session) async {
+          var done = 0;
+          session.count(done, targets.length);
           for (final notice in targets) {
-            if (!mounted || !widget.originContext.mounted) break;
+            if (!current() || session.isCancelled) break;
             try {
               await markNoticeReadContainer(container, notice.id);
-              if (mounted) setState(() => _readIds.add(notice.id));
+              // 进度弹窗逐条更新计数；组内排序在批次结束／取消后统一刷新，
+              // 避免大组每完成一条都重排全部卡片。
+              if (current()) _readIds.add(notice.id);
             } catch (_) {
               failed++;
             }
+            session.count(++done, targets.length);
           }
         },
       );
-      if (mounted && failed > 0) context.appError('$failed 条通知未能标为已读，请重试');
+      if (mounted && current() && failed > 0) {
+        context.appError('$failed 条通知未能标为已读，请重试');
+      }
+    } catch (error) {
+      if (mounted && current()) {
+        context.appError(humanErrorMessage(error) ?? '标记已读失败，请重试');
+      }
     } finally {
       if (mounted) setState(() => _markingAll = false);
     }
@@ -317,16 +339,7 @@ class _NoticeGroupPanelState extends State<_NoticeGroupPanel> {
                 foregroundColor: Colors.white,
                 disabledForegroundColor: Colors.white.withValues(alpha: 0.38),
               ),
-              icon: _markingAll
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Icon(Icons.done_all_rounded, size: 18),
+              icon: const Icon(Icons.done_all_rounded, size: 18),
               label: const Text('全部已读'),
             ),
           UtenCloseButton(

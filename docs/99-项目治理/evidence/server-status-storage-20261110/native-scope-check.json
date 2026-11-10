@@ -1,0 +1,23 @@
+{
+  "protectedFields": [
+    "status",
+    "nativeTargets",
+    "owner",
+    "definitionOfDone",
+    "dependencies"
+  ],
+  "changedWorkItems": [],
+  "unmigratedStatusStorage": [
+    {
+      "id": "W7-BIZ-013",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-014",
+      "status": "todo",
+      "nativeTargets": []
+    }
+  ],
+  "parallelNoticeChanges": "preserved; not part of status/storage acceptance"
+}

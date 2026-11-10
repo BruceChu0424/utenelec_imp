@@ -13,7 +13,15 @@ public record ServerStatusView(
     /** Unit is PERCENT for the ring metrics, COUNT or BYTES for the extra counters. */
     public record Metric(String key, String label, Double value, String unit,
                          Double warningThreshold, Double criticalThreshold,
-                         String status, String detail, Long totalBytes, Long usedBytes, Long freeBytes) {}
+                         String status, String detail, Long totalBytes, Long usedBytes, Long freeBytes,
+                         Long activeConnections, Long maxConnections, Long idleConnections, Long waitingThreads) {
+        public Metric(String key, String label, Double value, String unit,
+                      Double warningThreshold, Double criticalThreshold, String status, String detail,
+                      Long totalBytes, Long usedBytes, Long freeBytes) {
+            this(key, label, value, unit, warningThreshold, criticalThreshold, status, detail,
+                    totalBytes, usedBytes, freeBytes, null, null, null, null);
+        }
+    }
     public record Disk(String key, String label, Long totalBytes, Long usedBytes,
                        Long freeBytes, Double usedPercent, double warningThreshold,
                        double criticalThreshold, String status, String detail) {}

@@ -1,4 +1,4 @@
-// 通知分组模型：把「关于同一业务对象」的多条通知叠成一组。
+// 通知分组模型：把「关于同一业务对象」或「同一系统通知主题」叠成一组。
 //
 // 分组锚点按优先级取：
 // 1. 服务端聚合 (aggregateKind, aggregateId)——V459 审核待办弹卡自带；
@@ -9,16 +9,20 @@
 //    （如 /sales/orders/{id} → SALES_ORDER，与「全部完工可发货」弹卡同组）；
 //    其余「尾段是 UUID」的详情路由以父路径为 kind 兜底；
 //    带业务主键查询参数的页面（?caseId= / ?analysisId= / ?requestId=）同样解析。
-// 3. 解析不出锚点（公告/庆典/纯队列页路由）→ null → 独立卡片，不参与分组。
+// 3. 没有业务锚点的系统/紧急通知，按来源事件或精确主题叠放；
+//    状态告警保留指标与严重档，主机告警忽略每次事件 UUID，更新保留版本标题。
+// 4. 其余公告/庆典/纯工作队列通知 → null → 独立卡片，不参与分组。
 //
 // 注意：回执类通知**故意不**向后端申请绑定 aggregate——办结撤回
 // （resolveReviewNotices）会按聚合把全部接收人置已读+已办结，回执若挂上
 // 同聚合会被别人的后续动作误撤（SalesQuoteNoticeService 对核价回执的
 // 注释即此口径）。分组是纯展示层关注点，锚点在前端解析，不动服务端语义。
 
+import 'dart:convert';
+
 import 'notice.dart';
 
-/// 一个通知分组的锚点：kind（业务对象类型）+ id（业务主键）。
+/// 一个通知分组的锚点：业务类型 + 主键，或展示专用的主题键。
 class NoticeGroupKey {
   const NoticeGroupKey(this.kind, this.id);
 
@@ -86,7 +90,53 @@ NoticeGroupKey? noticeGroupKeyOf(Notice notice) {
       aggregateId.isNotEmpty) {
     return NoticeGroupKey(aggregateKind, aggregateId);
   }
-  return _routeKeyOf(notice.actionRoute);
+  return _routeKeyOf(notice.actionRoute) ?? _systemTopicKeyOf(notice);
+}
+
+/// 仅展示归组，不绑定后端 aggregate，不把「查看一组」当作收到或办结。
+///
+/// sourceEvent 的真实约定由 ServerStatusAlertScheduler / LoginFailureAlertScheduler /
+/// ServerUpdateNoticePublisher 维护。未知事件不猜测其主键结构；没有事件的旧系统
+/// 通知才使用精确标题兜底。人工公告、庆典和无业务锚点的待办各自保留。
+NoticeGroupKey? _systemTopicKeyOf(Notice notice) {
+  if ((notice.type != NoticeType.system && notice.type != NoticeType.urgent) ||
+      notice.kind != NoticeKind.normal ||
+      notice.interactive) {
+    return null;
+  }
+  final event = notice.sourceEvent?.trim() ?? '';
+  final title = notice.title.trim();
+  final String topic;
+  if (event.startsWith('SERVER_STATUS_ALERT:') &&
+      event.length > 'SERVER_STATUS_ALERT:'.length) {
+    // CRITICAL、WARNING、RECOVERED 分别归组，恢复不掩盖未读危急告警。
+    // 登录失败事件的来源指纹同样完整保留，不能把不同来源混为一件事。
+    topic = event;
+  } else if (((event.startsWith('SERVER_HOST_ALERT:') &&
+              event.length > 'SERVER_HOST_ALERT:'.length) ||
+          (event.startsWith('SERVER_UPDATE:') &&
+              event.length > 'SERVER_UPDATE:'.length) ||
+          event.isEmpty) &&
+      title.isNotEmpty) {
+    // 主机事件 UUID 随每次发生变化；标题是接口当前提供的稳定人话分类。
+    // 更新事件 hash 包含 revision，标题含版本；同版本通知可归到同一叠。
+    final family = event.isEmpty ? 'legacy' : event.split(':').first;
+    topic = '$family:$title';
+  } else {
+    return null;
+  }
+  // 用结构编码避免标题、发布者或路由自带分隔符时误碰撞。
+  return NoticeGroupKey(
+    '_system_topic',
+    jsonEncode([
+      notice.type.name,
+      notice.priority.name,
+      notice.interactionMode.name,
+      notice.publisher.trim(),
+      notice.actionRoute?.trim() ?? '',
+      topic,
+    ]),
+  );
 }
 
 NoticeGroupKey? _routeKeyOf(String? actionRoute) {
@@ -129,12 +179,6 @@ class NoticeGroup {
   final NoticeGroupKey key;
   final List<Notice> notices;
 
-  /// 组内补录一条后重排（装配期使用；页面不直接调）。
-  void add(Notice notice) {
-    notices.add(notice);
-    notices.sort(_groupOrder);
-  }
-
   /// 组内是否只有一条（渲染为普通卡片，不带叠放形态）。
   bool get isSingle => notices.length == 1;
 
@@ -145,15 +189,7 @@ class NoticeGroup {
 
   /// 卡面通知：优先组内最新的**未读**（有未读时它是真正待看的），全部已读
   /// 取最新一条（代表这件事的当前进展）。
-  Notice get face {
-    var candidates = notices.where((n) => !n.isRead).toList();
-    if (candidates.isEmpty) candidates = notices;
-    var latest = candidates.first;
-    for (final n in candidates) {
-      if (n.publishedAt.isAfter(latest.publishedAt)) latest = n;
-    }
-    return latest;
-  }
+  Notice get face => notices.first;
 }
 
 /// 按服务端返回顺序装配分组。
@@ -162,23 +198,13 @@ class NoticeGroup {
 /// 「置顶优先、发布时间倒序」的服务端排序不被打乱；无锚点的通知各自成
 /// 单条组（isSingle），与分组走同一套渲染/选择逻辑。
 List<NoticeGroup> groupNotices(List<Notice> notices) {
-  final byKey = <NoticeGroupKey, NoticeGroup>{};
-  final result = <NoticeGroup>[];
+  final byKey = <NoticeGroupKey, List<Notice>>{};
   for (final notice in notices) {
-    final key = noticeGroupKeyOf(notice);
-    if (key == null) {
-      // 无锚点：用通知自身 id 做键，保证唯一、永不与他组合并。
-      result.add(NoticeGroup(NoticeGroupKey('_solo', notice.id), [notice]));
-      continue;
-    }
-    final existing = byKey[key];
-    if (existing != null) {
-      existing.add(notice);
-      continue;
-    }
-    final group = NoticeGroup(key, [notice]);
-    byKey[key] = group;
-    result.add(group);
+    final key = noticeGroupKeyOf(notice) ?? NoticeGroupKey('_solo', notice.id);
+    (byKey[key] ??= []).add(notice);
   }
-  return result;
+  // Map 保留首次出现顺序，每组仅排序一次；重复告警很多时不逐次重排全组。
+  return [
+    for (final entry in byKey.entries) NoticeGroup(entry.key, entry.value),
+  ];
 }

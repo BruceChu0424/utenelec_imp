@@ -18,7 +18,11 @@ public final class ServerStorageView {
             this(available, canCleanup, unavailableReason, null);
         }
     }
-    public record Volume(String id, String label, Long totalBytes, Long usedBytes, Long freeBytes) {}
+    public record Volume(String id, String label, Long totalBytes, Long usedBytes, Long freeBytes,
+                         String mount, Reconciliation reconciliation) {}
+    /** A bounded directory inventory is distinct from whole-filesystem capacity. */
+    public record Reconciliation(String status, Long classifiedBytes, Long otherBytes,
+                                 Long reservedBytes, Long overlapBytes, String detail) {}
     public record Category(Kind kind, String label, String status, Long logicalBytes, Long allocatedBytes,
                            Long reclaimableBytes, Long count, String detail, boolean canList, String volumeId) {}
     public record ProcessMemory(Long rssBytes, long heapUsedBytes, long heapMaxBytes, String detail) {}

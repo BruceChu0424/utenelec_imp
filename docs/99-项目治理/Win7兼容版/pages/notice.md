@@ -22,7 +22,7 @@
 
 ## W7-BIZ-085 · lib/features/notice/pages/notice_list_page.dart
 
-模块 `notice`；441 行；SHA256 `e2e0f9c1e1fc6601334f3e39ec177d073fa5c10b8c8a2755c9be85cc44d6dddf`。
+模块 `notice`；438 行；SHA256 `bf9181996e8ac94ce7d2661518f1430e8d9a0dcc317346ee2827bcac5c5f4278`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -32,7 +32,7 @@
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | 未静态确认；不能当作不存在 |
-| 动作处理 | addPostFrameCallback @67 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>remove @103 [action-like-invocation] 提示 ['remove']；if (!_selected.add(id)) _selected.remove(id);<br>_deleteSelected @108 [method-declaration-candidate] 提示 ['delete']；Future<void> _deleteSelected() async {<br>deleteNotices @141 [action-like-invocation] 提示 ['delete']；action: (_) => deleteNotices(ref, _selected.toList()),<br>removeAll @363 [action-like-invocation] 提示 ['remove']；? _selected.removeAll(group.ids)<br>_deleteSelected @432 [callback-reference] 提示 ['delete']；onAction |
+| 动作处理 | addPostFrameCallback @67 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>remove @103 [action-like-invocation] 提示 ['remove']；if (!_selected.add(id)) _selected.remove(id);<br>_deleteSelected @108 [method-declaration-candidate] 提示 ['delete']；Future<void> _deleteSelected() async {<br>deleteNotices @141 [action-like-invocation] 提示 ['delete']；action: (_) => deleteNotices(ref, _selected.toList()),<br>removeAll @360 [action-like-invocation] 提示 ['remove']；? _selected.removeAll(group.ids)<br>_deleteSelected @429 [callback-reference] 提示 ['delete']；onAction |
 | 控制器候选（人工核实） | 未静态确认；不能当作不存在 |
 | 审计限制 | 存在委托组件/provider；页面内操作和权限引用不是完整链路清单，需沿导入继续审查。 |
 

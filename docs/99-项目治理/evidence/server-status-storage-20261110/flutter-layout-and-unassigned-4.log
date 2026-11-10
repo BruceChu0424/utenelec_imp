@@ -1,0 +1,9 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp/test/features/admin/server_status_page_test.dart
+00:00 +0: (setUpAll)
+00:00 +0: storage accounting adapts at 1800.0, text 1.0
+00:06 +1: storage accounting adapts at 900.0, text 1.0
+00:08 +2: storage accounting adapts at 390.0, text 1.35
+00:09 +3: storage accounting adapts at 320.0, text 2.0
+00:10 +4: (tearDownAll)
+00:11 +4: All tests passed!

@@ -1,0 +1,8 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/notice-type-stack-20261110/test/features/notice/pages/notice_list_group_test.dart
+00:00 +0: (setUpAll)
+00:00 +0: same monitoring subjects stack while recovery and versions stay separate
+00:06 +1: receiving one stacked alert preserves every other receipt
+00:10 +2: rapid repeated opening and interruption leaves one intact stack
+00:16 +3: (tearDownAll)
+00:16 +3: All tests passed!

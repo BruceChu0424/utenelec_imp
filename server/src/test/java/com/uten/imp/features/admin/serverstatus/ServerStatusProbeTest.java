@@ -3,6 +3,7 @@ package com.uten.imp.features.admin.serverstatus;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.config.props.StorageProperties;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import io.micrometer.core.instrument.Tags;
 import org.junit.jupiter.api.Test;
 import org.springframework.scheduling.support.ScheduledMethodRunnable;
 
@@ -35,12 +36,62 @@ class ServerStatusProbeTest {
     private final ResultSet result=mock(ResultSet.class);
 
     private ServerStatusProbe probe() throws Exception {
+        return probe(new SimpleMeterRegistry());
+    }
+
+    private ServerStatusProbe probe(SimpleMeterRegistry meters) throws Exception {
         when(dataSource.getConnection()).thenReturn(connection);
         when(connection.prepareStatement(anyString())).thenReturn(statement);
         when(statement.executeQuery()).thenReturn(result);
         when(result.next()).thenReturn(true);
-        return new ServerStatusProbe(dataSource,new StorageProperties(),new SimpleMeterRegistry(),new ObjectMapper(),
+        return new ServerStatusProbe(dataSource,new StorageProperties(),meters,new ObjectMapper(),
                 registry,()->errorTotal.get(),threads::get,"/data","","","test",400,800);
+    }
+
+    @Test void idlePoolReallyHasZeroActiveWithoutClaimingThereAreNoDatabaseConnections() throws Exception {
+        var meters=new SimpleMeterRegistry();
+        var active=meters.gauge("hikaricp.connections.active",Tags.of("pool","main"),new AtomicInteger(0));
+        var maximum=meters.gauge("hikaricp.connections.max",Tags.of("pool","main"),new AtomicInteger(20));
+        var idle=meters.gauge("hikaricp.connections.idle",Tags.of("pool","main"),new AtomicInteger(5));
+        var pending=meters.gauge("hikaricp.connections.pending",Tags.of("pool","main"),new AtomicInteger(0));
+        var pool=probe(meters).connectionPool();
+        assertThat(pool.value()).isZero();
+        assertThat(pool.status()).isEqualTo("NORMAL");
+        assertThat(pool.activeConnections()).isEqualTo(0L);
+        assertThat(pool.maxConnections()).isEqualTo(20L);
+        assertThat(pool.idleConnections()).isEqualTo(5L);
+        assertThat(pool.waitingThreads()).isZero();
+        assertThat(pool.detail()).contains("采样瞬间","不代表数据库没有连接");
+        active.set(19);
+        assertThat(probe(meters).connectionPool().status()).isEqualTo("CRITICAL");
+    }
+
+    @Test void missingOrMismatchedActivePoolMetricsNeverBecomeHealthyZero() throws Exception {
+        var meters=new SimpleMeterRegistry();
+        meters.gauge("hikaricp.connections.max",Tags.of("pool","main"),new AtomicInteger(20));
+        var missing=probe(meters).connectionPool();
+        assertThat(missing.value()).isNull();
+        assertThat(missing.activeConnections()).isNull();
+        assertThat(missing.status()).isEqualTo("UNKNOWN");
+        meters.gauge("hikaricp.connections.active",Tags.of("pool","other"),new AtomicInteger(0));
+        assertThat(probe(meters).connectionPool().status()).isEqualTo("UNKNOWN");
+    }
+
+    @Test void multiplePoolsRequireCompleteSamplesAndDoNotInventMissingIdleOrWaitingCounts() throws Exception {
+        var meters=new SimpleMeterRegistry();
+        var active=meters.gauge("hikaricp.connections.active",Tags.of("pool","main"),new AtomicInteger(2));
+        meters.gauge("hikaricp.connections.max",Tags.of("pool","main"),new AtomicInteger(10));
+        meters.gauge("hikaricp.connections.active",Tags.of("pool","jobs"),new AtomicInteger(3));
+        meters.gauge("hikaricp.connections.max",Tags.of("pool","jobs"),new AtomicInteger(10));
+        meters.gauge("hikaricp.connections.idle",Tags.of("pool","main"),new AtomicInteger(5));
+        var pool=probe(meters).connectionPool();
+        assertThat(pool.value()).isEqualTo(25d);
+        assertThat(pool.activeConnections()).isEqualTo(5);
+        assertThat(pool.maxConnections()).isEqualTo(20);
+        assertThat(pool.idleConnections()).isNull();
+        assertThat(pool.waitingThreads()).isNull();
+        active.set(11);
+        assertThat(probe(meters).connectionPool().status()).isEqualTo("UNKNOWN");
     }
 
     @Test void threadCountUsesConfiguredThresholdsAndNeverInventsZero() throws Exception {

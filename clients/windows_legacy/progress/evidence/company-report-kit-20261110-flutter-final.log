@@ -1,0 +1,64 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/production_workshop_task_stage_contract_test.dart
+00:00 +0: D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/production_workshop_task_stage_contract_test.dart: partial issue production uses its own existing violet status tier
+00:00 +1: D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/production_workshop_task_stage_contract_test.dart: shared workshop stage: running
+00:00 +2: D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/production_workshop_task_stage_contract_test.dart: shared workshop stage: continuous
+00:00 +3: D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/production_workshop_task_stage_contract_test.dart: shared workshop stage: quality
+00:00 +4: D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/production_workshop_task_stage_contract_test.dart: shared workshop stage: inbound
+00:00 +5: D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/production_workshop_task_stage_contract_test.dart: shared workshop stage: return
+00:00 +6: D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/production_workshop_task_stage_contract_test.dart: shared workshop stage: usage
+00:00 +7: D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/production_workshop_task_stage_contract_test.dart: shared workshop stage: close
+00:00 +8: D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/production_workshop_task_stage_contract_test.dart: shared workshop stage: failed
+00:00 +9: D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/production_workshop_task_stage_contract_test.dart: shared workshop stage: registration
+00:00 +10: D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/production_workshop_task_stage_contract_test.dart: shared workshop stage: quality_priority
+00:00 +11: D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/production_workshop_task_stage_contract_test.dart: shared workshop stage: epsilon
+00:00 +12: D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/production_workshop_task_stage_contract_test.dart: shared workshop stage: positive_remaining
+00:00 +13: D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/production_workshop_task_stage_contract_test.dart: shared workshop stage: completed
+00:00 +14: D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/production_workshop_task_stage_contract_test.dart: shared workshop stage: cancelled
+00:00 +15: D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/production_workshop_task_stage_contract_test.dart: shared workshop stage: reversed
+00:00 +16: D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/production_workshop_task_stage_contract_test.dart: shared workshop stage: split
+00:00 +17: D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/production_workshop_task_stage_contract_test.dart: shared workshop stage: route
+00:00 +18: D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/production_workshop_task_stage_contract_test.dart: shared workshop stage: bin_choice
+00:00 +19: D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/production_workshop_task_stage_contract_test.dart: shared workshop stage: bin_required
+00:00 +20: D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/production_workshop_task_stage_contract_test.dart: shared workshop stage: bin_not_started_overlay
+00:00 +21: D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/production_workshop_task_stage_contract_test.dart: shared workshop stage: discovery_pending
+00:00 +22: D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/production_workshop_task_stage_contract_test.dart: shared workshop stage: discovery_required
+00:00 +23: D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/production_workshop_task_stage_contract_test.dart: shared workshop stage: planning
+00:00 +24: D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/production_workshop_task_stage_contract_test.dart: shared workshop stage: urged
+00:00 +25: D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/production_workshop_task_stage_contract_test.dart: shared workshop stage: all_issued
+00:00 +26: D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/production_workshop_task_stage_contract_test.dart: shared workshop stage: partial_issued
+00:00 +27: D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/production_workshop_task_stage_contract_test.dart: shared workshop stage: partial_draw
+00:00 +28: D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/production_workshop_task_stage_contract_test.dart: shared workshop stage: all_draw
+00:00 +29: D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/production_workshop_task_stage_contract_test.dart: shared workshop stage: awaiting_warehouse
+00:00 +30: D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/production_workshop_task_stage_contract_test.dart: shared workshop stage: make_short
+00:00 +31: D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/production_workshop_task_stage_contract_test.dart: shared workshop stage: purchase_short
+00:00 +32: D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/production_workshop_task_stage_contract_test.dart: shared workshop stage: full_kit_short
+00:00 +33: D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/production_workshop_task_stage_contract_test.dart: shared workshop stage: line_side
+00:00 +34: D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/production_workshop_task_stage_contract_test.dart: shared workshop stage: preparing
+00:00 +35: D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/production_workshop_task_stage_contract_test.dart: shared workshop stage: waiting_covered
+00:00 +36: D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/production_workshop_task_stage_contract_test.dart: shared workshop stage: waiting_full
+00:00 +37: D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/production_workshop_task_stage_contract_test.dart: shared workshop stage: waiting_batch
+00:00 +38: D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/production_workshop_task_stage_contract_test.dart: shared workshop stage: waiting_continuous
+00:00 +39: D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/production_workshop_task_stage_contract_test.dart: shared workshop stage: zero_ready
+00:00 +40: D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/production_workshop_task_stage_contract_test.dart: shared workshop stage: legacy_issued
+00:00 +41: D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/production_workshop_task_stage_contract_test.dart: shared workshop stage: legacy_draw
+00:00 +42: D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/production_workshop_task_stage_contract_test.dart: shared workshop stage: legacy_ready
+00:00 +43: D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/production_workshop_task_stage_contract_test.dart: shared workshop stage: legacy_continuous_ready
+00:00 +44: D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/production_workshop_task_stage_contract_test.dart: shared workshop stage: legacy_continuous_draw
+00:00 +45: D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/production_workshop_task_stage_contract_test.dart: shared workshop stage: legacy_continuous_wait
+00:00 +46: D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/production_workshop_task_stage_contract_test.dart: shared workshop stage: running_partial_issue
+00:00 +47: D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/production_workshop_task_stage_contract_test.dart: shared workshop stage: running_all_kinds_partial
+00:00 +48: D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/production_workshop_task_stage_contract_test.dart: shared workshop stage: running_full_issue
+00:00 +49: D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/production_workshop_task_stage_contract_test.dart: shared workshop stage: partial_issue_quality_keeps_priority
+00:00 +50: D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/production_workshop_task_stage_contract_test.dart: shared workshop stage: zero_material_ignores_stale_counts
+00:00 +51: D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/production_workshop_task_stage_contract_test.dart: shared workshop stage: complete_issue_then_return_preserves_actual_output
+00:00 +52: D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/production_workshop_task_stage_contract_test.dart: shared workshop stage: complete_issue_reversed_becomes_partial_again
+00:00 +53: D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/production_workshop_task_stage_contract_test.dart: local drafts remain a UI overlay and never imply approved completion
+00:01 +54: D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/daily_grid_row_clone_test.dart: clone 拷贝来源子任务引用与可报上限（保存端按来源聚合限报兜底）
+00:01 +55: D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/daily_grid_row_clone_test.dart: isFinal 重置：粘贴行是新一次申报，不继承完结标记
+00:01 +56: D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/daily_grid_row_clone_test.dart: FQC 恢复行 clone 保留授权引用，disposition 标签可用
+00:03 +57: D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/pages/production_workshop_tasks_readiness_test.dart: preparing rows sort closest-to-startable first
+00:04 +58: D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/pages/production_workshop_tasks_readiness_test.dart: preparing rows sort closest-to-startable first
+00:04 +59: D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/pages/production_workshop_tasks_readiness_test.dart: preparing rows sort closest-to-startable first
+00:07 +60: D:/Projects/uten_imp_worktrees/company-report-kit-20261110/test/features/production/pages/production_workshop_tasks_readiness_test.dart: AI snapshot lists each readiness colour with its status, meaning and row count
+00:09 +61: All tests passed!

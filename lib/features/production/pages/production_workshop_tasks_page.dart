@@ -3442,7 +3442,8 @@ class _ProductionWorkshopTasksPageState
       ProductionFlowTone.waitPlanning =>
         l10n.productionReadinessMeaningWaitPlanning,
       ProductionFlowTone.decide => l10n.productionReadinessMeaningDecide,
-      ProductionFlowTone.activePartial => '物料尚未领齐或历史齐套证据不足，按当前可验证的配套数量报工；可补领物料或核对原领退料记录',
+      ProductionFlowTone.activePartial =>
+        '物料尚未领齐或历史齐套证据不足，按当前可验证的配套数量报工；可补领物料或核对原领退料记录',
       ProductionFlowTone.active || ProductionFlowTone.done => null,
     };
   }

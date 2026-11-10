@@ -1,0 +1,4 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/api_client_permission_epoch_http_test.dart
+00:00 +0: production client retains read capacity and write receipts across epochs
+00:02 +1: All tests passed!

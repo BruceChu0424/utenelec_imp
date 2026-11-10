@@ -8,10 +8,8 @@ import com.uten.imp.features.admin.dto.PermissionBulkScopeDto;
 import com.uten.imp.features.admin.dto.PermissionCatalogDto;
 import com.uten.imp.features.admin.dto.PermissionChangeDto;
 import com.uten.imp.features.auth.PermissionResolver;
-import com.uten.imp.features.auth.model.RefreshTokenRepository;
 import com.uten.imp.features.auth.model.UserAccount;
 import com.uten.imp.features.org.department.DepartmentRepository;
-import com.uten.imp.features.org.employee.EmployeeRepository;
 import com.uten.imp.features.rbac.DepartmentPermissionRepository;
 import com.uten.imp.features.rbac.GrantPolicy;
 import com.uten.imp.features.rbac.Permission;
@@ -69,8 +67,6 @@ public class DepartmentPermissionAdminService {
     private final TxSessionVars tx;
     private final SecurityContextCurrentUser currentUser;
     private final AdminUserSupport support;
-    private final EmployeeRepository employeeRepo;
-    private final RefreshTokenRepository refreshTokenRepo;
     private final PermissionChangeAudit changeAudit;
 
     /**

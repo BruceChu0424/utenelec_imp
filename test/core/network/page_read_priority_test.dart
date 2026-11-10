@@ -77,7 +77,7 @@ Future<Map<String, Object>> _measure(bool optimized, int repeat) async {
     createHttpClient: () => HttpClient()..maxConnectionsPerHost = 6,
   );
   final scheduler = PageReadPriorityInterceptor();
-  if (optimized) dio.interceptors.add(scheduler);
+  if (optimized) scheduler.installOn(dio);
   try {
     final watch = Stopwatch()..start();
     final optional = [

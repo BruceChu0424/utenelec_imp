@@ -168,6 +168,7 @@ void main() {
       final adapter = _Adapter();
       dio.httpClientAdapter = adapter;
       final auth = AuthInterceptor(
+        replay: dio.fetch<dynamic>,
         storage: SecureStorage(const FlutterSecureStorage()),
         baseUrl: dio.options.baseUrl,
       );

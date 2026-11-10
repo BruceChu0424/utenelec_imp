@@ -20,6 +20,7 @@ import 'package:uten_imp/features/notice/repositories/notice_repository.dart';
 import 'package:uten_imp/features/notice/providers/notice_unread_index_provider.dart';
 import 'package:uten_imp/features/notice/widgets/review_pending_dialog.dart';
 import 'package:uten_imp/shared/badges/badge_registry.dart';
+import 'package:uten_imp/shared/paging/paged_read_intent.dart';
 
 import '../../../helpers/badge_summary_fixture.dart';
 
@@ -1278,8 +1279,10 @@ void main() {
       ..values['user-a'] = base
       ..values['user-b'] = base;
     final requests = <Completer<NoticeArrivalPage>>[];
+    final owners = <bool Function()?>[];
     final arrived = <String>[];
     Future<NoticeArrivalPage> loader(NoticeArrivalCursor? _) {
+      owners.add(PagedReadIntent.currentRead);
       final request = Completer<NoticeArrivalPage>();
       requests.add(request);
       return request.future;
@@ -1310,6 +1313,9 @@ void main() {
     await tester.pumpWidget(app('user-b'));
     await tester.pump();
     expect(requests, hasLength(2));
+
+    expect(owners[0]?.call(), isFalse);
+    expect(owners[1]?.call(), isTrue);
 
     requests[0].complete(
       NoticeArrivalPage(

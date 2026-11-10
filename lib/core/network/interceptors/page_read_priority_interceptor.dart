@@ -6,6 +6,9 @@ import '../request_reload_semantics.dart';
 /// Reserve transport capacity for visible rows and category counts. Every
 /// request still crosses the ordinary authentication and read-scope fences;
 /// this scheduler neither caches responses nor changes query/headers/retries.
+/// Install with [installOn] after all other interceptors. Admission must follow the
+/// frozen identity, while completion must precede interceptors which can consume
+/// a response/error (notably a successful 401 refresh on a separate Dio).
 class PageReadPriorityInterceptor extends Interceptor {
   PageReadPriorityInterceptor({
     this.maximumReads = 6,
@@ -18,16 +21,31 @@ class PageReadPriorityInterceptor extends Interceptor {
   final Future<bool> Function(RequestOptions)? isCurrent;
   final _foreground = <_PendingRead>[];
   final _auxiliary = <_PendingRead>[];
-  final _active = <RequestOptions, bool>{};
+  final _active = <_ReadPermit>{};
   bool _scheduled = false;
   bool _closed = false;
+  bool _installed = false;
   static const _queuedAt = 'uten.pageRead.queuedAt';
   static const _dispatchedAt = 'uten.pageRead.dispatchedAt';
+  static const _permitKey = 'uten.pageRead.permit';
   final _clock = Stopwatch()..start();
   final _samples = <PageReadTiming>[];
 
   /// Bounded credential-free diagnostics. Paths never include query values.
   List<PageReadTiming> get timings => List.unmodifiable(_samples);
+
+  /// One installation point keeps the two lifecycle phases in the right order.
+  /// The early observer only returns capacity; it never publishes a response or
+  /// bypasses authentication. Admission is last so local interceptor refusals
+  /// never acquire a transport permit. Waiting requests recheck their identity.
+  void installOn(Dio dio) {
+    if (_installed || _closed) {
+      throw StateError('A page-read scheduler can only be installed once');
+    }
+    _installed = true;
+    dio.interceptors.insert(0, _ReadCompletionInterceptor(this));
+    dio.interceptors.add(this);
+  }
 
   static bool auxiliaryPath(String path) =>
       RegExp(r'/(?:facets|lookup|dict)(?:/|$)').hasMatch(Uri.parse(path).path);
@@ -49,7 +67,7 @@ class PageReadPriorityInterceptor extends Interceptor {
     final pending = _PendingRead(options, handler);
     options.extra[_queuedAt] = _clock.elapsedMicroseconds;
     final auxiliary = auxiliaryPath(options.path);
-    final auxiliaryActive = _active.values.where((value) => value).length;
+    final auxiliaryActive = _active.where((permit) => permit.auxiliary).length;
     if (!_closed &&
         options.cancelToken?.isCancelled != true &&
         _active.length < maximumReads &&
@@ -59,8 +77,7 @@ class PageReadPriorityInterceptor extends Interceptor {
       // Authentication just finished. An immediately admitted request adds no
       // credential-store round trip or extra scheduling gap. Only a request
       // which really waited must revalidate that frozen identity below.
-      _active[options] = auxiliary;
-      options.extra[_dispatchedAt] = _clock.elapsedMicroseconds;
+      _admit(options, auxiliary);
       handler.next(options);
       return;
     }
@@ -86,7 +103,9 @@ class PageReadPriorityInterceptor extends Interceptor {
     scheduleMicrotask(() {
       _scheduled = false;
       while (_active.length < maximumReads) {
-        final auxiliaryActive = _active.values.where((value) => value).length;
+        final auxiliaryActive = _active
+            .where((permit) => permit.auxiliary)
+            .length;
         final queue = _foreground.isNotEmpty
             ? _foreground
             : auxiliaryActive < maximumAuxiliary
@@ -105,11 +124,23 @@ class PageReadPriorityInterceptor extends Interceptor {
           );
           continue;
         }
-        _active[options] = auxiliaryPath(options.path);
-        options.extra[_dispatchedAt] = _clock.elapsedMicroseconds;
+        _admit(options, auxiliaryPath(options.path));
         unawaited(_dispatch(pending));
       }
     });
+  }
+
+  void _admit(RequestOptions options, bool auxiliary) {
+    final permit = _ReadPermit(options, auxiliary);
+    _active.add(permit);
+    options.extra[_permitKey] = permit;
+    options.extra[_dispatchedAt] = _clock.elapsedMicroseconds;
+    // Cancellation can stop an interceptor before its handler continues. Do
+    // not rely solely on that interceptor forwarding an error to release reads.
+    final cancellation = options.cancelToken;
+    if (cancellation != null) {
+      unawaited(cancellation.whenCancel.then((_) => _release(permit)));
+    }
   }
 
   Future<void> _dispatch(_PendingRead pending) async {
@@ -151,7 +182,15 @@ class PageReadPriorityInterceptor extends Interceptor {
   }
 
   void _complete(RequestOptions options) {
-    if (_active.remove(options) == null) return;
+    final permit = options.extra[_permitKey];
+    if (permit is _ReadPermit) _release(permit);
+  }
+
+  void _release(_ReadPermit permit) {
+    if (!_active.remove(permit)) return;
+    // The lease survives RequestOptions.copyWith; metrics belong to the
+    // original admission even when another interceptor replaces its options.
+    final options = permit.options;
     final queued = options.extra.remove(_queuedAt) as int?;
     final dispatched = options.extra.remove(_dispatchedAt) as int?;
     if (queued != null && dispatched != null) {
@@ -167,21 +206,6 @@ class PageReadPriorityInterceptor extends Interceptor {
     _schedule();
   }
 
-  @override
-  void onResponse(
-    Response<dynamic> response,
-    ResponseInterceptorHandler handler,
-  ) {
-    _complete(response.requestOptions);
-    handler.next(response);
-  }
-
-  @override
-  void onError(DioException err, ErrorInterceptorHandler handler) {
-    _complete(err.requestOptions);
-    handler.next(err);
-  }
-
   void close() {
     _closed = true;
     for (final pending in [..._foreground, ..._auxiliary]) {
@@ -194,6 +218,32 @@ class PageReadPriorityInterceptor extends Interceptor {
     }
     _foreground.clear();
     _auxiliary.clear();
+  }
+}
+
+class _ReadPermit {
+  _ReadPermit(this.options, this.auxiliary);
+  final RequestOptions options;
+  final bool auxiliary;
+}
+
+class _ReadCompletionInterceptor extends Interceptor {
+  _ReadCompletionInterceptor(this.owner);
+  final PageReadPriorityInterceptor owner;
+
+  @override
+  void onResponse(
+    Response<dynamic> response,
+    ResponseInterceptorHandler handler,
+  ) {
+    owner._complete(response.requestOptions);
+    handler.next(response);
+  }
+
+  @override
+  void onError(DioException error, ErrorInterceptorHandler handler) {
+    owner._complete(error.requestOptions);
+    handler.next(error);
   }
 }
 

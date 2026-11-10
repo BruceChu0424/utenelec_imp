@@ -1,0 +1,30 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/business_precision_coordinator_test.dart
+00:00 +0: a retired owner throwing completes its caller and does not poison the queue
+00:00 +0 -1: a retired owner throwing completes its caller and does not poison the queue [E]
+  Bad state: owner disposed
+  test\core\network\business_precision_coordinator_test.dart 19:53         main.<fn>.<fn>
+  package:uten_imp/core/network/business_precision_coordinator.dart 47:70  BusinessPrecisionCoordinator.ask.<fn>
+  ===== asynchronous gap ===========================
+  dart:async                                                               Future.then
+  package:uten_imp/core/network/business_precision_coordinator.dart 46:38  BusinessPrecisionCoordinator.ask
+  test\core\network\business_precision_coordinator_test.dart 19:19         main.<fn>
+  
+  Expected: throws <Instance of 'StateError'>
+    Actual: <Instance of 'Future<BusinessPrecisionChoice?>'>
+     Which: threw TimeoutException:<TimeoutException after 0:00:00.200000: Future not completed>
+            stack package:matcher                                                   expectLater
+                  package:flutter_test/src/widget_tester.dart 507:8                 expectLater
+                  test\core\network\business_precision_coordinator_test.dart 18:11  main.<fn>
+                  
+            which is not an instance of 'StateError'
+  
+  package:matcher                                                   expectLater
+  package:flutter_test/src/widget_tester.dart 507:8                 expectLater
+  test\core\network\business_precision_coordinator_test.dart 18:11  main.<fn>
+  
+00:00 +0 -1: retiring an active dialog completes its queued reads and does not block a new identity
+00:00 +1 -1: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/business_precision_coordinator_test.dart: a retired owner throwing completes its caller and does not poison the queue

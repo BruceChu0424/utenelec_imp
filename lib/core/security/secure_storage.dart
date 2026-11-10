@@ -13,6 +13,8 @@ import 'auth_refresh_lock.dart';
 import '../async/serial_task_queue.dart';
 import 'auth_token_issuer.dart';
 import 'tab_scoped_store.dart';
+import 'visitor_token_snapshot.dart';
+export 'visitor_token_snapshot.dart';
 
 /// 员工令牌对的一致性快照。
 ///
@@ -241,6 +243,10 @@ class SecureStorage {
 
   /// 收编旧版共享令牌记录的专用锁：与记录锁分离，避免嵌套获取同一把锁。
   final AuthRefreshLock _legacyAdoptionLock;
+  final _visitorTokenRecordLock = AuthRefreshLock(
+    'visitor-token-record.v1',
+    requireWebLocks: true,
+  );
   bool _legacyAdoptionChecked = false;
   bool _applicationSessionPrepared = false;
 
@@ -296,6 +302,8 @@ class SecureStorage {
 
   static const _keyVisitorAccess = 'visitor.access_token';
   static const _keyVisitorRefresh = 'visitor.refresh_token';
+  static const _keyVisitorRecord = 'visitor.token_record.v1';
+  static final _visitorRecordAccess = SerialTaskQueue();
 
   static final Random _random = Random.secure();
   static final _staffRecordAccess = SerialTaskQueue();
@@ -519,26 +527,177 @@ class SecureStorage {
   Future<void> clearTokens() => clear();
 
   // ===== 访客令牌（独立于员工，存独立 key）=====
-  Future<String?> getVisitorAccessToken() =>
-      _storage.read(key: _keyVisitorAccess);
-  Future<String?> getVisitorRefreshToken() =>
-      _storage.read(key: _keyVisitorRefresh);
-  Future<void> saveVisitorTokens({
-    String? accessToken,
-    String? refreshToken,
-  }) async {
-    if (accessToken != null) {
-      await _storage.write(key: _keyVisitorAccess, value: accessToken);
+  Future<String?> getVisitorAccessToken() async =>
+      (await getVisitorTokenSnapshot()).accessToken;
+  Future<String?> getVisitorRefreshToken() async =>
+      (await getVisitorTokenSnapshot()).refreshToken;
+  Future<VisitorTokenSnapshot> getVisitorTokenSnapshot() =>
+      _accessVisitorRecord(_readVisitorTokensLocked);
+
+  Future<T> _accessVisitorRecord<T>(Future<T> Function() action) =>
+      _visitorRecordAccess.run(
+        () => _visitorTokenRecordLock.synchronized(action),
+      );
+
+  Future<VisitorTokenSnapshot> _readVisitorTokensLocked() async {
+    final raw = await _storage.read(key: _keyVisitorRecord);
+    if (raw != null) {
+      final parsed = VisitorTokenSnapshot.tryParse(raw);
+      if (parsed != null) return parsed;
+      // An authoritative corrupt record cannot revive abandoned legacy keys.
+      final tombstone = VisitorTokenSnapshot(
+        accessToken: null,
+        refreshToken: null,
+        generation: 1,
+        sessionLineage: _newIdentifier(),
+      );
+      await _writeVisitorTokensLocked(tombstone);
+      return tombstone;
     }
-    if (refreshToken != null) {
-      await _storage.write(key: _keyVisitorRefresh, value: refreshToken);
+    final access = await _storage.read(key: _keyVisitorAccess);
+    final refresh = await _storage.read(key: _keyVisitorRefresh);
+    if ((access == null || access.isEmpty) &&
+        (refresh == null || refresh.isEmpty)) {
+      return const VisitorTokenSnapshot.empty();
+    }
+    final migrated = VisitorTokenSnapshot(
+      accessToken: access?.isNotEmpty == true ? access : null,
+      refreshToken: refresh?.isNotEmpty == true ? refresh : null,
+      generation: 1,
+      sessionLineage: _newIdentifier(),
+    );
+    await _writeVisitorTokensLocked(migrated);
+    return migrated;
+  }
+
+  Future<void> _writeVisitorTokensLocked(VisitorTokenSnapshot snapshot) async {
+    await _storage.write(
+      key: _keyVisitorRecord,
+      value: jsonEncode(snapshot.toJson()),
+    );
+    // The single record is authoritative before best-effort legacy cleanup.
+    for (final key in [_keyVisitorAccess, _keyVisitorRefresh]) {
+      try {
+        await _storage.delete(key: key);
+      } catch (_) {}
     }
   }
 
-  Future<void> clearVisitorTokens() async {
-    await _storage.delete(key: _keyVisitorAccess);
-    await _storage.delete(key: _keyVisitorRefresh);
+  Future<void> saveVisitorTokens({String? accessToken, String? refreshToken}) =>
+      _accessVisitorRecord(() async {
+        final current = await _readVisitorTokensLocked();
+        if (accessToken == null && refreshToken == null) return;
+        _validateVisitorToken(accessToken);
+        _validateVisitorToken(refreshToken);
+        await _writeVisitorTokensLocked(
+          VisitorTokenSnapshot(
+            // Unconditional replacement starts another owner. Missing halves
+            // must never inherit credentials from the previous visitor.
+            accessToken: accessToken,
+            refreshToken: refreshToken,
+            generation: current.generation + 1,
+            sessionLineage: _newIdentifier(),
+            intentGeneration: current.intentGeneration + 1,
+          ),
+        );
+      });
+
+  Future<bool> saveVisitorTokensIfUnchanged({
+    required VisitorTokenSnapshot expected,
+    required String accessToken,
+    String? refreshToken,
+  }) => _accessVisitorRecord(() async {
+    final current = await _readVisitorTokensLocked();
+    if (!current.isSameRecord(expected)) return false;
+    _validateVisitorToken(accessToken);
+    _validateVisitorToken(refreshToken);
+    await _writeVisitorTokensLocked(
+      VisitorTokenSnapshot(
+        accessToken: accessToken,
+        refreshToken: refreshToken ?? current.refreshToken,
+        generation: current.generation + 1,
+        sessionLineage: current.sessionLineage ?? _newIdentifier(),
+        intentGeneration: current.intentGeneration,
+      ),
+    );
+    return true;
+  });
+
+  static void _validateVisitorToken(String? token) {
+    if (token != null && token.isEmpty) throw const FormatException('访客凭据不完整');
   }
+
+  /// Reserve a login and retire old credentials before HTTP starts. Keeping an
+  /// old refresh token while discarding an in-flight rotation could revive a
+  /// consumed token if the new login later fails.
+  Future<VisitorTokenSnapshot> beginVisitorLoginIntent() =>
+      _accessVisitorRecord(() async {
+        final current = await _readVisitorTokensLocked();
+        final intent = VisitorTokenSnapshot(
+          accessToken: null,
+          refreshToken: null,
+          generation: current.generation + 1,
+          sessionLineage: _newIdentifier(),
+          intentGeneration: current.intentGeneration + 1,
+        );
+        await _writeVisitorTokensLocked(intent);
+        return intent;
+      });
+
+  Future<bool> completeVisitorLoginIfUnchanged({
+    required VisitorTokenSnapshot expected,
+    required String accessToken,
+    required String refreshToken,
+  }) => _accessVisitorRecord(() async {
+    final current = await _readVisitorTokensLocked();
+    if (!current.isSameRecord(expected)) return false;
+    _validateVisitorToken(accessToken);
+    _validateVisitorToken(refreshToken);
+    await _writeVisitorTokensLocked(
+      VisitorTokenSnapshot(
+        accessToken: accessToken,
+        refreshToken: refreshToken,
+        generation: current.generation + 1,
+        sessionLineage: _newIdentifier(),
+        intentGeneration: current.intentGeneration,
+      ),
+    );
+    return true;
+  });
+
+  Future<bool> clearVisitorTokensIfUnchanged(VisitorTokenSnapshot expected) =>
+      _accessVisitorRecord(() async {
+        final current = await _readVisitorTokensLocked();
+        if (!current.isSameRecord(expected)) return false;
+        await _clearVisitorTokensLocked(current);
+        return true;
+      });
+
+  Future<void> clearVisitorTokens() => _accessVisitorRecord(() async {
+    await _clearVisitorTokensLocked(await _readVisitorTokensLocked());
+  });
+
+  /// Retire the captured owner before remote logout. Include a completed
+  /// same-owner rotation, but never adopt another visitor signed in meanwhile.
+  Future<VisitorTokenSnapshot?> retireVisitorSessionIfCurrent(
+    VisitorTokenSnapshot owner,
+  ) => _accessVisitorRecord(() async {
+    final current = await _readVisitorTokensLocked();
+    if (!owner.isSameSession(current)) return null;
+    await _clearVisitorTokensLocked(current);
+    return current;
+  });
+
+  Future<void> _clearVisitorTokensLocked(VisitorTokenSnapshot current) =>
+      _writeVisitorTokensLocked(
+        VisitorTokenSnapshot(
+          accessToken: null,
+          refreshToken: null,
+          generation: current.generation + 1,
+          sessionLineage: _newIdentifier(),
+          intentGeneration: current.intentGeneration + 1,
+        ),
+      );
 
   // ===== 模拟身份令牌（独立 key，不与员工主令牌记录耦合；随标签页存储隔离）=====
 

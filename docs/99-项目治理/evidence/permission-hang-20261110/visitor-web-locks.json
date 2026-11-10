@@ -1,0 +1,15 @@
+{
+  "result": {
+    "passed": true,
+    "events": [
+      "holder-entered",
+      "competitor-started",
+      "holder-left",
+      "competitor-entered",
+      "unsupported-fails-closed"
+    ],
+    "mechanism": "actual Chrome Web Locks across separate same-origin iframe isolates",
+    "businessRequests": 0
+  },
+  "errors": []
+}

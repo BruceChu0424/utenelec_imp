@@ -1,3 +1,4 @@
+import '../../../shared/paging/shared_read_provider_owner.dart';
 import '../../../shared/formatters/exact_decimal.dart';
 // 报销详情页（申请人视角；审批人见 expense_approval_detail_page）
 // 文档：docs/03-页面/报销详情页.md
@@ -248,7 +249,10 @@ class _ExpenseDetailPageState extends ConsumerState<ExpenseDetailPage> {
       context.appWarning(l10n.expenseFlowOriginalRequired);
       return;
     }
-    final settings = await ref.read(expenseSettingsProvider.future);
+    final settings = await readSharedWidgetFuture(
+      ref,
+      expenseSettingsProvider.future,
+    );
     if (!mounted) return;
     if (claim.invoices.isEmpty &&
         (settings.requireInvoice || claim.remark?.trim().isNotEmpty != true)) {

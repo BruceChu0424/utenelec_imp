@@ -3,7 +3,6 @@ package com.uten.imp.features.admin;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.features.admin.dto.PermissionBulkScopeDto;
 import com.uten.imp.features.auth.PermissionResolver;
-import com.uten.imp.features.auth.model.RefreshTokenRepository;
 import com.uten.imp.features.auth.model.UserAccount;
 import com.uten.imp.features.org.employee.Employee;
 import com.uten.imp.features.rbac.*;
@@ -29,7 +28,7 @@ class PermissionDependencyOverrideSaveTest {
     private final AdminAccountLifecycleLock lifecycle = mock(AdminAccountLifecycleLock.class);
     private final DepartmentPermissionAdminService departments = mock(DepartmentPermissionAdminService.class);
     private final PermissionOverrideAdminService service = new PermissionOverrideAdminService(overrides, permissions,
-            mock(TxSessionVars.class), support, mock(RefreshTokenRepository.class), lifecycle, resolver, departments,
+            mock(TxSessionVars.class), support, lifecycle, resolver, departments,
             mock(PermissionChangeAudit.class));
     private final UserAccount target = new UserAccount();
     private final Permission action = permission("purchase_order:decompose", "EXECUTE");

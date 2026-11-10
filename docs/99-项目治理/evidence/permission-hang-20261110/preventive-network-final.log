@@ -1,0 +1,35 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/authenticated_replay_completion_test.dart
+00:00 +0: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/authenticated_replay_completion_test.dart: each recovered network attempt has a terminal diagnostic event
+00:00 +1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/authenticated_replay_completion_test.dart: a prior unknown write stays unknown after a later explicit refusal
+00:00 +2: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/authenticated_replay_completion_test.dart: a second 401 cannot loop through the complete replay pipeline
+00:00 +3: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/authenticated_replay_completion_test.dart: visitor replay keeps its original owner (identity change=false)
+00:00 +4: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/authenticated_replay_completion_test.dart: visitor replay keeps its original owner (identity change=true)
+00:00 +5: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/authenticated_replay_completion_test.dart: 401 recovery completes successful write revision and precision state
+00:00 +6: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/business_precision_coordinator_test.dart: a retired owner throwing completes its caller and does not poison the queue
+00:00 +7: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/authenticated_replay_completion_test.dart: step-up then precision preserves the not-written receipt (401=false)
+00:00 +8: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/authenticated_replay_completion_test.dart: step-up then precision preserves the not-written receipt (401=false)
+00:00 +9: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/authenticated_replay_completion_test.dart: step-up then precision preserves the not-written receipt (401=true)
+00:01 +10: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_interceptor_test.dart: AuthInterceptor paged impersonation target reads and minimal tree use admin credentials without changing adjacent routes
+00:01 +11: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_interceptor_test.dart: AuthInterceptor refresh 401 明确失效时清理令牌并只发布一次失效事件
+00:01 +12: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_interceptor_test.dart: AuthInterceptor 被顶号(SESSION_REPLACED)时结束事件携带服务端的设备说明
+00:01 +13: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_interceptor_test.dart: AuthInterceptor 本地缺少 refresh token 时直接失效且不调用刷新接口
+00:01 +14: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_interceptor_test.dart: AuthInterceptor refresh 403 属于瞬态失败，不清理会话
+00:01 +15: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_interceptor_test.dart: AuthInterceptor refresh 429 属于瞬态失败，不清理会话
+00:01 +16: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_interceptor_test.dart: AuthInterceptor refresh 500 属于瞬态失败，不清理会话
+00:01 +17: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_interceptor_test.dart: AuthInterceptor refresh 503 属于瞬态失败，不清理会话
+00:01 +18: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_interceptor_test.dart: AuthInterceptor refresh 超时不清理会话，并把真实网络错误交给调用方
+00:01 +19: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_interceptor_test.dart: AuthInterceptor 刷新成功后重放返回 401 时保留新会话
+00:01 +20: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_interceptor_test.dart: AuthInterceptor 刷新成功后重放返回 403 时保留新会话
+00:01 +21: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_interceptor_test.dart: AuthInterceptor 刷新成功后重放返回 500 时保留新会话
+00:01 +22: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_interceptor_test.dart: AuthInterceptor 刷新成功后使用新令牌重放并返回业务响应
+00:01 +23: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_interceptor_test.dart: AuthInterceptor 并发 401 共用一次 refresh 请求
+00:01 +24: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_interceptor_test.dart: AuthInterceptor refresh 200 但响应结构损坏时保留原会话
+00:01 +25: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_interceptor_test.dart: AuthInterceptor 已标记为鉴权重放的 401 不重复刷新，也不直接销毁会话
+00:01 +26: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_interceptor_test.dart: AuthInterceptor public auth exchanges never inherit stored authorization
+00:01 +27: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_interceptor_test.dart: AuthInterceptor public auth exchanges bypass unavailable storage and strip stale authorization
+00:01 +28: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_interceptor_test.dart: VisitorAuthInterceptor 访客 refresh 503 时保留令牌且不发布失效事件
+00:01 +29: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_interceptor_test.dart: VisitorAuthInterceptor 访客 refresh 401 时清理令牌并发布失效事件
+00:01 +30: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_interceptor_test.dart: AuthInterceptor proactive refresh isNearExpiry counts the token lifetime from first sight
+00:01 +31: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/auth_interceptor_test.dart: AuthInterceptor proactive refresh a near-expiry token is refreshed before the request, with no 401
+00:01 +32: All tests passed!

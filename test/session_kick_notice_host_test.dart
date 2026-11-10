@@ -334,11 +334,16 @@ Future<void> _withFixture(
   final adapter = _WatchAdapter();
   Dio makeDio() =>
       Dio(BaseOptions(baseUrl: _base))..httpClientAdapter = adapter;
-  final dio = makeDio()
-    ..interceptors.addAll([
-      const AutomaticRequestInterceptor(),
-      AuthInterceptor(storage: storage, baseUrl: _base, dioFactory: makeDio),
-    ]);
+  final dio = makeDio();
+  dio.interceptors.addAll([
+    const AutomaticRequestInterceptor(),
+    AuthInterceptor(
+      replay: dio.fetch<dynamic>,
+      storage: storage,
+      baseUrl: _base,
+      dioFactory: makeDio,
+    ),
+  ]);
   final container = ProviderContainer(
     overrides: [
       sharedPreferencesProvider.overrideWithValue(preferences),

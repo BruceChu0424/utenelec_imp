@@ -1,0 +1,4 @@
+# Preserve the runner's exact bytes, including Windows line endings in failure evidence.
+*.log binary
+.gitattributes text eol=lf
+wpf-verification.json -text whitespace=cr-at-eol,blank-at-eol,blank-at-eof,space-before-tab

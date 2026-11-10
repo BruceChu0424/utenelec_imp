@@ -174,8 +174,11 @@ void main() {
       await container.read(noticeDetailProvider('n-1').future);
 
       final published = outcome == 'success' || outcome == 'not-read';
-      expect(repo.listCalls, published ? 2 : 1);
-      expect(repo.detailCalls, published ? 2 : 1);
+      // A new identity owns its own fresh list/detail; the old receipt must
+      // neither refresh it again nor publish badge/index changes into it.
+      final expectedReads = published || outcome == 'old-session' ? 2 : 1;
+      expect(repo.listCalls, expectedReads);
+      expect(repo.detailCalls, expectedReads);
       expect(badges.refreshCalls, published ? 1 : 0);
       expect(
         container.read(noticeUnreadIndexProvider)!.items.map((item) => item.id),

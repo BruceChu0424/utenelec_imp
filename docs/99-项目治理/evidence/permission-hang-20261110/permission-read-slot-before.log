@@ -1,0 +1,17 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/page_read_auth_refresh_regression_test.dart
+00:00 +0: repeated permission epoch changes do not exhaust reads after refresh
+00:02 +0 -1: repeated permission epoch changes do not exhaust reads after refresh [E]
+  Bad state: Account 7 read never dispatched; refreshes=6 writes=7 last=/admin/users/account-6/permissions
+  test\core\network\page_read_auth_refresh_regression_test.dart 72:9   main.<fn>.<fn>
+  ===== asynchronous gap ===========================
+  dart:async                                                           Future.timeout
+  test\core\network\page_read_auth_refresh_regression_test.dart 71:12  main.<fn>
+  ===== asynchronous gap ===========================
+  dart:async                                                           _CustomZone.registerUnaryCallback
+  test\core\network\page_read_auth_refresh_regression_test.dart 21:5   main.<fn>
+  
+00:02 +0 -1: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/page_read_auth_refresh_regression_test.dart: repeated permission epoch changes do not exhaust reads after refresh

@@ -116,7 +116,11 @@ void main() {
       );
       f.dio.interceptors.insert(
         0,
-        AuthInterceptor(storage: storage, baseUrl: 'https://fixture.test/api'),
+        AuthInterceptor(
+          replay: f.dio.fetch<dynamic>,
+          storage: storage,
+          baseUrl: 'https://fixture.test/api',
+        ),
       );
       final started = Completer<void>();
       final result = Completer<Object?>();

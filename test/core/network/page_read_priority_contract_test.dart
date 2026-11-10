@@ -5,11 +5,124 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/interceptors/page_read_priority_interceptor.dart';
 
 void main() {
+  test('a scheduler rejects duplicate installation', () {
+    final scheduler = PageReadPriorityInterceptor();
+    final dio = Dio();
+    scheduler.installOn(dio);
+    expect(() => scheduler.installOn(dio), throwsStateError);
+    scheduler.close();
+    dio.close(force: true);
+  });
+
+  test(
+    'consumed responses and identity refusals release transport capacity',
+    () async {
+      final adapter = _GatedAdapter()..releaseAll = true;
+      final scheduler = PageReadPriorityInterceptor(maximumReads: 1);
+      final dio = Dio()..httpClientAdapter = adapter;
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onResponse: (response, handler) {
+            if (response.requestOptions.path.endsWith('/retired')) {
+              // AuthInterceptor rejects a late response without forwarding errors.
+              handler.reject(
+                DioException(
+                  requestOptions: response.requestOptions,
+                  response: Response(
+                    requestOptions: response.requestOptions,
+                    statusCode: 409,
+                    data: {'code': 'SESSION_CHANGED'},
+                  ),
+                ),
+              );
+            } else {
+              handler.resolve(response);
+            }
+          },
+        ),
+      );
+      scheduler.installOn(dio);
+      addTearDown(() {
+        scheduler.close();
+        dio.close(force: true);
+      });
+      for (var i = 0; i < 12; i++) {
+        await expectLater(
+          dio
+              .get<dynamic>('/rows/$i/retired')
+              .timeout(const Duration(seconds: 2)),
+          throwsA(isA<DioException>()),
+        );
+        await dio
+            .get<dynamic>('/rows/$i/current')
+            .timeout(const Duration(seconds: 2));
+      }
+      expect(adapter.requests, hasLength(24));
+      expect(scheduler.timings, hasLength(24));
+    },
+  );
+
+  test('local preflight refusal never owns a read permit', () async {
+    final adapter = _GatedAdapter()..releaseAll = true;
+    final scheduler = PageReadPriorityInterceptor(maximumReads: 1);
+    final dio = Dio()..httpClientAdapter = adapter;
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) {
+          if (options.path.endsWith('/refused')) {
+            handler.reject(DioException(requestOptions: options));
+          } else {
+            handler.next(options);
+          }
+        },
+      ),
+    );
+    scheduler.installOn(dio);
+    addTearDown(() {
+      scheduler.close();
+      dio.close(force: true);
+    });
+    for (var i = 0; i < 12; i++) {
+      await expectLater(
+        dio.get<dynamic>('/rows/$i/refused'),
+        throwsA(isA<DioException>()),
+      );
+    }
+    await dio.get<dynamic>('/rows/current').timeout(const Duration(seconds: 2));
+    expect(adapter.requests.single.path, '/rows/current');
+    expect(scheduler.timings, hasLength(1));
+  });
+
+  test('replacement options retain the original admission lease', () async {
+    final adapter = _GatedAdapter()..releaseAll = true;
+    final scheduler = PageReadPriorityInterceptor(maximumReads: 1);
+    final dio = Dio()..httpClientAdapter = adapter;
+    scheduler.installOn(dio);
+    // Some replay/transport wrappers replace RequestOptions. Retain the lease
+    // through that copy without relying on RequestOptions object identity.
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) {
+          handler.next(options.copyWith(extra: {...options.extra}));
+        },
+      ),
+    );
+    addTearDown(() {
+      scheduler.close();
+      dio.close(force: true);
+    });
+    for (var i = 0; i < 12; i++) {
+      await dio.get<dynamic>('/rows/$i').timeout(const Duration(seconds: 2));
+    }
+    expect(adapter.requests, hasLength(12));
+    expect(scheduler.timings, hasLength(12));
+  });
+
   test('session wait cannot occupy the only foreground read slot', () async {
     final adapter = _GatedAdapter();
     final scheduler = PageReadPriorityInterceptor(maximumReads: 1);
     final dio = Dio()..httpClientAdapter = adapter;
-    dio.interceptors.add(scheduler);
+    scheduler.installOn(dio);
     addTearDown(() {
       scheduler.close();
       dio.close(force: true);
@@ -25,13 +138,48 @@ void main() {
     expect(scheduler.timings, hasLength(1));
   });
 
+  test('active cancellation returns exactly its own permit', () async {
+    final adapter = _GatedAdapter();
+    final scheduler = PageReadPriorityInterceptor(maximumReads: 1);
+    final dio = Dio()..httpClientAdapter = adapter;
+    scheduler.installOn(dio);
+    addTearDown(() {
+      scheduler.close();
+      dio.close(force: true);
+    });
+    final cancelled = CancelToken();
+    final old = dio.get<dynamic>('/old', cancelToken: cancelled);
+    final oldResult = expectLater(old, throwsA(isA<DioException>()));
+    await _until(() => adapter.requests.length == 1);
+    final current = dio.get<dynamic>('/current');
+    final waiting = dio.get<dynamic>('/waiting');
+    cancelled.cancel();
+    await oldResult;
+    await _until(() => adapter.requests.length == 2);
+    expect(adapter.requests.last.path, '/current');
+    adapter.release('/old');
+    await pumpEventQueue();
+    expect(
+      adapter.requests,
+      hasLength(2),
+      reason:
+          'Late completion of a cancelled read cannot release its successor',
+    );
+    adapter.release('/current');
+    await current;
+    await _until(() => adapter.requests.length == 3);
+    adapter.release('/waiting');
+    await waiting;
+    expect(scheduler.timings, hasLength(3));
+  });
+
   test(
     'slow optional reads leave capacity for rows and counts, preserving queries',
     () async {
       final adapter = _GatedAdapter();
       final scheduler = PageReadPriorityInterceptor();
       final dio = Dio()..httpClientAdapter = adapter;
-      dio.interceptors.add(scheduler);
+      scheduler.installOn(dio);
       addTearDown(() {
         scheduler.close();
         dio.close(force: true);
@@ -82,7 +230,7 @@ void main() {
         },
       );
       final dio = Dio()..httpClientAdapter = adapter;
-      dio.interceptors.add(scheduler);
+      scheduler.installOn(dio);
       addTearDown(() {
         scheduler.close();
         dio.close(force: true);

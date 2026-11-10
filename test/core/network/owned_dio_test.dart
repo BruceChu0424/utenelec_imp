@@ -101,11 +101,13 @@ void main() {
           client.interceptors.add(
             visitor
                 ? VisitorAuthInterceptor(
+                    replay: client.fetch<dynamic>,
                     storage: storage,
                     baseUrl: client.options.baseUrl,
                     dioFactory: create,
                   )
                 : AuthInterceptor(
+                    replay: client.fetch<dynamic>,
                     storage: storage,
                     baseUrl: client.options.baseUrl,
                     dioFactory: create,
@@ -121,7 +123,9 @@ void main() {
               throwsA(isA<DioException>()),
             );
           }
-          expect(adapters, hasLength(outcome == 'refresh-failed' ? 2 : 3));
+          // Only credential refresh owns an extra client. Business replay uses
+          // the original full pipeline and its still-owned connection pool.
+          expect(adapters, hasLength(2));
           expect(adapters.first.closes, isEmpty);
           for (final adapter in adapters.skip(1)) {
             expect(adapter.closes, [false]);

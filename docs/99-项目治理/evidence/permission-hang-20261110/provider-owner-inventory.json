@@ -1,0 +1,1104 @@
+{
+  "feature_auto_dispose_provider_count": 46,
+  "categories": {
+    "migrated_existing_scope_parent_isolation": 1,
+    "migrated_http_owner_sweep": 29,
+    "migrated_via_common_scoped_paged_read_lease": 6,
+    "existing_shared_dictionary_owner": 2,
+    "migrated_initial_incident_scope": 7,
+    "existing_complete_shared_read_owner": 1
+  },
+  "providers": [
+    {
+      "provider": "websiteManagementProvider",
+      "file": "lib/features/website_management/providers/website_management_providers.dart",
+      "line": 33,
+      "classification": "migrated_existing_scope_parent_isolation",
+      "callers": [
+        "lib/features/website_management/pages/website_management_page.dart"
+      ],
+      "internal_reference_lines": []
+    },
+    {
+      "provider": "websiteInquiryDetailProvider",
+      "file": "lib/features/webinquiry/providers/website_inquiry_providers.dart",
+      "line": 139,
+      "classification": "migrated_http_owner_sweep",
+      "callers": [
+        "lib/features/webinquiry/pages/website_inquiry_detail_page.dart",
+        "lib/features/webinquiry/providers/website_inquiry_providers.dart"
+      ],
+      "internal_reference_lines": [
+        222
+      ]
+    },
+    {
+      "provider": "visitorApprovalListProvider",
+      "file": "lib/features/visitor_approval/providers/visitor_approval_providers.dart",
+      "line": 38,
+      "classification": "migrated_via_common_scoped_paged_read_lease",
+      "callers": [
+        "lib/features/visitor_approval/pages/visitor_approval_detail_page.dart",
+        "lib/features/visitor_approval/pages/visitor_approval_list_page.dart"
+      ],
+      "internal_reference_lines": []
+    },
+    {
+      "provider": "visitorApprovalFacetsProvider",
+      "file": "lib/features/visitor_approval/providers/visitor_approval_providers.dart",
+      "line": 81,
+      "classification": "migrated_http_owner_sweep",
+      "callers": [
+        "lib/features/visitor_approval/pages/visitor_approval_detail_page.dart",
+        "lib/features/visitor_approval/pages/visitor_approval_list_page.dart"
+      ],
+      "internal_reference_lines": []
+    },
+    {
+      "provider": "visitorApprovalDetailProvider",
+      "file": "lib/features/visitor_approval/providers/visitor_approval_providers.dart",
+      "line": 96,
+      "classification": "migrated_http_owner_sweep",
+      "callers": [
+        "lib/features/visitor_approval/pages/visitor_approval_detail_page.dart"
+      ],
+      "internal_reference_lines": []
+    },
+    {
+      "provider": "myAsHostProvider",
+      "file": "lib/features/visitor_approval/providers/visitor_approval_providers.dart",
+      "line": 123,
+      "classification": "migrated_via_common_scoped_paged_read_lease",
+      "callers": [
+        "lib/features/visitor_approval/pages/my_visitors_page.dart",
+        "lib/features/visitor_approval/pages/visitor_approval_detail_page.dart"
+      ],
+      "internal_reference_lines": []
+    },
+    {
+      "provider": "visitorApplicationsProvider",
+      "file": "lib/features/visitor/providers/visitor_providers.dart",
+      "line": 33,
+      "classification": "migrated_via_common_scoped_paged_read_lease",
+      "callers": [
+        "lib/features/visitor/pages/visitor_home_page.dart"
+      ],
+      "internal_reference_lines": []
+    },
+    {
+      "provider": "visitorApplicationDetailProvider",
+      "file": "lib/features/visitor/providers/visitor_providers.dart",
+      "line": 79,
+      "classification": "migrated_http_owner_sweep",
+      "callers": [
+        "lib/features/visitor/pages/visitor_application_detail_page.dart"
+      ],
+      "internal_reference_lines": []
+    },
+    {
+      "provider": "suggestionDetailProvider",
+      "file": "lib/features/suggestion/providers/suggestion_providers.dart",
+      "line": 242,
+      "classification": "migrated_http_owner_sweep",
+      "callers": [
+        "lib/features/suggestion/pages/suggestion_detail_page.dart",
+        "lib/features/suggestion/providers/suggestion_providers.dart"
+      ],
+      "internal_reference_lines": [
+        160,
+        288
+      ]
+    },
+    {
+      "provider": "productionFqcDecisionCapabilityProvider",
+      "file": "lib/features/quality/providers/production_fqc_capability_provider.dart",
+      "line": 11,
+      "classification": "migrated_http_owner_sweep",
+      "callers": [
+        "lib/features/quality/pages/production_fqc_handling_page.dart",
+        "lib/features/quality/pages/production_fqc_inspections_page.dart"
+      ],
+      "internal_reference_lines": []
+    },
+    {
+      "provider": "myEmployeeProfileProvider",
+      "file": "lib/features/profile/providers/profile_change_providers.dart",
+      "line": 26,
+      "classification": "migrated_http_owner_sweep",
+      "callers": [
+        "lib/features/profile/pages/profile_edit_page.dart",
+        "lib/features/profile/pages/profile_page.dart",
+        "lib/features/profile/widgets/my_documents_section.dart",
+        "lib/features/profile/widgets/my_vehicle_phone_cards.dart",
+        "lib/features/hr_profile/pages/hr_profile_change_detail_page.dart",
+        "lib/features/employee/pages/employee_detail_page.dart"
+      ],
+      "internal_reference_lines": []
+    },
+    {
+      "provider": "myProfileChangesProvider",
+      "file": "lib/features/profile/providers/profile_change_providers.dart",
+      "line": 73,
+      "classification": "migrated_via_common_scoped_paged_read_lease",
+      "callers": [
+        "lib/features/profile/pages/my_profile_changes_page.dart",
+        "lib/features/profile/pages/profile_edit_page.dart",
+        "lib/features/profile/pages/profile_page.dart",
+        "lib/features/hr_profile/pages/hr_profile_change_detail_page.dart"
+      ],
+      "internal_reference_lines": []
+    },
+    {
+      "provider": "myProfileChangeTableProvider",
+      "file": "lib/features/profile/providers/profile_change_providers.dart",
+      "line": 128,
+      "classification": "migrated_via_common_scoped_paged_read_lease",
+      "callers": [
+        "lib/features/profile/pages/my_profile_changes_page.dart"
+      ],
+      "internal_reference_lines": []
+    },
+    {
+      "provider": "myProfileChangeDetailProvider",
+      "file": "lib/features/profile/providers/profile_change_providers.dart",
+      "line": 176,
+      "classification": "migrated_http_owner_sweep",
+      "callers": [
+        "lib/features/profile/pages/my_profile_changes_page.dart",
+        "lib/features/hr_profile/pages/hr_profile_change_detail_page.dart"
+      ],
+      "internal_reference_lines": []
+    },
+    {
+      "provider": "hrProfileChangesProvider",
+      "file": "lib/features/profile/providers/profile_change_providers.dart",
+      "line": 198,
+      "classification": "migrated_http_owner_sweep",
+      "callers": [
+        "lib/features/hr_profile/pages/hr_profile_changes_list_page.dart",
+        "lib/features/hr_profile/pages/hr_profile_change_detail_page.dart"
+      ],
+      "internal_reference_lines": []
+    },
+    {
+      "provider": "hrProfileEmployeePendingProvider",
+      "file": "lib/features/profile/providers/profile_change_providers.dart",
+      "line": 220,
+      "classification": "migrated_http_owner_sweep",
+      "callers": [
+        "lib/features/hr_profile/pages/hr_profile_changes_list_page.dart",
+        "lib/features/hr_profile/pages/hr_profile_change_detail_page.dart",
+        "lib/features/employee/widgets/profile_change_pending_section.dart"
+      ],
+      "internal_reference_lines": []
+    },
+    {
+      "provider": "hrProfileChangeQueueProvider",
+      "file": "lib/features/profile/providers/profile_change_providers.dart",
+      "line": 263,
+      "classification": "migrated_via_common_scoped_paged_read_lease",
+      "callers": [
+        "lib/features/hr_profile/pages/hr_profile_changes_list_page.dart",
+        "lib/features/hr_profile/pages/hr_profile_change_detail_page.dart"
+      ],
+      "internal_reference_lines": []
+    },
+    {
+      "provider": "hrProfileChangeFacetsProvider",
+      "file": "lib/features/profile/providers/profile_change_providers.dart",
+      "line": 322,
+      "classification": "migrated_http_owner_sweep",
+      "callers": [
+        "lib/features/hr_profile/pages/hr_profile_changes_list_page.dart",
+        "lib/features/hr_profile/pages/hr_profile_change_detail_page.dart"
+      ],
+      "internal_reference_lines": []
+    },
+    {
+      "provider": "hrProfileChangeDetailProvider",
+      "file": "lib/features/profile/providers/profile_change_providers.dart",
+      "line": 340,
+      "classification": "migrated_http_owner_sweep",
+      "callers": [
+        "lib/features/hr_profile/pages/hr_profile_change_detail_page.dart"
+      ],
+      "internal_reference_lines": []
+    },
+    {
+      "provider": "productionWorkshopTreeProvider",
+      "file": "lib/features/production/providers/production_department_provider.dart",
+      "line": 26,
+      "classification": "existing_shared_dictionary_owner",
+      "callers": [
+        "lib/features/production/delivery_processing/delivery_processing_tasks_button.dart",
+        "lib/features/production/pages/production_plan_edit_page.dart",
+        "lib/features/production/pages/production_workshop_tasks_page.dart",
+        "lib/features/production/widgets/material_priority_replenishment_dialog.dart",
+        "lib/features/production/widgets/production_execution_segments_card.dart"
+      ],
+      "internal_reference_lines": []
+    },
+    {
+      "provider": "productionWorkforceTreeProvider",
+      "file": "lib/features/production/providers/production_department_provider.dart",
+      "line": 52,
+      "classification": "existing_shared_dictionary_owner",
+      "callers": [
+        "lib/features/production/pages/production_daily_report_edit_page.dart"
+      ],
+      "internal_reference_lines": []
+    },
+    {
+      "provider": "payrollDetailProvider",
+      "file": "lib/features/payroll/providers/payroll_providers.dart",
+      "line": 233,
+      "classification": "migrated_http_owner_sweep",
+      "callers": [
+        "lib/features/payroll/pages/payroll_slip_detail_page.dart",
+        "lib/features/payroll/providers/payroll_providers.dart"
+      ],
+      "internal_reference_lines": [
+        262
+      ]
+    },
+    {
+      "provider": "payrollDepartmentOptionsProvider",
+      "file": "lib/features/payroll/providers/payroll_providers.dart",
+      "line": 267,
+      "classification": "migrated_http_owner_sweep",
+      "callers": [
+        "lib/features/payroll/pages/payroll_generate_page.dart"
+      ],
+      "internal_reference_lines": []
+    },
+    {
+      "provider": "payrollBatchDetailProvider",
+      "file": "lib/features/payroll/providers/payroll_providers.dart",
+      "line": 345,
+      "classification": "migrated_http_owner_sweep",
+      "callers": [
+        "lib/features/payroll/pages/payroll_review_page.dart",
+        "lib/features/payroll/providers/payroll_providers.dart"
+      ],
+      "internal_reference_lines": [
+        390
+      ]
+    },
+    {
+      "provider": "noticeDetailProvider",
+      "file": "lib/features/notice/providers/notice_providers.dart",
+      "line": 79,
+      "classification": "migrated_initial_incident_scope",
+      "callers": [
+        "lib/features/notice/pages/notice_detail_page.dart",
+        "lib/features/notice/providers/notice_providers.dart"
+      ],
+      "internal_reference_lines": [
+        166,
+        173,
+        339,
+        347
+      ]
+    },
+    {
+      "provider": "noticeBlessingsProvider",
+      "file": "lib/features/notice/providers/notice_providers.dart",
+      "line": 276,
+      "classification": "existing_complete_shared_read_owner",
+      "callers": [
+        "lib/features/notice/widgets/notice_blessing.dart",
+        "lib/features/notice/providers/notice_providers.dart"
+      ],
+      "internal_reference_lines": [
+        349
+      ]
+    },
+    {
+      "provider": "myCelebrationTodayProvider",
+      "file": "lib/features/notice/providers/notice_providers.dart",
+      "line": 314,
+      "classification": "migrated_initial_incident_scope",
+      "callers": [
+        "lib/features/notice/widgets/celebration_login_dialog.dart",
+        "lib/features/notice/widgets/celebration_popup_gate.dart",
+        "lib/features/notice/widgets/celebration_today_card.dart",
+        "lib/features/dashboard/widgets/dashboard_overview_sections.dart"
+      ],
+      "internal_reference_lines": []
+    },
+    {
+      "provider": "expenseMineFacetsProvider",
+      "file": "lib/features/expense/providers/expense_providers.dart",
+      "line": 84,
+      "classification": "migrated_http_owner_sweep",
+      "callers": [
+        "lib/features/expense/pages/expense_list_page.dart",
+        "lib/features/applications/pages/business_application_list_page.dart",
+        "lib/features/expense/providers/expense_providers.dart"
+      ],
+      "internal_reference_lines": [
+        1141
+      ]
+    },
+    {
+      "provider": "expenseDetailProvider",
+      "file": "lib/features/expense/providers/expense_providers.dart",
+      "line": 298,
+      "classification": "migrated_http_owner_sweep",
+      "callers": [
+        "lib/features/expense/pages/expense_approval_detail_page.dart",
+        "lib/features/expense/pages/expense_claim_edit_page.dart",
+        "lib/features/expense/pages/expense_detail_page.dart",
+        "lib/features/expense/widgets/expense_invoice_section.dart",
+        "lib/features/expense/providers/expense_providers.dart"
+      ],
+      "internal_reference_lines": [
+        368,
+        400,
+        416,
+        432,
+        497,
+        512,
+        527,
+        531,
+        1011,
+        1032,
+        1053,
+        1145
+      ]
+    },
+    {
+      "provider": "expenseHistoryDetailProvider",
+      "file": "lib/features/expense/providers/expense_providers.dart",
+      "line": 312,
+      "classification": "migrated_http_owner_sweep",
+      "callers": [
+        "lib/features/expense/pages/expense_detail_page.dart",
+        "lib/features/expense/providers/expense_providers.dart"
+      ],
+      "internal_reference_lines": [
+        371
+      ]
+    },
+    {
+      "provider": "expenseQueueSummaryProvider",
+      "file": "lib/features/expense/providers/expense_providers.dart",
+      "line": 375,
+      "classification": "migrated_http_owner_sweep",
+      "callers": [
+        "lib/features/expense/pages/expense_approval_list_page.dart",
+        "lib/features/expense/providers/expense_providers.dart"
+      ],
+      "internal_reference_lines": [
+        1138
+      ]
+    },
+    {
+      "provider": "expenseApprovalFacetsProvider",
+      "file": "lib/features/expense/providers/expense_providers.dart",
+      "line": 684,
+      "classification": "migrated_http_owner_sweep",
+      "callers": [
+        "lib/features/expense/pages/expense_approval_list_page.dart",
+        "lib/features/expense/providers/expense_providers.dart"
+      ],
+      "internal_reference_lines": [
+        1139
+      ]
+    },
+    {
+      "provider": "expensePaymentOptionsProvider",
+      "file": "lib/features/expense/providers/expense_providers.dart",
+      "line": 931,
+      "classification": "migrated_http_owner_sweep",
+      "callers": [
+        "lib/features/expense/pages/expense_approval_detail_page.dart"
+      ],
+      "internal_reference_lines": []
+    },
+    {
+      "provider": "expensePaymentOptionsForPurposeProvider",
+      "file": "lib/features/expense/providers/expense_providers.dart",
+      "line": 957,
+      "classification": "migrated_http_owner_sweep",
+      "callers": [
+        "lib/features/expense/pages/expense_approval_detail_page.dart"
+      ],
+      "internal_reference_lines": []
+    },
+    {
+      "provider": "expenseSettingsProvider",
+      "file": "lib/features/expense/providers/expense_settings_provider.dart",
+      "line": 10,
+      "classification": "migrated_http_owner_sweep",
+      "callers": [
+        "lib/features/expense/pages/expense_detail_page.dart",
+        "lib/features/expense/pages/expense_settings_page.dart",
+        "lib/features/expense/widgets/expense_claim_print.dart",
+        "lib/features/expense/widgets/expense_invoice_section.dart",
+        "lib/features/expense/providers/expense_settings_provider.dart"
+      ],
+      "internal_reference_lines": [
+        29
+      ]
+    },
+    {
+      "provider": "employeePickerDepartmentTreeProvider",
+      "file": "lib/features/employee/providers/employee_picker_department_tree_provider.dart",
+      "line": 13,
+      "classification": "migrated_http_owner_sweep",
+      "callers": [
+        "lib/features/employee/pages/employee_onboarding_page.dart",
+        "lib/features/employee/widgets/department_employee_picker.dart",
+        "lib/features/admin/widgets/audit_query_scope.dart",
+        "lib/components/inputs/uten_employee_selection_panel.dart"
+      ],
+      "internal_reference_lines": []
+    },
+    {
+      "provider": "myDepartmentTreeProvider",
+      "file": "lib/features/department/providers/my_department_providers.dart",
+      "line": 11,
+      "classification": "migrated_http_owner_sweep",
+      "callers": [
+        "lib/features/profile/pages/profile_page.dart",
+        "lib/features/department/pages/my_department_page.dart"
+      ],
+      "internal_reference_lines": []
+    },
+    {
+      "provider": "myDepartmentRosterProvider",
+      "file": "lib/features/department/providers/my_department_providers.dart",
+      "line": 25,
+      "classification": "migrated_http_owner_sweep",
+      "callers": [
+        "lib/features/department/pages/my_department_page.dart"
+      ],
+      "internal_reference_lines": []
+    },
+    {
+      "provider": "dashboardOverviewProvider",
+      "file": "lib/features/dashboard/providers/dashboard_overview_provider.dart",
+      "line": 20,
+      "classification": "migrated_http_owner_sweep",
+      "callers": [
+        "lib/features/shell/pages/main_shell_page.dart",
+        "lib/features/notice/pages/notice_detail_page.dart",
+        "lib/features/dashboard/providers/workbench_refresh.dart",
+        "lib/features/dashboard/widgets/dashboard_overview_sections.dart"
+      ],
+      "internal_reference_lines": []
+    },
+    {
+      "provider": "businessApplicationDetailProvider",
+      "file": "lib/features/applications/providers/business_application_providers.dart",
+      "line": 10,
+      "classification": "migrated_http_owner_sweep",
+      "callers": [
+        "lib/features/applications/pages/business_application_detail_page.dart",
+        "lib/features/applications/pages/business_application_edit_page.dart"
+      ],
+      "internal_reference_lines": []
+    },
+    {
+      "provider": "businessApplicationCountsProvider",
+      "file": "lib/features/applications/providers/business_application_providers.dart",
+      "line": 31,
+      "classification": "migrated_http_owner_sweep",
+      "callers": [
+        "lib/features/applications/pages/business_application_detail_page.dart",
+        "lib/features/applications/pages/business_application_edit_page.dart",
+        "lib/features/applications/pages/business_application_list_page.dart"
+      ],
+      "internal_reference_lines": []
+    },
+    {
+      "provider": "adminDepartmentTreeProvider",
+      "file": "lib/features/admin/providers/admin_providers.dart",
+      "line": 30,
+      "classification": "migrated_initial_incident_scope",
+      "callers": [
+        "lib/features/admin/widgets/admin_department_perm_view.dart"
+      ],
+      "internal_reference_lines": []
+    },
+    {
+      "provider": "permissionCatalogProvider",
+      "file": "lib/features/admin/providers/admin_providers.dart",
+      "line": 37,
+      "classification": "migrated_initial_incident_scope",
+      "callers": [
+        "lib/features/admin/widgets/admin_baseline_perm_view.dart",
+        "lib/features/admin/widgets/admin_department_perm_view.dart",
+        "lib/features/admin/widgets/admin_permission_templates_workspace.dart",
+        "lib/features/admin/widgets/admin_permission_transfer_actions.dart",
+        "lib/features/admin/widgets/admin_user_detail_panel.dart",
+        "lib/features/admin/widgets/permission_batch_dialog.dart",
+        "lib/features/admin/widgets/permission_transfer_preview.dart"
+      ],
+      "internal_reference_lines": []
+    },
+    {
+      "provider": "adminDepartmentPermissionsProvider",
+      "file": "lib/features/admin/providers/admin_providers.dart",
+      "line": 44,
+      "classification": "migrated_initial_incident_scope",
+      "callers": [
+        "lib/features/admin/widgets/admin_department_perm_view.dart",
+        "lib/features/admin/widgets/admin_permission_transfer_actions.dart"
+      ],
+      "internal_reference_lines": []
+    },
+    {
+      "provider": "adminPermissionBaselineProvider",
+      "file": "lib/features/admin/providers/admin_providers.dart",
+      "line": 53,
+      "classification": "migrated_initial_incident_scope",
+      "callers": [
+        "lib/features/admin/widgets/admin_baseline_perm_view.dart",
+        "lib/features/admin/widgets/admin_permission_transfer_actions.dart"
+      ],
+      "internal_reference_lines": []
+    },
+    {
+      "provider": "adminEffectivePermissionsProvider",
+      "file": "lib/features/admin/providers/admin_providers.dart",
+      "line": 62,
+      "classification": "migrated_initial_incident_scope",
+      "callers": [
+        "lib/features/admin/widgets/admin_permission_transfer_actions.dart",
+        "lib/features/admin/widgets/admin_user_detail_panel.dart"
+      ],
+      "internal_reference_lines": []
+    }
+  ],
+  "extra_producers": [
+    {
+      "provider": "aiStatusProvider",
+      "file": "lib/shared/ai/ai_status_provider.dart",
+      "line": 43,
+      "callers": [
+        "lib/features/sales/intake/sales_intake_launcher.dart"
+      ],
+      "internal_reference_lines": []
+    },
+    {
+      "provider": "documentStatusCountsProvider",
+      "file": "lib/shared/providers/document_status_counts_provider.dart",
+      "line": 156,
+      "callers": [
+        "lib/features/warehouse/pages/stock_doc_list_page.dart",
+        "lib/features/subcontract/pages/subcontract_business_list_pages.dart",
+        "lib/features/sales/pages/sales_task_center_page.dart",
+        "lib/features/purchase/pages/purchase_doc_list_page.dart",
+        "lib/features/finance/pages/finance_doc_list_page.dart",
+        "lib/shared/providers/document_status_counts_provider.dart"
+      ],
+      "internal_reference_lines": [
+        102,
+        150,
+        203
+      ]
+    },
+    {
+      "provider": "hrTaskSummaryProvider",
+      "file": "lib/features/hr_task/providers/hr_task_summary_provider.dart",
+      "line": 17,
+      "callers": [
+        "lib/features/notice/pages/notice_publish_page.dart",
+        "lib/features/hr_task/pages/hr_task_list_page.dart",
+        "lib/features/hr_task/pages/hr_workbench_page.dart",
+        "lib/features/hr_task/widgets/hr_task_widgets.dart"
+      ],
+      "internal_reference_lines": []
+    },
+    {
+      "provider": "permissionTemplatesProvider",
+      "file": "lib/features/admin/repositories/permission_template_repository.dart",
+      "line": 124,
+      "callers": [
+        "lib/features/admin/widgets/admin_permission_templates_workspace.dart",
+        "lib/features/admin/widgets/admin_permission_transfer_actions.dart",
+        "lib/features/admin/widgets/permission_batch_dialog.dart",
+        "lib/features/admin/widgets/permission_template_metadata_dialog.dart"
+      ],
+      "internal_reference_lines": []
+    },
+    {
+      "provider": "permissionTemplateBindingsProvider",
+      "file": "lib/features/admin/repositories/permission_template_repository.dart",
+      "line": 135,
+      "callers": [
+        "lib/features/admin/widgets/admin_permission_transfer_actions.dart",
+        "lib/features/admin/widgets/permission_template_binding_strip.dart",
+        "lib/features/admin/widgets/permission_template_metadata_dialog.dart"
+      ],
+      "internal_reference_lines": []
+    },
+    {
+      "provider": "noticeListProvider",
+      "file": "lib/features/notice/providers/notice_providers.dart",
+      "line": 51,
+      "callers": [
+        "lib/features/shell/pages/main_shell_page.dart",
+        "lib/features/notice/pages/notice_list_page.dart",
+        "lib/features/notice/pages/notice_publish_page.dart",
+        "lib/features/notice/providers/notice_arrival.dart",
+        "lib/features/dashboard/providers/workbench_refresh.dart",
+        "lib/features/notice/providers/notice_providers.dart"
+      ],
+      "internal_reference_lines": [
+        167,
+        174,
+        184,
+        224,
+        255,
+        269,
+        340,
+        348
+      ]
+    },
+    {
+      "provider": "celebrationSettingsProvider",
+      "file": "lib/features/notice/providers/notice_providers.dart",
+      "line": 89,
+      "callers": [
+        "lib/features/hr_task/pages/hr_task_list_page.dart"
+      ],
+      "internal_reference_lines": []
+    },
+    {
+      "provider": "noticeUnreadIndexProvider",
+      "file": "lib/features/notice/providers/notice_unread_index_provider.dart",
+      "line": 18,
+      "callers": [
+        "lib/features/notice/providers/notice_arrival.dart",
+        "lib/features/notice/providers/notice_providers.dart"
+      ],
+      "internal_reference_lines": []
+    },
+    {
+      "provider": "noticeReviewArrivalStatusProvider",
+      "file": "lib/features/notice/providers/notice_arrival.dart",
+      "line": 80,
+      "callers": [
+        "lib/features/notice/providers/notice_arrival.dart"
+      ],
+      "internal_reference_lines": [
+        1004
+      ]
+    }
+  ],
+  "direct_await_consumer_files": [
+    {
+      "file": "lib/features/profile/pages/profile_edit_page.dart",
+      "awaited_reads": 1
+    },
+    {
+      "file": "lib/features/payroll/pages/payroll_review_page.dart",
+      "awaited_reads": 1
+    },
+    {
+      "file": "lib/features/payroll/pages/payroll_slip_detail_page.dart",
+      "awaited_reads": 1
+    },
+    {
+      "file": "lib/features/notice/widgets/celebration_popup_gate.dart",
+      "awaited_reads": 1
+    },
+    {
+      "file": "lib/features/expense/pages/expense_approval_list_page.dart",
+      "awaited_reads": 2
+    },
+    {
+      "file": "lib/features/expense/pages/expense_detail_page.dart",
+      "awaited_reads": 1
+    },
+    {
+      "file": "lib/features/expense/pages/expense_settings_page.dart",
+      "awaited_reads": 2
+    },
+    {
+      "file": "lib/features/expense/widgets/expense_invoice_section.dart",
+      "awaited_reads": 1
+    },
+    {
+      "file": "lib/features/employee/pages/employee_onboarding_page.dart",
+      "awaited_reads": 1
+    },
+    {
+      "file": "lib/features/employee/widgets/department_employee_picker.dart",
+      "awaited_reads": 1
+    },
+    {
+      "file": "lib/features/department/pages/my_department_page.dart",
+      "awaited_reads": 2
+    },
+    {
+      "file": "lib/features/admin/widgets/admin_department_perm_view.dart",
+      "awaited_reads": 1
+    },
+    {
+      "file": "lib/features/admin/widgets/audit_query_scope.dart",
+      "awaited_reads": 1
+    }
+  ],
+  "retained_differences": [
+    "Production dictionary reads remain owned by their shared dictionary producer.",
+    "Scoped complete-list leases keep their existing identity/query/activity policy.",
+    "Document counts keep the existing 60-second last-consumer retention; invalidation retires transport.",
+    "HR summary remains a shared background producer; refresh generations retire prior reads.",
+    "Visitor detail captures visitor client/session scope before sharedRead; no employee sensitive boundary.",
+    "Commands, receipt acknowledgement, audit writes, drafts and unknown submissions stay outside all wrappers."
+  ],
+  "removed_duplicate_paths": [
+    "NoticeListNotifier.refresh manual repository reload and state assignment replaced by its owned build.",
+    "Admin and notice duplicate boolean disposal guards replaced by runSharedProviderRead.",
+    "Expense parallel options sequential await replaced by Future.wait so both error/cancellation outcomes are observed."
+  ],
+  "evidence": [
+    "provider-inventory-before.log",
+    "hr-owner-before.log",
+    "document-counts-owner-before.log",
+    "provider-direct-future.log",
+    "provider-inventory-after.log",
+    "provider-widget-lease.log",
+    "notice-status-final.log",
+    "website-owner-before.log",
+    "scoped-provider-owner-before.log",
+    "provider-and-common-lease-final.log",
+    "shared-lease-callers-final.log",
+    "common-owner-analyze-final.log",
+    "admin-layout-final.log",
+    "dashboard-scope-final.log"
+  ],
+  "common_scoped_lease_callers": [
+    "lib/features/visitor_approval/providers/visitor_approval_providers.dart",
+    "lib/features/visitor/providers/visitor_providers.dart",
+    "lib/features/suggestion/providers/suggestion_providers.dart",
+    "lib/features/security/pages/security_blacklist_page.dart",
+    "lib/features/profile/providers/profile_change_providers.dart",
+    "lib/features/payroll/providers/payroll_providers.dart",
+    "lib/features/hr_task/widgets/hr_celebration_history_panel.dart",
+    "lib/features/expense/providers/expense_providers.dart",
+    "lib/features/applications/pages/business_application_list_page.dart"
+  ],
+  "windows_legacy_matching_page_ledger": [
+    {
+      "id": "W7-BIZ-013",
+      "title": "系统管理 / server status",
+      "businessSource": "lib/features/admin/pages/server_status_page.dart",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-224",
+      "title": "applications / business application detail",
+      "businessSource": "lib/features/applications/pages/business_application_detail_page.dart",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-225",
+      "title": "applications / business application edit",
+      "businessSource": "lib/features/applications/pages/business_application_edit_page.dart",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-226",
+      "title": "applications / business application list",
+      "businessSource": "lib/features/applications/pages/business_application_list_page.dart",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-044",
+      "title": "组织部门 / my department",
+      "businessSource": "lib/features/department/pages/my_department_page.dart",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-046",
+      "title": "员工生命周期 / employee detail",
+      "businessSource": "lib/features/employee/pages/employee_detail_page.dart",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-050",
+      "title": "员工生命周期 / employee onboarding",
+      "businessSource": "lib/features/employee/pages/employee_onboarding_page.dart",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-051",
+      "title": "报销 / expense approval detail",
+      "businessSource": "lib/features/expense/pages/expense_approval_detail_page.dart",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-052",
+      "title": "报销 / expense approval list",
+      "businessSource": "lib/features/expense/pages/expense_approval_list_page.dart",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-053",
+      "title": "报销 / expense claim edit",
+      "businessSource": "lib/features/expense/pages/expense_claim_edit_page.dart",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-054",
+      "title": "报销 / expense detail",
+      "businessSource": "lib/features/expense/pages/expense_detail_page.dart",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-055",
+      "title": "报销 / expense list",
+      "businessSource": "lib/features/expense/pages/expense_list_page.dart",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-056",
+      "title": "报销 / expense settings",
+      "businessSource": "lib/features/expense/pages/expense_settings_page.dart",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-065",
+      "title": "财务 / finance doc list",
+      "businessSource": "lib/features/finance/pages/finance_doc_list_page.dart",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-079",
+      "title": "人事资料变更 / hr profile change detail",
+      "businessSource": "lib/features/hr_profile/pages/hr_profile_change_detail_page.dart",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-080",
+      "title": "人事资料变更 / hr profile changes list",
+      "businessSource": "lib/features/hr_profile/pages/hr_profile_changes_list_page.dart",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-082",
+      "title": "人事任务 / hr task list",
+      "businessSource": "lib/features/hr_task/pages/hr_task_list_page.dart",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-083",
+      "title": "人事任务 / hr workbench",
+      "businessSource": "lib/features/hr_task/pages/hr_workbench_page.dart",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-084",
+      "title": "通知 / notice detail",
+      "businessSource": "lib/features/notice/pages/notice_detail_page.dart",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-085",
+      "title": "通知 / notice list",
+      "businessSource": "lib/features/notice/pages/notice_list_page.dart",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-086",
+      "title": "通知 / notice publish",
+      "businessSource": "lib/features/notice/pages/notice_publish_page.dart",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-088",
+      "title": "薪资 / payroll generate",
+      "businessSource": "lib/features/payroll/pages/payroll_generate_page.dart",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-089",
+      "title": "薪资 / payroll review",
+      "businessSource": "lib/features/payroll/pages/payroll_review_page.dart",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-090",
+      "title": "薪资 / payroll slip detail",
+      "businessSource": "lib/features/payroll/pages/payroll_slip_detail_page.dart",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-102",
+      "title": "生产 / production daily report edit",
+      "businessSource": "lib/features/production/pages/production_daily_report_edit_page.dart",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-111",
+      "title": "生产 / production plan edit",
+      "businessSource": "lib/features/production/pages/production_plan_edit_page.dart",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-115",
+      "title": "生产 / production workshop tasks",
+      "businessSource": "lib/features/production/pages/production_workshop_tasks_page.dart",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-118",
+      "title": "个人资料 / my profile changes",
+      "businessSource": "lib/features/profile/pages/my_profile_changes_page.dart",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-119",
+      "title": "个人资料 / profile edit",
+      "businessSource": "lib/features/profile/pages/profile_edit_page.dart",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-120",
+      "title": "个人资料 / profile",
+      "businessSource": "lib/features/profile/pages/profile_page.dart",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-123",
+      "title": "采购单据 / purchase doc list",
+      "businessSource": "lib/features/purchase/pages/purchase_doc_list_page.dart",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-128",
+      "title": "品质 / production fqc handling",
+      "businessSource": "lib/features/quality/pages/production_fqc_handling_page.dart",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-129",
+      "title": "品质 / production fqc inspections",
+      "businessSource": "lib/features/quality/pages/production_fqc_inspections_page.dart",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-142",
+      "title": "销售 / sales task center",
+      "businessSource": "lib/features/sales/pages/sales_task_center_page.dart",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-148",
+      "title": "应用壳层 / main shell",
+      "businessSource": "lib/features/shell/pages/main_shell_page.dart",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-221",
+      "title": "委外 / subcontract business list",
+      "businessSource": "lib/features/subcontract/pages/subcontract_business_list_pages.dart",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-162",
+      "title": "建议 / suggestion detail",
+      "businessSource": "lib/features/suggestion/pages/suggestion_detail_page.dart",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-165",
+      "title": "已下线访客门户保留源码 / visitor application detail",
+      "businessSource": "lib/features/visitor/pages/visitor_application_detail_page.dart",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-167",
+      "title": "已下线访客门户保留源码 / visitor home",
+      "businessSource": "lib/features/visitor/pages/visitor_home_page.dart",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-170",
+      "title": "员工访客审批与预约 / my visitors",
+      "businessSource": "lib/features/visitor_approval/pages/my_visitors_page.dart",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-171",
+      "title": "员工访客审批与预约 / visitor approval detail",
+      "businessSource": "lib/features/visitor_approval/pages/visitor_approval_detail_page.dart",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-172",
+      "title": "员工访客审批与预约 / visitor approval list",
+      "businessSource": "lib/features/visitor_approval/pages/visitor_approval_list_page.dart",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-187",
+      "title": "仓库业务 / stock doc list",
+      "businessSource": "lib/features/warehouse/pages/stock_doc_list_page.dart",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-212",
+      "title": "网站询盘衔接 / website inquiry detail",
+      "businessSource": "lib/features/webinquiry/pages/website_inquiry_detail_page.dart",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-214",
+      "title": "网站管理衔接 / website management",
+      "businessSource": "lib/features/website_management/pages/website_management_page.dart",
+      "status": "todo",
+      "nativeTargets": []
+    }
+  ],
+  "platform_validation_note": "Flutter Web/desktop share these Dart owners. WPF does not execute this Dart/Riverpod path; matching ledger entries retain original status/nativeTargets. This inventory is not Win7 target-PC acceptance or company UAT."
+}

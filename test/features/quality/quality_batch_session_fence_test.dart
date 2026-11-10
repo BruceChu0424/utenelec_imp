@@ -524,21 +524,29 @@ void main() {
       Dio retryFactory() {
         final dio = Dio(buildApiBaseOptions('https://erp.example.test/api'));
         dio.httpClientAdapter = _Adapter(reply);
-        dio.interceptors.add(
-          InterceptorsWrapper(
-            onRequest: (options, handler) async {
-              if (options.path != '/auth/refresh') {
-                replayEntered.complete();
-                await releaseReplay.future;
-              }
-              handler.next(options);
-            },
-          ),
-        );
         return dio;
       }
 
-      final api = ApiClient(_dio(storage, reply, factory: retryFactory));
+      final api = ApiClient(
+        _dio(
+          storage,
+          reply,
+          factory: retryFactory,
+          beforeAuth: [
+            // The recovered business request now re-enters the owning chain;
+            // only the credential exchange uses the separately owned client.
+            InterceptorsWrapper(
+              onRequest: (options, handler) async {
+                if (options.extra['retried'] == true) {
+                  replayEntered.complete();
+                  await releaseReplay.future;
+                }
+                handler.next(options);
+              },
+            ),
+          ],
+        ),
+      );
       final assertion = expectLater(
         _send(_batch(), api),
         _throwsBoundary('SESSION_CHANGED'),
@@ -713,6 +721,7 @@ Dio _dio(
   dio.interceptors.addAll(beforeAuth);
   dio.interceptors.add(
     AuthInterceptor(
+      replay: dio.fetch<dynamic>,
       storage: storage,
       baseUrl: dio.options.baseUrl,
       dioFactory: factory,

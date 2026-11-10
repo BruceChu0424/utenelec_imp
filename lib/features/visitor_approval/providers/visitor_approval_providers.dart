@@ -1,3 +1,5 @@
+import '../../../shared/providers/sensitive_read_boundary_provider.dart';
+import '../../../shared/paging/shared_read_provider_owner.dart';
 // 员工端访客审批 Provider（HR 列表/详情、被访人我的访客）。
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -78,14 +80,30 @@ final visitorApprovalListProvider = FutureProvider.autoDispose
 /// HR 审批列表表头筛选桶（状态/接待人部门），按当前分段状态取后端全量聚合。
 final visitorApprovalFacetsProvider = FutureProvider.autoDispose
     .family<Map<String, List<MasterFacetBucket>>, String?>((ref, status) {
-      return ref
-          .watch(visitorStaffRepositoryProvider)
-          .approvalFacets(status: status);
+      final readBoundary = ref.watch(sensitiveReadBoundaryProvider);
+      return runSharedProviderRead(
+        ref,
+        () async {
+          return ref
+              .watch(visitorStaffRepositoryProvider)
+              .approvalFacets(status: status);
+        },
+        isCurrent: () =>
+            ref.read(sensitiveReadBoundaryProvider) == readBoundary,
+      );
     });
 
 final visitorApprovalDetailProvider = FutureProvider.autoDispose
     .family<VisitorApplicationDetail, String>((ref, id) {
-      return ref.watch(visitorStaffRepositoryProvider).approvalDetail(id);
+      final readBoundary = ref.watch(sensitiveReadBoundaryProvider);
+      return runSharedProviderRead(
+        ref,
+        () async {
+          return ref.watch(visitorStaffRepositoryProvider).approvalDetail(id);
+        },
+        isCurrent: () =>
+            ref.read(sensitiveReadBoundaryProvider) == readBoundary,
+      );
     });
 
 typedef VisitorHostQuery = ({String? status, int page});

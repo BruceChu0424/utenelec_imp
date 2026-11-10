@@ -1,3 +1,5 @@
+import '../../../shared/providers/sensitive_read_boundary_provider.dart';
+import '../../../shared/paging/shared_read_provider_owner.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
@@ -17,8 +19,17 @@ final dashboardOverviewRepositoryProvider =
 /// 某个来源出错时服务端只是不出那张卡, 徽章侧保留上一次的数, 这里不再自带降级重试轮询。
 final dashboardOverviewProvider =
     FutureProvider.autoDispose<DashboardOverview?>((ref) {
+      final readBoundary = ref.watch(sensitiveReadBoundaryProvider);
       final scope = ref.watch(authenticatedScopeProvider);
       ref.watch(currentPermissionsProvider);
+      // Logout clears the accepted private snapshot synchronously; a completed
+      // null result must not spend a loading frame retaining the prior value.
       if (scope == null) return null;
-      return ref.watch(dashboardOverviewRepositoryProvider).load();
+      final repository = ref.watch(dashboardOverviewRepositoryProvider);
+      return runSharedProviderRead(
+        ref,
+        repository.load,
+        isCurrent: () =>
+            ref.read(sensitiveReadBoundaryProvider) == readBoundary,
+      );
     });

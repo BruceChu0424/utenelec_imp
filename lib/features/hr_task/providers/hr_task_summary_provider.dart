@@ -10,6 +10,7 @@ import '../../../core/network/data_write_revision.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../shared/badges/badge_registry.dart';
 import '../../../shared/providers/authenticated_scope_provider.dart';
+import '../../../shared/paging/shared_read_provider_owner.dart';
 import '../../../shared/providers/master_name_provider.dart'
     show masterDataSessionKeyProvider;
 
@@ -112,7 +113,12 @@ class HrTaskSummaryNotifier extends AsyncNotifier<HrTaskSummary> {
     bool silent = false,
   }) {
     _latestReadSilent = silent;
-    return _latestRead = repository.summary();
+    final generation = _requestGeneration;
+    return _latestRead = runSharedProviderRead(
+      ref,
+      repository.summary,
+      isCurrent: () => generation == _requestGeneration,
+    );
   }
 
   Future<HrTaskSummary> _readUntilCurrent(

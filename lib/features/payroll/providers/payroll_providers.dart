@@ -1,3 +1,5 @@
+import '../../../shared/providers/sensitive_read_boundary_provider.dart';
+import '../../../shared/paging/shared_read_provider_owner.dart';
 import 'package:uten_imp/shared/paging/read_view_activity.dart';
 import '../../../shared/paging/complete_paged_snapshot.dart';
 import 'dart:typed_data';
@@ -230,8 +232,16 @@ class PayrollListNotifier extends AsyncNotifier<PagedResult<PayrollSlip>> {
 
 final payrollDetailProvider = FutureProvider.autoDispose
     .family<PayrollSlip, String>((ref, id) {
-      ref.watch(masterDataSessionKeyProvider);
-      return ref.watch(payrollRepositoryProvider).getSlip(id);
+      final readBoundary = ref.watch(sensitiveReadBoundaryProvider);
+      return runSharedProviderRead(
+        ref,
+        () async {
+          ref.watch(masterDataSessionKeyProvider);
+          return ref.watch(payrollRepositoryProvider).getSlip(id);
+        },
+        isCurrent: () =>
+            ref.read(sensitiveReadBoundaryProvider) == readBoundary,
+      );
     });
 
 Future<void> markPayrollViewed(WidgetRef ref, String id) async {
@@ -256,7 +266,15 @@ Future<Uint8List> downloadPayrollSlip(
 
 final payrollDepartmentOptionsProvider =
     FutureProvider.autoDispose<List<PayrollDepartmentOption>>((ref) {
-      return ref.watch(payrollRepositoryProvider).listDepartmentOptions();
+      final readBoundary = ref.watch(sensitiveReadBoundaryProvider);
+      return runSharedProviderRead(
+        ref,
+        () async {
+          return ref.watch(payrollRepositoryProvider).listDepartmentOptions();
+        },
+        isCurrent: () =>
+            ref.read(sensitiveReadBoundaryProvider) == readBoundary,
+      );
     });
 
 enum PayrollBatchScope { active, history }
@@ -326,7 +344,15 @@ class PayrollBatchListNotifier
 
 final payrollBatchDetailProvider = FutureProvider.autoDispose
     .family<PayrollBatch, String>((ref, id) {
-      return ref.watch(payrollRepositoryProvider).getBatch(id);
+      final readBoundary = ref.watch(sensitiveReadBoundaryProvider);
+      return runSharedProviderRead(
+        ref,
+        () async {
+          return ref.watch(payrollRepositoryProvider).getBatch(id);
+        },
+        isCurrent: () =>
+            ref.read(sensitiveReadBoundaryProvider) == readBoundary,
+      );
     });
 
 Future<PayrollBatch> createPayrollBatch(

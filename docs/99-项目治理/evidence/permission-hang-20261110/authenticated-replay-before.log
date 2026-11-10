@@ -1,0 +1,28 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/authenticated_replay_completion_test.dart
+00:00 +0: 401 recovery completes successful write revision and precision state
+00:00 +0 -1: 401 recovery completes successful write revision and precision state [E]
+  Expected: <1>
+    Actual: <0>
+  A recovered server success must still retire stale lists
+  
+  package:matcher                                                   expect
+  package:flutter_test/src/widget_tester.dart 473:18                expect
+  test\core\network\authenticated_replay_completion_test.dart 35:7  main.<fn>
+  
+00:00 +0 -1: step-up then precision preserves the not-written receipt (401=false)
+00:00 +0 -2: step-up then precision preserves the not-written receipt (401=false) [E]
+  ApiException(PRECISION_CHOICE_REQUIRED): 操作未完成，原因尚未确认，请先刷新核对
+  package:uten_imp/core/network/api_client.dart 430:7  ApiClient.post.<fn>
+  
+00:00 +0 -2: step-up then precision preserves the not-written receipt (401=true)
+00:00 +0 -3: step-up then precision preserves the not-written receipt (401=true) [E]
+  ApiException(PRECISION_CHOICE_REQUIRED): 操作未完成，原因尚未确认，请先刷新核对
+  package:uten_imp/core/network/api_client.dart 430:7  ApiClient.post.<fn>
+  
+00:00 +0 -3: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/authenticated_replay_completion_test.dart: 401 recovery completes successful write revision and precision state
+  D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/authenticated_replay_completion_test.dart: step-up then precision preserves the not-written receipt (401=false)
+  D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/authenticated_replay_completion_test.dart: step-up then precision preserves the not-written receipt (401=true)

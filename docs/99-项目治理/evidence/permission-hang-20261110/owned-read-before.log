@@ -1,0 +1,89 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/admin/admin_permission_read_lifecycle_test.dart
+00:00 +0: rapid account changes cancel retired HTTP reads and accept the last account
+00:00 +0 -1: rapid account changes cancel retired HTTP reads and accept the last account [E]
+  Expected: every element(true)
+    Actual: SubListIterable<bool>:[false]
+     Which: has value <false> which doesn't match true at index 0
+  
+  package:matcher                                                     expect
+  package:flutter_test/src/widget_tester.dart 473:18                  expect
+  test\features\admin\admin_permission_read_lifecycle_test.dart 32:9  main.<fn>
+  
+00:00 +0 -1: shared catalog outlives one consumer and its initiating read activity
+00:00 +0 -2: shared catalog outlives one consumer and its initiating read activity [E]
+  Expected: [false]
+    Actual: [true]
+     Which: at location [0] is <true> instead of <false>
+  
+  package:matcher                                                     expect
+  package:flutter_test/src/widget_tester.dart 473:18                  expect
+  test\features\admin\admin_permission_read_lifecycle_test.dart 68:7  main.<fn>
+  
+00:00 +0 -2: authority replacement cancels the previous account read before publishing new grants
+00:00 +0 -3: authority replacement cancels the previous account read before publishing new grants [E]
+  Expected: <2>
+    Actual: <1>
+  
+  package:matcher                                                      expect
+  package:flutter_test/src/widget_tester.dart 473:18                   expect
+  test\features\admin\admin_permission_read_lifecycle_test.dart 197:5  _Adapter.ready
+  
+00:00 +0 -3: departments releases transport when the final consumer leaves
+00:00 +0 -4: departments releases transport when the final consumer leaves [E]
+  Expected: [true]
+    Actual: [false]
+     Which: at location [0] is <false> instead of <true>
+  
+  package:matcher                                                      expect
+  package:flutter_test/src/widget_tester.dart 473:18                   expect
+  test\features\admin\admin_permission_read_lifecycle_test.dart 129:9  main.<fn>
+  
+00:00 +0 -4: catalog releases transport when the final consumer leaves
+00:01 +0 -5: catalog releases transport when the final consumer leaves [E]
+  Expected: [true]
+    Actual: [false]
+     Which: at location [0] is <false> instead of <true>
+  
+  package:matcher                                                      expect
+  package:flutter_test/src/widget_tester.dart 473:18                   expect
+  test\features\admin\admin_permission_read_lifecycle_test.dart 129:9  main.<fn>
+  
+00:01 +0 -5: department permissions releases transport when the final consumer leaves
+00:01 +0 -6: department permissions releases transport when the final consumer leaves [E]
+  Expected: [true]
+    Actual: [false]
+     Which: at location [0] is <false> instead of <true>
+  
+  package:matcher                                                      expect
+  package:flutter_test/src/widget_tester.dart 473:18                   expect
+  test\features\admin\admin_permission_read_lifecycle_test.dart 129:9  main.<fn>
+  
+00:01 +0 -6: baseline releases transport when the final consumer leaves
+00:01 +0 -7: baseline releases transport when the final consumer leaves [E]
+  Expected: [true]
+    Actual: [false]
+     Which: at location [0] is <false> instead of <true>
+  
+  package:matcher                                                      expect
+  package:flutter_test/src/widget_tester.dart 473:18                   expect
+  test\features\admin\admin_permission_read_lifecycle_test.dart 129:9  main.<fn>
+  
+00:01 +0 -7: effective permissions releases transport when the final consumer leaves
+00:01 +0 -8: effective permissions releases transport when the final consumer leaves [E]
+  Expected: [true]
+    Actual: [false]
+     Which: at location [0] is <false> instead of <true>
+  
+  package:matcher                                                      expect
+  package:flutter_test/src/widget_tester.dart 473:18                   expect
+  test\features\admin\admin_permission_read_lifecycle_test.dart 129:9  main.<fn>
+  
+00:01 +0 -8: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/admin/admin_permission_read_lifecycle_test.dart: authority replacement cancels the previous account read before publishing new grants
+  D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/admin/admin_permission_read_lifecycle_test.dart: baseline releases transport when the final consumer leaves
+  D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/admin/admin_permission_read_lifecycle_test.dart: catalog releases transport when the final consumer leaves
+  D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/admin/admin_permission_read_lifecycle_test.dart: department permissions releases transport when the final consumer leaves
+  ... and 4 more

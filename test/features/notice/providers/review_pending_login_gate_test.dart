@@ -9,15 +9,18 @@ import 'package:uten_imp/features/notice/providers/notice_providers.dart';
 import 'package:uten_imp/features/notice/providers/review_pending_login_gate.dart';
 import 'package:uten_imp/features/notice/repositories/notice_repository.dart';
 import 'package:uten_imp/features/notice/widgets/review_pending_dialog.dart';
+import 'package:uten_imp/shared/paging/paged_read_intent.dart';
 
 class _Repository implements NoticeRepository {
   final requests = <Completer<List<Notice>>>[];
+  final owners = <bool Function()?>[];
 
   /// 人工通知登录弹窗数据（GET /notices/pending-popups），默认空。
   List<Notice> manual = const [];
 
   @override
   Future<List<Notice>> pendingReviews() {
+    owners.add(PagedReadIntent.currentRead);
     final request = Completer<List<Notice>>();
     requests.add(request);
     return request.future;
@@ -137,6 +140,8 @@ void main() {
       await tester.pump(const Duration(seconds: 3));
       expect(repository.requests, hasLength(2));
       repository.requests[1].complete([]);
+      expect(repository.owners[0]?.call(), isFalse);
+      expect(repository.owners[1]?.call(), isTrue);
       repository.requests[0].complete([
         Notice(
           id: 'old-task',

@@ -1,0 +1,56 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/visitor_token_snapshot_test.dart
+00:00 +0: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/visitor_token_snapshot_test.dart: dynamic owner locks retain queued callers and recover after failure
+00:00 +1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/visitor_token_snapshot_test.dart: login and logout retire in-flight rotations before remote completion
+00:00 +2: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/visitor_token_snapshot_test.dart: new owner replacement never mixes a missing credential with the old owner
+00:00 +3: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/visitor_token_snapshot_test.dart: legacy visitor pair migrates once and refresh preserves its owner
+00:00 +4: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/visitor_token_snapshot_test.dart: corrupt or cleared authority never revives abandoned legacy tokens
+00:00 +5: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/visitor_token_snapshot_test.dart: hundreds of competing instances have one CAS winner and no mixed pair
+00:00 +6: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/visitor_token_snapshot_test.dart: failed atomic write keeps legacy pair and releases the queue
+00:00 +7: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/visitor_token_snapshot_test.dart: legacy cleanup failure leaves the single authority committed
+00:01 +8: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/visitor_auth_owner_race_test.dart: separate clients of one owner rotate the shared refresh token once
+00:01 +9: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/visitor_auth_owner_race_test.dart: late visitor A refresh 200 cannot replace or expire visitor B
+00:01 +10: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/visitor_auth_owner_race_test.dart: late visitor A refresh 401 cannot replace or expire visitor B
+00:01 +11: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/visitor_auth_owner_race_test.dart: a delayed A 401 cannot refresh or replay as newly signed-in B
+00:01 +12: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/visitor_auth_owner_race_test.dart: new owner does not join the retired owners refresh singleflight
+00:02 +13: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/visitor/visitor_owner_retirement_test.dart: visitor login rejects an incomplete or non-string credential pair
+00:02 +14: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/visitor/visitor_owner_retirement_test.dart: retired restore refusal and queued expiry cannot clear a new visitor
+00:02 +15: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/visitor/visitor_owner_retirement_test.dart: an old logout response cannot clear a new login token pair
+00:02 +16: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/visitor/visitor_owner_retirement_test.dart: late real repository login A cannot overwrite newer login B
+00:03 +17: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/visitor/visitor_session_lifecycle_test.dart: unavailable secure storage leaves restore quiet and retryable
+00:03 +18: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/visitor/visitor_session_lifecycle_test.dart: unavailable secure storage leaves restore quiet and retryable
+00:03 +19: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/visitor/visitor_session_lifecycle_test.dart: disposal does not interrupt login but ignores its late UI response
+00:03 +20: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/visitor/visitor_session_lifecycle_test.dart: disposal does not interrupt logout but ignores its late UI response
+00:03 +21: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/visitor/visitor_session_lifecycle_test.dart: live session still restores and handles expiration
+00:04 +22: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/authenticated_replay_completion_test.dart: each recovered network attempt has a terminal diagnostic event
+00:04 +23: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/visitor/visitor_session_lifecycle_test.dart: disposal before restore starts avoids storage and network reads
+00:04 +24: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/authenticated_replay_completion_test.dart: a prior unknown write stays unknown after a later explicit refusal
+00:04 +25: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/visitor/visitor_session_lifecycle_test.dart: disposed providers unsubscribe from the global expiration stream
+00:04 +26: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/authenticated_replay_completion_test.dart: a second 401 cannot loop through the complete replay pipeline
+00:04 +27: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/authenticated_replay_completion_test.dart: a second 401 cannot loop through the complete replay pipeline
+00:04 +28: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/visitor/visitor_session_lifecycle_test.dart: a disposed profile response does not publish or access the old ref
+00:04 +29: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/structured_refresh_rejection_test.dart: destructive refresh rejection requires a matching structured code
+00:04 +30: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/structured_refresh_rejection_test.dart: destructive refresh rejection requires a matching structured code
+00:05 +31: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/structured_refresh_rejection_test.dart: staff remote-access revocation clears the exact rejected session
+00:05 +32: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/structured_refresh_rejection_test.dart: staff remote-access revocation clears the exact rejected session
+00:05 +33: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/authenticated_replay_completion_test.dart: 401 recovery completes successful write revision and precision state
+00:05 +34: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/authenticated_replay_completion_test.dart: 401 recovery completes successful write revision and precision state
+00:05 +35: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/authenticated_replay_completion_test.dart: 401 recovery completes successful write revision and precision state
+00:05 +36: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/structured_refresh_rejection_test.dart: staff empty 401 refresh failure preserves session
+00:05 +37: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/structured_refresh_rejection_test.dart: visitor empty 401 refresh failure preserves session
+00:05 +38: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/structured_refresh_rejection_test.dart: staff unknown-code 401 refresh failure preserves session
+00:05 +39: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/authenticated_replay_completion_test.dart: step-up then precision preserves the not-written receipt (401=false)
+00:05 +40: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/authenticated_replay_completion_test.dart: step-up then precision preserves the not-written receipt (401=false)
+00:05 +41: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/authenticated_replay_completion_test.dart: step-up then precision preserves the not-written receipt (401=false)
+00:05 +42: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/authenticated_replay_completion_test.dart: step-up then precision preserves the not-written receipt (401=false)
+00:05 +43: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/authenticated_replay_completion_test.dart: step-up then precision preserves the not-written receipt (401=true)
+00:05 +44: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/owned_dio_test.dart: owned client closes gracefully only after the operation settles
+00:05 +45: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/owned_dio_test.dart: owned client closes when the operation throws synchronously
+00:05 +46: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/owned_dio_test.dart: owned client closes after an asynchronous failure
+00:05 +47: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/owned_dio_test.dart: staff success releases every temporary client
+00:06 +48: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/owned_dio_test.dart: staff refresh-failed releases every temporary client
+00:06 +49: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/owned_dio_test.dart: staff replay-failed releases every temporary client
+00:06 +50: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/owned_dio_test.dart: visitor success releases every temporary client
+00:06 +51: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/owned_dio_test.dart: visitor refresh-failed releases every temporary client
+00:06 +52: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/owned_dio_test.dart: visitor replay-failed releases every temporary client
+00:06 +53: All tests passed!

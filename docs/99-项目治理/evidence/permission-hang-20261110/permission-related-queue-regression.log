@@ -1,0 +1,16 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/performance/data_work_queue_test.dart
+00:00 +0: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/performance/data_work_queue_test.dart: retired queued data is released while both active operations remain blocked
+00:00 +1: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/performance/data_work_queue_test.dart: all valid jobs are FIFO and at most two execute at once
+00:00 +2: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/performance/data_work_queue_test.dart: ten thousand retired reads yield to input and never execute their payloads
+00:00 +3: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/performance/data_work_queue_test.dart: ten thousand retired reads yield to input and never execute their payloads
+00:00 +4: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/performance/data_work_queue_test.dart: ten thousand retired reads yield to input and never execute their payloads
+00:00 +5: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/performance/data_work_queue_test.dart: ten thousand retired reads yield to input and never execute their payloads
+00:00 +6: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/performance/data_work_queue_test.dart: errors propagate unchanged and no work is replayed
+00:01 +7: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/responsive_json_transformer_test.dart: large response preserves Unicode, exact strings, order and nulls
+00:01 +8: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/responsive_json_transformer_test.dart: problem JSON, void, plain text, stream and bytes retain Dio contracts
+00:01 +9: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/responsive_json_transformer_test.dart: malformed JSON fails without returning a partial success
+00:01 +10: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/responsive_json_transformer_test.dart: custom response decoder is respected
+00:01 +11: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/responsive_json_transformer_test.dart: disposed response owner cannot publish decoded data
+00:01 +12: D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/core/network/owned_dio_stream_test.dart: graceful release preserves a response that is still streaming
+00:01 +13: All tests passed!

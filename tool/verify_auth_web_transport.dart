@@ -45,11 +45,24 @@ Future<void> main(List<String> args) async {
         request.response.write(
           '''<!doctype html><html><body>Running browser transport checks<script>
 const nativeFetch = window.fetch.bind(window), aborts = new Map();
+let unopenedBody;
+window.utenUnopenedBodyLocked = () => unopenedBody?.locked === true;
+window.utenUnhandledErrors = [];
+window.addEventListener('error', event => {
+  window.utenUnhandledErrors.push(String(event.error?.dartException || event.error || event.message));
+});
+window.addEventListener('unhandledrejection', event => {
+  window.utenUnhandledErrors.push(String(event.reason?.dartException || event.reason));
+});
 window.utenFetchAbortCount = path => aborts.get(path) || 0;
 window.fetch = (input, init) => {
   const path = new URL(input.url || input, window.location.href).pathname;
   init?.signal?.addEventListener('abort', () => aborts.set(path, (aborts.get(path) || 0) + 1), {once:true});
-  return nativeFetch(input, init);
+  const operation = nativeFetch(input, init);
+  return path === '/api/pre-listen' ? operation.then(response => {
+    unopenedBody = response.body;
+    return response;
+  }) : operation;
 };
 </script><script src="/probe.js"></script></body></html>''',
         );
@@ -138,6 +151,24 @@ window.fetch = (input, init) => {
         request.response.write('{"unfinished":');
         await request.response.flush();
         await report.future;
+      } else if (path == '/api/pre-listen') {
+        request.response.write('body');
+      } else if (path == '/api/truncated-body') {
+        // A real Content-Length mismatch with no caller cancellation. A live
+        // byte reader must fail, not return a successful partial result.
+        final socket = await request.response.detachSocket(writeHeaders: false);
+        socket.add(
+          ascii.encode(
+            'HTTP/1.1 200 OK\r\nContent-Length: 64\r\n'
+            'Connection: close\r\n\r\npartial',
+          ),
+        );
+        await socket.flush();
+        // The detached socket is no longer owned by server.close(). Destroy
+        // both halves after the browser has received the partial response.
+        await Future<void>.delayed(const Duration(milliseconds: 40));
+        socket.destroy();
+        return;
       } else if (path == '/api/stats') {
         request.response.headers.contentType = ContentType.json;
         request.response.write(

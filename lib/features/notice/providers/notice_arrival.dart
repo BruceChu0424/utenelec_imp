@@ -22,6 +22,7 @@ import '../../../core/ui/uten_notify.dart';
 import '../../../core/ui/opportunistic_dialog_coordinator.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/authenticated_request_scope.dart';
 import '../../../components/feedback/uten_center_alert.dart';
 import '../../../shared/badges/badge_registry.dart';
 import '../../../shared/providers/app_visibility_provider.dart';
@@ -78,15 +79,18 @@ typedef NoticeArrivalDispatcher =
 /// eligibility checks into the existing bounded status endpoint.
 final noticeReviewArrivalStatusProvider =
     Provider<Future<PendingReviewStatus?> Function(String)>((ref) {
+      final identity = ref.watch(authenticatedScopeProvider);
       final batcher = _ReviewArrivalStatusBatcher(
         ref.watch(noticeRepositoryProvider),
+        () => ref.mounted && identity == ref.read(authenticatedScopeProvider),
       );
       return batcher.load;
     });
 
 class _ReviewArrivalStatusBatcher {
-  _ReviewArrivalStatusBatcher(this._repository);
+  _ReviewArrivalStatusBatcher(this._repository, this._isCurrent);
   final NoticeRepository _repository;
+  final bool Function() _isCurrent;
   final _pending = <String, List<Completer<PendingReviewStatus?>>>{};
   bool _scheduled = false;
 
@@ -108,8 +112,9 @@ class _ReviewArrivalStatusBatcher {
           batch[id] = _pending.remove(id)!;
         }
         try {
-          final statuses = await _repository.pendingReviewStatus(
-            batch.keys.toList(),
+          final statuses = await AuthenticatedRequestScope.sharedRead(
+            _isCurrent,
+            () => _repository.pendingReviewStatus(batch.keys.toList()),
           );
           final byId = {for (final status in statuses) status.noticeId: status};
           for (final entry in batch.entries) {
@@ -392,7 +397,7 @@ class _NoticeArrivalListenerState extends ConsumerState<NoticeArrivalListener>
     _persistDirty = false;
     _catchUpFrom = null;
     _pollAgain = false;
-    // 旧请求仍可在网络层完成，但 generation 会丢弃其结果；新身份不必等待它。
+    // 新身份立即重新读取；旧请求的 owner 随 generation 退休并取消传输。
     _activeRequest = null;
     _startPolling();
   }
@@ -463,6 +468,8 @@ class _NoticeArrivalListenerState extends ConsumerState<NoticeArrivalListener>
   /// 该身份还没有游标时从头拉一遍(首次登录补显全部未读)。
   Future<void> _poll({NoticeArrivalCursor? from}) async {
     if (!mounted || widget.identityKey.isEmpty) return;
+    final lifecycle = WidgetsBinding.instance.lifecycleState;
+    if (lifecycle != null && !isVisibleLifecycle(lifecycle)) return;
     if (_activeRequest != null) {
       if (from != null) {
         final pendingFrom = _catchUpFrom;
@@ -478,6 +485,11 @@ class _NoticeArrivalListenerState extends ConsumerState<NoticeArrivalListener>
     final generation = _generation;
     final identityKey = widget.identityKey;
     _activeRequest = request;
+    bool current() =>
+        mounted &&
+        generation == _generation &&
+        request == _activeRequest &&
+        widget.identityKey == identityKey;
     try {
       final store = ref.read(noticeArrivalCursorStoreProvider);
       if (!_cursorLoaded) {
@@ -507,8 +519,11 @@ class _NoticeArrivalListenerState extends ConsumerState<NoticeArrivalListener>
       var discoveredAny = false;
       var pageCount = 0;
       while (true) {
-        final page = await ref.read(noticeArrivalLoaderProvider)(cursor);
-        if (!mounted || generation != _generation) return;
+        final page = await AuthenticatedRequestScope.sharedRead(
+          current,
+          () => ref.read(noticeArrivalLoaderProvider)(cursor),
+        );
+        if (!current()) return;
         final nextCursor = page.cursor;
         if (cursor != null &&
             (page.items.isNotEmpty || page.hasMore) &&
@@ -777,15 +792,21 @@ void dispatchNoticeArrival(
   }
 
   if (isServerAlert(notice)) {
+    final identity = container.read(authenticatedScopeProvider);
+    bool currentDelivery() =>
+        detailContext.mounted &&
+        isCurrent?.call() != false &&
+        container.read(authenticatedScopeProvider) == identity;
     container
         .read(_serverAlertQueueProvider)
         .add(
           () async {
-            if (isCurrent?.call() == false || !detailContext.mounted) return;
-            final current = await container
-                .read(noticeRepositoryProvider)
-                .getById(notice.id);
-            if (isCurrent?.call() == false || !detailContext.mounted) return;
+            if (!currentDelivery()) return;
+            final current = await AuthenticatedRequestScope.sharedRead(
+              currentDelivery,
+              () => container.read(noticeRepositoryProvider).getById(notice.id),
+            );
+            if (!detailContext.mounted || !currentDelivery()) return;
             if (current == null || current.isRead || !isServerAlert(current)) {
               onDelivered?.call();
               return;
@@ -807,9 +828,9 @@ void dispatchNoticeArrival(
               blockSystemBack: true,
               interruptSignal: interruptSignal,
             );
-            if (isCurrent?.call() == false || acknowledged == null) return;
+            if (!currentDelivery() || acknowledged == null) return;
             await markNoticeReadContainer(container, current.id);
-            if (isCurrent?.call() == false) return;
+            if (!currentDelivery()) return;
             onDelivered?.call();
             if (!acknowledged && detailContext.mounted) {
               if (onOpenDetail != null) {

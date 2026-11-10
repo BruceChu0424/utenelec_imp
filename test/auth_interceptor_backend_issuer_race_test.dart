@@ -122,6 +122,7 @@ class _Fixture {
           final dio = transport();
           dio.interceptors.add(
             AuthInterceptor(
+              replay: dio.fetch<dynamic>,
               storage: storage,
               baseUrl: baseUrl,
               dioFactory: transport,

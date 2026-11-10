@@ -21,6 +21,7 @@ import '../drafts/form_draft_category.dart';
 import 'draft_counts_provider.dart';
 import 'export_context_epoch_provider.dart';
 import 'retain_read_snapshot.dart';
+import '../paging/shared_read_provider_owner.dart';
 
 /// 分桶键(与后端 DocumentStatusCountQueryService 逐字一致)。
 abstract final class DocumentStatusBucket {
@@ -155,7 +156,7 @@ final effectiveDocumentStatusCountsProvider = Provider.autoDispose
 final documentStatusCountsProvider = FutureProvider.autoDispose
     .family<Map<String, int>, DocumentStatusScope>((ref, scope) async {
       final epoch = ref.watch(exportContextEpochProvider);
-      ref.watch(dataWriteRevisionProvider);
+      final write = ref.watch(dataWriteRevisionProvider);
       retainReadSnapshot(ref);
       final permissions = ref.watch(currentPermissionsProvider);
       final viewPermission =
@@ -167,19 +168,23 @@ final documentStatusCountsProvider = FutureProvider.autoDispose
           !permissions.contains(viewPermission)) {
         return const {};
       }
-      final json = await ref
-          .watch(apiClientProvider)
-          .get(
-            ApiEndpoints.documentStatusCounts,
-            query: {
-              'kind': scope.kind.name,
-              if (scope.shipmentKind != null)
-                'shipmentKind': scope.shipmentKind,
-              if (scope.docType != null) 'docType': scope.docType,
-              if (scope.scopeWarehouseId != null)
-                'scopeWarehouseId': scope.scopeWarehouseId,
-            },
-          );
+      final api = ref.watch(apiClientProvider);
+      final json = await runSharedProviderRead(
+        ref,
+        () => api.get(
+          ApiEndpoints.documentStatusCounts,
+          query: {
+            'kind': scope.kind.name,
+            if (scope.shipmentKind != null) 'shipmentKind': scope.shipmentKind,
+            if (scope.docType != null) 'docType': scope.docType,
+            if (scope.scopeWarehouseId != null)
+              'scopeWarehouseId': scope.scopeWarehouseId,
+          },
+        ),
+        isCurrent: () =>
+            epoch == ref.read(exportContextEpochProvider) &&
+            write == ref.read(dataWriteRevisionProvider),
+      );
       return _DocumentStatusSnapshot({
         for (final entry in json.entries)
           if (entry.value is num) entry.key: (entry.value as num).toInt(),

@@ -8,6 +8,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/network/authenticated_request_scope.dart';
 import '../../../shared/badges/badge_registry.dart';
 import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../repositories/notice_repository.dart';
@@ -27,6 +28,7 @@ class NoticeUnreadIndexNotifier extends Notifier<NoticeUnreadIndex?> {
   @override
   NoticeUnreadIndex? build() {
     final scope = ref.watch(authenticatedScopeProvider);
+    ref.watch(noticeRepositoryProvider);
     final generation = ++_generation;
     _loading = null;
     _again = false;
@@ -70,12 +72,22 @@ class NoticeUnreadIndexNotifier extends Notifier<NoticeUnreadIndex?> {
   }
 
   Future<void> _run(int generation) async {
+    final owner = ref;
+    final scope = ref.read(authenticatedScopeProvider);
+    final repository = ref.read(noticeRepositoryProvider);
+    bool current() =>
+        generation == _generation &&
+        owner.mounted &&
+        owner.read(authenticatedScopeProvider) == scope;
     try {
       do {
         _again = false;
         final requestedAt = DateTime.now();
-        final index = await ref.read(noticeRepositoryProvider).unreadIndex();
-        if (generation != _generation) return;
+        final index = await AuthenticatedRequestScope.sharedRead(
+          current,
+          repository.unreadIndex,
+        );
+        if (!current()) return;
         state = index.stampedAt(requestedAt);
       } while (_again && generation == _generation);
     } catch (_) {

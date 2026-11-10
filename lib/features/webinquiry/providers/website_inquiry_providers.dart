@@ -1,3 +1,5 @@
+import '../../../shared/providers/sensitive_read_boundary_provider.dart';
+import '../../../shared/paging/shared_read_provider_owner.dart';
 import 'package:uten_imp/shared/paging/read_view_activity.dart';
 import '../../../shared/paging/complete_paged_snapshot.dart';
 import '../../../shared/providers/export_context_epoch_provider.dart';
@@ -136,9 +138,17 @@ class WebsiteInquiryListNotifier
 
 final websiteInquiryDetailProvider = FutureProvider.autoDispose
     .family<WebsiteInquiry?, String>((ref, id) async {
-      ref.watch(masterDataSessionKeyProvider);
-      ref.watch(authenticatedScopeProvider);
-      return ref.watch(websiteInquiryRepositoryProvider).getById(id);
+      final readBoundary = ref.watch(sensitiveReadBoundaryProvider);
+      return runSharedProviderRead(
+        ref,
+        () async {
+          ref.watch(masterDataSessionKeyProvider);
+          ref.watch(authenticatedScopeProvider);
+          return ref.watch(websiteInquiryRepositoryProvider).getById(id);
+        },
+        isCurrent: () =>
+            ref.read(sensitiveReadBoundaryProvider) == readBoundary,
+      );
     });
 
 /// 跟进状态推进；成功后同步列表页与详情缓存。

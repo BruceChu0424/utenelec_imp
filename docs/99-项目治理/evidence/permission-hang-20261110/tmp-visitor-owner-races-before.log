@@ -1,0 +1,35 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/visitor/visitor_owner_retirement_test.dart
+00:00 +0: visitor login rejects an incomplete or non-string credential pair
+00:00 +1: retired restore refusal and queued expiry cannot clear a new visitor
+00:00 +2: an old logout response cannot clear a new login token pair
+00:00 +3: late real repository login A cannot overwrite newer login B
+00:00 +3 -1: late real repository login A cannot overwrite newer login B [E]
+  Expected: 'access-B'
+    Actual: 'access-A'
+     Which: is different.
+            Expected: access-B
+              Actual: access-A
+                             ^
+             Differ at offset 7
+  
+  package:matcher                                                 expect
+  package:flutter_test/src/widget_tester.dart 473:18              expect
+  test\features\visitor\visitor_owner_retirement_test.dart 126:5  main.<fn>
+  
+00:00 +3 -1: notifier logout keeps its captured owner across a new visitor login
+00:00 +3 -2: notifier logout keeps its captured owner across a new visitor login [E]
+  Expected: ['refresh-A']
+    Actual: ['refresh-B']
+     Which: at location [0] is 'refresh-B' instead of 'refresh-A'
+  an old logout must never re-read and revoke the new owner
+  
+  package:matcher                                                 expect
+  package:flutter_test/src/widget_tester.dart 473:18              expect
+  test\features\visitor\visitor_owner_retirement_test.dart 156:5  main.<fn>
+  
+00:00 +3 -2: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/visitor/visitor_owner_retirement_test.dart: late real repository login A cannot overwrite newer login B
+  D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/features/visitor/visitor_owner_retirement_test.dart: notifier logout keeps its captured owner across a new visitor login

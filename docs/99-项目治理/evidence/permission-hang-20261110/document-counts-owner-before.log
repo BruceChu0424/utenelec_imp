@@ -1,0 +1,16 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/provider_http_owner_inventory_test.dart
+00:00 +0: retained document counts survive a brief departure but retire on invalidation
+00:00 +0 -1: retained document counts survive a brief departure but retire on invalidation [E]
+  Expected: [true]
+    Actual: [false]
+     Which: at location [0] is <false> instead of <true>
+  
+  package:matcher                                                  expect
+  package:flutter_test/src/widget_tester.dart 473:18               expect
+  test\shared\paging\provider_http_owner_inventory_test.dart 88:5  main.<fn>
+  
+00:00 +0 -1: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/permission-hang-20261110/test/shared/paging/provider_http_owner_inventory_test.dart: retained document counts survive a brief departure but retire on invalidation

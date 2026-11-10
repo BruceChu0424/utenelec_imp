@@ -180,7 +180,7 @@ class ReportablePlanLine {
     if (materialReportQtyExact != null &&
         (productionExactQuantityUnits(materialReportQtyExact) ?? BigInt.zero) <=
             BigInt.zero) {
-      return '部分领料的物料配套可报数量已用完，请补领物料或核对待审核日报后继续报工';
+      return '当前可验证的物料配套可报数量已用完，请补领物料或核对原领退料记录、待审核日报后继续报工';
     }
     if (!fqcRecoveryRequiresMaterial) return null;
     return '${fqcRecoveryLabel ?? '补产'}尚未完成新增物料齐套和仓库发料，当前不能报工';

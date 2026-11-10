@@ -656,6 +656,9 @@ public class ProductionExecutionSegmentService {
         }
         RuntimeException primaryFailure = null;
         try {
+            if (ACTION_START.equals(transition.action())) {
+                com.uten.imp.common.production.ProductionMaterialKitProofs.captureSegment(em,segment.id());
+            }
             updateStatus(segment.id(), request.expectedVersion(),
                     transition.fromStatus(), transition.toStatus());
             long resultingVersion = request.expectedVersion() + 1;

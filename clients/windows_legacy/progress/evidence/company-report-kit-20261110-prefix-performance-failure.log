@@ -1,0 +1,74 @@
+[INFO] Scanning for projects...
+[INFO] 
+[INFO] ----------------------< com.uten:uten-imp-server >----------------------
+[INFO] Building uten-imp-server 0.1.0
+[INFO]   from pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- surefire:3.5.6:test (default-cli) @ uten-imp-server ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running com.uten.imp.migration.PartialMaterialReportCapacityPostgresTest
+13:20:47.565 [main] INFO org.testcontainers.images.PullPolicy -- Image pull policy will be performed by: DefaultPullPolicy()
+13:20:47.575 [main] INFO org.testcontainers.utility.ImageNameSubstitutor -- Image name substitution will be performed by: DefaultImageNameSubstitutor (composite of 'ConfigurationFileImageNameSubstitutor' and 'PrefixingImageNameSubstitutor')
+13:20:47.655 [main] INFO org.testcontainers.DockerClientFactory -- Testcontainers version: 2.0.5
+13:20:48.018 [main] INFO org.testcontainers.dockerclient.DockerClientProviderStrategy -- Loaded org.testcontainers.dockerclient.NpipeSocketClientProviderStrategy from ~/.testcontainers.properties, will try it first
+13:20:48.897 [main] INFO org.testcontainers.dockerclient.DockerClientProviderStrategy -- Found Docker environment with local Npipe socket (npipe:////./pipe/docker_engine)
+13:20:48.899 [main] INFO org.testcontainers.DockerClientFactory -- Docker host IP address is localhost
+13:20:48.919 [main] INFO org.testcontainers.DockerClientFactory -- Connected to docker: 
+  Server Version: 29.7.2
+  API Version: 1.55
+  Operating System: Docker Desktop
+  Total Memory: 56236 MB
+  Labels: 
+    com.docker.desktop.address=npipe://\\.\pipe\docker_cli
+13:20:49.074 [main] INFO tc.testcontainers/ryuk:0.14.0 -- Creating container for image: testcontainers/ryuk:0.14.0
+13:20:49.207 [main] INFO org.testcontainers.utility.RegistryAuthLocator -- Credential helper/store (docker-credential-desktop) does not have credentials for https://index.docker.io/v1/
+13:20:49.433 [main] INFO tc.testcontainers/ryuk:0.14.0 -- Container testcontainers/ryuk:0.14.0 is starting: 51d821f4572e4be51d4a01f0f49a764b6d1c4d61eed41fc8e05b1b725afe0d96
+13:20:50.000 [main] INFO tc.testcontainers/ryuk:0.14.0 -- Container testcontainers/ryuk:0.14.0 started in PT0.9256002S
+13:20:50.012 [main] INFO org.testcontainers.utility.RyukResourceReaper -- Ryuk started - will monitor and terminate Testcontainers containers on JVM exit
+13:20:50.012 [main] INFO org.testcontainers.DockerClientFactory -- Checking the system...
+13:20:50.013 [main] INFO org.testcontainers.DockerClientFactory -- ?? Docker server version should be at least 1.6.0
+13:20:50.014 [main] INFO tc.postgres:16-alpine -- Creating container for image: postgres:16-alpine
+13:20:51.241 [main] INFO tc.postgres:16-alpine -- Container postgres:16-alpine is starting: 26c1236b18767e0719a2c249cab1a91ed78b470b709f305cf56d01e9a6cc4358
+13:20:56.146 [main] INFO tc.postgres:16-alpine -- Container postgres:16-alpine started in PT6.1319684S
+13:20:56.146 [main] INFO tc.postgres:16-alpine -- Container is started (JDBC URL: jdbc:postgresql://localhost:52030/partial_capacity?loggerLevel=OFF)
+partial-material-history rows=20000 elapsedMs=38809
+[ERROR] Tests run: 11, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 51.50 s <<< FAILURE! -- in com.uten.imp.migration.PartialMaterialReportCapacityPostgresTest
+[ERROR] com.uten.imp.migration.PartialMaterialReportCapacityPostgresTest.twentyThousandHistoricalPostingRowsStayBoundedWithoutRepeatedPrefixScans -- Time elapsed: 39.04 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 20k-row history must not degenerate into repeated full-history scans: 38809ms ==> expected: <true> but was: <false>
+	at org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:158)
+	at org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:139)
+	at org.junit.jupiter.api.AssertTrue.failNotTrue(AssertTrue.java:69)
+	at org.junit.jupiter.api.AssertTrue.assertTrue(AssertTrue.java:41)
+	at org.junit.jupiter.api.Assertions.assertTrue(Assertions.java:228)
+	at com.uten.imp.migration.PartialMaterialReportCapacityPostgresTest.twentyThousandHistoricalPostingRowsStayBoundedWithoutRepeatedPrefixScans(PartialMaterialReportCapacityPostgresTest.java:144)
+
+[INFO] 
+[INFO] Results:
+[INFO] 
+[ERROR] Failures: 
+[ERROR]   PartialMaterialReportCapacityPostgresTest.twentyThousandHistoricalPostingRowsStayBoundedWithoutRepeatedPrefixScans:144 20k-row history must not degenerate into repeated full-history scans: 38809ms ==> expected: <true> but was: <false>
+[INFO] 
+[ERROR] Tests run: 11, Failures: 1, Errors: 0, Skipped: 0
+[INFO] 
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD FAILURE
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  56.523 s
+[INFO] Finished at: 2026-11-10T13:21:39-07:00
+[INFO] ------------------------------------------------------------------------
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.5.6:test (default-cli) on project uten-imp-server: There are test failures.
+[ERROR] 
+[ERROR] See D:\Projects\uten_imp_worktrees\company-report-kit-20261110\server\target-company-report-kit\surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException

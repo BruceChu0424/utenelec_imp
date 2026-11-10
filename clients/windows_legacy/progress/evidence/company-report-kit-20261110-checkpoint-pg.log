@@ -1,0 +1,52 @@
+[INFO] Scanning for projects...
+[INFO] 
+[INFO] ----------------------< com.uten:uten-imp-server >----------------------
+[INFO] Building uten-imp-server 0.1.0
+[INFO]   from pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- surefire:3.5.6:test (default-cli) @ uten-imp-server ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running com.uten.imp.migration.PartialMaterialReportCapacityPostgresTest
+13:41:16.187 [main] INFO org.testcontainers.images.PullPolicy -- Image pull policy will be performed by: DefaultPullPolicy()
+13:41:16.206 [main] INFO org.testcontainers.utility.ImageNameSubstitutor -- Image name substitution will be performed by: DefaultImageNameSubstitutor (composite of 'ConfigurationFileImageNameSubstitutor' and 'PrefixingImageNameSubstitutor')
+13:41:16.357 [main] INFO org.testcontainers.DockerClientFactory -- Testcontainers version: 2.0.5
+13:41:16.930 [main] INFO org.testcontainers.dockerclient.DockerClientProviderStrategy -- Loaded org.testcontainers.dockerclient.NpipeSocketClientProviderStrategy from ~/.testcontainers.properties, will try it first
+13:41:17.836 [main] INFO org.testcontainers.dockerclient.DockerClientProviderStrategy -- Found Docker environment with local Npipe socket (npipe:////./pipe/docker_engine)
+13:41:17.838 [main] INFO org.testcontainers.DockerClientFactory -- Docker host IP address is localhost
+13:41:17.873 [main] INFO org.testcontainers.DockerClientFactory -- Connected to docker: 
+  Server Version: 29.7.2
+  API Version: 1.55
+  Operating System: Docker Desktop
+  Total Memory: 56236 MB
+  Labels: 
+    com.docker.desktop.address=npipe://\\.\pipe\docker_cli
+13:41:18.125 [main] INFO tc.testcontainers/ryuk:0.14.0 -- Creating container for image: testcontainers/ryuk:0.14.0
+13:41:18.336 [main] INFO org.testcontainers.utility.RegistryAuthLocator -- Credential helper/store (docker-credential-desktop) does not have credentials for https://index.docker.io/v1/
+13:41:19.024 [main] INFO tc.testcontainers/ryuk:0.14.0 -- Container testcontainers/ryuk:0.14.0 is starting: 82cd3718626026124507a0eb6f530ac9b1cefd2cec3aae2d5b24f0ba75f60202
+13:41:19.710 [main] INFO tc.testcontainers/ryuk:0.14.0 -- Container testcontainers/ryuk:0.14.0 started in PT1.5846853S
+13:41:19.727 [main] INFO org.testcontainers.utility.RyukResourceReaper -- Ryuk started - will monitor and terminate Testcontainers containers on JVM exit
+13:41:19.727 [main] INFO org.testcontainers.DockerClientFactory -- Checking the system...
+13:41:19.728 [main] INFO org.testcontainers.DockerClientFactory -- ?? Docker server version should be at least 1.6.0
+13:41:19.730 [main] INFO tc.postgres:16-alpine -- Creating container for image: postgres:16-alpine
+13:41:19.980 [main] INFO tc.postgres:16-alpine -- Container postgres:16-alpine is starting: 4cb16fb792bec40758727ac4cf834e92b076ec312f02f33403ba4174f5e79269
+13:41:24.232 [main] INFO tc.postgres:16-alpine -- Container postgres:16-alpine started in PT4.5024923S
+13:41:24.233 [main] INFO tc.postgres:16-alpine -- Container is started (JDBC URL: jdbc:postgresql://localhost:49924/partial_capacity?loggerLevel=OFF)
+partial-material-history rows=20000 baselineCapacityMs=36 roomMs=51
+partial-material-single-event postings=1000 checkpointWriteMs=116
+[INFO] Tests run: 15, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 15.71 s -- in com.uten.imp.migration.PartialMaterialReportCapacityPostgresTest
+[INFO] 
+[INFO] Results:
+[INFO] 
+[INFO] Tests run: 15, Failures: 0, Errors: 0, Skipped: 0
+[INFO] 
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD SUCCESS
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  23.243 s
+[INFO] Finished at: 2026-11-10T13:41:32-07:00
+[INFO] ------------------------------------------------------------------------

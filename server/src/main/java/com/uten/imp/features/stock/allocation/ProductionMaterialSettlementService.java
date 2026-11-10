@@ -404,6 +404,7 @@ public class ProductionMaterialSettlementService implements ProductionMaterialUs
 
         sourceGuard.verifyUnchanged();
         if(reverse)requireDailyReportReversalAvailable(planId,request);
+        com.uten.imp.common.production.ProductionMaterialKitProofs.captureDemands(em,demandIds);
         UUID eventId = UUID.randomUUID();
         em.createNativeQuery("""
                         INSERT INTO production_material_settlement_events(
@@ -460,6 +461,7 @@ public class ProductionMaterialSettlementService implements ProductionMaterialUs
             if(remaining.signum()!=0)throw new ApiException(ErrorCode.CONFLICT,"本次清账超过准确原领料未耗用数量");
         }
         inventoryValue.settled(eventId,actorId);
+        com.uten.imp.common.production.ProductionMaterialKitProofs.captureDemands(em,demandIds);
         // Any material correction re-opens the plan. Explicit close performs
         // the product-inbound and equation checks again.
         em.createNativeQuery("""

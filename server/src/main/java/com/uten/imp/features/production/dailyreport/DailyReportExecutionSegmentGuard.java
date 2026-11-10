@@ -262,10 +262,10 @@ public class DailyReportExecutionSegmentGuard {
         for (Object[] row : facts) {
             BigDecimal room = row[1] == null ? null : decimal(row[1]);
             if (room != null && requested.get((UUID) row[0]).compareTo(room) > 0) {
-                throw conflict("工单部分领料，本次累计报工超过物料配套可报数量 "
+                throw conflict("本次累计报工超过当前可验证的物料配套可报数量 "
                         + room.stripTrailingZeros().toPlainString() + "："
                         + segments.get((UUID) row[0]).segmentCode()
-                        + "；请补齐领料后继续报工，原实际用料仍须如实登记");
+                        + "；尚未领齐或历史齐套证据不足，请补领物料或核对原领退料记录后继续报工，原实际用料仍须如实登记");
             }
         }
     }

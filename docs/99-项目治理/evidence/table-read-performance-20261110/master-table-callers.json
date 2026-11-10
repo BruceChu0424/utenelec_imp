@@ -28,7 +28,7 @@
     },
     {
       "path": "lib/components/inputs/uten_employee_selection_panel.dart",
-      "line": 761,
+      "line": 755,
       "type": "MasterDataTableView<UtenEmployeePickerItem>",
       "sharedBaseChanges": true,
       "parameters": {
@@ -40,7 +40,7 @@
     },
     {
       "path": "lib/components/layout/uten_doc_link_picker_sheet.dart",
-      "line": 868,
+      "line": 878,
       "type": "MasterDataTableView<D>",
       "sharedBaseChanges": true,
       "parameters": {
@@ -133,7 +133,7 @@
     },
     {
       "path": "lib/features/admin/widgets/page_permission_drawer.dart",
-      "line": 1181,
+      "line": 1159,
       "type": "MasterDataTableView<PagePermissionStaffSummary>",
       "sharedBaseChanges": true,
       "parameters": {
@@ -559,7 +559,7 @@
     },
     {
       "path": "lib/features/basic_data/widgets/uten_master_picker.dart",
-      "line": 766,
+      "line": 768,
       "type": "MasterDataTableView<TItem>",
       "sharedBaseChanges": true,
       "parameters": {
@@ -605,11 +605,11 @@
     },
     {
       "path": "lib/features/department/widgets/uten_position_picker.dart",
-      "line": 241,
+      "line": 229,
       "type": "MasterDataTableView<Position>",
       "sharedBaseChanges": true,
       "parameters": {
-        "items": "[for (final group in _group(positions)) ...group.items]",
+        "items": "[for (final group in _group(positions!)) ...group.items]",
         "rowKeyOf": "(position) => position.id"
       },
       "incrementalContract": "conservative-pending-owner-contract-review"
@@ -627,7 +627,7 @@
     },
     {
       "path": "lib/features/employee/widgets/department_employee_picker.dart",
-      "line": 727,
+      "line": 705,
       "type": "MasterDataTableView<UtenEmployeePickerItem>",
       "sharedBaseChanges": true,
       "parameters": {
@@ -684,7 +684,7 @@
     },
     {
       "path": "lib/features/expense/widgets/expense_invoice_section.dart",
-      "line": 151,
+      "line": 149,
       "type": "MasterDataTableView<ExpenseClaimInvoice>",
       "sharedBaseChanges": true,
       "parameters": {
@@ -694,7 +694,7 @@
     },
     {
       "path": "lib/features/finance/pages/finance_account_flow_page.dart",
-      "line": 553,
+      "line": 559,
       "type": "MasterDataTableView<Map<String, dynamic>>",
       "sharedBaseChanges": true,
       "parameters": {
@@ -738,7 +738,7 @@
     },
     {
       "path": "lib/features/finance/pages/finance_ar_ap_overview_page.dart",
-      "line": 1104,
+      "line": 1112,
       "type": "MasterDataTableView<Map<String, dynamic>>",
       "sharedBaseChanges": true,
       "parameters": {
@@ -760,7 +760,7 @@
     },
     {
       "path": "lib/features/finance/pages/finance_doc_detail_page.dart",
-      "line": 1479,
+      "line": 1466,
       "type": "MasterDataTableView<FinanceDocItem>",
       "sharedBaseChanges": true,
       "parameters": {
@@ -828,7 +828,7 @@
     },
     {
       "path": "lib/features/finance/pages/finance_report_table_page.dart",
-      "line": 1692,
+      "line": 1695,
       "type": "MasterDataTableView<Map<String, dynamic>>",
       "sharedBaseChanges": true,
       "parameters": {
@@ -872,7 +872,7 @@
     },
     {
       "path": "lib/features/finance/pages/finance_statement_page.dart",
-      "line": 658,
+      "line": 650,
       "type": "MasterDataTableView<Map<String, dynamic>>",
       "sharedBaseChanges": true,
       "parameters": {
@@ -916,7 +916,7 @@
     },
     {
       "path": "lib/features/finance/payables/widgets/supplier_settlement_panel.dart",
-      "line": 437,
+      "line": 430,
       "type": "MasterDataTableView<SupplierSettlementSummary>",
       "sharedBaseChanges": true,
       "parameters": {
@@ -927,7 +927,7 @@
     },
     {
       "path": "lib/features/finance/payables/widgets/supplier_settlement_panel.dart",
-      "line": 752,
+      "line": 774,
       "type": "MasterDataTableView<SupplierSettlementLine>",
       "sharedBaseChanges": true,
       "parameters": {
@@ -937,7 +937,7 @@
     },
     {
       "path": "lib/features/finance/widgets/finance_account_picker_panel.dart",
-      "line": 145,
+      "line": 135,
       "type": "MasterDataTableView<FinanceAccountReference>",
       "sharedBaseChanges": true,
       "parameters": {
@@ -948,7 +948,7 @@
     },
     {
       "path": "lib/features/finance/widgets/finance_accounting_import_dialog.dart",
-      "line": 1205,
+      "line": 1206,
       "type": "MasterDataTableView<Map<String, dynamic>>",
       "sharedBaseChanges": true,
       "parameters": {
@@ -959,7 +959,7 @@
     },
     {
       "path": "lib/features/finance/widgets/finance_actual_receipt_context.dart",
-      "line": 136,
+      "line": 135,
       "type": "MasterDataTableView<CustomerActualReceipt>",
       "sharedBaseChanges": true,
       "parameters": {
@@ -1000,7 +1000,7 @@
     },
     {
       "path": "lib/features/finance/widgets/finance_asset_opening_group_dialog.dart",
-      "line": 1106,
+      "line": 1107,
       "type": "MasterDataTableView<Map<String, dynamic>>",
       "sharedBaseChanges": true,
       "parameters": {
@@ -1011,7 +1011,7 @@
     },
     {
       "path": "lib/features/finance/widgets/finance_asset_opening_group_dialog.dart",
-      "line": 1894,
+      "line": 1895,
       "type": "MasterDataTableView<Map<String, dynamic>>",
       "sharedBaseChanges": true,
       "parameters": {
@@ -1022,7 +1022,7 @@
     },
     {
       "path": "lib/features/finance/widgets/finance_asset_posting_panel.dart",
-      "line": 747,
+      "line": 746,
       "type": "MasterDataTableView<AssetPostingLine>",
       "sharedBaseChanges": true,
       "parameters": {
@@ -1052,7 +1052,7 @@
     },
     {
       "path": "lib/features/finance/widgets/finance_expense_analysis_dialog.dart",
-      "line": 523,
+      "line": 524,
       "type": "MasterDataTableView<Map<String, dynamic>>",
       "sharedBaseChanges": true,
       "parameters": {
@@ -1062,7 +1062,7 @@
     },
     {
       "path": "lib/features/finance/widgets/finance_payroll_preparation.dart",
-      "line": 1353,
+      "line": 1354,
       "type": "MasterDataTableView<Map<String, dynamic>>",
       "sharedBaseChanges": true,
       "parameters": {
@@ -1352,7 +1352,7 @@
     },
     {
       "path": "lib/features/production/pages/production_draw_request_page.dart",
-      "line": 795,
+      "line": 807,
       "type": "MasterDataTableView<ProductionDrawRequestLine>",
       "sharedBaseChanges": true,
       "parameters": {
@@ -1696,7 +1696,7 @@
     },
     {
       "path": "lib/features/quality/pages/quality_batch_approval_page.dart",
-      "line": 1050,
+      "line": 1040,
       "type": "MasterDataTableView<_ApprovalRow>",
       "sharedBaseChanges": true,
       "parameters": {
@@ -1783,7 +1783,7 @@
     },
     {
       "path": "lib/features/sales/pages/sales_doc_detail_page.dart",
-      "line": 2419,
+      "line": 2420,
       "type": "MasterDataTableView<SalesDocItem>",
       "sharedBaseChanges": true,
       "parameters": {
@@ -1864,7 +1864,7 @@
     },
     {
       "path": "lib/features/sales/widgets/sales_shipment_task_workbench.dart",
-      "line": 1007,
+      "line": 1008,
       "type": "MasterDataTableView<SalesDocListItem>",
       "sharedBaseChanges": true,
       "parameters": {
@@ -2203,7 +2203,7 @@
     },
     {
       "path": "lib/features/warehouse/pages/production_finished_batch_stock_in_page.dart",
-      "line": 514,
+      "line": 503,
       "type": "MasterDataTableView<ProductionFinishedInboundTask>",
       "sharedBaseChanges": true,
       "parameters": {

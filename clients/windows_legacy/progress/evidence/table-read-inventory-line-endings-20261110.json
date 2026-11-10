@@ -1,0 +1,118 @@
+{
+  "id": "E-WPF-INVENTORY-LINE-ENDINGS-20261110",
+  "startedAtUtc": "2026-11-10T18:38:13.458190+00:00",
+  "completedAtUtc": "2026-11-10T18:38:55.957783+00:00",
+  "sourceHead": "1eacfb458feab4be7b7ae8dfc894e9c437051839",
+  "mainHead": "1eacfb458feab4be7b7ae8dfc894e9c437051839",
+  "classification": "Minimal checkout line-ending determinism repair; not product/performance work",
+  "rootCause": "Inventory previously parsed and hashed raw source bytes, so equivalent CRLF/LF checkouts disagreed after fast-forward.",
+  "sourceFingerprintPolicy": {
+    "version": 1,
+    "lineEndings": "CRLF-to-LF before parsing and SHA-256",
+    "sourceFilesModified": false
+  },
+  "newRegression": {
+    "fixtureTests": 6,
+    "actualExitCode": 0,
+    "includesEntireLfCrlfInventoryEqualityAndNoSourceWrite": true,
+    "log": "clients/windows_legacy/progress/evidence/table-read-performance-20261110-files/inventory-eol-fixtures.log",
+    "logSha256": "8c404fbe96c7e0fa22b50cf050089d3a05512ff8e72947ce1fef8ee3a1355087"
+  },
+  "actualRuns": [
+    {
+      "command": [
+        "C:\\Program Files\\LibreOffice\\program\\python.EXE",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "clients/windows_legacy/tools",
+        "-p",
+        "test_progress_tracker.py",
+        "-v"
+      ],
+      "actualExitCode": 0,
+      "log": "clients/windows_legacy/progress/evidence/table-read-performance-20261110-files/inventory-eol-progress-tests.log",
+      "logSha256": "6c87daf9c8c7e6aa3ab2aeb7306966dbcc3513a67677af29e59097f04cd8e447"
+    },
+    {
+      "command": [
+        "C:\\Program Files\\LibreOffice\\program\\python.EXE",
+        "clients/windows_legacy/tools/business_inventory.py",
+        "--write"
+      ],
+      "actualExitCode": 0,
+      "log": "clients/windows_legacy/progress/evidence/table-read-performance-20261110-files/inventory-eol-owning-write.log",
+      "logSha256": "624b1c9b39d7dc810a1f0aeff10bdc45fc179c1c4861b4250f80537bcb72271e"
+    },
+    {
+      "command": [
+        "C:\\Program Files\\LibreOffice\\program\\python.EXE",
+        "clients/windows_legacy/tools/progress_tracker.py",
+        "sync"
+      ],
+      "actualExitCode": 0,
+      "log": "clients/windows_legacy/progress/evidence/table-read-performance-20261110-files/inventory-eol-owning-sync.log",
+      "logSha256": "c7d2a9e9c6cfb797ddb9c1650693b629bb836b27d834dd1f7c057b3b8afe0aa9"
+    },
+    {
+      "command": [
+        "C:\\Program Files\\LibreOffice\\program\\python.EXE",
+        "clients/windows_legacy/tools/progress_tracker.py",
+        "check"
+      ],
+      "actualExitCode": 0,
+      "log": "clients/windows_legacy/progress/evidence/table-read-performance-20261110-files/inventory-eol-candidate-check.log",
+      "logSha256": "c7d2a9e9c6cfb797ddb9c1650693b629bb836b27d834dd1f7c057b3b8afe0aa9"
+    }
+  ],
+  "mainCanonicalValidation": {
+    "status": "PASS",
+    "mainRootReadOnly": "D:\\Projects\\uten_imp",
+    "collectorSource": "candidate owning business_inventory.py",
+    "mainFilesModified": false,
+    "canonicalEntireJsonEqual": true,
+    "indexedSourceFiles": 1761,
+    "canonicalInventorySha256": "9e2c8ec959c037e2ddc6119324c2a864a7327256e7b2a66de5acda647bbc2e8e",
+    "policy": {
+      "version": 1,
+      "lineEndings": "CRLF-to-LF before parsing and SHA-256",
+      "sourceFilesModified": false
+    }
+  },
+  "mainCanonicalLog": {
+    "path": "clients/windows_legacy/progress/evidence/table-read-performance-20261110-files/inventory-eol-main-canonical-check.json",
+    "sha256": "ef5ece777a8b9a20cc7fee2e54ca37e4a721098e1e1ce684246ec481a076df86"
+  },
+  "protectedTaskCount": 373,
+  "protectedFields": [
+    "status",
+    "owner",
+    "definitionOfDone",
+    "dependencies",
+    "nativeTargets",
+    "notes",
+    "evidence"
+  ],
+  "protectedDifferences": [],
+  "beforeRegistrySha256": "f00579f6b58fef13304628e7a0194c9cba6169bb2969a0fbec6d4b28f1d113ad",
+  "afterRegistrySha256": "102b3f7e1bedabd478d3a89f8954bbb8e90c1e2a8a005c39c594d3d0d71c8a59",
+  "beforeInventorySha256": "a48d245a83dcd9fe4a5e67a8a585bf976dae0977172d26d0d4c555ff73df2393",
+  "afterInventorySha256": "9e2c8ec959c037e2ddc6119324c2a864a7327256e7b2a66de5acda647bbc2e8e",
+  "historySha256Unchanged": "3cb5d6d799b2c1567e9026ecb335e12c69a462cfa75fb353eaa3f1fb22f16196",
+  "owningToolHashes": [
+    {
+      "path": "clients/windows_legacy/tools/business_inventory.py",
+      "sha256": "d576b913576c389625bb1ad8ce5b58a3132207b072216a93435dee286b3632af"
+    },
+    {
+      "path": "clients/windows_legacy/tools/test_business_inventory.py",
+      "sha256": "9fdb83615abee14b33e50c0d1b1e2c9deaefcf02baa752ce3463083ff702f2ca"
+    }
+  ],
+  "limitations": [
+    "Old historical evidence is not rewritten; its original byte hashes retain their original meaning",
+    "Main was read using the patched owning collector; its local old script is updated only by root's later commit/fast-forward",
+    "No UI, load test, business/API, source-file newline rewrite, commit, push or deployment"
+  ]
+}

@@ -7,8 +7,8 @@ AST扫描 lib/**/*.dart，排除注释/类型声明；当前共 235 个构造调
 |---|---|---|
 | `lib/components/data_display/uten_cell_revision_table.dart:45` | `MasterDataTableView<UtenCellRevisionRow<T>>` | 保守路径，待所属owner合同核对 |
 | `lib/components/data_display/uten_revision_table.dart:193` | `MasterDataTableView<UtenRevisionRow<T>>` | 保守路径，待所属owner合同核对 |
-| `lib/components/inputs/uten_employee_selection_panel.dart:761` | `MasterDataTableView<UtenEmployeePickerItem>` | 保守路径，待所属owner合同核对 |
-| `lib/components/layout/uten_doc_link_picker_sheet.dart:868` | `MasterDataTableView<D>` | 保守路径，待所属owner合同核对 |
+| `lib/components/inputs/uten_employee_selection_panel.dart:755` | `MasterDataTableView<UtenEmployeePickerItem>` | 保守路径，待所属owner合同核对 |
+| `lib/components/layout/uten_doc_link_picker_sheet.dart:878` | `MasterDataTableView<D>` | 保守路径，待所属owner合同核对 |
 | `lib/components/layout/uten_paged_picker_list.dart:52` | `MasterDataTableView<T>` | 保守路径，待所属owner合同核对 |
 | `lib/features/admin/pages/admin_ai_usage_page.dart:448` | `MasterDataTableView<AiUsagePerson>` | 保守路径，待所属owner合同核对 |
 | `lib/features/admin/pages/admin_ai_usage_records_page.dart:610` | `MasterDataTableView<AiUsageAuditRecord>` | 保守路径，待所属owner合同核对 |
@@ -16,7 +16,7 @@ AST扫描 lib/**/*.dart，排除注释/类型声明；当前共 235 个构造调
 | `lib/features/admin/pages/audit_overview_widgets.dart:1062` | `MasterDataTableView<AuditLogEntry>` | 保守路径，待所属owner合同核对 |
 | `lib/features/admin/pages/audit_overview_widgets.dart:1308` | `MasterDataTableView<AuditSessionSummary>` | 保守路径，待所属owner合同核对 |
 | `lib/features/admin/pages/server_status_page.dart:898` | `MasterDataTableView<ServerJob>` | 保守路径，待所属owner合同核对 |
-| `lib/features/admin/widgets/page_permission_drawer.dart:1181` | `MasterDataTableView<PagePermissionStaffSummary>` | 保守路径，待所属owner合同核对 |
+| `lib/features/admin/widgets/page_permission_drawer.dart:1159` | `MasterDataTableView<PagePermissionStaffSummary>` | 保守路径，待所属owner合同核对 |
 | `lib/features/applications/pages/business_application_list_page.dart:528` | `MasterDataTableView<BusinessApplication>` | 保守路径，待所属owner合同核对 |
 | `lib/features/approvals/pages/approval_policy_settings_page.dart:129` | `MasterDataTableView<ApprovalDepartmentPolicy>` | 保守路径，待所属owner合同核对 |
 | `lib/features/basic_data/pages/account_detail_page.dart:1128` | `MasterDataTableView<AccountStatementRow>` | 保守路径，待所属owner合同核对 |
@@ -52,53 +52,53 @@ AST扫描 lib/**/*.dart，排除注释/类型声明；当前共 235 个构造调
 | `lib/features/basic_data/widgets/master_entity_detail_pane.dart:1966` | `MasterDataTableView<TItem>` | 显式条件启用 |
 | `lib/features/basic_data/widgets/mould_picker_field.dart:654` | `MasterDataTableView<MouldListItem>` | 保守路径，待所属owner合同核对 |
 | `lib/features/basic_data/widgets/uten_goods_picker.dart:1835` | `MasterDataTableView<GoodsListItem>` | 保守路径，待所属owner合同核对 |
-| `lib/features/basic_data/widgets/uten_master_picker.dart:766` | `MasterDataTableView<TItem>` | 保守路径，待所属owner合同核对 |
+| `lib/features/basic_data/widgets/uten_master_picker.dart:768` | `MasterDataTableView<TItem>` | 保守路径，待所属owner合同核对 |
 | `lib/features/basic_data/widgets/warehouse_inventory_panel.dart:512` | `MasterDataTableView<InstantInventoryRow>` | 保守路径，待所属owner合同核对 |
 | `lib/features/department/widgets/department_overview_pane.dart:570` | `MasterDataTableView<EmployeeSummary>` | 保守路径，待所属owner合同核对 |
 | `lib/features/department/widgets/uten_position_entry_picker.dart:383` | `MasterDataTableView<Position>` | 保守路径，待所属owner合同核对 |
-| `lib/features/department/widgets/uten_position_picker.dart:241` | `MasterDataTableView<Position>` | 保守路径，待所属owner合同核对 |
+| `lib/features/department/widgets/uten_position_picker.dart:229` | `MasterDataTableView<Position>` | 保守路径，待所属owner合同核对 |
 | `lib/features/employee/pages/employee_list_page.dart:323` | `MasterDataTableView<EmployeeSummary>` | 保守路径，待所属owner合同核对 |
-| `lib/features/employee/widgets/department_employee_picker.dart:727` | `MasterDataTableView<UtenEmployeePickerItem>` | 保守路径，待所属owner合同核对 |
+| `lib/features/employee/widgets/department_employee_picker.dart:705` | `MasterDataTableView<UtenEmployeePickerItem>` | 保守路径，待所属owner合同核对 |
 | `lib/features/expense/pages/expense_approval_detail_page.dart:610` | `MasterDataTableView<ExpenseItem>` | 保守路径，待所属owner合同核对 |
 | `lib/features/expense/pages/expense_approval_list_page.dart:441` | `MasterDataTableView<ExpenseClaim>` | 保守路径，待所属owner合同核对 |
 | `lib/features/expense/pages/expense_detail_page.dart:609` | `MasterDataTableView<ExpenseItem>` | 保守路径，待所属owner合同核对 |
 | `lib/features/expense/pages/expense_list_page.dart:264` | `MasterDataTableView<ExpenseClaim>` | 保守路径，待所属owner合同核对 |
-| `lib/features/expense/widgets/expense_invoice_section.dart:151` | `MasterDataTableView<ExpenseClaimInvoice>` | 保守路径，待所属owner合同核对 |
-| `lib/features/finance/pages/finance_account_flow_page.dart:553` | `MasterDataTableView<Map<String, dynamic>>` | 保守路径，待所属owner合同核对 |
+| `lib/features/expense/widgets/expense_invoice_section.dart:149` | `MasterDataTableView<ExpenseClaimInvoice>` | 保守路径，待所属owner合同核对 |
+| `lib/features/finance/pages/finance_account_flow_page.dart:559` | `MasterDataTableView<Map<String, dynamic>>` | 保守路径，待所属owner合同核对 |
 | `lib/features/finance/pages/finance_application_settings_page.dart:237` | `MasterDataTableView<Map<String, dynamic>>` | 保守路径，待所属owner合同核对 |
 | `lib/features/finance/pages/finance_applications_page.dart:418` | `MasterDataTableView<Map<String, dynamic>>` | 保守路径，待所属owner合同核对 |
 | `lib/features/finance/pages/finance_applications_page.dart:690` | `MasterDataTableView<Map<String, dynamic>>` | 保守路径，待所属owner合同核对 |
-| `lib/features/finance/pages/finance_ar_ap_overview_page.dart:1104` | `MasterDataTableView<Map<String, dynamic>>` | 保守路径，待所属owner合同核对 |
+| `lib/features/finance/pages/finance_ar_ap_overview_page.dart:1112` | `MasterDataTableView<Map<String, dynamic>>` | 保守路径，待所属owner合同核对 |
 | `lib/features/finance/pages/finance_ar_ap_page.dart:726` | `MasterDataTableView<ArApLedgerItem>` | 保守路径，待所属owner合同核对 |
-| `lib/features/finance/pages/finance_doc_detail_page.dart:1479` | `MasterDataTableView<FinanceDocItem>` | 保守路径，待所属owner合同核对 |
+| `lib/features/finance/pages/finance_doc_detail_page.dart:1466` | `MasterDataTableView<FinanceDocItem>` | 保守路径，待所属owner合同核对 |
 | `lib/features/finance/pages/finance_doc_list_page.dart:743` | `MasterDataTableView<FinanceDocListItem>` | 保守路径，待所属owner合同核对 |
 | `lib/features/finance/pages/finance_procurement_approval_tasks_page.dart:934` | `MasterDataTableView<FinanceProcurementApprovalTask>` | 保守路径，待所属owner合同核对 |
 | `lib/features/finance/pages/finance_quote_review_list_page.dart:481` | `MasterDataTableView<SalesQuoteFinanceListItem>` | 保守路径，待所属owner合同核对 |
 | `lib/features/finance/pages/finance_quote_review_page.dart:1394` | `MasterDataTableView<SalesQuoteFinanceLine>` | 保守路径，待所属owner合同核对 |
 | `lib/features/finance/pages/finance_reconciliation_page.dart:454` | `MasterDataTableView<ReconciliationItem>` | 保守路径，待所属owner合同核对 |
-| `lib/features/finance/pages/finance_report_table_page.dart:1692` | `MasterDataTableView<Map<String, dynamic>>` | 保守路径，待所属owner合同核对 |
+| `lib/features/finance/pages/finance_report_table_page.dart:1695` | `MasterDataTableView<Map<String, dynamic>>` | 保守路径，待所属owner合同核对 |
 | `lib/features/finance/pages/finance_sales_order_confirmation_page.dart:1052` | `MasterDataTableView<SalesOrderFinancePendingItem>` | 保守路径，待所属owner合同核对 |
 | `lib/features/finance/pages/finance_sales_order_review_page.dart:1326` | `MasterDataTableView<SalesOrderFinanceReviewLine>` | 保守路径，待所属owner合同核对 |
 | `lib/features/finance/pages/finance_sales_shipment_audit_review_page.dart:1475` | `MasterDataTableView<SalesDocItem>` | 保守路径，待所属owner合同核对 |
-| `lib/features/finance/pages/finance_statement_page.dart:658` | `MasterDataTableView<Map<String, dynamic>>` | 保守路径，待所属owner合同核对 |
+| `lib/features/finance/pages/finance_statement_page.dart:650` | `MasterDataTableView<Map<String, dynamic>>` | 保守路径，待所属owner合同核对 |
 | `lib/features/finance/payables/pages/finance_payables_page.dart:1036` | `MasterDataTableView<FinancePayableItem>` | 保守路径，待所属owner合同核对 |
 | `lib/features/finance/payables/widgets/subcontract_loss_claim_detail_panel.dart:424` | `MasterDataTableView<SubcontractLossClaimLine>` | 保守路径，待所属owner合同核对 |
 | `lib/features/finance/payables/widgets/subcontract_loss_claim_panel.dart:400` | `MasterDataTableView<SubcontractLossClaimSummary>` | 保守路径，待所属owner合同核对 |
-| `lib/features/finance/payables/widgets/supplier_settlement_panel.dart:437` | `MasterDataTableView<SupplierSettlementSummary>` | 保守路径，待所属owner合同核对 |
-| `lib/features/finance/payables/widgets/supplier_settlement_panel.dart:752` | `MasterDataTableView<SupplierSettlementLine>` | 保守路径，待所属owner合同核对 |
-| `lib/features/finance/widgets/finance_account_picker_panel.dart:145` | `MasterDataTableView<FinanceAccountReference>` | 保守路径，待所属owner合同核对 |
-| `lib/features/finance/widgets/finance_accounting_import_dialog.dart:1205` | `MasterDataTableView<Map<String, dynamic>>` | 保守路径，待所属owner合同核对 |
-| `lib/features/finance/widgets/finance_actual_receipt_context.dart:136` | `MasterDataTableView<CustomerActualReceipt>` | 保守路径，待所属owner合同核对 |
+| `lib/features/finance/payables/widgets/supplier_settlement_panel.dart:430` | `MasterDataTableView<SupplierSettlementSummary>` | 保守路径，待所属owner合同核对 |
+| `lib/features/finance/payables/widgets/supplier_settlement_panel.dart:774` | `MasterDataTableView<SupplierSettlementLine>` | 保守路径，待所属owner合同核对 |
+| `lib/features/finance/widgets/finance_account_picker_panel.dart:135` | `MasterDataTableView<FinanceAccountReference>` | 保守路径，待所属owner合同核对 |
+| `lib/features/finance/widgets/finance_accounting_import_dialog.dart:1206` | `MasterDataTableView<Map<String, dynamic>>` | 保守路径，待所属owner合同核对 |
+| `lib/features/finance/widgets/finance_actual_receipt_context.dart:135` | `MasterDataTableView<CustomerActualReceipt>` | 保守路径，待所属owner合同核对 |
 | `lib/features/finance/widgets/finance_application_detail.dart:208` | `MasterDataTableView<Map<String, dynamic>>` | 保守路径，待所属owner合同核对 |
 | `lib/features/finance/widgets/finance_asset_detail.dart:653` | `MasterDataTableView<FinanceAssetScheduleLine>` | 保守路径，待所属owner合同核对 |
 | `lib/features/finance/widgets/finance_asset_ledger_panel.dart:571` | `MasterDataTableView<FinanceAssetSummary>` | 保守路径，待所属owner合同核对 |
-| `lib/features/finance/widgets/finance_asset_opening_group_dialog.dart:1106` | `MasterDataTableView<Map<String, dynamic>>` | 保守路径，待所属owner合同核对 |
-| `lib/features/finance/widgets/finance_asset_opening_group_dialog.dart:1894` | `MasterDataTableView<Map<String, dynamic>>` | 保守路径，待所属owner合同核对 |
-| `lib/features/finance/widgets/finance_asset_posting_panel.dart:747` | `MasterDataTableView<AssetPostingLine>` | 保守路径，待所属owner合同核对 |
+| `lib/features/finance/widgets/finance_asset_opening_group_dialog.dart:1107` | `MasterDataTableView<Map<String, dynamic>>` | 保守路径，待所属owner合同核对 |
+| `lib/features/finance/widgets/finance_asset_opening_group_dialog.dart:1895` | `MasterDataTableView<Map<String, dynamic>>` | 保守路径，待所属owner合同核对 |
+| `lib/features/finance/widgets/finance_asset_posting_panel.dart:746` | `MasterDataTableView<AssetPostingLine>` | 保守路径，待所属owner合同核对 |
 | `lib/features/finance/widgets/finance_chart_dialog.dart:429` | `MasterDataTableView<Map<String, dynamic>>` | 保守路径，待所属owner合同核对 |
 | `lib/features/finance/widgets/finance_chart_import_workbench.dart:870` | `MasterDataTableView<Map<String, dynamic>>` | 保守路径，待所属owner合同核对 |
-| `lib/features/finance/widgets/finance_expense_analysis_dialog.dart:523` | `MasterDataTableView<Map<String, dynamic>>` | 保守路径，待所属owner合同核对 |
-| `lib/features/finance/widgets/finance_payroll_preparation.dart:1353` | `MasterDataTableView<Map<String, dynamic>>` | 保守路径，待所属owner合同核对 |
+| `lib/features/finance/widgets/finance_expense_analysis_dialog.dart:524` | `MasterDataTableView<Map<String, dynamic>>` | 保守路径，待所属owner合同核对 |
+| `lib/features/finance/widgets/finance_payroll_preparation.dart:1354` | `MasterDataTableView<Map<String, dynamic>>` | 保守路径，待所属owner合同核对 |
 | `lib/features/finance/widgets/finance_source_table.dart:26` | `MasterDataTableView<Map<String, dynamic>>` | 保守路径，待所属owner合同核对 |
 | `lib/features/finance/widgets/inventory_cost_posting_dialog.dart:669` | `MasterDataTableView<Map<String, dynamic>>` | 保守路径，待所属owner合同核对 |
 | `lib/features/hr_profile/pages/hr_profile_changes_list_page.dart:441` | `MasterDataTableView<HrProfileChangeListItem>` | 保守路径，待所属owner合同核对 |
@@ -123,7 +123,7 @@ AST扫描 lib/**/*.dart，排除注释/类型声明；当前共 235 个构造调
 | `lib/features/production/pages/production_daily_report_detail_page.dart:1527` | `MasterDataTableView<ProductionDailyReportDetailGroupRow>` | 保守路径，待所属owner合同核对 |
 | `lib/features/production/pages/production_daily_report_list_page.dart:413` | `MasterDataTableView<ProductionDailyReportListItem>` | 保守路径，待所属owner合同核对 |
 | `lib/features/production/pages/production_draw_request_page.dart:653` | `MasterDataTableView<ProductionDrawRequestSummary>` | 保守路径，待所属owner合同核对 |
-| `lib/features/production/pages/production_draw_request_page.dart:795` | `MasterDataTableView<ProductionDrawRequestLine>` | 保守路径，待所属owner合同核对 |
+| `lib/features/production/pages/production_draw_request_page.dart:807` | `MasterDataTableView<ProductionDrawRequestLine>` | 保守路径，待所属owner合同核对 |
 | `lib/features/production/pages/production_execution_batch_page.dart:804` | `MasterDataTableView<ProductionDrawRequestSummary>` | 保守路径，待所属owner合同核对 |
 | `lib/features/production/pages/production_material_analysis_history_page.dart:385` | `MasterDataTableView<MaterialAnalysisListItem>` | 保守路径，待所属owner合同核对 |
 | `lib/features/production/pages/production_material_analysis_page.dart:2827` | `MasterDataTableView<MaterialAnalysisSourceInput>` | 保守路径，待所属owner合同核对 |
@@ -154,7 +154,7 @@ AST扫描 lib/**/*.dart，排除注释/类型声明；当前共 235 个构造调
 | `lib/features/quality/pages/production_fqc_handling_page.dart:2100` | `MasterDataTableView<_FactRow>` | 保守路径，待所属owner合同核对 |
 | `lib/features/quality/pages/production_fqc_handling_page.dart:2239` | `MasterDataTableView<FqcReportRow>` | 保守路径，待所属owner合同核对 |
 | `lib/features/quality/pages/production_fqc_inspections_page.dart:427` | `MasterDataTableView<ProductionFqcInspection>` | 保守路径，待所属owner合同核对 |
-| `lib/features/quality/pages/quality_batch_approval_page.dart:1050` | `MasterDataTableView<_ApprovalRow>` | 保守路径，待所属owner合同核对 |
+| `lib/features/quality/pages/quality_batch_approval_page.dart:1040` | `MasterDataTableView<_ApprovalRow>` | 保守路径，待所属owner合同核对 |
 | `lib/features/quality/pages/quality_inspection_records_page.dart:637` | `MasterDataTableView<QualityInspectionRecord>` | 保守路径，待所属owner合同核对 |
 | `lib/features/quality/pages/quality_inspection_records_page.dart:1145` | `MasterDataTableView<_DetailQuantityRow>` | 保守路径，待所属owner合同核对 |
 | `lib/features/quality/pages/quality_inspection_records_page.dart:1272` | `MasterDataTableView<_DetailField>` | 保守路径，待所属owner合同核对 |
@@ -162,14 +162,14 @@ AST扫描 lib/**/*.dart，排除注释/类型声明；当前共 235 个构造调
 | `lib/features/quality/pages/quality_pending_disposal_page.dart:1676` | `MasterDataTableView<_ReceiptHeaderRow>` | 保守路径，待所属owner合同核对 |
 | `lib/features/quality/pages/quality_pending_disposal_page.dart:1757` | `MasterDataTableView<ProcurementInspectionItem>` | 保守路径，待所属owner合同核对 |
 | `lib/features/rd_task/pages/rd_task_page.dart:996` | `MasterDataTableView<RdTaskRow>` | 保守路径，待所属owner合同核对 |
-| `lib/features/sales/pages/sales_doc_detail_page.dart:2419` | `MasterDataTableView<SalesDocItem>` | 保守路径，待所属owner合同核对 |
+| `lib/features/sales/pages/sales_doc_detail_page.dart:2420` | `MasterDataTableView<SalesDocItem>` | 保守路径，待所属owner合同核对 |
 | `lib/features/sales/pages/sales_doc_list_page.dart:1552` | `MasterDataTableView<SalesDocListItem>` | 保守路径，待所属owner合同核对 |
 | `lib/features/sales/pages/sales_manager_review_page.dart:743` | `MasterDataTableView<SalesManagerReviewTask>` | 保守路径，待所属owner合同核对 |
 | `lib/features/sales/pages/sales_order_progress_page.dart:762` | `MasterDataTableView<SalesOrderProgressRow>` | 保守路径，待所属owner合同核对 |
 | `lib/features/sales/pages/sales_report_page.dart:574` | `MasterDataTableView<Map<String, dynamic>>` | 保守路径，待所属owner合同核对 |
 | `lib/features/sales/pages/sales_report_page.dart:1069` | `MasterDataTableView<Map<String, dynamic>>` | 保守路径，待所属owner合同核对 |
 | `lib/features/sales/widgets/sales_plan_progress_panel.dart:448` | `MasterDataTableView<OrderPlanProgressLine>` | 保守路径，待所属owner合同核对 |
-| `lib/features/sales/widgets/sales_shipment_task_workbench.dart:1007` | `MasterDataTableView<SalesDocListItem>` | 保守路径，待所属owner合同核对 |
+| `lib/features/sales/widgets/sales_shipment_task_workbench.dart:1008` | `MasterDataTableView<SalesDocListItem>` | 保守路径，待所属owner合同核对 |
 | `lib/features/security/pages/security_blacklist_page.dart:169` | `MasterDataTableView<VisitorBlacklistItem>` | 保守路径，待所属owner合同核对 |
 | `lib/features/stock/counts/pages/stock_count_review_page.dart:818` | `MasterDataTableView<StockCountRequest>` | 保守路径，待所属owner合同核对 |
 | `lib/features/stock/counts/pages/stock_count_review_page.dart:1062` | `MasterDataTableView<StockCountRequestLine>` | 保守路径，待所属owner合同核对 |
@@ -199,7 +199,7 @@ AST扫描 lib/**/*.dart，排除注释/类型声明；当前共 235 个构造调
 | `lib/features/warehouse/materialbin/widgets/workshop_material_summary_table.dart:36` | `MasterDataTableView<Map<String, dynamic>>` | 保守路径，待所属owner合同核对 |
 | `lib/features/warehouse/materialbin/widgets/workshop_material_task_center.dart:275` | `MasterDataTableView<_BinStatusRow>` | 保守路径，待所属owner合同核对 |
 | `lib/features/warehouse/materialbin/widgets/workshop_request_material_picker.dart:399` | `MasterDataTableView<WmMaterialOption>` | 保守路径，待所属owner合同核对 |
-| `lib/features/warehouse/pages/production_finished_batch_stock_in_page.dart:514` | `MasterDataTableView<ProductionFinishedInboundTask>` | 保守路径，待所属owner合同核对 |
+| `lib/features/warehouse/pages/production_finished_batch_stock_in_page.dart:503` | `MasterDataTableView<ProductionFinishedInboundTask>` | 保守路径，待所属owner合同核对 |
 | `lib/features/warehouse/pages/production_material_discovery_page.dart:636` | `MasterDataTableView<DiscoveryMaterialRow>` | 保守路径，待所属owner合同核对 |
 | `lib/features/warehouse/pages/shelf_label_page.dart:553` | `MasterDataTableView<ShelfLabelRow>` | 保守路径，待所属owner合同核对 |
 | `lib/features/warehouse/pages/stock_doc_detail_page.dart:1624` | `MasterDataTableView<StockDocItem>` | 保守路径，待所属owner合同核对 |

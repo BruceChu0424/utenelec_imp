@@ -1,0 +1,11 @@
+test_crlf_and_lf_produce_identical_inventory_without_rewriting_sources (test_business_inventory.BusinessInventoryTest.test_crlf_and_lf_produce_identical_inventory_without_rewriting_sources) ... ok
+test_direct_part_page_keeps_library_route_alias_and_visibility (test_business_inventory.BusinessInventoryTest.test_direct_part_page_keeps_library_route_alias_and_visibility) ... ok
+test_dynamic_factory_does_not_become_a_proven_page_binding (test_business_inventory.BusinessInventoryTest.test_dynamic_factory_does_not_become_a_proven_page_binding) ... ok
+test_plural_companion_keeps_multiple_classes_routes_named_constructor_and_old_source (test_business_inventory.BusinessInventoryTest.test_plural_companion_keeps_multiple_classes_routes_named_constructor_and_old_source) ... ok
+test_registered_route_fragment_has_its_own_source_but_import_only_routes_do_not_bind (test_business_inventory.BusinessInventoryTest.test_registered_route_fragment_has_its_own_source_but_import_only_routes_do_not_bind) ... ok
+test_singular_and_plural_sources_share_one_sorted_discovery_without_helpers (test_business_inventory.BusinessInventoryTest.test_singular_and_plural_sources_share_one_sorted_discovery_without_helpers) ... ok
+
+----------------------------------------------------------------------
+Ran 6 tests in 0.411s
+
+OK

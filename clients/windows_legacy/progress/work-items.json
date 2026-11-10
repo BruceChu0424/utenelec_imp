@@ -8,7 +8,7 @@
     "mergeMainAllowed": false,
     "productionDeploymentAllowed": false
   },
-  "inventorySha256": "a48d245a83dcd9fe4a5e67a8a585bf976dae0977172d26d0d4c555ff73df2393",
+  "inventorySha256": "9e2c8ec959c037e2ddc6119324c2a864a7327256e7b2a66de5acda647bbc2e8e",
   "baselineCounts": {
     "businessPagePackages": 230,
     "retainedBusinessPagePackages": 3,

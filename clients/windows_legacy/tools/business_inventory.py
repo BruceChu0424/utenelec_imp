@@ -120,7 +120,9 @@ class Sources:
         if source in self.units: return self.units[source]
         path = ROOT / source
         if not path.is_file(): return None
-        data = path.read_bytes()
+        # Git may check the same source out as LF or CRLF. Parse and hash one
+        # canonical byte sequence without changing the source file on disk.
+        data = path.read_bytes().replace(b"\r\n", b"\n")
         text = data.decode("utf-8-sig")
         code, mask, strings = _lex(text)
         result = Unit(source, text, code, mask, strings, hashlib.sha256(data).hexdigest())
@@ -519,6 +521,8 @@ def collect() -> dict:
                       "expression": retired_guard.group(0), "sha256": access_policy.sha256} if retired_guard else None
     unresolved_endpoints = sorted({item["symbol"] for page in pages for item in page["apiEndpointReferences"] if item["template"] is None})
     return {"schemaVersion": 1, "status": "source-inventory-only", "fullWorkflowCount": None,
+        "sourceFingerprintPolicy": {"version": 1, "lineEndings": "CRLF-to-LF before parsing and SHA-256",
+                                    "sourceFilesModified": False},
         "summary": {"pageFiles": len(pages), "featureGroups": len(counts), "controllerFiles": len(controllers),
             "routeConstructorCandidates": len(routes), "pagesWithDirectRouterBinding": sum(bool(page["routerBindings"]) for page in pages),
             "pagesWithPossibleAliases": sum(bool(page["possibleRedirectAliases"]) or len(page["routerBindings"]) > 1 for page in pages),

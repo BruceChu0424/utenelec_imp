@@ -2,6 +2,11 @@
   "schemaVersion": 1,
   "status": "source-inventory-only",
   "fullWorkflowCount": null,
+  "sourceFingerprintPolicy": {
+    "version": 1,
+    "lineEndings": "CRLF-to-LF before parsing and SHA-256",
+    "sourceFilesModified": false
+  },
   "summary": {
     "pageFiles": 230,
     "featureGroups": 36,

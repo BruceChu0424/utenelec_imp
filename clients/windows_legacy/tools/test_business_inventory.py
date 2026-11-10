@@ -39,6 +39,34 @@ class BusinessInventoryTest(unittest.TestCase):
         self.assertFalse(result["releaseReady"])
         self.assertEqual(0, result["summary"]["fullyMigratedBusinessWorkflows"])
 
+    def test_crlf_and_lf_produce_identical_inventory_without_rewriting_sources(self):
+        self.write("lib/features/fixture/pages/old_page.dart", "class OldPage {\n  void save() {}\n}\n")
+        self.write(inventory.ROUTER, """import '../../features/fixture/pages/old_page.dart';
+final router = GoRouter(routes: [
+  GoRoute(path: RouteName.old,
+    builder: (_, _) => OldPage()),
+]);
+""")
+        self.write("server/src/main/java/com/uten/imp/features/fixture/FixtureController.java", """@RestController
+@RequestMapping("/api/fixture")
+class FixtureController {
+  @GetMapping("/rows")
+  String rows() { return "fixture"; }
+}
+""")
+        canonical = {path: path.read_bytes().replace(b"\r\n", b"\n")
+                     for path in self.root.rglob("*") if path.is_file()}
+        outputs = []
+        for ending in (b"\n", b"\r\n"):
+            raw = {path: data.replace(b"\n", ending) for path, data in canonical.items()}
+            for path, data in raw.items(): path.write_bytes(data)
+            outputs.append(inventory.collect())
+            self.assertEqual(raw, {path: path.read_bytes() for path in raw},
+                             "Inventory must never rewrite the inspected source files")
+        self.assertEqual(outputs[0], outputs[1], "All parsed evidence and source hashes must be checkout independent")
+        self.assertEqual({"version": 1, "lineEndings": "CRLF-to-LF before parsing and SHA-256",
+                          "sourceFilesModified": False}, outputs[0]["sourceFingerprintPolicy"])
+
     def test_plural_companion_keeps_multiple_classes_routes_named_constructor_and_old_source(self):
         old = "lib/features/fixture/pages/old_page.dart"
         plural = "lib/features/fixture/pages/bundle_pages.dart"

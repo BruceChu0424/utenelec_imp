@@ -1,0 +1,14 @@
+{
+  "status": "PASS",
+  "mainRootReadOnly": "D:\\Projects\\uten_imp",
+  "collectorSource": "candidate owning business_inventory.py",
+  "mainFilesModified": false,
+  "canonicalEntireJsonEqual": true,
+  "indexedSourceFiles": 1761,
+  "canonicalInventorySha256": "9e2c8ec959c037e2ddc6119324c2a864a7327256e7b2a66de5acda647bbc2e8e",
+  "policy": {
+    "version": 1,
+    "lineEndings": "CRLF-to-LF before parsing and SHA-256",
+    "sourceFilesModified": false
+  }
+}

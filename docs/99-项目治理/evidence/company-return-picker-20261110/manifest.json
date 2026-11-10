@@ -62,5 +62,7 @@
     "company deployment and company real-data UAT not executed",
     "target hardware / Win7 UAT not executed",
     "no push, deployment, formal packaging or company database write"
-  ]
+  ],
+  "sourceSha256Mode": "UTF-8 text with CRLF normalized to LF; no BOM",
+  "evidenceSha256Mode": "raw bytes preserved by task-local .gitattributes"
 }

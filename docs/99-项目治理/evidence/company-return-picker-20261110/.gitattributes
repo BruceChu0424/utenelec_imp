@@ -1,0 +1,4 @@
+*.txt -text
+chrome-isolation.json -text
+manifest.json -text
+reproduce_chrome.py -text

@@ -171,8 +171,19 @@
     "schemaPlatformColumns": 32
   },
   "localMain": {
-    "mergeObserved": false,
-    "reason": "All acceptance gates completed; final local branch update follows this record."
+    "mergeObserved": true,
+    "observedMergeHead": "75d2a2c0cb11430d031a3b633a0621a452f14d01",
+    "branch": "main",
+    "observedAtUtc": "2026-11-10T23:08:39.603966+00:00",
+    "trackedCleanAtObservation": true,
+    "untrackedContentPreserved": [
+      "tmp/"
+    ],
+    "parallelWorkingCodeBytesPreserved": true,
+    "validatedProductTreesMatch": true,
+    "cloudPush": false,
+    "companyDeployment": false,
+    "formalPackaging": false
   },
   "notImplemented": [
     "per-issue personnel association; feasibility only",

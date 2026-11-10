@@ -1,0 +1,47 @@
+[INFO] Scanning for projects...
+[INFO] 
+[INFO] ----------------------< com.uten:uten-imp-server >----------------------
+[INFO] Building uten-imp-server 0.1.0
+[INFO]   from pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- surefire:3.5.6:test (default-cli) @ uten-imp-server ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running com.uten.imp.features.master.goods.costing.GoodsCostWorkbookParserTest
+[ERROR] Tests run: 1, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 1.552 s <<< FAILURE! -- in com.uten.imp.features.master.goods.costing.GoodsCostWorkbookParserTest
+[ERROR] com.uten.imp.features.master.goods.costing.GoodsCostWorkbookParserTest.hiddenCostInputsCannotDisappearBeforeColumnValidation -- Time elapsed: 1.518 s <<< FAILURE!
+java.lang.AssertionError: 
+
+Expecting code to raise a throwable.
+	at com.uten.imp.features.master.goods.costing.GoodsCostWorkbookParserTest.hiddenCostInputsCannotDisappearBeforeColumnValidation(GoodsCostWorkbookParserTest.java:22)
+
+[INFO] 
+[INFO] Results:
+[INFO] 
+[ERROR] Failures: 
+[ERROR]   GoodsCostWorkbookParserTest.hiddenCostInputsCannotDisappearBeforeColumnValidation:22 
+Expecting code to raise a throwable.
+[INFO] 
+[ERROR] Tests run: 1, Failures: 1, Errors: 0, Skipped: 0
+[INFO] 
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD FAILURE
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  9.058 s
+[INFO] Finished at: 2026-11-10T13:55:57-07:00
+[INFO] ------------------------------------------------------------------------
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.5.6:test (default-cli) on project uten-imp-server: There are test failures.
+[ERROR] 
+[ERROR] See D:\Projects\uten_imp_worktrees\company-return-picker-20261110\server\target-return-import\surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException

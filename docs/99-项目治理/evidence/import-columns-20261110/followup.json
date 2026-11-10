@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "evidenceId": "E-IMPORT-COLUMNS-FOLLOWUP-20261110",
+  "productCommits": [
+    "4eefc0db3c50048f4771d77a3014ab17682bec87",
+    "845e42d62211b01b09bf96e716eae2b61c4ccca7"
+  ],
+  "testCommits": [
+    "dcd0fde4a4737ab27a0606f72bf1ea9e0470ab46",
+    "8e194c8f99b107cd338a1d7c4acb789029188e7e",
+    "60b1da2a15510e13d5971462ac5a9f596cb38881",
+    "a1832b3596e68c6cd0d0e29ed55913b12c761edf",
+    "8c008ce8a23ce8f087dd3f946d6a523ee4cae6bc"
+  ],
+  "results": {
+    "notesBefore": "real PostgreSQL: committed receipt hidden by period lock",
+    "costHiddenAfter": "5 parser tests passed",
+    "costHiddenBefore": "1 true assertion failure: hidden input accepted",
+    "notesAfter": "1 real PostgreSQL test passed: no legacy writes, original receipt after period lock, one native note, cross-owner refused",
+    "independentPeer": "original visible/hidden example both rejected after fix; 10-case boundary matrix passed",
+    "otherNewDbOwners": "javac compiled; root final affected-owner execution pending"
+  },
+  "rawSha256": {
+    "after-fix.txt": "5be79408cd86e61a4b22abd208f03d4497ed6b5a217de57c5b098724d5747dda",
+    "before-fix.txt": "bf690e4b4cd74b0b36dd6ae2b55f33c6ee41ff6abf4af2530e66526d6fd27c2a",
+    "first-integration.txt": "e7c3cc3a5159c9e33a6358210c49f4a94602e304c0170f727fde86c44deccd10",
+    "hidden-after.txt": "0bcd6b343098daa05053708cf97371835ed4ce9e0f25bfe64ffb4a22f4b15025",
+    "hidden-before.txt": "76caee4bc26452e017f0e516c1b2be64b3a58cc01169d8f1405f7c2dcbb5bf2c",
+    "notes-receipt-after.txt": "7fdd6551a90c1547f1beddc478944c2ad723a6e413b7d1c2a29321cac9b49446",
+    "notes-receipt-before-report.txt": "3048a0eb0086f2ebb9132a4c7d871897f2018021232aa48900ace954204118a8",
+    "notes-receipt-before.txt": "d46add81140f55a7bff6cc8b4ac25dfb7b5ed337a4e7a093913bb4b7f0de5593",
+    "schema-classpath.txt": "defbf2b9c9afeb82113a94a525975d528b12a59781041342bcb53b79eb7f0108",
+    "schema-deduplicated.txt": "5623bfc11cd89afc24dbaf0102254ef6a1f8317be715920511dfef9d12bbbcbd",
+    "schema-javac.txt": "aef64bd15b7294804e0d92bc42fcc2cd7d3c256afb4a2d27fbea396fbff72731",
+    "schema-test-javac.txt": "aef64bd15b7294804e0d92bc42fcc2cd7d3c256afb4a2d27fbea396fbff72731",
+    "second-integration.txt": "97f5fcd4780906f16c459d203065caa27af8fa5e4835bf2a179efe6e5ea11f18",
+    "peer/after.txt": "24ebfe3482c053b9015dd63e8cb307d81234494ad8b2655da6b077c47581eee6",
+    "peer/before.txt": "305865e9784a0e96004ce9c15a7e1b683930bd1a875ca209a2fb2d4fdbc62b56",
+    "peer/boundary-matrix.txt": "bc52dba04e55ed6fb0298a53596d9b2b41c73919e28f22164a799a3454c95665",
+    "peer/CostBoundaryMatrix.java": "c7ec4b2bc81f91a51d95f008f16785b3e5268b18b4789e39e9fa2fc5d720493e",
+    "peer/CostColumnReview.java": "4adfe30cae7a099dbaa0c6b5af966165dd34a62fc0174ab700f3a0a4c12586d4"
+  }
+}

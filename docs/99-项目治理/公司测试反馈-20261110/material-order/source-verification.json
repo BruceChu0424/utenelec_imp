@@ -1,0 +1,36 @@
+{
+  "baseline": "86dffb9db",
+  "uiCommit": "2aef4d1d2",
+  "backendCommit": "02b3c080c",
+  "dbTests": 4,
+  "previewTests": 41,
+  "compatibilityTests": 3,
+  "failed": 0,
+  "skipped": 0,
+  "sources": [
+    {
+      "path": "lib/features/production/pages/material_analysis_aggregate_submission.dart",
+      "sha256": "0e254abe0aa48c4dd054be654f8fb9e786789c81284050e03b38a90b4d761855"
+    },
+    {
+      "path": "lib/features/production/pages/material_analysis_aggregate_table.dart",
+      "sha256": "8f490dded12857b14f432dae8b8739a507cd0e543f81fbd35dbc4e7c903dfef1"
+    },
+    {
+      "path": "lib/features/production/pages/material_analysis_material_table.dart",
+      "sha256": "8643b6e42ac35471cf2654f6bfe205522c99a7db412c0a12c7729486eba1228e"
+    },
+    {
+      "path": "test/features/production/pages/material_analysis_order_page_test.dart",
+      "sha256": "4896f76d8f23e39ca87d191199d4e281c274131bccf83e939a3e35ffaafb03c9"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/production/analysis/AggregateMaterialOrderWriteService.java",
+      "sha256": "4aabae2f0d12fbf8c47c7a8df263cb539c0f0dcae0acbf1ca93da5f50d5c58ee"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/businesschain/CompanyMaterialOrderQuantityEndToEndTest.java",
+      "sha256": "01effb2123bc00cf24ce594fb6f7aef47791882f23bbefc063e3b476cbd4dfd3"
+    }
+  ]
+}

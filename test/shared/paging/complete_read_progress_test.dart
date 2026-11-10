@@ -266,10 +266,13 @@ void main() {
       // Cursor history batches: a small first batch, then continuations at the
       // bounded maximum (2026-11-09: 200→1000, so this 450-row history completes
       // in one 400-row continuation after the first 50).
-      final plan = CompleteReadBatchPlan.progressive;
+      const plan = CompleteReadBatchPlan.progressive;
       final expectedLoaded = <int>[plan.firstBatchSize];
-      for (var loaded = plan.firstBatchSize; loaded < 450;
-          loaded += plan.maxBatchSize) {
+      for (
+        var loaded = plan.firstBatchSize;
+        loaded < 450;
+        loaded += plan.maxBatchSize
+      ) {
         expectedLoaded.add((loaded + plan.maxBatchSize).clamp(0, 450));
       }
       expect(batches.map((e) => e.loaded), expectedLoaded);

@@ -329,8 +329,9 @@ final class _MaterialAggregateSubmission {
             for (final entry in confirmationDrafts.entries) {
               final draft = entry.value;
               if (!draft.productFlow ||
-                  !identical(table.drafts[entry.key], draft))
+                  !identical(table.drafts[entry.key], draft)) {
                 continue;
+              }
               table.drafts.remove(entry.key);
               for (final line in draft.lineIds) {
                 if (table._draftByLine[line] == entry.key) {

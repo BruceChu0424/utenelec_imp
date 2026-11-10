@@ -1,0 +1,14 @@
+{
+  "workPackages": 373,
+  "protectedFields": [
+    "status",
+    "owner",
+    "definitionOfDone",
+    "dependencies",
+    "nativeTargets"
+  ],
+  "beforeSha256": "21cf0f8e0f439ab7a58e1c1b9c0d91c56e3736d0e10f6967babf9f6d0b50357e",
+  "afterSha256": "21cf0f8e0f439ab7a58e1c1b9c0d91c56e3736d0e10f6967babf9f6d0b50357e",
+  "preserved": true,
+  "nativeBusinessStatusElevated": false
+}

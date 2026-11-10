@@ -478,7 +478,7 @@ public class ActualOutputSupplementService {
                 Boolean.TRUE.equals(recovery.get("requires_material")),uuid(c,"plan_id"),recoveryId==null,
                 rate,planned.multiply(BigDecimal.ONE.add(rate)).setScale(4,RoundingMode.DOWN),BigDecimal.ZERO,BigDecimal.ZERO,
                 DailyReportWeightInputs.kgPerBaseUnit((BigDecimal)c.get("goods_unit_weight"),
-                        (String)c.get("goods_weight_mass_unit")));
+                        (String)c.get("goods_weight_mass_unit")),null);
     }
     /** Identity metadata for the authorized captured input, independent of current free quota. */
     private List<InputSource> inputSources(com.uten.imp.features.production.dailyreport.dto.DailyReportSaveRequest input) {

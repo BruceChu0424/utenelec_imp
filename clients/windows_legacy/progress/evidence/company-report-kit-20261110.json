@@ -1,0 +1,96 @@
+{
+  "schemaVersion": 1,
+  "evidenceId": "E-COMPANY-REPORT-KIT-20261110",
+  "baseCommit": "86dffb9db",
+  "scope": "公司网页测试图2/图3；多人领料与报工仅可行性评估",
+  "classification": [
+    "backend business rule",
+    "shared contract",
+    "Flutter presentation"
+  ],
+  "rootCauses": [
+    {
+      "issue": "partial issue looks like full issue while running",
+      "source": "lib/features/production/models/production_flow_stage.dart",
+      "fact": "IN_PROGRESS used active tone regardless of per-material issue facts; preparing view alone distinguished partial supply."
+    },
+    {
+      "issue": "6000 output accepted with only 5000 kits issued",
+      "source": "server/src/main/java/com/uten/imp/features/production/dailyreport/DailyReportExecutionSegmentGuard.java",
+      "fact": "Frozen material output capacity was explicitly treated only as a hint; exact actual consumption alone did not cap output. Query similarly used plan quantity. Ordinary actual-output allowance could bypass a UI-only cap."
+    }
+  ],
+  "sharedAuthority": {
+    "entry": "fn_execution_partial_material_report_room(uuid,uuid)",
+    "migration": "V1129__partial_material_reporting_capacity.sql",
+    "contract": "Reuse frozen fn_execution_material_output_capacity(TRUE), not current BOM. While below full issued plan capacity, subtract all nondeleted draft/approved ordinary output, including actual-surplus slices; exclude the report currently edited/approved. NULL means this additional partial-issue ceiling is inapplicable, zero means no room.",
+    "locks": "Existing segment and active material-demand locks are acquired before a fresh capacity read; report create/edit/approve use the same guard. Pending returns/reversals use existing physical provenance/ledger authority.",
+    "preservedDifferences": [
+      "Full-issued actual output and overproduction",
+      "Zero-material production",
+      "FQC rework/replenishment authorization",
+      "Fixed reviewed supplement quantity",
+      "Exact material consumption declarations",
+      "Draft/unknown-submit preservation and idempotency"
+    ],
+    "limitations": [
+      "The ceiling uses frozen planned consumption while issue is partial; it does not infer production yield from mutable current BOM or invent material use.",
+      "Reversal stays possible; already recorded historical output is not rewritten."
+    ]
+  },
+  "migratedCallers": [
+    "DailyReportExecutionSegmentGuard.validateDraft: create and update, normalized output slices aggregated by execution segment",
+    "DailyReportExecutionSegmentGuard.approve: excludes current report and rechecks under the same locks",
+    "ReportablePlanLineQueryService: source picker/default quantity includes material room and exact text",
+    "ProductionDailyReportEditPage: pick source, fixed source metadata restore, local draft snapshot/restore, clear source, repeated save checks and cross-row material totals",
+    "DailyGridRow.clone/reset: material capacity survives copying and clears when identity changes",
+    "ProductionFlowStage.forSegment: one partial-running label/tone for workshop task table and task detail",
+    "ProductionFlowStageCell: violet existing tier, readable icon/text, status legend",
+    "ProductionExecutionSegmentsCard: plan detail and task detail statuses distinguish partial issue",
+    "ProductionWorkshopTaskStage: synchronous and durable report-export status text use shared fixture"
+  ],
+  "platforms": {
+    "web": "Shared Flutter implementation changed; widget interactions tested, browser acceptance owned by root integration.",
+    "flutterDesktop": "Same source changed; native actual UI/UAT not yet executed in this subtask.",
+    "wpfLegacy": {
+      "workItems": [
+        "W7-BIZ-102",
+        "W7-BIZ-110",
+        "W7-BIZ-115"
+      ],
+      "status": "todo",
+      "nativeEntryImplemented": false,
+      "note": "These business pages are not yet migrated; no placeholder native write entry was added. Root should append evidence notes and regenerate source inventory once after integration."
+    }
+  },
+  "personnelFeasibility": {
+    "implemented": false,
+    "temporaryManualOperation": true,
+    "existing": "Daily report already supports whole-report workerIds and production_daily_report_workers. These identify participants, not line contributions, piece-rate allocation or wages. Execution task has one responsible employee; draw header worker_id currently follows assignment and is not a per-event actual picker.",
+    "feasible": true,
+    "difficulty": "medium to high for a complete auditable chain; small for only a non-authoritative suggested participant list",
+    "recommendedUniversalModel": "Every real material issue event/batch can freeze one or more selected participant employee UUIDs, name snapshots and exact execution-segment/demand/ISSUE-posting references. Preserve maker, responsible employee and warehouse issuer separately. At report creation, suggest the union of participants from that task’s effective actual issue sources; explicit user confirmation is frozen on the report and the suggestion provenance is retained.",
+    "generalization": "Use one shared all-workshop capability with optional workshop policy; do not hard-code copper workshop name or infer payroll contribution from the A/B list.",
+    "requiredDecisions": [
+      "Actual material picker versus production participant roles",
+      "Default all historical issue participants or only selected issue batches",
+      "Whether mixed-task reports require per-line participants",
+      "Whether and how quantities or wages are allocated; names alone do not establish shares"
+    ],
+    "failureBoundaries": [
+      "Issue reversal and return must retire source suggestions without rewriting past approved report snapshots",
+      "Shared/split material source batches need exact provenance, not employee-name matching",
+      "Employee departure, shift transfer and permissions must retain historical snapshots",
+      "Repeat requests/concurrent issue require idempotent participant facts and explicit version checks"
+    ],
+    "manualAdvice": "Use existing report participant multi-selection A/B; record work-order number, issue occurrence and actual person A or B in draw remarks, retain issue documents. Do not overwrite work-order responsible employee merely to record the picker."
+  },
+  "validation": {
+    "status": "running",
+    "rawLogs": [],
+    "actualBrowserAcceptance": false,
+    "companyDeployment": false,
+    "push": false,
+    "formalPackage": false
+  }
+}

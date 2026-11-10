@@ -19,6 +19,12 @@ import org.springframework.test.util.ReflectionTestUtils;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
+import com.uten.imp.common.web.ApiException;
+import com.uten.imp.features.stock.allocation.ProductionMaterialReturnRequestService;
+import com.uten.imp.features.stock.allocation.dto.ProductionMaterialReturnRequest;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -43,6 +49,79 @@ class ProductionPartialReportQuantityEndToEndTest {
     @Autowired ProductionDailyReportService reports;
     @Autowired ProductionExecutionWorkbenchService workbench;
     @AfterEach void logout() { SecurityContextHolder.clearContext(); }
+
+    @Test void partialIssueLimitsCombinedDraftsAndEditsWhilePreservingExactInputs() {
+        var fixture = preparedFixture();
+        Object task = partialTask(fixture,"partial-report-drafts");
+        ReportablePlanLine initial=source(fixture,task);
+        amount("500",initial.maxReportQty()); amount("500",initial.materialReportQty());
+        var excessive=request(fixture,task,initial,"600","500");
+        var failure=assertThrows(ApiException.class,()->reports.create(excessive));
+        assertTrue(failure.getMessage().contains("物料配套可报数量 500"),failure.getMessage());
+        amount("600",excessive.getItems().getFirst().getQty());
+        var duplicate=request(fixture,task,initial,"300","500");
+        var other=request(fixture,task,initial,"250","0").getItems().getFirst(); other.setLineNo(2);
+        duplicate.setItems(List.of(duplicate.getItems().getFirst(),other));
+        assertTrue(assertThrows(ApiException.class,()->reports.create(duplicate)).getMessage().contains("物料配套"));
+        UUID draft=reports.create(request(fixture,task,initial,"300","300")).getId();
+        amount("200",source(fixture,task).materialReportQty());
+        var edited=request(fixture,task,initial,"400","400");
+        edited.setExpectedVersion(reports.detail(draft).getRowVersion());
+        reports.update(draft,edited); // Exclude the original draft; 400 is within 500.
+        amount("100",source(fixture,task).materialReportQty());
+        assertTrue(assertThrows(ApiException.class,()->reports.create(request(fixture,task,initial,"101","100")))
+                .getMessage().contains("物料配套可报数量 100"));
+        reports.delete(draft);
+        amount("500",source(fixture,task).materialReportQty());
+    }
+
+    @Test void pendingMaterialReturnReducesReportRoomAndCancellationRestoresIt() {
+        var fixture=preparedFixture(); Object task=partialTask(fixture,"partial-report-return");
+        var initial=source(fixture,task);
+        UUID draft=reports.create(request(fixture,task,initial,"450","450")).getId();
+        var returns=beans.getBean(ProductionMaterialReturnRequestService.class);
+        UUID plan=id(task,"plan"),segment=id(task,"segment");
+        var issue=returns.sources(plan,segment).getFirst();
+        var docs=returns.submit(plan,new ProductionMaterialReturnRequest.Submit(segment,"partial-return-"+UUID.randomUUID(),
+                "部分领料待退，核对物料配套上限",List.of(new ProductionMaterialReturnRequest.Item(issue.issuePostingId(),new BigDecimal("100")))));
+        var failure=assertThrows(ApiException.class,()->reports.approve(draft,approve(draft)));
+        assertTrue(failure.getMessage().contains("物料配套") || failure.getMessage().contains("可登记"),failure.getMessage());
+        returns.cancel(plan,docs.getFirst().documentId(),new ProductionMaterialReturnRequest.Cancel("partial-cancel-"+UUID.randomUUID(),"取消待退材料申请"));
+        reports.approve(draft,approve(draft));
+        amount("50",source(fixture,task).materialReportQty());
+        reports.reverse(draft);
+        amount("500",source(fixture,task).materialReportQty());
+    }
+
+    @Test void twoConcurrentOperatorsCannotTogetherExceedTheSamePartialIssue() throws Exception {
+        var fixture=preparedFixture();Object task=partialTask(fixture,"partial-report-concurrent");
+        var initial=source(fixture,task);
+        var auth=SecurityContextHolder.getContext().getAuthentication();
+        var ready=new CountDownLatch(2);var go=new CountDownLatch(1);
+        var requests=List.of(request(fixture,task,initial,"300","300"),request(fixture,task,initial,"300","300"));
+        try(var executor=Executors.newFixedThreadPool(2)) {
+            var futures=requests.stream().map(input->executor.submit(()->{
+                var context=SecurityContextHolder.createEmptyContext();context.setAuthentication(auth);SecurityContextHolder.setContext(context);
+                ready.countDown();
+                try { assertTrue(go.await(30,TimeUnit.SECONDS));return reports.create(input).getId(); }
+                catch(ApiException conflict){assertTrue(conflict.getMessage().contains("物料配套"),conflict.getMessage());return null;}
+                finally {SecurityContextHolder.clearContext();}
+            })).toList();
+            assertTrue(ready.await(30,TimeUnit.SECONDS));go.countDown();
+            int successes=0;for(var future:futures)if(future.get(90,TimeUnit.SECONDS)!=null)successes++;
+            assertEquals(1,successes);amount("200",source(fixture,task).materialReportQty());
+        }
+    }
+
+    private WorkshopPublicSurplusEndToEndTest preparedFixture() {
+        var fixture=new WorkshopPublicSurplusEndToEndTest();beans.autowireBean(fixture);fixture.prepare();return fixture;
+    }
+    private Object partialTask(WorkshopPublicSurplusEndToEndTest fixture,String tag) {
+        return ReflectionTestUtils.invokeMethod(fixture,"createStartedTask",tag+UUID.randomUUID(),false,"1000",false,new BigDecimal("0.5"));
+    }
+    private DailyReportSaveRequest request(WorkshopPublicSurplusEndToEndTest fixture,Object task,ReportablePlanLine source,String output,String material) {
+        return ReflectionTestUtils.invokeMethod(fixture,"reportRequest",task,source,output,material);
+    }
 
     @Test void reportingEightHundredKeepsTwoHundredOpenWithoutExpandingReportQualityOrReceipt() {
         var fixture = new WorkshopPublicSurplusEndToEndTest();

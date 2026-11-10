@@ -3442,6 +3442,7 @@ class _ProductionWorkshopTasksPageState
       ProductionFlowTone.waitPlanning =>
         l10n.productionReadinessMeaningWaitPlanning,
       ProductionFlowTone.decide => l10n.productionReadinessMeaningDecide,
+      ProductionFlowTone.activePartial => '物料尚未领齐，按所有必需物料共同支持的配套数量报工；补领后额度更新',
       ProductionFlowTone.active || ProductionFlowTone.done => null,
     };
   }
@@ -3494,7 +3495,10 @@ class _ProductionWorkshopTasksPageState
       // ADR-150: what each readiness colour means, read by the AI assistant
       // when someone asks about the status colours (same tones as above).
       legendOf: (task) =>
-          _isPreparing ? _readinessMeaning(_flowStageOf(task).tone) : null,
+          _isPreparing ||
+              _flowStageOf(task).tone == ProductionFlowTone.activePartial
+          ? _readinessMeaning(_flowStageOf(task).tone)
+          : null,
       cellBuilder: (_, task) {
         if (_hasTaskDraft(task)) {
           return Tooltip(
@@ -3843,5 +3847,6 @@ int workshopPreparingReadinessRank(ProductionFlowTone tone) => switch (tone) {
   ProductionFlowTone.waitPlanning => 6,
   ProductionFlowTone.decide => 7,
   ProductionFlowTone.active => 8,
+  ProductionFlowTone.activePartial => 8,
   ProductionFlowTone.done => 9,
 };

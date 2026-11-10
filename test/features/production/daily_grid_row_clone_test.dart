@@ -20,6 +20,7 @@ void main() {
       ..unitRate = 1.5
       ..orderQty = 100
       ..maxReportQty = 60
+      ..materialReportQtyExact = '45.125'
       ..goods = const GoodsOption(id: 'g1', name: '货品1')
       ..colorId = 'c1'
       ..unitId = 'u1'
@@ -41,6 +42,7 @@ void main() {
     expect(c.unitRate, 1.5);
     expect(c.orderQty, 100);
     expect(c.maxReportQty, 60);
+    expect(c.materialReportQtyExact, '45.125');
     expect(c.goods?.id, 'g1');
     expect(c.colorId, 'c1');
     expect(c.unitId, 'u1');

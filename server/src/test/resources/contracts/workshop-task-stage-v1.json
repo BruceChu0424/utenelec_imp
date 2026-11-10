@@ -165,7 +165,7 @@
         "segmentId": "00000000-0000-0000-0000-000000000001",
         "plannedQty": 10,
         "reportedQty": 0,
-        "remainingReportQty": 0.000001,
+        "remainingReportQty": 1e-06,
         "plannedInboundQty": 0,
         "hasAvailableMaterial": true,
         "startRoute": "FULL_KIT",
@@ -180,7 +180,7 @@
         "segmentId": "00000000-0000-0000-0000-000000000001",
         "plannedQty": 10,
         "reportedQty": 0,
-        "remainingReportQty": 0.000002,
+        "remainingReportQty": 2e-06,
         "plannedInboundQty": 0,
         "hasAvailableMaterial": true,
         "startRoute": "FULL_KIT",
@@ -723,6 +723,98 @@
         "segmentStatus": "READY"
       },
       "label": "等待物料支持开工"
+    },
+    {
+      "name": "running_partial_issue",
+      "task": {
+        "segmentId": "00000000-0000-0000-0000-000000000001",
+        "plannedQty": 10000,
+        "reportedQty": 0,
+        "remainingReportQty": 10000,
+        "segmentStatus": "IN_PROGRESS",
+        "startRoute": "CONTINUOUS",
+        "materialKindCount": 3,
+        "materialIssuedKindCount": 2,
+        "materialPartialIssuedKindCount": 1,
+        "materialSupportedOutputQty": 5000,
+        "overproductionPolicyApplies": true,
+        "allowedOverproductionRate": 0.1
+      },
+      "label": "部分领料生产中 · 按配套报工"
+    },
+    {
+      "name": "running_all_kinds_partial",
+      "task": {
+        "segmentId": "00000000-0000-0000-0000-000000000001",
+        "plannedQty": 10000,
+        "reportedQty": 0,
+        "remainingReportQty": 10000,
+        "segmentStatus": "IN_PROGRESS",
+        "startRoute": "CONTINUOUS",
+        "materialKindCount": 3,
+        "materialIssuedKindCount": 0,
+        "materialPartialIssuedKindCount": 3,
+        "materialSupportedOutputQty": 5000,
+        "overproductionPolicyApplies": true,
+        "allowedOverproductionRate": 0.1
+      },
+      "label": "部分领料生产中 · 按配套报工"
+    },
+    {
+      "name": "running_full_issue",
+      "task": {
+        "segmentId": "00000000-0000-0000-0000-000000000001",
+        "plannedQty": 10000,
+        "reportedQty": 0,
+        "remainingReportQty": 10000,
+        "segmentStatus": "IN_PROGRESS",
+        "startRoute": "CONTINUOUS",
+        "materialKindCount": 3,
+        "materialIssuedKindCount": 3,
+        "materialPartialIssuedKindCount": 1,
+        "materialSupportedOutputQty": 5000,
+        "overproductionPolicyApplies": true,
+        "allowedOverproductionRate": 0.1
+      },
+      "label": "持续生产中 · 按实际投料报工"
+    },
+    {
+      "name": "partial_issue_quality_keeps_priority",
+      "task": {
+        "segmentId": "00000000-0000-0000-0000-000000000001",
+        "plannedQty": 10000,
+        "reportedQty": 0,
+        "remainingReportQty": 0,
+        "segmentStatus": "IN_PROGRESS",
+        "startRoute": "CONTINUOUS",
+        "materialKindCount": 3,
+        "materialIssuedKindCount": 2,
+        "materialPartialIssuedKindCount": 1,
+        "materialSupportedOutputQty": 5000,
+        "overproductionPolicyApplies": true,
+        "fqcPendingQty": 10000,
+        "allowedOverproductionRate": 0.1
+      },
+      "label": "已报完 · 待品质检查"
+    },
+    {
+      "name": "zero_material_ignores_stale_counts",
+      "task": {
+        "segmentId": "00000000-0000-0000-0000-000000000001",
+        "plannedQty": 10000,
+        "reportedQty": 0,
+        "remainingReportQty": 10000,
+        "segmentStatus": "IN_PROGRESS",
+        "startRoute": "CONTINUOUS",
+        "materialKindCount": 3,
+        "materialIssuedKindCount": 2,
+        "materialPartialIssuedKindCount": 1,
+        "materialSupportedOutputQty": 5000,
+        "overproductionPolicyApplies": true,
+        "zeroMaterial": true,
+        "allowedOverproductionRate": 0.1
+      },
+      "label": "持续生产中 · 按实际投料报工"
     }
   ]
 }

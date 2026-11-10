@@ -352,6 +352,7 @@ class DailyGridRow extends EditableGridRow {
   double? orderQty;
   double? maxReportQty;
   String? maxReportQtyExact;
+  String? materialReportQtyExact;
   String? get maxReportQtyText =>
       productionExactQuantityText(maxReportQtyExact ?? maxReportQty);
   bool allowActualOverproduction = false;
@@ -663,6 +664,7 @@ class DailyGridRow extends EditableGridRow {
       ..orderQty = orderQty
       ..maxReportQty = maxReportQty
       ..maxReportQtyExact = maxReportQtyExact
+      ..materialReportQtyExact = materialReportQtyExact
       ..allowActualOverproduction = allowActualOverproduction
       ..supplementRequestId = null
       ..supplementProofId = null
@@ -714,6 +716,7 @@ class DailyGridRow extends EditableGridRow {
         ..salesOrderNo = null
         ..maxReportQty = null
         ..maxReportQtyExact = null
+        ..materialReportQtyExact = null
         ..remainingPlanQty = null
         ..remainingPlanQtyExact = null
         ..allowActualOverproduction = false

@@ -22,9 +22,10 @@ class ReportablePlanLineQuerySecurityContractTest {
                 .contains("segment.responsible_employee_id IS NOT NULL")
                 .contains("demand.status NOT IN (")
                 .contains("'RELEASED', 'REVERSED'")
-                // V694-V702 实际产出：普通报工上限 = 计划量扣已报(净额)，不再按冻结物料产能截断
-                // (实际用料随报工另行登记，超出计划走实际产出追加计划)。
+                // Full issue retains actual-output allowance. Partial issue has
+                // the independent shared physical ceiling from V1129.
                 .contains("ELSE segment.planned_qty")
+                .contains("fn_execution_partial_material_report_room(segment.id, NULL)")
                 .contains("COALESCE(segment_done.active_qty, 0)")
                 .doesNotContain("material_cap.remaining_qty")
                 .contains("execution_segment_id IN (")

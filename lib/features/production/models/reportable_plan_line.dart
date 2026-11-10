@@ -62,6 +62,7 @@ class ReportablePlanLine {
     this.allowActualOverproduction = false,
     this.remainingActualSurplusQty,
     this.pendingSupplementQty,
+    this.materialReportQtyExact,
   });
 
   final String planItemId;
@@ -86,6 +87,10 @@ class ReportablePlanLine {
   final String? unitRateExact;
   final String? goodsUnitWeightKgExact;
   final String? maxReportQtyExact;
+
+  /// Remaining physical output supported by partial material issue, shared by
+  /// all source rows of this work order. Null means the extra limit is absent.
+  final String? materialReportQtyExact;
   final String? plannedQtyExact,
       producedQtyExact,
       remainingActualSurplusQtyExact,
@@ -154,6 +159,10 @@ class ReportablePlanLine {
 
   bool get canReport =>
       !fqcRecoveryRequiresMaterial &&
+      (materialReportQtyExact == null ||
+          (productionExactQuantityUnits(materialReportQtyExact) ??
+                  BigInt.zero) >
+              BigInt.zero) &&
       (maxReportQty > 0.000001 ||
           (allowActualOverproduction && !isFqcRecovery));
 
@@ -168,6 +177,11 @@ class ReportablePlanLine {
   }
 
   String? get blockedReason {
+    if (materialReportQtyExact != null &&
+        (productionExactQuantityUnits(materialReportQtyExact) ?? BigInt.zero) <=
+            BigInt.zero) {
+      return '部分领料的物料配套可报数量已用完，请补领物料或核对待审核日报后继续报工';
+    }
     if (!fqcRecoveryRequiresMaterial) return null;
     return '${fqcRecoveryLabel ?? '补产'}尚未完成新增物料齐套和仓库发料，当前不能报工';
   }
@@ -241,6 +255,9 @@ class ReportablePlanLine {
     allowActualOverproduction: json['allowActualOverproduction'] == true,
     remainingActualSurplusQty: _asDouble(json['remainingActualSurplusQty']),
     pendingSupplementQty: _asDouble(json['pendingSupplementQty']),
+    materialReportQtyExact: productionExactQuantityText(
+      json['materialReportQtyExact'] ?? json['materialReportQty'],
+    ),
   );
 }
 

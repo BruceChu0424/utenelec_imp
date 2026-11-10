@@ -42,6 +42,7 @@ enum ProductionFlowTone {
   readyPartial,
   ready,
   active,
+  activePartial,
   done,
 }
 
@@ -124,7 +125,8 @@ class ProductionFlowStage {
   /// 图标也按档分（不只靠颜色区分——色盲/黑白打印同样要读得出来）。
   IconData get icon => switch (tone) {
     ProductionFlowTone.done => Icons.task_alt_rounded,
-    ProductionFlowTone.active => Icons.play_circle_outline_rounded,
+    ProductionFlowTone.active ||
+    ProductionFlowTone.activePartial => Icons.play_circle_outline_rounded,
     ProductionFlowTone.ready => Icons.play_arrow_rounded,
     ProductionFlowTone.readyPartial => Icons.play_arrow_rounded,
     // 去领料 = 要跑一趟仓库，用「搬运/取货」语义的图标。
@@ -435,8 +437,20 @@ class ProductionFlowStage {
       'IN_PROGRESS' => _make(
         4,
         // V595 持续生产：仓库料与同车间直送料到一批投一批，工单一直开着直到最后一次报工。
-        continuousRoute ? '持续生产中 · 按实际投料报工' : '生产中 · 可报工',
-        ProductionFlowTone.active,
+        !zeroMaterial &&
+                facts != null &&
+                facts.kindCount > 0 &&
+                !facts.allIssued
+            ? partialMaterialRunningLabel
+            : continuousRoute
+            ? '持续生产中 · 按实际投料报工'
+            : '生产中 · 可报工',
+        !zeroMaterial &&
+                facts != null &&
+                facts.kindCount > 0 &&
+                !facts.allIssued
+            ? ProductionFlowTone.activePartial
+            : ProductionFlowTone.active,
         progress: _ratio(reportedQty, plannedQty),
       ),
       'COMPLETED' => _make(5, '已完工', ProductionFlowTone.done),
@@ -534,6 +548,9 @@ class ProductionFlowStage {
     }
     return _make(3, '备料中 · 等待领料指令', ProductionFlowTone.waiting);
   }
+
+  /// 展示真实阶段；完成数量保留在独立的数量事实里，不用数量比替代状态。
+  static const partialMaterialRunningLabel = '部分领料生产中 · 按配套报工';
 
   /// 展示真实阶段；完成数量保留在独立的数量事实里，不用数量比替代状态。
   String get displayLabel => label;

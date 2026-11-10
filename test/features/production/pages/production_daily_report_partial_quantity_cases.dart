@@ -1,6 +1,49 @@
 part of 'production_daily_report_exact_segment_test.dart';
 
 void registerDailyReportPartialQuantityTests() {
+  testWidgets(
+    'partial issue blocks over-kit reporting before preview and preserves repeated input',
+    (tester) async {
+      var creates = 0;
+      var previews = 0;
+      final api = _api(
+        sourceOverrides: {
+          'planId': 'plan-1',
+          'plannedQty': 10000,
+          'remainingPlanQty': 10000,
+          'maxReportQty': 5000,
+          'maxReportQtyExact': '5000',
+          'materialReportQtyExact': '5000',
+          'remainingActualSurplusQty': 1000,
+          'allowActualOverproduction': true,
+        },
+        onCreate: (_) => creates++,
+        previewResult: (_) {
+          previews++;
+          return {'requiresSupplements': false, 'lines': <dynamic>[]};
+        },
+      );
+      await _pumpNewReport(tester, api, surfaceSize: const Size(1800, 1000));
+      final row = _productRows(tester).single;
+      expect(row.materialReportQtyExact, '5000');
+      expect(row.qty.text, '5000');
+      final quantityField = find.byWidgetPredicate(
+        (widget) => widget is TextField && widget.controller == row.qty,
+      );
+      await tester.enterText(quantityField, '6000');
+      row.overLimitReason.text = '现场实际数量说明不能扩大物料配套额度';
+      await tester.pumpAndSettle();
+      for (var index = 0; index < 3; index++) {
+        await tester.tap(find.byKey(const ValueKey('uten-edit-save')));
+        await tester.pumpAndSettle();
+      }
+      expect(creates, 0);
+      expect(previews, 0);
+      expect(row.qty.text, '6000');
+      expect(find.textContaining('超过物料配套可报数量 5000'), findsWidgets);
+      expect(tester.takeException(), isNull);
+    },
+  );
   for (final allowsActualOutput in [false, true]) {
     testWidgets(
       '1000 task saves the entered 800 with the exact source and no final flag: actualOutput=$allowsActualOutput',

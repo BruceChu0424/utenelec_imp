@@ -1,9 +1,12 @@
 import 'package:dio/dio.dart';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
+import 'package:uten_imp/components/layout/uten_picker_confirm_bar.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/api_endpoints.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/features/basic_data/models/goods_node.dart';
 import 'package:uten_imp/features/basic_data/widgets/uten_goods_picker.dart';
@@ -39,6 +42,37 @@ const _goods = [
 ];
 
 void main() {
+  for (final id in <String?>[null, 'existing-return']) {
+    testWidgets('委外退货${id == null ? '新建' : '编辑'}实际选择器反复开关均显示全部分类', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        SubcontractDocEditPage(docType: SubcontractDocType.returnDoc, id: id),
+        _Api(),
+        null,
+      );
+      final row = _grid(tester).controller.rows.single..qty.text = '7.125';
+      for (var attempt = 0; attempt < 3; attempt++) {
+        await tester.tap(_goodsCell(row));
+        await tester.pumpAndSettle();
+        for (final name in ['原材料', '辅料', '成品', '未分类', '自定义委外件']) {
+          expect(find.text(name), findsOneWidget);
+        }
+        await tester.tap(
+          find.descendant(
+            of: find.byType(UtenPickerConfirmBar),
+            matching: find.text('取消'),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(row.qty.text, '7.125');
+        expect(row.goods, isNull);
+      }
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets('委外订货一次带入多件并全选，逐件主档条款和默认价格保持有效', (tester) async {
     final api = _Api();
     final terms = _Terms(api);
@@ -76,7 +110,12 @@ void main() {
 
   for (final type in [
     SubcontractDocType.inquiry,
+    SubcontractDocType.application,
+    SubcontractDocType.receipt,
     SubcontractDocType.materialIssue,
+    SubcontractDocType.returnDoc,
+    SubcontractDocType.materialReturn,
+    SubcontractDocType.waste,
   ]) {
     testWidgets('${type.name}多选保留选择范围和手填金额，新增行不捏造上游来源', (tester) async {
       UtenGoodsPickerScope? requestedScope;
@@ -95,12 +134,13 @@ void main() {
       expect(cell, findsOneWidget);
       await tester.tap(cell);
       await tester.pumpAndSettle();
-      expect(
-        requestedScope,
-        type == SubcontractDocType.materialIssue
-            ? UtenGoodsPickerScope.material
-            : UtenGoodsPickerScope.sellable,
-      );
+      expect(requestedScope, switch (type) {
+        SubcontractDocType.materialIssue ||
+        SubcontractDocType.materialReturn ||
+        SubcontractDocType.waste => UtenGoodsPickerScope.material,
+        SubcontractDocType.returnDoc => UtenGoodsPickerScope.all,
+        _ => UtenGoodsPickerScope.sellable,
+      });
       expect(grid.rows.map((row) => row.goods?.id), ['g1', 'g2']);
       expect(grid.rows.first.qty.text, '5');
       expect(grid.rows.first.price.text, '8');
@@ -115,6 +155,62 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+
+  testWidgets('委外退货取消或原行退休后晚返回不清空原输入或追加货品', (tester) async {
+    final pending = Completer<List<GoodsListItem>>();
+    var calls = 0;
+    await _pump(
+      tester,
+      const SubcontractDocEditPage(docType: SubcontractDocType.returnDoc),
+      _Api(),
+      (_, _, _) async => ++calls == 1 ? [] : pending.future,
+    );
+    final grid = _grid(tester).controller;
+    final original = grid.rows.single..qty.text = '6';
+    await tester.tap(_goodsCell(original));
+    await tester.pumpAndSettle();
+    expect(grid.rows, [original]);
+    expect(original.qty.text, '6');
+    expect(original.goods, isNull);
+    await tester.tap(_goodsCell(original));
+    await tester.pump();
+    final replacement = SubcontractGridRow()..qty.text = '9';
+    grid.replaceAll([replacement]);
+    await tester.pump();
+    pending.complete(_goods);
+    await tester.pumpAndSettle();
+    expect(grid.rows, [replacement]);
+    expect(replacement.qty.text, '9');
+    expect(replacement.goods, isNull);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('委外退货来源行保持锁定，不能换成其他分类货品', (tester) async {
+    var calls = 0;
+    await _pump(
+      tester,
+      const SubcontractDocEditPage(docType: SubcontractDocType.returnDoc),
+      _Api(),
+      (_, _, _) async {
+        calls++;
+        return _goods;
+      },
+    );
+    final grid = _grid(tester).controller;
+    final row = SubcontractGridRow(sourceLocked: true)
+      ..goods = const GoodsOption(id: 'raw-return', name: '来源原料')
+      ..upstreamItemId = 'receipt-item'
+      ..qty.text = '7';
+    grid.replaceAll([row]);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('来源原料'));
+    await tester.pumpAndSettle();
+    expect(calls, 0);
+    expect(row.goods?.id, 'raw-return');
+    expect(row.upstreamItemId, 'receipt-item');
+    expect(row.qty.text, '7');
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('取消选择不清空当前行', (tester) async {
     await _pump(
@@ -177,7 +273,7 @@ Future<void> _pump(
   WidgetTester tester,
   Widget page,
   _Api api,
-  SubcontractGridGoodsPicker picker, {
+  SubcontractGridGoodsPicker? picker, {
   _Terms? terms,
 }) async {
   await tester.binding.setSurfaceSize(const Size(1600, 1100));
@@ -190,7 +286,8 @@ Future<void> _pump(
         masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
         sessionProvider.overrideWith(_EmptySession.new),
         subcontractWriteAllDocumentScope(),
-        subcontractGridGoodsPickerProvider.overrideWithValue(picker),
+        if (picker != null)
+          subcontractGridGoodsPickerProvider.overrideWithValue(picker),
         if (terms != null)
           subcontractRepositoryProvider(
             SubcontractDocType.order,
@@ -213,18 +310,32 @@ class _Api extends ApiClient {
   Future<Map<String, dynamic>> get(
     String path, {
     Map<String, dynamic>? query,
-  }) async => const {
-    'items': <Map<String, dynamic>>[],
-    'page': 1,
-    'size': 20,
-    'total': 0,
-    'totalPages': 0,
-  };
+  }) async => path.endsWith('/existing-return')
+      ? const {'id': 'existing-return', 'status': 0, 'items': <Object>[]}
+      : const {
+          'items': <Map<String, dynamic>>[],
+          'page': 1,
+          'size': 20,
+          'total': 0,
+          'totalPages': 0,
+        };
   @override
   Future<List<Map<String, dynamic>>> getList(
     String path, {
     Map<String, dynamic>? query,
   }) async {
+    if (path == ApiEndpoints.businessReferenceGoodsCategories) {
+      return [
+        for (final (id, name, legacy) in [
+          ('raw', '原材料', 2113),
+          ('aux', '辅料', 2480),
+          ('finished', '成品', 1),
+          ('uncategorized', '未分类', -1),
+          ('custom', '自定义委外件', 987654),
+        ])
+          {'id': id, 'code': id, 'name': name, 'legacyId': legacy},
+      ];
+    }
     if (path.contains('suppliers')) {
       return [
         {'id': 'sup', 'code': 'SUP', 'name': '委外商', 'status': '使用'},

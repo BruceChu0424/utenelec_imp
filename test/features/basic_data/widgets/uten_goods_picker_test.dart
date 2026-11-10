@@ -24,6 +24,43 @@ import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/basic_data/repositories/goods_facet_repository.dart';
 
 void main() {
+  testWidgets('全部分类范围保留原料辅料历史和自定义分类，搜索可选原料并确认', (tester) async {
+    final repository = _FakeGoodsRepository()
+      ..searchItemsOverride = const [_outOfScopeGoods]
+      ..searchCategoryIdsOverride = {'raw-root'};
+    GoodsListItem? selected;
+    await _pumpPicker(
+      tester,
+      repository,
+      scope: UtenGoodsPickerScope.all,
+      categories: _AllCategoryRepository(),
+      onSelected: (value) => selected = value,
+    );
+    await tester.tap(find.byKey(const Key('open-goods-picker')));
+    await tester.pumpAndSettle();
+    for (final name in ['成品', '原材料', '辅料', '未分类', '自定义委外件']) {
+      expect(find.text(name), findsOneWidget);
+    }
+    await tester.enterText(_searchEditable(), 'RAW-');
+    await tester.pump(const Duration(milliseconds: 301));
+    await tester.pumpAndSettle();
+    expect(repository.searchRootScopes.single, {
+      'finished-root',
+      'raw-root',
+      'aux-root',
+      'uncategorized-root',
+      'custom-root',
+    });
+    expect(repository.searchPolicies.single, (true, true));
+    expect(_goodsName('范围外原料'), findsOneWidget);
+    await tester.tap(_goodsName('范围外原料'));
+    await tester.pump();
+    await tester.tap(find.text('确定'));
+    await tester.pumpAndSettle();
+    expect(selected?.id, 'raw-goods');
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
     'completed same-query Enter refreshes category locations after an external category move',
     (tester) async {
@@ -864,6 +901,7 @@ Future<void> _pumpPicker(
   ProductCategoryRepository? categories,
   _TestPickerEpoch? epoch,
   GoodsFacetRepository? facetRepository,
+  UtenGoodsPickerScope scope = UtenGoodsPickerScope.sellable,
 }) async {
   tester.view.devicePixelRatio = 1;
   // Leave enough room for the fixture's longest complete category row and
@@ -892,6 +930,7 @@ Future<void> _pumpPicker(
         home: _PickerHarness(
           onSelected: onSelected,
           confirmOnDoubleTap: confirmOnDoubleTap,
+          scope: scope,
         ),
       ),
     ),
@@ -944,10 +983,15 @@ Finder _searchTextField() => find.descendant(
 );
 
 class _PickerHarness extends ConsumerWidget {
-  const _PickerHarness({this.onSelected, this.confirmOnDoubleTap = false});
+  const _PickerHarness({
+    this.onSelected,
+    this.confirmOnDoubleTap = false,
+    this.scope = UtenGoodsPickerScope.sellable,
+  });
 
   final ValueChanged<GoodsListItem?>? onSelected;
   final bool confirmOnDoubleTap;
+  final UtenGoodsPickerScope scope;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -959,6 +1003,7 @@ class _PickerHarness extends ConsumerWidget {
             context,
             ref,
             confirmOnDoubleTap: confirmOnDoubleTap,
+            scope: scope,
           );
           onSelected?.call(selected);
         },
@@ -1000,6 +1045,36 @@ class _FakeCategoryRepository extends Fake
   // 货品选择器不消费货品计数；沿用无计数树即可。
   @override
   Future<List<ProductCategoryNode>> treeWithGoodsCounts() async => _tree;
+}
+
+class _AllCategoryRepository extends _FakeCategoryRepository {
+  @override
+  Future<List<ProductCategoryNode>> tree() async => [
+    ..._tree,
+    ProductCategoryNode(
+      id: 'aux-root',
+      code: 'AUX',
+      name: '辅料',
+      level: 0,
+      legacyId: 2480,
+      children: const [],
+    ),
+    ProductCategoryNode(
+      id: 'uncategorized-root',
+      code: 'OLD',
+      name: '未分类',
+      level: 0,
+      legacyId: -1,
+      children: const [],
+    ),
+    ProductCategoryNode(
+      id: 'custom-root',
+      code: 'CUSTOM',
+      name: '自定义委外件',
+      level: 0,
+      children: const [],
+    ),
+  ];
 }
 
 class _HeldCategoryRepository extends _FakeCategoryRepository {

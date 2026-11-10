@@ -259,9 +259,9 @@ Future<void> _pumpCreate(
           platformTableLayoutProvider(
             purchaseOrderItemsTableKey,
           ).overrideWith(() => _SavedPlatformLayout(platformLayout)),
-        purchaseGridGoodsPickerProvider.overrideWithValue(
-          (_, _) async => List.of(_picks),
-        ),
+        purchaseGridGoodsPickerProvider(
+          PurchaseDocType.order,
+        ).overrideWithValue((_, _) async => List.of(_picks)),
       ],
       child: const MaterialApp(home: PurchaseOrderEditPage()),
     ),
@@ -300,9 +300,9 @@ Future<_EditApi> _pumpEdit(WidgetTester tester, Object? pct) async {
         masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
         writeAllDocumentScope(DocumentDataScope.purchase),
         sessionProvider.overrideWith(_Session.new),
-        purchaseGridGoodsPickerProvider.overrideWithValue(
-          (_, _) async => List.of(_picks),
-        ),
+        purchaseGridGoodsPickerProvider(
+          PurchaseDocType.order,
+        ).overrideWithValue((_, _) async => List.of(_picks)),
       ],
       child: MaterialApp.router(
         routerConfig: GoRouter(

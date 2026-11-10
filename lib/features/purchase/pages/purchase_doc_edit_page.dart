@@ -489,11 +489,15 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
 
   Future<void> _pickGoods(PurchaseGridRow row) async {
     if (row.sourceLocked) return;
-    final picked = await ref.read(purchaseGridGoodsPickerProvider)(
-      context,
-      ref,
-    );
-    if (!mounted || picked.isEmpty || !_grid.rows.contains(row)) return;
+    final picked = await ref.read(
+      purchaseGridGoodsPickerProvider(widget.docType),
+    )(context, ref);
+    if (!mounted ||
+        !formDraftIdentityIsCurrent ||
+        picked.isEmpty ||
+        !_grid.rows.contains(row)) {
+      return;
+    }
     void fill(PurchaseGridRow target, GoodsListItem goods) {
       target
         ..goods = GoodsOption(id: goods.id, code: goods.code, name: goods.name)

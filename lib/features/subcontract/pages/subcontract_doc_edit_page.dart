@@ -66,7 +66,6 @@ import '../../../core/utils/currency_display.dart';
 import '../../../shared/measurement/measurement_totals.dart';
 import '../../../shared/widgets/editable_grid_totals_bar.dart';
 import '../../../shared/providers/master_name_provider.dart' show GoodsOption;
-import '../../basic_data/widgets/uten_goods_picker.dart';
 import '../../basic_data/models/goods_node.dart' show GoodsListItem;
 import '../../basic_data/widgets/uten_supplier_picker.dart';
 import '../../basic_data/repositories/reference_method_repository.dart';
@@ -539,22 +538,19 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
     }
   }
 
-  /// 选货品范围：发料/材料退/损耗=材料；进仓/退货/订货/申请/询价=成品。
-  UtenGoodsPickerScope get _pickerScope => switch (widget.docType) {
-    SubcontractDocType.materialIssue ||
-    SubcontractDocType.materialReturn ||
-    SubcontractDocType.waste => UtenGoodsPickerScope.material,
-    _ => UtenGoodsPickerScope.sellable,
-  };
-
   Future<void> _pickGoods(SubcontractGridRow row) async {
     if (row.sourceLocked) return;
     final picked = await ref.read(subcontractGridGoodsPickerProvider)(
       context,
       ref,
-      _pickerScope,
+      subcontractGoodsPickerScope(widget.docType),
     );
-    if (!mounted || picked.isEmpty || !_grid.rows.contains(row)) return;
+    if (!mounted ||
+        !formDraftIdentityIsCurrent ||
+        picked.isEmpty ||
+        !_grid.rows.contains(row)) {
+      return;
+    }
     void fill(SubcontractGridRow target, GoodsListItem goods) {
       target
         ..goods = GoodsOption(id: goods.id, code: goods.code, name: goods.name)

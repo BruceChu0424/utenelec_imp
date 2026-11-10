@@ -51,7 +51,7 @@ class FinanceChartImportPostgresTest {
         String original=db.queryForObject("SELECT preview::text FROM finance_chart_imports WHERE id=?",String.class,id);
         int codes=db.queryForObject("SELECT count(*) FROM finance_chart_codes",Integer.class),entries=db.queryForObject("SELECT count(*) FROM gl_entries",Integer.class);
         assertThatThrownBy(()->chart.apply(new FinanceChartContracts.Apply(id))).isInstanceOf(ApiException.class).hasMessageContaining("重新检测");
-        assertThatThrownBy(()->chart.repreviewCommand(id,json.valueToTree(new FinanceChartContracts.Repreview(java.util.UUID.randomUUID()))))
+        assertThatThrownBy(()->chart.repreview(id,json.valueToTree(new FinanceChartContracts.Repreview(java.util.UUID.randomUUID()))))
                 .isInstanceOf(ApiException.class).hasMessageContaining("仅改文件名");
         assertThat(db.queryForObject("SELECT count(*) FROM finance_chart_codes",Integer.class)).isEqualTo(codes);
         assertThat(db.queryForObject("SELECT count(*) FROM gl_entries",Integer.class)).isEqualTo(entries);

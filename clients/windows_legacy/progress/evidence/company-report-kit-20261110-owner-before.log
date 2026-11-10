@@ -1,0 +1,46 @@
+START com.uten.imp.features.production.execution.ProductionExecutionSegmentServiceTest
+FAIL com.uten.imp.features.production.execution.ProductionExecutionSegmentServiceTest :: zeroMaterialSegmentCanStartWithoutDemandRows()
+org.opentest4j.AssertionFailedError: Unexpected exception thrown: com.uten.imp.common.web.ApiException: 执行段已被其他用户修改，请刷新后重试
+	at org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:159)
+	at org.junit.jupiter.api.AssertDoesNotThrow.createAssertionFailedError(AssertDoesNotThrow.java:90)
+	at org.junit.jupiter.api.AssertDoesNotThrow.assertDoesNotThrow(AssertDoesNotThrow.java:80)
+	at org.junit.jupiter.api.AssertDoesNotThrow.assertDoesNotThrow(AssertDoesNotThrow.java:61)
+	at org.junit.jupiter.api.Assertions.assertDoesNotThrow(Assertions.java:3355)
+	at com.uten.imp.features.production.execution.ProductionExecutionSegmentServiceTest.zeroMaterialSegmentCanStartWithoutDemandRows(ProductionExecutionSegmentServiceTest.java:552)
+Caused by: com.uten.imp.common.web.ApiException: 执行段已被其他用户修改，请刷新后重试
+	at com.uten.imp.features.production.execution.ProductionExecutionSegmentService.conflict(ProductionExecutionSegmentService.java:1385)
+	at com.uten.imp.features.production.execution.ProductionExecutionSegmentService.requireUpdated(ProductionExecutionSegmentService.java:1287)
+	at com.uten.imp.features.production.execution.ProductionExecutionSegmentService.updateStatus(ProductionExecutionSegmentService.java:723)
+	at com.uten.imp.features.production.execution.ProductionExecutionSegmentService.applyTransition(ProductionExecutionSegmentService.java:662)
+	at com.uten.imp.features.production.execution.ProductionExecutionSegmentService.start(ProductionExecutionSegmentService.java:499)
+	at com.uten.imp.features.production.execution.ProductionExecutionSegmentServiceTest.lambda$zeroMaterialSegmentCanStartWithoutDemandRows$10(ProductionExecutionSegmentServiceTest.java:552)
+	at org.junit.jupiter.api.AssertDoesNotThrow.assertDoesNotThrow(AssertDoesNotThrow.java:76)
+	... 3 more
+FAIL com.uten.imp.features.production.execution.ProductionExecutionSegmentServiceTest :: batchStartDeduplicatesAndLocksInUuidOrderBeforeAnyMutation()
+com.uten.imp.common.web.ApiException: 执行段不存在
+	at com.uten.imp.features.production.execution.ProductionExecutionSegmentService.one(ProductionExecutionSegmentService.java:1149)
+	at com.uten.imp.features.production.execution.ProductionExecutionSegmentService.applyTransition(ProductionExecutionSegmentService.java:679)
+	at com.uten.imp.features.production.execution.ProductionExecutionSegmentService.batchStart(ProductionExecutionSegmentService.java:551)
+	at com.uten.imp.features.production.execution.ProductionExecutionSegmentServiceTest.batchStartDeduplicatesAndLocksInUuidOrderBeforeAnyMutation(ProductionExecutionSegmentServiceTest.java:611)
+FAIL com.uten.imp.features.production.execution.ProductionExecutionSegmentServiceTest :: plannedWorkshopAndResponsibleEmployeeStartWithoutAnOptionalEndDate()
+com.uten.imp.common.web.ApiException: 执行段已被其他用户修改，请刷新后重试
+	at com.uten.imp.features.production.execution.ProductionExecutionSegmentService.conflict(ProductionExecutionSegmentService.java:1385)
+	at com.uten.imp.features.production.execution.ProductionExecutionSegmentService.requireUpdated(ProductionExecutionSegmentService.java:1287)
+	at com.uten.imp.features.production.execution.ProductionExecutionSegmentService.updateStatus(ProductionExecutionSegmentService.java:723)
+	at com.uten.imp.features.production.execution.ProductionExecutionSegmentService.applyTransition(ProductionExecutionSegmentService.java:662)
+	at com.uten.imp.features.production.execution.ProductionExecutionSegmentService.start(ProductionExecutionSegmentService.java:499)
+	at com.uten.imp.features.production.execution.ProductionExecutionSegmentServiceTest.plannedWorkshopAndResponsibleEmployeeStartWithoutAnOptionalEndDate(ProductionExecutionSegmentServiceTest.java:502)
+RESULT com.uten.imp.features.production.execution.ProductionExecutionSegmentServiceTest found=24 passed=21 failed=3 skipped=0
+START com.uten.imp.features.stock.allocation.ProductionMaterialSettlementServiceTest
+RESULT com.uten.imp.features.stock.allocation.ProductionMaterialSettlementServiceTest found=7 passed=7 failed=0 skipped=0
+START com.uten.imp.features.stock.allocation.ProductionMaterialStockLedgerRoutingTest
+RESULT com.uten.imp.features.stock.allocation.ProductionMaterialStockLedgerRoutingTest found=3 passed=3 failed=0 skipped=0
+START com.uten.imp.features.stock.allocation.ProductionMaterialStockLedgerCancellationPolicyTest
+RESULT com.uten.imp.features.stock.allocation.ProductionMaterialStockLedgerCancellationPolicyTest found=2 passed=2 failed=0 skipped=0
+START com.uten.imp.features.production.dailyreport.DailyReportExecutionSegmentGuardTest
+RESULT com.uten.imp.features.production.dailyreport.DailyReportExecutionSegmentGuardTest found=28 passed=28 failed=0 skipped=0
+START com.uten.imp.features.production.dailyreport.ReportablePlanLineQuerySecurityContractTest
+RESULT com.uten.imp.features.production.dailyreport.ReportablePlanLineQuerySecurityContractTest found=1 passed=1 failed=0 skipped=0
+START com.uten.imp.features.production.execution.ProductionWorkshopTaskStageContractTest
+RESULT com.uten.imp.features.production.execution.ProductionWorkshopTaskStageContractTest found=52 passed=52 failed=0 skipped=0
+TOTAL classes=7 found=117 passed=114 failed=3 skipped=0

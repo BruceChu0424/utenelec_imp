@@ -30,9 +30,10 @@ import '../../shared/paging/complete_read_progress.dart';
 import '../theme/uten_colors.dart';
 import '../theme/uten_tokens.dart';
 
-/// 卡片出现前的最短读取耗时：更快的完整读取（缓存命中、单批小表）不弹卡，
-/// 避免连续闪现。
-const Duration tableLoadNoticeShowDelay = Duration(milliseconds: 600);
+/// 卡片出现前的消抖：只吞掉「秒失败/缓存命中」这类零批次读取的闪现，
+/// 真实分批读取一开始（150ms 内）卡片即入场。2026-11-09 用户口径：
+/// 「不应该一开始就出现吗」——从原 600ms 防闪档改为立即出现档。
+const Duration tableLoadNoticeShowDelay = Duration(milliseconds: 150);
 
 /// 完成态停留时长：铺满 100% + 对勾后停一拍再向上收起。
 const Duration tableLoadNoticeDoneHold = Duration(milliseconds: 1400);

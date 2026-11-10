@@ -1,0 +1,39 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/company-material-order-20261110/test/features/production/pages/material_analysis_order_page_test.dart
+00:00 +0: 公司核对页改单行数量500：服务端拒绝原因保留在最终结果，输入和选择不丢
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: contains '公共超量备货需要超量下达权限'
+  Actual: '下达没有全部完成：\n'
+            '✗ 同料合并下达(1 行 → 1 种物料)\n'
+            '未完成的行仍然勾着，可以修改后重试。'
+   Which: does not contain '公共超量备货需要超量下达权限'
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/company-material-order-20261110/test/features/production/pages/material_analysis_order_page_test.dart:40:5)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/company-material-order-20261110/test/features/production/pages/material_analysis_order_page_test.dart line 40
+The test description was:
+  公司核对页改单行数量500：服务端拒绝原因保留在最终结果，输入和选择不丢
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:31 +0 -1: 公司核对页改单行数量500：服务端拒绝原因保留在最终结果，输入和选择不丢 [E]
+  Test failed. See exception logs above.
+  The test description was: 公司核对页改单行数量500：服务端拒绝原因保留在最终结果，输入和选择不丢
+  
+Warning: At least one test in this suite creates an HttpClient. When running a test suite that uses
+TestWidgetsFlutterBinding, all HTTP requests will return status code 400, and no network request
+will actually be made. Any test expecting a real network connection and status code will fail.
+To test code that needs an HttpClient, provide your own HttpClient implementation to the code under
+test, so that your test can consistently provide a testable response to the code under test.
+00:32 +0 -1: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/company-material-order-20261110/test/features/production/pages/material_analysis_order_page_test.dart: 公司核对页改单行数量500：服务端拒绝原因保留在最终结果，输入和选择不丢

@@ -1151,9 +1151,20 @@ final class _MaterialAggregateTableController {
           throw const FormatException('预览没有完整核对本次所选来源，未套用此结果');
         }
       }
+      final expectedByDraft = <String, BigInt>{};
+      for (final input in request.groups) {
+        final amount = _previewIncrementalUnits(input, materials);
+        expectedByDraft.update(
+          draftKeyOf(input.clientGroupKey),
+          (value) => value + amount,
+          ifAbsent: () => amount,
+        );
+      }
       for (final draft in selected) {
         final groups = grouped[draft.key] ?? const [];
         if (groups.isEmpty) throw const FormatException('汇总预览缺少所选物料，请重新核对');
+        final expected = expectedByDraft[draft.key]!;
+        final expectedText = materialQuantityText(expected);
         final allocated = groups.fold(
           0.0,
           (sum, group) =>
@@ -1166,7 +1177,7 @@ final class _MaterialAggregateTableController {
         );
         final exact = _exactPreviewContribution(groups);
         if (exact == null &&
-            (double.parse(draft.totalText).abs() >= 10000000000 ||
+            (double.parse(expectedText).abs() >= 10000000000 ||
                 groups.any(
                   (group) =>
                       group.publicExtraQty.abs() >= 10000000000 ||
@@ -1174,17 +1185,15 @@ final class _MaterialAggregateTableController {
                         (source) => source.allocatedQty.abs() >= 10000000000,
                       ),
                 ) ||
-                materialQuantityUnits(
-                      owner._qty(double.parse(draft.totalText)),
-                    ) !=
-                    materialQuantityUnits(draft.totalText))) {
+                materialQuantityUnits(owner._qty(double.parse(expectedText))) !=
+                    expected)) {
           throw const FormatException('服务器未返回精确数量，请更新服务器后再核对大数量');
         }
         final differs = exact == null
-            ? (allocated - double.parse(draft.totalText)).abs() > 0.00005
-            : exact != materialQuantityUnits(draft.totalText);
+            ? (allocated - double.parse(expectedText)).abs() > 0.00005
+            : exact != expected;
         if (differs && groups.every((group) => group.blockedReason == null)) {
-          throw const FormatException('汇总预览的来源份额与公共份合计不等于本次总量，未应用此结果');
+          throw const FormatException('汇总预览的来源份额与公共份合计不等于本次新增下单量，未应用此结果');
         }
       }
       owner._mutateAggregateTable(() {
@@ -1301,6 +1310,56 @@ final class _MaterialAggregateTableController {
     return total;
   }
 
+  /// COVERAGE_TOTAL includes already fulfilled demand. The preview allocates
+  /// only its incremental remainder; validating it against the entered total
+  /// rejects legitimate stock deductions. Mirror the server conversion using
+  /// its original source facts, while keeping the user's request unchanged.
+  BigInt _previewIncrementalUnits(
+    MaterialAggregateOrderGroupInput input,
+    Map<String, ProductionMaterialAnalysisMaterial> materials,
+  ) {
+    final requested = materialQuantityUnits(input.qty);
+    if (input.quantityMode == null ||
+        input.orderMethod == MaterialPreparationOrderMethod.orderAll ||
+        input.receiptAllocationMode ==
+            MaterialReceiptAllocationMode.publicOnly) {
+      return requested;
+    }
+    BigInt covered(String id) {
+      final row = materials[id];
+      if (row == null || row.planningUncoveredQty == null) {
+        throw const FormatException('预览缺少权威需求覆盖数量，请刷新后重新核对');
+      }
+      BigInt fact(String key, double value) => materialQuantityUnits(
+        materialQuantityFact(row.quantityFactsExact[key], value),
+      );
+      final required = fact('requiredQty', row.requiredQty);
+      final sourceRequired = fact(
+        'sourceRequiredQty',
+        row.sourceRequiredQty ?? 0,
+      );
+      final uncovered = fact('planningUncoveredQty', row.planningUncoveredQty!);
+      final quantity =
+          (required > sourceRequired ? required : sourceRequired) - uncovered;
+      return quantity.isNegative ? BigInt.zero : quantity;
+    }
+
+    BigInt incremental(BigInt amount, BigInt already) =>
+        amount > already ? amount - already : BigInt.zero;
+    final amounts = input.sourceRequestedQtyByMaterialLineId;
+    if (amounts != null && amounts.isNotEmpty) {
+      return input.materialLineIds.fold(
+        BigInt.zero,
+        (sum, id) =>
+            sum + incremental(materialQuantityUnits(amounts[id]!), covered(id)),
+      );
+    }
+    return incremental(
+      requested,
+      input.materialLineIds.fold(BigInt.zero, (sum, id) => sum + covered(id)),
+    );
+  }
+
   /// 调用方(产品视图主确认框或汇总视图开跑前的一次性确认，见
   /// [_MaterialAggregateSubmission._submit])都已确认过整单，这里起各依赖轮次
   /// 只做核对与提交，不再弹确认框——ADR-120 §2.4「只确认一次」。
@@ -1393,10 +1452,11 @@ final class _MaterialAggregateTableController {
         // committed. Dropping a blocked parent would falsely unlock its
         // descendants and lose its original quantity. Keep the entire round
         // for review/retry, and preserve the caller's single confirmation.
-        owner.context.appWarning(
-          '本轮尚未下达：${blocked.take(3).map((group) => '${nameOf(group)}：${group.blockedReason}').join('；')}。'
-          '输入和选择已保留，请修正后继续。',
-        );
+        error = blocked
+            .take(3)
+            .map((group) => '${nameOf(group)}：${group.blockedReason}')
+            .join('；');
+        owner.context.appWarning('本轮尚未下达：$error。输入和选择已保留，请修正后继续。');
         _preview = null;
         _previewRequest = null;
         _previewSignature = null;

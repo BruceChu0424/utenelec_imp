@@ -1,0 +1,81 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/company-material-order-20261110/test/features/production/pages/material_analysis_order_page_test.dart
+00:00 +0: 覆盖总量500扣除现货18.1517：合法新增481.8483可提交且输入保留
+00:34 +1: 覆盖总量500扣除现货18.1517：不接受错误份额
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following StateError was thrown running a test:
+Bad state: No element
+
+When the exception was thrown, this was the stack:
+#0      Iterable.single (dart:core/iterable.dart:694:25)
+#1      WidgetController.widget (package:flutter_test/src/controller.dart:828:30)
+#2      _qty (file:///D:/Projects/uten_imp_worktrees/company-material-order-20261110/test/features/production/pages/material_analysis_order_page_test.dart:559:12)
+#3      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/company-material-order-20261110/test/features/production/pages/material_analysis_order_page_test.dart:66:18)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+The test description was:
+  覆盖总量500扣除现货18.1517：不接受错误份额
+════════════════════════════════════════════════════════════════════════════════════════════════════
+01:01 +1 -1: 覆盖总量500扣除现货18.1517：不接受错误份额 [E]
+  Test failed. See exception logs above.
+  The test description was: 覆盖总量500扣除现货18.1517：不接受错误份额
+  
+01:01 +1 -1: 公司核对页改单行数量500：服务端拒绝原因保留在最终结果，输入和选择不丢
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following StateError was thrown running a test:
+Bad state: No element
+
+When the exception was thrown, this was the stack:
+#0      Iterable.single (dart:core/iterable.dart:694:25)
+#1      WidgetController.widget (package:flutter_test/src/controller.dart:828:30)
+#2      _qty (file:///D:/Projects/uten_imp_worktrees/company-material-order-20261110/test/features/production/pages/material_analysis_order_page_test.dart:559:12)
+#3      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/company-material-order-20261110/test/features/production/pages/material_analysis_order_page_test.dart:88:12)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+The test description was:
+  公司核对页改单行数量500：服务端拒绝原因保留在最终结果，输入和选择不丢
+════════════════════════════════════════════════════════════════════════════════════════════════════
+01:24 +1 -2: 公司核对页改单行数量500：服务端拒绝原因保留在最终结果，输入和选择不丢 [E]
+  Test failed. See exception logs above.
+  The test description was: 公司核对页改单行数量500：服务端拒绝原因保留在最终结果，输入和选择不丢
+  
+01:24 +1 -2: 准备最新：核对页手动刷新保留已填写数量，停留期间不刷新
+01:33 +2 -2: 统一核对页与主表保持真实可用数量，勾选或取消不改库存且输入保留
+01:41 +3 -2: 车间桶打开统一核对页，原树与数量完整且零写入
+01:47 +4 -2: 父件改量立即带动子孙默认量，后台预览仍提交原物料身份
+01:53 +5 -2: 中间件改量只带动本支孙件，父件和兄弟保持原值
+02:00 +6 -2: 父件改大再改回，未手填的子孙数量原路回落
+02:07 +7 -2: 父件改量不覆盖子件明确手填，少于需求也保留供员工决定
+02:14 +8 -2: 连续退格重新输入父件不会累计放大子件
+02:20 +9 -2: 比例非法在写根计划之前阻止整批，输入不会丢失
+02:27 +10 -2: 清空父件数量不能静默恢复旧默认值下单
+02:34 +11 -2: 父子比例分别保留，预览不会互相覆盖
+02:40 +12 -2: 父行可明确撤选，选择与主表一致
+02:46 +13 -2: 明确撤选子件后再改父件，不强行恢复该子件选择
+02:53 +14 -2: 核对页列与主表统一，保留需要可用还缺和追加
+02:57 +15 -2: 只选父件显示根计划进度，下层未选不隐式提交
+03:04 +16 -2: 整批下单点取消：办完进行中的一段就停，后面的段不提交，未完成的行保留
+03:12 +17 -2: 父件与下层统一按依赖顺序提交，相同比例逐行保留
+03:18 +18 -2: 已下达子件使用追加列，未填数量不会重复下单
+03:22 +19 -2: 已下单子件可单独追加，提交原行和本次增量
+03:30 +20 -2: 委外桶也进入同一核对页，保留我方供料子件
+03:34 +21 -2: 多种直属物料的委外件照样下达委外，不要求车间指派
+03:38 +22 -2: 已排满顶层仍可从车间桶追加，增量与历史量分开
+03:45 +23 -2: 退出核对页不写库，草稿返回原主表仍保留
+03:51 +24 -2: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/company-material-order-20261110/test/features/production/pages/material_analysis_order_page_test.dart: 公司核对页改单行数量500：服务端拒绝原因保留在最终结果，输入和选择不丢
+  D:/Projects/uten_imp_worktrees/company-material-order-20261110/test/features/production/pages/material_analysis_order_page_test.dart: 覆盖总量500扣除现货18.1517：不接受错误份额

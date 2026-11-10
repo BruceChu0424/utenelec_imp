@@ -314,11 +314,32 @@ final class _MaterialAggregateSubmission {
       );
       return succeeded;
     } on FormatException catch (failure) {
+      table.error = failure.message;
       if (owner.mounted) owner.context.appWarning(failure.message);
       return false;
     } finally {
       if (owner.mounted) {
         owner._mutateAggregateTable(() {
+          // The product review creates temporary aggregate intents only to
+          // submit its selected rows. A definitive rejection must return those
+          // rows to their editors; otherwise the retained 500 is locked and
+          // the user cannot correct it from this page. Unknown writes retain
+          // their original immutable draft and idempotency key.
+          if (confirmed && !table.uncertain) {
+            for (final entry in confirmationDrafts.entries) {
+              final draft = entry.value;
+              if (!draft.productFlow ||
+                  !identical(table.drafts[entry.key], draft))
+                continue;
+              table.drafts.remove(entry.key);
+              for (final line in draft.lineIds) {
+                if (table._draftByLine[line] == entry.key) {
+                  table._draftByLine.remove(line);
+                }
+              }
+            }
+            table._revision++;
+          }
           // Building the confirmation is a read-only step. Its temporary
           // groups must not keep source rows locked after cancellation or
           // validation failure. Preserve drafts the user had already edited.

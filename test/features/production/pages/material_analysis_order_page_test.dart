@@ -23,6 +23,129 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
 
 void main() {
+  testWidgets('公司截图ORDER_ALL需求50改500：原需求50与公共备货450合计后正常下单', (tester) async {
+    final harness = await _pump(
+      tester,
+      aggregatePublicExtra: 450,
+      mutate: (data) {
+        final row = (data['flatMaterials'] as List)
+            .cast<Map<String, dynamic>>()
+            .firstWhere((row) => row['materialLineId'] == 'm-b');
+        row.addAll(<String, dynamic>{
+          'requiredQty': 50,
+          'sourceRequiredQty': 50,
+          'planningUncoveredQty': 31.8483,
+          'preparationUncoveredBeforeSharedQty': 50,
+        });
+        return data;
+      },
+    );
+    await _openOrder(tester);
+    _table(tester).onSelectedIdsChanged!({'PREPARATION|m-b'});
+    await tester.pumpAndSettle();
+    await _type(tester, 'm-b', '500');
+    await _submit(tester);
+    final input =
+        ((_writes(harness).single.data as Map)['groups'] as List).single as Map;
+    expect(input['qty'], '500');
+    expect(input['orderMethod'], 'ORDER_ALL');
+    expect(input['allowPublicExtra'], isTrue);
+    expect(tester.takeException(), isNull);
+  });
+  for (final corrupt in [false, true]) {
+    testWidgets(
+      '覆盖总量500扣除现货18.1517：${corrupt ? '不接受错误份额' : '合法新增481.8483可提交且输入保留'}',
+      (tester) async {
+        final harness = await _pump(
+          tester,
+          aggregateCoverageDeduction: corrupt ? '18.1518' : '18.1517',
+          mutate: (data) {
+            final row = (data['flatMaterials'] as List)
+                .cast<Map<String, dynamic>>()
+                .firstWhere((row) => row['materialLineId'] == 'm-b');
+            row.addAll(<String, dynamic>{
+              'requiredQty': 50,
+              'sourceRequiredQty': 50,
+              'planningUncoveredQty': 31.8483,
+              'preparationUncoveredBeforeSharedQty': 50,
+            });
+            return data;
+          },
+        );
+        await _openOrder(tester);
+        _table(tester).onSelectedIdsChanged!({'PREPARATION|m-b'});
+        await tester.pumpAndSettle();
+        await selectMaterialOrderMethod(
+          tester,
+          find.byKey(
+            const ValueKey('material-analysis-order-method-NODE|ag-b|m-b'),
+          ),
+          'AVAILABLE_THEN_ORDER',
+        );
+        await _type(tester, 'm-b', '500');
+        await _submit(tester);
+        final writes = _writes(harness);
+        expect(writes, corrupt ? isEmpty : hasLength(1));
+        if (!corrupt) {
+          final input =
+              ((writes.single.data as Map)['groups'] as List).single as Map;
+          expect(input['qty'], '500');
+          expect(input['sourceRequestedQtyByMaterialLineId'], {'m-b': '500'});
+        } else {
+          expect(_qty(tester, 'm-b'), '500');
+          expect(_table(tester).selectedIds, contains('PREPARATION|m-b'));
+        }
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+  testWidgets('公司核对页改单行数量500：服务端拒绝原因保留在最终结果，输入和选择不丢', (tester) async {
+    const reason = '公共超量备货需要超量下达权限';
+    final harness = await _pump(tester, aggregateBlockedReason: reason);
+    await _openOrder(tester);
+    _table(tester).onSelectedIdsChanged!({'PREPARATION|m-b'});
+    await tester.pumpAndSettle();
+    await _type(tester, 'm-b', '500');
+    await _submit(tester);
+    final notices = ProviderScope.containerOf(
+      tester.element(find.byType(MaterialApp)),
+    ).read(appNotificationProvider);
+    final summary = notices
+        .lastWhere((notice) => notice.message.startsWith('下达没有全部完成'))
+        .message;
+    expect(summary, contains(reason));
+    expect(_qty(tester, 'm-b'), '500');
+    expect(_table(tester).selectedIds, contains('PREPARATION|m-b'));
+    expect(_writes(harness), isEmpty);
+    expect(find.byKey(const ValueKey('uten-progress-cancel')), findsNothing);
+    harness.aggregateBlockedReason = null;
+    await _type(tester, 'm-b', '499');
+    await _submit(tester);
+    final retry =
+        ((_writes(harness).single.data as Map)['groups'] as List).single as Map;
+    expect(retry['qty'], '499', reason: '确定未写入后可原地改数再下，不被临时汇总草稿锁住');
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets('核对页500未知提交仍锁定原意图，不能改数重放', (tester) async {
+    final harness = await _pump(tester, aggregateSubmitUnknown: true);
+    await _openOrder(tester);
+    _table(tester).onSelectedIdsChanged!({'PREPARATION|m-b'});
+    await tester.pumpAndSettle();
+    await _type(tester, 'm-b', '500');
+    await _submit(tester);
+    expect(_writes(harness), hasLength(1));
+    expect(_input('m-b'), findsNothing, reason: '未知写入保留冻结原请求，不能借释放临时草稿改数');
+    final notices = ProviderScope.containerOf(
+      tester.element(find.byType(MaterialApp)),
+    ).read(appNotificationProvider);
+    expect(
+      notices.map((notice) => notice.message).join('\n'),
+      contains('提交结果尚未确认'),
+    );
+    expect(_table(tester).selectedIds, contains('PREPARATION|m-b'));
+    expect(find.byKey(const ValueKey('uten-progress-cancel')), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
   testWidgets('准备最新：核对页手动刷新保留已填写数量，停留期间不刷新', (tester) async {
     late Map<String, dynamic> serverData;
     await _pump(
@@ -626,6 +749,7 @@ Object? _bumpVersion(Object? data, int writes) {
 
 class _Harness {
   final List<RequestOptions> writes = [];
+  String? aggregateBlockedReason;
 }
 
 /// 假后端的「下达预览 / 真实下达之后」快照：按请求里 p1 的本批数量把下层需求
@@ -695,12 +819,16 @@ Future<_Harness> _pump(
   bool subcontractSecondMaterial = false,
   Map<String, dynamic> Function(Map<String, dynamic>)? mutate,
   Future<void>? rootReceipt,
+  String? aggregateBlockedReason,
+  String? aggregateCoverageDeduction,
+  bool aggregateSubmitUnknown = false,
+  double aggregatePublicExtra = 0,
 }) async {
   tester.view.physicalSize = const Size(1800, 1400);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
-  final harness = _Harness();
+  final harness = _Harness()..aggregateBlockedReason = aggregateBlockedReason;
   var persisted = subcontractRoot
       ? _subcontractRootAnalysis(secondMaterial: subcontractSecondMaterial)
       : _analysis(
@@ -721,6 +849,17 @@ Future<_Harness> _pump(
           return;
         }
         if (request.method != 'GET') harness.writes.add(request);
+        if (aggregateSubmitUnknown &&
+            request.path.endsWith('/aggregate-orders/submit')) {
+          handler.reject(
+            DioException(
+              requestOptions: request,
+              type: DioExceptionType.connectionError,
+              message: 'synthetic connection interrupted after sending',
+            ),
+          );
+          return;
+        }
         if (request.path.endsWith('/issue-plans')) await rootReceipt;
         final base = persisted;
         final data = switch (request.path) {
@@ -756,7 +895,13 @@ Future<_Harness> _pump(
             ],
           },
           '/production/material-analyses/analysis-1/aggregate-orders/preview' =>
-            _aggregatePreview(base, request.data as Map),
+            _aggregatePreview(
+              base,
+              request.data as Map,
+              blockedReason: harness.aggregateBlockedReason,
+              coverageDeduction: aggregateCoverageDeduction,
+              publicExtra: aggregatePublicExtra,
+            ),
           '/production/material-analyses/analysis-1/aggregate-orders/submit' =>
             _aggregateWrite(base, request.data as Map),
           _ => <Object>[],
@@ -829,8 +974,11 @@ Future<_Harness> _pump(
 
 Map<String, dynamic> _aggregatePreview(
   Map<String, dynamic> analysis,
-  Map<dynamic, dynamic> body,
-) => {
+  Map<dynamic, dynamic> body, {
+  String? blockedReason,
+  String? coverageDeduction,
+  double publicExtra = 0,
+}) => {
   'analysisId': analysis['analysisId'],
   'version': analysis['version'],
   'fingerprint': analysis['fingerprint'],
@@ -841,17 +989,24 @@ Map<String, dynamic> _aggregatePreview(
       {
         'clientGroupKey': group['clientGroupKey'],
         'receiptAllocationMode': group['receiptAllocationMode'],
+        'blockedReason': blockedReason,
+        'publicExtraQty': publicExtra,
         'route': group['route'],
         'goodsId': group['clientGroupKey'],
-        'requestedQty': double.parse(group['qty'].toString()),
+        'requestedQty':
+            double.parse(group['qty'].toString()) -
+            double.parse(coverageDeduction ?? '0'),
         'sources': [
           for (final id in group['materialLineIds'] as List)
             {
               'materialLineId': id,
-              'allocatedQty': double.parse(
-                ((group['sourceRequestedQtyByMaterialLineId'] as Map)[id])
-                    .toString(),
-              ),
+              'allocatedQty':
+                  double.parse(
+                    ((group['sourceRequestedQtyByMaterialLineId'] as Map)[id])
+                        .toString(),
+                  ) -
+                  double.parse(coverageDeduction ?? '0') -
+                  publicExtra,
             },
         ],
         'sharedBomChildren': <Object>[],

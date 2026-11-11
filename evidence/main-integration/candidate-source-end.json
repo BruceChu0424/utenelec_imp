@@ -1,0 +1,12 @@
+{
+  "capturedAt": "2026-11-11T07:35:09.055606+00:00",
+  "commit": "c45c76c73bf1d4b8546ef67a4897b31bc0ec3da5",
+  "parents": [
+    "4d45dc9b6c291e9d8e9121b48017b69030fd1f4c",
+    "d5200b6bf68aae203542c3828ddc0d6498be2870"
+  ],
+  "tree": "6f99c47ffa3e42a7251138e0c0c1d902bea4ebfd",
+  "all48PathFilesystemHashesAndGitBlobsEqualCheckpoint": true,
+  "sourceCheckpointCapturedDuringFullRunNotItsLaunch": true,
+  "mainReference": "d5200b6bf68aae203542c3828ddc0d6498be2870"
+}

@@ -1,0 +1,105 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+Resolving dependencies...
+Downloading packages...
+  _fe_analyzer_shared 85.0.0 (111.0.0 available)
+  analyzer 7.7.1 (14.7.0 available)
+  archive 4.5.2 (4.6.0 available)
+  cli_util 0.4.2 (0.6.0 available)
+  clock 1.1.2 (1.1.3 available)
+  code_assets 1.2.1 (2.2.0 available)
+  cross_file 0.3.5+5 (0.4.0 available)
+  cupertino_icons 1.0.9 (2.0.0 available)
+  dart_pubspec_licenses 3.0.12 (3.2.0 available)
+  dbus 0.7.15 (0.8.0 available)
+! desktop_drop 0.8.4+uten.1 from path third_party\desktop_drop (overridden)
+! device_info_plus 11.5.0+uten.1 from path third_party\device_info_plus (overridden)
+  device_info_plus_platform_interface 7.0.3 (8.1.0 available)
+  file_picker 8.3.7 (13.3.3 available)
+  flutter_riverpod 3.4.3 (3.5.0 available)
+  flutter_secure_storage 9.2.4 (11.2.0 available)
+  flutter_secure_storage_linux 1.2.3 (3.0.3 available)
+  flutter_secure_storage_macos 3.1.3 (4.0.0 available)
+  flutter_secure_storage_platform_interface 1.1.2 (2.1.1 available)
+  flutter_secure_storage_web 1.2.1 (2.1.1 available)
+  flutter_secure_storage_windows 3.1.2 (4.2.2 available)
+  go_router 14.8.1 (18.1.4 available)
+  hooks 2.0.2 (2.2.0 available)
+  intl 0.20.2 (0.20.3 available)
+  jni 1.1.0 (1.1.2 available)
+  js 0.6.7 (0.7.2 available)
+  matcher 0.12.19 (0.12.20 available)
+  material_color_utilities 0.13.0 (0.13.1 available)
+  meta 1.18.0 (1.19.0 available)
+  mobile_scanner 7.4.2 (7.5.0 available)
+  objective_c 9.5.0 (9.6.3 available)
+  package_config 2.2.0 (3.0.0 available)
+  pdfrx 1.3.5 (2.12.0 available)
+  petitparser 7.0.2 (7.1.0 available)
+  qr 3.0.2 (4.0.1 available)
+  record_use 0.6.0 (1.1.1 available)
+! riverpod 3.4.3+uten.1 from path third_party\riverpod (overridden)
+  shared_preferences_foundation 2.5.7 (2.6.1 available)
+  stack_trace 1.12.1 (1.12.2 available)
+  synchronized 3.5.0 (3.6.1+1 available)
+  test_api 0.7.11 (0.7.15 available)
+  vector_math 2.2.0 (2.4.4 available)
+  video_player_avfoundation 2.12.1 (2.12.3 available)
+  web 1.1.1 (1.1.2 available)
+  win32 5.15.0 (6.4.0 available)
+  win32_registry 2.1.0 (3.0.3 available)
+  xml 7.0.1 (7.1.0 available)
+Got dependencies!
+44 packages have newer versions incompatible with dependency constraints.
+Try `flutter pub outdated` for more information.
+00:00 +0: loading D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/features/basic_data/pages/account_workspace_batch_test.dart
+00:00 +0: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/features/basic_data/pages/account_workspace_batch_test.dart: concurrent clean stale callbacks open one confirmation and write one batch
+00:02 +1: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/features/basic_data/pages/master_inline_create_pages_test.dart: payment-style subtree creation respects protected parent=false and create-only mode
+00:03 +2: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/features/basic_data/pages/unit_inline_busy_once_test.dart: pending unit inline save has one root busy card and semantic node desktop
+00:03 +3: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/features/basic_data/pages/unit_inline_busy_once_test.dart: pending unit inline save has one root busy card and semantic node desktop
+UNIT-BUSY desktop frames=60 maxActions=1 maxHosts=1 maxRootCards=1 maxSemanticNodes=1
+00:04 +4: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/features/basic_data/pages/product_category_page_column_permissions_test.dart: 导入入口独立于导出权限且快速重复点击只打开一次
+00:04 +5: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/features/basic_data/pages/product_category_page_column_permissions_test.dart: 导入入口独立于导出权限且快速重复点击只打开一次
+00:04 +6: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/features/basic_data/pages/product_category_page_column_permissions_test.dart: 导入入口独立于导出权限且快速重复点击只打开一次
+00:05 +6: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/features/basic_data/pages/unit_inline_busy_once_test.dart: pending unit inline save has one root busy card and semantic node compact-large
+UNIT-BUSY compact-large frames=60 maxActions=1 maxHosts=1 maxRootCards=1 maxSemanticNodes=1
+00:05 +7: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/features/basic_data/pages/product_category_page_column_permissions_test.dart: 导入入口独立于导出权限且快速重复点击只打开一次
+00:05 +8: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/features/basic_data/pages/product_category_page_column_permissions_test.dart: 导入入口独立于导出权限且快速重复点击只打开一次
+00:05 +9: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/features/basic_data/pages/account_workspace_batch_test.dart: native per-account deletion is serial and preserves only failures with exact reasons
+00:06 +10: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/features/basic_data/pages/unit_inline_busy_once_test.dart: pending unit inline save has one root busy card and semantic node fullscreen
+00:06 +11: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/features/basic_data/pages/unit_inline_busy_once_test.dart: pending unit inline save has one root busy card and semantic node fullscreen
+00:06 +12: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/features/basic_data/pages/unit_inline_busy_once_test.dart: pending unit inline save has one root busy card and semantic node fullscreen
+UNIT-BUSY fullscreen frames=60 maxActions=1 maxHosts=1 maxRootCards=1 maxSemanticNodes=1
+00:06 +13: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/features/basic_data/pages/unit_inline_busy_once_test.dart: pending unit inline save has one root busy card and semantic node fullscreen
+00:06 +14: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/features/basic_data/pages/account_workspace_batch_test.dart: explicit 禁用 batch uses native status-only PATCH bodies
+00:06 +15: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/features/basic_data/pages/account_workspace_batch_test.dart: explicit 禁用 batch uses native status-only PATCH bodies
+00:06 +16: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/features/basic_data/pages/product_category_page_column_permissions_test.dart: 货品默认编号在名称前且未授权价格折扣列不进入表格
+00:07 +17: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/features/basic_data/pages/product_category_page_column_permissions_test.dart: 货品默认编号在名称前且未授权价格折扣列不进入表格
+00:07 +18: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/features/basic_data/pages/account_workspace_batch_test.dart: explicit 使用 batch uses native status-only PATCH bodies
+00:07 +19: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/features/basic_data/pages/master_inline_create_pages_test.dart: colors empty table create-only saves consecutive new rows with automatic codes
+00:07 +20: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/features/basic_data/pages/master_inline_create_pages_test.dart: colors empty table create-only saves consecutive new rows with automatic codes
+00:08 +21: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/features/basic_data/pages/account_workspace_batch_test.dart: identity A-B-A while confirmation is open closes it and sends nothing
+00:08 +22: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/features/basic_data/pages/product_category_page_column_permissions_test.dart: 货品币种紧随价格且沿用权限 goods:price:edit
+00:08 +23: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/features/basic_data/pages/product_category_page_column_permissions_test.dart: 货品币种紧随价格且沿用权限 goods:price:edit
+00:08 +24: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/features/basic_data/pages/account_workspace_batch_test.dart: identity change during first write stops remaining commands and old outcome
+00:08 +25: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/features/basic_data/pages/account_workspace_batch_test.dart: identity change during first write stops remaining commands and old outcome
+00:09 +26: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/features/basic_data/pages/product_category_page_column_permissions_test.dart: 货品价格列展示和精确值保留全部小数，旧响应回退也不舍入
+00:09 +27: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/features/basic_data/pages/master_inline_create_pages_test.dart: units empty table create-only saves consecutive new rows with automatic codes
+00:09 +28: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/features/basic_data/pages/master_inline_create_pages_test.dart: units empty table create-only saves consecutive new rows with automatic codes
+00:09 +29: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/features/basic_data/pages/master_inline_create_pages_test.dart: units empty table create-only saves consecutive new rows with automatic codes
+00:09 +30: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/features/basic_data/pages/product_category_page_column_permissions_test.dart: 只有货品查看权限时远程候选和导出与含禁用品列表同范围
+00:10 +31: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/features/basic_data/pages/product_category_page_column_permissions_test.dart: 只有货品查看权限时远程候选和导出与含禁用品列表同范围
+00:10 +32: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/features/basic_data/pages/account_workspace_batch_test.dart: 403 stops later native requests and retains all unprocessed selections
+00:10 +33: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/features/basic_data/pages/master_inline_create_pages_test.dart: units editing without create permission does not manufacture new rows
+00:10 +34: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/features/basic_data/pages/product_category_page_column_permissions_test.dart: 只有查看权限也能添加本人关联列，不能新建共享文字数字或计算列
+00:11 +35: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/features/basic_data/pages/product_category_page_column_permissions_test.dart: 只有查看权限也能添加本人关联列，不能新建共享文字数字或计算列
+00:11 +36: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/features/basic_data/pages/product_category_page_column_permissions_test.dart: 只有查看权限也能添加本人关联列，不能新建共享文字数字或计算列
+00:11 +37: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/features/basic_data/pages/master_inline_create_pages_test.dart: currencies create permission keeps existing records read-only
+00:11 +38: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/features/basic_data/pages/account_workspace_batch_test.dart: continuous rows keep selections while refresh and filters clear them
+00:12 +39: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/features/basic_data/pages/account_workspace_batch_test.dart: continuous rows keep selections while refresh and filters clear them
+00:13 +40: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/features/basic_data/pages/product_category_page_column_permissions_test.dart: 货品页面创建个人模具关联列，刷新同步且撤回权限立即清除展示值
+00:13 +41: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/features/basic_data/pages/account_workspace_batch_test.dart: 390px dark large text keeps one shared floating group and actions reachable
+00:13 +42: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/features/basic_data/pages/product_category_page_column_permissions_test.dart: goods edit permission enables adding a real master_goods column
+00:14 +43: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/features/basic_data/pages/product_category_page_column_permissions_test.dart: view only cannot add or create table columns
+00:15 +44: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/features/basic_data/pages/product_category_page_column_permissions_test.dart: view and create only cannot add or create table columns
+00:15 +45: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/features/basic_data/pages/product_category_page_column_permissions_test.dart: revoking goods edit closes creation and fences the open action
+00:16 +46: All tests passed!

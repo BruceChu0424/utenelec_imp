@@ -1,0 +1,6 @@
+logs/** binary
+*.json binary
+*.dart.txt binary
+server/*.log binary
+server/*.txt binary
+server/surefire/** binary

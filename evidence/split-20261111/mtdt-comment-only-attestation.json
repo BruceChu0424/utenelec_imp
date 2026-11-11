@@ -1,0 +1,8 @@
+{
+  "testedSource": "07d3be3a019fe753a06f0242a00ae2770728668c",
+  "path": "lib/features/basic_data/widgets/master_data_table_view.dart",
+  "comparison": "remove full-line // and /// comments only; preserve all other text",
+  "beforeSha256": "8e589d1abcc0e51cd9114d0a2191fc2dd1cdaf5e8b39c6a5e9d37b7546423c2e",
+  "afterSha256": "8e589d1abcc0e51cd9114d0a2191fc2dd1cdaf5e8b39c6a5e9d37b7546423c2e",
+  "equal": true
+}

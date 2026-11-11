@@ -1,0 +1,113 @@
+diff --git a/lib/components/layout/uten_collapsing_header_scroll_view.dart b/lib/components/layout/uten_collapsing_header_scroll_view.dart
+index 7c47ab50d..52b286a6a 100644
+--- a/lib/components/layout/uten_collapsing_header_scroll_view.dart
++++ b/lib/components/layout/uten_collapsing_header_scroll_view.dart
+@@ -887,39 +887,87 @@ class _BodyScrollController extends ScrollController {
+ /// NestedScrollView body 的「挤扁哨兵」：body 实得高度不足 [minHeight] 时不让它
+ /// 按扁高度布局（否则表格固定件直接纵向溢出），改为按 [minHeight] 布局 + 裁剪，
+ /// 同时上报宿主——下一帧切到整页滚动回退。
+-class _SqueezeGuard extends StatelessWidget {
++class _SqueezeGuard extends SingleChildRenderObjectWidget {
+   const _SqueezeGuard({
+     required this.viewport,
+     required this.minHeight,
+     required this.onSqueezed,
+-    required this.child,
++    required super.child,
+   });
+ 
+   final Size viewport;
+   final double minHeight;
+   final ValueChanged<Size> onSqueezed;
+-  final Widget child;
++  @override
++  RenderObject createRenderObject(BuildContext context) =>
++      _RenderSqueezeGuard(viewport, minHeight, onSqueezed);
+ 
+   @override
+-  Widget build(BuildContext context) {
+-    return LayoutBuilder(
+-      builder: (context, constraints) {
+-        if (!constraints.hasBoundedHeight ||
+-            constraints.maxHeight >= minHeight) {
+-          return child;
+-        }
+-        onSqueezed(viewport);
+-        return ClipRect(
+-          child: OverflowBox(
+-            alignment: Alignment.topCenter,
+-            minHeight: minHeight,
+-            maxHeight: minHeight,
+-            child: child,
+-          ),
+-        );
+-      },
+-    );
++  void updateRenderObject(
++    BuildContext context,
++    _RenderSqueezeGuard renderObject,
++  ) {
++    renderObject.update(viewport, minHeight, onSqueezed);
++  }
++}
++
++class _RenderSqueezeGuard extends RenderProxyBox {
++  _RenderSqueezeGuard(this._viewport, this._minHeight, this._onSqueezed);
++  Size _viewport;
++  double _minHeight;
++  ValueChanged<Size> _onSqueezed;
++  Size? _reported;
++  bool _squeezed = false;
++
++  void update(Size viewport, double minHeight, ValueChanged<Size> onSqueezed) {
++    _onSqueezed = onSqueezed;
++    if (_viewport == viewport && _minHeight == minHeight) return;
++    _viewport = viewport;
++    _minHeight = minHeight;
++    markNeedsLayout();
++  }
++
++  BoxConstraints _childConstraints(BoxConstraints value) =>
++      value.hasBoundedHeight && value.maxHeight < _minHeight
++      ? value.copyWith(minHeight: _minHeight, maxHeight: _minHeight)
++      : value;
++
++  @override
++  void performLayout() {
++    _squeezed =
++        constraints.hasBoundedHeight && constraints.maxHeight < _minHeight;
++    child?.layout(_childConstraints(constraints), parentUsesSize: true);
++    size = constraints.constrain(child?.size ?? constraints.smallest);
++    if (_squeezed && _reported != _viewport) {
++      _reported = _viewport;
++      _onSqueezed(_viewport);
++    } else if (!_squeezed) {
++      _reported = null;
++    }
+   }
++
++  @override
++  Size computeDryLayout(BoxConstraints constraints) => constraints.constrain(
++    child?.getDryLayout(_childConstraints(constraints)) ?? constraints.smallest,
++  );
++
++  @override
++  void paint(PaintingContext context, Offset offset) {
++    if (_squeezed) {
++      context.pushClipRect(
++        needsCompositing,
++        offset,
++        Offset.zero & size,
++        super.paint,
++      );
++    } else {
++      super.paint(context, offset);
++    }
++  }
++
++  @override
++  Rect? describeApproximatePaintClip(RenderObject child) =>
++      _squeezed ? Offset.zero & size : null;
+ }
+ 
+ /// 紧凑视口回退：整页 CustomScrollView 滚动（顶部内容随页滚走、吸顶头照常钉住），

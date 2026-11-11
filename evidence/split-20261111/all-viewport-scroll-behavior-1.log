@@ -1,0 +1,145 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_scroll_view_test.dart
+00:00 +0: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_scroll_view_test.dart: primary 模式整树正常构建(不抛异常)
+00:01 +1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_touch_test.dart: touch from table collapses header before rows Size(390.0, 844.0) count 2
+00:01 +2: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_touch_test.dart: touch from table collapses header before rows Size(390.0, 844.0) count 2
+00:01 +3: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_mode_transition_test.dart: compact/nested transitions retain table, row, IME and wheel offset (1.0)
+00:01 +4: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_mode_transition_test.dart: compact/nested transitions retain table, row, IME and wheel offset (1.0)
+00:01 +5: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_mode_transition_test.dart: compact/nested transitions retain table, row, IME and wheel offset (1.0)
+00:01 +6: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_mode_transition_test.dart: compact/nested transitions retain table, row, IME and wheel offset (1.0)
+00:01 +7: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_mode_transition_test.dart: compact/nested transitions retain table, row, IME and wheel offset (1.0)
+00:02 +8: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_mode_transition_test.dart: compact/nested transitions retain table, row, IME and wheel offset (1.0)
+00:02 +9: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_mode_transition_test.dart: compact/nested transitions retain table, row, IME and wheel offset (1.0)
+00:02 +10: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_mode_transition_test.dart: compact/nested transitions retain table, row, IME and wheel offset (1.0)
+00:03 +11: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_mode_transition_test.dart: compact/nested transitions retain table, row, IME and wheel offset (1.0)
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: a value greater than <96.0>
+  Actual: <96.0>
+   Which: is not a value greater than <96.0>
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_mode_transition_test.dart:260:9)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_mode_transition_test.dart line 260
+The test description was:
+  compact/nested transitions retain table, row, IME and wheel offset (1.0)
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:04 +11 -1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_scroll_relayout_test.dart: 收头部阶段每格滚轮不再整树重建表体(与表内滚动同级)
+00:04 +11 -1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_mode_transition_test.dart: compact/nested transitions retain table, row, IME and wheel offset (1.0) [E]
+  Test failed. See exception logs above.
+  The test description was: compact/nested transitions retain table, row, IME and wheel offset (1.0)
+  
+00:04 +12 -1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_scroll_relayout_test.dart: 收头部阶段每格滚轮不再整树重建表体(与表内滚动同级)
+00:04 +13 -1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_scroll_relayout_test.dart: 收头部阶段每格滚轮不再整树重建表体(与表内滚动同级)
+00:05 +14 -1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_scroll_relayout_test.dart: 收头部阶段每格滚轮不再整树重建表体(与表内滚动同级)
+00:05 +14 -1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_mode_transition_test.dart: compact/nested transitions retain table, row, IME and wheel offset (2.0)
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: a value greater than <96.0>
+  Actual: <96.0>
+   Which: is not a value greater than <96.0>
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_mode_transition_test.dart:260:9)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_mode_transition_test.dart line 260
+The test description was:
+  compact/nested transitions retain table, row, IME and wheel offset (2.0)
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:05 +14 -2: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_scroll_relayout_test.dart: 收头部阶段每格滚轮不再整树重建表体(与表内滚动同级)
+00:05 +14 -2: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_mode_transition_test.dart: compact/nested transitions retain table, row, IME and wheel offset (2.0) [E]
+  Test failed. See exception logs above.
+  The test description was: compact/nested transitions retain table, row, IME and wheel offset (2.0)
+  
+00:05 +14 -2: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_scroll_relayout_test.dart: 收头部阶段每格滚轮不再整树重建表体(与表内滚动同级)
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: <1>
+  Actual: <0>
+body 只按新高度布局一次
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_scroll_relayout_test.dart:189:7)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_scroll_relayout_test.dart line 189
+The test description was:
+  收头部阶段每格滚轮不再整树重建表体(与表内滚动同级)
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:05 +14 -3: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/retained_pane_resize_stress_test.dart: retained pane rtl tooltip leading=true survives 24 immediate resizes
+00:05 +14 -3: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_scroll_relayout_test.dart: 收头部阶段每格滚轮不再整树重建表体(与表内滚动同级) [E]
+  Test failed. See exception logs above.
+  The test description was: 收头部阶段每格滚轮不再整树重建表体(与表内滚动同级)
+  
+00:05 +15 -3: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/retained_pane_resize_stress_test.dart: retained pane rtl tooltip leading=true survives 24 immediate resizes
+00:06 +16 -3: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/retained_pane_resize_stress_test.dart: retained pane rtl tooltip leading=true survives 24 immediate resizes
+00:06 +17 -3: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_scroll_relayout_test.dart: 滚轮门：到点即止、越点先吃空行程、往下对称、掉头即撤门
+00:06 +18 -3: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_scroll_relayout_test.dart: 滚轮门：到点即止、越点先吃空行程、往下对称、掉头即撤门
+00:06 +19 -3: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_scroll_relayout_test.dart: 滚轮门：到点即止、越点先吃空行程、往下对称、掉头即撤门
+00:06 +20 -3: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/retained_pane_resize_stress_test.dart: retained pane rtl tooltip leading=false survives 24 immediate resizes
+00:06 +21 -3: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/retained_pane_resize_stress_test.dart: retained pane rtl tooltip leading=false survives 24 immediate resizes
+00:07 +22 -3: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_mode_transition_test.dart: primary fullscreen retains live cell text, selection and controller (2.0)
+00:07 +23 -3: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_scroll_relayout_test.dart: 停顿窗距离放行线：滚不停的人推够 250 即继续，不卡死在置顶
+00:07 +23 -3: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_mode_transition_test.dart: explicit primary borrower reattaches a foreign position safely
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: <48>
+  Actual: <24.0>
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_mode_transition_test.dart:453:7)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_mode_transition_test.dart line 453
+The test description was:
+  explicit primary borrower reattaches a foreign position safely
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:07 +23 -4: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_scroll_relayout_test.dart: 停顿窗距离放行线：滚不停的人推够 250 即继续，不卡死在置顶
+00:07 +23 -4: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_mode_transition_test.dart: explicit primary borrower reattaches a foreign position safely [E]
+  Test failed. See exception logs above.
+  The test description was: explicit primary borrower reattaches a foreign position safely
+  
+00:07 +24 -4: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/retained_pane_resize_stress_test.dart: retained pane ltr tooltip leading=true survives 24 immediate resizes
+00:07 +25 -4: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_scroll_relayout_test.dart: 滚轮门：置顶时掉头往下, 头部立刻放, 不吃空行程
+00:07 +26 -4: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/retained_pane_resize_stress_test.dart: retained pane ltr tooltip leading=false survives 24 immediate resizes
+00:07 +27 -4: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_scroll_relayout_test.dart: 鼠标在表格外(头部上)滚, 同样先把表格置顶再进表内
+00:08 +28 -4: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_scroll_relayout_test.dart: 页内独立滚动件：头部未收完时上滚仍先置顶, 置顶后它自己滚, 不被抢
+00:08 +29 -4: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_scroll_relayout_test.dart: shift+滚轮是横滚, 门不接管：表格横向滚、头部不动
+00:08 +30 -4: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_mode_transition_test.dart: compact/nested transitions retain table, row, IME and wheel offset (1.0)
+  D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_mode_transition_test.dart: compact/nested transitions retain table, row, IME and wheel offset (2.0)
+  D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_mode_transition_test.dart: explicit primary borrower reattaches a foreign position safely
+  D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_scroll_relayout_test.dart: 收头部阶段每格滚轮不再整树重建表体(与表内滚动同级)

@@ -1,0 +1,69 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/minimal_hierarchy_height_tooltip_test.dart
+00:00 +0: compact header closed tooltip survives real height boundary
+00:00 +1: compact header visible tooltip survives real height boundary
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: null
+  Actual: FlutterError:<A _RenderLayoutBuilder was mutated in _RenderLayoutBuilder.performLayout.
+          The RenderObject was mutated when none of its ancestors is actively performing layout.
+          The RenderObject being mutated was:
+            _RenderLayoutBuilder#89940
+          The RenderObject that was mutating the said _RenderLayoutBuilder was:
+            _RenderLayoutBuilder#142d6>
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/minimal_hierarchy_height_tooltip_test.dart:64:11)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/minimal_hierarchy_height_tooltip_test.dart line 64
+The test description was:
+  compact header visible tooltip survives real height boundary
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:00 +1 -1: compact header visible tooltip survives real height boundary [E]
+  Test failed. See exception logs above.
+  The test description was: compact header visible tooltip survives real height boundary
+  
+00:00 +1 -1: compact body closed tooltip survives real height boundary
+00:01 +2 -1: compact body visible tooltip survives real height boundary
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: null
+  Actual: FlutterError:<A _RenderLayoutBuilder was mutated in _RenderLayoutBuilder.performLayout.
+          The RenderObject was mutated when none of its ancestors is actively performing layout.
+          The RenderObject being mutated was:
+            _RenderLayoutBuilder#68ed4
+          The RenderObject that was mutating the said _RenderLayoutBuilder was:
+            _RenderLayoutBuilder#b9273>
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/minimal_hierarchy_height_tooltip_test.dart:64:11)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/minimal_hierarchy_height_tooltip_test.dart line 64
+The test description was:
+  compact body visible tooltip survives real height boundary
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:01 +2 -2: compact body visible tooltip survives real height boundary [E]
+  Test failed. See exception logs above.
+  The test description was: compact body visible tooltip survives real height boundary
+  
+00:01 +2 -2: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/minimal_hierarchy_height_tooltip_test.dart: compact body visible tooltip survives real height boundary
+  D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/minimal_hierarchy_height_tooltip_test.dart: compact header visible tooltip survives real height boundary

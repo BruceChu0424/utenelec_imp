@@ -1,0 +1,57 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/minimal_compact_header_width_test.dart
+00:00 +0: retained compact header closed tooltip survives icon width
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: TextRange:<TextRange(start: 0, end: 2)>
+  Actual: TextRange:<TextRange(start: -1, end: -1)>
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/minimal_compact_header_width_test.dart:61:9)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/minimal_compact_header_width_test.dart line 61
+The test description was:
+  retained compact header closed tooltip survives icon width
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:00 +0 -1: retained compact header closed tooltip survives icon width [E]
+  Test failed. See exception logs above.
+  The test description was: retained compact header closed tooltip survives icon width
+  
+00:00 +0 -1: retained compact header visible tooltip survives icon width
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: TextRange:<TextRange(start: 0, end: 2)>
+  Actual: TextRange:<TextRange(start: -1, end: -1)>
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/minimal_compact_header_width_test.dart:61:9)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/minimal_compact_header_width_test.dart line 61
+The test description was:
+  retained compact header visible tooltip survives icon width
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:01 +0 -2: retained compact header visible tooltip survives icon width [E]
+  Test failed. See exception logs above.
+  The test description was: retained compact header visible tooltip survives icon width
+  
+00:01 +0 -2: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/minimal_compact_header_width_test.dart: retained compact header closed tooltip survives icon width
+  D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/minimal_compact_header_width_test.dart: retained compact header visible tooltip survives icon width

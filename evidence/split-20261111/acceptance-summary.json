@@ -1,0 +1,25 @@
+{
+  "base": "4d45dc9b6c291e9d8e9121b48017b69030fd1f4c",
+  "widthCommit": "fa157d1114f9a945215f46c8ac3e3950a6fbbf0f",
+  "heightHeaderCommit": "23566b68e15b323496e0f85b165a02ae20bd9c73",
+  "sharedWidgetRegression": {
+    "passed": 83,
+    "failed": 0,
+    "existingOptionalScreenshotSkipped": 1,
+    "exitCode": 0
+  },
+  "fullMouldWidgetHost": {
+    "passed": 2,
+    "exitCode": 0,
+    "realHttp": false
+  },
+  "targetedAnalyze": {
+    "files": 11,
+    "issues": 0,
+    "exitCode": 0
+  },
+  "protectedSdkUnchanged": true,
+  "menuSchedulerResolved": false,
+  "actualWindows714Accepted": false,
+  "finalGlobalAcceptance": false
+}

@@ -1,0 +1,18 @@
+diff --git a/lib/components/layout/uten_anchored_popup.dart b/lib/components/layout/uten_anchored_popup.dart
+index 061cd108d..8c28bec5a 100644
+--- a/lib/components/layout/uten_anchored_popup.dart
++++ b/lib/components/layout/uten_anchored_popup.dart
+@@ -158,12 +158,7 @@ class _UtenAnchoredPopupState extends State<UtenAnchoredPopup> {
+   }
+ 
+   @override
+-  // A closed portal has no content to retain. Leaving its deferred render
+-  // child attached breaks GlobalKey moves performed by table LayoutBuilders
+-  // during fullscreen/responsive handoff after the popup has been used.
+-  Widget build(BuildContext context) => !_open
+-      ? widget.child
+-      : OverlayPortal.overlayChildLayoutBuilder(
++  Widget build(BuildContext context) => OverlayPortal.overlayChildLayoutBuilder(
+           controller: _portal,
+           overlayChildBuilder: (context, info) {
+             final media = MediaQuery.of(context);

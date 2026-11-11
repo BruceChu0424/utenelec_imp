@@ -1,0 +1,66 @@
+diff --git a/lib/components/layout/uten_split_view.dart b/lib/components/layout/uten_split_view.dart
+index 0aafbaf55..405c3a15c 100644
+--- a/lib/components/layout/uten_split_view.dart
++++ b/lib/components/layout/uten_split_view.dart
+@@ -250,32 +250,35 @@ class _UtenSplitViewState extends State<UtenSplitView> {
+       builder: (context, constraints) {
+         _totalWidth = constraints.maxWidth;
+         final width = _clamp(_width);
+-        return UtenAdaptiveHierarchyPane(
+-          leading: UtenHierarchyContentWidthScope(
+-            controller: _contentWidths,
+-            child: UtenPageScrollRoleScope.local(child: widget.leading),
+-          ),
+-          trailing: widget.trailing,
+-          selectedLabel: widget.selectedLeadingLabel,
+-          selectionKey: widget.selectedLeadingKey,
+-          noun: widget.leadingNoun,
+-          compactHeader: widget.compactHeader,
+-          openButtonKey: widget.openLeadingButtonKey,
+-          canSplit:
+-              constraints.maxWidth >=
+-              math.max(
+-                widget.minTwoPaneWidth,
+-                _minimumWidth +
+-                    widget.minTrailingWidth +
+-                    UtenSplitView.gutterWidth,
+-              ),
+-          splitBuilder: (leading, trailing) => Row(
+-            crossAxisAlignment: CrossAxisAlignment.stretch,
+-            children: [
+-              SizedBox(width: width, child: leading),
+-              _buildGutter(context),
+-              Expanded(child: trailing),
+-            ],
++        return Overlay.wrap(
++          clipBehavior: Clip.none,
++          child: UtenAdaptiveHierarchyPane(
++            leading: UtenHierarchyContentWidthScope(
++              controller: _contentWidths,
++              child: UtenPageScrollRoleScope.local(child: widget.leading),
++            ),
++            trailing: widget.trailing,
++            selectedLabel: widget.selectedLeadingLabel,
++            selectionKey: widget.selectedLeadingKey,
++            noun: widget.leadingNoun,
++            compactHeader: widget.compactHeader,
++            openButtonKey: widget.openLeadingButtonKey,
++            canSplit:
++                constraints.maxWidth >=
++                math.max(
++                  widget.minTwoPaneWidth,
++                  _minimumWidth +
++                      widget.minTrailingWidth +
++                      UtenSplitView.gutterWidth,
++                ),
++            splitBuilder: (leading, trailing) => Row(
++              crossAxisAlignment: CrossAxisAlignment.stretch,
++              children: [
++                SizedBox(width: width, child: leading),
++                _buildGutter(context),
++                Expanded(child: trailing),
++              ],
++            ),
+           ),
+         );
+       },

@@ -926,11 +926,11 @@ class MasterDataTableView<T> extends StatefulWidget {
   /// 不渲染翻页条、不用 Expanded 撑满，表体按内容收缩。
   final bool embedded;
 
-  /// 联动折叠模式：true 时表体竖向 ListView 改用 primary（拾取祖先 NestedScrollView
+  /// 联动折叠模式：true 时表体竖向 ListView 改用 primary（拾取共享宿主
   /// 注入的 PrimaryScrollController），参与「顶部折叠 → 表格内滚」联动；shrinkWrap 关、
   /// physics 改 AlwaysScrollable、_BodyFlex 改 tight。仅用于包在
   /// [UtenCollapsingHeaderScrollView]（或等价 NestedScrollView）body 里的列表页表格；
-  /// 不能与 [embedded] 同用（embedded 无 NestedScrollView 祖先）。
+  /// 不能与 [embedded] 同用（embedded 使用本地滚动容器）。
   final bool primary;
 
   /// Bounded data-workbench mode: fill the available body height and keep the
@@ -1513,9 +1513,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         }
       }
       // 2026-10-02 用户口径「点分类/筛选后分类栏不得消失」：表体随翻页/换筛选
-      // 回顶时，联动页（UtenCollapsingHeaderScrollView 的 NestedScrollView）的
-      // 外层一起回顶。否则内容替换的滚动校正会被 NestedScrollView 转嫁成外层
-      // 塌陷，宿主分类栏/工具条整条滚出视口，看起来就是「分类栏消失」。
+      // 回顶时通过共享 scope 将联动页外层一起回顶；外部独立 Nested 宿主保留兜底。
+      // 否则内容替换后外层仍可能收起，宿主分类栏/工具条整条滚出视口。
       if (!_usesPrimaryScroll) return;
       final nested =
           UtenCollapsingHeaderScrollView.outerControllerOf(context) ??
@@ -4108,7 +4107,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     }
     if (_sticky != null) _scheduleStickyMeasure();
     // 翻页（currentPage 变化）→ 表体竖向回顶，从第一条开始。
-    // primary 模式下竖向 position 由祖先 NestedScrollView 持有（_bodyV 无 client），
+    // primary 模式下竖向 position 由共享宿主的 inner 持有（_bodyV 无 client），
     // 须走 PrimaryScrollController；且 didUpdateWidget 处于 build 期，inner position
     // 首次翻页可能尚未挂载 → 推迟到帧结束后再 jump。
     final requestedEnd =
@@ -7152,7 +7151,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                         _scheduleHBarUpdate();
                       }
                       // 只按宽度重建（2026-09-22 根治「表格一步步往置顶移动时一卡一卡」）：
-                      // 联动折叠(NestedScrollView)收/放头部时本区**每格滚轮都在变高**，
+                      // 历史 Nested 宿主收/放头部时本区每格都变高；保留视口仍须沿用此缓存，
                       // LayoutBuilder 每次都再跑一遍 builder——原来整棵表体子树跟着重建，
                       // 一格滚轮 25-31 个可见单元格从头建一遍再布局(探针数据)，而表内滚动
                       // 高度不变、只动偏移，所以「表内滚还好、往上移就卡」。表体子树里不含
@@ -10166,7 +10165,7 @@ class _BodyFlex extends StatelessWidget {
     if (embedded) {
       return child;
     }
-    // primary（联动折叠）用 tight：表格填满 NestedScrollView body 释放出的空间；
+    // primary（联动折叠）用 tight：表格填满共享宿主的有界 body；
     // 有浮动批量动作也填满本地行区，保持其贴底位置；其余短列表仍可收缩。
     return Flexible(
       fit: primary || virtualized || fill ? FlexFit.tight : FlexFit.loose,

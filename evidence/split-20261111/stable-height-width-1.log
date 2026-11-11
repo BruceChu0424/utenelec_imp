@@ -1,0 +1,26 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/minimal_split_tooltip_reparent_test.dart
+00:00 +0: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/minimal_split_tooltip_reparent_test.dart: minimal leading closed Tooltip survives real split boundary
+00:00 +1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/minimal_hierarchy_height_tooltip_test.dart: compact header closed tooltip survives real height boundary
+00:00 +2: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/minimal_split_tooltip_reparent_test.dart: minimal leading visible Tooltip survives real split boundary
+00:01 +3: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/minimal_hierarchy_height_tooltip_test.dart: compact header visible tooltip survives real height boundary
+00:01 +4: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/minimal_split_tooltip_reparent_test.dart: minimal trailing closed Tooltip survives real split boundary
+00:01 +5: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/minimal_hierarchy_height_tooltip_test.dart: compact body closed tooltip survives real height boundary
+00:01 +6: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/minimal_split_tooltip_reparent_test.dart: minimal trailing visible Tooltip survives real split boundary
+00:01 +7: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/minimal_hierarchy_height_tooltip_test.dart: compact body visible tooltip survives real height boundary
+00:03 +8: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_split_view_test.dart: 初始宽度 = initialLeadingWidth(默认 300)
+00:03 +9: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_split_view_controlled_width_test.dart: late preference restoration cannot replace a controlled width
+00:03 +10: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_split_view_controlled_width_test.dart: late preference restoration cannot replace a controlled width
+00:04 +11: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_split_view_controlled_width_test.dart: late preference restoration cannot replace a controlled width
+00:04 +12: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/shared/widgets/uten_hierarchy_short_viewport_test.dart: 179px tree scrolls all controls and selectable nodes; error=false
+00:04 +13: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/shared/widgets/uten_hierarchy_short_viewport_test.dart: 179px tree scrolls all controls and selectable nodes; error=false
+00:04 +14: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/shared/widgets/uten_hierarchy_short_viewport_test.dart: 179px tree scrolls all controls and selectable nodes; error=false
+00:04 +15: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/shared/widgets/uten_hierarchy_short_viewport_test.dart: 179px tree scrolls all controls and selectable nodes; error=false
+00:04 +16: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/shared/widgets/uten_hierarchy_short_viewport_test.dart: 179px tree scrolls all controls and selectable nodes; error=false
+00:04 +17: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_split_view_test.dart: 长分类缩窄偏好重挂保留，双击清除偏好并恢复自然宽
+00:04 +18: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/shared/widgets/uten_hierarchy_short_viewport_test.dart: 179px tree scrolls all controls and selectable nodes; error=true
+00:04 +18 ~1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/shared/widgets/uten_hierarchy_short_viewport_test.dart: 179px tree scrolls all controls and selectable nodes; error=true
+00:05 +19 ~1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/shared/widgets/uten_hierarchy_short_viewport_test.dart: normal height pins the header and short-height transitions retain focus and expansion
+00:05 +20 ~1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/shared/widgets/uten_hierarchy_short_viewport_test.dart: short compact pane keeps header, directory and results reachable while offstage trees remain safe
+00:06 +21 ~1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/shared/widgets/uten_hierarchy_short_viewport_test.dart: compact height transitions retain header IME focus and the mounted result list
+00:06 +22 ~1: All tests passed!

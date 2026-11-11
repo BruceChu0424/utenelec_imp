@@ -1,0 +1,87 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/retained_pane_resize_stress_test.dart
+00:00 +0: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/retained_pane_resize_stress_test.dart: retained pane rtl tooltip leading=true survives 24 immediate resizes
+00:01 +1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/retained_pane_resize_stress_test.dart: retained pane rtl tooltip leading=true survives 24 immediate resizes
+00:01 +2: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/retained_pane_resize_stress_test.dart: retained pane rtl tooltip leading=true survives 24 immediate resizes
+00:01 +3: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/retained_pane_resize_stress_test.dart: retained pane rtl tooltip leading=true survives 24 immediate resizes
+00:01 +4: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/retained_pane_resize_stress_test.dart: retained pane rtl tooltip leading=true survives 24 immediate resizes
+00:01 +5: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/retained_pane_resize_stress_test.dart: retained pane rtl tooltip leading=true survives 24 immediate resizes
+00:01 +6: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/minimal_compact_header_width_test.dart: retained compact header closed tooltip survives icon width global=true
+00:01 +7: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/minimal_compact_header_width_test.dart: retained compact header closed tooltip survives icon width global=true
+00:01 +8: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/minimal_compact_header_width_test.dart: retained compact header closed tooltip survives icon width global=true
+00:01 +9: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/minimal_compact_header_width_test.dart: retained compact header closed tooltip survives icon width global=true
+00:01 +10: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_split_view_test.dart: 初始宽度 = initialLeadingWidth(默认 300)
+00:01 +11: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_split_view_controlled_width_test.dart: late preference restoration cannot replace a controlled width
+00:01 +12: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_split_view_controlled_width_test.dart: late preference restoration cannot replace a controlled width
+00:02 +13: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_split_view_controlled_width_test.dart: late preference restoration cannot replace a controlled width
+00:02 +14: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_split_view_controlled_width_test.dart: late preference restoration cannot replace a controlled width
+00:02 +15: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_split_view_controlled_width_test.dart: late preference restoration cannot replace a controlled width
+00:02 +16: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/retained_pane_resize_stress_test.dart: retained pane rtl tooltip leading=false survives 24 immediate resizes
+00:02 +17: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/shared/widgets/uten_hierarchy_short_viewport_test.dart: 179px tree scrolls all controls and selectable nodes; error=false
+00:02 +18: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/shared/widgets/uten_hierarchy_short_viewport_test.dart: 179px tree scrolls all controls and selectable nodes; error=false
+00:02 +19: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/shared/widgets/uten_hierarchy_short_viewport_test.dart: 179px tree scrolls all controls and selectable nodes; error=false
+00:02 +20: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/shared/widgets/uten_hierarchy_short_viewport_test.dart: 179px tree scrolls all controls and selectable nodes; error=false
+00:02 +21: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/shared/widgets/uten_hierarchy_short_viewport_test.dart: 179px tree scrolls all controls and selectable nodes; error=false
+00:02 +22: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/shared/widgets/uten_hierarchy_short_viewport_test.dart: 179px tree scrolls all controls and selectable nodes; error=false
+00:02 +23: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/shared/widgets/uten_hierarchy_short_viewport_test.dart: 179px tree scrolls all controls and selectable nodes; error=false
+00:03 +24: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_scroll_view_test.dart: primary 模式整树正常构建(不抛异常)
+00:03 +25: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_scroll_view_test.dart: primary 模式整树正常构建(不抛异常)
+00:03 +26: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_touch_test.dart: touch from table collapses header before rows Size(390.0, 844.0) count 2
+00:03 +27: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_touch_test.dart: touch from table collapses header before rows Size(390.0, 844.0) count 2
+00:03 +27 ~1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_touch_test.dart: touch from table collapses header before rows Size(390.0, 844.0) count 2
+00:03 +28 ~1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_touch_test.dart: touch from table collapses header before rows Size(390.0, 844.0) count 2
+00:03 +29 ~1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_touch_test.dart: touch from table collapses header before rows Size(390.0, 844.0) count 2
+00:03 +30 ~1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_mode_transition_test.dart: compact/nested transitions retain table, row, IME and wheel offset (1.0)
+00:04 +31 ~1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_mode_transition_test.dart: compact/nested transitions retain table, row, IME and wheel offset (1.0)
+00:04 +32 ~1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_mode_transition_test.dart: compact/nested transitions retain table, row, IME and wheel offset (1.0)
+00:04 +33 ~1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_mode_transition_test.dart: compact/nested transitions retain table, row, IME and wheel offset (1.0)
+00:04 +34 ~1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_mode_transition_test.dart: compact/nested transitions retain table, row, IME and wheel offset (1.0)
+00:04 +35 ~1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_mode_transition_test.dart: compact/nested transitions retain table, row, IME and wheel offset (1.0)
+00:04 +36 ~1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_mode_transition_test.dart: compact/nested transitions retain table, row, IME and wheel offset (1.0)
+00:05 +37 ~1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_mode_transition_test.dart: compact/nested transitions retain table, row, IME and wheel offset (1.0)
+00:05 +38 ~1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_mode_transition_test.dart: compact/nested transitions retain table, row, IME and wheel offset (1.0)
+00:05 +39 ~1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_mode_transition_test.dart: compact/nested transitions retain table, row, IME and wheel offset (1.0)
+00:05 +40 ~1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_mode_transition_test.dart: compact/nested transitions retain table, row, IME and wheel offset (1.0)
+00:05 +41 ~1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_mode_transition_test.dart: compact/nested transitions retain table, row, IME and wheel offset (1.0)
+00:05 +42 ~1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_mode_transition_test.dart: compact/nested transitions retain table, row, IME and wheel offset (1.0)
+00:05 +43 ~1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_mode_transition_test.dart: compact/nested transitions retain table, row, IME and wheel offset (1.0)
+00:05 +44 ~1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_mode_transition_test.dart: compact/nested transitions retain table, row, IME and wheel offset (1.0)
+00:05 +45 ~1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_mode_transition_test.dart: compact/nested transitions retain table, row, IME and wheel offset (1.0)
+00:05 +46 ~1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_mode_transition_test.dart: compact/nested transitions retain table, row, IME and wheel offset (1.0)
+00:05 +47 ~1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_mode_transition_test.dart: compact/nested transitions retain table, row, IME and wheel offset (1.0)
+00:05 +48 ~1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_mode_transition_test.dart: compact/nested transitions retain table, row, IME and wheel offset (1.0)
+00:05 +49 ~1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_mode_transition_test.dart: compact/nested transitions retain table, row, IME and wheel offset (1.0)
+00:06 +50 ~1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_scroll_relayout_test.dart: 收头部阶段每格滚轮不再整树重建表体(与表内滚动同级)
+00:06 +51 ~1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_scroll_relayout_test.dart: 收头部阶段每格滚轮不再整树重建表体(与表内滚动同级)
+00:06 +52 ~1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_scroll_relayout_test.dart: 收头部阶段每格滚轮不再整树重建表体(与表内滚动同级)
+00:06 +53 ~1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_mode_transition_test.dart: compact/nested transitions retain table, row, IME and wheel offset (2.0)
+00:06 +54 ~1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_mode_transition_test.dart: compact/nested transitions retain table, row, IME and wheel offset (2.0)
+00:06 +55 ~1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_mode_transition_test.dart: compact/nested transitions retain table, row, IME and wheel offset (2.0)
+00:06 +56 ~1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_scroll_relayout_test.dart: 滚轮门：到点即止、越点先吃空行程、往下对称、掉头即撤门
+00:06 +57 ~1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_scroll_relayout_test.dart: 滚轮门：到点即止、越点先吃空行程、往下对称、掉头即撤门
+00:06 +58 ~1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_scroll_relayout_test.dart: 滚轮门：到点即止、越点先吃空行程、往下对称、掉头即撤门
+00:06 +59 ~1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_scroll_relayout_test.dart: 滚轮门：到点即止、越点先吃空行程、往下对称、掉头即撤门
+00:07 +60 ~1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_scroll_relayout_test.dart: 滚轮门：到点即止、越点先吃空行程、往下对称、掉头即撤门
+00:07 +61 ~1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/components/uten_unified_page_layout_test.dart: three page edges and all chrome are window sized at Size(2560.0, 1300.0) zoom 1.0
+00:07 +62 ~1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_mode_transition_test.dart: primary fullscreen retains live cell text, selection and controller (1.0)
+00:07 +63 ~1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_mode_transition_test.dart: primary fullscreen retains live cell text, selection and controller (1.0)
+00:07 +64 ~1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_mode_transition_test.dart: primary fullscreen retains live cell text, selection and controller (1.0)
+00:07 +65 ~1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_scroll_relayout_test.dart: 停顿窗距离放行线：滚不停的人推够 250 即继续，不卡死在置顶
+00:07 +66 ~1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/components/uten_unified_page_layout_test.dart: no overflow and Popup keep the same background width input and focus
+00:08 +67 ~1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/components/uten_unified_page_layout_test.dart: no overflow and Popup keep the same background width input and focus
+00:08 +68 ~1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/components/uten_unified_page_layout_test.dart: no overflow and Popup keep the same background width input and focus
+00:08 +69 ~1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_scroll_relayout_test.dart: 滚轮门：置顶时掉头往下, 头部立刻放, 不吃空行程
+00:08 +70 ~1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/components/uten_unified_page_layout_test.dart: retained tab domains do not let an old priority200 table outrank new priority100
+00:08 +71 ~1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_scroll_relayout_test.dart: 鼠标在表格外(头部上)滚, 同样先把表格置顶再进表内
+00:08 +72 ~1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/components/uten_unified_page_layout_test.dart: genuinely independent toolbar locks local16 without covering actions or moving the page surface
+00:09 +73 ~1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_scroll_relayout_test.dart: 页内独立滚动件：头部未收完时上滚仍先置顶, 置顶后它自己滚, 不被抢
+00:09 +74 ~1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/components/uten_unified_page_layout_test.dart: ultra-short table presentation explicitly stays local with reachable actions
+00:09 +75 ~1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_scroll_relayout_test.dart: shift+滚轮是横滚, 门不接管：表格横向滚、头部不动
+00:09 +76 ~1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_collapsing_header_scroll_relayout_test.dart: shift+滚轮是横滚, 门不接管：表格横向滚、头部不动
+00:09 +77 ~1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/components/uten_unified_page_layout_test.dart: real retained TabBarView branches isolate table200 and page100 without manual domain scopes
+00:09 +78 ~1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/components/uten_unified_page_layout_test.dart: IndexedStack retained branches keep distinct layout domains and reject hidden paint
+00:09 +79 ~1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/components/uten_unified_page_layout_test.dart: PageRoute domains keep cached priority200 separate from new priority100
+00:10 +80 ~1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/components/uten_unified_page_layout_test.dart: two main panes sharing a primary controller retain left16 and right0 by unique token
+00:10 +81 ~1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/components/uten_unified_page_layout_test.dart: soft keyboard limits full-height paint without changing page end layout
+00:10 +82 ~1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/components/uten_unified_page_layout_test.dart: local edge padding retains original inset and supports intrinsic unbounded content
+00:10 +83 ~1: All tests passed!

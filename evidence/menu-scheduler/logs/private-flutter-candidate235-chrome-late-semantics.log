@@ -1,0 +1,5 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+org-dartlang-app:///features/basic_data/pages/master_menu_scheduler_probe_test.dart:652:17: Error: Setter not found: 'semanticsHandle'.
+                semanticsHandle = tester.ensureSemantics();
+                ^^^^^^^^^^^^^^^
+Failed to compile

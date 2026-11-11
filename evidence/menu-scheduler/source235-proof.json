@@ -1,0 +1,15 @@
+{
+  "product": "14e7be5e7e9278c1b0f2a8732fde95f0b9a592a0",
+  "libTree": "f3c3ec1dda50782c8f5fe94c767d2184a3104cb5",
+  "tree": "d11d32a6fa12ca8137d670a95f9176ee11dc2b2c",
+  "probeSha256": "2fd55832d98aa7fbdf1a2ae35242e76f81eda07b4c1e2ec686aa098a883ad3c5",
+  "trackedDiffEmpty": true,
+  "ensureSemanticsCalls": 2,
+  "hasEnabledAssertion": true,
+  "mislabelledRunsWithoutHandle": [
+    "semantics47-exact",
+    "candidate235-same-vm",
+    "candidate235-chrome-semantics"
+  ],
+  "firstErrorContract": "Root actual Web child.attached Scheduler remains distinct from probe restore-wide RLB; no product fix authored"
+}

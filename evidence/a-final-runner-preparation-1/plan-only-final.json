@@ -1,0 +1,76 @@
+{
+  "candidate": "14e7be5e7e9278c1b0f2a8732fde95f0b9a592a0",
+  "baseline": "7b912287e53315228b469790ff066a9fab643e3c",
+  "execute": false,
+  "output": "D:\\Projects\\uten_imp_worktrees\\feedback-a-final-runner-20261111\\evidence\\final-freeze-not-started-2",
+  "tests": [
+    "ProductionPartialReportQuantityEndToEndTest",
+    "ProductionQuantityAdversarialEndToEndTest",
+    "WorkshopPublicSurplusEndToEndTest",
+    "ProductionMaterialKitProofsTest",
+    "DailyReportExecutionSegmentGuardTest",
+    "ReportablePlanLinePostgresTest",
+    "ReportablePlanLineQuerySecurityContractTest",
+    "ProductionExecutionSegmentServiceTest",
+    "ProductionExecutionWorkbenchProjectionTest",
+    "ProductionExecutionWorkbenchSecurityContractTest",
+    "ProductionWorkshopTaskStageContractTest",
+    "ProductionMaterialSettlementServiceTest",
+    "ProductionMaterialStockLedgerCancellationPolicyTest",
+    "ProductionMaterialStockLedgerRoutingTest",
+    "PartialMaterialReportCapacityPostgresTest"
+  ],
+  "expectedTestCount": 209,
+  "legacyRevision": "86dffb9dbcb52b248ade1f2b3ea4a7c72db738a2",
+  "owningPgSubset": 26,
+  "upgrade": "1128/1129 x CAP/three-material x create/edit/approve = 12 clones; 19 launchers",
+  "proof": "SQL probe: 513/1025/2049 and EXPLAIN; owning 26-case class also runs 20k prefix / 1000 capture",
+  "projection": "correct -> assertion-failing mutant -> restored",
+  "directLot": "two unchanged public-service cases",
+  "rootRuntimeAccess": false,
+  "priorRunRelabelled": false,
+  "changedSourceGroups": {
+    "main": {
+      "files": 4363,
+      "identical": 4358,
+      "changedPaths": [
+        "server/src/main/java/com/uten/imp/common/readsnapshot/CompleteStreamErrors.java",
+        "server/src/main/java/com/uten/imp/common/readsnapshot/CompleteStreamStaging.java",
+        "server/src/main/java/com/uten/imp/common/readsnapshot/MasterSummaryReadSupport.java",
+        "server/src/main/java/com/uten/imp/features/production/analysis/MaterialAnalysisWarehouseBreakdownReader.java",
+        "server/src/main/java/com/uten/imp/features/stock/InstantInventoryCompleteStreamService.java"
+      ]
+    },
+    "tests": {
+      "files": 2837,
+      "identical": 2832,
+      "changedPaths": [
+        "server/src/test/java/com/uten/imp/businesschain/AggregateMaterialOrderEndToEndTest.java",
+        "server/src/test/java/com/uten/imp/common/readsnapshot/CompleteStreamCompressionTomcatTest.java",
+        "server/src/test/java/com/uten/imp/common/readsnapshot/CompleteStreamStagingTest.java",
+        "server/src/test/java/com/uten/imp/common/readsnapshot/MasterSummaryStreamTest.java",
+        "server/src/test/java/com/uten/imp/features/stock/InstantInventoryCompleteStreamServiceTest.java"
+      ]
+    },
+    "migrations": {
+      "files": 1070,
+      "identical": 1070,
+      "changedPaths": []
+    },
+    "tools": {
+      "files": 15,
+      "identical": 15,
+      "changedPaths": []
+    },
+    "contracts": {
+      "files": 31,
+      "identical": 31,
+      "changedPaths": []
+    },
+    "build": {
+      "files": 1,
+      "identical": 1,
+      "changedPaths": []
+    }
+  }
+}

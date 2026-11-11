@@ -1,0 +1,11 @@
+{
+  "command": [
+    "javac",
+    "@D:\\Projects\\uten_imp_worktrees\\feedback-a-final-runner-20261111\\evidence\\a-final-runner-preparation-1\\direct-javac.args"
+  ],
+  "exitCode": 0,
+  "compileOnly": true,
+  "databaseStarted": false,
+  "rootRuntimeAccess": false,
+  "fixtureSourceSha256": "e9d61a555d75aa2d6bd20755d8f68d94ae1ffd3907a2f5b1561429bb65cde01e"
+}

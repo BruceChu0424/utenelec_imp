@@ -1,0 +1,130 @@
+{
+  "classes": [
+    {
+      "class": "com.uten.imp.businesschain.ProductionPartialReportQuantityEndToEndTest",
+      "xml": "D:\\Projects\\uten_imp_worktrees\\feedback-final-a-20261110\\evidence\\a-final-7b912287-1\\maven-a\\surefire-reports\\TEST-com.uten.imp.businesschain.ProductionPartialReportQuantityEndToEndTest.xml",
+      "tests": 11,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "class": "com.uten.imp.businesschain.ProductionQuantityAdversarialEndToEndTest",
+      "xml": "D:\\Projects\\uten_imp_worktrees\\feedback-final-a-20261110\\evidence\\a-final-7b912287-1\\maven-a\\surefire-reports\\TEST-com.uten.imp.businesschain.ProductionQuantityAdversarialEndToEndTest.xml",
+      "tests": 13,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "class": "com.uten.imp.businesschain.WorkshopPublicSurplusEndToEndTest",
+      "xml": "D:\\Projects\\uten_imp_worktrees\\feedback-final-a-20261110\\evidence\\a-final-7b912287-1\\maven-a\\surefire-reports\\TEST-com.uten.imp.businesschain.WorkshopPublicSurplusEndToEndTest.xml",
+      "tests": 17,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "class": "com.uten.imp.common.production.ProductionMaterialKitProofsTest",
+      "xml": "D:\\Projects\\uten_imp_worktrees\\feedback-final-a-20261110\\evidence\\a-final-7b912287-1\\maven-a\\surefire-reports\\TEST-com.uten.imp.common.production.ProductionMaterialKitProofsTest.xml",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "class": "com.uten.imp.features.production.dailyreport.DailyReportExecutionSegmentGuardTest",
+      "xml": "D:\\Projects\\uten_imp_worktrees\\feedback-final-a-20261110\\evidence\\a-final-7b912287-1\\maven-a\\surefire-reports\\TEST-com.uten.imp.features.production.dailyreport.DailyReportExecutionSegmentGuardTest.xml",
+      "tests": 28,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "class": "com.uten.imp.features.production.dailyreport.ReportablePlanLinePostgresTest",
+      "xml": "D:\\Projects\\uten_imp_worktrees\\feedback-final-a-20261110\\evidence\\a-final-7b912287-1\\maven-a\\surefire-reports\\TEST-com.uten.imp.features.production.dailyreport.ReportablePlanLinePostgresTest.xml",
+      "tests": 14,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "class": "com.uten.imp.features.production.dailyreport.ReportablePlanLineQuerySecurityContractTest",
+      "xml": "D:\\Projects\\uten_imp_worktrees\\feedback-final-a-20261110\\evidence\\a-final-7b912287-1\\maven-a\\surefire-reports\\TEST-com.uten.imp.features.production.dailyreport.ReportablePlanLineQuerySecurityContractTest.xml",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionSegmentServiceTest",
+      "xml": "D:\\Projects\\uten_imp_worktrees\\feedback-final-a-20261110\\evidence\\a-final-7b912287-1\\maven-a\\surefire-reports\\TEST-com.uten.imp.features.production.execution.ProductionExecutionSegmentServiceTest.xml",
+      "tests": 24,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchProjectionTest",
+      "xml": "D:\\Projects\\uten_imp_worktrees\\feedback-final-a-20261110\\evidence\\a-final-7b912287-1\\maven-a\\surefire-reports\\TEST-com.uten.imp.features.production.execution.ProductionExecutionWorkbenchProjectionTest.xml",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchSecurityContractTest",
+      "xml": "D:\\Projects\\uten_imp_worktrees\\feedback-final-a-20261110\\evidence\\a-final-7b912287-1\\maven-a\\surefire-reports\\TEST-com.uten.imp.features.production.execution.ProductionExecutionWorkbenchSecurityContractTest.xml",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionWorkshopTaskStageContractTest",
+      "xml": "D:\\Projects\\uten_imp_worktrees\\feedback-final-a-20261110\\evidence\\a-final-7b912287-1\\maven-a\\surefire-reports\\TEST-com.uten.imp.features.production.execution.ProductionWorkshopTaskStageContractTest.xml",
+      "tests": 52,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "class": "com.uten.imp.features.stock.allocation.ProductionMaterialSettlementServiceTest",
+      "xml": "D:\\Projects\\uten_imp_worktrees\\feedback-final-a-20261110\\evidence\\a-final-7b912287-1\\maven-a\\surefire-reports\\TEST-com.uten.imp.features.stock.allocation.ProductionMaterialSettlementServiceTest.xml",
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "class": "com.uten.imp.features.stock.allocation.ProductionMaterialStockLedgerCancellationPolicyTest",
+      "xml": "D:\\Projects\\uten_imp_worktrees\\feedback-final-a-20261110\\evidence\\a-final-7b912287-1\\maven-a\\surefire-reports\\TEST-com.uten.imp.features.stock.allocation.ProductionMaterialStockLedgerCancellationPolicyTest.xml",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "class": "com.uten.imp.features.stock.allocation.ProductionMaterialStockLedgerRoutingTest",
+      "xml": "D:\\Projects\\uten_imp_worktrees\\feedback-final-a-20261110\\evidence\\a-final-7b912287-1\\maven-a\\surefire-reports\\TEST-com.uten.imp.features.stock.allocation.ProductionMaterialStockLedgerRoutingTest.xml",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "class": "com.uten.imp.migration.PartialMaterialReportCapacityPostgresTest",
+      "xml": "D:\\Projects\\uten_imp_worktrees\\feedback-final-a-20261110\\evidence\\a-final-7b912287-1\\maven-a\\surefire-reports\\TEST-com.uten.imp.migration.PartialMaterialReportCapacityPostgresTest.xml",
+      "tests": 26,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  ],
+  "tests": 209,
+  "owningPgSubset": 26,
+  "failures": 0,
+  "skips": 0,
+  "readOnlySmoke": true,
+  "newCandidateAcceptance": false
+}

@@ -1,0 +1,39 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/master_data_table_width_cursor_test.dart
+00:00 +0: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/master_data_table_width_cursor_test.dart: 同实例静默重拉: 已测前缀零取值零排版(值集超上限清空后亦然)
+00:01 +1: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/master_data_table_mutable_row_refresh_test.dart: in-place field mutation re-renders cells on a same-instance rebuild
+00:01 +2: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/master_data_table_view_platform_refresh_test.dart: progressive platform reloads retain columns and scan only appended width cells
+00:02 +3: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/master_data_table_view_platform_refresh_test.dart: progressive platform reloads retain columns and scan only appended width cells
+00:02 +4: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/master_data_table_view_platform_refresh_test.dart: progressive platform reloads retain columns and scan only appended width cells
+00:02 +5: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/master_data_table_view_platform_refresh_test.dart: progressive platform reloads retain columns and scan only appended width cells
+00:02 +6: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/master_data_table_view_platform_refresh_test.dart: progressive platform reloads retain columns and scan only appended width cells
+00:02 +6: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/shared/paging/scoped_owner_check_budget_test.dart: one complete read answers every ownership re-check of a synchronous segment with a single query compare
+scoped owner check budget: rows=600 re-checks=3642 compares=5 loop checks=1212
+00:02 +7: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/master_data_table_view_platform_refresh_test.dart: progressive platform reloads retain columns and scan only appended width cells
+00:02 +8: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/master_data_table_view_platform_refresh_test.dart: progressive platform reloads retain columns and scan only appended width cells
+00:02 +9: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/master_data_table_view_platform_refresh_test.dart: progressive platform reloads retain columns and scan only appended width cells
+00:02 +10: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/master_data_table_view_platform_refresh_test.dart: progressive platform reloads retain columns and scan only appended width cells
+00:02 +11: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/master_data_table_view_platform_refresh_test.dart: progressive platform reloads retain columns and scan only appended width cells
+00:03 +12: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/master_data_table_view_platform_refresh_test.dart: progressive platform reloads retain columns and scan only appended width cells
+00:03 +13: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/master_data_table_view_platform_refresh_test.dart: progressive platform reloads retain columns and scan only appended width cells
+00:03 +14: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/master_data_table_view_platform_refresh_test.dart: progressive platform reloads retain columns and scan only appended width cells
+00:03 +15: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/master_data_table_view_platform_refresh_test.dart: progressive platform reloads retain columns and scan only appended width cells
+00:03 +16: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/master_data_table_view_platform_refresh_test.dart: progressive platform reloads retain columns and scan only appended width cells
+00:03 +16: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/shared/platform_tables/platform_table_incremental_read_test.dart: progressive growth reads extension values once per record
+perfMetrics {requests: 16, idsRequested: 3000, uniqueIds: 3000, firstBatchRepeats: 1, peakInFlight: 1, scopeReads: 1, recordIdCalls: 3000}
+00:03 +17: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/master_data_table_view_platform_refresh_test.dart: progressive platform reloads retain columns and scan only appended width cells
+00:03 +18: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/master_data_table_view_platform_refresh_test.dart: progressive platform reloads retain columns and scan only appended width cells
+00:03 +19: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/master_data_table_view_platform_refresh_test.dart: progressive platform reloads retain columns and scan only appended width cells
+00:03 +20: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/master_data_table_view_platform_refresh_test.dart: progressive platform reloads retain columns and scan only appended width cells
+00:03 +21: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/master_data_table_view_platform_refresh_test.dart: progressive platform reloads retain columns and scan only appended width cells
+00:03 +22: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/master_data_table_view_platform_refresh_test.dart: progressive platform reloads retain columns and scan only appended width cells
+PLATFORM-PREFIX widthCells=1576 expected=1576 indexBuilds=0
+00:03 +23: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/shared/paging/retired_read_translation_test.dart: 表格退休分支: 新查询在途显示过渡态, 无替代读取保持失败呈现
+00:04 +24: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/shared/platform_tables/platform_table_incremental_read_test.dart: parent rebuilds on a stable list do not re-read record ids
+00:04 +25: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/shared/platform_tables/platform_table_incremental_read_test.dart: parent rebuilds on a stable list do not re-read record ids
+perfMetrics {requests: 15, idsRequested: 3000, uniqueIds: 3000, firstBatchRepeats: 1, peakInFlight: 1, scopeReads: 1, recordIdCalls: 12000} before=(3000, 11)
+00:04 +26: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/master_data_table_view_platform_refresh_test.dart: real persisted cell and definition updates still publish and fit
+00:04 +27: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/shared/platform_tables/platform_table_incremental_read_test.dart: a rebuilt leading-groups list does not restart the value read
+perfMetrics {requests: 16, idsRequested: 3200, uniqueIds: 3200, firstBatchRepeats: 1, peakInFlight: 1, scopeReads: 1, recordIdCalls: 12800} beforeRequests=7
+00:05 +28: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/shared/platform_tables/platform_table_incremental_read_test.dart: pure parent rebuilds re-collect no rows and rebuild no plan
+00:05 +29: All tests passed!

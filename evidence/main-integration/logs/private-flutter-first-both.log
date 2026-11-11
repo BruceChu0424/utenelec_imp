@@ -1,0 +1,208 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/master_data_table_width_cursor_test.dart
+00:00 +0: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/master_data_table_width_cursor_test.dart: 同实例静默重拉: 已测前缀零取值零排版(值集超上限清空后亦然)
+00:01 +1: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/master_data_table_mutable_row_refresh_test.dart: in-place field mutation re-renders cells on a same-instance rebuild
+00:01 +2: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/master_data_table_view_platform_refresh_test.dart: progressive platform reloads retain columns and scan only appended width cells
+00:02 +3: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/master_data_table_view_platform_refresh_test.dart: progressive platform reloads retain columns and scan only appended width cells
+00:02 +4: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/master_data_table_view_platform_refresh_test.dart: progressive platform reloads retain columns and scan only appended width cells
+00:02 +4: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/shared/platform_tables/platform_progressive_reads_test.dart: progressive records serialize current reads and retain persisted cells with no selected definitions
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: [
+            'record-0',
+            'record-1',
+            'record-2',
+            'record-3',
+            'record-4',
+            'record-5',
+            'record-6',
+            'record-7',
+            'record-8',
+            'record-9',
+            'record-10',
+            'record-11',
+            'record-12',
+            'record-13',
+            'record-14',
+            'record-15',
+            'record-16',
+            'record-17',
+            'record-18',
+            'record-19',
+            'record-20',
+            'record-21',
+            'record-22',
+            'record-23',
+            ...
+          ]
+  Actual: [
+            'record-50',
+            'record-51',
+            'record-52',
+            'record-53',
+            'record-54',
+            'record-55',
+            'record-56',
+            'record-57',
+            'record-58',
+            'record-59',
+            'record-60',
+            'record-61',
+            'record-62',
+            'record-63',
+            'record-64',
+            'record-65',
+            'record-66',
+            'record-67',
+            'record-68',
+            'record-69',
+            'record-70',
+            'record-71',
+            'record-72',
+            'record-73',
+            ...
+          ]
+   Which: at location [0] is 'record-50' instead of 'record-0'
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/shared/platform_tables/platform_progressive_reads_test.dart:139:9)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/shared/platform_tables/platform_progressive_reads_test.dart line 139
+The test description was:
+  progressive records serialize current reads and retain persisted cells with no selected
+  definitions
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:02 +4 -1: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/master_data_table_view_platform_refresh_test.dart: progressive platform reloads retain columns and scan only appended width cells
+00:02 +4 -1: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/shared/platform_tables/platform_progressive_reads_test.dart: progressive records serialize current reads and retain persisted cells with no selected definitions [E]
+  Test failed. See exception logs above.
+  The test description was: progressive records serialize current reads and retain persisted cells with no selected definitions
+  
+Warning: At least one test in this suite creates an HttpClient. When running a test suite that uses
+TestWidgetsFlutterBinding, all HTTP requests will return status code 400, and no network request
+will actually be made. Any test expecting a real network connection and status code will fail.
+To test code that needs an HttpClient, provide your own HttpClient implementation to the code under
+test, so that your test can consistently provide a testable response to the code under test.
+00:03 +5 -1: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/master_data_table_view_platform_refresh_test.dart: progressive platform reloads retain columns and scan only appended width cells
+00:03 +5 -1: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/shared/paging/scoped_owner_check_budget_test.dart: one complete read answers every ownership re-check of a synchronous segment with a single query compare
+scoped owner check budget: rows=600 re-checks=3642 compares=5 loop checks=1212
+00:03 +6 -1: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/master_data_table_view_platform_refresh_test.dart: progressive platform reloads retain columns and scan only appended width cells
+00:03 +7 -1: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/master_data_table_view_platform_refresh_test.dart: progressive platform reloads retain columns and scan only appended width cells
+00:03 +8 -1: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/master_data_table_view_platform_refresh_test.dart: progressive platform reloads retain columns and scan only appended width cells
+00:03 +9 -1: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/master_data_table_view_platform_refresh_test.dart: progressive platform reloads retain columns and scan only appended width cells
+00:03 +10 -1: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/master_data_table_view_platform_refresh_test.dart: progressive platform reloads retain columns and scan only appended width cells
+00:03 +10 -1: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/shared/platform_tables/platform_table_incremental_read_test.dart: progressive growth reads extension values once per record
+perfMetrics {requests: 16, idsRequested: 3000, uniqueIds: 3000, firstBatchRepeats: 1, peakInFlight: 1, scopeReads: 1, recordIdCalls: 3000}
+00:03 +11 -1: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/master_data_table_view_platform_refresh_test.dart: progressive platform reloads retain columns and scan only appended width cells
+00:03 +12 -1: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/master_data_table_view_platform_refresh_test.dart: progressive platform reloads retain columns and scan only appended width cells
+00:03 +13 -1: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/master_data_table_view_platform_refresh_test.dart: progressive platform reloads retain columns and scan only appended width cells
+00:04 +14 -1: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/master_data_table_view_platform_refresh_test.dart: progressive platform reloads retain columns and scan only appended width cells
+00:04 +15 -1: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/master_data_table_view_platform_refresh_test.dart: progressive platform reloads retain columns and scan only appended width cells
+00:04 +16 -1: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/master_data_table_view_platform_refresh_test.dart: progressive platform reloads retain columns and scan only appended width cells
+PLATFORM-PREFIX widthCells=1576 expected=1576 indexBuilds=0
+00:04 +17 -1: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/master_data_table_width_cursor_test.dart: 平台扩展值逐批到达: 业务列取值恒等于行数, 平台值全部量到
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: <1050>
+  Actual: <1078>
+平台值到达只重走平台列: 业务列每格恰好取值一次,不随批数放大
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/master_data_table_width_cursor_test.dart:255:5)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/master_data_table_width_cursor_test.dart line 255
+The test description was:
+  平台扩展值逐批到达: 业务列取值恒等于行数, 平台值全部量到
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:04 +17 -2: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/shared/platform_tables/platform_table_incremental_read_test.dart: parent rebuilds on a stable list do not re-read record ids
+00:04 +17 -2: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/master_data_table_width_cursor_test.dart: 平台扩展值逐批到达: 业务列取值恒等于行数, 平台值全部量到 [E]
+  Test failed. See exception logs above.
+  The test description was: 平台扩展值逐批到达: 业务列取值恒等于行数, 平台值全部量到
+  
+Warning: At least one test in this suite creates an HttpClient. When running a test suite that uses
+TestWidgetsFlutterBinding, all HTTP requests will return status code 400, and no network request
+will actually be made. Any test expecting a real network connection and status code will fail.
+To test code that needs an HttpClient, provide your own HttpClient implementation to the code under
+test, so that your test can consistently provide a testable response to the code under test.
+00:04 +18 -2: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/shared/platform_tables/platform_table_incremental_read_test.dart: parent rebuilds on a stable list do not re-read record ids
+00:04 +19 -2: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/shared/platform_tables/platform_table_incremental_read_test.dart: parent rebuilds on a stable list do not re-read record ids
+00:04 +20 -2: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/shared/platform_tables/platform_table_incremental_read_test.dart: parent rebuilds on a stable list do not re-read record ids
+00:04 +21 -2: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/shared/platform_tables/platform_table_incremental_read_test.dart: parent rebuilds on a stable list do not re-read record ids
+00:04 +22 -2: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/shared/platform_tables/platform_table_incremental_read_test.dart: parent rebuilds on a stable list do not re-read record ids
+perfMetrics {requests: 15, idsRequested: 3000, uniqueIds: 3000, firstBatchRepeats: 1, peakInFlight: 1, scopeReads: 1, recordIdCalls: 12000} before=(3000, 2)
+00:04 +23 -2: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/master_data_table_view_platform_refresh_test.dart: fresh same-key column getters retain current closures and widths
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: a value greater than <87.0>
+  Actual: <87.0>
+   Which: is not a value greater than <87.0>
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/master_data_table_view_platform_refresh_test.dart:193:7)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/master_data_table_view_platform_refresh_test.dart line 193
+The test description was:
+  fresh same-key column getters retain current closures and widths
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:05 +23 -3: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/shared/platform_tables/platform_table_incremental_read_test.dart: a rebuilt leading-groups list does not restart the value read
+00:05 +23 -3: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/master_data_table_view_platform_refresh_test.dart: fresh same-key column getters retain current closures and widths [E]
+  Test failed. See exception logs above.
+  The test description was: fresh same-key column getters retain current closures and widths
+  
+00:05 +23 -3: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/shared/platform_tables/platform_table_incremental_read_test.dart: a rebuilt leading-groups list does not restart the value read
+perfMetrics {requests: 16, idsRequested: 3200, uniqueIds: 3200, firstBatchRepeats: 1, peakInFlight: 1, scopeReads: 1, recordIdCalls: 12800} beforeRequests=2
+00:05 +24 -3: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/master_data_table_view_platform_refresh_test.dart: real persisted cell and definition updates still publish and fit
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+the actual new cell must be displayed after the read
+
+When the exception was thrown, this was the stack:
+#0      pumpUntil (file:///D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/support/pump_until.dart:61:3)
+<asynchronous suspension>
+#1      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/master_data_table_view_platform_refresh_test.dart:213:7)
+<asynchronous suspension>
+#2      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#3      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+The test description was:
+  real persisted cell and definition updates still publish and fit
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:06 +24 -4: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/shared/platform_tables/platform_table_incremental_read_test.dart: pure parent rebuilds re-collect no rows and rebuild no plan
+00:06 +24 -4: D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/master_data_table_view_platform_refresh_test.dart: real persisted cell and definition updates still publish and fit [E]
+  Test failed. See exception logs above.
+  The test description was: real persisted cell and definition updates still publish and fit
+  
+00:06 +25 -4: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/master_data_table_view_platform_refresh_test.dart: fresh same-key column getters retain current closures and widths
+  D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/master_data_table_view_platform_refresh_test.dart: real persisted cell and definition updates still publish and fit
+  D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/master_data_table_width_cursor_test.dart: 平台扩展值逐批到达: 业务列取值恒等于行数, 平台值全部量到
+  D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/shared/platform_tables/platform_progressive_reads_test.dart: progressive records serialize current reads and retain persisted cells with no selected definitions

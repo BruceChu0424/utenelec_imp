@@ -1,0 +1,369 @@
+{
+  "baselineSource": "14e7be5e7e9278c1b0f2a8732fde95f0b9a592a0",
+  "currentSource": "178e5a295091b4e817676e6fe0e224b2765fd5ae",
+  "currentProductDelta": [],
+  "baselineProductDelta": [],
+  "helperBytesIdenticalAcrossBothProducts": true,
+  "mainRegression": {
+    "oldPass": 2,
+    "oldFail": 0,
+    "newPass": 0,
+    "newFail": 2
+  },
+  "externalAnimateRegression": {
+    "oldPass": 1,
+    "oldFail": 0,
+    "newPass": 0,
+    "newFail": 1
+  },
+  "factRuns": [
+    {
+      "file": "private-flutter-independent-scroll-animate-baseline-7.log",
+      "facts": [
+        {
+          "case": "compact-external-animateTo-header",
+          "initialInner": 950.0,
+          "initialOuter": 96.0,
+          "transitionInner": 950.0,
+          "transitionOuter": 0.0,
+          "afterSmallInner": 950.0,
+          "afterSmallOuter": 24.0,
+          "afterBoundaryInner": 950.0,
+          "afterBoundaryOuter": 96.0,
+          "outerMax": 96.0
+        }
+      ]
+    },
+    {
+      "file": "private-flutter-independent-scroll-animate-current-7.log",
+      "facts": [
+        {
+          "case": "compact-external-animateTo-header",
+          "initialInner": 950.0,
+          "initialOuter": 96.0,
+          "transitionInner": 950.0,
+          "transitionOuter": 0.0,
+          "afterSmallInner": 950.0,
+          "afterSmallOuter": 24.0,
+          "afterBoundaryInner": 0.0,
+          "afterBoundaryOuter": 96.0,
+          "outerMax": 96.0
+        }
+      ]
+    },
+    {
+      "file": "private-flutter-independent-scroll-baseline-4.log",
+      "facts": [
+        {
+          "case": "width-wide-to-compact",
+          "initialInner": 950.0,
+          "initialOuter": 96.0,
+          "transitionInner": 950.0,
+          "transitionOuter": 0.0,
+          "afterSmallInner": 950.0,
+          "afterSmallOuter": 24.0,
+          "afterBoundaryInner": 950.0,
+          "afterBoundaryOuter": 96.0,
+          "outerMax": 96.0
+        },
+        {
+          "case": "width-compact-to-wide",
+          "initialInner": 950.0,
+          "initialOuter": 96.0,
+          "transitionInner": 950.0,
+          "transitionOuter": 0.0,
+          "afterSmallInner": 950.0,
+          "afterSmallOuter": 24.0,
+          "afterBoundaryInner": 0.0,
+          "afterBoundaryOuter": 96.0,
+          "outerMax": 96.0
+        },
+        {
+          "case": "height-tall-to-short",
+          "initialInner": 950.0,
+          "initialOuter": 96.0,
+          "transitionInner": 950.0,
+          "transitionOuter": 0.0,
+          "afterSmallInner": 950.0,
+          "afterSmallOuter": 24.0,
+          "afterBoundaryInner": 950.0,
+          "afterBoundaryOuter": 66.0,
+          "outerMax": 66.0
+        },
+        {
+          "case": "height-short-to-tall",
+          "initialInner": 950.0,
+          "initialOuter": 66.0,
+          "transitionInner": 950.0,
+          "transitionOuter": 0.0,
+          "afterSmallInner": 950.0,
+          "afterSmallOuter": 24.0,
+          "afterBoundaryInner": 0.0,
+          "afterBoundaryOuter": 96.0,
+          "outerMax": 96.0
+        }
+      ]
+    },
+    {
+      "file": "private-flutter-independent-scroll-current-4.log",
+      "facts": [
+        {
+          "case": "width-wide-to-compact",
+          "initialInner": 950.0,
+          "initialOuter": 96.0,
+          "transitionInner": 950.0,
+          "transitionOuter": 0.0,
+          "afterSmallInner": 950.0,
+          "afterSmallOuter": 24.0,
+          "afterBoundaryInner": 0.0,
+          "afterBoundaryOuter": 96.0,
+          "outerMax": 96.0
+        },
+        {
+          "case": "width-compact-to-wide",
+          "initialInner": 950.0,
+          "initialOuter": 96.0,
+          "transitionInner": 950.0,
+          "transitionOuter": 0.0,
+          "afterSmallInner": 950.0,
+          "afterSmallOuter": 24.0,
+          "afterBoundaryInner": 0.0,
+          "afterBoundaryOuter": 96.0,
+          "outerMax": 96.0
+        },
+        {
+          "case": "height-tall-to-short",
+          "initialInner": 950.0,
+          "initialOuter": 96.0,
+          "transitionInner": 950.0,
+          "transitionOuter": 0.0,
+          "afterSmallInner": 950.0,
+          "afterSmallOuter": 24.0,
+          "afterBoundaryInner": 0.0,
+          "afterBoundaryOuter": 66.0,
+          "outerMax": 66.0
+        },
+        {
+          "case": "height-short-to-tall",
+          "initialInner": 950.0,
+          "initialOuter": 66.0,
+          "transitionInner": 950.0,
+          "transitionOuter": 0.0,
+          "afterSmallInner": 950.0,
+          "afterSmallOuter": 24.0,
+          "afterBoundaryInner": 0.0,
+          "afterBoundaryOuter": 96.0,
+          "outerMax": 96.0
+        }
+      ]
+    },
+    {
+      "file": "private-flutter-independent-scroll-regression-baseline-5.log",
+      "facts": [
+        {
+          "case": "width-wide-to-compact",
+          "initialInner": 950.0,
+          "initialOuter": 96.0,
+          "transitionInner": 950.0,
+          "transitionOuter": 0.0,
+          "afterSmallInner": 950.0,
+          "afterSmallOuter": 24.0,
+          "afterBoundaryInner": 950.0,
+          "afterBoundaryOuter": 96.0,
+          "outerMax": 96.0
+        },
+        {
+          "case": "height-tall-to-short",
+          "initialInner": 950.0,
+          "initialOuter": 96.0,
+          "transitionInner": 950.0,
+          "transitionOuter": 0.0,
+          "afterSmallInner": 950.0,
+          "afterSmallOuter": 24.0,
+          "afterBoundaryInner": 950.0,
+          "afterBoundaryOuter": 66.0,
+          "outerMax": 66.0
+        }
+      ]
+    },
+    {
+      "file": "private-flutter-independent-scroll-regression-current-5.log",
+      "facts": [
+        {
+          "case": "width-wide-to-compact",
+          "initialInner": 950.0,
+          "initialOuter": 96.0,
+          "transitionInner": 950.0,
+          "transitionOuter": 0.0,
+          "afterSmallInner": 950.0,
+          "afterSmallOuter": 24.0,
+          "afterBoundaryInner": 0.0,
+          "afterBoundaryOuter": 96.0,
+          "outerMax": 96.0
+        },
+        {
+          "case": "height-tall-to-short",
+          "initialInner": 950.0,
+          "initialOuter": 96.0,
+          "transitionInner": 950.0,
+          "transitionOuter": 0.0,
+          "afterSmallInner": 950.0,
+          "afterSmallOuter": 24.0,
+          "afterBoundaryInner": 0.0,
+          "afterBoundaryOuter": 66.0,
+          "outerMax": 66.0
+        }
+      ]
+    },
+    {
+      "file": "private-flutter-independent-scroll-stable-baseline-6.log",
+      "facts": [
+        {
+          "case": "width-wide-to-compact",
+          "initialInner": 1000.0,
+          "initialOuter": 0.0,
+          "transitionInner": 1000.0,
+          "transitionOuter": 0.0,
+          "afterSmallInner": 1024.0,
+          "afterSmallOuter": 0.0,
+          "afterBoundaryInner": 2024.0,
+          "afterBoundaryOuter": 0.0,
+          "outerMax": 0.0
+        },
+        {
+          "case": "width-compact-to-wide",
+          "initialInner": 1000.0,
+          "initialOuter": 0.0,
+          "transitionInner": 1000.0,
+          "transitionOuter": 0.0,
+          "afterSmallInner": 1024.0,
+          "afterSmallOuter": 0.0,
+          "afterBoundaryInner": 2024.0,
+          "afterBoundaryOuter": 0.0,
+          "outerMax": 0.0
+        },
+        {
+          "case": "height-tall-to-short",
+          "initialInner": 1000.0,
+          "initialOuter": 0.0,
+          "transitionInner": 1000.0,
+          "transitionOuter": 0.0,
+          "afterSmallInner": 1000.0,
+          "afterSmallOuter": 24.0,
+          "afterBoundaryInner": 1000.0,
+          "afterBoundaryOuter": 66.0,
+          "outerMax": 66.0
+        },
+        {
+          "case": "height-short-to-tall",
+          "initialInner": 950.0,
+          "initialOuter": 66.0,
+          "transitionInner": 950.0,
+          "transitionOuter": 0.0,
+          "afterSmallInner": 974.0,
+          "afterSmallOuter": 0.0,
+          "afterBoundaryInner": 1974.0,
+          "afterBoundaryOuter": 0.0,
+          "outerMax": 0.0
+        }
+      ]
+    },
+    {
+      "file": "private-flutter-independent-scroll-stable-current-6.log",
+      "facts": [
+        {
+          "case": "width-wide-to-compact",
+          "initialInner": 1000.0,
+          "initialOuter": 0.0,
+          "transitionInner": 1000.0,
+          "transitionOuter": 0.0,
+          "afterSmallInner": 1024.0,
+          "afterSmallOuter": 0.0,
+          "afterBoundaryInner": 2024.0,
+          "afterBoundaryOuter": 0.0,
+          "outerMax": 0.0
+        },
+        {
+          "case": "width-compact-to-wide",
+          "initialInner": 1000.0,
+          "initialOuter": 0.0,
+          "transitionInner": 1000.0,
+          "transitionOuter": 0.0,
+          "afterSmallInner": 1024.0,
+          "afterSmallOuter": 0.0,
+          "afterBoundaryInner": 2024.0,
+          "afterBoundaryOuter": 0.0,
+          "outerMax": 0.0
+        },
+        {
+          "case": "height-tall-to-short",
+          "initialInner": 1000.0,
+          "initialOuter": 0.0,
+          "transitionInner": 1000.0,
+          "transitionOuter": 0.0,
+          "afterSmallInner": 1000.0,
+          "afterSmallOuter": 24.0,
+          "afterBoundaryInner": 0.0,
+          "afterBoundaryOuter": 66.0,
+          "outerMax": 66.0
+        },
+        {
+          "case": "height-short-to-tall",
+          "initialInner": 950.0,
+          "initialOuter": 66.0,
+          "transitionInner": 950.0,
+          "transitionOuter": 0.0,
+          "afterSmallInner": 974.0,
+          "afterSmallOuter": 0.0,
+          "afterBoundaryInner": 1974.0,
+          "afterBoundaryOuter": 0.0,
+          "outerMax": 0.0
+        }
+      ]
+    }
+  ],
+  "sources": [
+    {
+      "revision": "14e7be5e7e9278c1b0f2a8732fde95f0b9a592a0",
+      "path": "lib/components/layout/uten_collapsing_header_scroll_view.dart",
+      "blob": "7c47ab50d1944e1a45f16f0e301d44f582a8cf6a",
+      "bytes": 43879,
+      "sha256": "99e20563cc39304181ea843c9909444d653d35a6e246540f0a0a39bf7689c557"
+    },
+    {
+      "revision": "14e7be5e7e9278c1b0f2a8732fde95f0b9a592a0",
+      "path": "lib/components/layout/uten_page_scrollbar_host.dart",
+      "blob": "05a4eacdfad37bd6f4c86238458f0ada45eb14b1",
+      "bytes": 33672,
+      "sha256": "32455ad3444bc70b3f7589de8d7ab37cec824cb8bc78ff68bcceddc71e7c94d0"
+    },
+    {
+      "revision": "14e7be5e7e9278c1b0f2a8732fde95f0b9a592a0",
+      "path": "lib/features/basic_data/widgets/master_data_table_view.dart",
+      "blob": "d41f07f2595df3aa6f5dda734e3aeb4bc50a91af",
+      "bytes": 417846,
+      "sha256": "f15a2bf73f4b0e765327a8af4f3df98ae2085cc92263a77f8fb88fb0573e2c86"
+    },
+    {
+      "revision": "178e5a295091b4e817676e6fe0e224b2765fd5ae",
+      "path": "lib/components/layout/uten_collapsing_header_scroll_view.dart",
+      "blob": "7caeadce20484ee6185dd4d7a16496980004061a",
+      "bytes": 40488,
+      "sha256": "e5bfd8768945fec08ea81431fe720132ee126d8897ce5728d316d58b53bf6d78"
+    },
+    {
+      "revision": "178e5a295091b4e817676e6fe0e224b2765fd5ae",
+      "path": "lib/components/layout/uten_page_scrollbar_host.dart",
+      "blob": "66ec382085bae63445b93aafc494efd529434b12",
+      "bytes": 34125,
+      "sha256": "96a16f66e8131667634742170f13962a223045d2ee3e1b5fd7056f3f0d5ef067"
+    },
+    {
+      "revision": "178e5a295091b4e817676e6fe0e224b2765fd5ae",
+      "path": "lib/features/basic_data/widgets/master_data_table_view.dart",
+      "blob": "ec0ce548774fcbda24c020bd636986585ced6f1d",
+      "bytes": 417802,
+      "sha256": "9a7035c7562fb719eb09fd0bab72ab1e6801cda86453bb1f39661c35f4892942"
+    }
+  ]
+}

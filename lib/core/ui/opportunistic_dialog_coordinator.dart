@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Existing business/security reminders have priority over optional suggestions.
@@ -16,7 +17,7 @@ class OpportunisticDialogCoordinator extends ChangeNotifier {
   final _blockers = <Object>{};
   DialogOpportunity? _opportunity;
   bool _disposed = false;
-  late final _notifications = _DeferredDialogNotification(notifyListeners);
+  late final _notifications = _FrameSafeDialogNotification(notifyListeners);
   bool get blocked => _blockers.isNotEmpty;
 
   DialogPriorityReservation prioritize() {
@@ -65,7 +66,7 @@ class DialogOpportunity extends ChangeNotifier {
   VoidCallback? _release;
   bool interrupted = false;
   bool _disposed = false;
-  late final _notifications = _DeferredDialogNotification(notifyListeners);
+  late final _notifications = _FrameSafeDialogNotification(notifyListeners);
   final _registrations = <VoidCallback, List<Object>>{};
   @override
   void addListener(VoidCallback listener) {
@@ -112,19 +113,23 @@ class DialogOpportunity extends ChangeNotifier {
   }
 }
 
-/// Priority ownership changes immediately. Its UI effects run after the current
-/// synchronous tree update/layout has completed, before the next event/frame.
-/// This also covers callers that reserve/release from initState or dispose.
-class _DeferredDialogNotification {
-  _DeferredDialogNotification(this._notify);
+/// Keep ordinary notifications synchronous, while initState/dispose callers
+/// during build/layout publish UI effects only after that frame's tree update.
+class _FrameSafeDialogNotification {
+  _FrameSafeDialogNotification(this._notify);
   final VoidCallback _notify;
   bool queued = false;
   bool _disposed = false;
 
   void schedule() {
     if (_disposed || queued) return;
+    if (SchedulerBinding.instance.schedulerPhase !=
+        SchedulerPhase.persistentCallbacks) {
+      _notify();
+      return;
+    }
     queued = true;
-    scheduleMicrotask(() {
+    SchedulerBinding.instance.addPostFrameCallback((_) {
       queued = false;
       if (!_disposed) _notify();
     });

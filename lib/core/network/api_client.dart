@@ -51,6 +51,7 @@ class ApiClient {
   ApiClient(
     this._dio, {
     this.streamingDownloads = false,
+    this.summaryStreamChunkIdleTimeout = apiSummaryStreamChunkIdleTimeout,
     ApiMutationReloadSafety? reloadSafety,
     BusinessPrecisionCoordinator? precisionCoordinator,
     Object? Function(RequestOptions)? precisionIdentity,
@@ -79,6 +80,9 @@ class ApiClient {
 
   final Dio _dio;
   final bool streamingDownloads;
+
+  /// 完整列表 NDJSON 流的帧间空闲上限；测试注入短值钉住超时行为。
+  final Duration summaryStreamChunkIdleTimeout;
   final ApiMutationReloadSafety _reloadSafety;
 
   static const _retiredReadReason = 'Uten paged read retired';
@@ -462,6 +466,10 @@ class ApiClient {
         options: Options(
           responseType: ResponseType.stream,
           followRedirects: false,
+          // 帧间空闲用流专用预算：首帧发出后到发布栅栏回放之间是服务端整个内部
+          // 扫描的静默期（最长接近服务端 60s 完整读取预算），普通 45s 会提前
+          // 误杀合法读取；75s 让服务端自己的错误帧合同先裁决。
+          receiveTimeout: summaryStreamChunkIdleTimeout,
           headers: const {'Accept': summaryStreamContentType},
           extra: const {
             summaryStreamRequestKey: true,

@@ -4,6 +4,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/network/api_exception.dart';
+import '../../core/performance/ui_work_budget.dart';
 import '../models/paged_result.dart';
 import '../providers/export_context_epoch_provider.dart';
 import 'complete_paged_snapshot.dart';
@@ -22,6 +23,9 @@ mixin ScopedPagedReadViewMixin<W extends ConsumerStatefulWidget>
     on ConsumerState<W> {
   final _scopedPageReads = <(Type, Object), _ScopedReadLifecycle>{};
   final _scopedOutputGuards = <CompleteOutputGuard>{};
+  // Pending query-answer expiry timers of the live read closures; disposed
+  // with the view so a check in the last moment leaves no pending timer.
+  final _scopedAnswerTimers = <Timer>{};
   ProviderSubscription<int>? _scopedOwnerSubscription;
   int _scopedOwner = 0;
   bool _scopedDisposed = false;
@@ -126,12 +130,39 @@ mixin ScopedPagedReadViewMixin<W extends ConsumerStatefulWidget>
     final owner = _scopedOwner;
     final epoch = ref.read(exportContextEpochProvider);
     final snapshot = freezePagedReadQuery(query);
-    bool ownerCurrent() =>
-        mounted &&
-        !_scopedDisposed &&
-        owner == _scopedOwner &&
-        epoch == ref.read(exportContextEpochProvider) &&
-        samePagedReadQuery(snapshot, currentQuery());
+    // The complete read re-checks ownership several times per row. Nothing can
+    // change the epoch or the page's live query inside one event-loop turn —
+    // page code and provider notifications run in their own events — so one
+    // deep compare per turn answers every check of that turn, including the
+    // whole microtask cascade between two awaits. The zero timer expires the
+    // answer at the next event boundary; the live owner/disposed/mounted gates
+    // stay outside the memo so a retirement between two checks is never
+    // masked.
+    var queryAnswerValid = false;
+    var queryAnswerCurrent = false;
+    void expireQueryAnswer() => queryAnswerValid = false;
+    bool ownerCurrent() {
+      final stats = debugScopedReadCheckStats;
+      if (stats != null) stats.ownerChecks++;
+      if (!mounted || _scopedDisposed || owner != _scopedOwner) return false;
+      if (queryAnswerValid) return queryAnswerCurrent;
+      if (stats != null) {
+        stats.epochReads++;
+        stats.queryCompares++;
+      }
+      queryAnswerCurrent =
+          epoch == ref.read(exportContextEpochProvider) &&
+          samePagedReadQuery(snapshot, currentQuery());
+      queryAnswerValid = true;
+      Timer? timer;
+      timer = Timer(Duration.zero, () {
+        _scopedAnswerTimers.remove(timer);
+        expireQueryAnswer();
+      });
+      _scopedAnswerTimers.add(timer);
+      return queryAnswerCurrent;
+    }
+
     bool current() => ownerCurrent() && (isCurrent?.call() ?? true);
     return readViewActivity.runRead(
       current,
@@ -169,6 +200,13 @@ mixin ScopedPagedReadViewMixin<W extends ConsumerStatefulWidget>
               invalidateScopedPageReads();
               _scopedOwnerChanged(error);
             }
+            if (!current() && isRetiredViewRead(error)) {
+              // A retired old owner is not the current request's failure:
+              // translate every retirement shape (owner change, REQUEST_STALE,
+              // cancellation) into the one canonical quiet signal, so no page
+              // handler can mistake a query switch for a failed load.
+              Error.throwWithStackTrace(const UiWorkCancelled(), stack);
+            }
             Error.throwWithStackTrace(error, stack);
           }),
       slot: key,
@@ -180,6 +218,10 @@ mixin ScopedPagedReadViewMixin<W extends ConsumerStatefulWidget>
     _scopedDisposed = true;
     readViewActivity.dispose();
     _scopedOwnerSubscription?.close();
+    for (final timer in _scopedAnswerTimers) {
+      timer.cancel();
+    }
+    _scopedAnswerTimers.clear();
     for (final entry in _scopedPageReads.values) {
       entry.dispose();
     }

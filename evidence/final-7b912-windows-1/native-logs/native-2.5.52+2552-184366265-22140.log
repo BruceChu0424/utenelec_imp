@@ -1,0 +1,4 @@
+{"schemaVersion":1,"atUtc":"2026-11-11T05:15:23.934Z","event":"native.start","version":"2.5.52+2552","runtime":"flutter","architecture":"x64","configuration":"Debug","processId":22140,"level":"info","code":"UTEN_LOG_V1"}
+{"schemaVersion":1,"atUtc":"2026-11-11T05:15:23.935Z","event":"native.engine","version":"2.5.52+2552","runtime":"flutter","architecture":"x64","configuration":"Debug","processId":22140,"level":"info","code":"timestamp_6a29d4f8_image_02baf000"}
+{"schemaVersion":1,"atUtc":"2026-11-11T05:15:23.935Z","event":"native.engine_pdb","version":"2.5.52+2552","runtime":"flutter","architecture":"x64","configuration":"Debug","processId":22140,"level":"info","code":"87622a54-4b07-4443-9dcd-607816b9bb65-age1"}
+{"schemaVersion":1,"atUtc":"2026-11-11T05:16:12.319Z","event":"window.unresponsive","version":"2.5.52+2552","runtime":"flutter","architecture":"x64","configuration":"Debug","processId":22140,"level":"warning","code":"heartbeat_timeout"}

@@ -21,6 +21,7 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 
 import '../../../support/master_summary_stream_fixture.dart';
+import '../../../support/pump_until.dart';
 
 class _Session extends SessionNotifier {
   @override
@@ -181,7 +182,7 @@ Future<void> _pump(
       ),
     ),
   );
-  await tester.pumpAndSettle();
+  await pumpAndSettleWithIo(tester);
 }
 
 MasterInlineEditController<dynamic> _controller(WidgetTester tester) => tester
@@ -215,9 +216,9 @@ void main() {
         );
         await _pump(tester, wire);
         await tester.tap(find.text('编辑模式'));
-        await tester.pumpAndSettle();
+        await pumpAndSettleWithIo(tester);
         await tester.tap(find.text('所选类别及下级'));
-        await tester.pumpAndSettle();
+        await pumpAndSettleWithIo(tester);
         // ignore: avoid_dynamic_calls
         final config =
             (tester.state(find.byType(PaymentStylePage)) as dynamic)
@@ -240,7 +241,7 @@ void main() {
       final wire = _Wire('colors')..failReloadAfterCreate = true;
       await _pump(tester, wire);
       await tester.tap(find.text('编辑模式'));
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       await _name(tester, '已保存新增');
       await _name(tester, '第二条新增');
       final controller = _controller(tester);
@@ -252,7 +253,7 @@ void main() {
               ((widget.child as Text).data?.startsWith('保存 ') ?? false),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(wire.created.map((body) => body['name']), ['已保存新增', '第二条新增']);
       expect(controller.dirty, isFalse);
       expect(
@@ -263,7 +264,7 @@ void main() {
       );
       wire.failReloadAfterCreate = false;
       await tester.tap(find.text('重试').first);
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       await controller.save(
         (_, _) async => fail('No existing row should be saved'),
       );
@@ -371,7 +372,7 @@ void main() {
         final wire = _Wire(type);
         await _pump(tester, wire);
         await tester.tap(find.text('编辑模式'));
-        await tester.pumpAndSettle();
+        await pumpAndSettleWithIo(tester);
         expect(_controller(tester).appendRowsSource.value, hasLength(3));
         expect(wire.created, isEmpty);
         await _name(tester, '新增资料一');
@@ -385,7 +386,7 @@ void main() {
               ((widget.child as Text).data?.startsWith('保存 ') ?? false),
         );
         await tester.tap(save);
-        await tester.pumpAndSettle();
+        await pumpAndSettleWithIo(tester);
         expect(wire.created.map((body) => body['name']), ['新增资料一', '新增资料二']);
         for (final body in wire.created) {
           expect(body['code'], anyOf(isNull, ''));
@@ -403,7 +404,7 @@ void main() {
     ) async {
       await _pump(tester, _Wire(type, existing: true));
       await tester.tap(find.text('编辑模式'));
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(
         find.byKey(const ValueKey('inline-activate-old-name')),
         findsNothing,
@@ -423,7 +424,7 @@ void main() {
           edit: true,
         );
         await tester.tap(find.text('编辑模式'));
-        await tester.pumpAndSettle();
+        await pumpAndSettleWithIo(tester);
         expect(_controller(tester).appendRowsSource.value, isEmpty);
         expect(
           find.byKey(const ValueKey('inline-activate-old-name')),

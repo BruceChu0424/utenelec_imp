@@ -20,6 +20,8 @@ import java.util.Objects;
 /** Complete master summaries share transport proof and validation, never business predicates or DTO calculations. */
 @Service
 public final class MasterSummaryReadSupport {
+    private static final org.slf4j.Logger LOG =
+            org.slf4j.LoggerFactory.getLogger(MasterSummaryReadSupport.class);
     /** The original fixed frame size; existing clients keep requesting it. */
     public static final int READ_BATCH_SIZE = 100;
     /**
@@ -85,11 +87,16 @@ public final class MasterSummaryReadSupport {
         response.setCharacterEncoding("UTF-8");
         response.setHeader("Cache-Control", "no-store");
         response.setHeader("X-Accel-Buffering", "no");
-        try {
+        try (var staged = CompleteStreamStaging.open(json)) {
             var accepted = summaries.readWithProof(request, authorize, (proof, checkpoint) -> {
                 response.setHeader("X-Uten-Read-Scope-Version", proof.readScopeVersion());
                 try (var cursor = BoundedMasterReadSource.open(entityManager, checkpoint, ignored -> { })) {
                     long seen = 0, expected = -1;
+                    // 2026-11-10 (G): only the first frame leaves during the data RR
+                    // transaction (the ~1s first screen); later frames are staged so a
+                    // slow consumer cannot spend the transaction budget, and replay
+                    // after the publication fence at the client's own speed.
+                    boolean firstFrame = true;
                     while (true) {
                         checkpoint.run();
                         int size = plan.sizeAt(seen), page = plan.pageAt(seen);
@@ -98,26 +105,25 @@ public final class MasterSummaryReadSupport {
                         else if (expected != value.total()) throw incomplete();
                         seen = Math.addExact(seen, value.items().size());
                         if (seen > expected || value.items().isEmpty() && seen < expected) throw incomplete();
-                        writeFrame(response, Map.of("type", "page", "value", proof.snapshot(value)));
+                        var frame = Map.of("type", "page", "value", proof.snapshot(value));
+                        if (firstFrame) { writeFrame(response, frame); firstFrame = false; }
+                        else staged.stage(frame);
                         cursor.clearBatch();
                         if (seen == expected) return expected;
                     }
                 }
             });
+            staged.replayTo(response);
             writeFrame(response, Map.of("type", "complete", "total", accepted.value(),
                     "readScopeVersion", accepted.readScopeVersion(),
                     "readSnapshotRevision", accepted.readSnapshotRevision(), "readDataVersion", accepted.readDataVersion()));
         } catch (UncheckedIOException disconnected) {
             throw disconnected.getCause();
         } catch (RuntimeException failure) {
-            ErrorCode code = failure instanceof ApiException api ? api.getCode()
-                    : failure instanceof org.springframework.security.access.AccessDeniedException ? ErrorCode.FORBIDDEN
-                    : failure instanceof org.springframework.transaction.TransactionTimedOutException
-                        || failure instanceof java.util.concurrent.CancellationException ? ErrorCode.PRIMARY_UNAVAILABLE : ErrorCode.INTERNAL;
-            if (code == ErrorCode.INTERNAL)
-                org.slf4j.LoggerFactory.getLogger(MasterSummaryReadSupport.class).error("Complete master summary read failed for {}", domain, failure);
-            String message = failure instanceof ApiException api ? api.getMessage() : code.getDefaultMessage();
-            try { writeFrame(response, Map.of("type", "error", "code", code.name(), "message", message)); }
+            // One anonymous correlation ref per real failure: the frame carries
+            // it in details.correlation and the server log line quotes it.
+            var frame = CompleteStreamErrors.errorFrame(LOG, domain, failure);
+            try { writeFrame(response, frame); }
             catch (UncheckedIOException disconnected) { throw disconnected.getCause(); }
         }
     }

@@ -200,6 +200,11 @@ class _LifecycleState extends State<UtenSelectionLifecycleScope>
     implements SelectionRegistrar {
   final _members = LinkedHashSet<Selectable>.identity();
   final _registered = LinkedHashSet<Selectable>.identity();
+
+  /// Members waiting for attachment/size before forwarding to the parent.
+  /// The flush walks only this dirty set instead of every member, so a scroll
+  /// frame that mounts a few rows costs a few checks rather than a full pass.
+  final _pendingRegistration = LinkedHashSet<Selectable>.identity();
   final _forwarded = HashMap<Selectable, _SelectionForwarder>.identity();
   final _selectionListeners = HashMap<Selectable, VoidCallback>.identity();
   final _selectedMembers = HashSet<Selectable>.identity();
@@ -300,6 +305,7 @@ class _LifecycleState extends State<UtenSelectionLifecycleScope>
       _rememberPaintOwner(selectable);
       _addToParent(selectable);
     } else {
+      _pendingRegistration.add(selectable);
       _scheduleFlush();
     }
   }
@@ -346,6 +352,9 @@ class _LifecycleState extends State<UtenSelectionLifecycleScope>
       if (_selectableReady(selectable)) continue;
       _registered.remove(selectable);
       _removeFromParent(selectable);
+      // Still a member (a kept-alive/suspended leaf): retry registration from
+      // the dirty set once its render object attaches and lays out again.
+      if (_members.contains(selectable)) _pendingRegistration.add(selectable);
       final source = _selectionSource(selectable);
       if (source is State && (source as State).mounted) {
         // RenderParagraph ignores handle updates after detach. Retire the
@@ -372,7 +381,7 @@ class _LifecycleState extends State<UtenSelectionLifecycleScope>
       return;
     }
     _retireDetachedMembers();
-    if (_members.length != _registered.length && _registrationReady) {
+    if (_pendingRegistration.isNotEmpty && _registrationReady) {
       _scheduleFlush();
     }
   }
@@ -381,6 +390,7 @@ class _LifecycleState extends State<UtenSelectionLifecycleScope>
   void remove(Selectable selectable) {
     _paintOwners.remove(selectable);
     _members.remove(selectable);
+    _pendingRegistration.remove(selectable);
     final listener = _selectionListeners.remove(selectable);
     if (listener != null) selectable.removeListener(listener);
     _selectedMembers.remove(selectable);
@@ -411,6 +421,8 @@ class _LifecycleState extends State<UtenSelectionLifecycleScope>
       selectable.pushHandleLayers(null, null);
       _removeFromParent(selectable);
     }
+    // A later attach/flush re-registers exactly this set once it is ready.
+    _pendingRegistration.addAll(previous);
   }
 
   void _scheduleFlush() {
@@ -429,10 +441,17 @@ class _LifecycleState extends State<UtenSelectionLifecycleScope>
       }
       _retireDetachedMembers();
       if (!_registrationReady) return;
-      // One pass per frame, including additions from nested selection delegates.
-      // Native delegates subsequently merge/sort only the attached additions.
-      for (final selectable in _members.toList(growable: false)) {
+      // One pass over the dirty set per frame, including additions from nested
+      // selection delegates. Native delegates subsequently merge/sort only the
+      // attached additions. Members that are not laid out yet stay pending.
+      if (_pendingRegistration.isEmpty) return;
+      for (final selectable in _pendingRegistration.toList(growable: false)) {
+        if (!_members.contains(selectable)) {
+          _pendingRegistration.remove(selectable);
+          continue;
+        }
         if (!_selectableReady(selectable)) continue;
+        _pendingRegistration.remove(selectable);
         if (_registered.add(selectable)) {
           _rememberPaintOwner(selectable);
           _addToParent(selectable);
@@ -458,7 +477,7 @@ class _LifecycleState extends State<UtenSelectionLifecycleScope>
 
   void _didGeometryReady() {
     _awaitingLayout = false;
-    if (_members.length != _registered.length) _scheduleFlush();
+    if (_pendingRegistration.isNotEmpty) _scheduleFlush();
   }
 
   void _willDetach() {
@@ -497,6 +516,7 @@ class _LifecycleState extends State<UtenSelectionLifecycleScope>
     _selectedMembers.clear();
     if (_hasSelection) widget.onHasSelectionChanged?.call(false);
     _members.clear();
+    _pendingRegistration.clear();
     _parent = null;
     super.dispose();
   }
@@ -556,17 +576,29 @@ abstract final class _SelectionDispatchFence {
   }
 }
 
+/// Frame-scoped geometry epoch for [_SelectionForwarder] transform caching.
+/// The SDK's screen-order sort/merge recomputes `getTransformTo(null)` per
+/// comparison (O(n log n) full render-tree walks per addition batch). Render
+/// transforms only change during layout, so one cached root matrix per frame
+/// window is mutually consistent for a whole sort+merge pass, RTL/frozen
+/// columns/horizontal scroll/zoom included (it is the composed transform).
+/// Bumped by the persistent selection fence, which runs after layout.
+int _selectionGeometryEpoch = 0;
+
 /// Transparent Selectable registration; the source retains lifecycle ownership.
 class _SelectionForwarder with Selectable {
   _SelectionForwarder(this.source, this.parent);
   final Selectable source;
   final SelectionRegistrar parent;
   bool _active = true;
+  int? _transformEpoch;
+  Matrix4? _cachedRootTransform;
 
   void retire() {
     if (!_active) return;
     source.pushHandleLayers(null, null);
     _active = false;
+    _cachedRootTransform = null;
   }
 
   @override
@@ -581,8 +613,15 @@ class _SelectionForwarder with Selectable {
       ? _SelectionDispatchFence.dispatch(source, event)
       : SelectionResult.none;
   @override
-  Matrix4 getTransformTo(RenderObject? ancestor) =>
-      _active ? source.getTransformTo(ancestor) : Matrix4.identity();
+  Matrix4 getTransformTo(RenderObject? ancestor) {
+    if (!_active) return Matrix4.identity();
+    if (ancestor != null) return source.getTransformTo(ancestor);
+    if (_transformEpoch != _selectionGeometryEpoch) {
+      _transformEpoch = _selectionGeometryEpoch;
+      _cachedRootTransform = source.getTransformTo(null);
+    }
+    return _cachedRootTransform!;
+  }
   @override
   Size get size => _active ? source.size : Size.zero;
   @override
@@ -624,6 +663,10 @@ abstract final class _SelectionFrameFence {
     if (_installed || _bridges.isEmpty) return;
     _installed = true;
     SchedulerBinding.instance.addPersistentFrameCallback((_) {
+      // After this frame's layout and before post-frame SDK merges: forwarder
+      // transform caches must not observe this frame's new geometry as stale,
+      // nor may a merge mix matrices from two different layouts.
+      _selectionGeometryEpoch++;
       for (final bridge in _bridges.toList(growable: false)) {
         bridge._afterFrameLayout();
       }

@@ -1,0 +1,125 @@
+{
+  "sourceHead": "7b912287e53315228b469790ff066a9fab643e3c",
+  "sourceTree": "c633a95d896111d42aa0698b97d3764d8138f565",
+  "root": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-20261110",
+  "msbuild": "D:\\Software\\Visual Studio Installe\\MSBuild\\Current\\Bin\\MSBuild.exe",
+  "results": [
+    {
+      "name": "pinned-dependency",
+      "exitCode": 0,
+      "elapsedSeconds": 2.081
+    },
+    {
+      "name": "build-x86",
+      "exitCode": 0,
+      "elapsedSeconds": 21.905
+    },
+    {
+      "name": "large-x86",
+      "exitCode": 1,
+      "elapsedSeconds": 69.071
+    },
+    {
+      "name": "full-x86",
+      "exitCode": 0,
+      "elapsedSeconds": 214.485
+    },
+    {
+      "name": "build-x64",
+      "exitCode": 0,
+      "elapsedSeconds": 10.042
+    },
+    {
+      "name": "large-x64",
+      "exitCode": 1,
+      "elapsedSeconds": 66.138
+    },
+    {
+      "name": "full-x64",
+      "exitCode": 0,
+      "elapsedSeconds": 177.956
+    }
+  ],
+  "classification": "host Windows WPF/CurrentUser DPAPI/controlled HTTP codec; not PostgreSQL or Win7 target acceptance",
+  "formalPackageOrInstall": false,
+  "passed": false,
+  "sourceHeadAfter": "7b912287e53315228b469790ff066a9fab643e3c",
+  "canonicalDiffAfter": "",
+  "evidenceHashes": [
+    {
+      "path": "build-x64.log",
+      "bytes": 692,
+      "sha256": "a615c8d996d58b50722dcd451c7fbfb19f0afe7a59cec72043663a1c342eeeab"
+    },
+    {
+      "path": "build-x86.log",
+      "bytes": 692,
+      "sha256": "69ed51f980f2ac591dc5ef6e43511899c6527e311b8032c6b102640161195214"
+    },
+    {
+      "path": "full-x64.log",
+      "bytes": 813,
+      "sha256": "5c262bfa31ba6d58402fca5da23ec70efe7335d43d3458c386b57d7d68de3df1"
+    },
+    {
+      "path": "full-x86.log",
+      "bytes": 813,
+      "sha256": "436176f3a993647b3cc5f5eb9ff4d98f93637883e3bd9066644226d8e47ce901"
+    },
+    {
+      "path": "large-x64.log",
+      "bytes": 1618,
+      "sha256": "948206e8b9dc8b421714607c7d6c9ee6c1043cd3d8529a1b53483a1ca5073122"
+    },
+    {
+      "path": "large-x86.log",
+      "bytes": 1618,
+      "sha256": "a91bedda0ca24e1800144f24daaed6488b23b409103878a7e4a717f6471517dc"
+    },
+    {
+      "path": "original-x64\\selected-1000-original.json",
+      "bytes": 41240,
+      "sha256": "603370aedbe9b7f033015d13de24af38b39baa46037472b4f6d053aeda08a166"
+    },
+    {
+      "path": "original-x64\\selected-1001-original.json",
+      "bytes": 41281,
+      "sha256": "acf2a604f341fd119c2ce8069338d75860d1e0feb87d3d61b5adfb957600a562"
+    },
+    {
+      "path": "original-x64\\selected-50001-original.json",
+      "bytes": 2050281,
+      "sha256": "30c63ded9c6d5e9218279c93ec64f7eee18a8b406bda9c959aef702263381bfa"
+    },
+    {
+      "path": "original-x64\\selected-50001-spaced-original.json",
+      "bytes": 2100281,
+      "sha256": "ae4472ed15adad51e666e5f7d39eeb637a37dd044da781be908fa86406440adb"
+    },
+    {
+      "path": "original-x86\\selected-1000-original.json",
+      "bytes": 41240,
+      "sha256": "603370aedbe9b7f033015d13de24af38b39baa46037472b4f6d053aeda08a166"
+    },
+    {
+      "path": "original-x86\\selected-1001-original.json",
+      "bytes": 41281,
+      "sha256": "acf2a604f341fd119c2ce8069338d75860d1e0feb87d3d61b5adfb957600a562"
+    },
+    {
+      "path": "original-x86\\selected-50001-original.json",
+      "bytes": 2050281,
+      "sha256": "30c63ded9c6d5e9218279c93ec64f7eee18a8b406bda9c959aef702263381bfa"
+    },
+    {
+      "path": "original-x86\\selected-50001-spaced-original.json",
+      "bytes": 2100281,
+      "sha256": "ae4472ed15adad51e666e5f7d39eeb637a37dd044da781be908fa86406440adb"
+    },
+    {
+      "path": "pinned-dependency.log",
+      "bytes": 149,
+      "sha256": "174a77bf0021c84b70985832af9a5abb67175777893f50f188e2ddccf2964761"
+    }
+  ]
+}

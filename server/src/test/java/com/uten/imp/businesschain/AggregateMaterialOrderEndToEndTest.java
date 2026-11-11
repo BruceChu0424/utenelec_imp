@@ -1011,8 +1011,15 @@ class AggregateMaterialOrderEndToEndTest {
                 System.out.println("[aggregate-submit-20-concurrent-read-jdbc] "+readMeasurement.result());
             }
         }):null;
-        try {assertTrue(readerReady.await(10,java.util.concurrent.TimeUnit.SECONDS));}
-        catch(InterruptedException interrupted){Thread.currentThread().interrupt();throw new AssertionError(interrupted);}
+        try {
+            if(!readerReady.await(10,java.util.concurrent.TimeUnit.SECONDS)) {
+                keepReading.set(false);if(readerPool!=null)readerPool.shutdownNow();
+                fail("Actual concurrent reader did not start");
+            }
+        } catch(InterruptedException interrupted){
+            keepReading.set(false);if(readerPool!=null)readerPool.shutdownNow();
+            Thread.currentThread().interrupt();throw new AssertionError(interrupted);
+        }
         submitting.set(true);
         long beganAt=System.nanoTime();
         var measurement=ProductionJdbcMeasurement.begin();
@@ -1028,6 +1035,7 @@ class AggregateMaterialOrderEndToEndTest {
             if(readerPool!=null) {
                 try {reader.get(30,java.util.concurrent.TimeUnit.SECONDS);}
                 catch(Exception failure){
+                    if(failure instanceof InterruptedException)Thread.currentThread().interrupt();
                     if(submitFailure!=null)submitFailure.addSuppressed(failure);
                     else throw new AssertionError("Actual concurrent detail read failed",failure);
                 } finally {readerPool.shutdownNow();}

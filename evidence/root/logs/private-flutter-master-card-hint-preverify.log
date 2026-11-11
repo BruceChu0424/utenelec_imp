@@ -1,0 +1,6 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+Analyzing master_detail_card.dart...                            
+
+   info - The value of the argument is redundant because it matches the default value. Try removing the argument - lib\shared\widgets\master_detail_card.dart:149:27 - avoid_redundant_argument_values
+
+1 issue found. (ran in 3.3s)

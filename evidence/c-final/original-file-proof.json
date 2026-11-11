@@ -1,0 +1,26 @@
+{
+  "source": "7b912287e53315228b469790ff066a9fab643e3c",
+  "files": [
+    {
+      "file": "mixed-header-tail.xlsx",
+      "bytes": 3426,
+      "sha256": "4083d48ed841198a78cdf711a3ed902dd658a6281b2b899041b1b5b170e4c23d"
+    },
+    {
+      "file": "ordinary-control.xlsx",
+      "bytes": 3418,
+      "sha256": "368f94ff5d3862ddb9304791bf8e6d97891370525d626cd204d5a43eeb5de885"
+    },
+    {
+      "file": "reserved-name-control.xlsx",
+      "bytes": 3414,
+      "sha256": "82b0f764332052b0d1033727fec48a1fbfb3748ac994d3d69284c025a969148c"
+    },
+    {
+      "file": "subtotal-name-control.xlsx",
+      "bytes": 3431,
+      "sha256": "ed23c572ee1141ddbce0b8ad893ccbbe0038c65179e0db39590f8e1bf26942ea"
+    }
+  ],
+  "originalV1ManifestSha256": "6116fb9ea03b63769b4c19ea9849c6fd62d0eac9861d819329e9b27cbe606e9b"
+}

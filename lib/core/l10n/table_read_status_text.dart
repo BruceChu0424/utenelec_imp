@@ -31,6 +31,16 @@ const _texts = <String, List<String>>{
     'Data for this query has not been loaded. Retrying only reads the data again.',
     '현재 조회의 데이터를 불러오지 못했습니다. 재시도는 데이터만 다시 불러옵니다.',
   ],
+  'switchingRead': [
+    '正在按新条件读取',
+    'Reading with the new criteria',
+    '새 조건으로 읽는 중',
+  ],
+  'switchingImpact': [
+    '已显示的是上次结果，读取完成后自动替换。',
+    'The rows shown are the previous result; they are replaced when the read completes.',
+    '표시된 행은 이전 결과이며 읽기가 완료되면 자동으로 대체됩니다.',
+  ],
   'refreshFailed': [
     '更新失败，显示上次数据',
     'Update failed; showing previous data',

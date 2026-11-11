@@ -1,0 +1,5 @@
+PASS ordinary-control rows=2 names=[铜钉, 铜片] originalRawSha256=368f94ff5d3862ddb9304791bf8e6d97891370525d626cd204d5a43eeb5de885
+PASS reserved-name-control rows=2 names=[铜钉, 材料名称] originalRawSha256=82b0f764332052b0d1033727fec48a1fbfb3748ac994d3d69284c025a969148c
+PASS mixed-header-tail REJECTED code=VALIDATION_FAILED message=成本!第3行：列「第4列（未命名）」含数据，当前导入不支持该列（含自定义列）；请删除该列或明确映射后重新检测，不能直接忽略 originalRawSha256=4083d48ed841198a78cdf711a3ed902dd658a6281b2b899041b1b5b170e4c23d
+PASS subtotal-name-control rows=2 names=[铜钉, 小计数器件] originalRawSha256=ed23c572ee1141ddbce0b8ad893ccbbe0038c65179e0db39590f8e1bf26942ea
+SUMMARY passed=4 failed=0 errors=0 skipped=0; parser-only/no database apply

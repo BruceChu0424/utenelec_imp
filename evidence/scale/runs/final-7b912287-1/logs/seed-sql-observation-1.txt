@@ -1,0 +1,19 @@
+2026-11-10T22:13:22.0870709-07:00
+ count |  min   |  max   |     sum     
+-------+--------+--------+-------------
+ 98750 | 1.2345 | 1.2345 | 121906.8750
+(1 row)
+
+ business_triggers | disabled 
+-------------------+----------
+                14 |        0
+(1 row)
+
+ state  | wait_event_type | wait_event |     elapsed     |                                                     query                                                     
+--------+-----------------+------------+-----------------+---------------------------------------------------------------------------------------------------------------
+ active |                 |            | 00:00:00.389715 | INSERT INTO goods(id,code,name,status,category_id,code_sequence,auto_created,price,zk)                       +
+        |                 |            |                 | SELECT gen_random_uuid(),$1||lpad(i::text,6,'0'),$2||lpad(i::text,6,'0'),'使用',$3,$4+i+1,false,1.2345,0.9500+
+        |                 |            |                 | FROM generate_series($5,$6) AS i                                                                             +
+        |                 |            |                 | 
+(1 row)
+

@@ -1,0 +1,13 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/feedback-posting-dropdown-20261111/test/features/finance/posting_style_role_full_app_probe_test.dart
+00:00 +0: real App posting drawer mouse options=3 semantics
+POSTING-MOUNT reads=2 panels=1 dropdowns=1 scheduled=true progress=1
+POSTING-MOUNT labels=[系统科目用途, 系统科目用途, 保存用途]
+POSTING-PROGRESS-OWNER [SizedBox, ExcludeSemantics, Center, Positioned, Stack, Semantics, UtenAppBarActionProgress, DefaultTextStyle, Builder, Padding, ConstrainedBox, Listener, RawGestureDetector, GestureDetector, Semantics, DefaultSelectionStyle, Builder, MouseRegion, Semantics, _FocusInheritedScope, Focus, _ActionsScope, Actions, _ParentInkResponseProvider]
+POSTING-POINTER input=mouse options=3 reads=2 writes=0 value=account1
+00:02 +1: real App posting drawer mouse options=5 semantics
+POSTING-MOUNT reads=2 panels=1 dropdowns=1 scheduled=true progress=1
+POSTING-MOUNT labels=[系统科目用途, 系统科目用途, 保存用途]
+POSTING-PROGRESS-OWNER [SizedBox, ExcludeSemantics, Center, Positioned, Stack, Semantics, UtenAppBarActionProgress, DefaultTextStyle, Builder, Padding, ConstrainedBox, Listener, RawGestureDetector, GestureDetector, Semantics, DefaultSelectionStyle, Builder, MouseRegion, Semantics, _FocusInheritedScope, Focus, _ActionsScope, Actions, _ParentInkResponseProvider]
+POSTING-POINTER input=mouse options=5 reads=2 writes=0 value=account1
+00:04 +2: All tests passed!

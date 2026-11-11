@@ -1,0 +1,214 @@
+{
+  ".gitattributes": {
+    "bytes": 157,
+    "sha256": "70005de61b3dd116391263779770c74d54118e02deb1373d8cf93b395825fb67"
+  },
+  ".gitignore": {
+    "bytes": 20,
+    "sha256": "a95180317c5a87f21f3291b82069b8879ac7b74ba314dc98bd54488b30afe2dc"
+  },
+  "HANDOFF.md": {
+    "bytes": 4838,
+    "sha256": "a541d34fa3f686ea165cf76f303d6d74a3bdc15738735071390cce797950bf6b"
+  },
+  "REPORT.md": {
+    "bytes": 3916,
+    "sha256": "f3e338b4029839a56c3071f30496d1791088ec2aa04effdfd10ec1b40d9e9ba0"
+  },
+  "credential-scan.json": {
+    "bytes": 114,
+    "sha256": "2435d03708be47c7f23dd71c5deacb45af6458b4a3fe50cd8aa871fe44c3d6d5"
+  },
+  "full-app-original-driver.dart.txt": {
+    "bytes": 13328,
+    "sha256": "5da2b7bf4dd3816f9699f883082b048e1d8a432e3939c7c350ebba463fdd7bdb"
+  },
+  "logs/private-flutter-baseline-app.log": {
+    "bytes": 9552,
+    "sha256": "01cbc46ed479c7f02eb7cd1781cebddcdd16c1dd614207904db3d3f0ea3157a4"
+  },
+  "logs/private-flutter-baseline-complete-repos.log": {
+    "bytes": 8944,
+    "sha256": "7cbaac5bc271667b121a679a7232c4f5a7af35ebc0b7641d97e30d2a31807529"
+  },
+  "logs/private-flutter-baseline-confirmed-app.log": {
+    "bytes": 9132,
+    "sha256": "076ce1d0bccfc2a06fdc3aaffd25c2bdc572dc9cfd9d12ef5cc33b43d3e3a96c"
+  },
+  "logs/private-flutter-chrome-pointer-baseline.log": {
+    "bytes": 1557,
+    "sha256": "69fb85b6b9dc519fbc9a0c27eedb1c43d61697c45ab5e3d66caa2d7f93479c95"
+  },
+  "logs/private-flutter-concrete-ui-pointer-baseline.log": {
+    "bytes": 6689,
+    "sha256": "40a537b66281b7bc66b94bf4ad31298a4afcfebcb8d8ecac7568ce2c5f53652f"
+  },
+  "logs/private-flutter-deps.log": {
+    "bytes": 581,
+    "sha256": "1dfbfff886b449f8e1898a129668b735c02e508f744ebf3a2f10dc9716a2bd11"
+  },
+  "logs/private-flutter-fixture-mount-probe.log": {
+    "bytes": 2496,
+    "sha256": "f3f6e2e8cb2c7a9e8d5f74612f7cc8a3ec0179bbfc625926bb8533966bf87075"
+  },
+  "logs/private-flutter-full-app-final-controls.log": {
+    "bytes": 2564,
+    "sha256": "1d88f761222c193a70d40f906b9358a063ce582ae090fd79b4e6d0b2d1712df6"
+  },
+  "logs/private-flutter-panel-analyze-clean.log": {
+    "bytes": 200,
+    "sha256": "c8acb5625e06dc95d46b3af4e4d464b721b89d597e9b5a87e116c761594f422f"
+  },
+  "logs/private-flutter-panel-analyze.log": {
+    "bytes": 1089,
+    "sha256": "ee25d10e66680e8227468ae0b0451a6e9d34961443b6fdbbc49d955c1eeec717"
+  },
+  "logs/private-flutter-panel-final-validated.log": {
+    "bytes": 2564,
+    "sha256": "5abf57dd83b3e31c86c45a463170521c1e4c68e9f0315ba510c7a7574ee1fccc"
+  },
+  "logs/private-flutter-panel-wait-baseline.log": {
+    "bytes": 6732,
+    "sha256": "49774e8d83b3ad8e986f5f47c7e6b9da6b4c52da2c8098f17fed71ef3e3f4a71"
+  },
+  "logs/private-flutter-panel-wait-candidate.log": {
+    "bytes": 809,
+    "sha256": "999b1c88cff30876b39c61a0c1365fe8d00c30b0a518b65c76962c89f952cd40"
+  },
+  "logs/private-flutter-panel-wait-final.log": {
+    "bytes": 888,
+    "sha256": "1a9dc37af348991fc6ff177887838481c00c22afdadb08ba56d34495ecfe9ad7"
+  },
+  "native/browser_focus.dart.txt": {
+    "bytes": 1516,
+    "sha256": "bb5f37fc7bc0290af98ae4a10fea4093ff3e09be3eeeebbcc1c7b98958101881"
+  },
+  "native/built-artifact.json": {
+    "bytes": 758,
+    "sha256": "8bf7e0e4eeeeafbe8afb7017176827a07fac431b7c3f8fd42980389feadc40d1"
+  },
+  "native/instrumentation-formatted.patch": {
+    "bytes": 7346,
+    "sha256": "8b76a54cc6922a40a5873bf8cc91bc23f5bf362f33f21c8f5cd95681f8e8260e"
+  },
+  "native/logs/private-flutter-diag-analyze-clean.log": {
+    "bytes": 620,
+    "sha256": "413549115bc7ec077274419e9348ec99b008114e53ed8d477bbc54253ba26aa3"
+  },
+  "native/logs/private-flutter-diag-analyze.log": {
+    "bytes": 1309,
+    "sha256": "deb88e88e1843a90ad75496a5755b3f1c4c10a999d85346e35a638e4f53181ac"
+  },
+  "native/logs/private-flutter-web-build.log": {
+    "bytes": 1330,
+    "sha256": "ef3e22c80403facb1607452731e73809b23ca214d959bc3d4fdb2cf2cee25899"
+  },
+  "native/main.dart.txt": {
+    "bytes": 9100,
+    "sha256": "f649f527c1189b0e260f40b7c83a8b92b6d6f2582f909f6d03f8309abf2ad991"
+  },
+  "native/native-pointer-original-proof.json": {
+    "bytes": 317,
+    "sha256": "7e30006c78ae6f2929a7bbca22e347cbabb103abece6c1c6568bd9b9e6edd732"
+  },
+  "native/native-pointer-original.log": {
+    "bytes": 23667,
+    "sha256": "11e47b4b4ca9c4a1a5785279a7df3e89610471cdaecf8142e2f2f58c09cf40e8"
+  },
+  "native/private-flutter-diag-analyze-clean.json": {
+    "bytes": 3521,
+    "sha256": "70508cc1e5cd9ab33c4d175c4ee227df608ba3958acc2ba9b3ba66972e163cc5"
+  },
+  "native/private-flutter-diag-analyze.json": {
+    "bytes": 3573,
+    "sha256": "d55e59de7d85e186aac6a7ff5ee2bd1ff550554b03118688ad5fe29421b3060f"
+  },
+  "native/private-flutter-web-build.json": {
+    "bytes": 3725,
+    "sha256": "65cb2eaef3ac88327b17836d2d8731f7e759b98338f1a869fb4f06e073cf0f38"
+  },
+  "native/private_flutter.py": {
+    "bytes": 1598,
+    "sha256": "075ef8385fca8881b58a5dfaf2c1a655d837cf57e2834712e48797bcc879ba12"
+  },
+  "native/serve.cjs": {
+    "bytes": 1301,
+    "sha256": "5411996778b72c9124cf52bf8036f7b759ad05341252e1b3f282f735edcd82a4"
+  },
+  "native/source-before-build.json": {
+    "bytes": 504,
+    "sha256": "399cb856ce271b3132afc58f8ffe0aa6775b1cdbccd6bbf83258660e986b39dd"
+  },
+  "native/source-formatted-before-build.json": {
+    "bytes": 690,
+    "sha256": "9d7636b8e7a9cd5ce441ec11609f2b5133d47f98effc0b798e297cb6f34d62fc"
+  },
+  "native/static-listener-proof.json": {
+    "bytes": 188,
+    "sha256": "ebc3d677e6a3a933626e4b265da11d0277aba924f6796645001b17e706679baa"
+  },
+  "private-flutter-baseline-app.json": {
+    "bytes": 3311,
+    "sha256": "906c91bca12899eea15c1ba30fc914564bd3954346b72c87b78a397e67babf24"
+  },
+  "private-flutter-baseline-complete-repos.json": {
+    "bytes": 3311,
+    "sha256": "906c91bca12899eea15c1ba30fc914564bd3954346b72c87b78a397e67babf24"
+  },
+  "private-flutter-baseline-confirmed-app.json": {
+    "bytes": 3311,
+    "sha256": "906c91bca12899eea15c1ba30fc914564bd3954346b72c87b78a397e67babf24"
+  },
+  "private-flutter-chrome-pointer-baseline.json": {
+    "bytes": 3395,
+    "sha256": "fe1300df5f599f2cc2908455c02203706019288953ef9e8d76b991b5ebac2b86"
+  },
+  "private-flutter-concrete-ui-pointer-baseline.json": {
+    "bytes": 3311,
+    "sha256": "906c91bca12899eea15c1ba30fc914564bd3954346b72c87b78a397e67babf24"
+  },
+  "private-flutter-deps.json": {
+    "bytes": 3089,
+    "sha256": "196c5e072e119f3a0de1507132f9c749b5ed79746b1df7162b9fd90a90fd68e2"
+  },
+  "private-flutter-fixture-mount-probe.json": {
+    "bytes": 3325,
+    "sha256": "196a19ff7f415dcc5f819e483a65d133eb478b3745c358afaf4f3b330f33840b"
+  },
+  "private-flutter-full-app-final-controls.json": {
+    "bytes": 3456,
+    "sha256": "0484329d63acaa40c1b805afa6d4799c030059eb5b3b11bde4180bd47eaf744e"
+  },
+  "private-flutter-panel-analyze-clean.json": {
+    "bytes": 3546,
+    "sha256": "a05feaed1b5cbac600fb6aa9fe03b33aeb907e04277449b0418bb4525219f5d8"
+  },
+  "private-flutter-panel-analyze.json": {
+    "bytes": 3546,
+    "sha256": "93c1585fbf2a4f338704ae08b8e3a5339e666110f822dac6cd7c637401dcb1b3"
+  },
+  "private-flutter-panel-final-validated.json": {
+    "bytes": 3456,
+    "sha256": "0484329d63acaa40c1b805afa6d4799c030059eb5b3b11bde4180bd47eaf744e"
+  },
+  "private-flutter-panel-wait-baseline.json": {
+    "bytes": 3258,
+    "sha256": "6c08c3e5790aa18f7ff763d7c90e79242b37612545da245b4e04fdce2fb7fcee"
+  },
+  "private-flutter-panel-wait-candidate.json": {
+    "bytes": 3324,
+    "sha256": "b8c1ed6118dc986c98f7c723c7e41c9c7a3ac31cd98dfa1a9eb8c3c3cc5540b7"
+  },
+  "private-flutter-panel-wait-final.json": {
+    "bytes": 3324,
+    "sha256": "b8c1ed6118dc986c98f7c723c7e41c9c7a3ac31cd98dfa1a9eb8c3c3cc5540b7"
+  },
+  "private_flutter.py": {
+    "bytes": 1595,
+    "sha256": "5775ee333d2649d666e943d28c60766b772eb4324597f97853d7ba2184b6b119"
+  },
+  "product-source.json": {
+    "bytes": 854,
+    "sha256": "8045ba5bf923e7fd9300455cad717d3cf4861d3b3b5e65f43bae88837f53b291"
+  }
+}

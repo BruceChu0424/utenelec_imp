@@ -1,0 +1,121 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/feedback-posting-dropdown-20261111/test/features/finance/posting_style_role_full_app_probe_test.dart
+00:00 +0: real App posting drawer mouse options=3 semantics
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following assertion was thrown running a test:
+pumpAndSettle timed out
+
+When the exception was thrown, this was the stack:
+#0      pumpAndSettleWithIo.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-posting-dropdown-20261111/test/support/pump_until.dart:34:9)
+<asynchronous suspension>
+#1      TestAsyncUtils.guard.<anonymous closure> (package:flutter_test/src/test_async_utils.dart:130:27)
+<asynchronous suspension>
+#2      _mountApp (file:///D:/Projects/uten_imp_worktrees/feedback-posting-dropdown-20261111/test/features/finance/posting_style_role_full_app_probe_test.dart:240:3)
+<asynchronous suspension>
+#3      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-posting-dropdown-20261111/test/features/finance/posting_style_role_full_app_probe_test.dart:256:25)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+The test description was:
+  real App posting drawer mouse options=3 semantics
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:21 +0 -1: real App posting drawer mouse options=3 semantics [E]
+  Test failed. See exception logs above.
+  The test description was: real App posting drawer mouse options=3 semantics
+  
+00:21 +0 -1: real App posting drawer keyboard options=3 semantics
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following assertion was thrown running a test:
+pumpAndSettle timed out
+
+When the exception was thrown, this was the stack:
+#0      pumpAndSettleWithIo.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-posting-dropdown-20261111/test/support/pump_until.dart:34:9)
+<asynchronous suspension>
+#1      TestAsyncUtils.guard.<anonymous closure> (package:flutter_test/src/test_async_utils.dart:130:27)
+<asynchronous suspension>
+#2      _mountApp (file:///D:/Projects/uten_imp_worktrees/feedback-posting-dropdown-20261111/test/features/finance/posting_style_role_full_app_probe_test.dart:240:3)
+<asynchronous suspension>
+#3      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-posting-dropdown-20261111/test/features/finance/posting_style_role_full_app_probe_test.dart:256:25)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+The test description was:
+  real App posting drawer keyboard options=3 semantics
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:34 +0 -2: real App posting drawer keyboard options=3 semantics [E]
+  Test failed. See exception logs above.
+  The test description was: real App posting drawer keyboard options=3 semantics
+  
+00:34 +0 -2: real App posting drawer mouse options=5 semantics
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following assertion was thrown running a test:
+pumpAndSettle timed out
+
+When the exception was thrown, this was the stack:
+#0      pumpAndSettleWithIo.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-posting-dropdown-20261111/test/support/pump_until.dart:34:9)
+<asynchronous suspension>
+#1      TestAsyncUtils.guard.<anonymous closure> (package:flutter_test/src/test_async_utils.dart:130:27)
+<asynchronous suspension>
+#2      _mountApp (file:///D:/Projects/uten_imp_worktrees/feedback-posting-dropdown-20261111/test/features/finance/posting_style_role_full_app_probe_test.dart:240:3)
+<asynchronous suspension>
+#3      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-posting-dropdown-20261111/test/features/finance/posting_style_role_full_app_probe_test.dart:256:25)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+The test description was:
+  real App posting drawer mouse options=5 semantics
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:47 +0 -3: real App posting drawer mouse options=5 semantics [E]
+  Test failed. See exception logs above.
+  The test description was: real App posting drawer mouse options=5 semantics
+  
+00:47 +0 -3: real App posting drawer keyboard options=5 semantics
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following assertion was thrown running a test:
+pumpAndSettle timed out
+
+When the exception was thrown, this was the stack:
+#0      pumpAndSettleWithIo.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-posting-dropdown-20261111/test/support/pump_until.dart:34:9)
+<asynchronous suspension>
+#1      TestAsyncUtils.guard.<anonymous closure> (package:flutter_test/src/test_async_utils.dart:130:27)
+<asynchronous suspension>
+#2      _mountApp (file:///D:/Projects/uten_imp_worktrees/feedback-posting-dropdown-20261111/test/features/finance/posting_style_role_full_app_probe_test.dart:240:3)
+<asynchronous suspension>
+#3      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-posting-dropdown-20261111/test/features/finance/posting_style_role_full_app_probe_test.dart:256:25)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+The test description was:
+  real App posting drawer keyboard options=5 semantics
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:57 +0 -4: real App posting drawer keyboard options=5 semantics [E]
+  Test failed. See exception logs above.
+  The test description was: real App posting drawer keyboard options=5 semantics
+  
+00:57 +0 -4: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/feedback-posting-dropdown-20261111/test/features/finance/posting_style_role_full_app_probe_test.dart: real App posting drawer keyboard options=3 semantics
+  D:/Projects/uten_imp_worktrees/feedback-posting-dropdown-20261111/test/features/finance/posting_style_role_full_app_probe_test.dart: real App posting drawer keyboard options=5 semantics
+  D:/Projects/uten_imp_worktrees/feedback-posting-dropdown-20261111/test/features/finance/posting_style_role_full_app_probe_test.dart: real App posting drawer mouse options=3 semantics
+  D:/Projects/uten_imp_worktrees/feedback-posting-dropdown-20261111/test/features/finance/posting_style_role_full_app_probe_test.dart: real App posting drawer mouse options=5 semantics

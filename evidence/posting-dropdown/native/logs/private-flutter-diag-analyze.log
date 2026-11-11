@@ -1,0 +1,10 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+Analyzing 4 items...                                            
+
+   info - Don't use web-only libraries outside Flutter web plugins. Try finding a different library for your needs - evidence\posting-diag-native\browser_focus.dart:3:1 - avoid_web_libraries_in_flutter
+  error - The method 'hasFocus' isn't defined for the type 'HtmlDocument'. Try correcting the name to the name of an existing method, or defining a method named 'hasFocus' - evidence\posting-diag-native\browser_focus.dart:15:44 - undefined_method
+   info - The value of the argument is redundant because it matches the default value. Try removing the argument - evidence\posting-diag-native\main.dart:88:21 - avoid_redundant_argument_values
+warning - The member 'setMockInitialValues' can only be used within 'package:shared_preferences/src/shared_preferences_legacy.dart' or a test - evidence\posting-diag-native\main.dart:183:21 - invalid_use_of_visible_for_testing_member
+warning - The member 'setMockInitialValues' can only be used within 'package:flutter_secure_storage/flutter_secure_storage.dart' or a test - evidence\posting-diag-native\main.dart:184:24 - invalid_use_of_visible_for_testing_member
+
+5 issues found. (ran in 10.3s)

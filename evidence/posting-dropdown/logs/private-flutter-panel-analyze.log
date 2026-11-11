@@ -1,0 +1,9 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+Analyzing 3 items...                                            
+
+   info - Use interpolation to compose strings and values. Try using string interpolation to build the composite string - test\features\finance\posting_style_role_full_app_test.dart:141:11 - prefer_interpolation_to_compose_strings
+   info - Use 'const' with the constructor to improve performance. Try adding the 'const' keyword to the constructor invocation - test\features\finance\posting_style_role_full_app_test.dart:151:27 - prefer_const_constructors
+   info - Use 'const' with the constructor to improve performance. Try adding the 'const' keyword to the constructor invocation - test\features\finance\posting_style_role_full_app_test.dart:153:11 - prefer_const_constructors
+   info - Statements in an if should be enclosed in a block. Try wrapping the statement in a block - test\features\finance\posting_style_role_panel_test.dart:228:17 - curly_braces_in_flow_control_structures
+
+4 issues found. (ran in 15.3s)

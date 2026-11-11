@@ -1,0 +1,181 @@
+diff --git a/lib/components/feedback/uten_overlay_lifecycle.dart b/lib/components/feedback/uten_overlay_lifecycle.dart
+index 1c59647ed..2e3571ba3 100644
+--- a/lib/components/feedback/uten_overlay_lifecycle.dart
++++ b/lib/components/feedback/uten_overlay_lifecycle.dart
+@@ -1,6 +1,7 @@
+ import 'dart:ui' show ViewFocusEvent, ViewFocusState;
+ 
+ import 'package:flutter/foundation.dart';
++import '../../core/diagnostics/diagnostic_log.dart';
+ import 'package:flutter/scheduler.dart';
+ import 'package:flutter/services.dart';
+ import 'package:flutter/widgets.dart';
+@@ -108,6 +109,15 @@ class UtenOverlayLifecycle with WidgetsBindingObserver {
+     if (_disposed || !_observing) return;
+     final available = isAvailable;
+     if (_available == available) return;
++    AppDiagnostics.record(
++      'diag.overlay.lifecycle',
++      fields: {
++        'stage': 'availability',
++        'reason':
++            'old=$_available next=$available view=$_viewFocused owner=${_owner?.mounted} routes=${_routes.every((route) => route.isCurrent)} ticker=${_tickerMode?.value.enabled} app=${WidgetsBinding.instance.lifecycleState?.name}',
++        'stack': StackTrace.current.toString().split('\n').take(12).join('\n'),
++      },
++    );
+     _available = available;
+     final revision = ++_revision;
+     void notify() {
+@@ -130,11 +140,26 @@ class UtenOverlayLifecycle with WidgetsBindingObserver {
+   }
+ 
+   @override
+-  void didChangeAppLifecycleState(AppLifecycleState state) => _evaluate();
++  void didChangeAppLifecycleState(AppLifecycleState state) {
++    AppDiagnostics.record(
++      'diag.overlay.lifecycle',
++      fields: {'stage': 'app-focus', 'reason': state.name},
++    );
++    _evaluate();
++  }
+ 
+   @override
+   void didChangeViewFocus(ViewFocusEvent event) {
+     if (_viewId != null && event.viewId != _viewId) return;
++    AppDiagnostics.record(
++      'diag.overlay.lifecycle',
++      fields: {
++        'stage': 'view-focus',
++        'reason': 'state=${event.state.name} direction=${event.direction.name}',
++        'count': event.viewId,
++        'stack': StackTrace.current.toString().split('\n').take(12).join('\n'),
++      },
++    );
+     _viewFocused = event.state == ViewFocusState.focused;
+     _evaluate();
+   }
+diff --git a/lib/components/inputs/uten_dropdown_field.dart b/lib/components/inputs/uten_dropdown_field.dart
+index 298bda9f0..8f6ae6363 100644
+--- a/lib/components/inputs/uten_dropdown_field.dart
++++ b/lib/components/inputs/uten_dropdown_field.dart
+@@ -14,6 +14,7 @@ import 'uten_selected_value_theme.dart';
+ //   )
+ 
+ import 'dart:math' as math;
++import '../../core/diagnostics/diagnostic_log.dart';
+ 
+ import 'package:flutter/material.dart';
+ import '../../shared/search/keyword_search.dart';
+@@ -369,8 +370,11 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
+           _buildHostedOverlay(overlayContext, entry, search, focus, scroll),
+     );
+     _overlay = entry;
++    _trace('open');
+     host.insert(entry);
+-    _overlayLifecycle = UtenOverlayLifecycle(onUnavailable: _close);
++    _overlayLifecycle = UtenOverlayLifecycle(
++      onUnavailable: () => _close('lifecycle'),
++    );
+     _overlayLifecycle!.attach(context);
+     if (!identical(_overlay, entry)) return;
+     _watchScrollPositions();
+@@ -431,7 +435,20 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
+       ..addAll(positions);
+   }
+ 
+-  void _close() {
++  void _trace(String stage, [String reason = '']) {
++    final fields = <String, Object?>{
++      'stage': stage,
++      'reason':
++          '$reason mounted=$mounted entry=${_overlay != null} life=${_overlayLifecycle?.isAvailable} geometry=${_geometryOwner != null}',
++      'count': widget.items.length,
++      'stack': StackTrace.current.toString().split('\n').take(12).join('\n'),
++    };
++    AppDiagnostics.record('diag.dropdown', fields: fields);
++    debugPrint('POSTING_DIAG $fields');
++  }
++
++  void _close([String reason = 'caller']) {
++    if (_overlay != null) _trace('close', reason);
+     _overlayLifecycle?.dispose();
+     _overlayLifecycle = null;
+     final entry = _overlay;
+@@ -638,7 +655,7 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
+     if (!selectable && !(v == null && widget.allowClear)) return;
+     _aiFilled = false;
+     final onChanged = widget.onChanged;
+-    _close();
++    _close('select');
+     onChanged(v);
+   }
+ 
+@@ -646,7 +663,7 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
+   void deactivate() {
+     // A GlobalKey can move this still-mounted field within the same Overlay.
+     // Invalidate the old owner entry and its callbacks before reattachment.
+-    _close();
++    _close('deactivate');
+     super.deactivate();
+   }
+ 
+@@ -880,7 +897,9 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
+     }
+ 
+     void select(String? value) {
+-      if (current()) _select(value);
++      final allowed = current();
++      _trace('select-guard', 'current=$allowed');
++      if (allowed) _select(value);
+     }
+ 
+     final anchor = _anchorRect();
+@@ -1024,7 +1043,10 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
+         Positioned.fill(
+           child: GestureDetector(
+             behavior: HitTestBehavior.translucent,
+-            onTap: close,
++            onTap: () {
++              _trace('backdrop');
++              close();
++            },
+           ),
+         ),
+         Positioned(
+@@ -1032,7 +1054,10 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
+           top: surfaceTop == null ? null : surfaceTop - 8,
+           bottom: surfaceBottom == null ? null : surfaceBottom - 8,
+           child: TapRegion(
+-            onTapOutside: (_) => close(),
++            onTapOutside: (_) {
++              _trace('tap-outside');
++              close();
++            },
+             child: UtenDropdownResizeFrame(
+               fieldKey: widget.key,
+               resizeLabel: strings?.dropdownResizeMenu ?? 'Resize dropdown',
+@@ -1179,6 +1204,7 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
+                               ),
+                               onChanged: (_) => setOverlayState(() {}),
+                               onSubmitted: (_) {
++                                _trace('keyboard-submit');
+                                 if (filtered.isNotEmpty) {
+                                   select(filtered.first.value);
+                                 }
+@@ -1270,7 +1296,15 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
+                             tooltip: it.tooltip,
+                             foregroundColor: it.foregroundColor,
+                             selected: it.value == widget.value,
+-                            onTap: it.enabled ? () => select(it.value) : null,
++                            onTap: it.enabled
++                                ? () {
++                                    _trace(
++                                      'pointer-option',
++                                      'index=${widget.items.indexOf(it)}',
++                                    );
++                                    select(it.value);
++                                  }
++                                : null,
+                             theme: theme,
+                             indent: it.indent.clamp(
+                               0.0,

@@ -2112,7 +2112,9 @@ void main() {
     final repository = _Repository()
       ..failure = ApiException('BUSINESS', '服务器容量检查失败', httpStatus: 400);
     await _mount(tester, repository);
-    expect(find.text('服务器容量检查失败'), findsOneWidget);
+    // Complete-read failures append an anonymous correlation ref to the
+    // user message (a7a54d709), so match the base message by prefix.
+    expect(find.textContaining('服务器容量检查失败'), findsOneWidget);
     repository.failure = null;
     final callsBeforeRetry = repository.calls;
     await tester.tap(find.text('重试'));
@@ -2126,7 +2128,7 @@ void main() {
     );
     expect(repository.calls, callsBeforeRetry + 1);
     expect(find.text('表格模板'), findsOneWidget);
-    expect(find.text('服务器容量检查失败'), findsNothing);
+    expect(find.textContaining('服务器容量检查失败'), findsNothing);
     expect(find.text('重试'), findsNothing);
   });
 

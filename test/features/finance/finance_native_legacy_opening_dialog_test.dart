@@ -60,10 +60,13 @@ void main() {
           );
           table.onSelectedIdsChanged!({});
           await tester.pump();
+          // Complete-read failures append an anonymous correlation ref to
+          // the ApiException message (a7a54d709); pin the base by prefix.
           expect(
             find.byWidgetPredicate(
               (w) =>
-                  w is UtenFieldHintIcon && w.errorMessage == 'legacy read 403',
+                  w is UtenFieldHintIcon &&
+                  w.errorMessage?.startsWith('legacy read 403') == true,
             ),
             findsOneWidget,
           );

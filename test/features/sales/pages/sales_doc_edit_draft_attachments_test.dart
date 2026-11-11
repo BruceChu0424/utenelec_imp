@@ -502,8 +502,14 @@ void main() {
           final grid = tester.widget<UtenEditableGrid<SalesGridRow>>(
             find.byType(UtenEditableGrid<SalesGridRow>),
           );
+          // aa646f7cf 起上游引入按钮与同排 dense 提示 icon 一起包在 Row 里，
+          // 递归一层校验按钮仍在网格工具条动作中且只有一个。
           expect(
-            grid.toolbarActions.whereType<UtenImportButton>(),
+            grid.toolbarActions
+                .expand<Object?>(
+                  (action) => action is Row ? action.children : [action],
+                )
+                .whereType<UtenImportButton>(),
             hasLength(1),
           );
         }

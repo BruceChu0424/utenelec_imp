@@ -11,6 +11,7 @@ import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
 import 'package:uten_imp/components/feedback/uten_reviewer_responsibility_notice.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/features/expense/models/expense_claim.dart';
 import 'package:uten_imp/features/expense/models/expense_invoice.dart';
 import 'package:uten_imp/features/expense/pages/expense_approval_detail_page.dart';
@@ -227,8 +228,16 @@ Future<void> _openConfirmation(WidgetTester tester) async {
     find.descendant(of: modalNotice, matching: find.text('审核员：审批员(R001)')),
     findsOneWidget,
   );
+  // 12bc07b99 起弹层说明按提示行规范收进悬停 icon（UtenFieldHintIcon.info），
+  // 不再是独立可见 Text；断言改为核对 icon 携带同一责任说明。
+  // 12bc07b99 起弹层说明按提示行规范收进悬停 icon（UtenFieldHintIcon.info），
+  // 详情页确认的责任说明现为「通过或驳回将记录当前审核员与节点」。
   expect(
-    find.descendant(of: modalNotice, matching: find.textContaining('记录报销审批责任')),
+    find.byWidgetPredicate(
+      (widget) =>
+          widget is UtenFieldHintIcon &&
+          (widget.info ?? '').contains('记录当前审核员与节点'),
+    ),
     findsOneWidget,
   );
   expect(find.byType(UtenBusyOverlayCard), findsNothing);

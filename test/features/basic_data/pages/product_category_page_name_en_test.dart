@@ -223,8 +223,10 @@ void main() {
       // while the export was visible must still reject the changed query.
       expect(exportAction.hitTestable(), findsNothing);
       expect(originalSelection.stillCurrent!(), isFalse);
+      // 4630800f0：完整输出不再当前时 prepareExport 在准备阶段即返回 null
+      // （取消——不会发起导出请求），不再交出 stillCurrent=false 的选择。
       final pendingSelection = await continueOriginalExport();
-      expect(pendingSelection!.stillCurrent!(), isFalse);
+      expect(pendingSelection, isNull);
       await tester.pump(const Duration(milliseconds: 301));
       await tester.pumpAndSettle();
       expect(goods.listCalls.last, (null, 'PART-001'));

@@ -284,7 +284,9 @@ void main() {
     table().onRetry!();
     await tester.pumpAndSettle();
     expect(table().items, isEmpty);
-    expect(table().error, '核价读取权限已撤销');
+    // Complete-read failures append an anonymous correlation ref to the
+    // user message (a7a54d709); pin the base message by prefix.
+    expect(table().error, startsWith('核价读取权限已撤销'));
     expect(_segment(tester, '已退回').count, isNull);
     count.complete(
       const PagedResult(items: [], page: 1, size: 1, total: 77, totalPages: 77),

@@ -1380,17 +1380,33 @@ Future<void> _pump(
   await tester.pumpAndSettle();
   // Calculation/editor tests explicitly open their fixture; the product itself
   // starts collapsed. Default-state regressions opt out below.
-  if (expandTree &&
-      await showOptionalUtenTestAction(
-        tester,
-        find.byKey(const Key('cost-tree-expansion')),
-      )) {
-    await tapUtenTestAction(
-      tester,
-      find.byKey(const Key('cost-tree-expansion')),
-    );
-    await tester.pumpAndSettle();
+  if (expandTree) {
+    await _tapTreeExpansion(tester);
   }
+}
+
+/// Reveal and tap the material tree expansion control through the same
+/// dropdown a user can open.
+///
+/// 14e7be5e7/47c96198a 系列保留式联动视口起，页面外层滚动会重建工具条宿主，
+/// 「表格操作」下拉按其既有 didUpdateWidget 守卫（宿主重建即收起，防止旧菜单
+/// 越权存活；该守卫本窗口未改）随之关闭，而 tester.ensureVisible 的对齐滚动
+/// 恰好滚外层页头。动作已可点时直接点按；确需滚动揭示、菜单因此被关时重新
+/// 打开再点——始终只走用户真实可达路径，不放宽任何保护。
+Future<bool> _tapTreeExpansion(WidgetTester tester) async {
+  final action = find.byKey(const Key('cost-tree-expansion'));
+  if (!await showOptionalUtenTestAction(tester, action)) return false;
+  if (action.hitTestable().evaluate().isEmpty) {
+    await tester.ensureVisible(action);
+    await tester.pumpAndSettle();
+    if (action.evaluate().isEmpty &&
+        !await showOptionalUtenTestAction(tester, action)) {
+      return false;
+    }
+  }
+  await tester.tap(action.hitTestable().first);
+  await tester.pumpAndSettle();
+  return true;
 }
 
 Future<void> _settings(WidgetTester tester) async {
@@ -2542,24 +2558,10 @@ void main() {
           find.byKey(const ValueKey('goods-cost-tree-cell-deep-10')),
           findsNothing,
         );
-        await showUtenTestAction(
-          tester,
-          find.byKey(const Key('cost-tree-expansion')),
-        );
-        await tapUtenTestAction(
-          tester,
-          find.byKey(const Key('cost-tree-expansion')),
-        );
-        await tester.pumpAndSettle();
-        await showUtenTestAction(
-          tester,
-          find.byKey(const Key('cost-tree-expansion')),
-        );
-        await tapUtenTestAction(
-          tester,
-          find.byKey(const Key('cost-tree-expansion')),
-        );
-        await tester.pumpAndSettle();
+        // 表格操作菜单里的展开/收起改走 _tapTreeExpansion（见其注释：保留式
+        // 联动视口下 ensureVisible 的外层滚动会触发菜单收起）。
+        expect(await _tapTreeExpansion(tester), isTrue);
+        expect(await _tapTreeExpansion(tester), isTrue);
         shrinkIdentity();
         await tester.pumpAndSettle();
         final rootMinimum = UtenTreeTableCell.compactMinimumWidthOf(
@@ -2570,10 +2572,7 @@ void main() {
           tester.getSize(root).width,
           inInclusiveRange(rootMinimum - 24 - borderTolerance, rootMinimum),
         );
-        await tapUtenTestAction(
-          tester,
-          find.byKey(const Key('cost-tree-expansion')),
-        );
+        expect(await _tapTreeExpansion(tester), isTrue);
         await tester.pumpAndSettle();
         expect(
           find.byKey(const ValueKey('goods-cost-tree-cell-deep-10')),
@@ -4180,19 +4179,30 @@ void main() {
         _MissingPricesCosts.path(1),
       });
       await tester.pumpAndSettle();
-      final nested = tester.state<NestedScrollViewState>(
-        find.byType(NestedScrollView),
+      // 14e7be5e7/d3be61be8/e4746735b 起 UtenCollapsingHeaderScrollView 不再内嵌
+      // NestedScrollView：联动外层经公开 outerControllerOf 取得，表体竖向沿用
+      // master-table-body 唯一控制器（挂在注入的 PrimaryScrollController 上）。
+      // 「先钉表再内滚」的交接契约语义不变，仍由两侧 position 断言钉住。
+      final outer = UtenCollapsingHeaderScrollView.outerControllerOf(
+        find
+            .descendant(
+              of: find.byType(UtenCollapsingHeaderScrollView),
+              matching: find.byWidgetPredicate((_) => true),
+            )
+            .evaluate()
+            .first,
+      );
+      final inner = utenTestTableBodyController(
+        tester,
+        find.byType(MasterDataTableView<Map<String, dynamic>>).first,
       );
       final point = tester.getCenter(find.text('待核材料 2'));
       await tester.sendEventToBinding(
         PointerScrollEvent(position: point, scrollDelta: const Offset(0, 700)),
       );
       await tester.pumpAndSettle();
-      expect(
-        nested.outerController.offset,
-        closeTo(nested.outerController.position.maxScrollExtent, .5),
-      );
-      expect(nested.innerController.offset, closeTo(0, .5));
+      expect(outer!.offset, closeTo(outer.position.maxScrollExtent, .5));
+      expect(inner.offset, closeTo(0, .5));
       expect(find.text('货品名称').hitTestable(), findsOneWidget);
       expect(
         find.byKey(const Key('cost-download')).hitTestable(),
@@ -4216,7 +4226,7 @@ void main() {
         PointerScrollEvent(position: point, scrollDelta: const Offset(0, 200)),
       );
       await tester.pumpAndSettle();
-      expect(nested.innerController.offset, greaterThan(0));
+      expect(inner.offset, greaterThan(0));
       expect(tester.getTopLeft(find.text('货品名称')).dy, closeTo(headerTop, .5));
       final lastMaterial = find.text('待核材料 30');
       final save = find.byKey(const Key('cost-save'));
@@ -4224,15 +4234,10 @@ void main() {
       // updated tail after each real layout, rather than stopping at the old
       // estimate while asserting that the final material was reached.
       for (var attempt = 0; attempt < 6; attempt++) {
-        nested.innerController.jumpTo(
-          nested.innerController.position.maxScrollExtent,
-        );
+        inner.jumpTo(inner.position.maxScrollExtent);
         await tester.pumpAndSettle();
         if (lastMaterial.evaluate().isNotEmpty &&
-            (nested.innerController.position.maxScrollExtent -
-                        nested.innerController.offset)
-                    .abs() <
-                .5) {
+            (inner.position.maxScrollExtent - inner.offset).abs() < .5) {
           break;
         }
       }

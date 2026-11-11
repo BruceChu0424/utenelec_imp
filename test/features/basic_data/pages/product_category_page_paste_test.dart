@@ -75,8 +75,9 @@ Finder get _table => find.byType(MasterDataTableView<GoodsListItem>);
 
 Future<void> _rightClickBlank(WidgetTester tester) async {
   final rect = tester.getRect(_table);
-  // Hit the full empty viewport, away from the centered empty-state message.
-  await _rightClickAt(tester, rect.bottomLeft + const Offset(45, -60));
+  // 空白菜单只在表格主体的空白命中区打开；底部表脚（已选/编辑模式/添加）
+  // 与居中的空态文案都不在落点上。
+  await _rightClickAt(tester, rect.topLeft + Offset(rect.width * 0.25, rect.height * 0.25));
 }
 
 Future<void> _pumpPage(

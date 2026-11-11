@@ -1858,7 +1858,8 @@ void main() {
       await tester.tap(find.byTooltip('刷新当前结果'));
       await tester.pumpAndSettle();
       expect(find.text('墙壁插座成品'), findsNothing);
-      expect(find.text('当前关系范围已撤权'), findsOneWidget);
+      // 2026-11-09 起完整读取失败消息追加匿名关联号（a7a54d709），按前缀匹配。
+      expect(find.textContaining('当前关系范围已撤权（关联号 '), findsOneWidget);
       expect(find.textContaining('已保留上次成功结果'), findsNothing);
       expect(api.traceCalls, 0);
       expect(tester.takeException(), isNull);
@@ -2433,7 +2434,8 @@ void main() {
 
     await _selectMaterial(tester);
 
-    expect(find.text('无权限查看当前反查范围'), findsOneWidget);
+    // 2026-11-09 起完整读取失败消息追加匿名关联号（a7a54d709），按前缀匹配。
+    expect(find.textContaining('无权限查看当前反查范围（关联号 '), findsOneWidget);
     expect(find.textContaining('检查服务连接'), findsNothing);
     expect(find.text('重试'), findsOneWidget);
     expect(api.reportCalls, 1);

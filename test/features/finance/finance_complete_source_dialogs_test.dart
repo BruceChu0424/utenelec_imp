@@ -187,7 +187,9 @@ void main() {
         await tester.pumpAndSettle();
         final current = _value(tester, key);
         expect(current.items, isEmpty);
-        expect(current.error, '当前目录无权限');
+        // a7a54d709 / lib/shared/paging/read_failure_diagnostics.dart 给真实
+        // 完整读取失败的消息追加「（关联号 XXXXXX）」，此处只钉基消息。
+        expect(current.error, startsWith('当前目录无权限'));
         expect(current.canOpenRow!(row), isFalse);
         // A queued event must validate against the State's current accepted
         // rows, even if it still holds the earlier widget callback and DTO.

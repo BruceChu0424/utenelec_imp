@@ -94,7 +94,13 @@ void main() {
         .getSize(find.byKey(const Key('forest-pane')))
         .width;
     expect(compactWidth, 200);
-    final scroll = tester.state<ScrollableState>(find.byType(Scrollable).first);
+    // 47c96198a 起分栏宿主把整个面板包进保留视口（外层折叠滚动容器），树的
+    // 行列表不再是树内第一个 Scrollable；按树视图后代定位其自身竖向列表。
+    final treeList = find.descendant(
+      of: find.byType(UtenCategoryTreeView<PaymentStyleNode>),
+      matching: find.byType(Scrollable),
+    );
+    final scroll = tester.state<ScrollableState>(treeList);
     scroll.position.jumpTo(scroll.position.maxScrollExtent);
     await tester.pumpAndSettle();
     expect(find.text(_longName), findsOneWidget);

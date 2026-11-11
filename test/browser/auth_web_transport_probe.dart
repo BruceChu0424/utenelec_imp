@@ -193,8 +193,11 @@ Future<void> main() async {
     await check(
       'slow file send exceeds receive phase within finite total',
       () async {
+        // 发送超时与总预算仍有限但按慢速 CI runner 校准：服务端 8ms/块慢读，
+        // 4MB 在小分片下本身就要数秒，快机器校准的 5s/5080ms 在 CI 上会把
+        // 正常传输裁断（bytes<4MB）。接收超时 80ms 的对照语义不变。
         final client = _client(
-          send: const Duration(seconds: 5),
+          send: const Duration(seconds: 20),
           receive: const Duration(milliseconds: 80),
         );
         final bytes = Uint8List(4 * 1024 * 1024);
@@ -204,7 +207,7 @@ Future<void> main() async {
               .put<Map<String, dynamic>>(
                 '/upload/slow',
                 data: bytes,
-                options: _fileOptions(const Duration(milliseconds: 5080)),
+                options: _fileOptions(const Duration(seconds: 20)),
                 onSendProgress: (sent, total) => progress.add((sent, total)),
               )
               .then<Object>(

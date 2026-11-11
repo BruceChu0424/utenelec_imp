@@ -55,7 +55,9 @@ void main() {
         findsNothing,
       );
       expect(find.widgetWithText(UtenButton, '维护本组资料'), findsNothing);
-      expect(find.text('history tail forbidden'), findsOneWidget);
+      // Complete-read failures append an anonymous correlation ref to the
+      // user message (a7a54d709), so match the base message by prefix.
+      expect(find.textContaining('history tail forbidden'), findsOneWidget);
       expect(api.posts, isEmpty);
       expect(t.takeException(), isNull);
       await _dispose(t, env);

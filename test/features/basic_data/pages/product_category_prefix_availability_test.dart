@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/basic_data/models/goods_node.dart';
@@ -13,6 +14,7 @@ import 'package:uten_imp/features/basic_data/widgets/category_edit_dialog.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/shared/widgets/master_detail_card.dart';
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
@@ -108,7 +110,19 @@ void main() {
     expect(server.prefix, 'UGX');
     // detail 计数：选中分类 1 次 + 树行编辑图标拉详情 1 次 + 保存后重挂 1 次 = 3。
     expect(server.detailReads, 3);
-    expect(find.textContaining('编号前缀 UGX'), findsOneWidget);
+    // 65b7ea7c9 起分类卡说明收进标题旁的 hint icon，不再有独立可见 Text，
+    // 断言改为校验详情卡上唯一 hint icon 的 info。
+    expect(
+      tester
+          .widgetList<UtenFieldHintIcon>(
+            find.descendant(
+              of: find.byType(MasterDetailCard),
+              matching: find.byType(UtenFieldHintIcon),
+            ),
+          )
+          .map((icon) => icon.info),
+      contains(startsWith('编号前缀 UGX')),
+    );
     expect(tester.takeException(), isNull);
   });
 }

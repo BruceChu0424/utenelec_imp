@@ -59,11 +59,13 @@ void main() {
       table.onSelectedIdsChanged!({});
       await tester.pump();
       expect(input.text, '0.000000000000000000000001');
+      // Complete-read failures append an anonymous correlation ref to the
+      // ApiException message (a7a54d709), so pin the base message by prefix.
       expect(
         find.byWidgetPredicate(
           (w) =>
               w is UtenFieldHintIcon &&
-              w.errorMessage == 'adjustment read revoked',
+              w.errorMessage?.startsWith('adjustment read revoked') == true,
         ),
         findsOneWidget,
       );

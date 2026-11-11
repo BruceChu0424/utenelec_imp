@@ -259,7 +259,7 @@
     "kind": "raw-close-icon",
     "path": "lib/features/basic_data/widgets/uten_master_picker.dart",
     "owner": "_UtenMasterPickerFieldState.build",
-    "fingerprint": "bcf47126e20a1111a7de4f2c30b63e9c51b956d6c8ada0c9e13589a812d2cd04",
+    "fingerprint": "f90efeaec8d5951708846d6f0e68ed7c17910364eb491ec574b8dce80bc80ee7",
     "count": 1,
     "reason": "Clears the master reference field."
   },
@@ -379,7 +379,7 @@
     "kind": "raw-cross-glyph",
     "path": "lib/features/production/pages/material_analysis_material_table.dart",
     "owner": "_MaterialAnalysisMaterialTableState._reportMaterialTableSubmit",
-    "fingerprint": "85ca984425cfbe7a555cea73faaa04b6f90f487d1c42e0e14e4421626d05785c",
+    "fingerprint": "8ec405df1a023481a85e49c8d257bfd82e49425df14092ecdb0dc1916ad8e1b4",
     "count": 1,
     "reason": "A failed-step status marker in a textual material submission summary."
   },

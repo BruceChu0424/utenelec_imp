@@ -159,7 +159,9 @@ void main() {
         findsNothing,
       );
       expect(find.textContaining('确认应用'), findsNothing);
-      expect(find.text('offset read revoked'), findsOneWidget);
+      // Complete-read failures append an anonymous correlation ref to the
+      // user message (a7a54d709); pin the base message by prefix.
+      expect(find.textContaining('offset read revoked'), findsOneWidget);
       expect(reasonController.text, '  原始原因  ');
       expect(amountController.text, '1.00000000000000000001');
       await tester.pump(const Duration(seconds: 1));

@@ -75,11 +75,24 @@ void main() {
       addTearDown(read.dispose);
       read.start();
       await read.firstPage;
-      await expectLater(read.completion, throwsA(same(error)));
+      // a7a54d709: real complete-read failures are rebuilt as a new base
+      // ApiException with one anonymous correlation ref appended to the
+      // message and kept in details, so identity is no longer the raw
+      // thrown instance; code and base message must survive and both
+      // surfaces must expose that one annotated failure.
+      final thrown = await read.completion.then<Object>(
+        (rows) => throw StateError('completion must reject: $rows'),
+        onError: (Object e) => e,
+      );
+      final annotated = thrown as ApiException;
+      expect(annotated.code, 'OFFLINE');
+      final ref = annotated.details?['diagnosticRef'];
+      expect(ref, isA<String>().having((r) => r.length, 'length', 6));
+      expect(annotated.message, 'offline（关联号 $ref）');
       expect(read.snapshot.rows, [1]);
       expect(read.snapshot.complete, isFalse);
       expect(read.snapshot.loading, isFalse);
-      expect(read.snapshot.error, same(error));
+      expect(read.snapshot.error, same(annotated));
     },
   );
 

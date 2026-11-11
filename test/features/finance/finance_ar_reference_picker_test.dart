@@ -269,7 +269,9 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('ar-ap-select-ledger-1')), findsNothing);
       expect(find.byKey(const ValueKey('ar-ap-confirm')), findsNothing);
-      expect(find.text('picker read revoked'), findsOneWidget);
+      // Complete-read failures append an anonymous correlation ref to the
+      // user message (a7a54d709), so match the base message by prefix.
+      expect(find.textContaining('picker read revoked'), findsOneWidget);
       expect(controller.text, '12.3400');
       await tester.pump(const Duration(seconds: 1));
       expect(api.pages, [1, 2, 1, 2]);

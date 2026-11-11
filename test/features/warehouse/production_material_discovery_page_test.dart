@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/inputs/uten_table_cell_action.dart';
+import 'package:uten_imp/components/layout/uten_collapsing_header_scroll_view.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/basic_data/models/goods_node.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
@@ -156,11 +157,21 @@ DiscoveryMaterialRow _row(WidgetTester tester) => tester
 Future<void> _revealHeader(WidgetTester tester) async {
   // Editing the table can collapse the independent outer header. Completion
   // must preserve the generated document link, not reset the user's scroll.
-  final state = tester.state<NestedScrollViewState>(
-    find.byType(NestedScrollView),
-  );
-  state.outerController.jumpTo(0);
-  await tester.pumpAndSettle();
+  // 14e7be5e7/d3be61be8/e4746735b 起 UtenCollapsingHeaderScrollView 不再内嵌
+  // NestedScrollView，联动外层控制器改经公开 outerControllerOf 取得，
+  // jumpTo(0) = 展开页头，语义与旧 outerController 一致。
+  final anchor = find
+      .descendant(
+        of: find.byType(UtenCollapsingHeaderScrollView),
+        matching: find.byWidgetPredicate((_) => true),
+      )
+      .evaluate()
+      .first;
+  final outer = UtenCollapsingHeaderScrollView.outerControllerOf(anchor);
+  if (outer != null && outer.hasClients && outer.position.pixels > 0) {
+    outer.jumpTo(0);
+    await tester.pumpAndSettle();
+  }
 }
 
 void main() {

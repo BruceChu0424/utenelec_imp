@@ -82,7 +82,9 @@ void main() {
         finder,
       );
       expect(table.items, isEmpty);
-      expect(table.error, '后批无权限');
+      // a7a54d709 / lib/shared/paging/read_failure_diagnostics.dart 给真实
+      // 完整读取失败的消息追加「（关联号 XXXXXX）」，此处只钉基消息。
+      expect(table.error, startsWith('后批无权限'));
       expect(api.sent, isEmpty);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
@@ -114,7 +116,8 @@ void main() {
           finder,
         );
         expect(table.items, isEmpty);
-        expect(table.error, '后批无权限');
+        // 同上：真实后批拒绝经 read_failure_diagnostics.dart 追加关联号后缀。
+        expect(table.error, startsWith('后批无权限'));
         expect(
           tester.widget<UtenInput>(_field('搜索真实单号或商品')).controller!.text,
           '原查询保留',

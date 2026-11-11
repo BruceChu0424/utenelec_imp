@@ -597,8 +597,9 @@ void main() {
       expect(wire.queries.last, containsPair('recordId', 'object-1'));
       expect(wire.queries.last, containsPair('categoryId', 'cat-original'));
       // The initial complete history read runs the shared ladder: first
-      // batch 50 rows, the cursor continuation 200 rows.
-      expect(wire.queries.map((query) => query['size']), [50, 200]);
+      // batch 50 rows, then cursor continuations at the complete-read page
+      // cap. 2026-11-09 the cap rose 200→1000 with the user (e43df0c34).
+      expect(wire.queries.map((query) => query['size']), [50, 1000]);
       expect(find.byType(UtenFilterToolbar<String>), findsNothing);
       expect(find.byType(UtenSearchBar), findsNothing);
       await _selectHeader(tester, 'action', '删除');
@@ -661,7 +662,9 @@ void main() {
       await _pump(tester, wire);
       expect(wire.queries, [
         _defaultDatedQuery(),
-        {..._defaultDatedQuery(size: 200), 'cursor': 'opaque-next-token'},
+        // Cursor continuation carries the complete-read page cap, raised
+        // 200→1000 with the user on 2026-11-09 (e43df0c34).
+        {..._defaultDatedQuery(size: 1000), 'cursor': 'opaque-next-token'},
       ]);
       expect(find.text('第一页货品'), findsOneWidget);
       expect(find.text('第二页货品'), findsOneWidget);

@@ -105,6 +105,14 @@ void main() {
           end: DateTime.utc(2024, 1, 31),
         ),
       );
+      // 12bc07b99 起工具条内分段控件统一抬到 UtenTableToolbar.controlHeight
+      //（40，与桌面工具条 UtenButton 一致）；显式用 ≥840 的桌面宽度钉
+      // 「折合日期不高于普通工具条按钮」的原意（默认 800x600 会落进紧凑
+      // 呈现，按钮改用 36 紧凑视觉，不构成本断言要保护的口径）。
+      tester.view.physicalSize = const Size(1440, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
       await tester.pumpWidget(
         MaterialApp(
           theme: ThemeData(platform: TargetPlatform.windows),
@@ -136,6 +144,7 @@ void main() {
           .first;
       expect(tester.getSize(choose).height, tester.getSize(settings).height);
       expect(tester.getSize(all).height, tester.getSize(settings).height);
+      expect(tester.getSize(settings).height, 40);
       final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
       await mouse.addPointer(location: const Offset(799, 599));
       await mouse.moveTo(tester.getCenter(choose));

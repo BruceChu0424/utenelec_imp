@@ -11,6 +11,7 @@ import 'package:uten_imp/core/utils/china_datetime.dart';
 import 'package:uten_imp/components/inputs/uten_date_range_button.dart';
 import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
+import 'package:uten_imp/components/feedback/uten_date_range_picker.dart';
 import 'package:uten_imp/features/quality/models/quality_inspection_record.dart';
 import 'package:uten_imp/features/quality/pages/quality_inspection_records_page.dart';
 import 'package:uten_imp/features/quality/repositories/quality_inspection_record_repository.dart';
@@ -196,7 +197,9 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(header);
     await tester.pumpAndSettle();
-    expect(find.text('选择检验决定日期范围'), findsOneWidget);
+    // 2026-11-10 自绘日期弹窗改版（7413a81f4 窗口）：helpText 只作语义标签
+    // （semanticLabel），可见标题改为当前选中区间；断言改钉弹窗本体。
+    expect(find.byType(UtenDateRangePickerDialog), findsOneWidget);
     expect(find.byType(UtenBusyOverlay), findsNothing);
     await tester.tap(find.text('1'));
     await tester.pump();

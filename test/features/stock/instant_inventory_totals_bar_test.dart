@@ -137,6 +137,9 @@ void main() {
           .filters,
       {'series': 'GD'},
     );
+    // e16f4fb22 起表格窗口化：合计条作为表体滚动内容，离屏时不构建。
+    // 弹回后与进详情前同样先滚动入视口，再断言合计仍在（数据未丢）。
+    await _revealSummary(tester);
     expect(find.byType(InstantInventorySummaryBar), findsOneWidget);
     expect(tester.takeException(), isNull);
   });

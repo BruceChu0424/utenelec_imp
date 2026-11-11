@@ -74,7 +74,8 @@ void main() {
                 find.byType(MasterDataTableView<Map<String, dynamic>>),
               );
           expect(summary.items, isEmpty);
-          expect(summary.error, '读取权限已变化');
+          // 真失败带匿名关联号后缀（a7a54d709 read_failure_diagnostics）。
+          expect(summary.error, matches(r'读取权限已变化（关联号 [0-9A-Z]{6}）'));
           expect(original.rows.single.grams.text, '30');
           expect(api.writes, isEmpty);
           expect(
@@ -155,7 +156,8 @@ void main() {
         );
         await tester.pumpAndSettle();
         expect(table().items, isEmpty);
-        expect(table().error, '无权查看');
+        // 真失败带匿名关联号后缀（a7a54d709 read_failure_diagnostics）。
+        expect(table().error, matches(r'无权查看（关联号 [0-9A-Z]{6}）'));
         expect(tester.element(finder), same(element));
         expect(tester.takeException(), isNull);
       },

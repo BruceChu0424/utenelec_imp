@@ -98,9 +98,15 @@ void main() {
       ApiException('FORBIDDEN', 'owned fixture revoked', httpStatus: 403),
     ]) {
       final api = _Summaries()..tailFailure = error;
+      // 完整读取漏斗（read_failure_diagnostics）会重建异常并追加匿名关联号，
+      // 实例身份不再保持；契约断言改为同 code + 原消息为前缀，前缀结果仍被拒。
       await expectLater(
         loadSubcontractSupplierLossSummary(api, 'supplier-1'),
-        throwsA(same(error)),
+        throwsA(
+          isA<ApiException>()
+              .having((e) => e.code, 'code', error.code)
+              .having((e) => e.message, 'message', startsWith(error.message)),
+        ),
       );
       expect(api.queries.map((q) => q['page']), [1, 2]);
     }

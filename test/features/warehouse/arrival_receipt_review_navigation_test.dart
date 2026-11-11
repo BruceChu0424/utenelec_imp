@@ -18,6 +18,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/data_display/uten_table_surface.dart';
+import 'package:uten_imp/components/feedback/uten_confirmation_summary.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
@@ -268,18 +269,24 @@ void main() {
     await tester.ensureVisible(submit);
     await tester.tap(submit);
     await tester.pumpAndSettle();
-    // 2026-09-12 确认弹窗改紧凑摘要：一行「品名 + 本次数量 + 去向一句话」，
-    // 跨仓警示横幅保留（安全信息不随紧凑化省略）；完整明细在表格 ⓘ。
-    expect(find.text('本次 48 个'), findsOneWidget);
-    expect(find.text('跨仓部分 24 不绑定计划 · 其余按预定分配'), findsOneWidget);
+    // 12bc07b99 确认弹窗再收敛：不再逐货品行展示「品名 + 本次数量 + 去向」，
+    // 登记范围与到货实物量收敛为 UtenConfirmationSummary 事实清单；跨仓作为
+    // 聚合安全警示横幅保留（安全信息不随紧凑化省略）；完整明细在表格 ⓘ。
+    final summary = tester.widget<UtenConfirmationSummary>(
+      find.byType(UtenConfirmationSummary),
+    );
     expect(
-      find.descendant(
-        of: find.byKey(
-          const Key('warehouse-inbound-allocation-cross-warehouse'),
-        ),
-        matching: find.textContaining('跨仓部分 24 个 不绑定计划'),
-      ),
-      findsOneWidget,
+      summary.facts.map((fact) => '${fact.label} ${fact.value}'),
+      containsAll(['本次登记 1 行 · 1 个仓库', '到货实物量 2 箱']),
+    );
+    // 12bc07b99 起聚合警示 Text 自身携带跨仓 key（不再包一层横幅子树）。
+    final crossWarning = tester.widget<Text>(
+      find.byKey(const Key('warehouse-inbound-allocation-cross-warehouse')),
+    );
+    expect(
+      crossWarning.data,
+      '跨仓 1 行：实际 成品仓，预定 原料仓；'
+      '跨仓部分按实际仓进入公共库存，不绑定原计划。',
     );
     expect(find.text('确认跨仓登记送检'), findsOneWidget);
     expect(tester.takeException(), isNull);

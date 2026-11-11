@@ -53,7 +53,10 @@ void main() {
         finder,
       );
       expect(table.items, isEmpty);
-      expect(table.error, '原读取已被拒绝');
+      // a7a54d709 / lib/shared/paging/read_failure_diagnostics.dart 给真实
+      // 完整读取失败（非 REQUEST_STALE 等安静退休形态）的消息追加
+      // 「（关联号 XXXXXX）」，此处只钉基消息。
+      expect(table.error, startsWith('原读取已被拒绝'));
       expect(find.text('ACCOUNT-0'), findsNothing);
       expect(api.saved, isEmpty);
       expect(tester.takeException(), isNull);
@@ -100,7 +103,8 @@ void main() {
     );
     expect(table.items, isEmpty);
     expect(api.directoryReads.any((query) => query['page'] == 2), isTrue);
-    expect(table.error, '后批无权限');
+    // 同上：真实后批拒绝经 read_failure_diagnostics.dart 追加关联号后缀。
+    expect(table.error, startsWith('后批无权限'));
     await tester.tap(
       find
           .descendant(
@@ -112,9 +116,13 @@ void main() {
           .hitTestable(),
     );
     await tester.pumpAndSettle();
+    // 详情弹层展示的是同一份带关联号后缀的完整失败消息。
     expect(
       find.byWidgetPredicate(
-        (widget) => widget is SelectableText && widget.data == '后批无权限',
+        (widget) =>
+            widget is SelectableText &&
+            widget.data != null &&
+            widget.data!.startsWith('后批无权限'),
       ),
       findsOneWidget,
     );

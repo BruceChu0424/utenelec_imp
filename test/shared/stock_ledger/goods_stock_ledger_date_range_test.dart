@@ -189,7 +189,8 @@ void main() {
     expect(find.byType(UtenBusyOverlay), findsNothing);
     expect(table().items, isEmpty);
     expect(table().summaryBar, isNull);
-    expect(table().error, '当前日期暂时无法读取');
+    // 2026-11-09 起完整读取失败消息追加匿名关联号（a7a54d709），按前缀匹配。
+    expect(table().error, startsWith('当前日期暂时无法读取（关联号 '));
     expect(tester.takeException(), isNull);
   });
 }

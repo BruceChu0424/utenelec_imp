@@ -26,7 +26,7 @@
     "lib/core/network/api_exception.dart": "2f924efcecfb3ea14e377b5682df9d9d7533b1921565138fd17e01159eac2872",
     "lib/core/network/api_error.dart": "02792e201676f0ad08eb6ef1d663db2895f95249cd44095ca3471c981ae18280",
     "lib/core/network/api_error_message.dart": "d7804713932d6c85e25f9abdcecafc7d159dccacc8a250f1ff1ec485518c5f3b",
-    "pubspec.lock": "1f8b96cd8bbca9792278a19b82426eb0458870b7d5af9fd86ae3dbc468b576f5"
+    "pubspec.lock": "6bec893e1fc3e3a8e472a01cad5c247ac5be4c914c702ede8c1c7a6b5ffdaf5f"
   },
   "workerSha256": "80da9f2843da319765f150293240ff47417359dd0703c59f84740cc2f3bfd219",
   "workerBytes": 1370182,

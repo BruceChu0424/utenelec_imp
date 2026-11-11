@@ -124,10 +124,24 @@ void main() {
     await tester.pumpWidget(_page([for (var i = 0; i < 60; i++) 'ROW-$i']));
     await tester.pump();
 
+    // 14e7be5e7/d3be61be8 保留视口拓扑：表体盒恒为整视口高（700），头部（60）
+    // 展开时尾部 60px 在折叠线下方；内容超高钉底的横滚条跟随表体区底
+    // （60 + 700 - 11 = 749），不随内容、也不因头部展开改用可见裁剪底。
     final bar = _overlayBarBox(tester);
-    final barTop = bar.localToGlobal(Offset.zero).dy;
-    debugPrint('内容多：横滚条 top=$barTop，期望 ${_pageHeight - 11}');
-    expect(barTop, closeTo(_pageHeight - 11, 1));
+    final expandedTop = bar.localToGlobal(Offset.zero).dy;
+    debugPrint('内容多：横滚条 top=$expandedTop，头部展开期望 60 + ${_pageHeight - 11}');
+    expect(expandedTop, closeTo(60 + _pageHeight - 11, 1));
+
+    // 收起头部后表体尾部进入可视区，钉底横滚条落到联动视口底。
+    await tester.timedDrag(
+      find.text('ROW-1').first,
+      const Offset(0, -80),
+      const Duration(milliseconds: 300),
+    );
+    await tester.pumpAndSettle();
+    final collapsedTop = bar.localToGlobal(Offset.zero).dy;
+    debugPrint('内容多：收起头部后横滚条 top=$collapsedTop，期望 ${_pageHeight - 11}');
+    expect(collapsedTop, closeTo(_pageHeight - 11, 1));
   });
 
   testWidgets('折叠手势不受影响：表格上上滑仍收起顶部卡片', (tester) async {

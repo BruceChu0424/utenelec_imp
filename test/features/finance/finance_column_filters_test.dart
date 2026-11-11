@@ -185,7 +185,9 @@ void main() {
           ),
         );
         expect(rejected.items, isEmpty, reason: '新条件失败不能沿用上一页正式行');
-        expect(rejected.error, '暂时无法检索');
+        // a7a54d709 / lib/shared/paging/read_failure_diagnostics.dart 给真实
+        // 完整读取失败的消息追加「（关联号 XXXXXX）」，此处只钉基消息。
+        expect(rejected.error, startsWith('暂时无法检索'));
         expect(rejected.filters['search.billNo'], 'REJECTED-NEW-SCOPE');
         api.rejectDocumentQuery = false;
         rejected.onFilterChanged('search.billNo', null);

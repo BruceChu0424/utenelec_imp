@@ -183,7 +183,8 @@ void main() {
       );
       expect(find.text('累计预收(本币)'), findsNothing);
       // The ordinary failure card with its retry replaces the list.
-      expect(find.text('服务暂不可用'), findsOneWidget);
+      // 2026-11-09 起完整读取失败消息追加匿名关联号（a7a54d709），按前缀匹配。
+      expect(find.textContaining('服务暂不可用（关联号 '), findsOneWidget);
       expect(find.text('重试'), findsOneWidget);
       expect(api.posts, isEmpty);
       expect(tester.takeException(), isNull);

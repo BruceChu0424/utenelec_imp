@@ -10,6 +10,7 @@ import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/feedback/uten_date_range_picker.dart';
 import 'package:uten_imp/components/data_display/uten_selection_summary_pill.dart';
+import 'package:uten_imp/components/layout/uten_collapsing_header_scroll_view.dart';
 import 'package:uten_imp/components/layout/uten_floating_action_group.dart';
 import 'package:uten_imp/components/layout/uten_segment_row.dart';
 import 'package:uten_imp/features/basic_data/repositories/reference_method_repository.dart';
@@ -457,7 +458,13 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final nestedFinder = find.byType(NestedScrollView);
+    // 14e7be5e7/d3be61be8 起联动容器不再基于 NestedScrollView：一个保留的
+    // 外层 CustomScrollView 承载折叠头，外层控制器经 outerControllerOf 取，
+    // 表体拾取注入的 PrimaryScrollController（内层）。滚轮交接门的保护口径
+    // 不变：先收头、置顶截停、停顿窗吞格、停住后进表内，回程对称。
+    final toolbarFinder = find.byKey(
+      const ValueKey('finance-payables-table-toolbar'),
+    );
     final summaryFinder = find.byKey(
       const ValueKey('finance-payables-summary-panel'),
     );
@@ -467,16 +474,16 @@ void main() {
     final table = tester.widget<MasterDataTableView<FinancePayableItem>>(
       tableFinder,
     );
-    final nestedState = tester.state<NestedScrollViewState>(nestedFinder);
+    final outer = UtenCollapsingHeaderScrollView.outerControllerOf(
+      tester.element(toolbarFinder),
+    )!;
+    final inner = PrimaryScrollController.of(tester.element(toolbarFinder))!;
     final pointer = TestPointer(7, PointerDeviceKind.mouse);
     final tableCenter = tester.getCenter(tableFinder);
 
     expect(table.primary, isTrue);
-    expect(
-      find.byKey(const ValueKey('finance-payables-table-toolbar')),
-      findsOneWidget,
-    );
-    expect(nestedState.innerController.offset, 0);
+    expect(toolbarFinder, findsOneWidget);
+    expect(inner.offset, 0);
     final summaryTopBefore = tester.getTopLeft(summaryFinder).dy;
 
     await tester.sendEventToBinding(pointer.hover(tableCenter));
@@ -484,9 +491,8 @@ void main() {
     await tester.pumpAndSettle(const Duration(milliseconds: 10));
 
     expect(tester.getTopLeft(summaryFinder).dy, lessThan(summaryTopBefore));
-    expect(nestedState.innerController.offset, closeTo(0, 0.5));
+    expect(inner.offset, closeTo(0, 0.5));
 
-    final outer = nestedState.outerController;
     final remainingHeader =
         outer.position.maxScrollExtent - outer.position.pixels;
     final gestureStarted = tester.binding.clock.now();
@@ -496,7 +502,7 @@ void main() {
     await tester.pumpAndSettle(const Duration(milliseconds: 10));
 
     expect(outer.position.pixels, closeTo(outer.position.maxScrollExtent, 0.5));
-    expect(nestedState.innerController.offset, closeTo(0, 0.5));
+    expect(inner.offset, closeTo(0, 0.5));
 
     // 停顿窗（2026-09-25）：置顶截停后的同一滚势被整格吞掉；停住后再滚才进表内。
     await tester.sendEventToBinding(pointer.scroll(const Offset(0, 120)));
@@ -505,19 +511,19 @@ void main() {
       tester.binding.clock.now().difference(gestureStarted),
       lessThan(const Duration(milliseconds: 350)),
     );
-    expect(nestedState.innerController.offset, closeTo(0, 0.5));
+    expect(inner.offset, closeTo(0, 0.5));
     await tester.pump(const Duration(milliseconds: 400));
 
     await tester.sendEventToBinding(pointer.scroll(const Offset(0, 120)));
     await tester.pumpAndSettle(const Duration(milliseconds: 10));
 
-    expect(nestedState.innerController.offset, greaterThan(0));
-    final innerOffset = nestedState.innerController.offset;
+    expect(inner.offset, greaterThan(0));
+    final innerOffset = inner.offset;
 
     await tester.sendEventToBinding(pointer.scroll(Offset(0, -innerOffset)));
     await tester.pumpAndSettle(const Duration(milliseconds: 10));
 
-    expect(nestedState.innerController.offset, closeTo(0, 0.5));
+    expect(inner.offset, closeTo(0, 0.5));
     expect(outer.position.pixels, closeTo(outer.position.maxScrollExtent, 0.5));
 
     // 回顶截停同样有停顿窗：窗内被吞；停住后头部才放出。

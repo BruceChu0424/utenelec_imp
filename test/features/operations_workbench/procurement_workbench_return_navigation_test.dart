@@ -122,13 +122,15 @@ void main() {
               expect(find.text('PLAN-A'), findsOneWidget);
               expect(tester.state(tableFinder), same(tableState));
               expect(find.text('更新失败，显示上次数据'), findsOneWidget);
+              // 2026-11-09 起完整读取失败消息追加匿名关联号（a7a54d709），
+              // 断言改为前缀匹配。
               expect(
                 tester
                     .widget<MasterDataTableView<OperationsWorkbenchTask>>(
                       tableFinder,
                     )
                     .refreshError,
-                'NETWORK-FAILED',
+                startsWith('NETWORK-FAILED（关联号 '),
               );
               final retry = Completer<OperationsWorkbenchData>();
               gateway.next = retry;

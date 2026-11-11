@@ -171,11 +171,15 @@ void main() {
     expect(find.text('DTO Name'), findsWidgets);
     expect(find.text('\u6027\u522b'), findsOneWidget);
     // Tab 内 ListView 懒构建：滚动后应能到达同 Tab 下方的紧急联系人段。
-    await tester.dragUntilVisible(
-      find.text('\u7d27\u6025\u8054\u7cfb\u4eba'),
-      find.byType(ListView),
-      const Offset(0, -120),
-    );
+    // d3be61be8/e4746735b 起紧凑布局保留视口把 ListView 中点推到屏外，
+    // 按中心点落子的 dragUntilVisible 手势全部落空；改为把 Tab 正文滚动
+    // 位置直接推到底（先收头部再滚正文），仍验证同 Tab 下方段可达。
+    final bodyPosition = Scrollable.of(
+      find.text('\u6027\u522b').evaluate().single,
+    ).position;
+    bodyPosition.jumpTo(bodyPosition.maxScrollExtent);
+    await tester.pumpAndSettle();
+    expect(find.text('\u7d27\u6025\u8054\u7cfb\u4eba'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

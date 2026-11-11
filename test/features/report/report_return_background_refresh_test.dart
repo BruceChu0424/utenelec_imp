@@ -251,7 +251,9 @@ void main() {
           2,
           1,
         ]);
-        expect(table().refreshError, 'offline');
+        // a7a54d709 / lib/shared/paging/read_failure_diagnostics.dart 给真实
+        // 完整读取失败的用户可见消息追加「（关联号 XXXXXX）」，此处只钉基消息。
+        expect(table().refreshError, startsWith('offline'));
         expect(tester.state(tableFinder), same(originalState));
         expectCurrentBodyRetained();
 
@@ -261,7 +263,8 @@ void main() {
         // The shared report shell remains available to show the confirmed
         // rejection, but it must retire every private row and retained window.
         expect(table().items, isEmpty);
-        expect(table().error, 'no longer authorized');
+        // 同上：真实完整读取失败消息经 read_failure_diagnostics.dart 追加关联号。
+        expect(table().error, startsWith('no longer authorized'));
         expect(table().isRefreshing, isFalse);
         expect(table().refreshedPages, isEmpty);
         expect(find.textContaining('FRESH-'), findsNothing);

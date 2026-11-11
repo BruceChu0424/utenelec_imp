@@ -478,7 +478,9 @@ void main() {
       blocked.completeError(ApiException('NETWORK', '新筛选暂时无法读取'));
       await tester.pumpAndSettle();
       expect(table().items, isEmpty);
-      expect(table().error, '新筛选暂时无法读取');
+      // a7a54d709 / lib/shared/paging/read_failure_diagnostics.dart 给真实
+      // 完整读取失败的消息追加「（关联号 XXXXXX）」，此处只钉基消息。
+      expect(table().error, startsWith('新筛选暂时无法读取'));
       expect(tester.takeException(), isNull);
     },
   );
@@ -505,7 +507,8 @@ void main() {
       await tester.pumpAndSettle();
       expect(table().items, isEmpty);
       expect(table().selectedIds, isEmpty);
-      expect(table().error, '确认读取权限已撤销');
+      // 同上：403 真实读取拒绝的消息经 read_failure_diagnostics.dart 追加关联号。
+      expect(table().error, startsWith('确认读取权限已撤销'));
       expect(table().isLoading, isFalse);
       expect(tester.takeException(), isNull);
     },
@@ -1007,9 +1010,12 @@ void main() {
       notifications.any((item) => item.message.contains('结果尚未确认')),
       isFalse,
     );
+    // 同上：UtenTableReadStatus.reason 直接来自经 read_failure_diagnostics.dart
+    // 标注的完整失败消息，基消息之后带「（关联号 XXXXXX）」。
     final failure = find.byWidgetPredicate(
       (widget) =>
-          widget is UtenTableReadStatus && widget.reason == '待办列表权限已变化，请重新授权',
+          widget is UtenTableReadStatus &&
+          widget.reason?.startsWith('待办列表权限已变化，请重新授权') == true,
     );
     expect(failure, findsOneWidget);
     expect(find.text('数据加载失败'), findsOneWidget);

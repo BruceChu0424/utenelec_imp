@@ -332,7 +332,9 @@ void main() {
       blocked.completeError(ApiException('NETWORK', '新筛选暂时无法读取'));
       await tester.pumpAndSettle();
       expect(table().items, isEmpty);
-      expect(table().error, '新筛选暂时无法读取');
+      // a7a54d709 / lib/shared/paging/read_failure_diagnostics.dart 给真实
+      // 完整读取失败的消息追加「（关联号 XXXXXX）」，此处只钉基消息。
+      expect(table().error, startsWith('新筛选暂时无法读取'));
       expect(tester.takeException(), isNull);
     },
   );
@@ -355,7 +357,8 @@ void main() {
       table().onRetry!();
       await tester.pumpAndSettle();
       expect(table().items.single.billNo, 'PO-OLD');
-      expect(find.text('网络暂时失败'), findsOneWidget);
+      // 同上：展示文本为「网络暂时失败（关联号 XXXXXX）」，用包含匹配钉基消息。
+      expect(find.textContaining('网络暂时失败'), findsOneWidget);
       repository.taskError = ApiException(
         'FORBIDDEN',
         '审批读取权限已撤销',
@@ -365,7 +368,8 @@ void main() {
       await tester.pumpAndSettle();
       expect(table().items, isEmpty);
       expect(table().selectedIds, isEmpty);
-      expect(table().error, '审批读取权限已撤销');
+      // 同上：403 真实读取拒绝的消息经 read_failure_diagnostics.dart 追加关联号。
+      expect(table().error, startsWith('审批读取权限已撤销'));
       expect(table().isLoading, isFalse);
       expect(tester.takeException(), isNull);
     },

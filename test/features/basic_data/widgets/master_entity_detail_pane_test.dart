@@ -331,8 +331,17 @@ void main() {
         const ValueKey('master-table-action-overflow'),
       );
       await tester.ensureVisible(overflow);
+      // f508c475e 之后表格在读取收尾期间仍会重建工具条，UtenActionOverflow
+      // 对已打开动作列表的既有保护（didUpdateWidget 关闭旧列表）会在
+      // pumpAndSettle 等待期间收起菜单。先开合一次让读取收尾的重建与
+      // read-scope 版本沉淀，再打开菜单点按。
       await tester.tap(overflow);
+      await tester.pump();
       await tester.pumpAndSettle();
+      await tester.tap(overflow);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.text('导出资料'), findsOneWidget);
     }
     await tester.tap(find.text('导出资料'));
     await tester.pumpAndSettle();

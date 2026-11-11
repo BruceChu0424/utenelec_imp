@@ -5399,6 +5399,11 @@ void main() {
             ..['mainWarehousePublicAvailableQty'] = budget.available
             ..['mainWarehouseOpenSafetySupplyQty'] = budget.open
             ..['mainWarehouseSafetyReplenishmentGapQty'] = budget.gap
+            // 78730ed45 起汇总预览校验镜像服务端的增量折算：available=12 覆盖本次
+            // 请求时默认下达方式为「仅使用可用数量」，校验要求行上带权威
+            // planningUncoveredQty（真服务器始终返回；本测试基线行此前没有）。
+            // 10 = 需求 10 全未覆盖，校验得到的期望增量即所填 8+8。
+            ..['planningUncoveredQty'] = 10
             ..['warehouseBreakdown'] = [
               {
                 'warehouseId': 'warehouse-1',

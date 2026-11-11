@@ -8,6 +8,7 @@ import 'package:uten_imp/core/network/server_selection.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/layout/uten_filter_toolbar.dart';
 import 'package:uten_imp/components/layout/uten_history_time_filter.dart';
+import 'package:uten_imp/components/layout/uten_collapsing_header_scroll_view.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/utils/china_datetime.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
@@ -540,11 +541,20 @@ Future<void> _tap(WidgetTester tester, String label) async {
 
 Future<void> _showHeader(WidgetTester tester) async {
   // 分类筛选和滚动会收起联动页头，先展开再操作分类。
-  tester
-      .state<NestedScrollViewState>(find.byType(NestedScrollView))
-      .outerController
-      .jumpTo(0);
-  await tester.pumpAndSettle();
+  // 14e7be5e7/d3be61be8/e4746735b 起 UtenCollapsingHeaderScrollView 不再内嵌
+  // NestedScrollView，联动外层控制器改经公开 outerControllerOf 取得，语义不变
+  //（jumpTo(0) = 展开页头）。锚点取联动视图内首个可用后代：未选分类前 body 是
+  // 占位符而非表格，已收起时头部内容也可能不在树里，两者都不能唯一依赖。
+  final view = find.byType(UtenCollapsingHeaderScrollView);
+  final anchor = find
+      .descendant(of: view, matching: find.byWidgetPredicate((_) => true))
+      .evaluate()
+      .first;
+  final outer = UtenCollapsingHeaderScrollView.outerControllerOf(anchor);
+  if (outer != null && outer.hasClients && outer.position.pixels > 0) {
+    outer.jumpTo(0);
+    await tester.pumpAndSettle();
+  }
 }
 
 class _RecordingApi extends ApiClient {

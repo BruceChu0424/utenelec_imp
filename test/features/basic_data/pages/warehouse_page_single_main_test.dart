@@ -16,6 +16,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/authenticated_request_scope.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
@@ -547,7 +548,19 @@ void main() {
       },
     );
     await _selectWarehouse(tester, _bin.name!);
-    expect(find.textContaining('是, 由「车间内料仓」开通和管理 (这里只读)'), findsOneWidget);
+    // 65b7ea7c9 起详情卡说明不再单独成行，收进标题旁 UtenFieldHintIcon 的
+    // info 弹层；改为断言 icon 的 info 字段（与 product_category 系测试同款）。
+    expect(
+      tester
+          .widgetList<UtenFieldHintIcon>(
+            find.descendant(
+              of: find.byKey(const Key('warehouse-master-summary')),
+              matching: find.byType(UtenFieldHintIcon),
+            ),
+          )
+          .map((icon) => icon.info),
+      contains('是, 由「车间内料仓」开通和管理 (这里只读)'),
+    );
     for (final action in ['add', 'edit', 'delete']) {
       expect(find.byKey(ValueKey('warehouse-node-$action-bin')), findsNothing);
     }

@@ -844,9 +844,15 @@ void main() {
         .first;
     final outerState = tester.state<ScrollableState>(outer);
     expect(outerState.position.maxScrollExtent, greaterThan(0));
-    outerState.position.jumpTo(outerState.position.maxScrollExtent);
+    // 14e7be5e7/d3be61be8 保留视口拓扑：头部是外层 CustomScrollView 的
+    // SliverToBoxAdapter，滚出 cacheExtent 后被 sliver 卸载。先滚一半验证
+    // 概览确实上移，再滚到底验证概览整体让位（不再挂载）且账簿保持可用。
+    outerState.position.jumpTo(outerState.position.maxScrollExtent / 2);
     await tester.pumpAndSettle();
     expect(tester.getTopLeft(sections).dy, lessThan(top));
+    outerState.position.jumpTo(outerState.position.maxScrollExtent);
+    await tester.pumpAndSettle();
+    expect(sections, findsNothing);
     expect(
       find.byKey(const Key('asset-search-FIXED_ASSET')).hitTestable(),
       findsOneWidget,

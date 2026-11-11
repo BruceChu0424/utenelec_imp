@@ -1,0 +1,15 @@
+����: -d �Ĳ����Ƿ�: java.nio.file.InvalidPathException: Illegal char <> at index 28: D:Projectsuten_imp_worktreeseedback-cost-structure-v3-20261110evidencecost-structure-v3old-v2-public-seed-2-classes
+Exception in thread "main" java.nio.file.InvalidPathException: Illegal char <> at index 28: D:Projectsuten_imp_worktreeseedback-cost-structure-v3-20261110evidencecost-structure-v3old-v2-public-seed-2-classes
+	at java.base/sun.nio.fs.WindowsPathParser.normalize(WindowsPathParser.java:204)
+	at java.base/sun.nio.fs.WindowsPathParser.parse(WindowsPathParser.java:175)
+	at java.base/sun.nio.fs.WindowsPathParser.parse(WindowsPathParser.java:77)
+	at java.base/sun.nio.fs.WindowsPath.parse(WindowsPath.java:92)
+	at java.base/sun.nio.fs.WindowsFileSystem.getPath(WindowsFileSystem.java:231)
+	at java.base/java.nio.file.Path.of(Path.java:148)
+	at java.base/java.nio.file.Paths.get(Paths.java:69)
+	at jdk.compiler/com.sun.tools.javac.main.Arguments.checkDirectory(Arguments.java:861)
+	at jdk.compiler/com.sun.tools.javac.main.Arguments.validate(Arguments.java:471)
+	at jdk.compiler/com.sun.tools.javac.main.Main.compile(Main.java:278)
+	at jdk.compiler/com.sun.tools.javac.main.Main.compile(Main.java:178)
+	at jdk.compiler/com.sun.tools.javac.Main.compile(Main.java:64)
+	at jdk.compiler/com.sun.tools.javac.Main.main(Main.java:50)

@@ -1,0 +1,4 @@
+����: ��Ч�ļ���: D:Projectsuten_imp_worktreeseedback-cost-structure-v3-20261110evidencecost-structure-v3/CostStructureVersionUpgradeAudit.java
+�÷�: javac <ѡ��> <Դ�ļ�>
+ʹ�� --help ���г����ܵ�ѡ��
+����: -d �Ĳ����Ƿ�: java.nio.file.InvalidPathException: Illegal char <> at index 28: D:Projectsuten_imp_worktreeseedback-cost-structure-v3-20261110evidencecost-structure-v3old-v2-public-seed-classes

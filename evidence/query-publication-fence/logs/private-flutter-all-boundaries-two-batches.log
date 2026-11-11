@@ -1,0 +1,84 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/feedback-query-fence-20261111/test/shared/paging/scoped_query_publication_fence_test.dart
+00:00 +0: D:/Projects/uten_imp_worktrees/feedback-query-fence-20261111/test/shared/paging/scoped_query_publication_fence_test.dart: same event immediate result unchanged
+00:00 +1: D:/Projects/uten_imp_worktrees/feedback-query-fence-20261111/test/shared/paging/scoped_owner_check_budget_test.dart: one complete read answers every ownership re-check of a synchronous segment with a single query compare
+00:00 +2: D:/Projects/uten_imp_worktrees/feedback-query-fence-20261111/test/shared/paging/scoped_owner_check_budget_test.dart: one complete read answers every ownership re-check of a synchronous segment with a single query compare
+00:00 +3: D:/Projects/uten_imp_worktrees/feedback-query-fence-20261111/test/shared/paging/scoped_owner_check_budget_test.dart: one complete read answers every ownership re-check of a synchronous segment with a single query compare
+00:00 +4: D:/Projects/uten_imp_worktrees/feedback-query-fence-20261111/test/shared/paging/scoped_owner_check_budget_test.dart: one complete read answers every ownership re-check of a synchronous segment with a single query compare
+00:00 +5: D:/Projects/uten_imp_worktrees/feedback-query-fence-20261111/test/shared/paging/scoped_owner_check_budget_test.dart: one complete read answers every ownership re-check of a synchronous segment with a single query compare
+00:00 +6: D:/Projects/uten_imp_worktrees/feedback-query-fence-20261111/test/shared/paging/scoped_owner_check_budget_test.dart: one complete read answers every ownership re-check of a synchronous segment with a single query compare
+00:00 +7: D:/Projects/uten_imp_worktrees/feedback-query-fence-20261111/test/shared/paging/scoped_owner_check_budget_test.dart: one complete read answers every ownership re-check of a synchronous segment with a single query compare
+00:00 +8: D:/Projects/uten_imp_worktrees/feedback-query-fence-20261111/test/shared/paging/scoped_owner_check_budget_test.dart: one complete read answers every ownership re-check of a synchronous segment with a single query compare
+00:00 +8: D:/Projects/uten_imp_worktrees/feedback-query-fence-20261111/test/shared/paging/scoped_query_publication_fence_test.dart: prefix consumer changing query cannot promote that prefix to a complete result
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown while running async test code:
+Expected: throws <Instance of 'UiWorkCancelled'>
+  Actual: <Instance of 'Future<PagedResult<int>>'>
+   Which: emitted <Instance of 'PagedResult<int>'>
+
+When the exception was thrown, this was the stack:
+#0      fail (package:matcher/src/expect/expect.dart:187:31)
+#1      _expect.<anonymous closure> (package:matcher/src/expect/expect.dart:155:13)
+<asynchronous suspension>
+<asynchronous suspension>
+#8      expectLater.<anonymous closure> (package:flutter_test/src/widget_tester.dart:508:19)
+<asynchronous suspension>
+#9      publicationBoundaries.<anonymous closure>.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-query-fence-20261111/test/shared/paging/scoped_query_publication_fence_test.dart:209:9)
+<asynchronous suspension>
+<asynchronous suspension>
+#11     publicationBoundaries.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-query-fence-20261111/test/shared/paging/scoped_query_publication_fence_test.dart:208:7)
+<asynchronous suspension>
+#12     testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#13     TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided 8 frames from dart:async and package:stack_trace)
+
+The exception was caught asynchronously.
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:00 +8 -1: D:/Projects/uten_imp_worktrees/feedback-query-fence-20261111/test/shared/paging/scoped_owner_check_budget_test.dart: one complete read answers every ownership re-check of a synchronous segment with a single query compare
+00:00 +8 -1: D:/Projects/uten_imp_worktrees/feedback-query-fence-20261111/test/shared/paging/scoped_query_publication_fence_test.dart: prefix consumer changing query cannot promote that prefix to a complete result [E]
+  Test failed. See exception logs above.
+  The test description was: prefix consumer changing query cannot promote that prefix to a complete result
+  
+00:00 +8 -1: D:/Projects/uten_imp_worktrees/feedback-query-fence-20261111/test/shared/paging/scoped_owner_check_budget_test.dart: one complete read answers every ownership re-check of a synchronous segment with a single query compare
+scoped owner check budget: rows=600 re-checks=3644 compares=8 loop checks=1212
+00:00 +9 -1: D:/Projects/uten_imp_worktrees/feedback-query-fence-20261111/test/shared/paging/scoped_query_publication_fence_test.dart: unchanged query publishes a prefix and reuses its accepted complete cache
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown while running async test code:
+Expected: [[101]]
+  Actual: []
+   Which: at location [0] is [] which shorter than expected
+
+When the exception was thrown, this was the stack:
+#0      fail (package:matcher/src/expect/expect.dart:187:31)
+#1      _expect (package:matcher/src/expect/expect.dart:182:3)
+#2      expect (package:matcher/src/expect/expect.dart:65:3)
+#3      expect (package:flutter_test/src/widget_tester.dart:473:18)
+#4      publicationBoundaries.<anonymous closure>.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-query-fence-20261111/test/shared/paging/scoped_query_publication_fence_test.dart:230:9)
+<asynchronous suspension>
+<asynchronous suspension>
+#6      publicationBoundaries.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-query-fence-20261111/test/shared/paging/scoped_query_publication_fence_test.dart:227:7)
+<asynchronous suspension>
+#7      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#8      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided 2 frames from dart:async and package:stack_trace)
+
+The exception was caught asynchronously.
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:00 +9 -2: D:/Projects/uten_imp_worktrees/feedback-query-fence-20261111/test/shared/paging/scoped_owner_check_budget_test.dart: a mid-read query change still retires the old flight and the fresh read completes
+00:00 +9 -2: D:/Projects/uten_imp_worktrees/feedback-query-fence-20261111/test/shared/paging/scoped_query_publication_fence_test.dart: unchanged query publishes a prefix and reuses its accepted complete cache [E]
+  Test failed. See exception logs above.
+  The test description was: unchanged query publishes a prefix and reuses its accepted complete cache
+  
+00:00 +10 -2: D:/Projects/uten_imp_worktrees/feedback-query-fence-20261111/test/shared/paging/scoped_query_publication_fence_test.dart: same-turn 403 ownership querySwitched=false
+00:00 +11 -2: D:/Projects/uten_imp_worktrees/feedback-query-fence-20261111/test/shared/paging/scoped_query_publication_fence_test.dart: same-turn 403 ownership querySwitched=true
+00:00 +12 -2: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/feedback-query-fence-20261111/test/shared/paging/scoped_query_publication_fence_test.dart: prefix consumer changing query cannot promote that prefix to a complete result
+  D:/Projects/uten_imp_worktrees/feedback-query-fence-20261111/test/shared/paging/scoped_query_publication_fence_test.dart: unchanged query publishes a prefix and reuses its accepted complete cache

@@ -1,0 +1,7 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+Analyzing 2 items...                                            
+
+   info - Statements in an if should be enclosed in a block. Try wrapping the statement in a block - lib\shared\paging\scoped_paged_read_view_mixin.dart:212:27 - curly_braces_in_flow_control_structures
+   info - The import of 'dart:async' is unnecessary because all of the used elements are also provided by the import of 'package:flutter_test/flutter_test.dart'. Try removing the import directive - test\shared\paging\scoped_query_publication_fence_test.dart:1:8 - unnecessary_import
+
+2 issues found. (ran in 3.2s)

@@ -1,0 +1,12 @@
+{
+  "sourceRevision": "23dd508a6340c5d9f57de5df9180466bff092e70",
+  "kind": "actual All moulds sorted tqty ascending; wide1280/900 to714/764 and menu0 Escape0, restorewide first RLB red",
+  "captureBoundary": "after restorewide; before navigating to poisoned settings",
+  "rawBytes": 1906,
+  "rawSha256": "ebf7c8de46349a0a030f999475542786fc095187784d8c5e6bc2c8aedf7cc1f4",
+  "consoleErrors": 4,
+  "firstMessageChars": 850,
+  "fullJavaScriptStackUnavailable": true,
+  "runtimeLogUiDownloadAfterFailure": "unreachable; settings route also red; no fabricated download",
+  "knownSecretsBearerJwtScan": "0 matches"
+}

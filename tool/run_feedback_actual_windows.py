@@ -87,7 +87,7 @@ if result.returncode == 0:
 exe = root / 'build/windows/x64/runner/Debug/uten_imp.exe'
 receipt = {
     'stage': a.stage, 'sourceHead': head, 'sourceWasDirty': bool(tracked_dirty or new_source),
-    'sourceHeadAfter': git('rev-parse', 'HEAD'), 'exitCode': result.returncode,
+    'sourceHeadAfter': git('rev-parse', 'HEAD'), 'canonicalSourceDiffAfter': git('diff', 'HEAD', '--name-only'), 'exitCode': result.returncode,
     'surface': 'windows-engine-real-http' if a.stage == 'run' else 'windows-debug-compile-only',
     'sdkUnchanged': True, 'nativeProfile': native,
     'executableSha256ActualBytes': hashlib.sha256(exe.read_bytes()).hexdigest() if exe.exists() else None,
@@ -97,4 +97,6 @@ receipt = {
 (out / 'private-flutter-tools.json').write_text(json.dumps(tool_evidence, indent=2), encoding='utf8')
 print(json.dumps({'stage': a.stage, 'exitCode': result.returncode, 'sourceHead': head,
                   'evidence': str(out), 'clientLaunched': a.stage == 'run'}, ensure_ascii=False))
+if a.stage == 'run' and (receipt['sourceHeadAfter'] != head or receipt['canonicalSourceDiffAfter']):
+    raise SystemExit('Source changed during the real run; preserve this evidence and rebuild the final SHA')
 raise SystemExit(result.returncode)

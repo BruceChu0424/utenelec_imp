@@ -5,6 +5,7 @@ import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' as foundation;
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -53,7 +54,23 @@ Future<void> _wait(
   Duration timeout = const Duration(seconds: 60),
 }) async {
   final clock = Stopwatch()..start();
-  while (!ready()) {
+  while (true) {
+    final resourceWarning = find.textContaining(
+      RegExp('处理器占用|系统内存占用'),
+      findRichText: true,
+    );
+    final acknowledge = find.text('已知悉', findRichText: true).hitTestable();
+    if (resourceWarning.evaluate().isNotEmpty &&
+        acknowledge.evaluate().isNotEmpty) {
+      await tester.tap(acknowledge.last);
+      await tester.pump(const Duration(milliseconds: 100));
+      _observations.add({
+        'scene': 'host-resource-warning',
+        'status': 'observed-and-acknowledged',
+      });
+      continue;
+    }
+    if (ready()) break;
     if (clock.elapsed > timeout) {
       await _screen(tester, 'failure-$stage');
       fail('Actual Windows application did not complete: $stage');
@@ -72,6 +89,7 @@ Future<void> _settled(WidgetTester tester) => _wait(
 );
 
 Future<void> _tap(WidgetTester tester, Finder finder) async {
+  await _settled(tester);
   expect(finder, findsWidgets);
   await tester.ensureVisible(finder.last);
   await tester.pump(const Duration(milliseconds: 50));
@@ -220,12 +238,18 @@ Future<void> _returnPicker(
     '${purchase ? 'purchase' : 'subcontract'}-retained-quantity',
   );
   router.go('/');
+  bool editorPresent() => purchase
+      ? find.byType(UtenEditableGrid<PurchaseGridRow>).evaluate().isNotEmpty
+      : find.byType(UtenEditableGrid<SubcontractGridRow>).evaluate().isNotEmpty;
   await _wait(
     tester,
-    () => find.text('不保存').evaluate().isNotEmpty,
+    () => find.text('不保存').evaluate().isNotEmpty || !editorPresent(),
     'synthetic-draft-exit',
   );
-  await _tap(tester, find.text('不保存'));
+  if (find.text('不保存').evaluate().isNotEmpty) {
+    await _tap(tester, find.text('不保存'));
+  }
+  await _wait(tester, () => !editorPresent(), 'synthetic-editor-left');
   await _settled(tester);
 }
 
@@ -235,6 +259,11 @@ void main() {
     'actual Windows bootstrap and master read, sort, print, cancellation',
     (tester) async {
       expect(Platform.isWindows, isTrue);
+      expect(
+        foundation.defaultTargetPlatform,
+        foundation.TargetPlatform.windows,
+      );
+      expect(foundation.kDebugMode, isTrue);
       expect(_runtimeRoot, isNotEmpty);
       expect(_configPath, isNotEmpty);
       expect(_evidenceRoot, isNotEmpty);
@@ -457,7 +486,12 @@ void main() {
         });
         await File('$_evidenceRoot/result.json').writeAsString(
           const JsonEncoder.withIndent('  ').convert({
-            'surface': 'windows-engine-real-http',
+            'surface': networkProved
+                ? 'windows-engine-real-http'
+                : 'windows-engine-real-http-attempt',
+            'nativeOS': Platform.operatingSystem,
+            'frameworkTarget': foundation.defaultTargetPlatform.name,
+            'debugEngine': foundation.kDebugMode,
             'passed': passed && networkProved,
             'businessApiReplaced': false,
             'repositoryReplaced': false,

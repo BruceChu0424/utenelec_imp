@@ -1,0 +1,5 @@
+*.log binary
+*.json binary
+*.txt binary
+*.dart binary
+*.md text eol=lf

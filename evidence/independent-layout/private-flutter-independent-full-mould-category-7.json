@@ -1,0 +1,48 @@
+{
+  "command": [
+    "D:\\Software\\Flutter\\flutter\\bin\\cache\\dart-sdk\\bin\\dart.exe",
+    "--packages=D:\\Projects\\uten_imp_worktrees\\feedback-independent-review-20261111\\evidence\\root\\private-tools\\70d8797d63b94893\\package_config.json",
+    "D:\\Projects\\uten_imp_worktrees\\feedback-independent-review-20261111\\evidence\\root\\private-tools\\70d8797d63b94893\\flutter_tools_private.snapshot",
+    "test",
+    "--no-pub",
+    "--reporter=expanded",
+    "test/features/basic_data/pages/independent_full_mould_probe_test.dart",
+    "--plain-name",
+    "independent full mould semantics=false hovered=category resize"
+  ],
+  "source": "4d45dc9b6c291e9d8e9121b48017b69030fd1f4c",
+  "exit": 1,
+  "sdk": {
+    "kind": "isolated-pinned-web-test-tools",
+    "inputs": {
+      "version": 1,
+      "sdk_revision": "c9a6c484230f8b5e408ec57be1ef71dee1e77020",
+      "sdk_root": "D:\\Software\\Flutter\\flutter",
+      "sdk_source_normalized_sha256": "2b7ab129052f2ffceba5cadd2c738d9bb69a1dcd7acde1bdc0fb4ef77b6b7403",
+      "sdk_inputs": {
+        "packages/flutter_tools/lib/src/test/flutter_web_platform.dart": "7f986a70ec05e496051cfceae0537e4fd3963f8e609b1e8ea04caa3d362a4f41",
+        "packages/flutter_tools/.dart_tool/package_config.json": "ac1a28c160e0eccc5e155202f70a9d18c69bb1916c8db04818907fb60668eac9",
+        "bin/cache/flutter_tools.snapshot": "abe2cf3b9476521b972dedc1aa4fff032e099a3de94415fb3f843b91fcea73d8"
+      },
+      "bootstrap_sha256": "1575165bfa7f0df3414957ecce343155556a379c703baed58b73d9d06ca20c12",
+      "asset_fragment_sha256": "2837b228a556d06078a8f072cd037e9fcc11afbad72e116ec52de5b58779ab73",
+      "patched_source_sha256": "532bdcfb3ff4cf6df9fb3809a30e957df30b69a3fa2eff5af2e7b950ace96769"
+    },
+    "files": {
+      "package_config.json": "4d8bc3cc43817aa0e0563e58e8b8551889e2ebef027a98b6d34467b02e42f3e5",
+      "flutter_tools_private.snapshot": "d493805db356dcea321240b8dbd876cb0c72c6ee65afff7857d3d609595f22a4",
+      "framework/lib/src/test/flutter_web_platform.dart": "532bdcfb3ff4cf6df9fb3809a30e957df30b69a3fa2eff5af2e7b950ace96769"
+    },
+    "command_prefix": [
+      "D:\\Software\\Flutter\\flutter\\bin\\cache\\dart-sdk\\bin\\dart.exe",
+      "--packages=D:\\Projects\\uten_imp_worktrees\\feedback-independent-review-20261111\\evidence\\root\\private-tools\\70d8797d63b94893\\package_config.json",
+      "D:\\Projects\\uten_imp_worktrees\\feedback-independent-review-20261111\\evidence\\root\\private-tools\\70d8797d63b94893\\flutter_tools_private.snapshot"
+    ],
+    "sdk_inputs_after": {
+      "packages/flutter_tools/lib/src/test/flutter_web_platform.dart": "7f986a70ec05e496051cfceae0537e4fd3963f8e609b1e8ea04caa3d362a4f41",
+      "packages/flutter_tools/.dart_tool/package_config.json": "ac1a28c160e0eccc5e155202f70a9d18c69bb1916c8db04818907fb60668eac9",
+      "bin/cache/flutter_tools.snapshot": "abe2cf3b9476521b972dedc1aa4fff032e099a3de94415fb3f843b91fcea73d8"
+    },
+    "sdk_unchanged": true
+  }
+}

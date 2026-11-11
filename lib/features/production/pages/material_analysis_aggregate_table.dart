@@ -187,10 +187,31 @@ final class _MaterialAggregateTableController {
         return materialQuantityUnits(text) < materialQuantityUnits(floor);
       },
     );
+    final reviewed =
+        drafts[aggregate.key]?.previewGroups ??
+        const <MaterialAggregateOrderGroupPreview>[];
+    final quantityFacts = reviewed
+        .where((group) => group.quantityBreakdown.isNotEmpty)
+        .map((group) {
+          final facts = group.quantityBreakdown;
+          return '覆盖总量 ${facts['coverageTotalQty']}；已覆盖 ${facts['alreadyCoveredQty']}；'
+              '本次现货认领 ${facts['physicalClaimQty']}；其他现有供给认领 ${facts['sharedSupplyClaimQty'] ?? '0'}；'
+              '新增下单 ${facts['newOrderQty']}；'
+              '原任务份额 ${facts['originalTaskQty']}；公共备货 ${facts['publicExtraQty']}';
+        })
+        .join('\n');
+    final reviewedField = quantityFacts.isEmpty
+        ? field
+        : Row(
+            children: [
+              Expanded(child: field),
+              UtenFieldHintIcon(info: quantityFacts, dense: true),
+            ],
+          );
     // 高度跟随输入格自然高度（2026-10-08 紧凑规格统一后不再钉 40，避免格内
     // 留白与主表数量格行高不一致）。
     return append
-        ? field
+        ? reviewedField
         : UtenEditorTooltip(
             message: floor == 'NaN'
                 ? '来源缺少可核对的精确数量，请刷新后重试。'
@@ -200,7 +221,7 @@ final class _MaterialAggregateTableController {
                       '超出需求的部分单独作为公共备货，实际归属以提交前预览为准。'
                 : '填多少下多少。超出需求的部分单独作为公共备货，'
                       '实际归属以提交前预览为准。',
-            child: field,
+            child: reviewedField,
           );
   }
 
@@ -1153,7 +1174,14 @@ final class _MaterialAggregateTableController {
       }
       final expectedByDraft = <String, BigInt>{};
       for (final input in request.groups) {
-        final amount = _previewIncrementalUnits(input, materials);
+        final serverGroup = preview.groups
+            .where((group) => group.clientGroupKey == input.clientGroupKey)
+            .firstOrNull;
+        final reviewed =
+            serverGroup?.quantityBreakdown['reviewedIncrementalQty'];
+        final amount = reviewed == null
+            ? _previewIncrementalUnits(input, materials)
+            : materialQuantityUnits(reviewed);
         expectedByDraft.update(
           draftKeyOf(input.clientGroupKey),
           (value) => value + amount,

@@ -334,6 +334,13 @@ public class PurchaseReturnService {
                 items.stream().map(PurchaseReturnItem::getReceiptItemId).toList());
         requireNonNegativeStoredCommercial(r, items);
         normalizePersistedItemUnits(items);
+        var sourceOrders = com.uten.imp.common.finance.ProcurementReturnOrderAuthority.resolve(
+                em, "PURCHASE", items.stream().map(item ->
+                        new com.uten.imp.common.finance.ProcurementReturnOrderAuthority.Source(
+                                item.getReceiptItemId(),item.getOrderItemId())).toList());
+        items.forEach(item -> item.setOrderItemId(sourceOrders.get(item.getReceiptItemId())));
+        com.uten.imp.common.finance.ProcurementTerminatedReceiptBasis.requireMutable(em,"PURCHASE",
+                items.stream().map(PurchaseReturnItem::getOrderItemId).toList());
         sourceIntegrity.validatePurchaseReturn(
                 r.getSupplierId(),
                 items.stream()
@@ -567,12 +574,19 @@ public class PurchaseReturnService {
     }
 
     private ProcurementReturnHeaderAuthority.Header returnHeader(ReturnSaveRequest req) {
-        return ProcurementReturnHeaderAuthority.derive(
+        var sourceOrders = com.uten.imp.common.finance.ProcurementReturnOrderAuthority.resolve(
+                em, "PURCHASE", req.getItems().stream().map(line ->
+                        new com.uten.imp.common.finance.ProcurementReturnOrderAuthority.Source(
+                                line.getReceiptItemId(),line.getOrderItemId())).toList());
+        req.getItems().forEach(line -> line.setOrderItemId(sourceOrders.get(line.getReceiptItemId())));
+        var header=ProcurementReturnHeaderAuthority.derive(
                 em,
                 "PURCHASE",
                 req == null || req.getItems() == null ? List.of()
                         : req.getItems().stream()
                             .map(ReturnItemLine::getReceiptItemId).toList());
+        ProcurementReturnHeaderAuthority.requireSubmittedIdentity(header,req.getSupplierId(),req.getCurrencyId());
+        return header;
     }
 
     private void applyHeader(
@@ -605,6 +619,11 @@ public class PurchaseReturnService {
     }
 
     private List<ReturnItemDto> saveItems(PurchaseReturn r, List<ReturnItemLine> lines,DocumentQuantitySavePlan.Plan quantityPlan) {
+        sourceIntegrity.validatePurchaseReturn(r.getSupplierId(),lines.stream().map(line -> {
+            var unit=lineUnitPolicy.normalizeAndValidate(line.getGoodsId(),line.getUnitId(),line.getUnitRate(),line.getLineNo()==null?1:line.getLineNo());
+            return LinkedDocumentIntegrityService.LinkedLine.receiptSource(line.getReceiptItemId(),line.getOrderItemId(),
+                    line.getGoodsId(),line.getColorId(),unit.unitId(),unit.unitRate());
+        }).toList());
         List<ReturnItemDto> out = new ArrayList<>(lines.size());
         Map<UUID, PurchaseGoodsSnapshot> receiptSnapshots =
                 PurchaseGoodsSnapshot.fromReceiptItems(

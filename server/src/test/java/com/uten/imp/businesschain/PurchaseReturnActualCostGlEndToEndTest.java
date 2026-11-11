@@ -77,6 +77,7 @@ class PurchaseReturnActualCostGlEndToEndTest {
     @Autowired com.uten.imp.features.finance.gl.GlPostingService gl;
     @Autowired com.uten.imp.features.finance.gl.SystemPostingStyleService styles;
     private FullChainEndToEndTest harness;
+    private boolean receiptOnly;
     private record F(FullChainEndToEndTest.World w,UUID requestItem,UUID order,UUID orderItem,UUID currency){}
     @BeforeEach void prepare(){harness=new FullChainEndToEndTest();beans.autowireBean(harness);}
     @AfterEach void clear(){SecurityContextHolder.clearContext();}
@@ -84,7 +85,10 @@ class PurchaseReturnActualCostGlEndToEndTest {
     @Test @Order(2) void freeSupplierReturnMustReduceInventoryByActualCustodyCostWithoutInventingSupplierCredit(){
         verifyReturn("0","1","0");
     }
-    @Test @Order(3) void paidSupplierReturnMustKeepCommercialCreditAndActualInventoryCostSeparate(){
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans={false,true})
+    @Order(3) void paidSupplierReturnMustKeepCommercialCreditAndActualInventoryCostSeparate(boolean receiptOnly){
+        this.receiptOnly=receiptOnly;
         verifyReturn("1","0","10");
     }
     private void verifyReturn(String charged,String gift,String credit){
@@ -165,7 +169,9 @@ class PurchaseReturnActualCostGlEndToEndTest {
         returns.reverse(returned);gl.generate(period);
     }
 
-    @Test @Order(6) void subcontractReturnCreditsOnlyTheProcessingFeeAndRemovesTheActualMaterialAndProcessingCost(){
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans={false,true})
+    @Order(6) void subcontractReturnCreditsOnlyTheProcessingFeeAndRemovesTheActualMaterialAndProcessingCost(boolean receiptOnly){
         var w=harness.seedWorld("sc-return-gl-"+UUID.randomUUID());harness.loginAs(w.superAdminUserId());
         UUID material=harness.ensureSubcontractDirectMaterial(w,w.goodsE());harness.receiveSubcontractMaterial(w,material,"20");
         harness.seedChartOfAccounts();configureVarianceRole();
@@ -201,7 +207,7 @@ class PurchaseReturnActualCostGlEndToEndTest {
         request.setBillDate(BusinessTime.today());request.setSupplierId(w.supplierId());request.setWarehouseId(w.warehouseId());
         var line=new com.uten.imp.features.subcontract.ret.dto.ReturnItemLine();
         line.setGoodsId(w.goodsE());line.setUnitId(w.unitId());line.setUnitRate(BigDecimal.ONE);line.setQty(BigDecimal.ONE);
-        line.setOrderItemId(orderItem);line.setReceiptItemId(subcontractReceipts.detail(receiptId).getItems().getFirst().getId());request.setItems(List.of(line));
+        if(!receiptOnly)line.setOrderItemId(orderItem);line.setReceiptItemId(subcontractReceipts.detail(receiptId).getItems().getFirst().getId());request.setItems(List.of(line));
         UUID returned=subcontractReturns.create(request).getId();subcontractReturns.approve(returned);
         assertThat(ap(returned)).isEqualByComparingTo("-50");
         assertThat(number("SELECT amount_local FROM stock_balances WHERE warehouse_id=? AND goods_id=?",w.warehouseId(),w.goodsE())).isEqualByComparingTo("540");
@@ -211,6 +217,33 @@ class PurchaseReturnActualCostGlEndToEndTest {
         gl.generate(period);assertThat(number("SELECT COUNT(*) FROM gl_vouchers WHERE source_type='PROC_RETURN_VARIANCE' AND source_doc_id=?",returned)).isEqualByComparingTo("1");
         subcontractReturns.reverse(returned);assertThat(number("SELECT amount_local FROM stock_balances WHERE warehouse_id=? AND goods_id=?",w.warehouseId(),w.goodsE())).isEqualByComparingTo("600");
         assertThat(number("SELECT COUNT(*) FROM gl_vouchers WHERE source_type='PROC_RETURN_VARIANCE' AND source_doc_id=?",returned)).isZero();gl.generate(period);
+    }
+
+    @Test @Order(8) void receiptOnlySourcesRejectForgedAncestryDimensionsAndCommercialIdentityBeforeSaving() {
+        F f=fixture();
+        UUID receipt=receipt(f,"10","0");receipts.approve(receipt);passAndStock(f,receipt);
+        UUID source=receipts.detail(receipt).getItems().getFirst().getId();
+        java.util.function.Supplier<com.uten.imp.features.purchase.ret.dto.ReturnSaveRequest> request=()->{
+            var r=new com.uten.imp.features.purchase.ret.dto.ReturnSaveRequest();
+            r.setBillDate(BusinessTime.today());r.setSupplierId(f.w().supplierId());r.setWarehouseId(f.w().warehouseId());
+            var line=new com.uten.imp.features.purchase.ret.dto.ReturnItemLine();
+            line.setGoodsId(f.w().goodsD());line.setUnitId(f.w().unitId());line.setUnitRate(BigDecimal.ONE);
+            line.setQty(BigDecimal.ONE);line.setReceiptItemId(source);r.setItems(List.of(line));return r;
+        };
+        var wrongOrder=request.get();wrongOrder.getItems().getFirst().setOrderItemId(UUID.randomUUID());
+        var wrongSupplier=request.get();wrongSupplier.setSupplierId(UUID.randomUUID());
+        var wrongCurrency=request.get();wrongCurrency.setCurrencyId(UUID.randomUUID());
+        var wrongGoods=request.get();wrongGoods.getItems().getFirst().setGoodsId(f.w().goodsA());
+        var noSource=request.get();noSource.getItems().getFirst().setReceiptItemId(null);
+        var duplicate=request.get();duplicate.setItems(List.of(duplicate.getItems().getFirst(),duplicate.getItems().getFirst()));
+        long before=db.queryForObject("SELECT count(*) FROM purchase_returns",Long.class);
+        for(var bad:List.of(wrongOrder,wrongSupplier,wrongCurrency,wrongGoods,noSource,duplicate)) {
+            assertThatThrownBy(()->returns.create(bad)).isInstanceOf(com.uten.imp.common.web.ApiException.class);
+            assertThat(db.queryForObject("SELECT count(*) FROM purchase_returns",Long.class)).isEqualTo(before);
+        }
+        var valid=returns.create(request.get());
+        assertThat(valid.getItems().getFirst().getOrderItemId()).isEqualTo(f.orderItem());
+        assertThat(db.queryForObject("SELECT order_item_id FROM purchase_return_items WHERE return_id=?",UUID.class,valid.getId())).isEqualTo(f.orderItem());
     }
 
     @Test @Order(7) void repeatingActualCustodyCostRequiresChoiceAndItsReverseRetainsTheOriginalTwentyFourPlaces(){
@@ -277,7 +310,7 @@ class PurchaseReturnActualCostGlEndToEndTest {
     }
     private UUID returned(F f,UUID source,String charged,String gift){
         var request=new com.uten.imp.features.purchase.ret.dto.ReturnSaveRequest();request.setBillDate(BusinessTime.today());request.setSupplierId(f.w().supplierId());request.setWarehouseId(f.w().warehouseId());
-        var line=new com.uten.imp.features.purchase.ret.dto.ReturnItemLine();line.setGoodsId(f.w().goodsD());line.setUnitId(f.w().unitId());line.setUnitRate(BigDecimal.ONE);line.setQty(new BigDecimal(charged));line.setGiftQty(new BigDecimal(gift));line.setReceiptItemId(source);line.setOrderItemId(f.orderItem());request.setItems(List.of(line));
+        var line=new com.uten.imp.features.purchase.ret.dto.ReturnItemLine();line.setGoodsId(f.w().goodsD());line.setUnitId(f.w().unitId());line.setUnitRate(BigDecimal.ONE);line.setQty(new BigDecimal(charged));line.setGiftQty(new BigDecimal(gift));line.setReceiptItemId(source);if(!receiptOnly)line.setOrderItemId(f.orderItem());request.setItems(List.of(line));
         return returns.create(request).getId();
     }
     private void passAndStock(F f,UUID receipt){

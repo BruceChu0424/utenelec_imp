@@ -1,3 +1,4 @@
+import '../../../shared/forms/upstream_import_operation.dart';
 import '../../../core/formatters/exact_number_text.dart';
 import '../../../shared/models/employee_reference.dart';
 import '../../../shared/repositories/employee_reference_repository.dart';
@@ -146,6 +147,8 @@ class _SubcontractOrderEditPageState
   /// 明细表 sticky 表头是否已置顶（页面滚动条门控：置顶前不显示，置顶后才显示）。
   final _gridPinned = ValueNotifier<bool>(false);
   bool _saving = false;
+  bool _importingUpstream = false;
+  bool _resolvingUpstream = false;
   bool _saveInProgress = false;
   bool _loading = false;
   bool _documentIdentityChanged = false;
@@ -1043,14 +1046,59 @@ class _SubcontractOrderEditPageState
 
   /// 「从上游引入」：从计划申请拉明细（本次数量默认剩余量，可改大——超委外允许）。
   Future<void> _importFromUpstream() async {
+    if (_importingUpstream ||
+        _saving ||
+        _loading ||
+        !formDraftIdentityIsCurrent) {
+      return;
+    }
+    final session = ref.read(sessionProvider.notifier);
+    final epoch = session.requestIntentEpoch;
+    final documentId = widget.id;
+    final originalRows = List.of(_grid.rows);
+    final operation = UpstreamImportOperation(
+      () =>
+          mounted &&
+          formDraftIdentityIsCurrent &&
+          identical(ref.read(sessionProvider.notifier), session) &&
+          session.requestIntentEpoch == epoch &&
+          widget.id == documentId &&
+          _grid.rows.length == originalRows.length &&
+          List.generate(
+            originalRows.length,
+            (index) => index,
+          ).every((index) => identical(_grid.rows[index], originalRows[index])),
+    );
+    setState(() => _importingUpstream = true);
+    try {
+      await _importFromUpstreamInScope(operation);
+    } catch (error) {
+      if (mounted && operation.isCurrent) {
+        context.appError('引入来源未完成，请保留原输入后重试：$error');
+      }
+    } finally {
+      operation.retire();
+      if (mounted) {
+        setState(() {
+          _importingUpstream = false;
+          _resolvingUpstream = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _importFromUpstreamInScope(
+    UpstreamImportOperation operation,
+  ) async {
     final result = await showSubcontractLinkPicker(
       context,
       ref,
       _cfg,
       allowOverRemaining: true,
     );
-    if (!mounted || !formDraftIdentityIsCurrent) return;
+    if (!mounted || !operation.isCurrent) return;
     if (result == null || result.items.isEmpty) return;
+    setState(() => _resolvingUpstream = true);
     final goodsIds = result.items
         .map((e) => e.goodsId)
         .where((id) => id.isNotEmpty)
@@ -1060,12 +1108,30 @@ class _SubcontractOrderEditPageState
           .read(masterNameServiceProvider)
           .loadGoodsNamesWithCodes(goodsIds);
     }
-    if (!mounted || !formDraftIdentityIsCurrent) return;
+    if (!mounted || !operation.isCurrent) return;
+    final unresolved = result.items.any(
+      (item) =>
+          item.goodsId.isNotEmpty &&
+          ref.read(masterNameServiceProvider).goodsOptionOf(item.goodsId) ==
+              null,
+    );
+    if (unresolved) {
+      context.appWarning('部分来源货品尚未完整读取，请保留原输入并重新引入');
+      return;
+    }
     // 本次引入触达的行（新加行 + 被并入的既有行）：新建态自动勾上。
     final touched = <SubcontractGridRow>[];
     // V463：同「货品+颜色+单位」的引入项并入既有行（数量加总、来源聚合）。
+    final sources = <String>{
+      for (final row in _grid.rows) ...row.upstreamItemIds,
+      for (final row in _grid.rows)
+        if (row.upstreamItemId != null) row.upstreamItemId!,
+    };
     for (final li in result.items) {
-      if (li.goodsId.isEmpty) continue;
+      if (li.goodsId.isEmpty ||
+          (li.upstreamItemId != null && !sources.add(li.upstreamItemId!))) {
+        continue;
+      }
       final goods = ref
           .read(masterNameServiceProvider)
           .goodsOptionOf(li.goodsId)!;
@@ -1080,21 +1146,28 @@ class _SubcontractOrderEditPageState
                 ),
             ];
       final key =
-          '${row.goods?.id ?? ''}|${row.colorId ?? ''}|${row.unitId ?? ''}|${row.unitRate ?? 1}';
+          '${row.goods?.id ?? ''}|${row.colorId ?? ''}|${row.unitId ?? ''}|${financeExactTrimmed(row.unitRateText ?? row.unitRate?.toString() ?? '1')}';
       var hit = false;
       for (final existing in _grid.rows) {
         final existingKey =
-            '${existing.goods?.id ?? ''}|${existing.colorId ?? ''}|${existing.unitId ?? ''}|${existing.unitRate ?? 1}';
+            '${existing.goods?.id ?? ''}|${existing.colorId ?? ''}|${existing.unitId ?? ''}|${financeExactTrimmed(existing.unitRateText ?? existing.unitRate?.toString() ?? '1')}';
         if (existingKey != key ||
             existing.pricing.totalAmountInput != null ||
             existing.extraColumnsPreventMerge) {
           continue;
         }
-        final total =
-            (double.tryParse(existing.qty.text) ?? 0) +
-            (double.tryParse(row.qty.text) ?? 0);
-        existing.qty.text = _formatQty(total);
-        existing.maxQty = (existing.maxQty ?? 0) + (row.maxQty ?? 0);
+        existing.qty.text =
+            financeExactTrimmed(
+              financeExactSumTexts([existing.qty.text, row.qty.text]),
+            ) ??
+            existing.qty.text;
+        existing.maxQtyText = financeExactTrimmed(
+          financeExactSumTexts([
+            existing.maxQtyText ?? existing.maxQty?.toString(),
+            row.maxQtyText ?? row.maxQty?.toString(),
+          ]),
+        );
+        existing.maxQty = double.tryParse(existing.maxQtyText ?? '');
         existing.upstreamItemIds = [
           ...existing.upstreamItemIds,
           ...row.upstreamItemIds,
@@ -1102,6 +1175,7 @@ class _SubcontractOrderEditPageState
         existing.sourceDocs = [...existing.sourceDocs, ...row.sourceDocs];
         touched.add(existing);
         hit = true;
+        row.dispose();
         break;
       }
       if (!hit) {
@@ -1283,7 +1357,7 @@ class _SubcontractOrderEditPageState
   }
 
   Future<void> _saveOwned(Future<void> Function() verifyRequestScope) async {
-    if (_saving) return;
+    if (_saving || _importingUpstream) return;
     if (_createdOrders case final created?) {
       // 订货单已生成、附件未全部上传：只补传附件，成功后再提交财务/进入详情。
       setState(() => _saving = true);
@@ -1981,7 +2055,9 @@ class _SubcontractOrderEditPageState
                                     toolbarActions: [
                                       UtenImportButton(
                                         label: '从上游引入',
-                                        onPressed: _importFromUpstream,
+                                        onPressed: _importingUpstream
+                                            ? null
+                                            : _importFromUpstream,
                                       ),
                                     ],
                                     // 「统一设置条款」2026-09-11 从工具条撤到行右键菜单
@@ -2106,6 +2182,7 @@ class _SubcontractOrderEditPageState
                     ),
                   ),
             // 保存/提交财务审核网络段的全屏加载遮罩。
+            if (_resolvingUpstream) const UtenBusyOverlay(title: '正在补全来源明细'),
             if (_saving)
               UtenBusyOverlay(
                 title: _isCreate ? '正在创建${_cfg.label}' : '正在保存${_cfg.label}',

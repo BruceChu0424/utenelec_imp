@@ -77,6 +77,13 @@ public final class ProcurementReturnHeaderAuthority {
         return header;
     }
 
+    /** A supplied identity must agree with the source; omission still adopts its authoritative snapshot. */
+    public static void requireSubmittedIdentity(Header header,UUID supplierId,UUID currencyId) {
+        if(supplierId!=null&&!Objects.equals(supplierId,header.supplierId())
+                || currencyId!=null&&!Objects.equals(currencyId,header.currencyId()))
+            throw conflict("退货供应商或币种与来源收货事实不一致，请重新引入来源");
+    }
+
     private static boolean same(BigDecimal left, BigDecimal right) {
         return left != null && right != null && left.compareTo(right) == 0;
     }

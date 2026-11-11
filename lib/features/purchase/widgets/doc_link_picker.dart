@@ -41,6 +41,7 @@ class LinkedItem {
     this.maxQtyText,
     this.qtyText,
     this.price,
+    this.priceText,
     this.upstreamItemId,
     this.colorId,
     this.unitId,
@@ -56,6 +57,7 @@ class LinkedItem {
   final String? maxQtyText;
   final String? qtyText;
   final double? price;
+  final String? priceText;
   final String? upstreamItemId;
   final String? colorId;
   final String? unitId;
@@ -339,6 +341,7 @@ Future<PurchaseLinkPickResult?> showDocLinkPicker(
             maxGiftQtyText: d.maxGiftQtyText,
             maxQty: d.maxQty,
             price: d.price,
+            priceText: d.priceText,
             upstreamItemId: d.upstreamItemId,
             colorId: d.colorId,
             unitId: d.unitId,

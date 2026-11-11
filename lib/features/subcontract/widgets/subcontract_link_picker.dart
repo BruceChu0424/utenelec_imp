@@ -38,7 +38,10 @@ class LinkedItem {
     required this.goodsId,
     required this.qty,
     this.maxQty,
+    this.maxQtyText,
+    this.qtyText,
     this.price,
+    this.priceText,
     this.upstreamItemId,
     this.colorId,
     this.unitId,
@@ -48,7 +51,10 @@ class LinkedItem {
   final String goodsId;
   final double qty;
   final double? maxQty;
+  final String? maxQtyText;
+  final String? qtyText;
   final double? price;
+  final String? priceText;
   final String? upstreamItemId;
   final String? colorId;
   final String? unitId;
@@ -107,8 +113,7 @@ String? _remainQtyText(
 ) {
   String? recorded(double? value) =>
       value != null && value.isFinite ? value.toString() : null;
-  String? negative(double? value) =>
-      financeExactMultiplyTexts(['-1', recorded(value)]);
+  String? negative(String? value) => financeExactMultiplyTexts(['-1', value]);
   final q = it.qtyText ?? recorded(it.qty);
   if (financeExactDecimalUnits(q) == null) return null;
   switch (upstream) {
@@ -118,22 +123,22 @@ String? _remainQtyText(
         // 可发料产量上限 = 未回厂量（订货 − 已回厂 + 成品退回）；材料行再由 BOM 单耗推导。
         return financeExactSumTexts([
           q,
-          negative(it.receivedQty),
-          recorded(it.returnedQty),
+          negative(it.counterText('receivedQty')),
+          it.counterText('returnedQty'),
         ]);
       }
-      return financeExactSumTexts([q, negative(it.returnedQty)]);
+      return financeExactSumTexts([q, negative(it.counterText('returnedQty'))]);
     case SubcontractDocType.receipt:
-      return financeExactSumTexts([q, negative(it.returnedQty)]);
+      return financeExactSumTexts([q, negative(it.counterText('returnedQty'))]);
     case SubcontractDocType.materialIssue:
       // 材料退/损耗←发料：默认量 = 供应商处结存（发出−回厂已消费−已退−已损耗，
       // V304 口径；已消费部分不可能再退/再损耗）。老数据无结存字段时回落旧口径。
-      return it.supplierEnding != null
-          ? recorded(it.supplierEnding)
+      return it.counterText('supplierEnding') != null
+          ? it.counterText('supplierEnding')
           : financeExactSumTexts([
               q,
-              negative(it.returnedQty),
-              negative(it.wastedQty),
+              negative(it.counterText('returnedQty')),
+              negative(it.counterText('wastedQty')),
             ]);
     default:
       return q;
@@ -309,8 +314,11 @@ Future<SubcontractLinkPickResult?> showSubcontractLinkPicker(
           (d) => LinkedItem(
             goodsId: d.goodsId,
             qty: d.qty,
+            qtyText: d.qtyText,
+            maxQtyText: d.maxQtyText,
             maxQty: d.maxQty,
             price: d.price,
+            priceText: d.priceText,
             upstreamItemId: d.upstreamItemId,
             colorId: d.colorId,
             unitId: d.unitId,

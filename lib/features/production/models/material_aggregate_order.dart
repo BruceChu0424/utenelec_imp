@@ -309,6 +309,9 @@ class MaterialAggregateOrderGroupPreview {
        remainingQty = _amount(json['remainingQty']),
        requestedQty = _amount(json['requestedQty']),
        publicExtraQty = _amount(json['publicExtraQty']),
+       quantityBreakdown = Map<String, String>.from(
+         json['quantityBreakdown'] as Map? ?? const {},
+       ),
        publicExtraQtyExact = json['publicExtraQtyExact'] as String?,
        receiptAllocationMode = json['receiptAllocationMode'] as String?,
        safetyQty = _amount(json['safetyQty']),
@@ -373,6 +376,7 @@ class MaterialAggregateOrderGroupPreview {
       publicExtraQty,
       safetyQty;
   final double? allowedOverproductionRate;
+  final Map<String, String> quantityBreakdown;
   final String? publicExtraQtyExact;
   final String? receiptAllocationMode;
   final List<MaterialAggregateSourceAllocation> sources;

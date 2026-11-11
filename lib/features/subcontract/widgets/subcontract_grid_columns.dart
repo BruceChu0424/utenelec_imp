@@ -143,6 +143,7 @@ class SubcontractGridRow extends EditableGridRow
   String? planItemId;
   final bool sourceLocked;
   double? maxQty;
+  String? maxQtyText;
   String? colorId;
   String? unitId;
   double? _unitRate;
@@ -177,6 +178,7 @@ class SubcontractGridRow extends EditableGridRow
           ..goods = goods
           ..upstreamItemId = li.upstreamItemId
           ..maxQty = li.maxQty
+          ..maxQtyText = li.maxQtyText
           ..colorId = li.colorId
           ..unitId = li.unitId
           ..unitRate = li.unitRate
@@ -185,9 +187,10 @@ class SubcontractGridRow extends EditableGridRow
       if (li.upstreamItemId != null && li.upstreamItemId!.isNotEmpty)
         li.upstreamItemId!,
     ];
-    r.qty.text = financeExactTrimmed(li.qty.toString()) ?? '';
-    if (li.price != null) {
-      r.price.text = financeExactTrimmed(li.price.toString()) ?? '';
+    r.qty.text = financeExactTrimmed(li.qtyText ?? li.qty.toString()) ?? '';
+    if (li.priceText != null || li.price != null) {
+      r.price.text =
+          financeExactTrimmed(li.priceText ?? li.price.toString()) ?? '';
     }
     return r;
   }
@@ -283,6 +286,7 @@ class SubcontractGridRow extends EditableGridRow
     'supplierId': supplierId,
     'sourceLocked': sourceLocked,
     'maxQty': maxQty,
+    'maxQtyText': maxQtyText,
     'upstreamItemIds': [...upstreamItemIds],
     'commercial': exportCommercialDraft(),
     'sourceDocs': [
@@ -319,6 +323,7 @@ class SubcontractGridRow extends EditableGridRow
     restoreDraftTextValues(row._draftTextControllers, draftMap(data['text']));
     row.restoreExtraColumns(data['extraColumns']);
     row.maxQty = (data['maxQty'] as num?)?.toDouble();
+    row.maxQtyText = data['maxQtyText'] as String?;
     row.upstreamItemIds = draftStrings(data['upstreamItemIds']);
     row.sourceDocs = draftMaps(
       data['sourceDocs'],

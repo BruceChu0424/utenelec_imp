@@ -1,4 +1,5 @@
 import 'package:uten_imp/core/ui/human_error_message.dart';
+import 'dart:collection';
 import 'dart:convert';
 import 'platform_row_draft.dart';
 import 'dart:async';
@@ -6,6 +7,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/network/api_exception.dart';
 import '../business_columns/business_column.dart';
+import '../paging/paged_read_intent.dart';
 import 'platform_table_binding.dart';
 import 'platform_table_layout.dart';
 import 'platform_table_models.dart';
@@ -46,10 +48,38 @@ class PlatformTableController<T> extends ChangeNotifier {
   bool disposed = false;
   bool layoutTouched = false;
   int _generation = 0;
-  String _signature = '';
   String _tableKey = '';
   Object? _sourceRevision;
   List<T> _items = const [];
+  List<T> _additionalItems = const [];
+  // Record membership is compared by identity and row instance. It is never
+  // sorted or concatenated into a signature on a rebuild.
+  Map<String, T> _mainMembers = {};
+  Map<String, T> _additionalMembers = {};
+  int _mainCount = 0;
+  String? _projection;
+  // Records whose values were accepted under the current access/projection.
+  final Set<String> _loaded = {};
+  // One reader drains this queue. Appended records join it rather than
+  // restarting the read from the first record.
+  final LinkedHashSet<String> _queue = LinkedHashSet<String>();
+  // Records a failed pass left unread. They rejoin the next pass started for
+  // another reason; a plain rebuild never becomes a retry loop.
+  final Set<String> _stalled = {};
+  List<String> _inFlight = const [];
+  bool _passActive = false;
+  bool _revalidate = false;
+  int _structureRevision = 0;
+  int _valuesRevision = 0;
+  final _valuesNotified = Stopwatch();
+  static const _valuesNotifyInterval = Duration(milliseconds: 200);
+
+  /// Columns, access, layout or authoring capability may have changed.
+  int get structureRevision => _structureRevision;
+
+  /// A displayed extension value may have changed. Pure loading/error state
+  /// changes notify listeners without moving either revision.
+  int get valuesRevision => _valuesRevision;
   final Map<String, PlatformRowValues> _values = {};
   final Map<String, int> _edits = {};
   final Set<(int, String)> _saving = {};
@@ -157,14 +187,29 @@ class PlatformTableController<T> extends ChangeNotifier {
     fallbackFactListenablesOf = factListenablesOf;
     _exactFactKeys = exactFactKeys;
     draftOf = stagedDraftOf ?? next?.draftOf;
-    _items = descriptor.rows;
-    final dataChanged = _sourceRevision != descriptor.revision;
+    final rows = descriptor.rows;
+    final additional = descriptor.additionalRows;
+    // Only a proven immutable snapshot may skip the membership check. A
+    // mutable host or a staged draft can change a record identity in place.
+    final provenRows =
+        !changed &&
+        descriptor.immutableRows &&
+        draftOf == null &&
+        _sourceRevision == descriptor.revision;
+    final rowsStable = provenRows && identical(rows, _items);
+    final appendStart = provenRows ? descriptor.appendStart : null;
+    _items = rows;
+    _additionalItems = additional;
     _sourceRevision = descriptor.revision;
     if (changed) {
       _hasSessionQueryPreferences = false;
       _authorizationRevision++;
       _generation++;
-      _signature = '';
+      _resetReadPlan();
+      _mainMembers = {};
+      _additionalMembers = {};
+      _mainCount = 0;
+      _projection = null;
       _tableKey = key;
       _container = container;
       _values.clear();
@@ -189,6 +234,9 @@ class PlatformTableController<T> extends ChangeNotifier {
         layoutTouched = false;
         layout = _defaultLayout;
         _invalidateAccess();
+        // Values read for the previous identity were dropped. Read them again
+        // when the table next configures, even if the repository is reused.
+        _revalidate = true;
       }
 
       _queryScopeSubscription = container?.listen(authenticatedScopeProvider, (
@@ -228,14 +276,13 @@ class PlatformTableController<T> extends ChangeNotifier {
           _adoptDefinitions();
           _emit();
           if (priorIds != next.added.map((column) => column.id).join('|')) {
-            _signature = '';
             unawaited(reload());
           }
         },
       );
     }
     if (draftOf != null) {
-      for (final item in _items) {
+      for (final item in _allItems) {
         final draft = draftOf!(item);
         if (draft == null) continue;
         if (capabilities == null) {
@@ -250,9 +297,9 @@ class PlatformTableController<T> extends ChangeNotifier {
         }
       }
     }
-    if (historical) {
+    if (historical && !rowsStable) {
       _values.clear();
-      for (final item in _items) {
+      for (final item in _allItems) {
         final row = binding!.snapshotOf!(item);
         if (row != null) {
           _values[row.recordId] = row;
@@ -263,37 +310,183 @@ class PlatformTableController<T> extends ChangeNotifier {
         }
       }
     }
-    {
-      final ids =
-          _items
-              .map((row) => binding?.recordIdOf(row))
-              .whereType<String>()
-              .where((id) => id.isNotEmpty)
-              .toSet()
-              .toList()
-            ..sort();
-      final signature =
-          '${binding?.scope}|${ids.join(',')}|${layout.added.map((d) => d.id).join(',')}';
-      if (changed || dataChanged || signature != _signature) {
-        _signature = signature;
-        unawaited(reload());
+    final projection = layout.added.map((d) => d.id).join(',');
+    final projectionChanged = projection != _projection;
+    _projection = projection;
+    final added = <String>{};
+    final removed = <String>[];
+    final turnover = _syncMembers(
+      rows,
+      additional,
+      mainStable: rowsStable,
+      appendStart: appendStart,
+      added: added,
+      removed: removed,
+    );
+    var dropped = false;
+    for (final id in removed) {
+      _queue.remove(id);
+      _stalled.remove(id);
+      _loaded.remove(id);
+      if (!historical &&
+          !_saving.contains((_authorizationRevision, id)) &&
+          _values.remove(id) != null) {
+        dropped = true;
       }
     }
+    if (dropped) _emitValues();
+    if (changed || projectionChanged) {
+      unawaited(reload());
+      return;
+    }
+    for (final id in added) {
+      if (!_loaded.contains(id)) _queue.add(id);
+    }
+    if (turnover) _revalidate = true;
+    if (_passActive) {
+      // A batch whose records all left the table is obsolete. Retire it so the
+      // current records never wait behind it; a batch that still carries a
+      // current record finishes, and new records simply join the queue.
+      if (_inFlight.isNotEmpty && !_inFlight.any(_isMember)) {
+        unawaited(_startPass());
+      }
+    } else if (_queue.isNotEmpty || _revalidate) {
+      unawaited(_startPass());
+    }
+  }
+
+  Iterable<T> get _allItems sync* {
+    yield* _items;
+    yield* _additionalItems;
+  }
+
+  bool _isMember(String id) =>
+      _mainMembers.containsKey(id) || _additionalMembers.containsKey(id);
+
+  void _resetReadPlan() {
+    _loaded.clear();
+    _queue.clear();
+    _stalled.clear();
+    _inFlight = const [];
+    _revalidate = false;
+    if (_passActive) {
+      // The retired pass can no longer clear its own loading state.
+      _passActive = false;
+      loading = false;
+    }
+  }
+
+  /// Brings record membership up to date and reports the difference. Returns
+  /// whether a known record arrived as another row instance: without a
+  /// reliable external change signal, that is how a host re-read appears.
+  bool _syncMembers(
+    List<T> rows,
+    List<T> additional, {
+    required bool mainStable,
+    required int? appendStart,
+    required Set<String> added,
+    required List<String> removed,
+  }) {
+    final owner = binding;
+    if (owner == null) {
+      removed
+        ..addAll(_mainMembers.keys)
+        ..addAll(_additionalMembers.keys);
+      if (removed.isNotEmpty) {
+        _mainMembers = {};
+        _additionalMembers = {};
+      }
+      _mainCount = rows.length;
+      return false;
+    }
+    String? idOf(T row) {
+      final id = owner.recordIdOf(row);
+      return id == null || id.isEmpty ? null : id;
+    }
+
+    var turnover = false;
+    final previousAdditional = _additionalMembers;
+    final nextAdditional = <String, T>{};
+    for (final row in additional) {
+      final id = idOf(row);
+      if (id != null) nextAdditional.putIfAbsent(id, () => row);
+    }
+    final previousMain = _mainMembers;
+    var nextMain = previousMain;
+    // Records appended to the shared map in this call were not members before.
+    Set<String>? appended;
+    if (mainStable) {
+      // The proven snapshot is the one already indexed.
+    } else if (appendStart != null &&
+        appendStart == _mainCount &&
+        appendStart <= rows.length) {
+      appended = <String>{};
+      for (var index = appendStart; index < rows.length; index++) {
+        final row = rows[index];
+        final id = idOf(row);
+        if (id == null || nextMain.containsKey(id)) continue;
+        nextMain[id] = row;
+        appended.add(id);
+        if (!previousAdditional.containsKey(id)) added.add(id);
+      }
+    } else {
+      nextMain = <String, T>{};
+      for (final row in rows) {
+        final id = idOf(row);
+        if (id != null) nextMain.putIfAbsent(id, () => row);
+      }
+      for (final entry in nextMain.entries) {
+        final before = previousMain[entry.key];
+        if (before == null) {
+          if (!previousAdditional.containsKey(entry.key)) added.add(entry.key);
+        } else if (!identical(before, entry.value)) {
+          turnover = true;
+        }
+      }
+      for (final id in previousMain.keys) {
+        if (!nextMain.containsKey(id) && !nextAdditional.containsKey(id)) {
+          removed.add(id);
+        }
+      }
+    }
+    for (final entry in nextAdditional.entries) {
+      final before = previousAdditional[entry.key];
+      if (before == null) {
+        final wasMain =
+            previousMain.containsKey(entry.key) &&
+            appended?.contains(entry.key) != true;
+        if (!wasMain) added.add(entry.key);
+      } else if (!identical(before, entry.value)) {
+        turnover = true;
+      }
+    }
+    for (final id in previousAdditional.keys) {
+      if (!nextAdditional.containsKey(id) && !nextMain.containsKey(id)) {
+        removed.add(id);
+      }
+    }
+    _mainMembers = nextMain;
+    _additionalMembers = nextAdditional;
+    _mainCount = rows.length;
+    return turnover;
   }
 
   void _invalidateAccess() {
     _authorizationRevision++;
     _generation++;
+    _resetReadPlan();
     capabilities = null;
     _values.clear();
     _catalogDefinitions.clear();
     error = null;
     readFailure = null;
-    for (final item in _items) {
-      final draft = draftOf?.call(item);
-      if (draft != null) {
-        draft.priceVisible = false;
-        draft.canWrite = false;
+    if (draftOf != null) {
+      for (final item in _allItems) {
+        final draft = draftOf!(item);
+        if (draft != null) {
+          draft.priceVisible = false;
+          draft.canWrite = false;
+        }
       }
     }
     _emit();
@@ -326,8 +519,8 @@ class PlatformTableController<T> extends ChangeNotifier {
 
   Set<String> get availableFactKeys => {
     ..._exactFactKeys.map(canonicalKey),
-    for (final row in _items)
-      ...?(binding?.factValuesOf?.call(row).keys.map(canonicalKey)),
+    if (binding?.factValuesOf case final factValuesOf?)
+      for (final row in _allItems) ...factValuesOf(row).keys.map(canonicalKey),
   };
   bool canCalculateFact(String key) =>
       (capabilities?.supportsValues == true &&
@@ -471,7 +664,6 @@ class PlatformTableController<T> extends ChangeNotifier {
   void resetLayout() {
     _hasSessionQueryPreferences = false;
     updateLayout(_defaultLayout);
-    _signature = '';
     _emit();
     unawaited(reload());
   }
@@ -531,7 +723,6 @@ class PlatformTableController<T> extends ChangeNotifier {
         hidden: {...layout.hidden}..remove(column.key),
       ),
     );
-    _signature = '';
     _stageSelectedCalculations();
     _emit();
     if (column.scope.isNotEmpty && repository != null) {
@@ -628,7 +819,7 @@ class PlatformTableController<T> extends ChangeNotifier {
       } else {
         _catalogDefinitions.remove(column.id);
       }
-      _signature = '';
+      // The next configure sees the changed column projection and re-reads.
       _emit();
     } finally {
       _deletingDefinitions.remove(operation);
@@ -651,23 +842,53 @@ class PlatformTableController<T> extends ChangeNotifier {
     await reload();
   }
 
-  Future<void> reload() async {
+  /// A full revalidation: retires the running read and reads every current
+  /// record again. Record growth and plain rebuilds never come through here.
+  Future<void> reload() => _startPass(full: true);
+
+  Future<void> _startPass({bool full = false}) async {
     final repo = repository;
     final owner = binding;
     if (repo == null || owner == null || disposed) return;
     final generation = ++_generation;
+    if (full || _revalidate) {
+      _revalidate = false;
+      _stalled.clear();
+      _queue
+        ..clear()
+        ..addAll(_mainMembers.keys)
+        ..addAll(_additionalMembers.keys);
+      // This pass already reads with the current column projection.
+      _projection = layout.added.map((d) => d.id).join(',');
+    } else {
+      _queue.addAll(_stalled.where(_isMember));
+      _stalled.clear();
+    }
+    _inFlight = const [];
+    _passActive = true;
     loading = true;
-    _emit();
+    _emitStatus();
+    var structure = false;
+    var values = false;
+    // Records read but not yet applied; a failed pass returns them to the
+    // next one instead of leaving them permanently unread.
+    final pendingIds = <String>{};
     try {
       final scopes = await repo.scopes();
       if (disposed || generation != _generation) return;
       final matches = scopes.where((scope) => scope.scope == owner.scope);
-      capabilities = matches.isEmpty ? null : matches.first;
+      final granted = matches.isEmpty ? null : matches.first;
+      if (!identical(granted, capabilities)) {
+        // Access decides masking and which cells may be shown at all.
+        structure = true;
+        values = true;
+      }
+      capabilities = granted;
       if (capabilities == null) {
         throw ApiException('FORBIDDEN', '当前账号不能访问此表的扩展字段');
       }
       if (draftOf != null) {
-        for (final item in _items) {
+        for (final item in _allItems) {
           draftOf!(item)?.priceVisible = capabilities!.priceVisible;
         }
       }
@@ -719,35 +940,54 @@ class PlatformTableController<T> extends ChangeNotifier {
             clearSort: obsoleteKeys.contains(layout.sortColumn),
           ),
         );
+        structure = true;
       }
       rememberCatalogResults(known);
       for (final column in known) {
-        if (_definitions.containsKey(column.id)) {
-          _definitions[column.id] = column;
-        }
+        final current = _definitions[column.id];
+        if (current == null) continue;
+        if (!_sameDefinition(current, column)) structure = true;
+        _definitions[column.id] = column;
       }
       if (capabilities!.supportsValues && !historical) {
-        final ids = _items
-            .map(owner.recordIdOf)
-            .whereType<String>()
-            .where((id) => id.isNotEmpty)
-            .toSet()
-            .toList();
-        final revisions = {for (final id in ids) id: _edits[id] ?? 0};
         // Project only the display roots validated above. A price/relationship
         // permission-hidden preference is retained for later access, but must
         // not bypass metadata resolution and poison the entire batch read.
         // The server independently includes and masks every persisted cell.
         final columns = selected.where(available.contains).toList();
+        final staged = draftOf != null;
+        // Replacements of already published values apply only when the whole
+        // pass validated: a later malformed batch must retain the prior
+        // snapshot. Records that had no value yet are purely additive.
         final pending = <PlatformRowValues>[];
-        for (var start = 0; start < ids.length; start += 200) {
-          final end = (start + 200).clamp(0, ids.length);
-          final requested = ids.sublist(start, end);
+        final revisions = <String, int>{};
+        while (true) {
+          if (_queue.isEmpty) {
+            if (!_revalidate) break;
+            // The host read its rows again during this pass: refresh once.
+            _revalidate = false;
+            _queue
+              ..addAll(_mainMembers.keys)
+              ..addAll(_additionalMembers.keys);
+            if (_queue.isEmpty) break;
+          }
+          final requested = <String>[];
+          while (requested.length < 200 && _queue.isNotEmpty) {
+            final id = _queue.first;
+            _queue.remove(id);
+            if (_isMember(id)) requested.add(id);
+          }
+          if (requested.isEmpty) continue;
+          for (final id in requested) {
+            revisions[id] = _edits[id] ?? 0;
+          }
           final requestedIds = requested.toSet();
-          final records = await repo.rows(
-            owner.scope,
-            requested,
-            columnIds: columns,
+          _inFlight = requested;
+          // The read belongs to this pass, not to whichever build configured
+          // the table: retiring the pass cancels the transport.
+          final records = await PagedReadIntent.ownedRead(
+            () => !disposed && generation == _generation,
+            () => repo.rows(owner.scope, requested, columnIds: columns),
           );
           if (disposed || generation != _generation) return;
           // A null cell is valid. A missing/duplicate/foreign record is not a complete read.
@@ -760,40 +1000,63 @@ class PlatformTableController<T> extends ChangeNotifier {
               )) {
             throw ApiException('NOT_FOUND', '扩展字段记录清单已变化，请重新核对');
           }
-          pending.addAll(records);
-        }
-        // Publish a complete read only. A later batch failure retains the prior
-        // snapshot and never partially replaces a form's staged values.
-        for (final row in pending) {
-          if (!revisions.containsKey(row.recordId) ||
-              (_edits[row.recordId] ?? 0) != revisions[row.recordId] ||
-              (_values[row.recordId]?.version ?? -1) > row.version) {
-            continue;
-          }
-          _values[row.recordId] = row;
-          if (draftOf != null) {
-            for (final item in _items.where(
-              (item) => owner.recordIdOf(item) == row.recordId,
-            )) {
-              draftOf!(item)?.adopt(row);
+          if (staged) {
+            pending.addAll(records);
+            pendingIds.addAll(requested.where(_isMember));
+          } else {
+            final additive = <PlatformRowValues>[];
+            for (final row in records) {
+              if (_values.containsKey(row.recordId)) {
+                pending.add(row);
+                pendingIds.add(row.recordId);
+              } else {
+                additive.add(row);
+              }
+            }
+            if (additive.isNotEmpty) {
+              final changed = _publish(additive, revisions, owner);
+              structure |= changed.structure;
+              values |= changed.values;
+              if (structure || (values && _valuesNotifyDue)) {
+                _flush(structure: structure, values: values);
+                structure = false;
+                values = false;
+              }
             }
           }
-          for (final cell in row.cells) {
-            _definitions[cell.columnId] = cell.definition;
-            if (cell.persisted) _recordColumnIds.add(cell.columnId);
-          }
+          _inFlight = const [];
         }
+        if (pending.isNotEmpty) {
+          // Publish the complete read. A later batch failure retains the prior
+          // snapshot and never partially replaces a form's staged values.
+          final changed = _publish(pending, revisions, owner);
+          structure |= changed.structure;
+          values |= changed.values;
+        }
+        pendingIds.clear();
         _values.removeWhere(
           (id, _) =>
-              !ids.contains(id) &&
+              !_isMember(id) &&
               !_saving.contains((_authorizationRevision, id)),
         );
         _stageSelectedCalculations();
+      } else {
+        // This table has no readable values, so nothing may wait in the queue.
+        _queue.clear();
+        _revalidate = false;
       }
       error = null;
       readFailure = null;
     } catch (failure) {
       if (!disposed && generation == _generation) {
+        // Unread or unapplied records wait for the next pass. A rebuild alone
+        // never retries.
+        _stalled
+          ..addAll(_inFlight)
+          ..addAll(_queue)
+          ..addAll(pendingIds);
+        _queue.clear();
+        _inFlight = const [];
         if (failure is ApiException &&
             (failure.httpStatus == 401 ||
                 failure.httpStatus == 403 ||
@@ -822,11 +1085,109 @@ class PlatformTableController<T> extends ChangeNotifier {
       }
     } finally {
       if (!disposed && generation == _generation) {
+        _passActive = false;
+        _inFlight = const [];
         loading = false;
-        _emit();
+        _flush(structure: structure, values: values);
       }
     }
   }
+
+  /// Accepts one validated batch. Reports whether a column or a displayed
+  /// value changed, so an unchanged batch notifies nobody.
+  ({bool structure, bool values}) _publish(
+    List<PlatformRowValues> rows,
+    Map<String, int> revisions,
+    PlatformTableBinding<T> owner,
+  ) {
+    var structure = false;
+    var values = false;
+    Map<String, List<T>>? stagedRows;
+    for (final row in rows) {
+      final id = row.recordId;
+      // A record that left the table while its batch was in flight is dropped.
+      if (!_isMember(id) || !revisions.containsKey(id)) continue;
+      _loaded.add(id);
+      if ((_edits[id] ?? 0) != revisions[id] ||
+          (_values[id]?.version ?? -1) > row.version) {
+        continue;
+      }
+      final before = _values[id];
+      _values[id] = row;
+      if (before == null
+          ? row.cells.isNotEmpty || _definitions.isNotEmpty
+          : !_sameRowValues(before, row)) {
+        values = true;
+      }
+      if (draftOf != null) {
+        stagedRows ??= _rowsByRecord(owner);
+        for (final item in stagedRows[id] ?? const <Never>[]) {
+          draftOf!(item)?.adopt(row);
+        }
+      }
+      for (final cell in row.cells) {
+        final known = _definitions[cell.columnId];
+        if (known == null || !_sameDefinition(known, cell.definition)) {
+          structure = true;
+        }
+        _definitions[cell.columnId] = cell.definition;
+        if (cell.persisted && _recordColumnIds.add(cell.columnId)) {
+          structure = true;
+        }
+      }
+    }
+    return (structure: structure, values: values);
+  }
+
+  Map<String, List<T>> _rowsByRecord(PlatformTableBinding<T> owner) {
+    final index = <String, List<T>>{};
+    for (final item in _allItems) {
+      final id = owner.recordIdOf(item);
+      if (id != null && id.isNotEmpty) (index[id] ??= <T>[]).add(item);
+    }
+    return index;
+  }
+
+  static bool _sameRowValues(PlatformRowValues a, PlatformRowValues b) {
+    if (identical(a, b)) return true;
+    if (a.version != b.version ||
+        a.canWrite != b.canWrite ||
+        a.cells.length != b.cells.length) {
+      return false;
+    }
+    // Related and calculated cells can change without a record version bump.
+    for (var index = 0; index < a.cells.length; index++) {
+      final before = a.cells[index];
+      final after = b.cells[index];
+      if (before.columnId != after.columnId ||
+          before.value != after.value ||
+          before.masked != after.masked ||
+          before.persisted != after.persisted ||
+          before.error != after.error) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /// What a table column shows. Usage counters and deletion authority belong
+  /// to the picker and header menu, which read the live catalog entry.
+  static bool _sameDefinition(
+    PlatformColumnDefinition a,
+    PlatformColumnDefinition b,
+  ) =>
+      identical(a, b) ||
+      (a.id == b.id &&
+          a.scope == b.scope &&
+          a.name == b.name &&
+          a.type == b.type &&
+          a.priceProtected == b.priceProtected &&
+          a.relationKey == b.relationKey &&
+          (identical(a.formula, b.formula) ||
+              (a.formula != null &&
+                  b.formula != null &&
+                  jsonEncode(a.formula!.toJson()) ==
+                      jsonEncode(b.formula!.toJson()))));
 
   // A selected display formula is part of the submitted form's column set.
   // Stage its selection only after source metadata is hydrated, preserving all
@@ -837,7 +1198,7 @@ class PlatformTableController<T> extends ChangeNotifier {
         .where((column) => !layout.hidden.contains(column.key))
         .map((column) => _definitions[column.id] ?? column)
         .where((column) => column.calculated && column.formula != null);
-    for (final item in _items) {
+    for (final item in _allItems) {
       final draft = draftOf!(item);
       if (draft == null ||
           !_canWriteFields(item) ||
@@ -993,6 +1354,7 @@ class PlatformTableController<T> extends ChangeNotifier {
       }
       if ((_values[row.recordId]?.version ?? -1) > result.version) return;
       _values[row.recordId] = result;
+      _loaded.add(row.recordId);
       for (final cell in result.cells) {
         _definitions[cell.columnId] = cell.definition;
         if (cell.persisted) _recordColumnIds.add(cell.columnId);
@@ -1036,6 +1398,34 @@ class PlatformTableController<T> extends ChangeNotifier {
   }
 
   void _emit() {
+    _structureRevision++;
+    _valuesRevision++;
+    _notify();
+  }
+
+  void _emitValues() {
+    _valuesRevision++;
+    _notify();
+  }
+
+  void _emitStatus() => _notify();
+
+  bool get _valuesNotifyDue =>
+      !_valuesNotified.isRunning ||
+      _valuesNotified.elapsed >= _valuesNotifyInterval;
+
+  void _flush({required bool structure, required bool values}) {
+    if (structure) _structureRevision++;
+    if (values) {
+      _valuesRevision++;
+      _valuesNotified
+        ..reset()
+        ..start();
+    }
+    _notify();
+  }
+
+  void _notify() {
     scheduleMicrotask(() {
       if (!disposed) notifyListeners();
     });

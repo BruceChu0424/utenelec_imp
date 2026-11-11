@@ -28,6 +28,7 @@ const _fields = {
   'exceptionType',
   'stack',
   'reason',
+  'ref',
   'frameGapMs',
   'buildMs',
   'rasterMs',

@@ -157,7 +157,8 @@ void main() {
           isTrue,
         );
         expect(c.page!.items, fails ? ['accepted'] : ['fresh']);
-        expect(c.refreshError, fails ? 'offline' : isNull);
+        // 真失败带匿名关联号后缀（read_failure_diagnostics）。
+        expect(c.refreshError, fails ? matches(r'offline（关联号 [0-9A-Z]{6}）') : isNull);
         expect(c.error, isNull);
         expect(c.loading, isFalse);
         expect(c.refreshing, isFalse);
@@ -325,7 +326,10 @@ void main() {
           isNull,
           reason: 'Background failure must not replace the table',
         );
-        expect(c.refreshError, apiError ? '网络抖动' : '加载列表失败');
+        expect(
+          c.refreshError,
+          apiError ? matches(r'网络抖动（关联号 [0-9A-Z]{6}）') : '加载列表失败',
+        );
         expect(c.refreshing, isFalse);
         expect(c.loading, isFalse);
 
@@ -359,7 +363,7 @@ void main() {
       gate.completeError(ApiException('NETWORK', '网络抖动'));
       await pending;
       expect(c.page, isNull);
-      expect(c.error, '网络抖动');
+      expect(c.error, matches(r'网络抖动（关联号 [0-9A-Z]{6}）'));
       expect(c.refreshError, isNull);
       expect(c.loading, isFalse);
       c.dispose();
@@ -405,7 +409,7 @@ void main() {
         c.page = _page(const ['private accepted document']);
         await c.load(1, silent: true, fetch: () async => throw failure);
         expect(c.page, isNull);
-        expect(c.error, failure.message);
+        expect(c.error, matches(RegExp('${failure.message}（关联号 [0-9A-Z]{6}）')));
         expect(c.refreshError, isNull);
         expect(c.refreshing, isFalse);
         expect(c.loading, isFalse);
@@ -417,7 +421,7 @@ void main() {
   test('错误映射：ApiException 展示 message，其它异常落兜底文案', () async {
     final c = PagedListController<String>();
     await c.load(1, fetch: () async => throw ApiException('CONFLICT', '后端说不行'));
-    expect(c.error, '后端说不行');
+    expect(c.error, matches(r'后端说不行（关联号 [0-9A-Z]{6}）'));
     expect(c.loading, isFalse, reason: '失败后停止加载，由 error 接管展示');
 
     await c.load(1, fetch: () async => throw const FormatException('boom'));

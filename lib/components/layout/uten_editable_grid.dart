@@ -1308,6 +1308,8 @@ class _UtenEditableGridState<T extends EditableGridRow>
   List<EditableGridColumn<T>>? _platformBaseCache;
   TableColumnProjectionController? _projection;
   bool _platformRefreshScheduled = false;
+  int _platformStructureSeen = 0;
+  int _platformValuesSeen = 0;
   bool _projectionScheduled = false;
   final _aiSlot = AiPageSlot();
   final _aiCells = AiCellRegistry();
@@ -1524,13 +1526,26 @@ class _UtenEditableGridState<T extends EditableGridRow>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _platformRefreshScheduled = false;
       if (!mounted) return;
-      setState(() {
-        _platformColumnCache = null;
-        _applyPlatformLayout();
-        _autoGrowDirty = true;
-        _rewireAutoGrowListeners(force: true);
-      });
-      _publishProjection();
+      final structure = _platform.structureRevision != _platformStructureSeen;
+      final values = _platform.valuesRevision != _platformValuesSeen;
+      _platformStructureSeen = _platform.structureRevision;
+      _platformValuesSeen = _platform.valuesRevision;
+      if (structure || (values && _platform.definitions.isNotEmpty)) {
+        setState(() {
+          if (structure) {
+            _platformColumnCache = null;
+            _applyPlatformLayout();
+            _rewireAutoGrowListeners(force: true);
+          }
+          // Platform cell text drives automatic column growth.
+          _autoGrowDirty = true;
+        });
+        _publishProjection();
+      } else {
+        // Loading/error status only: rebuild for the status affordances
+        // without re-measuring columns or rewiring row listeners.
+        setState(() {});
+      }
     });
     WidgetsBinding.instance.ensureVisualUpdate();
   }

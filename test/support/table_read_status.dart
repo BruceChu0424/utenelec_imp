@@ -15,9 +15,14 @@ Future<void> expectTableReadFailureDetails(
   await tester.ensureVisible(details);
   await tester.tap(details);
   await tester.pumpAndSettle();
-  expect(find.text(reason), findsOneWidget);
+  // 真失败的消息尾部带匿名关联号（read_failure_diagnostics）；服务端消息
+  // 始终是结尾段，其余细节保持精确。
+  final reasonText = find.textContaining(
+    RegExp('${RegExp.escape(reason)}(（关联号 [0-9A-Z]{6}）)?\$'),
+  );
+  expect(reasonText, findsOneWidget);
   final dialog = find.ancestor(
-    of: find.text(reason),
+    of: reasonText,
     matching: find.byType(UtenAlertDialog),
   );
   expect(dialog, findsOneWidget);

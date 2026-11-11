@@ -1136,8 +1136,13 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
 
   final _selectedRows = <String, T>{};
   late List<T> _items;
+  List<T>? _lastControllerRowsUpdate;
   List<T>? _collectedSource;
   String? Function(T)? _collectedIdentity;
+  // Last merge output. Dart canonicalizes tear-offs of the same function, so
+  // a closure's identity cannot prove its captured state is unchanged: the
+  // merge always re-runs, and only its value-stable output identity is kept.
+  List<T>? _mergedStable;
   final Set<String> _collectedIds = {};
   bool _collectedSnapshot = false;
   int? get _appendPage => null;
@@ -1227,9 +1232,26 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         merged[index] = row;
       }
     }
-    return widget.rowVisible == null
+    final result = widget.rowVisible == null
         ? merged
         : merged.where(widget.rowVisible!).toList();
+    // Stabilize the output identity: a merge yielding the same row instances
+    // in the same order keeps the previous list object, so caches keyed by
+    // _items identity (platform membership, projection source, row plan
+    // inputs) survive a parent rebuild that recreated its closures.
+    final previous = _mergedStable;
+    if (previous != null && previous.length == result.length) {
+      var same = true;
+      for (var index = 0; index < result.length; index++) {
+        if (!identical(previous[index], result[index])) {
+          same = false;
+          break;
+        }
+      }
+      if (same) return previous;
+    }
+    _mergedStable = result;
+    return result;
   }
 
   List<T>? _collectImmutableRows(List<T> rows) {
@@ -1297,18 +1319,29 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       if (_selectedRows.isEmpty) {
         if (_collectedSnapshot) {
           controller.updateSnapshot(_items);
-        } else {
+        } else if (!identical(_lastControllerRowsUpdate, _items)) {
+          // The merged list is replaced, never mutated in place, so the same
+          // object needs no fresh defensive copy.
+          _lastControllerRowsUpdate = _items;
           controller.update(_items);
         }
       } else {
         final liveIds = _withSelectionReadScope(
           () => _items.map((row) => _outputIdOf?.call(row)).toSet(),
         );
-        controller.update([
-          ..._items,
+        final retained = [
           for (final entry in _selectedRows.entries)
             if (!liveIds.contains(entry.key)) entry.value,
-        ]);
+        ];
+        if (retained.isEmpty) {
+          if (!identical(_lastControllerRowsUpdate, _items)) {
+            _lastControllerRowsUpdate = _items;
+            controller.update(_items);
+          }
+        } else {
+          _lastControllerRowsUpdate = null;
+          controller.update([..._items, ...retained]);
+        }
       }
     }
     _pruneFacetAccumulators();
@@ -1377,6 +1410,10 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     }
     _appendGeneration++;
     _prependBottomSpace = 0;
+    _groupedPlanCache = null;
+    _groupedPlanItems = null;
+    _groupedPlanGroups = null;
+    _groupedPlanNotice = null;
     _acceptPageIndicator(widget.currentPage, reset: true);
     _pageRows = widget.items;
     _syncRows();
@@ -1389,6 +1426,19 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     }
     final previous = _pageRows;
     if (identical(previous, incoming)) return incoming;
+    // A rebuilt host list that still carries the same row instances is the
+    // same page: keep the previous list object so downstream identity-keyed
+    // caches (platform membership, projection, row plan) stay valid.
+    if (previous.length == incoming.length) {
+      var same = true;
+      for (var index = 0; index < incoming.length; index++) {
+        if (!identical(previous[index], incoming[index])) {
+          same = false;
+          break;
+        }
+      }
+      if (same) return previous;
+    }
     const equality = DeepCollectionEquality();
     bool canReuse(T current, T before) {
       if (identical(current, before)) return true;
@@ -1651,6 +1701,12 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   bool _platformRefreshScheduled = false;
   bool _projectionScheduled = false;
   Object? _projectionOwner;
+  int _platformStructureSeen = 0;
+  int _platformValuesSeen = 0;
+  List<T>? _platformRows;
+  List<T> _platformAdditionalRows = const [];
+  List<MasterDataGroup<T>>? _platformAdditionalSource;
+  (int, int, List<MasterColumnDef<T>>)? _platformRevealSeen;
   final _aiSlot = AiPageSlot();
 
   List<MasterColumnDef<T>> get _columns {
@@ -1704,14 +1760,45 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   void _configurePlatform() {
     if (widget.listItemBuilder != null) return;
     _projection = TableColumnProjectionScope.read(context);
+    final groups = _authorizedLeadingGroups;
+    if (groups == null || groups.isEmpty) {
+      _platformAdditionalSource = groups;
+      _platformAdditionalRows = const [];
+    } else {
+      // Group rows join the record membership without copying the main list.
+      // A rebuilt group list with the same item lists is not a change.
+      var sameSource = identical(_platformAdditionalSource, groups);
+      if (!sameSource &&
+          _platformAdditionalSource != null &&
+          _platformAdditionalSource!.length == groups.length) {
+        sameSource = true;
+        for (var index = 0; index < groups.length; index++) {
+          if (!identical(_platformAdditionalSource![index].items, groups[index].items)) {
+            sameSource = false;
+            break;
+          }
+        }
+      }
+      if (!sameSource) {
+        _platformAdditionalSource = groups;
+        _platformAdditionalRows = [for (final group in groups) ...group.items];
+      }
+    }
+    final rows = _items;
+    final appendStart =
+        _collectedSnapshot && _platformRows != null
+            ? pagedRowsAppendStart(_platformRows, rows)
+            : null;
     _platform.configure(
       context,
       descriptor: PlatformTableDescriptor<T>(
         kind: 'master',
-        revision: (_items, _authorizedLeadingGroups),
         tableKey: widget.tableKey,
         columnKeys: widget.columns.map((c) => c.key).toList(),
-        rows: _rowsWithLeadingGroups(),
+        rows: rows,
+        additionalRows: _platformAdditionalRows,
+        immutableRows: _collectedSnapshot,
+        appendStart: appendStart,
       ),
       explicitBinding: widget.platformBinding,
       columnEditingEnabled: widget.columnEditingEnabled,
@@ -1730,8 +1817,10 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
             column.key: column.exactValueOf!(row),
       },
     );
+    _platformRows = rows;
     _platformColumnCache = null;
-    _applyPlatformLayout();
+    // Callers re-apply the saved layout after their own column mutations;
+    // applying here as well doubled the work on every parent rebuild.
   }
 
   void _applyPlatformLayout() {
@@ -1782,16 +1871,26 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
             .where((key) => !_columnOrder.contains(key)),
       ];
     }
-    for (final column in columns) {
-      if (_platform.binding?.revealPopulatedColumnKeys.contains(
-                _platform.canonicalKey(column.key),
-              ) ==
-              true &&
-          _items.any((row) {
-            final value = column.value(row)?.trim();
-            return value != null && value.isNotEmpty && value != '—';
-          })) {
-        _hiddenKeys.remove(column.key);
+    // 揭示列（有持久化值的隐藏列自动显形）依赖扩展字段的值：只有结构或值
+    // 真正变化、或列集合更换时才重扫行，loading/纯重建不触发全表 value() 调用。
+    final revealSeed = (
+      _platform.structureRevision,
+      _platform.valuesRevision,
+      widget.columns,
+    );
+    if (_platformRevealSeen != revealSeed) {
+      _platformRevealSeen = revealSeed;
+      for (final column in columns) {
+        if (_platform.binding?.revealPopulatedColumnKeys.contains(
+                  _platform.canonicalKey(column.key),
+                ) ==
+                true &&
+            _items.any((row) {
+              final value = column.value(row)?.trim();
+              return value != null && value.isNotEmpty && value != '—';
+            })) {
+          _hiddenKeys.remove(column.key);
+        }
       }
     }
     if (_hiddenKeys.length >= columns.length) _hiddenKeys.clear();
@@ -1821,12 +1920,46 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _platformRefreshScheduled = false;
       if (!mounted) return;
+      final structure = _platform.structureRevision != _platformStructureSeen;
+      final values = _platform.valuesRevision != _platformValuesSeen;
+      _platformStructureSeen = _platform.structureRevision;
+      _platformValuesSeen = _platform.valuesRevision;
+      if (!structure && (!values || _platform.definitions.isEmpty)) {
+        // Pure loading/error status, or values for columns nobody displays:
+        // the status row and cells rebuild, but no projection, facet or
+        // column-width work is repeated.
+        setState(() {});
+        if (_fullscreen) _fsTick.value++;
+        return;
+      }
       setState(() {
         _displayRowsSource = null;
         _rowFacetScope = null;
-        _platformColumnCache = null;
-        _applyPlatformLayout();
-        _widthsDirty = true;
+        if (structure) {
+          _platformColumnCache = null;
+          _applyPlatformLayout();
+          _widthsDirty = true;
+        } else {
+          // Only displayed extension values changed: keep the column set,
+          // projection inputs and every business column's scan cursor; the
+          // growth scan re-walks just the platform columns from the top
+          // (their values for already-scanned rows changed; unloaded rows
+          // read empty and stay cheap).
+          if (_platform.definitions.isNotEmpty) {
+            var rescanned = false;
+            for (final column in _platform.definitions) {
+              final measure = _textMeasures[column.key];
+              if (measure != null && measure.scannedRows > 0) {
+                measure.scannedRows = 0;
+                rescanned = true;
+              }
+            }
+            if (rescanned) {
+              _widthGrowthPending = true;
+              _scheduleWidthGrowth();
+            }
+          }
+        }
       });
       if (_fullscreen) _fsTick.value++;
       _publishProjection();
@@ -2637,17 +2770,20 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   int _widthMeasuredThisFrame = 0;
   int? _widthFrameReset;
   List<T>? _widthGrowthPool;
+  // 数据变化后置位：下一个扫描片按行实例 identical 走出与旧池的公共前缀，
+  // 把各列 scannedRows 钳到前缀内——追加/静默重拉只扫新增，前缀漂移只重扫漂移列。
+  bool _widthGrowthPoolStale = false;
   List<double>? _widthGrowthTarget;
-  // Rows of the current sample pool already scanned to the end. A progressive
-  // append continues from here instead of re-measuring the loaded prefix.
-  int _widthScannedRows = 0;
-  int _widthGrowthOffset = 0;
-  int _widthGrowthColumn = 0;
+  // 本帧窗口内扫描片累计耗时(含缓存命中格)：耗尽后停车等真实帧回调再续，
+  // 避免 2ms Timer 片背靠背连跑挤占输入/绘制。
+  Duration _widthFrameWork = Duration.zero;
+  bool _widthGrowthFrameParked = false;
 
   // Text shaping is UI work even when it runs in a post-frame callback.
   // Bound each batch by cells so wide tables also leave time for input/paint.
   static const _widthMeasureCellBudget = 256;
   static const _widthMeasureTimeBudget = Duration(milliseconds: 2);
+  static const _widthFrameTimeBudget = Duration(milliseconds: 4);
 
   /// 输入控制器的内容可以先于业务 value 改变。按列键合并本帧各输入格需要的宽度，
   /// 避免逐格重建表格；列集合改变后丢弃旧格子的延迟回调。
@@ -2661,7 +2797,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   TextScaler? _lastScale;
   List<double> _lastColumnMinimums = const [];
   List<double> _lastHeaderChrome = const [];
-  List<Object> _lastRichWidthScopes = const [];
+  Map<String, (Object?, double?)> _lastRichWidthScopes = const {};
   TextStyle? _lastWidthBodyStyle;
   TextStyle? _lastWidthHeaderStyle;
   TextDirection? _lastWidthDirection;
@@ -2915,6 +3051,36 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
 
   /// 当前展开的前导分组 id 集合（点击分组标题行切换）。默认全折叠。
   final Set<String> _expandedGroups = {};
+  int _expandedGroupsRevision = 0;
+
+  /// 分组行计划的输入键：displayItems/分组内容/提示行/展开态任一变化才重建，
+  /// 父级纯重建（勾选、loading 等）不再为全部行分配计划条目。宿主每次 build
+  /// 新建分组列表是常态，按计划真正读取的字段比较，而不是列表身份。
+  bool _samePlanGroups(List<MasterDataGroup<T>>? a, List<MasterDataGroup<T>> b) {
+    if (a == null || a.length != b.length) return false;
+    for (var index = 0; index < b.length; index++) {
+      final before = a[index];
+      final next = b[index];
+      if (identical(before, next)) continue;
+      if (before.id != next.id ||
+          before.title != next.title ||
+          before.initiallyExpanded != next.initiallyExpanded ||
+          !identical(before.items, next.items) ||
+          before.total != next.total ||
+          before.loading != next.loading ||
+          before.error != next.error ||
+          (before.onExpand == null) != (next.onExpand == null)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  List<_MasterRowPlan<T>>? _groupedPlanCache;
+  List<T>? _groupedPlanItems;
+  List<MasterDataGroup<T>>? _groupedPlanGroups;
+  Widget? _groupedPlanNotice;
+  int _groupedPlanExpansion = -1;
 
   /// 列下标→LayerLink：每列表头包一个 CompositedTransformTarget，跟手浮层（共用
   /// [UtenColumnDragHideHost]）经 CompositedTransformFollower 锚定到"当前拖拽列"的
@@ -3297,6 +3463,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     super.didChangeDependencies();
     _searchLifecycle.attach(context);
     _configurePlatform();
+    if (widget.listItemBuilder == null) _applyPlatformLayout();
     if (widget.listItemBuilder == null) {
       _aiSlot.attach(context, _aiTableSource);
     }
@@ -3807,21 +3974,19 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         oldWidget.leadingGroups != widget.leadingGroups ||
         oldWidget.presentationRevision != widget.presentationRevision) {
       // 数据变了(翻页/筛选/排序/加载更多/静默重拉)→ 帧后只补量新出现的值，
-      // 超出当前宽度才加宽；已手动调整的列不动。
-      // 逐批追加(同一读取会话)只续量新行：已量过的前缀不再重扫。
-      final continueFrom = appended && !_queryChanged
-          ? (_widthGrowthPending ? _widthGrowthOffset : _widthScannedRows)
-          : 0;
-      final continueColumn = appended && !_queryChanged && _widthGrowthPending
-          ? _widthGrowthColumn
-          : 0;
-      if (!(appended && !_queryChanged && _widthGrowthPending)) {
-        _widthGrowthTarget = null;
-      }
+      // 超出当前宽度才加宽；已手动调整的列不动。行池保留：扫描片按行实例
+      // identical 校验公共前缀后钳制各列游标，逐批追加/同实例静默重拉只续量
+      // 新行新值，前缀漂移只重扫漂移起始处之后的列内容(值串去重兜底)。
+      _widthGrowthPoolStale = true;
       _widthGrowthPending = true;
-      _widthGrowthPool = null;
-      _widthGrowthOffset = continueFrom;
-      _widthGrowthColumn = continueColumn;
+      if (identical(oldWidget.items, widget.items) &&
+          identical(oldWidget.leadingGroups, widget.leadingGroups)) {
+        // 同一批行实例换了展示口径(presentationRevision)：值可能整列变化，
+        // 游标全部归零重走；seen 去重吸收未变字符串，不重复排版。
+        for (final measure in _textMeasures.values) {
+          measure.scannedRows = 0;
+        }
+      }
     }
     // 吸顶表：数据/列变化改表高 → post-frame 重测锚点；notifier 换实例重绑。
     if (!identical(oldWidget.stickyHeaderPinned, widget.stickyHeaderPinned)) {
@@ -4056,17 +4221,44 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       _textMeasures.clear();
     }
     final hitExtent = UtenControlMetrics.minimumHitExtent(context, desktop: 48);
-    final richScopes = [
+    // 富量宽 scope 按列比较：只有 scope 闭包或命中区真的变了的列才丢弃量宽
+    // 缓存(连带游标重扫)。列清单单纯增长(如平台扩展列落地)不再清空其他列
+    // 已测前缀——那是全表重排版的旧放大器。
+    final richScopes = <String, (Object?, double?)>{
       for (final column in _columns)
-        (
-          column.measureWidthScope ?? column.measureWidthOf,
-          column.measureWidthOf == null ? null : hitExtent,
-        ),
-    ];
-    if (!listEquals(richScopes, _lastRichWidthScopes)) {
+        if (column.measureWidthOf != null || column.measureWidthScope != null)
+          column.key: (
+            column.measureWidthScope ?? column.measureWidthOf,
+            column.measureWidthOf == null ? null : hitExtent,
+          ),
+    };
+    final previousScopes = _lastRichWidthScopes;
+    var richScopeChanged = previousScopes.length != richScopes.length;
+    if (!richScopeChanged) {
+      for (final entry in richScopes.entries) {
+        final previous = previousScopes[entry.key];
+        // `==` (not identical): scopes are typically records, which are
+        // value-equal without being canonicalized. Closures compare by
+        // identity, matching the historic listEquals semantics per column.
+        if (previous == null ||
+            previous.$1 != entry.value.$1 ||
+            previous.$2 != entry.value.$2) {
+          richScopeChanged = true;
+          break;
+        }
+      }
+    }
+    if (richScopeChanged) {
       _lastRichWidthScopes = richScopes;
       _widthsDirty = true;
-      _textMeasures.clear();
+      for (final entry in richScopes.entries) {
+        final previous = previousScopes[entry.key];
+        if (previous == null ||
+            previous.$1 != entry.value.$1 ||
+            previous.$2 != entry.value.$2) {
+          _textMeasures.remove(entry.key);
+        }
+      }
     }
     final headerChrome = [
       for (final column in _columns) _headerChromeWidth(context, column),
@@ -4099,12 +4291,10 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       return;
     }
     _widthsDirty = false;
-    _widthGrowthPending = false;
-    _widthGrowthPool = null;
-    _widthGrowthTarget = null;
-    _widthScannedRows = 0;
-    _widthGrowthOffset = 0;
-    _widthGrowthColumn = 0;
+    // The scan session (row pool, per-column cursors, growing target widths)
+    // survives geometry-only refits: same rows and same value extractors keep
+    // their measured prefix; newly added/revealed columns scan from their own
+    // lagging cursor instead of restarting the whole pool.
     final keys = [for (final column in _columns) column.key];
     final preserveWidths =
         !_resetAutoWidths &&
@@ -4116,7 +4306,6 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     final pool = _rowsWithLeadingGroups();
     // First layout measures headers only. Even 256 cells can spend hundreds
     // of milliseconds shaping rich Chinese text; the tail is time-budgeted.
-    final sample = <T>[];
     final next = List<double>.filled(
       _columns.length,
       _minColWidth,
@@ -4130,7 +4319,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       final def = _columns[i];
       next[i] = _fitColumnWidth(
         i,
-        _measureColumn(context, def, sample, textScaler),
+        _measureColumn(context, def, textScaler),
       );
       // Geometry updates (especially tree expansion) must not collapse an
       // already measured column back to its header before the budgeted scan.
@@ -4144,9 +4333,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     _resetWidthKeys.clear();
     _widths = next;
     if (pool.isNotEmpty) {
-      _widthGrowthPool = pool;
-      _widthGrowthOffset = 0;
-      _widthGrowthColumn = 0;
+      _widthGrowthPoolStale = true;
       _widthGrowthPending = true;
       _scheduleWidthGrowth();
     }
@@ -4162,11 +4349,10 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     return <T>[..._items, for (final group in groups) ...group.items];
   }
 
-  /// 量一列：表头只量一次；取样行里没量过的值才量(按字符串去重)。
+  /// 量一列表头(只量一次；单元格值由扫描片逐格补量，见 [_scheduleWidthGrowth])。
   _ColumnTextMeasure _measureColumn(
     BuildContext context,
     MasterColumnDef<T> def,
-    List<T> pool,
     TextScaler textScaler,
   ) {
     final measure = _textMeasures.putIfAbsent(def.key, _ColumnTextMeasure.new);
@@ -4178,30 +4364,38 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       );
       measure.headerMeasured = true;
     }
-    // 去重集合只防重复量同一串；过大时清掉(最大宽度已记下，不影响结果)。
-    if (measure.seen.length > 4000) measure.seen.clear();
-    for (var r = 0; r < pool.length; r++) {
-      final text = (def.measureValueOf ?? def.value)(pool[r]) ?? '';
-      if (text.isEmpty || !measure.seen.add(text)) continue;
-      double width;
-      if (def.measureWidthOf case final measureWidth?) {
-        width = measureWidth(context, pool[r], textScaler);
-      } else {
-        final bodyStyle =
-            Theme.of(context).textTheme.bodyMedium ?? const TextStyle();
-        // Status/progress values use the same bold geometry as their cells;
-        // emphasized columns render at w800 (_cellTextStyle), so measure there.
-        final style = def.emphasized
-            ? bodyStyle.copyWith(fontWeight: FontWeight.w800)
-            : utenIsStatusOrProgressColumn(def.key, def.label)
-            ? bodyStyle.copyWith(fontWeight: FontWeight.w700)
-            : bodyStyle;
-        width = _measureText(text, style, textScaler);
-      }
-      measure.bodyRevision++;
-      if (width > measure.body) measure.body = width;
-    }
     return measure;
+  }
+
+  /// 量一格：没量过的值串才排版(按字符串去重，只是优化——上限清空只损失
+  /// 去重、不损失正确性，列游标已保证每格至多访问一次)；更宽值累进列最大宽。
+  bool _measureCell(
+    BuildContext context,
+    MasterColumnDef<T> def,
+    _ColumnTextMeasure measure,
+    T row,
+    TextScaler textScaler,
+  ) {
+    final text = (def.measureValueOf ?? def.value)(row) ?? '';
+    if (text.isEmpty || !measure.seen.add(text)) return false;
+    double width;
+    if (def.measureWidthOf case final measureWidth?) {
+      width = measureWidth(context, row, textScaler);
+    } else {
+      final bodyStyle =
+          Theme.of(context).textTheme.bodyMedium ?? const TextStyle();
+      // Status/progress values use the same bold geometry as their cells;
+      // emphasized columns render at w800 (_cellTextStyle), so measure there.
+      final style = def.emphasized
+          ? bodyStyle.copyWith(fontWeight: FontWeight.w800)
+          : utenIsStatusOrProgressColumn(def.key, def.label)
+          ? bodyStyle.copyWith(fontWeight: FontWeight.w700)
+          : bodyStyle;
+      width = _measureText(text, style, textScaler);
+    }
+    measure.bodyRevision++;
+    if (width > measure.body) measure.body = width;
+    return true;
   }
 
   /// Fit the widest loaded value and the complete header independently. Header
@@ -4231,15 +4425,49 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     );
   }
 
-  /// 缓存尾部通过事件继续扫描；新量宽仍共享每帧预算，避免缓存命中也反复排帧。
+  /// 各活动列(非手动/非隐藏)游标的最小行号：扫描片从这里续扫。
+  int _widthScanResumeRow(List<T> pool) {
+    var resume = pool.length;
+    final hidden = _presentationHiddenKeys;
+    for (var i = 0; i < _columns.length; i++) {
+      if (_manualResized.contains(i) || hidden.contains(_columns[i].key)) {
+        continue;
+      }
+      final measure = _textMeasures[_columns[i].key];
+      if (measure == null) return 0;
+      if (measure.scannedRows < resume) resume = measure.scannedRows;
+    }
+    return resume;
+  }
+
+  /// 本帧窗口预算耗尽：停车等真实帧回调清零后续扫，并保证有一帧会来。
+  void _parkWidthGrowthUntilFrame() {
+    _widthGrowthFrameParked = true;
+    _widthFrameReset ??= WidgetsBinding.instance.scheduleFrameCallback((_) {
+      _widthFrameReset = null;
+      _widthMeasuredThisFrame = 0;
+      _widthFrameWork = Duration.zero;
+      _widthGrowthFrameParked = false;
+      if (mounted && _widthGrowthPending) {
+        _scheduleWidthGrowth();
+        // Keep one more frame scheduled: the resumed slice re-parks at the
+        // budget boundary and its registration needs a frame to fire on when
+        // nothing else in the app is animating (the historic pump pattern).
+        WidgetsBinding.instance.scheduleFrame();
+      }
+    });
+    WidgetsBinding.instance.scheduleFrame();
+  }
+
+  /// 缓存尾部通过事件继续扫描：片内 2ms/256 格让出；本帧窗口累计(含缓存
+  /// 命中格)超过 4ms 停车等帧，不再背靠背连跑 Timer 片挤占输入/绘制。
   void _scheduleWidthGrowth() {
     if (_widthGrowthScheduled) return;
     _widthGrowthScheduled = true;
     _widthGrowthTimer = Timer(Duration.zero, () {
       _widthGrowthTimer = null;
       _widthGrowthScheduled = false;
-      if (!mounted || !_widthGrowthPending) return;
-      if (_widthMeasuredThisFrame >= _widthMeasureCellBudget) return;
+      if (!mounted || !_widthGrowthPending || _widthGrowthFrameParked) return;
       final textScaler = MediaQuery.textScalerOf(context);
       if (_widthsDirty ||
           _lastScale != textScaler ||
@@ -4248,60 +4476,88 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         if (_fullscreen) _fsTick.value++;
         return;
       }
-      final pool = _widthGrowthPool ??= _rowsWithLeadingGroups();
+      var pool = _widthGrowthPool;
+      if (pool == null) {
+        pool = _widthGrowthPool = _rowsWithLeadingGroups();
+        _widthGrowthPoolStale = false;
+      } else if (_widthGrowthPoolStale) {
+        _widthGrowthPoolStale = false;
+        final fresh = _rowsWithLeadingGroups();
+        if (!identical(fresh, pool)) {
+          // Walk the instance-identical prefix once: cursors stay clamped
+          // inside it (progressive append / same-instance silent re-pull skip
+          // the prefix entirely); drift re-walks from the first changed row
+          // with the value-set dedup absorbing already-measured strings.
+          var verified = 0;
+          final shared = math.min(pool.length, fresh.length);
+          while (verified < shared && identical(fresh[verified], pool[verified])) {
+            verified++;
+          }
+          for (final measure in _textMeasures.values) {
+            if (measure.scannedRows > verified) measure.scannedRows = verified;
+          }
+          pool = _widthGrowthPool = fresh;
+        }
+      }
       final clock = Stopwatch()..start();
       var measuredCells = 0;
       var visitedCells = 0;
       final hidden = _presentationHiddenKeys;
-      final next = _widthGrowthTarget ??= List<double>.of(_widths);
-      while (_widthGrowthOffset < pool.length && _columns.isNotEmpty) {
-        final i = _widthGrowthColumn;
-        final row = pool[_widthGrowthOffset];
-        // Advance before doing caller-supplied measurement. Every accepted
-        // cell is visited once, including a partial row at a slice boundary.
-        _widthGrowthColumn++;
-        if (_widthGrowthColumn == _columns.length) {
-          _widthGrowthColumn = 0;
-          _widthGrowthOffset++;
-        }
-        if (!_manualResized.contains(i) && !hidden.contains(_columns[i].key)) {
-          visitedCells++;
+      // The target array survives geometry refits; a column-set change (e.g. a
+      // platform extension column landing between slices) must re-seed it from
+      // the refitted widths, which already include every measured maximum.
+      var next = _widthGrowthTarget;
+      if (next == null || next.length != _columns.length) {
+        next = _widthGrowthTarget = List<double>.of(_widths);
+      }
+      var row = _widthScanResumeRow(pool);
+      var overBudget = false;
+      while (row < pool.length && _columns.isNotEmpty && !overBudget) {
+        final item = pool[row];
+        for (var i = 0; i < _columns.length; i++) {
+          if (_manualResized.contains(i) || hidden.contains(_columns[i].key)) {
+            continue;
+          }
           final def = _columns[i];
-          final previous = _textMeasures[def.key]?.bodyRevision ?? 0;
-          final measure = _measureColumn(context, def, [row], textScaler);
-          if (measure.bodyRevision != previous) {
+          final measure =
+              _textMeasures[def.key] ??
+              _textMeasures.putIfAbsent(def.key, _ColumnTextMeasure.new);
+          if (measure.scannedRows > row) continue;
+          // Every accepted cell is visited exactly once, including a partial
+          // row at a slice boundary: the column cursor advances before any
+          // measurement work, so a resumed slice never repeats this cell.
+          measure.scannedRows = row + 1;
+          visitedCells++;
+          if (measure.seen.length > 4000) measure.seen.clear();
+          if (_measureCell(context, def, measure, item, textScaler)) {
             measuredCells++;
             _widthMeasuredThisFrame++;
-            _widthFrameReset ??= WidgetsBinding.instance.scheduleFrameCallback((
-              _,
-            ) {
-              _widthFrameReset = null;
-              _widthMeasuredThisFrame = 0;
-              if (mounted && _widthGrowthPending) {
-                _scheduleWidthGrowth();
-                WidgetsBinding.instance.scheduleFrame();
-              }
-            });
             final fitted = _fitColumnWidth(i, measure);
             if (fitted > next[i] + 0.5) {
               next[i] = fitted;
             }
           }
+          // Cached/manual cells do not spend shaping slots. The elapsed limit
+          // still applies to every visited cell, including cache-only scans.
+          if (measuredCells >= _widthMeasureCellBudget ||
+              _widthMeasuredThisFrame >= _widthMeasureCellBudget ||
+              clock.elapsed >= _widthMeasureTimeBudget) {
+            overBudget = true;
+            break;
+          }
         }
-        // Cached/manual cells do not spend shaping slots. The elapsed limit
-        // still applies to every visited cell, including cache-only scans.
-        if (measuredCells >= _widthMeasureCellBudget ||
-            _widthMeasuredThisFrame >= _widthMeasureCellBudget ||
-            clock.elapsed >= _widthMeasureTimeBudget) {
-          break;
-        }
+        row++;
       }
+      _widthFrameWork += clock.elapsed;
       debugMasterTableWorkObserver?.call('widthCells', visitedCells);
-      _widthGrowthPending =
-          _columns.isNotEmpty && _widthGrowthOffset < pool.length;
+      debugMasterTableWorkObserver?.call('widthShaped', measuredCells);
+      _widthGrowthPending = _columns.isNotEmpty && row < pool.length;
       if (_widthGrowthPending) {
-        if (_widthMeasuredThisFrame < _widthMeasureCellBudget) {
+        if (_widthMeasuredThisFrame < _widthMeasureCellBudget &&
+            _widthFrameWork < _widthFrameTimeBudget) {
           _scheduleWidthGrowth();
+        } else {
+          _parkWidthGrowthUntilFrame();
         }
       } else {
         // Publish one complete geometry update, while scanning still yields
@@ -4319,11 +4575,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
           setState(() => _widths = published);
           if (_fullscreen) _fsTick.value++;
         }
-        _widthScannedRows = pool.length;
-        _widthGrowthPool = null;
         _widthGrowthTarget = null;
-        _widthGrowthOffset = 0;
-        _widthGrowthColumn = 0;
+        // The finished pool is kept: the next data change revalidates its
+        // prefix against this list instead of re-walking every loaded row.
       }
     });
   }
@@ -6412,6 +6666,11 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       // A complete read that failed after showing progressive rows retires
       // its owner; the host may still hold that withdrawn prefix. It is not an
       // empty result: never fall through to the empty state (a forged 0 rows).
+      // A retired old owner with a replacement read already in flight is a
+      // query switch, not a failure: show a transitional notice without
+      // failure copy or retry while the new result is loading.
+      final switching =
+          widget.error == null && (widget.isLoading || widget.isRefreshing);
       bodyNotice = Padding(
         key: widget.errorKey,
         padding: const EdgeInsets.symmetric(
@@ -6428,11 +6687,19 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
               _platform.authorizationRevision,
               _platform.queryLifecycle,
             ),
-            title: tableReadStatusText(context, 'loadFailed'),
-            reason: tableReadStatusText(context, 'incompleteRead'),
-            impact: tableReadStatusText(context, 'loadImpact'),
-            guidance: tableReadStatusText(context, 'guidance'),
-            retry: widget.onRetry,
+            title: tableReadStatusText(
+              context,
+              switching ? 'switchingRead' : 'loadFailed',
+            ),
+            reason: switching
+                ? null
+                : tableReadStatusText(context, 'incompleteRead'),
+            impact: tableReadStatusText(
+              context,
+              switching ? 'switchingImpact' : 'loadImpact',
+            ),
+            guidance: switching ? null : tableReadStatusText(context, 'guidance'),
+            retry: switching ? null : widget.onRetry,
           ),
         ),
       );
@@ -6491,6 +6758,12 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
           debugMasterTableWorkObserver?.call('rowPlanRows', 0);
           return _FlatMasterRowPlan<T>(appendSource);
         }
+        if (identical(displayItems, _groupedPlanItems) &&
+            _samePlanGroups(_groupedPlanGroups, groups) &&
+            identical(bodyNotice, _groupedPlanNotice) &&
+            _expandedGroupsRevision == _groupedPlanExpansion) {
+          return _groupedPlanCache!;
+        }
         debugMasterTableWorkObserver?.call('rowPlanRows', displayItems.length);
         final result =
             <
@@ -6528,6 +6801,11 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         for (final it in displayItems) {
           result.add((header: false, group: null, item: it, notice: null));
         }
+        _groupedPlanCache = result;
+        _groupedPlanItems = displayItems;
+        _groupedPlanGroups = groups;
+        _groupedPlanNotice = bodyNotice;
+        _groupedPlanExpansion = _expandedGroupsRevision;
         return result;
       },
     );
@@ -7612,6 +7890,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         onTap: () {
           final willExpand = !expanded;
           setState(() {
+            _expandedGroupsRevision++;
             if (expanded) {
               _expandedGroups.remove(group.id);
             } else {
@@ -9849,11 +10128,17 @@ class _ViewportPinnedRow extends StatelessWidget {
 int debugMasterTableMeasureTextCount = 0;
 
 /// 一列的量宽缓存：表头宽、单元格最大宽、已量过的值(按字符串去重)。
+///
+/// [scannedRows] 是正确性游标：行池前缀中已逐格访问过的行数。行池换新时由
+/// 扫描片按行实例 identical 校验后钳制(见 _scheduleWidthGrowth)；几何修订
+/// (字号/内边距/显隐/列集合外的变化)不重扫已测前缀。[seen] 只是去重优化，
+/// 清空(>4000 上限)不再引发整列重排版。
 class _ColumnTextMeasure {
   int bodyRevision = 0;
   bool headerMeasured = false;
   double header = 0;
   double body = 0;
+  int scannedRows = 0;
   final Set<String> seen = <String>{};
 }
 

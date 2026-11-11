@@ -9,11 +9,14 @@ import '../../core/performance/ui_work_budget.dart';
 import '../../core/router/page_search_lifecycle.dart';
 import '../../core/router/route_transition_tracker.dart';
 import 'paged_read_intent.dart';
+import 'scoped_paged_read.dart' show PagedReadOwnerChanged;
 
 /// Expected retirement of a read is quiet; access rejection and malformed
 /// server data are still handled by the original owner/error contract.
+/// A retired old owner is never the current request's failure.
 bool isRetiredViewRead(Object error) =>
     error is UiWorkCancelled ||
+    error is PagedReadOwnerChanged ||
     error is ApiException && error.code == 'REQUEST_STALE';
 
 /// Foreground read demand, independent of accepted authorization/data ownership.

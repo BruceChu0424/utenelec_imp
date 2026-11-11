@@ -1,0 +1,7 @@
+*.log binary
+*.exit binary
+*.args binary
+*.json binary
+originals/*.xlsx binary
+baseline/** binary
+parse-suite/reports/** binary

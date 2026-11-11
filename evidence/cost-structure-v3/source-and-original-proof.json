@@ -1,0 +1,50 @@
+{
+  "prepOnly": true,
+  "product": "fafaaa665fd922754b66dc026246f0d94d21ae9e",
+  "tests": "ecd132c6a81c2ad1b083cc283673f670d2cb001f",
+  "baseline": "c4b84f5465de1e6fcb4617a847f523383d07da64",
+  "sourceFiles": [
+    {
+      "path": "server/src/main/java/com/uten/imp/common/files/document/SpreadsheetEvidenceReader.java",
+      "before": "e74a7a6b4909cc6054c438016124561c5e89b2d1",
+      "after": "4a4cb5457e80be97b44198c14965b4ca21ad2167"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/common/importing/ImportColumnGuard.java",
+      "before": "59669e6c633816b6d78c14b5258813a9a387a8e6",
+      "after": "8d846ae5e40c0c419aa1065f417ef4a44c754333"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/master/goods/costing/GoodsCostWorkbookParser.java",
+      "before": "eed7fdec78a8a65b3a6871a458c94943bdd91750",
+      "after": "6de33d99f7903c836496edf4bfc4f1a83ea67552"
+    }
+  ],
+  "originals": [
+    {
+      "path": "mixed-header-tail.xlsx",
+      "bytes": 3426,
+      "sha256": "4083d48ed841198a78cdf711a3ed902dd658a6281b2b899041b1b5b170e4c23d"
+    },
+    {
+      "path": "ordinary-control.xlsx",
+      "bytes": 3418,
+      "sha256": "368f94ff5d3862ddb9304791bf8e6d97891370525d626cd204d5a43eeb5de885"
+    },
+    {
+      "path": "reserved-name-control.xlsx",
+      "bytes": 3414,
+      "sha256": "82b0f764332052b0d1033727fec48a1fbfb3748ac994d3d69284c025a969148c"
+    },
+    {
+      "path": "subtotal-name-control.xlsx",
+      "bytes": 3431,
+      "sha256": "ed23c572ee1141ddbce0b8ad893ccbbe0038c65179e0db39590f8e1bf26942ea"
+    }
+  ],
+  "localRetainedDump": {
+    "path": "D:\\Projects\\uten_imp_worktrees\\feedback-cost-structure-v3-20261110\\evidence\\cost-structure-v3\\before-v2-seed.dump",
+    "bytes": 12840792,
+    "sha256": "8cc0d2825b18c18b1132d0fb00538091a23bb39ec6bfc733712a8b5eb6f1b1b7"
+  }
+}

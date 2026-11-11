@@ -8,6 +8,7 @@
 // - 输入框透明背景 + 焦点态品牌色边框
 // - 文字用 slate 三档建立层级
 
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -24,19 +25,21 @@ import 'brand_theme.dart';
 /// ThemeData here would hand MaterialApp a fresh (closure-carrying, never-==)
 /// theme every time and replay a 200ms theme transition across the app. The
 /// key is the full branding VALUE (normalized colors included) plus this
-/// builder's fixed brightness — not just `version`, which a restored database
-/// can reuse with different content. Bounded: real branding changes are rare,
-/// and a churn beyond a handful of values just rebuilds.
+/// builder's fixed brightness and the ambient target platform — the visual
+/// density and page transitions below are platform-dependent, and a process
+/// that changes [defaultTargetPlatform] (tests do) must never reuse another
+/// platform's instance. Bounded: real branding changes are rare, and a churn
+/// beyond a handful of values just rebuilds.
 const _themeMemoCapacity = 8;
-final Map<PlatformBranding, ThemeData> _lightThemeMemo = {};
+final Map<(PlatformBranding, TargetPlatform), ThemeData> _lightThemeMemo = {};
 
 ThemeData buildLightTheme({PlatformBranding? branding}) {
-  final key = branding ?? PlatformBranding.defaults;
+  final key = (branding ?? PlatformBranding.defaults, defaultTargetPlatform);
   final memoResult = _lightThemeMemo[key];
   if (memoResult != null) {
     return memoResult;
   }
-  final built = _buildLightTheme(key);
+  final built = _buildLightTheme(key.$1);
   if (_lightThemeMemo.length >= _themeMemoCapacity) {
     _lightThemeMemo.clear();
   }

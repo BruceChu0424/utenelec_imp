@@ -7,6 +7,8 @@
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, debugDefaultTargetPlatformOverride;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -85,6 +87,24 @@ void main() {
         reason: '品牌真变化必须重建主题');
     expect(identical(light1, buildLightTheme(branding: a)), isTrue,
         reason: '换回原值恢复缓存命中');
+  });
+
+  test('主题值键缓存按平台隔离: 密度与转场平台相关, 换平台不得复用他平台实例', () {
+    final branding = PlatformBranding.fromJson(_payload);
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    final windowsLight = buildLightTheme(branding: branding);
+    final windowsDark = buildDarkTheme(branding: branding);
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    final androidLight = buildLightTheme(branding: branding);
+    final androidDark = buildDarkTheme(branding: branding);
+    expect(identical(windowsLight, androidLight), isFalse,
+        reason: '同品牌值在不同目标平台必须各建各的(adaptivePlatformDensity/转场平台相关)');
+    expect(identical(windowsDark, androidDark), isFalse);
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    expect(identical(buildLightTheme(branding: branding), windowsLight), isTrue,
+        reason: '回到原平台恢复缓存命中');
+    expect(identical(buildDarkTheme(branding: branding), windowsDark), isTrue);
   });
 
   test('跨两个轮询周期等载荷: 快照零再通知(下游不重建)', () async {

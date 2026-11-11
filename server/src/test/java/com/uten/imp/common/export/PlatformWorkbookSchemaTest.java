@@ -28,6 +28,7 @@ class PlatformWorkbookSchemaTest {
             assertThat(json.path("scope").asText()).isEqualTo("master_goods");assertThat(json.path("sheets").size()).isEqualTo(2);
             assertThat(json.path("columnSets").size()).isEqualTo(1);
             for(var sheet:json.path("sheets"))assertThat(json.path("columnSets").get(sheet.path("columnSet").intValue()).get(0).path("definitionId").asText()).isEqualTo(id);
+            assertThat(PlatformWorkbookSchema.importRejection(book)).contains("尚不支持自定义列写回");
         }
     }
     @Test void evenOneCustomColumnNamedLikeABusinessFieldCarriesStableProvenance() throws Exception {
@@ -48,6 +49,29 @@ class PlatformWorkbookSchemaTest {
         for(String marker:List.of("{}","{\"schemaVersion\":2}","not-json","x".repeat(262_145))) {
             try(var book=new XSSFWorkbook()) {
                 book.getProperties().getCustomProperties().addProperty(PlatformWorkbookSchema.PROPERTY,marker);
+                assertThat(PlatformWorkbookSchema.importRejection(book)).contains("缺损、过大或版本不支持");
+            }
+        }
+    }
+    @Test void referencesAndColumnIdentitiesMustMatchTheActualWorkbook() throws Exception {
+        String id=UUID.randomUUID().toString();
+        byte[] bytes=new XlsxExportService().build(List.of(new ExportColumn("platform:"+id,"价格",ExportColumn.TEXT)),List.of(Map.of("platform:"+id,"12")));
+        for(String attack:List.of("sheet","index","label","duplicate-index","overflow-version","reference")) {
+            try(var book=new XSSFWorkbook(new ByteArrayInputStream(bytes))) {
+                var property=book.getProperties().getCustomProperties().getProperty(PlatformWorkbookSchema.PROPERTY);
+                var root=(com.fasterxml.jackson.databind.node.ObjectNode)new com.fasterxml.jackson.databind.ObjectMapper().readTree(property.getLpwstr());
+                var sheet=(com.fasterxml.jackson.databind.node.ObjectNode)root.path("sheets").get(0);
+                var columns=(com.fasterxml.jackson.databind.node.ArrayNode)root.path("columnSets").get(0);
+                var column=(com.fasterxml.jackson.databind.node.ObjectNode)columns.get(0);
+                switch(attack) {
+                    case "sheet"->sheet.put("name","不存在的表");
+                    case "index"->column.put("index",12);
+                    case "label"->column.put("label","另一个系统字段");
+                    case "duplicate-index"->columns.add(column.deepCopy());
+                    case "overflow-version"->root.put("schemaVersion",4294967297L);
+                    case "reference"->sheet.put("columnSet",20);
+                }
+                property.setLpwstr(root.toString());
                 assertThat(PlatformWorkbookSchema.importRejection(book)).contains("缺损、过大或版本不支持");
             }
         }

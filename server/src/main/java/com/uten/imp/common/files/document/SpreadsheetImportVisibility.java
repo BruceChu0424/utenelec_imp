@@ -12,6 +12,7 @@ public final class SpreadsheetImportVisibility {
         DocumentParseGate.run(deadline->{
             try(var workbook=WorkbookFactory.create(new ByteArrayInputStream(bytes))) {
                 com.uten.imp.common.importing.PlatformWorkbookSchema.requireImportable(workbook);
+                com.uten.imp.common.importing.ImportColumnGuard.requireSingleContentSheet(workbook);
                 for(int sheetIndex=0;sheetIndex<workbook.getNumberOfSheets();sheetIndex++) {
                     if(workbook.isSheetHidden(sheetIndex)||workbook.isSheetVeryHidden(sheetIndex))throw invalid("导入文件存在隐藏工作表，请先核对原文件");
                     var sheet=workbook.getSheetAt(sheetIndex);

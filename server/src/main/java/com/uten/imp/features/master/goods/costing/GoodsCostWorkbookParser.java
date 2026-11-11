@@ -31,6 +31,8 @@ public final class GoodsCostWorkbookParser {
                 row.cells().forEach(cell -> cells.put((int) new CellReference(cell.address()).getCol(), cell));
                 Map<String, Integer> candidate = header(row.cells());
                 if (candidate.containsKey("name") && (candidate.containsKey("qty") || candidate.containsKey("price"))) {
+                    if(row.cells().stream().anyMatch(cell->cell.formula()!=null))
+                        throw new ApiException(ErrorCode.VALIDATION_FAILED,sheet.name()+"!第"+row.number()+"行表头不能使用公式，请保留原始文字");
                     requireColumns(declared,populated,headerRow);
                     declared=row.cells().stream().map(cell -> new com.uten.imp.common.importing.ImportColumnGuard.Header(
                             (int)new CellReference(cell.address()).getCol(),cell.text(),field(cell.text()))).toList();
@@ -43,6 +45,12 @@ public final class GoodsCostWorkbookParser {
                 String title = row.cells().stream().map(SpreadsheetEvidenceReader.Value::text)
                         .filter(t -> t.matches(".*产品名称[：:].*")).findFirst().orElse(null);
                 if (title != null) {
+                    // A title is one literal cell on its own row. A material row
+                    // containing this phrase in an extra column is still data.
+                    long filled = row.cells().stream().filter(c -> !c.text().isBlank() || c.formula() != null).count();
+                    if (filled != 1 || !title.matches("^产品名称[：:].+") || row.cells().stream().anyMatch(c->c.formula()!=null))
+                        throw new ApiException(ErrorCode.VALIDATION_FAILED, sheet.name() + "!第" + row.number()
+                                + "行混有产品标题和明细数据，请分行保留，不能跳过本行");
                     requireColumns(declared,populated,headerRow);
                     declared=List.of();populated=new java.util.HashSet<>();
                     if (key != null && !rows.isEmpty()) blocks.add(new Block(key, label, sheet.name(), List.copyOf(rows)));
@@ -50,11 +58,20 @@ public final class GoodsCostWorkbookParser {
                     label = title.replaceFirst(".*产品名称[：:]", "").strip();
                     continue;
                 }
-                if (key == null) continue;
+                if (key == null) {
+                    if (row.cells().stream().anyMatch(c -> !c.text().isBlank() || c.formula() != null))
+                        throw new ApiException(ErrorCode.VALIDATION_FAILED, sheet.name() + "!第" + row.number()
+                                + "行未属于已识别的成本区块，请保留材料表头或独立产品标题后重新检测");
+                    continue;
+                }
                 for(var cell:row.cells())if(!cell.text().isBlank()||cell.formula()!=null)
                     populated.add((int)new CellReference(cell.address()).getCol());
                 String rowName = value(cells, fields.get("name"));
-                if (rowName.isBlank()) continue;
+                if (rowName.isBlank()) {
+                    if (row.cells().stream().anyMatch(c -> !c.text().isBlank() || c.formula() != null))
+                        throw new ApiException(ErrorCode.VALIDATION_FAILED, sheet.name() + "!第" + row.number() + "行有数据但材料名称为空，不能忽略");
+                    continue;
+                }
                 if (rowName.matches(".*(合计|小计|总计).*")) {
                     requireColumns(declared,populated,headerRow);
                     declared=List.of();populated=new java.util.HashSet<>();

@@ -15,6 +15,8 @@ analyzer:
     - ".local-tmp/**"
     # 本地构建证据和源码快照由原始 lib/test 覆盖分析，避免重复扫描。
     - "output/**"
+    # 验收证据目录按字节原样保存（含反例源码快照 .dart），路径引用不指向真实源，不参与分析。
+    - "evidence/**"
     - ".local-artifacts/**"
     - ".claude/**"
     # Upstream MIT runtime keeps its own lint conventions; app regressions cover the backport.

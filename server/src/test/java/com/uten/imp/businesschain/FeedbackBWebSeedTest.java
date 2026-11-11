@@ -38,8 +38,7 @@ import static org.assertj.core.api.Assertions.*;
 @EnabledIfEnvironmentVariable(named="UTEN_REMEDIATION_B_ALLOW_SEED",matches="(?i)true")
 @SpringBootTest(properties={"spring.profiles.active=dev","uten.audit.retention.enabled=false",
     "uten.reporting.materialized-view-refresh.enabled=false","uten.production.readiness-reconcile.enabled=false",
-    "uten.features.goods-owner-scope-enabled=false","uten.storage.uploads-enabled=false",
-    "uten.bootstrap.admin-login=gift-regression-bootstrap","uten.bootstrap.admin-password=GiftRegressionAdmin-1!"})
+    "uten.features.goods-owner-scope-enabled=false","uten.storage.uploads-enabled=false"})
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 @DirtiesContext(classMode=DirtiesContext.ClassMode.AFTER_CLASS)
 @TestExecutionListeners(listeners=FeedbackBWebSeedTest.Cleanup.class,
@@ -60,6 +59,12 @@ class FeedbackBWebSeedTest {
                 "uten.crypto.pgp-master-key","UTEN_REMEDIATION_B_PGP_MASTER_KEY").entrySet()) {
             String value=System.getenv(entry.getValue());
             if(value==null||value.length()<32)throw new IllegalStateException("Explicit shared runtime crypto configuration required: "+entry.getKey());
+            registry.add(entry.getKey(),()->value);
+        }
+        for(var entry:Map.of("uten.bootstrap.admin-login","UTEN_REMEDIATION_B_BOOTSTRAP_LOGIN",
+                "uten.bootstrap.admin-password","UTEN_REMEDIATION_B_BOOTSTRAP_PASSWORD").entrySet()) {
+            String value=System.getenv(entry.getValue());
+            if(value==null||value.isBlank())throw new IllegalStateException("Explicit shared runtime bootstrap configuration required: "+entry.getKey());
             registry.add(entry.getKey(),()->value);
         }
     }
@@ -95,7 +100,9 @@ class FeedbackBWebSeedTest {
     @Test void seedOrdinaryWebReturnAndOrderScenarios() throws Exception {
         for(var entry:Map.of("uten.jwt.secret","UTEN_REMEDIATION_B_JWT_SECRET",
                 "uten.crypto.hmac-key","UTEN_REMEDIATION_B_HMAC_KEY",
-                "uten.crypto.pgp-master-key","UTEN_REMEDIATION_B_PGP_MASTER_KEY").entrySet())
+                "uten.crypto.pgp-master-key","UTEN_REMEDIATION_B_PGP_MASTER_KEY",
+                "uten.bootstrap.admin-login","UTEN_REMEDIATION_B_BOOTSTRAP_LOGIN",
+                "uten.bootstrap.admin-password","UTEN_REMEDIATION_B_BOOTSTRAP_PASSWORD").entrySet())
             if(!Objects.equals(System.getenv(entry.getValue()),seedEnvironment.getProperty(entry.getKey())))
                 throw new IllegalStateException("Seed/runtime crypto configuration mismatch: "+entry.getKey());
         String password=System.getenv("UTEN_REMEDIATION_B_ACCOUNT_PASSWORD");

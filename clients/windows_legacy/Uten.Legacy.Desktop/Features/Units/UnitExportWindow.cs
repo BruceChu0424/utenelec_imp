@@ -57,6 +57,7 @@ namespace Uten.Legacy.Desktop.Features.Units
         private CancellationTokenSource transfer;
         private JobRow currentJob;
         private string pendingLocalId, pendingBody, pendingJobId;
+        private bool pendingSelected;
         private bool ended, retired, busy, loading, available, capabilityKnown, closeAfterBusy;
         private int selectionVersion;
         private string highlightedId;
@@ -67,7 +68,6 @@ namespace Uten.Legacy.Desktop.Features.Units
             this.session = session; service = new UnitExportService(session); this.query = query; this.projection = projection;
             this.selectedIds = selectedIds == null ? null : Array.AsReadOnly(selectedIds.ToArray());
             this.selectedOnly = selectedOnly && this.selectedIds?.Count > 0;
-            if (this.selectedOnly) UnitExportService.CreateBody(Guid.NewGuid().ToString("D"), query, projection, this.selectedIds);
             this.picker = picker ?? new NativeWorkbookSavePicker();
             owner = sourceOwner ?? throw new ArgumentNullException(nameof(sourceOwner));
             mutationOwner = session.CaptureMutationOwner();
@@ -90,7 +90,7 @@ namespace Uten.Legacy.Desktop.Features.Units
             Body.Children.Add(new TextBlock { Text = "Excel 打开密码（可选，仅在下载时使用）", Margin = new Thickness(0, Space("S12"), 0, Space("S6")) });
             Body.Children.Add(password); saved.Margin = new Thickness(0, Space("S12"), 0, 0); Body.Children.Add(saved);
             create = ActionButton("生成当前筛选", () => { _ = CreateAsync(false); }, primary: true);
-            refresh = ActionButton("刷新", () => { _ = ReloadAsync(); });
+            refresh = ActionButton("刷新", () => { _ = RefreshAsync(); });
             reconcile = ActionButton("核对原任务", () => { _ = ReconcileAsync(); });
             confirmOriginal = ActionButton("按原任务再次确认", () => { _ = CreateAsync(true); });
             cancelJob = ActionButton("取消任务", () => { _ = CancelJobAsync(); });
@@ -111,7 +111,7 @@ namespace Uten.Legacy.Desktop.Features.Units
         }
         private static string StateText(string state)
         {
-            switch (state) { case "PENDING": return "排队中"; case "RUNNING": return "生成中"; case "SUCCEEDED": return "已生成";
+            switch (state) { case "PENDING": return "排队中"; case "RUNNING": return "生成中"; case "WAITING_PRECISION": return "待确认精度"; case "SUCCEEDED": return "已生成";
                 case "FAILED": return "失败"; case "CANCELLED": return "已取消"; case "EXPIRED": return "已过期"; default: return "待核对"; }
         }
         private async Task LoadAsync()
@@ -174,6 +174,11 @@ namespace Uten.Legacy.Desktop.Features.Units
             catch (Exception) { if (Current) ShowStatus("读取导出任务失败，原任务和待核对内容仍保留。", true); }
             finally { loading = false; if (!ended) UpdateActions(); }
         }
+        private async Task RefreshAsync()
+        {
+            if (!Current || busy || loading) return;
+            using (UtenBusyDialog.Show(this, "正在读取原导出任务")) await ReloadAsync();
+        }
         private void UpdateActions()
         {
             if (create == null) return;
@@ -187,8 +192,8 @@ namespace Uten.Legacy.Desktop.Features.Units
             create.IsEnabled = ready && rangeSupported && capabilityKnown && available && !selectedUnknown && pendingLocalId == null;
             refresh.IsEnabled = ready && capabilityKnown && available;
             reconcile.IsEnabled = ready && selectedUnknown;
-            string originalBody=currentJob?.Pending?.BodyJson??pendingBody;
-            confirmOriginal.IsEnabled = ready && available && selectedUnknown && (selectionVersion>=1||originalBody!=null&&!UnitExportService.RequiresSelection(originalBody));
+            bool originalSelected = currentJob?.Pending?.HasExportSelection ?? pendingSelected;
+            confirmOriginal.IsEnabled = ready && available && selectedUnknown && (selectionVersion>=1 || !originalSelected);
             cancelJob.IsEnabled = ready && currentJob?.Job != null && (currentJob.Job.Status == "PENDING" || currentJob.Job.Status == "RUNNING") && !currentJob.Job.CancelRequested;
             download.IsEnabled = ready && rangeSupported && capabilityKnown && (!available || currentJob?.Job?.Status == "SUCCEEDED" && currentJob.Pending == null);
             password.IsEnabled = ready; jobs.IsEnabled = ready;
@@ -210,14 +215,21 @@ namespace Uten.Legacy.Desktop.Features.Units
             {
                 if (!create.IsEnabled) return;
                 jobId = Guid.NewGuid().ToString("D");
-                try { body = UnitExportService.CreateBody(jobId, query, projection, CurrentSelectedIds); }
-                catch(ApiException error) { HandleError(error); return; }
+                body = null;
             }
             busy = true; UpdateActions();
             try
             {
-                if(UnitExportService.RequiresSelection(body))await RefreshSelectedCapabilityAsync(true);
-                var request = service.PrepareSubmit(Guid.NewGuid().ToString("D"), body, owner);
+                using (var waiting = UtenBusyDialog.Show(this, "正在保全导出范围并提交原任务"))
+                {
+                var selected = CurrentSelectedIds;
+                if (body == null) body = await Task.Run(() => UnitExportService.CreateBody(jobId, query, projection, selected), lifetime.Token);
+                if (!Current) return;
+                bool hasSelection = sameOriginal ? currentJob?.Pending?.HasExportSelection ?? pendingSelected : selected != null;
+                if (hasSelection) await RefreshSelectedCapabilityAsync(true);
+                var request = await Task.Run(() => service.PrepareSubmit(Guid.NewGuid().ToString("D"), body, owner), lifetime.Token);
+                if (!Current) return;
+                pendingSelected = request.HasExportSelection;
                 pendingBody = body; pendingJobId = jobId; pendingLocalId = request.RequestId;
                 highlightedId = jobId;
                 var result = await session.MutateAsync(request, lifetime.Token);
@@ -233,6 +245,7 @@ namespace Uten.Legacy.Desktop.Features.Units
                 {
                     pendingLocalId = pendingBody = pendingJobId = null;
                     ShowStatus(result.Error?.UserMessage ?? "本次未确认创建导出任务。", true);
+                }
                 }
             }
             catch (ApiException error) { HandleError(error); }
@@ -251,6 +264,8 @@ namespace Uten.Legacy.Desktop.Features.Units
             busy = true; UpdateActions();
             try
             {
+                using (UtenBusyDialog.Show(this, "正在只读核对原任务"))
+                {
                 var result = await session.ReconcileUnitExportAsync(requestId, mutationOwner, lifetime.Token);
                 if (!Current) return;
                 if (result.Outcome == MutationOutcome.Confirmed)
@@ -259,6 +274,7 @@ namespace Uten.Legacy.Desktop.Features.Units
                     ShowStatus("服务器原请求与本机冻结条件一致，已核对原任务。" + (result.IsDurablyRecorded ? "" : "本机终态尚未完整保存。"), !result.IsDurablyRecorded);
                 }
                 else ShowStatus("尚未获得与原条件一致的创建凭据，原结果仍待核对；不会凭同名或同状态认领。", true);
+                }
             }
             catch (ApiException error) { HandleError(error); }
             catch (OperationCanceledException) { }
@@ -270,10 +286,13 @@ namespace Uten.Legacy.Desktop.Features.Units
             string id = currentJob.Id; busy = true; UpdateActions();
             try
             {
+                using (UtenBusyDialog.Show(this, "正在提交原任务取消请求"))
+                {
                 var request = service.PrepareCancel(Guid.NewGuid().ToString("D"), id, owner);
                 var result = await session.MutateAsync(request, lifetime.Token);
                 if (Current) ShowStatus(result.Outcome == MutationOutcome.Confirmed ? "已获得任务当前状态；取消是否完成以任务状态为准。"
                     : result.Error?.UserMessage ?? "取消结果待核对，请先刷新原任务，不会自动重发。", result.Outcome != MutationOutcome.Confirmed);
+                }
             }
             catch (ApiException error) { HandleError(error); }
             catch (OperationCanceledException) { }
@@ -285,12 +304,15 @@ namespace Uten.Legacy.Desktop.Features.Units
             busy = true; UpdateActions(); string secret = password.Password; bool fromJob=available;
             try
             {
-                if(selectedOnly)await RefreshSelectedCapabilityAsync(fromJob);
-                if (fromJob) await service.AuthorizeDownloadAsync(currentJob.Id, owner, lifetime.Token);
+                using (UtenBusyDialog.Show(this, "正在核对导出范围与下载权限"))
+                {
+                    if(selectedOnly)await RefreshSelectedCapabilityAsync(fromJob);
+                    if (fromJob) await service.AuthorizeDownloadAsync(currentJob.Id, owner, lifetime.Token);
+                }
                 if (!Current) return;
                 string destination = picker.Choose(this);
                 if (destination == null || !Current) return;
-                if(selectedOnly)await RefreshSelectedCapabilityAsync(fromJob);
+                if(selectedOnly) using (UtenBusyDialog.Show(this, "正在核对选中范围")) await RefreshSelectedCapabilityAsync(fromJob);
                 transfer = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token); UpdateActions();
                 // 2026-11-09 与 Flutter「统一进度弹窗」同步：下载全程持有一块进度弹窗。
                 // 服务端不回总长（分块传输总量未知）→ 扫动条 + 已收字节详情，不伪造

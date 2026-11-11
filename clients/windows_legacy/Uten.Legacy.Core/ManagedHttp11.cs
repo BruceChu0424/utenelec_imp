@@ -91,7 +91,7 @@ namespace Uten.Legacy.Core
             if (!uri.IsDefaultPort) host += ":" + uri.Port.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
             var fields = new List<Field>();
-            var requestBudget = MutationWirePermit.From(request)?.MaximumRequestBytes ?? MaxRequestBytes;
+            var requestBudget = MutationWirePermit.From(request)?.MaximumRequestBytes ?? (HttpResponseSink.FromRequest(request)?.Owns(request) == true ? HttpResponseSink.FromRequest(request).MaximumRequestBytes : MaxRequestBytes);
             var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var header in request.Headers)
             {

@@ -19,6 +19,16 @@ namespace Uten.Legacy.Tests
         {
             try
             {
+                if(args.Length==1&&args[0]=="--large-unit-export-contracts")
+                {
+                    int failures=0;
+                    try { Uten.Legacy.Core.Tests.UnitExportMutationChecks.RunLargeSelection(); } catch(Exception error) { Console.WriteLine(error.Message);failures++; }
+                    try { Uten.Legacy.Core.Tests.UnitExportDownloadChecks.LargeSelectedLegacyRead().GetAwaiter().GetResult(); } catch(Exception error) { Console.WriteLine(error.Message);failures++; }
+                    try { UnitExportUiChecks.RunLargeSelectionBuilder(); } catch(Exception error) { Console.WriteLine(error.Message);failures++; }
+                    try { RunUi(UnitExportUiChecks.RunLargeSelectionUi); } catch(Exception error) { Console.WriteLine(error.Message);failures++; }
+                    if(failures!=0)return 1;
+                    Console.WriteLine("PASS large selected output original body/DPAPI/receipt; controlled transport, not PostgreSQL; process="+(Environment.Is64BitProcess?"x64":"x86"));return 0;
+                }
                 if (args.Length == 1 && args[0] == "--busy-dialog-progress-contracts")
                 {
                     int progress = RunUi(BusyDialogProgressChecks.Run);

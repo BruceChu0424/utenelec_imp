@@ -26,6 +26,39 @@ namespace Uten.Legacy.Core.Tests
             CancellationAndOwnerRetirement().GetAwaiter().GetResult();
             SharedCodecBoundedFraming();
             SinkMethodAndPathAreBound().GetAwaiter().GetResult();
+            LargeSelectedLegacyRead().GetAwaiter().GetResult();
+        }
+        public static async Task LargeSelectedLegacyRead()
+        {
+            foreach (int count in new[] { 1001, 50001 })
+            using (var fixture = new Fixture())
+            {
+                await fixture.Login();
+                var ids = Enumerable.Range(1, count).Select(number => new Guid(number, 0, 0, new byte[8]).ToString("D")).ToArray();
+                await fixture.Session.DownloadLegacyUnitExportAsync(new Dictionary<string,string> { ["keyword"] = "exact-large-output" }, null, null,
+                    fixture.Output, fixture.Session.CaptureMutationOwner(), CancellationToken.None, selectedIds: ids, selectionVersion: 1);
+                var selected = (object[])JsonValue.ParseObject(fixture.RequestBody, UnitExportBudget.RequestBytes)["selectedIds"];
+                True(ids.SequenceEqual(selected.Cast<string>()), "legacy selected read retains every exact ID");
+                True(fixture.State.Store.ListJournal(fixture.Session.CaptureMutationOwner()).Count == 0, "legacy read cannot become business write or password journal");
+                using (var request = new HttpRequestMessage(HttpMethod.Post, "https://export.company.test/api/master/units/export?keyword=exact-large-output"))
+                using (var output = new MemoryStream())
+                using (var wire = new Duplex(Encoding.ASCII.GetBytes("HTTP/1.1 200 OK\r\nContent-Length: 8\r\n\r\n12345678")))
+                {
+                    request.Content = new StringContent(fixture.RequestBody, Encoding.UTF8, "application/json");
+                    var sink = HttpResponseSink.BoundedExport(output,64,1024,request.RequestUri.AbsolutePath,request.RequestUri.Query);
+                    request.Properties[HttpResponseSink.RequestProperty] = sink;
+                    using (ManagedHttp11.SendAndReceive(wire,request,64,CancellationToken.None,responseSink:sink))
+                        True(sink.Completed, "legacy selection crosses16KiB through owned shared HTTP codec");
+                }
+                using (var unrelated = new HttpRequestMessage(HttpMethod.Post, "https://export.company.test/api/auth/login"))
+                using (var wire = new Duplex(new byte[0]))
+                {
+                    unrelated.Content = new StringContent(fixture.RequestBody,Encoding.UTF8,"application/json");
+                    try { using(ManagedHttp11.SendAndReceive(wire,unrelated,1024,CancellationToken.None)) { } throw new InvalidOperationException("Unrelated request budget expanded"); }
+                    catch(HttpRequestException) { }
+                }
+                Console.WriteLine("PASS explicit legacy selected export/read/owned HTTP request budget; selected="+count+"; synthetic workbook, not PG export");
+            }
         }
         private static async Task CompleteArtifactAndPrivatePassword()
         {

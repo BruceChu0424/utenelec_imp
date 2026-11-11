@@ -49,6 +49,8 @@ namespace Uten.Legacy.Core
                 }
                 if (mutationIntents.Count >= MaximumRetainedMutationIntents)
                     throw new ApiException("MUTATION_JOURNAL_FULL", "本次进程保留的提交记录已到上限；请先核对待确认操作并保存记录，不能丢弃记录后继续自动提交。");
+                if (IsUnitExportMutation(candidate.Action) && mutationIntents.Values.Where(value => IsUnitExportMutation(value.Action)).Sum(value => (long)Encoding.UTF8.GetByteCount(value.BodyJson ?? "")) + Encoding.UTF8.GetByteCount(bodyJson ?? "") > UnitExportBudget.RetainedRequestBytes)
+                    throw new ApiException("MUTATION_JOURNAL_FULL", "本次进程保留的导出请求已到内存预算；原始票据继续保留，请先核对已有任务。");
                 mutationIntents.Add(candidate.RequestId, candidate);
                 return candidate;
             }

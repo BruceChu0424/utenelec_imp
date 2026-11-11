@@ -44,7 +44,7 @@
     <Compile Include="MutationJsonTree.cs" />
     <Compile Include="UnitCommandContracts.cs" />
     <Compile Include="UnitHistoryMutationContract.cs" />
-    <Compile Include="UnitExportMutationContract.cs" />
+    <Compile Include="UnitExportBudget.cs"/><Compile Include="UnitExportMutationContract.cs" />
     <Compile Include="UnitExportReceiptCoordinator.cs" />
     <Compile Include="MutationReviewLease.cs" />
     <Compile Include="UnitPlatformRead.cs" />

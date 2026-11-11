@@ -35,7 +35,7 @@ namespace Uten.Legacy.Core
             if (entry.State == MutationJournalState.Sending)
                 return ExportUnverified(request, "EXPORT_SUBMISSION_IN_PROGRESS", "原提交仍在处理，请等待原操作完成核对；不会并发重发。", false);
             string json;
-            try { json = await GetAsync(request.ReceiptPath, ct).ConfigureAwait(false); }
+            try { json = await GetUnitExportJobJsonAsync(request.ResourceId, ct).ConfigureAwait(false); }
             catch (ApiException error)
             {
                 RequireExportReceiptOwner(owner);
@@ -89,7 +89,7 @@ namespace Uten.Legacy.Core
                 if (entry.State != MutationJournalState.Unknown) throw new InvalidDataException("原提交尚未处于可核对的未知状态。");
                 records[entry.RequestId] = new MutationJournalRecord(original, MutationJournalState.Confirmed, entry.CreatedAtUtc, DateTime.UtcNow,
                     200, null, original.ResourceId, entry.ReviewNote, verifiedJobJson, true);
-                WriteDocument(original.Owner, "mutations", records.Values.Select(JournalValue).ToArray());
+                WriteJournal(original.Owner, records, original.RequestId);
             }
         }
     }

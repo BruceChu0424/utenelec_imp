@@ -12,6 +12,7 @@ namespace Uten.Legacy.Core
         internal readonly Stream Destination;
         internal readonly long ExpectedBytes;
         internal readonly int MaximumBytes;
+        internal int MaximumRequestBytes { get { return ExpectedMethod == "POST" && ExpectedPath == "/api/master/units/export" ? UnitExportBudget.RequestBytes : 16384; } }
         internal readonly int ErrorResponseBytes;
         internal readonly string ExpectedPath;
         internal readonly string ExpectedQuery;

@@ -70,10 +70,10 @@ namespace Uten.Legacy.Core
         public string ExpectedVersionJson { get; private set; }
         public bool HasMeasurementDimension { get; private set; }
         public bool HasMassUnitCode { get; private set; }
+        public bool HasExportSelection { get; internal set; }
         public MutationResponseKind ResponseKind { get; internal set; }
         public ReadOnlyCollection<string> BatchResourceIds { get; internal set; } = new List<string>().AsReadOnly();
-        public int MaximumBodyBytes { get { return Action == MutationAction.UnitPlatformValuesWrite ? 524288 : Action == MutationAction.UnitBatchStatus || Action == MutationAction.UnitBatchDelete
-            || Action == MutationAction.UnitExportSubmit ? 65536 : 16384; } }
+        public int MaximumBodyBytes { get { return Action == MutationAction.UnitExportSubmit ? UnitExportBudget.RequestBytes : Action == MutationAction.UnitPlatformValuesWrite ? 524288 : Action == MutationAction.UnitBatchStatus || Action == MutationAction.UnitBatchDelete ? 65536 : 16384; } }
         public string ExpectedHead { get; internal set; }
         public string OriginDraftId { get; private set; }
         public long? OriginDraftRevision { get; private set; }

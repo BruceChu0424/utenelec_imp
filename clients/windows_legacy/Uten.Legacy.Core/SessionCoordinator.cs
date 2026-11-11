@@ -207,6 +207,13 @@ namespace Uten.Legacy.Core
             { throw new ApiException("LOGOUT_PENDING", "已退出本机；服务器注销已保存在待处理队列，恢复连接后重试。", isSubmissionUnknown: true); }
         }
 
+        public async Task<string> GetUnitExportJobJsonAsync(string jobId, CancellationToken cancellationToken)
+        {
+            jobId = CanonicalCommandId(jobId);
+            return (await ReadReplyAsync(HttpMethod.Get, "report-export-jobs/" + jobId, null, cancellationToken,
+                "unit:export", unitExportJob: true).ConfigureAwait(false)).Text;
+        }
+
         public Task<string> GetAsync(string relativePath, CancellationToken cancellationToken)
         { return ReadJsonAsync(HttpMethod.Get, relativePath, null, cancellationToken); }
 
@@ -259,7 +266,7 @@ namespace Uten.Legacy.Core
             return (await ReadReplyAsync(method, relativePath, body, cancellationToken, requiredPermission, automatic).ConfigureAwait(false)).Text;
         }
 
-        private async Task<Reply> ReadReplyAsync(HttpMethod method, string relativePath, object body, CancellationToken cancellationToken, string requiredPermission = null, bool automatic = false, bool completeSummary = false)
+        private async Task<Reply> ReadReplyAsync(HttpMethod method, string relativePath, object body, CancellationToken cancellationToken, string requiredPermission = null, bool automatic = false, bool completeSummary = false, bool unitExportJob = false)
         {
             Scope scope;
             ReadRequest reader;
@@ -277,14 +284,14 @@ namespace Uten.Legacy.Core
                     // A reader's retirement/close must not cancel a shared credential refresh.
                     var owned = await EnsureAccessAsync(scope, false, null, cancellationToken, automatic).ConfigureAwait(false);
                     RequireReader(scope, reader);
-                    var response = await SendAsync(scope, method, relativePath, body, owned.AccessToken, readWait.Token, idempotentRead: true, automatic: automatic, completeSummary: completeSummary).ConfigureAwait(false);
+                    var response = await SendAsync(scope, method, relativePath, body, owned.AccessToken, readWait.Token, idempotentRead: true, automatic: automatic, completeSummary: completeSummary, unitExportJob: unitExportJob).ConfigureAwait(false);
                     RequireReader(scope, reader);
                     var failure = ErrorFrom(response, false);
                     if (failure != null && failure.StatusCode == 401 && failure.HasResponseCode && failure.Code == "UNAUTHORIZED")
                     {
                         owned = await EnsureAccessAsync(scope, true, owned, cancellationToken, automatic).ConfigureAwait(false);
                         RequireReader(scope, reader);
-                        response = await SendAsync(scope, method, relativePath, body, owned.AccessToken, readWait.Token, idempotentRead: true, automatic: automatic, completeSummary: completeSummary).ConfigureAwait(false);
+                        response = await SendAsync(scope, method, relativePath, body, owned.AccessToken, readWait.Token, idempotentRead: true, automatic: automatic, completeSummary: completeSummary, unitExportJob: unitExportJob).ConfigureAwait(false);
                         RequireReader(scope, reader);
                         failure = ErrorFrom(response, false);
                     }
@@ -548,7 +555,7 @@ namespace Uten.Legacy.Core
         }
 
         private async Task<Reply> SendAsync(Scope scope, HttpMethod method, string path, object body, string bearer,
-            CancellationToken cancellationToken, string rawBodyJson = null, MutationWirePermit mutationPermit = null, bool idempotentRead = false, bool automatic = false, bool completeSummary = false)
+            CancellationToken cancellationToken, string rawBodyJson = null, MutationWirePermit mutationPermit = null, bool idempotentRead = false, bool automatic = false, bool completeSummary = false, bool unitExportJob = false)
         {
             RequireScope(scope);
             cancellationToken.ThrowIfCancellationRequested();
@@ -580,6 +587,12 @@ namespace Uten.Legacy.Core
                     request.Content = new StringContent(json, Encoding.UTF8, "application/json");
                 }
                 if (mutationPermit != null) mutationPermit.Attach(request);
+                if (unitExportJob)
+                {
+                    if (method != HttpMethod.Get || !idempotentRead || mutationPermit != null
+                        || !System.Text.RegularExpressions.Regex.IsMatch(path, "^report-export-jobs/[0-9a-f-]{36}$")) throw new InvalidOperationException();
+                    new UnitExportReplyPermit(uri).Attach(request);
+                }
                 try
                 {
                     RequireScope(scope);
@@ -616,7 +629,8 @@ namespace Uten.Legacy.Core
                             return new Reply(status, complete.CompletionJson, readScopeHeaders, complete);
                         }
                         if (response.Content == null) return new Reply(status, "", readScopeHeaders);
-                        if (response.Content.Headers.ContentLength > configuration.MaxResponseBytes)
+                        var responseLimit = status >= 200 && status < 300 ? UnitExportReplyPermit.ResponseLimit(request, configuration.MaxResponseBytes) : configuration.MaxResponseBytes;
+                        if (response.Content.Headers.ContentLength > responseLimit)
                             throw new ApiException("RESPONSE_TOO_LARGE", "服务器返回的内容超出读取上限。", status, write);
                         // A completed credential exchange can arrive after logout even when the handler
                         // ignores cancellation. Read its bounded body independently, then CAS/queue it;
@@ -633,7 +647,7 @@ namespace Uten.Legacy.Core
                             int read;
                             while ((read = await stream.ReadAsync(buffer, 0, buffer.Length, readCancellation).ConfigureAwait(false)) != 0)
                             {
-                                if (output.Length + read > configuration.MaxResponseBytes)
+                                if (output.Length + read > responseLimit)
                                     throw new ApiException("RESPONSE_TOO_LARGE", "服务器返回的内容超出读取上限。", status, write);
                                 output.Write(buffer, 0, read);
                             }

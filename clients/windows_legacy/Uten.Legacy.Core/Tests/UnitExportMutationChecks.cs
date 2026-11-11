@@ -33,6 +33,154 @@ namespace Uten.Legacy.Core.Tests
             PureMetadataParserDoesNotTreatPresenceAsProof();
             SelectedProofCannotExpandToAll().GetAwaiter().GetResult();
         }
+        public static int RunLargeSelection()
+        {
+            int checks=0;var failures=new List<string>();
+            foreach(int count in new[]{1000,1001,50001})
+            {
+                try { LargeSelectionRoundTrip(count).GetAwaiter().GetResult();checks++; }
+                catch(Exception error) { Console.WriteLine("FAIL unit export complete original ticket; selected="+count+"; type="+error.GetType().Name+"; code="+(error as ApiException)?.Code);failures.Add(count.ToString()); }
+            }
+            if(failures.Count!=0)throw new InvalidOperationException("Large output request/receipt/recovery failed for selected="+String.Join(",",failures));
+            LargeSelectionRoundTrip(50001, true).GetAwaiter().GetResult(); checks++;
+            LargeProofAndOrdinaryBudgetIsolation().GetAwaiter().GetResult(); checks++;
+            LegacyOriginalEnvelopeStaysOriginal().GetAwaiter().GetResult(); checks++;
+            RequestByteBoundaryAndRetentionQuota().GetAwaiter().GetResult(); checks++;
+            ManagedHttp11Checks.Run();
+            return checks;
+        }
+        private static string LargeSubmitBody(int count, bool expandedReceipt = false)
+        {
+            var ids=Enumerable.Range(1,count).Select(number=>new Guid(number,0,0,new byte[8]).ToString("D")).ToArray();
+            string selected = JsonValue.Serialize(ids);
+            // Legal original whitespace crosses 2MiB and must survive exact receipt matching.
+            if (expandedReceipt) selected = selected.Replace(",", ", ");
+            return SubmitBody().Replace("\"parameters\":{","\"parameters\":{\"selectedIds\":"+JsonValue.Serialize(selected)+",");
+        }
+        private static async Task LargeSelectionRoundTrip(int count, bool expandedReceipt = false)
+        {
+            string body=LargeSubmitBody(count,expandedReceipt),accepted=null,localId;bool failComplete=false;int creations=0;
+            var evidence=Environment.GetEnvironmentVariable("UTEN_EXPORT_BUDGET_EVIDENCE");
+            if(!String.IsNullOrEmpty(evidence)) { Directory.CreateDirectory(evidence);File.WriteAllText(Path.Combine(evidence,"selected-"+count+(expandedReceipt?"-spaced":"")+"-original.json"),body,new UTF8Encoding(false)); }
+            using(var state=new BusinessStateTestFixture(point=> { if(failComplete&&point.EndsWith(":before-replace",StringComparison.Ordinal))throw new IOException("fixture interruption after accepted output"); }))
+            {
+                using(var first=new Fixture(new DpapiBusinessStateStore(state.RootDirectory,point=> { if(failComplete&&point.EndsWith(":before-replace",StringComparison.Ordinal))throw new IOException("fixture interruption after accepted output"); })))
+                {
+                    await first.Login();var request=first.Submit(body);localId=request.RequestId;
+                    first.Post=async(message,ct)=> { accepted=await message.Content.ReadAsStringAsync();Equal(body,accepted,"wire keeps exact large output body"); using(var response=WireRoundTrip(message,View(body))) { Equal(View(body),await response.Content.ReadAsStringAsync(),"managed HTTP complete creation receipt"); } creations++;failComplete=true;throw new HttpRequestException("fixture accepted, reply lost"); };
+                    var unknown=await first.Session.MutateAsync(request,CancellationToken.None);
+                    True(unknown.Outcome==MutationOutcome.Unknown,"lost output response remains unknown");
+                    Equal(1,first.Posts,"one actual controlled handler submit");
+                    True(!unknown.IsDurablyRecorded,"interrupted completion does not claim durable terminal state");
+                    first.Store.Dispose();
+                }
+                failComplete=false;
+                using(var resumed=new Fixture(new DpapiBusinessStateStore(state.RootDirectory)))
+                {
+                    await resumed.Login();var owner=resumed.Owner();
+                    var original=await resumed.Session.LoadMutationJournalAsync(localId,owner,CancellationToken.None);
+                    True(original.State==MutationJournalState.Unknown,"abandoned sending recovers as unknown");Equal(body,original.BodyJson,"restart keeps exact original large selection");
+                    resumed.Get=(message,ct)=>Ready(WireRoundTrip(message,View(accepted,"RUNNING")));
+                    var result=await resumed.Session.ReconcileUnitExportAsync(localId,owner,CancellationToken.None);
+                    True(result.Outcome==MutationOutcome.Confirmed&&result.ConfirmedByReceiptQuery&&result.IsDurablyRecorded,"verified large receipt persists without resubmission");
+                    Equal(0,resumed.Posts,"receipt recovery performs no write replay");Equal(1,creations,"one controlled server acceptance");
+                    Equal(body,(await resumed.Session.LoadMutationJournalAsync(localId,owner,CancellationToken.None)).BodyJson,"receipt never replaces original raw body");
+                    resumed.Store.Dispose();
+                }
+                Console.WriteLine("PASS large unit export request/DPAPI interruption/original receipt; selected="+count+"; requestBytes="+Encoding.UTF8.GetByteCount(body)+"; actualCreations="+creations+"; not real database IDs");
+            }
+        }
+        private static async Task LargeProofAndOrdinaryBudgetIsolation()
+        {
+            var body = LargeSubmitBody(50001,true);
+            using (var f = new Fixture())
+            {
+                await f.Login(); var request = f.Submit(body);
+                f.Post = (message, ct) => { throw new HttpRequestException("fixture lost after accept"); };
+                await f.Session.MutateAsync(request, CancellationToken.None);
+                f.Get = (message, ct) => Ready(Json(View(body.Replace("0000c351-", "0000c352-"))));
+                Equal(MutationOutcome.Unknown, (await f.Session.ReconcileUnitExportAsync(request.RequestId, f.Owner(), CancellationToken.None)).Outcome, "large altered selection cannot settle original");
+                Equal(body, f.Store.LoadJournal(f.Owner(), request.RequestId).BodyJson, "large altered proof keeps exact original");
+                f.Get = (message, ct) => Ready(Json(View(body)));
+                Equal(MutationOutcome.Confirmed, (await f.Session.ReconcileUnitExportAsync(request.RequestId, f.Owner(), CancellationToken.None)).Outcome, "matching large proof later confirms only original");
+                await ExpectCode("RESPONSE_TOO_LARGE", () => f.Session.GetAsync("report-export-jobs/" + Job, CancellationToken.None));
+                Equal(Job, SessionCoordinator.ParseUnitExportJob(await f.Session.GetUnitExportJobJsonAsync(Job, CancellationToken.None), Job).Id, "only reviewed job read receives proof budget");
+                var metadata = View(null).TrimEnd('}') + ",\"attempt\":1,\"precisionRequirement\":null,\"precisionChoices\":null,\"totalRows\":9007199254740993}";
+                True(SessionCoordinator.ParseRecentUnitExportJobs("[" + metadata + "]").Count == 1, "current optional server metadata remains readable");
+                ThrowsFormat(() => SessionCoordinator.ParseRecentUnitExportJobs("[" + View(body) + "]"));
+                Equal(1, f.Posts, "changed/read-only proof never repeats creation");
+            }
+            Console.WriteLine("PASS large changed proof/current View/Recent2MiB/ordinary response2MiB isolation; selected=50001");
+        }
+        private static async Task LegacyOriginalEnvelopeStaysOriginal()
+        {
+            using (var f = new Fixture())
+            {
+                await f.Login(); var body = LargeSubmitBody(1000); var request = f.Submit(body);
+                f.Post = (message, ct) => { throw new HttpRequestException("fixture accepted reply lost"); };
+                await f.Session.MutateAsync(request, CancellationToken.None);
+                var output = Directory.GetFiles(f.State.RootDirectory, "unit-export-mutations.dpapi", SearchOption.AllDirectories).Single();
+                var plain = Unprotect(output); var old = Path.Combine(Path.GetDirectoryName(output), "mutations.dpapi");
+                Protect(old, plain); File.Delete(output); // only this disposable synthetic fixture
+                f.Get = (message, ct) => Ready(Json(View(body)));
+                var result = await f.Session.ReconcileUnitExportAsync(request.RequestId, f.Owner(), CancellationToken.None);
+                True(result.Outcome == MutationOutcome.Confirmed && result.IsDurablyRecorded && File.Exists(old) && !File.Exists(output), "legacy original remains its original envelope");
+                Equal(body, f.Store.LoadJournal(f.Owner(), request.RequestId).BodyJson, "legacy upgrade retains raw original body");
+            }
+            Console.WriteLine("PASS existing mutations.dpapi original export ticket is read and settled in original document");
+        }
+        private static async Task RequestByteBoundaryAndRetentionQuota()
+        {
+            using (var f = new Fixture())
+            {
+                await f.Login(); string small = SubmitBody();
+                string maximum = new string(' ', UnitExportBudget.RequestBytes - Encoding.UTF8.GetByteCount(small)) + small;
+                var first = f.Submit(maximum);
+                Equal(UnitExportBudget.RequestBytes, Encoding.UTF8.GetByteCount(first.BodyJson), "16MiB exact output byte budget");
+                var second = f.Submit(maximum);
+                ThrowsCode("MUTATION_JOURNAL_FULL", () => f.Submit(maximum));
+                ThrowsCode("MUTATION_BODY_INVALID", () => f.Submit(" " + maximum));
+                foreach (var action in new[] { MutationAction.UnitCreate, MutationAction.UnitBatchStatus, MutationAction.UnitBatchDelete })
+                    ThrowsApi(() => SessionCoordinator.BuildMutationRequest(action, NewId(), new string(' ', 65537) + "{}", f.Owner()));
+                Equal(0, f.Posts, "byte/quota refusal never reaches transport");
+                Equal(0, f.Store.ListJournal(f.Owner()).Count, "prepare budget refusal cannot manufacture durable/sent entries");
+                f.Post = (message, ct) => { throw new HttpRequestException("fixture accepted original maximum request then disconnected"); };
+                var unknown = await f.Session.MutateAsync(first, CancellationToken.None);
+                True(unknown.Outcome == MutationOutcome.Unknown && unknown.IsDurablyRecorded, "maximum request is durably kept without guessed outcome");
+                var path = Directory.GetFiles(f.State.RootDirectory,"unit-export-mutations.dpapi",SearchOption.AllDirectories).Single();
+                var originalEncrypted = File.ReadAllBytes(path);
+                var refused = await f.Session.MutateAsync(second, CancellationToken.None);
+                True(refused.Outcome == MutationOutcome.NotSent && f.Posts == 1, "journal reserves original-receipt capacity before dispatch, no hidden retry");
+                True(originalEncrypted.SequenceEqual(File.ReadAllBytes(path)), "output quota never evicts or rewrites the original unknown envelope");
+                Equal(maximum, f.Store.LoadJournal(f.Owner(), first.RequestId).BodyJson, "maximum original body survives quota refusal");
+            }
+            Console.WriteLine("PASS exact16MiB/>16MiB output bytes,32MiB retained budget,64MiB receipt reservation and original ordinary-write bounds; quota refusal before second send");
+        }
+        private static HttpResponseMessage WireRoundTrip(HttpRequestMessage message, string json)
+        {
+            byte[] payload = Encoding.UTF8.GetBytes(json);
+            byte[] header = Encoding.ASCII.GetBytes("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: " + payload.Length + "\r\n\r\n");
+            using (var wire = new WireFixture(header.Concat(payload).ToArray()))
+            {
+                var response = ManagedHttp11.SendAndReceive(wire, message, UnitExportReplyPermit.ResponseLimit(message, 2097152), CancellationToken.None);
+                string expected = message.Content == null ? "" : message.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+                True(Encoding.UTF8.GetString(wire.Written.ToArray()).EndsWith("\r\n\r\n" + expected, StringComparison.Ordinal), "same managed HTTP codec emits every original request byte");
+                return response;
+            }
+        }
+        private sealed class WireFixture : Stream
+        {
+            private readonly MemoryStream input;
+            internal readonly MemoryStream Written = new MemoryStream();
+            internal WireFixture(byte[] bytes) { input = new MemoryStream(bytes, false); }
+            public override bool CanRead => true; public override bool CanSeek => false; public override bool CanWrite => true;
+            public override long Length => throw new NotSupportedException(); public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+            public override int Read(byte[] buffer,int offset,int count) { return input.Read(buffer,offset,count); }
+            public override void Write(byte[] buffer,int offset,int count) { Written.Write(buffer,offset,count); }
+            public override void Flush() { } public override long Seek(long offset,SeekOrigin origin) { throw new NotSupportedException(); }
+            public override void SetLength(long value) { throw new NotSupportedException(); }
+            protected override void Dispose(bool disposing) { if(disposing) { input.Dispose(); Written.Dispose(); } base.Dispose(disposing); }
+        }
         public static int RunSharedSelectionFixture()
         {
             var json = new System.Web.Script.Serialization.JavaScriptSerializer();
@@ -112,7 +260,7 @@ namespace Uten.Legacy.Core.Tests
                 ThrowsApi(() => f.Submit(SubmitBody("{\"token\":\"secret\"}")));
                 ThrowsApi(() => f.Submit(SubmitBody("{\"nullFields\":[\"legacyId\"]}")));
                 ThrowsApi(() => f.Session.PrepareMutation(MutationAction.UnitExportSubmit, NewId(), body, f.Owner(), Other));
-                var path = Directory.GetFiles(f.State.RootDirectory, "mutations.dpapi", SearchOption.AllDirectories).Single();
+                var path = Directory.GetFiles(f.State.RootDirectory, "unit-export-mutations.dpapi", SearchOption.AllDirectories).Single();
                 var plain = Unprotect(path);
                 foreach (var forbidden in new[] { "\"password\"", "fixture-password", "access-fixture", "refresh-fixture" })
                     True(!plain.Contains(forbidden), "no auth material in durable export command");
@@ -228,7 +376,7 @@ namespace Uten.Legacy.Core.Tests
         private static async Task ReceiptPersistenceFailureKeepsKnownOutcome()
         {
             var fail = false;
-            using (var state = new BusinessStateTestFixture(point => { if (fail && point == "mutations:before-replace") throw new IOException("fixture receipt storage failure"); }))
+            using (var state = new BusinessStateTestFixture(point => { if (fail && point.EndsWith(":before-replace", StringComparison.Ordinal)) throw new IOException("fixture receipt storage failure"); }))
             using (var f = new Fixture(state.Store))
             {
                 await f.Login(); var body = SubmitBody(); f.Post = (message, ct) => { throw new HttpRequestException("fixture lost"); };
@@ -263,7 +411,7 @@ namespace Uten.Legacy.Core.Tests
             {
                 await f.Login(); var body = SubmitBody(); f.Post = (message, ct) => Ready(Json(View(body)));
                 await f.Session.MutateAsync(f.Submit(body), CancellationToken.None);
-                var file = Directory.GetFiles(f.State.RootDirectory, "mutations.dpapi", SearchOption.AllDirectories).Single();
+                var file = Directory.GetFiles(f.State.RootDirectory, "unit-export-mutations.dpapi", SearchOption.AllDirectories).Single();
                 var document = JsonValue.ParseObject(Unprotect(file)); var entry = (Dictionary<string, object>)((object[])document["entries"])[0];
                 entry["serverIdempotencyKey"] = Other;
                 Protect(file, JsonValue.Serialize(document)); var before = File.ReadAllBytes(file);
@@ -292,7 +440,7 @@ namespace Uten.Legacy.Core.Tests
         private static string NewId() { return Guid.NewGuid().ToString("D"); }
         private static HttpResponseMessage Json(string json, int status = 200) { return new HttpResponseMessage((HttpStatusCode)status) { Content = new StringContent(json, Encoding.UTF8, "application/json") }; }
         private static Task<HttpResponseMessage> Ready(HttpResponseMessage value) { return Task.FromResult(value); }
-        private static byte[] Entropy(string file) { return Encoding.UTF8.GetBytes("Uten/UIMP-Win7-WPF/business-state/v1/mutations/" + Path.GetFileName(Path.GetDirectoryName(file))); }
+        private static byte[] Entropy(string file) { return Encoding.UTF8.GetBytes("Uten/UIMP-Win7-WPF/business-state/v1/" + Path.GetFileNameWithoutExtension(file) + "/" + Path.GetFileName(Path.GetDirectoryName(file))); }
         private static string Unprotect(string file) { var plain = ProtectedData.Unprotect(File.ReadAllBytes(file), Entropy(file), DataProtectionScope.CurrentUser); try { return Encoding.UTF8.GetString(plain); } finally { Array.Clear(plain, 0, plain.Length); } }
         private static void Protect(string file, string value) { var plain = Encoding.UTF8.GetBytes(value); try { File.WriteAllBytes(file, ProtectedData.Protect(plain, Entropy(file), DataProtectionScope.CurrentUser)); } finally { Array.Clear(plain, 0, plain.Length); } }
         private static void True(bool condition, string label) { if (!condition) throw new InvalidOperationException("Unit export mutation: " + label); }

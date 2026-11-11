@@ -38,7 +38,15 @@ process = json.loads(subprocess.check_output([
 ], encoding='utf8'))
 assert process['ProcessId'] == a.pid
 classes = base / f'runtime-maven-{a.attempt}/classes'
-assert str(classes).lower() in process['CommandLine'].lower(), 'PID does not run this private build'
+command_identity = process['CommandLine']
+argfiles = []
+for match in re.finditer(r'(?:^|\s)@(?:"([^"]+)"|(\S+))', command_identity):
+    argfile = Path(match.group(1) or match.group(2)).resolve()
+    assert argfile.is_relative_to((base / f'tmp/runtime/{a.attempt}').resolve()), 'Argument file left this runtime'
+    argraw = argfile.read_bytes()
+    command_identity += '\n' + argraw.decode('utf8')
+    argfiles.append({'path': str(argfile), 'rawSha256': hashlib.sha256(argraw).hexdigest()})
+assert str(classes).lower().replace('\\', '/') in command_identity.lower().replace('\\', '/'), 'PID does not run this private build'
 manifest = []
 digest = hashlib.sha256()
 for path in sorted(classes.rglob('*')):
@@ -64,7 +72,7 @@ result = {
     'mainRevision': git('rev-parse', 'main'),
     'sourceGitObjects': {scope: git('rev-parse', a.revision + ':' + scope) for scope in scopes},
     'backend': {'pid': a.pid, 'executable': process['ExecutablePath'], 'port': settings['backendPort'],
-        'classesDirectory': str(classes), 'classAndSqlCount': len(manifest),
+        'classesDirectory': str(classes), 'argumentFiles': argfiles, 'classAndSqlCount': len(manifest),
         'compiledFingerprint': digest.hexdigest(),
         'compiledFingerprintBytes': 'sorted relative UTF-8 path + NUL + raw file SHA-256 bytes',
         'manifest': manifest, 'readiness': health['status']},

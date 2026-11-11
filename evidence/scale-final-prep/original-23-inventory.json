@@ -1,0 +1,98 @@
+{
+  "actualOriginalExecutionSource": "7b912287e53315228b469790ff066a9fab643e3c",
+  "originalCount": 23,
+  "cases": [
+    {
+      "class": "com.uten.imp.businesschain.CompleteExportScalePostgresTest",
+      "name": "hundredThousandAuthoritativeRowsMatchIndependentSqlOrderAndExactAmounts"
+    },
+    {
+      "class": "com.uten.imp.businesschain.MasterDirectoryExportPostgresTest",
+      "name": "fiftyThousandAndOneRealSelectedMouldsExcludeAnotherMatchingRowAndKeepOrder(Path)"
+    },
+    {
+      "class": "com.uten.imp.businesschain.MasterDirectoryExportPostgresTest",
+      "name": "mouldTaskKeepsReverseQuantityOrderAndExactDecimalText"
+    },
+    {
+      "class": "com.uten.imp.common.export.ExportRowSelectionTest",
+      "name": "exactDecimalSelectorDoesNotChooseTheNeighborRoundedToTheSameDouble"
+    },
+    {
+      "class": "com.uten.imp.common.export.ExportRowSelectionTest",
+      "name": "interruptionStopsSelectionAndDoesNotContaminateTheNextOperation"
+    },
+    {
+      "class": "com.uten.imp.common.export.ExportRowSelectionTest",
+      "name": "fiftyThousandMembersRemainCompleteAcrossThousandRowPages"
+    },
+    {
+      "class": "com.uten.imp.common.export.ExportRowSelectionTest",
+      "name": "clientChangedFactsCannotReplaceCurrentServerValues"
+    },
+    {
+      "class": "com.uten.imp.common.export.ExportRowSelectionTest",
+      "name": "textIdentifiersNeverUseNumericCanonicalization"
+    },
+    {
+      "class": "com.uten.imp.common.export.ExportRowSelectionTest",
+      "name": "selectorsCannotProbeHiddenBusinessFieldsEvenWhenAnAuthorizedSourceContainsThem"
+    },
+    {
+      "class": "com.uten.imp.common.export.ExportRowSelectionTest",
+      "name": "extremeNumericExponentsRemainCompactAndNeverExpandIntoOutputValues"
+    },
+    {
+      "class": "com.uten.imp.common.export.ExportRowSelectionTest",
+      "name": "identitiesAndExactNumericFactsSelectServerRowsWithoutRewritingAnyCells"
+    },
+    {
+      "class": "com.uten.imp.common.export.ExportRowSelectionTest",
+      "name": "duplicatesInLaterAuthoritativePagesAndMissingFinalMemberAreRejected"
+    },
+    {
+      "class": "com.uten.imp.common.export.ExportRowSelectionTest",
+      "name": "missingNullableCellsMatchOnlyAnExplicitNullSelector"
+    },
+    {
+      "class": "com.uten.imp.common.export.ExportRowSelectionTest",
+      "name": "emptyMalformedMixedSchemasAndDuplicateSelectorsFailClosed"
+    },
+    {
+      "class": "com.uten.imp.common.export.ExportRowSelectionTest",
+      "name": "nullSelectionKeepsCompleteAuthoritativeSource"
+    },
+    {
+      "class": "com.uten.imp.common.export.ExportSelectionBudgetTest",
+      "name": "uuidSelectionBeyondFiftyThousandParsesAndDuplicateOrMissingNeverBecomesAll"
+    },
+    {
+      "class": "com.uten.imp.common.export.ExportSelectionBudgetTest",
+      "name": "memoryBudgetRejectsOversizedTextWithoutChangingTheRowCountContract"
+    },
+    {
+      "class": "com.uten.imp.common.export.ExportSelectionBudgetTest",
+      "name": "fiftyThousandAndOneGenericSelectorsKeepExactScopeAndStillRequireEveryRow"
+    },
+    {
+      "class": "com.uten.imp.features.master.export.MasterExportSelectionAspectTest",
+      "name": "realUnitControllerExportBindsSelectionAndCleansScopeOnFailure"
+    },
+    {
+      "class": "com.uten.imp.features.reporting.export.ReportExportQueuePostgresTest",
+      "name": "rollbackDoesNotLeaveAPartiallySubmittedTask"
+    },
+    {
+      "class": "com.uten.imp.features.reporting.export.ReportExportQueuePostgresTest",
+      "name": "taskIdentityRequestAndExpiryHistoryRemainImmutable"
+    },
+    {
+      "class": "com.uten.imp.features.reporting.export.ReportExportQueuePostgresTest",
+      "name": "cancellationRetainsTheWorkerSlotUntilAcknowledgedAndCannotPublish"
+    },
+    {
+      "class": "com.uten.imp.features.reporting.export.ReportExportQueuePostgresTest",
+      "name": "workerKeepsOneRealSnapshotAcrossPagesAndDownloadRechecksAuthorization"
+    }
+  ]
+}

@@ -30,6 +30,9 @@ sources=[
  'server/src/main/java/com/uten/imp/common/export/XlsxExportService.java',
  'server/src/test/java/com/uten/imp/businesschain/MasterDirectoryExportPostgresTest.java',
  'server/src/test/java/com/uten/imp/businesschain/CompleteExportScalePostgresTest.java',
+ 'evidence/scale/PhysicalXlsxScale.java',
+ 'evidence/scale/rerun.ps1',
+ 'evidence/scale/run-physical.ps1',
 ]
 data={'source':git('rev-parse','HEAD').decode().strip(),'kind':args.kind,'sourceRoot':str(root),'artifactIncludes':args.include,
       'sourceTreeObjects':{path:git('rev-parse','HEAD:'+path).decode().strip() for path in ['server/src/main','server/src/test','server/pom.xml']},

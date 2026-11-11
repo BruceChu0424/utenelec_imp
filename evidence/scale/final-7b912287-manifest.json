@@ -1,0 +1,250 @@
+{
+  "source": "7b912287e53315228b469790ff066a9fab643e3c",
+  "kind": "final-unified",
+  "sourceRoot": "D:\\Projects\\uten_imp_worktrees\\feedback-scale-final-20261110",
+  "artifactIncludes": [
+    "runs/final-7b912287-1",
+    "physical-final-7b912287-1"
+  ],
+  "sourceTreeObjects": {
+    "server/src/main": "1d2eff25082f2a5e3836de0ccae57e5b1edc42a5",
+    "server/src/test": "2253daa4eba4fa8cac5e7c05ebd8fe17daa7b5c3",
+    "server/pom.xml": "53c807826360e70a0928e3bfae56ef27d8f2dff8"
+  },
+  "fingerprintContract": {
+    "gitSource": "SHA-256 of exact Git blob bytes",
+    "artifact": "SHA-256 of exact filesystem bytes"
+  },
+  "sourceBlobs": {
+    "server/src/main/java/com/uten/imp/common/export/MasterExportSelection.java": "0caf8031e7b0c6641f62be3e6db0128889eec36dfc3fe9b49e488915eb28db7b",
+    "server/src/main/java/com/uten/imp/common/export/MasterSelectionPredicate.java": "4782054749b8d6518251a880911c47cb96526290e13c723d4acca3725c9b1a15",
+    "server/src/main/java/com/uten/imp/common/export/ExportSelectionBudget.java": "e06a7b9bf904b34531afc30c4b0bf8bc5fc82fd73922b6b4140e484946fcd189",
+    "server/src/main/java/com/uten/imp/common/export/TableColumnProjection.java": "260b7855b11492d9ea5881dacb084809ddde393248431aeb7a1174a868fe47f5",
+    "server/src/main/java/com/uten/imp/common/export/ExportRowSelection.java": "1c2f65c782f03171bcd10c258bf82375952907f7f2950576f8e3e1615126864c",
+    "server/src/main/java/com/uten/imp/features/master/export/MasterReportExportSource.java": "7ec7d8f9cab13972eef3745d8c0aeee54778d1e42ec12f34e462cf633e5b89e4",
+    "server/src/main/java/com/uten/imp/common/export/XlsxExportService.java": "29a9d0d98ebcfa3aa0290842b4253b41224492deba50f87bbe498bbe19857f82",
+    "server/src/test/java/com/uten/imp/businesschain/MasterDirectoryExportPostgresTest.java": "87f1dd3a84a5d3fe2e4579f24dc8b00dbbf55d383fc16d9079d4da2c625bae05",
+    "server/src/test/java/com/uten/imp/businesschain/CompleteExportScalePostgresTest.java": "5215e967e33fca0154ebbc5ac1c6df44b19390dfeb94eb9a2eb68dd837aebdf1",
+    "evidence/scale/PhysicalXlsxScale.java": "9b113c26f2296248764c89c8b08e0b0f61cc8418ec430ab2d9cce933a73c3e74",
+    "evidence/scale/rerun.ps1": "68c28a73b0f268b81a8e231ded6f4919030680f8b5cac3dfaf3863aedd7036ef",
+    "evidence/scale/run-physical.ps1": "798c0743ae6239f3d8df5e81cb050bc0d6beae197cc731aabe813954e6b2f42e"
+  },
+  "artifacts": {
+    "physical-final-7b912287-1/artifacts/physical-1048600.xlsx": {
+      "bytes": 8530990,
+      "sha256": "2085f51742317e2d4b75a1dcd6c9a5387c09ca2ce43534ec5e6186401c60fcdd",
+      "byteSource": "raw-file"
+    },
+    "physical-final-7b912287-1/compile.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "byteSource": "raw-file"
+    },
+    "physical-final-7b912287-1/input-source.json": {
+      "bytes": 606,
+      "sha256": "35e455696324c2735939da961dea882797ae0ca2ade2c6a5c45773eddac4ac4a",
+      "byteSource": "raw-file"
+    },
+    "physical-final-7b912287-1/java.args": {
+      "bytes": 22705,
+      "sha256": "44dd037c2afc78d2f6ed7b495c397a9aa34690cb745dccea8a92f33b7ece5fc7",
+      "byteSource": "raw-file"
+    },
+    "physical-final-7b912287-1/javac.args": {
+      "bytes": 22661,
+      "sha256": "cee7ba71317a83942cf7749724f7310ce454c69397e7e4d89a216590098f702f",
+      "byteSource": "raw-file"
+    },
+    "physical-final-7b912287-1/physical.exit": {
+      "bytes": 3,
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+      "byteSource": "raw-file"
+    },
+    "physical-final-7b912287-1/physical.log": {
+      "bytes": 290,
+      "sha256": "14275449468417191430423e396d17a3c6f6977c11c5161710e3f494b1447a1f",
+      "byteSource": "raw-file"
+    },
+    "physical-final-7b912287-1/receipt.json": {
+      "bytes": 950,
+      "sha256": "ec1afb9e3e8adbd3d74fee0e519a6de16bf3391efc903ae3685afb37c6497252",
+      "byteSource": "raw-file"
+    },
+    "runs/final-7b912287-1/artifacts/selected-50001-SELf8370c7f.xlsx": {
+      "bytes": 1955171,
+      "sha256": "bdb393d7af15535c41e68daa82f2fad2329153947e2ef673b2d5b4f33350cf3f",
+      "byteSource": "raw-file"
+    },
+    "runs/final-7b912287-1/cleanup.json": {
+      "bytes": 506,
+      "sha256": "b484bf6d7133b950d5e57cf015088b51dc81d12e1a592a76c59816138910eab7",
+      "byteSource": "raw-file"
+    },
+    "runs/final-7b912287-1/command.json": {
+      "bytes": 2232,
+      "sha256": "d0e8fbf471d918f0ec99ec4656728a68c4e0b43c6036c93b8d01a781ba7204ae",
+      "byteSource": "raw-file"
+    },
+    "runs/final-7b912287-1/environment.txt": {
+      "bytes": 548,
+      "sha256": "741f92b9596a986d39b851cf91dc73d39b2bc67d0ba667df79b97a62fba2a113",
+      "byteSource": "raw-file"
+    },
+    "runs/final-7b912287-1/logs/maven.exit": {
+      "bytes": 3,
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+      "byteSource": "raw-file"
+    },
+    "runs/final-7b912287-1/logs/maven.log": {
+      "bytes": 1228486,
+      "sha256": "73ec3fe976454f5afdd85724fa20e5094845e4d6e70944c526ce8c06c0785838",
+      "byteSource": "raw-file"
+    },
+    "runs/final-7b912287-1/logs/mould-seed-observation-1.txt": {
+      "bytes": 249,
+      "sha256": "3efe0cde14423222b83c6f6ceb224d4698149dd3684afb5e8b5a6bf052465ba7",
+      "byteSource": "raw-file"
+    },
+    "runs/final-7b912287-1/logs/seed-sql-observation-1.txt": {
+      "bytes": 1203,
+      "sha256": "b23f41c11fce04deebdc3c03f22b734421d528171f4ccdc205784acde6b91c6f",
+      "byteSource": "raw-file"
+    },
+    "runs/final-7b912287-1/logs/thread-dump-stage-1.txt": {
+      "bytes": 68706,
+      "sha256": "95b1c1338884c9a58124e0c6522c1c626ddf21177422673ceaf9066dc80c1dbf",
+      "byteSource": "raw-file"
+    },
+    "runs/final-7b912287-1/reports/2026-11-10T22-07-45_773.dumpstream": {
+      "bytes": 309,
+      "sha256": "12f395c6ce9a72af566dde910db5f0262fbd5370f8d0ee80e6453949858fabcf",
+      "byteSource": "raw-file"
+    },
+    "runs/final-7b912287-1/reports/com.uten.imp.businesschain.CompleteExportScalePostgresTest.txt": {
+      "bytes": 370,
+      "sha256": "ad48cb782ae7b471ffd307cd1ac7ea84015b3d25f26058fd35b6bbb9ecc6ac58",
+      "byteSource": "raw-file"
+    },
+    "runs/final-7b912287-1/reports/com.uten.imp.businesschain.MasterDirectoryExportPostgresTest.txt": {
+      "bytes": 374,
+      "sha256": "6dc7d8cc32ac6064241ac09e3089332bcfcf58dff579f10e14c366ce2d117098",
+      "byteSource": "raw-file"
+    },
+    "runs/final-7b912287-1/reports/com.uten.imp.common.export.ExportRowSelectionTest.txt": {
+      "bytes": 353,
+      "sha256": "0c352ce3f99dc7c236cdbf0e2457f544f8d51772ffde2af4c4d2fa603d872e6f",
+      "byteSource": "raw-file"
+    },
+    "runs/final-7b912287-1/reports/com.uten.imp.common.export.ExportSelectionBudgetTest.txt": {
+      "bytes": 358,
+      "sha256": "9f0378db96d2eeee50fa2c0a25f82a94c228e661348e001998936378761b2de6",
+      "byteSource": "raw-file"
+    },
+    "runs/final-7b912287-1/reports/com.uten.imp.features.master.export.MasterExportSelectionAspectTest.txt": {
+      "bytes": 388,
+      "sha256": "138a82198c89d40ac06bc1fa7c664972f3ac9cbd92aa0c14fb1e736edeba21bc",
+      "byteSource": "raw-file"
+    },
+    "runs/final-7b912287-1/reports/com.uten.imp.features.reporting.export.ReportExportQueuePostgresTest.txt": {
+      "bytes": 390,
+      "sha256": "45bcbda5e65290868b2a10613f4e68481b741774ef9dbf0c10d0e76d04824ea3",
+      "byteSource": "raw-file"
+    },
+    "runs/final-7b912287-1/reports/TEST-com.uten.imp.businesschain.CompleteExportScalePostgresTest.xml": {
+      "bytes": 464844,
+      "sha256": "31cd94fedcecc11521f1942e6ab92aa88476e4317a8ab44d752b9f81119e8b0c",
+      "byteSource": "raw-file"
+    },
+    "runs/final-7b912287-1/reports/TEST-com.uten.imp.businesschain.MasterDirectoryExportPostgresTest.xml": {
+      "bytes": 463031,
+      "sha256": "747af103d54d5e5071350d0a9e39bbdb4c83b6caeb180f78640c2f4d2f670915",
+      "byteSource": "raw-file"
+    },
+    "runs/final-7b912287-1/reports/TEST-com.uten.imp.common.export.ExportRowSelectionTest.xml": {
+      "bytes": 57091,
+      "sha256": "dafe8f9f89cc2bc5445b7343115273a480fd3971326f8d21a003ffbd4ef483ee",
+      "byteSource": "raw-file"
+    },
+    "runs/final-7b912287-1/reports/TEST-com.uten.imp.common.export.ExportSelectionBudgetTest.xml": {
+      "bytes": 55727,
+      "sha256": "25543dbb13f7a899a438234e63f538b337dc0b7a21d683a6fb73b459551a33b1",
+      "byteSource": "raw-file"
+    },
+    "runs/final-7b912287-1/reports/TEST-com.uten.imp.features.master.export.MasterExportSelectionAspectTest.xml": {
+      "bytes": 55406,
+      "sha256": "3bb6e8ab2ecf02df403c0e5b9a7331d0f359c0b9da2efd5cf2cde1e288644a0d",
+      "byteSource": "raw-file"
+    },
+    "runs/final-7b912287-1/reports/TEST-com.uten.imp.features.reporting.export.ReportExportQueuePostgresTest.xml": {
+      "bytes": 456536,
+      "sha256": "6e59730a3d5eebc209eb151349d49ebe008f8e307d45a953e9433ac563ef2255",
+      "byteSource": "raw-file"
+    },
+    "runs/final-7b912287-1/source-end.json": {
+      "bytes": 224,
+      "sha256": "7ec7c64aa2438c443a915f5aef96906dd04a32e4a071f6cffcff31a95907167e",
+      "byteSource": "raw-file"
+    },
+    "runs/final-7b912287-1/source-start.json": {
+      "bytes": 374,
+      "sha256": "e8f7d4ff79d43b78bc825bd110e1d911154f7f8ea532ca5b1ac5b56176422d1d",
+      "byteSource": "raw-file"
+    }
+  },
+  "junitReports": [
+    {
+      "path": "runs/final-7b912287-1/reports/TEST-com.uten.imp.businesschain.CompleteExportScalePostgresTest.xml",
+      "sha256": "31cd94fedcecc11521f1942e6ab92aa88476e4317a8ab44d752b9f81119e8b0c",
+      "class": "com.uten.imp.businesschain.CompleteExportScalePostgresTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "path": "runs/final-7b912287-1/reports/TEST-com.uten.imp.businesschain.MasterDirectoryExportPostgresTest.xml",
+      "sha256": "747af103d54d5e5071350d0a9e39bbdb4c83b6caeb180f78640c2f4d2f670915",
+      "class": "com.uten.imp.businesschain.MasterDirectoryExportPostgresTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "path": "runs/final-7b912287-1/reports/TEST-com.uten.imp.common.export.ExportRowSelectionTest.xml",
+      "sha256": "dafe8f9f89cc2bc5445b7343115273a480fd3971326f8d21a003ffbd4ef483ee",
+      "class": "com.uten.imp.common.export.ExportRowSelectionTest",
+      "tests": 12,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "path": "runs/final-7b912287-1/reports/TEST-com.uten.imp.common.export.ExportSelectionBudgetTest.xml",
+      "sha256": "25543dbb13f7a899a438234e63f538b337dc0b7a21d683a6fb73b459551a33b1",
+      "class": "com.uten.imp.common.export.ExportSelectionBudgetTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "path": "runs/final-7b912287-1/reports/TEST-com.uten.imp.features.master.export.MasterExportSelectionAspectTest.xml",
+      "sha256": "3bb6e8ab2ecf02df403c0e5b9a7331d0f359c0b9da2efd5cf2cde1e288644a0d",
+      "class": "com.uten.imp.features.master.export.MasterExportSelectionAspectTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "path": "runs/final-7b912287-1/reports/TEST-com.uten.imp.features.reporting.export.ReportExportQueuePostgresTest.xml",
+      "sha256": "6e59730a3d5eebc209eb151349d49ebe008f8e307d45a953e9433ac563ef2255",
+      "class": "com.uten.imp.features.reporting.export.ReportExportQueuePostgresTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  ]
+}

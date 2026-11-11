@@ -1,0 +1,17 @@
+{
+  "workbook": "D:\\Projects\\uten_imp_worktrees\\feedback-scale-verify-20261110\\evidence\\scale\\physical-final-7b912287-1\\artifacts\\physical-1048600.xlsx",
+  "sourceStart": "7b912287e53315228b469790ff066a9fab643e3c",
+  "classesDirectory": "D:/Projects/uten_imp_worktrees/feedback-scale-verify-20261110/evidence/scale/runs/final-7b912287-1/build/classes",
+  "workbookBytes": 8530990,
+  "workbookSha256": "2085f51742317e2d4b75a1dcd6c9a5387c09ca2ce43534ec5e6186401c60fcdd",
+  "fingerprintBytes": "exact raw file bytes",
+  "sourceEnd": "7b912287e53315228b469790ff066a9fab643e3c",
+  "kind": "final-unified",
+  "workspace": "D:\\Projects\\uten_imp_worktrees\\feedback-scale-final-20261110",
+  "exit": 0,
+  "sourceTrees": {
+    "pom": "53c807826360e70a0928e3bfae56ef27d8f2dff8",
+    "main": "1d2eff25082f2a5e3836de0ccae57e5b1edc42a5"
+  },
+  "compiledWriterSha256": "670f6e8633f14597534a7a28c427d8cacea2d5b522de4edb4f276797e1638b0e"
+}

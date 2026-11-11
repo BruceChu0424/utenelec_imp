@@ -1,0 +1,31 @@
+{
+  "kind": "final-unified",
+  "expectedRevision": "7b912287e53315228b469790ff066a9fab643e3c",
+  "workspace": "D:\\Projects\\uten_imp_worktrees\\feedback-scale-final-20261110",
+  "executable": "mvn.cmd",
+  "argv": [
+    "-o",
+    "-B",
+    "-ntp",
+    "-f",
+    "D:\\Projects\\uten_imp_worktrees\\feedback-scale-final-20261110\\server\\pom.xml",
+    "-Duten.build.directory=D:\\Projects\\uten_imp_worktrees\\feedback-scale-verify-20261110\\evidence\\scale\\runs\\final-7b912287-1\\build",
+    "-Duten.test.tmpdir=D:\\Projects\\uten_imp_worktrees\\feedback-scale-verify-20261110\\evidence\\scale\\runs\\final-7b912287-1\\tmp",
+    "-Duten.export.evidence.directory=D:\\Projects\\uten_imp_worktrees\\feedback-scale-verify-20261110\\evidence\\scale\\runs\\final-7b912287-1\\artifacts",
+    "-Duten.test.jvm.heap.args=-Xmx3g",
+    "-Duten.test.context.cache.maxSize=1",
+    "-DforkCount=1",
+    "-DreuseForks=true",
+    "-Dtest=MasterDirectoryExportPostgresTest#mouldTaskKeepsReverseQuantityOrderAndExactDecimalText+fiftyThousandAndOneRealSelectedMouldsExcludeAnotherMatchingRowAndKeepOrder,CompleteExportScalePostgresTest#hundredThousandAuthoritativeRowsMatchIndependentSqlOrderAndExactAmounts,ExportSelectionBudgetTest,ExportRowSelectionTest,MasterExportSelectionAspectTest,ReportExportQueuePostgresTest#cancellationRetainsTheWorkerSlotUntilAcknowledgedAndCannotPublish+taskIdentityRequestAndExpiryHistoryRemainImmutable+rollbackDoesNotLeaveAPartiallySubmittedTask+workerKeepsOneRealSnapshotAcrossPagesAndDownloadRechecksAuthorization",
+    "test"
+  ],
+  "environment": {
+    "UTEN_RUN_DB_TESTS": "true",
+    "TMP": "D:\\Projects\\uten_imp_worktrees\\feedback-scale-verify-20261110\\evidence\\scale\\runs\\final-7b912287-1\\tmp",
+    "TEMP": "D:\\Projects\\uten_imp_worktrees\\feedback-scale-verify-20261110\\evidence\\scale\\runs\\final-7b912287-1\\tmp",
+    "MAVEN_OPTS": "-Xmx1800m -Djava.io.tmpdir=D:\\Projects\\uten_imp_worktrees\\feedback-scale-verify-20261110\\evidence\\scale\\runs\\final-7b912287-1\\tmp"
+  },
+  "actualRunnerMatchesCandidateGitBlob": true,
+  "runnerSha256": "68c28a73b0f268b81a8e231ded6f4919030680f8b5cac3dfaf3863aedd7036ef",
+  "recordedAt": "2026-11-11T05:04:23.732532+00:00"
+}

@@ -1,0 +1,22 @@
+{
+  "protectedFields": [
+    "status",
+    "owner",
+    "definitionOfDone",
+    "dependencies",
+    "nativeTargets"
+  ],
+  "originalTasks": 373,
+  "candidateTasks": 373,
+  "protectedDelta": [],
+  "lostNotesOrEvidence": [],
+  "historyGitBlobExactPrefix": true,
+  "historyWorktreeHasNoGitDelta": true,
+  "oldHistoryRows": 524,
+  "currentHistoryRows": 524,
+  "historyGitBlobSha256": "3864d285e230689e4c0a3158dad97116025a134e343903777eabc86db64d2e9f",
+  "historyRawCheckoutSha256": "2367cd6d304f217b0955ef95c254b70916216e4046fda745a602936f87a5a83f",
+  "rawCheckoutUsesCRLF": true,
+  "initialSafetyProbe": "initial raw checkout versus Git blob prefix assertion rejected the existing CRLF/LF difference; no source/history content was changed to satisfy it",
+  "interpretation": "source inventory regenerated; no acceptance state promoted"
+}

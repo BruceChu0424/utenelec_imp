@@ -304,9 +304,9 @@
 1. POST密码仅body，过滤/列投影/权限一致，下载绑定上下文、流式/完整性和未知结果处理。
 2. 记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。
 
-证据：`docs/99-项目治理/Win7兼容版/11-业务与安装链路增量阶段.md`；`clients/windows_legacy/progress/evidence/unit-business-installer-20261028.json`；`clients/windows_legacy/progress/evidence/platform-search-20261103.json`；`clients/windows_legacy/progress/evidence/platform-search-integration-20261104.json`。
+证据：`docs/99-项目治理/Win7兼容版/11-业务与安装链路增量阶段.md`；`clients/windows_legacy/progress/evidence/unit-business-installer-20261028.json`；`clients/windows_legacy/progress/evidence/platform-search-20261103.json`；`clients/windows_legacy/progress/evidence/platform-search-integration-20261104.json`；`clients/windows_legacy/progress/evidence/feedback-final-a-and-native-output-plan-20261110.json`。
 
-接续/限制：原请求proof后端与投影null等价修复45项、旧Flutter21项；原生任务/丢响应核对/同key显式确认/取消/密码下载落盘/legacy capability fallback UI16两arch通过。尚无真实目标机/正式交付。；2026-11-04 搜索契约及c8eb95cb1合成双架构读取/草稿fixture证据追加；仅证明当前读取增量，原status、owner、DoD和依赖保留，未声明原生业务迁移、Win7真机或正式交付完成。。
+接续/限制：原请求proof后端与投影null等价修复45项、旧Flutter21项；原生任务/丢响应核对/同key显式确认/取消/密码下载落盘/legacy capability fallback UI16两arch通过。尚无真实目标机/正式交付。；2026-11-04 搜索契约及c8eb95cb1合成双架构读取/草稿fixture证据追加；仅证明当前读取增量，原status、owner、DoD和依赖保留，未声明原生业务迁移、Win7真机或正式交付完成。；2026-11-10 输出链补充来源：D3单位大选中原票据、输出专属16MiB请求与64MiB保全预算的本机证据位于 docs/99-项目治理/公司网页反馈整改-20261110/D3-WPF大选中导出与原票据恢复.md。统一候选SHA复跑、真实PG/文件与Win7目标机仍分栏待验；本次只追加来源，不改变status、owner、DoD、dependencies、nativeTargets，不宣称全业务或正式分发完成。。
 
 ## W7-CORE-019
 
@@ -321,9 +321,9 @@
 1. 字体/分页/纸张/选中范围与完整快照，打印取消和重复点击；x86/x64 provider均可用。
 2. 记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。
 
-证据：`docs/99-项目治理/Win7兼容版/11-业务与安装链路增量阶段.md`；`clients/windows_legacy/progress/evidence/unit-business-installer-20261028.json`；`clients/windows_legacy/progress/evidence/platform-search-20261103.json`；`clients/windows_legacy/progress/evidence/platform-search-integration-20261104.json`。
+证据：`docs/99-项目治理/Win7兼容版/11-业务与安装链路增量阶段.md`；`clients/windows_legacy/progress/evidence/unit-business-installer-20261028.json`；`clients/windows_legacy/progress/evidence/platform-search-20261103.json`；`clients/windows_legacy/progress/evidence/platform-search-integration-20261104.json`；`clients/windows_legacy/progress/evidence/feedback-final-a-and-native-output-plan-20261110.json`。
 
-接续/限制：完整分页、同屏幕projection、A4纸面/全中文/选择器取消/范围退役/队列适配21两arch通过；WPF原生打印内部非PDF，未实际物理打印或交付独立PDF，不能标此大能力done。；2026-11-04 搜索契约及c8eb95cb1合成双架构读取/草稿fixture证据追加；仅证明当前读取增量，原status、owner、DoD和依赖保留，未声明原生业务迁移、Win7真机或正式交付完成。。
+接续/限制：完整分页、同屏幕projection、A4纸面/全中文/选择器取消/范围退役/队列适配21两arch通过；WPF原生打印内部非PDF，未实际物理打印或交付独立PDF，不能标此大能力done。；2026-11-04 搜索契约及c8eb95cb1合成双架构读取/草稿fixture证据追加；仅证明当前读取增量，原status、owner、DoD和依赖保留，未声明原生业务迁移、Win7真机或正式交付完成。；2026-11-10 输出链补充来源：D3单位大选中原票据、输出专属16MiB请求与64MiB保全预算的本机证据位于 docs/99-项目治理/公司网页反馈整改-20261110/D3-WPF大选中导出与原票据恢复.md。统一候选SHA复跑、真实PG/文件与Win7目标机仍分栏待验；本次只追加来源，不改变status、owner、DoD、dependencies、nativeTargets，不宣称全业务或正式分发完成。。
 
 ## W7-CORE-020
 

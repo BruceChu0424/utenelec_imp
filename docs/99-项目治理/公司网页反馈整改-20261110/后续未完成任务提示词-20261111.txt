@@ -1,0 +1,52 @@
+请继续 Uten IMP 公司网页反馈整改，只完成下面明确未完成的工作，并最终交付同一候选版本的真实业务验收与报告。这是实施任务，不要只给计划。
+
+一、先核对当前源码与保全现场
+
+项目 D:\Projects\uten_imp。本轮完成修复的候选 94d5f71d5e5f6e65d663ba3c033e72588483affc 已由本地合并 6e50f2158868e390cb1dda8b253231be2956f9e8 纳入 main；随后并行通知/台账合并 6cfdcd4c52ee88e52b224f16c81febd4d16c9c7f 已完成。开始时必须重新核对 main HEAD、MERGE_HEAD、git status、全部工作树和并行任务，不能机械回退到上述 SHA。
+Main工作区另有并行未提交pubspec.lock（镜像及archive/Riverpod等版本变化，未纳本轮检查）和tmp/，已原样保留，不能restore/clean或擅自纳入。详情patch/版本对照见 evidence/root/handoff/parallel-main-observation.json 与 main-uncommitted-pubspec-lock.patch。先在新工作树依据实际确定的锁文件运行，若后来合法纳入新依赖，必须记录来源并重验，不能把本轮结果改标。
+旧整改工作树 D:\Projects\uten_imp_worktrees\feedback-remediate-20261110，分支 uimp/feedback-remediate-20261110。原始审计证据 D:\Projects\uten_imp_worktrees\feedback-audit-20261110\audit 不能覆盖、clean、删除。所有原工作树、未提交诊断和原始日志继续保留。
+先读 AGENTS.md、C:\Users\bruce\.agents\skills\frontend-design\SKILL.md、本目录《阶段收口与本地合并记录-20261111.md》、evidence/posting-dropdown/HANDOFF.md、evidence/b-import-ui-prep/UI-入口矩阵.md。再读取完整原实施要求 D:\Projects\uten_imp_worktrees\feedback-audit-20261110\公司网页反馈-剩余整改实施提示词.txt。原八项业务口径见 docs/99-项目治理/2026-11-10-公司测试五类问题与自定义列回环.md。
+从最新 main 建新的 uimp/ 独立工作树，按实际差异整合；不得整文件覆盖别人的优化，不纳入未完成/排除任务。保留 Main 表格行身份、width cursor/frame budget、layout cache/fresh closures、串行平台列读取、公共 query 发布栅栏和 d73f86e1e/45bf87fc9 后续逻辑。已有修复先复验，不重写。允许本地实施、验收和审查后的本地合并；不推送、不操作公司库、不部署、不正式打包。
+
+二、已完成的事实与来源边界
+
+业务 A/B/C/D 修复、新 V1130/V1131、主档完整输出资格/大选择、WPF Unit 大选择响应性、Main 并行性能优化已在候选中；旧阶段后台、旧程序升级、真实规模等证据均保留，但不是最后同 SHA 全套验收。
+最终代码增量含全尺寸共享 viewport/primary、页滚动条语义分组、compact 收头保持旧 inner offset、科目用途单等待件及未知结果保护。08af9d259111aeb692daafc2a357cdce20368f40 上收口复跑：共享33文件209过/0失败/1既有截图skip，12文件分析0；科目用途2文件11过/0失败，3文件分析0。独立滚动3个原红转3绿，11条行为事实与旧14e逐字段相同，原公共5文件18/18。不能把这些 VM/控件测试当真实 Web 或 Win7。
+真实 Web 布局诊断源 d3be61be89d3c8553c0a1c81182dffffd962e734、后台47：All→列设置→键盘菜单→ESC→回宽，以及分类抬头→鼠标菜单→ESC→回宽无 Flutter 异常，设置可达；raw/layout0b5e-runtime-healthy.log 是原始 UI 下载。它不是最终版本验收，且有提示时的鼠标菜单/下拉仍未关闭。
+C 身份覆盖更正：旧7b普通角色探针是7类攻击、仅 chart/note/aux/cost 四类合法apply；goods/BOM/accounting普通合法尚需补，原 accounting PG 类至少使用过 superAdmin。不能把旧146项写成普通七类合法全过。
+
+三、第一优先：完成 Web 原生鼠标/焦点问题
+
+真实普通网页中，下拉鼠标选项会先关闭而不回填，菜单有时不能保持；同项键盘 Return 可用。纯内存合成 Dart2js + production UtenWidgetsFlutterBinding + UtenApp/MainShell/520 drawer 也真实复现，故不是PG、旧tab或简单onChanged逻辑。WidgetTester VM/Chrome mouse3/5的阴性控制不能排除原生DOM链。
+原件 evidence/posting-dropdown/native/native-pointer-original.log；原下载 C:\Users\bruce\Downloads\UTEN-2.5.52-1794403069414.log。事件：13:10:54.979 availability 的 view/owner/routes/ticker 全true、app=resumed；13:11:30.738 view0 unfocused(undefined)；随后life=false首关，document.hasFocus仍true、hidden=false；43ms后才pointerdown，点到了下面group。没有进入select-guard。
+诊断树 D:\Projects\uten_imp_worktrees\feedback-posting-native-diag-20261111，HEAD178e5a295，只有Dropdown/lifecycle两文件的dirty trace及诊断entry，尚未写任何产品focus修复，禁止把trace当修复合入。副本源码/patch/构建/187s回执/host analyze限制已在 evidence/posting-dropdown/native 归档；实际运行原层级是 evidence/posting-diag-native。服务28636已停。
+下一步先补事件时 target/relatedTarget/activeElement 的 connected 和 closest flutter-view[flt-view-id] 归属、原生调用栈，区分语义DOM更新与真blur。SDK view_focus_binding.dart 已有 document focus且active非body的保护；BODY/null间隙不能只凭document.hasFocus忽略。SDK semantics换role直接remove及重排可能丢焦点是线索，尚未证明命中。形成唯一公共adapter/binding策略，保真document blur/hidden、外部DOM、其它view、owner/身份退休、未知提交；不关Tooltip/语义，不清业务输入nodes，不忽略所有unfocused，不加固定等待掩盖。
+实际原生浏览器复验 immediate mouse、选项/trigger Tooltip已可见的mouse、键盘、同view移动及真正失焦对照。复验All和分类抬头、列设置前序、宽高/RTL/IME/草稿/原offset、设置日志可达。保最早失败，不把前置没打开算通过。
+
+四、恢复隔离环境，保持既有合法前置
+
+Root测试端口28630/28631、专用PG容器 uten-feedback-final-20261110（26630/feedback）及诊断28636已按用户收口停止；不是产品失败，数据卷未删。不要盲用历史PID或运行stop_local_acceptance.py。
+私有持久配置仍在旧整改树 evidence/root/private/runtime.json：DB/syntheticAccountPassword、JWT/HMAC/PGP三密钥。新树只能安全复制到自己的private位置，勿打印/入Git/重新随机生成，否则既有账户、加密数据和回执会失配。完整私有备份 evidence/root/private/handoff-20261111-stop-1/feedback-full.dump，13727325字节，SHA256 312f578cfd33adb0f745cf775ec4cfe506808edfced70bfc7901b0595d83b6b9，pg_restore --list已验证。优先正常启动保留的专用容器；不要覆盖现有库或触8080/公司环境。
+后端必须正常fresh Maven新目录，Web用仓库私有Flutter工具，不改共享SDK；新TMP/日志/tag/输出，拒覆盖旧件，不编译live classes。旧runtime-maven-layout47-durable-1和Web归档只读，不冒当前版本。冻结后用 capture_candidate_runtime.py 等记录实际源码/产物/PID/服务JS字节与数据库。
+七缺失系统用途已由独立ordinaryFinance真实UI配好，7 PUT均200；原usable映射/全部科目/业务表计数不变。证据 evidence/root/finance-config-ui-prep-235-1。不要重seed、回退或UPDATE映射。
+普通身份/来源：evidence/root/web-seeds/b.json；web-seeds/a-run1；web-seeds/b-two-independent-eba5；evidence/b-finance-prep/root-finance-run2/finance-seed.json；evidence/b-import-ui-prep/import-actors-final.json。密码只取private syntheticAccountPassword。Web mould=feedback-mould-qa，Windows=feedback-mould-win-qa，二者分离。
+已备两个独立下单analysis：definite633c965d-0b4c-4c38-bf2b-0566d8264261、unknown816362f9-daec-4103-b5c7-37332ff95df3，各3 leaf每条需求50、库存18.1517。必须只选一个leaf才是原任务50/公共450，不能全选成150。尚未下单。
+masterImport=USR-b-masterImport-f8b75d73，financeImport=USR-b-financeImport-f8b75d73，独立ordinaryFinance=USR-b-finance-ui-a635aa02。新BOM父件3de8a1b0-f09b-47df-bb50-f207fb00c859/BIMP-P-f8b75d73、K01组件311b859f-9891-4efb-bd5b-edf8d56ed657已存在，BOM/成本尚无写入。都不要重复造数或扩大原账户权限。
+
+五、同一冻结候选真实 Web→后端→PG闭环
+
+1. 下单：按 evidence/b-final-prep/README.md，原需求50/现货18.1517/覆盖500，ORDER_ALL新下500=50+450；先现货再下新481.8483=31.8483+450。真实确认未写409后原处保500并改499成功；另独立analysis服务已提交回包丢失，保原key/body/恢复票据，重开恢复最终一笔。proxy-submit-hold.mjs + submit_hold.mjs只暂停原POST，预热helper以同ordinary公开saveRoutes后原样释放，不伪造API值/版本。未知回执不能放开改量或新意图。原20料10秒预算安静/代表同库并行分测，旧红保留。
+2. 报工：本人300→400保存、另一ordinary审批，创建/重选/编辑/删除释放/别人额度/并发、三料各领半产6000拒绝且输入保留。工作台/执行段/实际导出一致限量指引，不能用VM或服务PG拼真Web。
+3. 两类退货：B原seed采购CJ20261111000001和委外EJ20261111000001，真实receipt-only引入→长精度保存→编辑1→不同ordinary审批→库存/AP/GL各自口径。采购qty9/value90/AP-10，委外qty9/value540/AP-50，GL inventory分别-10/-60、委外variance+10且唯一凭证。查真实receipt/order祖先和回执；无来源/错供应商币种货品/超退/重复仍拒。先别生成GL，见第5条导入顺序。
+4. 模具1626：套数升序AU-01626/1.125，普通下载、纸预览内下载、选两行、批量全选都真正生成重开XLSX，逐编号/精度/排序/过滤/权限，下载无mouldType、伪未知列403。D2冷读首真50后断续流必须撤部分/零新作业，同查询旧完整重读失败仍合法，滚动无请求/取消/旧身份晚回/原任务恢复分别验。共享FlutterWindows实际交互及WPF已有Unit入口重建复验；不冒Win7真机。
+5. 七类网页导入都未完成最终真Web：goods、BOM、cost、chart、aux、note、accounting。按 evidence/b-import-ui-prep/UI-入口矩阵.md 的真实路径/按钮/最小权限、input-files-absolute.json 的原攻击和合法文件检测并真正提交/Apply/不同人复核，SQL逐阶段核无误写或合法结果。持久旧预览安全门五类是成本/科目/备注/辅助/会计，goods/BOM还重读bytes；VERSION3，不沿旧WEB-STEPS的v2说明。
+   顺序重要：Root最后GL/期初基准/月份coverage均0。先合法完整十月会计接续，再十一月原生退货GL；同月POSTED会明确阻止native generate，不可绕守卫。用 evidence/b-import-ui-prep/accounting-pair-202610 的真正十月凭证83列、余额11列、目录3列；不要用保留的十一月pair。目录19019991/39019991映射独立新ACCOUNT/EQUITY叶科目，不复用七个库存/应付用途。普通财务提交，另一financeImport复核，期初0/OPERATING/无辅助/完整10月仅一笔借贷100；应有FINANCIAL_SOURCE凭证1/分录2/净0、effective_from10/1、coverage2026-10。PREVIEW不等于POSTED，原重复回执不增写。随后ordinary公开HTTP generate?period=2026-11两次，再真实GL页读和来源SQL分栏；当前没有网页生成GL按钮，不能编造。
+   原文件采集/比对另14模板需相应原单/岗位，缺资料单列；不拿七类文件改名冒合法来源，不自动扩展资产权限。
+
+六、最终统一候选回归、独立复核与报告
+
+修完本地红后冻结一个SHA，全部组从正常fresh编译同源重跑。A入口 tool/company_feedback_production/run_final_a.py（--root/--candidate/全新--output/--execute），原209/owning26/DirectLot2、真实1128及1129双起点12库19launcher、proof513/1025/2049、2万/同事件1000、projection正确/交换布尔断言红/恢复。A runner只准备未最终执行。
+B保原真实HTTP422、来源/库存/AP/GL、20料quiet/parallel原10秒及SQL/锁等待。D3用 evidence/scale-final-prep/run-final-d3.ps1明确冻结SHA+新tag+-Execute，原23、真100k独立SQL、真50001已选且另有未选1、实际1048600行两sheet重读/取消清理，不能只抬常量。
+C最终runner还没写完：D:\Projects\uten_imp_worktrees\feedback-final-c-integrated-20261111（HEADa24）的evidence/c-unified-final是保全WIP，有23类清单/102输入/三探针/真实v1-v2产物，未启动Maven/PG，也未完成freeze编排。补普通goods/BOM/accounting合法组，原146断言不松；旧五类真实签发ID/owner/谱系、已成功备注锁期原owner重试/另一owner拒仍需同候选。不能UPDATE旧JSON/版本、关trigger或改名假装新内容。
+最后独立审查本SHA、原11185原件、迁移无碰号/旧V1129不变、WPF373保护字段/原说明证据/历史前缀、Git blob与raw字节/EOL。后来的合法并行通知台账增量按语义保留，不硬回滚历史到524或状态旧值。报告按原八项逐项判定，分组列source/通过失败错误skip/命令/证据，重叠不相加。明确服务PG、VM、合成native诊断、真Web真库、当前Windows、Win7设备、CI不同栏。
+多人分次领料自动关联仍是“评估完成/自动功能未实施”，完整TEXT/NUMBER回写未实施，不借本轮扩项，不把整组cells替换当部分更新。公司原单、私有旧Excel、Win7设备、正式CI缺条件列具体现场步骤，不能假签，也不因此停止可做本地工作。完成整个未完范围后再收口，不逐项等我说继续。

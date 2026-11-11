@@ -1,0 +1,59 @@
+{
+  "mainObserved": "6cfdcd4c52ee88e52b224f16c81febd4d16c9c7f",
+  "completedCandidateAlreadyContained": "94d5f71d5e5f6e65d663ba3c033e72588483affc",
+  "localCandidateMerge": "6e50f2158868e390cb1dda8b253231be2956f9e8",
+  "parallelNoticeMerge": "6cfdcd4c52ee88e52b224f16c81febd4d16c9c7f",
+  "runtimeGitScopesMatchChecked08af": [
+    "lib",
+    "server/src/main",
+    "server/pom.xml",
+    "clients/windows_legacy/Uten.Legacy.Core",
+    "clients/windows_legacy/Uten.Legacy.App",
+    "windows/runner",
+    "pubspec.yaml",
+    "pubspec.lock"
+  ],
+  "wpfProtectedAndPriorNotesEvidencePreserved": true,
+  "historyLines": 524,
+  "mainUncommittedStatus": " M pubspec.lock\n?? tmp/\n",
+  "parallelUncommittedLock": {
+    "untouchedByThisTask": true,
+    "rawSha256": "eab3fb182a286e0de53c4791db39fe6c808678caa642cbeb1f01abcc1a0965de",
+    "headBlobSha256": "6bec893e1fc3e3a8e472a01cad5c247ac5be4c914c702ede8c1c7a6b5ffdaf5f",
+    "versionDifferences": {
+      "flutter_riverpod": [
+        "3.4.3",
+        "3.5.0"
+      ],
+      "jni": [
+        "1.1.0",
+        "1.1.2"
+      ],
+      "synchronized": [
+        "3.5.0",
+        "3.6.1+1"
+      ],
+      "material_ui": [
+        null,
+        "1.2.0"
+      ],
+      "mobile_scanner": [
+        "7.4.2",
+        "7.5.0"
+      ],
+      "cupertino_ui": [
+        null,
+        "1.0.2"
+      ],
+      "qr": [
+        "3.0.2",
+        "3.0.3"
+      ],
+      "archive": [
+        "4.5.2",
+        "4.6.0"
+      ]
+    },
+    "patchOnlyPreservedNotStaged": true
+  }
+}

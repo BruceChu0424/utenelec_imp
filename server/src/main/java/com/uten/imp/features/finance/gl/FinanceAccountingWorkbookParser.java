@@ -52,9 +52,9 @@ public final class FinanceAccountingWorkbookParser {
         for(int index=1;index<=82;index++)if(!Pattern.compile("^F"+index+"(?![0-9]).*",Pattern.DOTALL).matcher(text(header,index-1)).matches())
             throw invalid("原凭证第"+index+"列表头不符合F"+index+"，不能猜测列位置");
         if(sheet.maxColumn()!=82)throw invalid("原凭证须保留全部83列及输出签名");
-        var signature=Pattern.compile("^凭证输出[：:]([^：:]+)[：:]([^：:]+)[：:]([^：:]+)[：:]([0-9]{4})$").matcher(text(header,82));
+        var signature=Pattern.compile("^凭证输出:([^:]+):(.+):([0-9]{4})$").matcher(text(header,82).replace('：',':'));
         if(!signature.matches())throw invalid("原凭证第83列输出签名缺损或格式不符，请从原账套重新导出");
-        String signatureLedger=signature.group(2),signatureCompany=signature.group(3);int signatureYear=Integer.parseInt(signature.group(4));
+        String signatureIdentity=signature.group(2);int signatureYear=Integer.parseInt(signature.group(3));
         List<Issue> issues=new ArrayList<>();
         for(var issue:com.uten.imp.common.importing.ImportColumnGuard.inspectExtraColumns(bytes,sheet,header.index0(),83))
             issues.add(new Issue(issue.rowNum(),issue.column(),issue.message()));
@@ -67,7 +67,9 @@ public final class FinanceAccountingWorkbookParser {
                 LocalDate date=LocalDate.parse(text(row,0));int year=integer(row,50),month=integer(row,51),lineNo=integer(row,58);
                 if(year!=date.getYear()||month!=date.getMonthValue()||lineNo<1)throw invalid("日期、会计年/期间或凭证行号不一致");
                 String type=required(row,1,"凭证类别"),number=literal(row,2,"凭证号"),ledger=literal(row,48,"账套号");
-                if(!ledger.equals(signatureLedger)||!text(row,49).equals(signatureCompany)||year!=signatureYear)
+                // Ledger/company are literal source values; punctuation inside a
+                // legal name must not be mistaken for another signature field.
+                if(!(ledger+":"+text(row,49)).replace('：',':').equals(signatureIdentity)||year!=signatureYear)
                     throw invalid("原凭证分录的账套、核算单位或年度与输出签名不一致");
                 BigDecimal debit=number(row,6),credit=number(row,7),original=nullableNumber(row,9,false),rate=nullableNumber(row,10,false);
                 if((debit.signum()==0)==(credit.signum()==0))throw invalid("借贷两列必须仅有一列为非零，红字保留原方向负金额");

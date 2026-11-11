@@ -732,8 +732,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
   Set<String> get selectedIds => _selectedIds;
 
   @override
-  bool get busy =>
-      _busy || !_completeResultCurrent || _inlineEdit.active;
+  bool get busy => _busy || !_completeResultCurrent || _inlineEdit.active;
 
   @override
   void scrollToEnd() {

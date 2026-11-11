@@ -25,6 +25,7 @@ import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
+@org.springframework.context.annotation.Import(ProductionJdbcMeasurement.Configuration.class)
 @SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.MOCK,properties={
         "spring.profiles.active=dev","uten.audit.retention.enabled=false","uten.reporting.materialized-view-refresh.enabled=false",
         "uten.production.readiness-reconcile.enabled=false",
@@ -958,7 +959,13 @@ class AggregateMaterialOrderEndToEndTest {
         for(UUID material:materials)groups.add(input(c,material,"BUY","20",false));
         var command=command(c,groups);
         long beganAt=System.nanoTime();
-        var issued=writer.submit(c.analysis(),command);
+        var measurement=ProductionJdbcMeasurement.begin();
+        SubmitResult issued;
+        try {issued=writer.submit(c.analysis(),command);}
+        finally {
+            ProductionJdbcMeasurement.end();
+            System.out.println("[aggregate-submit-20-jdbc] "+measurement.result());
+        }
         long elapsedMs=(System.nanoTime()-beganAt)/1_000_000;
         System.out.println("[aggregate-submit-20] elapsedMs="+elapsedMs);
         assertEquals(21,issued.batches().size());

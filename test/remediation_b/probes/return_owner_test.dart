@@ -25,69 +25,179 @@ import 'package:uten_imp/shared/auth/document_scope_capability.dart';
 import '../support/document_scope_capability_overrides.dart';
 
 class Session extends SessionNotifier {
-  @override SessionState build() => userState('A');
-  SessionState userState(String id)=>SessionState(status:AuthStatus.authenticated,
-      user:AppUser(id:id,name:id,code:id,permissions:const ['purchase_return:create','subcontract_return:create']));
-  void switchOwner()=>state=userState('B');
+  @override
+  SessionState build() => userState('A');
+  SessionState userState(String id) => SessionState(
+    status: AuthStatus.authenticated,
+    user: AppUser(
+      id: id,
+      name: id,
+      code: id,
+      permissions: const [
+        'purchase_return:create',
+        'subcontract_return:create',
+      ],
+    ),
+  );
+  void switchOwner() => state = userState('B');
 }
+
 class Api extends ApiClient {
-  Api():super(Dio());
-  @override Future<Map<String,dynamic>> get(String path,{Map<String,dynamic>? query}) async=>
-    {'items':<Object>[],'page':1,'size':50,'total':0,'totalPages':0};
-  @override Future<List<Map<String,dynamic>>> getList(String path,{Map<String,dynamic>? query}) async=>[];
+  Api() : super(Dio());
+  @override
+  Future<Map<String, dynamic>> get(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async => {
+    'items': <Object>[],
+    'page': 1,
+    'size': 50,
+    'total': 0,
+    'totalPages': 0,
+  };
+  @override
+  Future<List<Map<String, dynamic>>> getList(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async => [];
 }
+
 class Names extends MasterNameService {
-  Names(super.api); @override Future<void> ensureLoaded() async {}
-  final proceed=Completer<void>();
-  var detailEntered=false;
-  @override Future<void> loadGoodsNamesWithCodes(Iterable<String> ids) async {}
-  @override GoodsOption? goodsOptionOf(String? id)=>GoodsOption(id:id!,name:'来源A');
-  @override Future<void> loadGoodsDetails(Iterable<String> ids) async {if(ids.contains('g-A')){detailEntered=true;await proceed.future;}}
-}
-void main(){
-  for(final purchase in [true,false]){
-    testWidgets('retired owner must not append a late upstream '+(purchase?'purchase':'subcontract')+' source',(t)async{
-      await t.binding.setSurfaceSize(const Size(1800,1150));
-      addTearDown(()=>t.binding.setSurfaceSize(null));
-      SharedPreferences.setMockInitialValues({});final api=Api(), names=Names(api), nav=GlobalKey<NavigatorState>();
-      final page=purchase ? const PurchaseDocEditPage(docType:PurchaseDocType.returnDoc)
-                       : const SubcontractDocEditPage(docType:SubcontractDocType.returnDoc);
-      final container=ProviderContainer(overrides:[
-        sessionProvider.overrideWith(Session.new),formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
-        apiBaseUrlProvider.overrideWithValue('https://example.invalid/api'),
-        apiClientProvider.overrideWithValue(api),
-        masterNameServiceProvider.overrideWithValue(names),
-        writeAllDocumentScope(purchase?DocumentDataScope.purchase:DocumentDataScope.subcontract),
-      ]);
-      addTearDown(container.dispose);
-      await t.pumpWidget(UncontrolledProviderScope(container:container,child:MaterialApp(navigatorKey:nav,home:page)));
-      for(var tick=0; tick<12; tick++){await t.pump(const Duration(milliseconds:80));}
-      final dynamic state=t.state(find.byWidget(page));
-      final dynamic grid=purchase?t.widget<UtenEditableGrid<PurchaseGridRow>>(find.byType(UtenEditableGrid<PurchaseGridRow>)).controller
-                            :t.widget<UtenEditableGrid<SubcontractGridRow>>(find.byType(UtenEditableGrid<SubcontractGridRow>)).controller;
-      grid.rows.first.qty.text='7.125';
-      expect(state.formDraftIdentityIsCurrent,true);
-      await t.tap(find.byType(UtenImportButton)); for(var tick=0; tick<12; tick++){await t.pump(const Duration(milliseconds:80));}
-      const rows=[UtenDocLinkPickedItem(goodsId:'g-A',qty:2,upstreamItemId:'approved-receipt-A',unitRate:1)];
-      const terms=ProcurementSourceTerms(currencyId:'currency-A',exchangeRate:'1',taxRate:'0',settlementMethodId:'terms-A');
-      if(purchase){nav.currentState!.pop(const UtenDocLinkPickResult<PurchaseDocItem>(items:rows,partyId:'supplier-A',sourceTerms:terms));}
-      else {nav.currentState!.pop(const UtenDocLinkPickResult<SubcontractDocItem>(items:rows,partyId:'supplier-A',sourceTerms:terms));}
-      for(var tick=0; tick<12; tick++){await t.pump(const Duration(milliseconds:80));}
-      expect(names.detailEntered,true);
-      (container.read(sessionProvider.notifier) as Session).switchOwner();
-      await t.pump();
-      expect(state.formDraftIdentityIsCurrent,false);
-      names.proceed.complete();
-      for(var tick=0; tick<12; tick++){await t.pump(const Duration(milliseconds:80));}
-      final ids=[for(final row in grid.rows)row.upstreamItemId];
-      print('audit purchase=$purchase retired=${!state.formDraftIdentityIsCurrent} sourceIds=$ids originalInput=${grid.rows.first.qty.text}');
-      expect(ids, isNot(contains('approved-receipt-A')),reason:'A source returned after identity B retired the page');
-      await t.pumpWidget(const SizedBox.shrink());
-      container.dispose();
-      await t.pump();
-    });
+  Names(super.api);
+  @override
+  Future<void> ensureLoaded() async {}
+  final proceed = Completer<void>();
+  var detailEntered = false;
+  @override
+  Future<void> loadGoodsNamesWithCodes(Iterable<String> ids) async {}
+  @override
+  GoodsOption? goodsOptionOf(String? id) => GoodsOption(id: id!, name: '来源A');
+  @override
+  Future<void> loadGoodsDetails(Iterable<String> ids) async {
+    if (ids.contains('g-A')) {
+      detailEntered = true;
+      await proceed.future;
+    }
   }
 }
 
-
-
+void main() {
+  for (final purchase in [true, false]) {
+    testWidgets(
+      'retired owner must not append a late upstream ' +
+          (purchase ? 'purchase' : 'subcontract') +
+          ' source',
+      (t) async {
+        await t.binding.setSurfaceSize(const Size(1800, 1150));
+        addTearDown(() => t.binding.setSurfaceSize(null));
+        SharedPreferences.setMockInitialValues({});
+        final api = Api(),
+            names = Names(api),
+            nav = GlobalKey<NavigatorState>();
+        final page = purchase
+            ? const PurchaseDocEditPage(docType: PurchaseDocType.returnDoc)
+            : const SubcontractDocEditPage(
+                docType: SubcontractDocType.returnDoc,
+              );
+        final container = ProviderContainer(
+          overrides: [
+            sessionProvider.overrideWith(Session.new),
+            formDraftStorageProvider.overrideWithValue(
+              MemoryFormDraftStorage(),
+            ),
+            apiBaseUrlProvider.overrideWithValue('https://example.invalid/api'),
+            apiClientProvider.overrideWithValue(api),
+            masterNameServiceProvider.overrideWithValue(names),
+            writeAllDocumentScope(
+              purchase
+                  ? DocumentDataScope.purchase
+                  : DocumentDataScope.subcontract,
+            ),
+          ],
+        );
+        addTearDown(container.dispose);
+        await t.pumpWidget(
+          UncontrolledProviderScope(
+            container: container,
+            child: MaterialApp(navigatorKey: nav, home: page),
+          ),
+        );
+        for (var tick = 0; tick < 12; tick++) {
+          await t.pump(const Duration(milliseconds: 80));
+        }
+        final dynamic state = t.state(find.byWidget(page));
+        final dynamic grid = purchase
+            ? t
+                  .widget<UtenEditableGrid<PurchaseGridRow>>(
+                    find.byType(UtenEditableGrid<PurchaseGridRow>),
+                  )
+                  .controller
+            : t
+                  .widget<UtenEditableGrid<SubcontractGridRow>>(
+                    find.byType(UtenEditableGrid<SubcontractGridRow>),
+                  )
+                  .controller;
+        grid.rows.first.qty.text = '7.125';
+        expect(state.formDraftIdentityIsCurrent, true);
+        await t.tap(find.byType(UtenImportButton));
+        for (var tick = 0; tick < 12; tick++) {
+          await t.pump(const Duration(milliseconds: 80));
+        }
+        const rows = [
+          UtenDocLinkPickedItem(
+            goodsId: 'g-A',
+            qty: 2,
+            upstreamItemId: 'approved-receipt-A',
+            unitRate: 1,
+          ),
+        ];
+        const terms = ProcurementSourceTerms(
+          currencyId: 'currency-A',
+          exchangeRate: '1',
+          taxRate: '0',
+          settlementMethodId: 'terms-A',
+        );
+        if (purchase) {
+          nav.currentState!.pop(
+            const UtenDocLinkPickResult<PurchaseDocItem>(
+              items: rows,
+              partyId: 'supplier-A',
+              sourceTerms: terms,
+            ),
+          );
+        } else {
+          nav.currentState!.pop(
+            const UtenDocLinkPickResult<SubcontractDocItem>(
+              items: rows,
+              partyId: 'supplier-A',
+              sourceTerms: terms,
+            ),
+          );
+        }
+        for (var tick = 0; tick < 12; tick++) {
+          await t.pump(const Duration(milliseconds: 80));
+        }
+        expect(names.detailEntered, true);
+        (container.read(sessionProvider.notifier) as Session).switchOwner();
+        await t.pump();
+        expect(state.formDraftIdentityIsCurrent, false);
+        names.proceed.complete();
+        for (var tick = 0; tick < 12; tick++) {
+          await t.pump(const Duration(milliseconds: 80));
+        }
+        final ids = [for (final row in grid.rows) row.upstreamItemId];
+        print(
+          'audit purchase=$purchase retired=${!state.formDraftIdentityIsCurrent} sourceIds=$ids originalInput=${grid.rows.first.qty.text}',
+        );
+        expect(
+          ids,
+          isNot(contains('approved-receipt-A')),
+          reason: 'A source returned after identity B retired the page',
+        );
+        await t.pumpWidget(const SizedBox.shrink());
+        container.dispose();
+        await t.pump();
+      },
+    );
+  }
+}

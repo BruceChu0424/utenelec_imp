@@ -126,7 +126,11 @@ Future<PagedResult<T>> loadCompletePagedResult<T>({
   final parent = PagedReadIntent.currentRead;
   final activity = PagedReadIntent.currentActivity;
   final bootstrapAllowed = PagedReadIntent.allowsInactiveBootstrap;
-  bool logicalCurrent() => isCurrent() && (parent?.call() ?? true);
+  bool logicalCurrent() {
+    debugScopedReadCheckStats?.loopChecks++;
+    return isCurrent() && (parent?.call() ?? true);
+  }
+
   bool current() => logicalCurrent() && (activity?.call() ?? true);
   final pipeline = maxConcurrentPages == 1
       ? null
@@ -171,10 +175,14 @@ Future<PagedResult<T>> loadCompletePagedResult<T>({
   int? serverSize;
   try {
     while (logicalCurrent()) {
-      if (!current() && !(batch == 0 && bootstrapAllowed)) {
+      // current() == logicalCurrent() && activity, and logical already holds
+      // here, so one activity evaluation answers both the activity gate and
+      // the budget fence below — nothing runs between them that could retire.
+      final active = activity?.call() ?? true;
+      if (!active && !(batch == 0 && bootstrapAllowed)) {
         throw const UiWorkCancelled();
       }
-      if (current()) work.ensureCurrent();
+      if (active) work.ensureCurrent();
       progressive?.throwIfFailed();
       final size = serverSize ?? batches.sizeAt(offset, cap: cap);
       // One fixed size keeps the original page-by-page sequence; the ladder
@@ -472,7 +480,11 @@ Future<S> loadCompleteCursorSnapshot<R, S, C>({
   final parent = PagedReadIntent.currentRead;
   final activity = PagedReadIntent.currentActivity;
   final bootstrapAllowed = PagedReadIntent.allowsInactiveBootstrap;
-  bool logicalCurrent() => isCurrent() && (parent?.call() ?? true);
+  bool logicalCurrent() {
+    debugScopedReadCheckStats?.loopChecks++;
+    return isCurrent() && (parent?.call() ?? true);
+  }
+
   bool current() => logicalCurrent() && (activity?.call() ?? true);
   final work = budget ?? UiWorkBudget(isCurrent: current);
   // Cursor history has no total semantics: the top notice follows these reads
@@ -490,6 +502,7 @@ Future<S> loadCompleteCursorSnapshot<R, S, C>({
       nextCursorOf: nextCursorOf,
       logicalCurrent: logicalCurrent,
       current: current,
+      activity: activity,
       work: work,
       plan: plan,
       progress: progress,
@@ -534,6 +547,7 @@ Future<S> _cursorBatches<R, S, C>({
   required C? Function(S response) nextCursorOf,
   required bool Function() logicalCurrent,
   required bool Function() current,
+  bool Function()? activity,
   required UiWorkBudget work,
   required CompleteReadBatchPlan plan,
   required CompleteReadProgressHandle? progress,
@@ -546,10 +560,14 @@ Future<S> _cursorBatches<R, S, C>({
   required _CursorReadState<R, S, C> state,
 }) async {
   while (logicalCurrent()) {
-    if (!current() && !(!state.hasFirst && bootstrapAllowed)) {
+    // current() == logicalCurrent() && activity, and logical already holds
+    // here, so one activity evaluation answers both the activity gate and
+    // the budget fence below — nothing runs between them that could retire.
+    final active = activity?.call() ?? true;
+    if (!active && !(!state.hasFirst && bootstrapAllowed)) {
       throw const UiWorkCancelled();
     }
-    if (current()) work.ensureCurrent();
+    if (active) work.ensureCurrent();
     final size = state.hasFirst ? plan.maxBatchSize : plan.firstBatchSize;
     final response = await PagedReadIntent.scopedRead(
       logicalCurrent,

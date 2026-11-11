@@ -1,5 +1,30 @@
 import 'package:collection/collection.dart';
 
+/// Optional local profiling counters for the scoped complete-read ownership
+/// fence, following the [debugUiWorkSliceObserver] pattern: a test or a local
+/// profiling session installs one, production keeps it null and nothing is
+/// counted, and no values, row identities or response contents are recorded.
+ScopedReadCheckStats? debugScopedReadCheckStats;
+
+/// Counts how often ownership was re-checked during scoped complete reads and
+/// how many of those checks actually re-compared the query. The gap between
+/// [ownerChecks] and [queryCompares] is the answer reuse inside one
+/// event-loop turn; [loopChecks] counts the complete/cursor batch-loop
+/// ownership evaluations themselves.
+class ScopedReadCheckStats {
+  int ownerChecks = 0;
+  int queryCompares = 0;
+  int epochReads = 0;
+  int loopChecks = 0;
+
+  void reset() {
+    ownerChecks = 0;
+    queryCompares = 0;
+    epochReads = 0;
+    loopChecks = 0;
+  }
+}
+
 /// Copies query collections while retaining opaque repository/model identities.
 /// Nested query collections use Maps/Lists, not mutable fields inside records.
 Object? freezePagedReadQuery(Object? value) => switch (value) {

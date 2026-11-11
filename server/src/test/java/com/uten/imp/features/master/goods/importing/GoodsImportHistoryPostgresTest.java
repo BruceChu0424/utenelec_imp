@@ -47,6 +47,7 @@ import static org.mockito.Mockito.*;
 
 /** Real import and goods services, Hibernate and migrated PostgreSQL history/undo guards. */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
+@org.junit.jupiter.api.parallel.Execution(org.junit.jupiter.api.parallel.ExecutionMode.SAME_THREAD)
 class GoodsImportHistoryPostgresTest {
     static MigratedSchemaBaseline.ScopedDatabase database;
     static EntityManagerFactory factory;
@@ -603,6 +604,9 @@ class GoodsImportHistoryPostgresTest {
     }
 
     @Test void usedDeletedNumberIsIsolatedWhileUnusedDeletedAndFreshNumbersCommitTogether() throws Exception {
+        // This is historical data. V1128 correctly forbids making it in a current
+        // database; create it under the actual prior migration chain, then upgrade.
+        try (var legacy = new LegacyImportFixture()) {
         UUID usedId = UUID.randomUUID(), componentId = UUID.randomUUID();
         String freshCode = "F" + UUID.randomUUID().toString().replace("-", "").toUpperCase(Locale.ROOT);
         inTx(() -> {
@@ -624,6 +628,7 @@ class GoodsImportHistoryPostgresTest {
                     .executeUpdate();
             return null;
         });
+        legacy.upgrade();
         assertEquals("goods_bom_items.goods_id", scalar("SELECT first_source FROM goods_code_usage_facts WHERE goods_id=:id", usedId));
         byte[] file;
         try (var book = new XSSFWorkbook(); var out = new ByteArrayOutputStream()) {
@@ -657,6 +662,36 @@ class GoodsImportHistoryPostgresTest {
         for (String code : List.of(existingCode, freshCode)) {
             assertEquals(1L, ((Number) em.createNativeQuery("SELECT count(*) FROM goods WHERE code=:code AND NOT is_deleted")
                     .setParameter("code", code).getSingleResult()).longValue());
+        }
+        }
+    }
+
+    private final class LegacyImportFixture implements AutoCloseable {
+        private final org.testcontainers.postgresql.PostgreSQLContainer postgres =
+                new org.testcontainers.postgresql.PostgreSQLContainer("postgres:16-alpine");
+        private final EntityManagerFactory previousFactory = factory;
+        private final JpaTransactionManager previousTransactions = transactions;
+        private EntityManagerFactory legacyFactory;
+        LegacyImportFixture() throws Exception {
+            try {
+                postgres.start();
+                com.uten.imp.testsupport.TestFlyway.configure().dataSource(postgres.getJdbcUrl(),postgres.getUsername(),postgres.getPassword())
+                        .locations("classpath:db/migration").target("1127").load().migrate();
+                var bean = new LocalContainerEntityManagerFactoryBean();
+                bean.setDataSource(new DriverManagerDataSource(postgres.getJdbcUrl(),postgres.getUsername(),postgres.getPassword()));
+                bean.setJpaVendorAdapter(new HibernateJpaVendorAdapter());bean.setPackagesToScan("com.uten.imp");
+                bean.setJpaPropertyMap(Map.of("hibernate.hbm2ddl.auto","none"));bean.afterPropertiesSet();
+                legacyFactory=bean.getObject();factory=legacyFactory;transactions=new JpaTransactionManager(factory);
+                prepare();
+            } catch(Exception failure) {close();throw failure;}
+        }
+        void upgrade() {
+            com.uten.imp.testsupport.TestFlyway.configure().dataSource(postgres.getJdbcUrl(),postgres.getUsername(),postgres.getPassword())
+                    .locations("classpath:db/migration").load().migrate();
+        }
+        @Override public void close() {
+            factory=previousFactory;transactions=previousTransactions;em=null;
+            try {if(legacyFactory!=null)legacyFactory.close();}finally{postgres.stop();}
         }
     }
 

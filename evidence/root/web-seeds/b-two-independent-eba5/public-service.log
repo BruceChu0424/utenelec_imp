@@ -1,0 +1,49 @@
+[INFO] Scanning for projects...
+[INFO] 
+[INFO] ----------------------< com.uten:uten-imp-server >----------------------
+[INFO] Building uten-imp-server 0.1.0
+[INFO]   from pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- surefire:3.5.6:test (default-cli) @ uten-imp-server ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running com.uten.imp.businesschain.FeedbackBPublicServicePrepTest
+04:28:49.297 [main] INFO org.springframework.test.context.support.AnnotationConfigContextLoaderUtils -- Could not detect default configuration classes for test class [com.uten.imp.businesschain.FeedbackBPublicServicePrepTest]: FeedbackBPublicServicePrepTest does not declare any static, non-private, non-final, nested classes annotated with @Configuration.
+04:28:50.099 [main] INFO org.springframework.boot.test.context.SpringBootTestContextBootstrapper -- Found @SpringBootConfiguration com.uten.imp.UtenImpApplication for test class com.uten.imp.businesschain.FeedbackBPublicServicePrepTest
+04:28:50.192 [main] INFO org.springframework.test.context.support.AnnotationConfigContextLoaderUtils -- Could not detect default configuration classes for test class [com.uten.imp.businesschain.FeedbackBPublicServicePrepTest]: FeedbackBPublicServicePrepTest does not declare any static, non-private, non-final, nested classes annotated with @Configuration.
+04:28:50.195 [main] INFO org.springframework.boot.test.context.SpringBootTestContextBootstrapper -- Found @SpringBootConfiguration com.uten.imp.UtenImpApplication for test class com.uten.imp.businesschain.FeedbackBPublicServicePrepTest
+2026-11-11T04:28:50.921-07:00  INFO 4532 --- [uten-imp-server] [           main] c.u.i.b.FeedbackBPublicServicePrepTest   : Starting FeedbackBPublicServicePrepTest using Java 21.0.11 with PID 4532 (started by bruce in D:\Projects\uten_imp_worktrees\feedback-remediate-20261110\server)
+2026-11-11T04:28:50.923-07:00 DEBUG 4532 --- [uten-imp-server] [           main] c.u.i.b.FeedbackBPublicServicePrepTest   : Running with Spring Boot v4.1.1, Spring v7.0.9
+2026-11-11T04:28:50.924-07:00  INFO 4532 --- [uten-imp-server] [           main] c.u.i.b.FeedbackBPublicServicePrepTest   : The following 1 profile is active: "dev"
+2026-11-11T04:29:02.477-07:00  INFO 4532 --- [uten-imp-server] [           main] org.flywaydb.core.FlywayExecutor         : Database: jdbc:postgresql://127.0.0.1:26630/feedback (PostgreSQL 16.15)
+2026-11-11T04:29:13.113-07:00  INFO 4532 --- [uten-imp-server] [           main] o.f.core.internal.command.DbMigrate      : Current version of schema "public": 1131
+2026-11-11T04:29:13.136-07:00  INFO 4532 --- [uten-imp-server] [           main] o.f.core.internal.command.DbMigrate      : Schema "public" is up to date. No migration necessary.
+2026-11-11T04:29:14.885-07:00  INFO 4532 --- [uten-imp-server] [           main] o.s.o.j.p.SpringPersistenceUnitInfo      : No LoadTimeWeaver setup: ignoring JPA class transformer
+2026-11-11T04:29:14.931-07:00  INFO 4532 --- [uten-imp-server] [           main] com.zaxxer.hikari.HikariDataSource       : uten-imp - Starting...
+2026-11-11T04:29:14.971-07:00  INFO 4532 --- [uten-imp-server] [           main] com.zaxxer.hikari.HikariDataSource       : uten-imp - Start completed.
+2026-11-11T04:29:23.789-07:00  INFO 4532 --- [uten-imp-server] [           main] j.LocalContainerEntityManagerFactoryBean : Initialized JPA EntityManagerFactory for persistence unit 'default'
+2026-11-11T04:29:34.046-07:00  INFO 4532 --- [uten-imp-server] [           main] c.u.i.c.storage.LocalDiskStorageService  : Local attachment storage enabled at D:\Projects\uten_imp_worktrees\feedback-remediate-20261110\evidence\root\web-seeds\b-two-independent-eba5\tmp\uten-test-attachments-4532
+2026-11-11T04:29:48.604-07:00  INFO 4532 --- [uten-imp-server] [           main] com.zaxxer.hikari.HikariDataSource       : document-scan-evidence - Starting...
+2026-11-11T04:29:48.606-07:00  INFO 4532 --- [uten-imp-server] [           main] com.zaxxer.hikari.HikariDataSource       : document-scan-evidence - Start completed.
+2026-11-11T04:30:07.906-07:00  INFO 4532 --- [uten-imp-server] [knowledge-index] c.u.imp.features.ai.chat.AiDocKnowledge  : AI knowledge index: 295 documents, 2096 chunks, 85 glossary terms, 95649 terms, 577655 postings, about 12383 KB, built in 10262 ms
+2026-11-11T04:30:10.247-07:00  INFO 4532 --- [uten-imp-server] [           main] c.u.i.f.r.e.ReportExportBuildIdentity    : Report export build fingerprint initialized in 7306 ms
+2026-11-11T04:30:15.796-07:00  INFO 4532 --- [uten-imp-server] [           main] o.s.b.a.e.web.EndpointLinksResolver      : Exposing 1 endpoint beneath base path '/actuator'
+2026-11-11T04:30:15.970-07:00  INFO 4532 --- [uten-imp-server] [           main] c.u.i.b.FeedbackBPublicServicePrepTest   : Started FeedbackBPublicServicePrepTest in 85.54 seconds (process running for 88.19)
+2026-11-11T04:30:16.835-07:00  INFO 4532 --- [uten-imp-server] [           main] org.testcontainers.images.PullPolicy     : Image pull policy will be performed by: DefaultPullPolicy()
+2026-11-11T04:30:16.839-07:00  INFO 4532 --- [uten-imp-server] [           main] o.t.utility.ImageNameSubstitutor         : Image name substitution will be performed by: DefaultImageNameSubstitutor (composite of 'ConfigurationFileImageNameSubstitutor' and 'PrefixingImageNameSubstitutor')
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 99.50 s -- in com.uten.imp.businesschain.FeedbackBPublicServicePrepTest
+[INFO] 
+[INFO] Results:
+[INFO] 
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0
+[INFO] 
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD SUCCESS
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  01:44 min
+[INFO] Finished at: 2026-11-11T04:30:29-07:00
+[INFO] ------------------------------------------------------------------------

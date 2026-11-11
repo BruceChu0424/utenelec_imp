@@ -1,0 +1,62 @@
+{
+  "legacyProgram" : false,
+  "billDate" : "2026-11-11",
+  "businessTimeZone" : "Asia/Shanghai",
+  "createdAtUtc" : "2026-11-11T03:03:49.045977Z",
+  "purchase" : {
+    "receiptId" : "f5757297-f8bc-4034-a69b-3f9b56b31d35",
+    "receiptItemId" : "cde0661a-7c0e-4d07-8074-1d00ac71ce7e",
+    "receiptNo" : "CJ20261111000001",
+    "billDate" : "2026-11-11",
+    "orderItemId" : "340cc45b-8430-4b8c-97a2-b6f7affa0123",
+    "supplierId" : "df24c8b5-6e7f-4844-8142-f1766fa5966a",
+    "warehouseId" : "104c4485-a5d3-4137-beda-53bc3a91e38b",
+    "goodsId" : "d92478b0-73b9-494a-aba8-cfdc850a9634",
+    "sourceQty" : "10"
+  },
+  "subcontract" : {
+    "receiptId" : "d1a30fc7-896a-436a-aecc-655b43eb4534",
+    "receiptItemId" : "99bb7d17-f91d-416a-b73d-52f2a25e350b",
+    "receiptNo" : "EJ20261111000001",
+    "billDate" : "2026-11-11",
+    "orderItemId" : "c1d585c6-f80c-4e20-bf79-0e081e7a178f",
+    "supplierId" : "d0f59cf8-d64d-44b2-a5e6-8aa390c62872",
+    "warehouseId" : "ed928b2a-394e-4acd-8450-0a87a50d2bf3",
+    "goodsId" : "663c6e29-ad77-4048-81df-5834c8cb8486",
+    "sourceQty" : "10"
+  },
+  "maker" : {
+    "login" : "USR-feedback-b-maker-64a37b8f",
+    "userId" : "fa040ddd-d3a7-4ebb-bee2-c772090eb828"
+  },
+  "approver" : {
+    "login" : "USR-feedback-b-approver-64a37b8f",
+    "userId" : "fb542f46-fbff-4f03-9000-d471db935e05"
+  },
+  "materialOrder" : {
+    "rows" : [ {
+      "materialLineId" : "d180eaff-0208-4a68-86f9-c94acd2b18bc",
+      "planningUncoveredQty" : "50.0000",
+      "requiredQty" : "50.0000"
+    }, {
+      "materialLineId" : "a81da076-2c6e-498b-bfc3-8496244ac7d2",
+      "planningUncoveredQty" : "50.0000",
+      "requiredQty" : "50.0000"
+    }, {
+      "materialLineId" : "96a1b68a-ffc4-44c1-b112-9d3327b48158",
+      "planningUncoveredQty" : "50.0000",
+      "requiredQty" : "50.0000"
+    } ],
+    "analysisNo" : "WL20261111000006",
+    "goodsId" : "fd684688-36c2-454e-b188-871ae45fdcd7",
+    "warehouseId" : "fc865f0e-0114-4e00-9f82-755efe73d9ec",
+    "analysisId" : "816362f9-daec-4103-b5c7-37332ff95df3"
+  },
+  "planner" : {
+    "login" : "USR-b-web-unknown-ab1da6cf-f612-4a8e-87d0-1632504a3363",
+    "userId" : "7da376ef-210d-4072-bcdf-8679bc030d12"
+  },
+  "supplierPeriodReadOnlyChecks" : "PASS at billDate; real runtime must recheck at approval",
+  "status" : "prep; independent actual Web fixture, no UI actions yet",
+  "scenario" : "unknown"
+}

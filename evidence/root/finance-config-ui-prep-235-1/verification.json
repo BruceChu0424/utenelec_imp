@@ -1,0 +1,78 @@
+{
+  "kind": "actual ordinary Web configuration preparation; not frozen final acceptance",
+  "webSourceRevision": "23dd508a6340c5d9f57de5df9180466bff092e70",
+  "backendSourceRevision": "47c96198ae10ab21a4f2d6d63b206e721214458c",
+  "actor": {
+    "permissions": [
+      "payment_style:view",
+      "payment_style:edit",
+      "payment_style:create",
+      "finance_post:execute",
+      "finance_report:view",
+      "finance:view:all"
+    ],
+    "login": "USR-b-finance-ui-a635aa02",
+    "userId": "0b887a85-239a-4118-8d3f-246b166a7189",
+    "passwordSource": "private runtime syntheticAccountPassword; no credential in this seed",
+    "employeeId": "73b11ea4-25fd-4fd5-ac0c-132c04514de5",
+    "isSuperAdmin": false
+  },
+  "selectedBy": "visible option followed by Return; initial pointer selection did not persist and remains under separate diagnosis",
+  "configured": [
+    {
+      "roleKey": "INVENTORY_ASSET",
+      "styleId": "4c1a909f-52d9-4303-aab2-e987f3431592",
+      "code": "SK000001",
+      "name": "B验收合成-INVENTORY_ASSET-a635aa02",
+      "updatedBy": "0b887a85-239a-4118-8d3f-246b166a7189"
+    },
+    {
+      "roleKey": "PROCUREMENT_GRNI_PENDING",
+      "styleId": "b9a28d09-8432-4aef-adb2-39561e46f519",
+      "code": "SK000002",
+      "name": "B验收合成-PROCUREMENT_GRNI_PENDING-a635aa02",
+      "updatedBy": "0b887a85-239a-4118-8d3f-246b166a7189"
+    },
+    {
+      "roleKey": "PROCUREMENT_RETURN_PENDING_ASSET",
+      "styleId": "9d8e8bd1-c11d-403e-8973-be134740d94f",
+      "code": "SK000003",
+      "name": "B验收合成-PROCUREMENT_RETURN_PENDING_ASSET-a635aa02",
+      "updatedBy": "0b887a85-239a-4118-8d3f-246b166a7189"
+    },
+    {
+      "roleKey": "PROCUREMENT_RETURN_VARIANCE",
+      "styleId": "a3be929d-eebf-4bb5-9e76-c0876988d2f3",
+      "code": "SK000004",
+      "name": "B验收合成-PROCUREMENT_RETURN_VARIANCE-a635aa02",
+      "updatedBy": "0b887a85-239a-4118-8d3f-246b166a7189"
+    },
+    {
+      "roleKey": "SALES_COST",
+      "styleId": "00dac92d-3aaf-48c3-b1b1-914ba6597de7",
+      "code": "SK000005",
+      "name": "B验收合成-SALES_COST-a635aa02",
+      "updatedBy": "0b887a85-239a-4118-8d3f-246b166a7189"
+    },
+    {
+      "roleKey": "SALES_REVENUE",
+      "styleId": "2c31c181-cfa3-4256-ba3d-7873ffa5e009",
+      "code": "SK000006",
+      "name": "B验收合成-SALES_REVENUE-a635aa02",
+      "updatedBy": "0b887a85-239a-4118-8d3f-246b166a7189"
+    },
+    {
+      "roleKey": "SUPPLIER_PREPAYMENT_ASSET",
+      "styleId": "cdc43873-2228-49fd-b27f-c07f40aac7e4",
+      "code": "SK000007",
+      "name": "B验收合成-SUPPLIER_PREPAYMENT_ASSET-a635aa02",
+      "updatedBy": "0b887a85-239a-4118-8d3f-246b166a7189"
+    }
+  ],
+  "existingUsableMappingsUnchanged": true,
+  "allStylesUnchanged": true,
+  "businessCountsUnchanged": true,
+  "exactSevenHttpPutsStatus200": true,
+  "rawLineByteContract": "unchanged selected complete lines from captured live metadata-only proxy prefix; no bodies/credentials",
+  "rawLinesSha256": "1ad814681e51729c87d8022c8e95f5ff94779d648663b92e5807abab36717bbd"
+}

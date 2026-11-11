@@ -1,0 +1,172 @@
+{
+  "source": "7b912287e53315228b469790ff066a9fab643e3c",
+  "counts": {
+    "tests": 146,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 1
+  },
+  "suites": [
+    {
+      "suite": "com.uten.imp.businesschain.FinanceAccountingContinuationPostgresTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "suite": "com.uten.imp.businesschain.FinanceAuxiliaryPostgresTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "suite": "com.uten.imp.businesschain.FinanceChartImportOriginalCommandsPostgresTest",
+      "tests": 13,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "suite": "com.uten.imp.businesschain.FinanceChartImportPostgresTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "suite": "com.uten.imp.common.export.PlatformWorkbookSchemaTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "suite": "com.uten.imp.common.importing.ImportColumnGuardTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "suite": "com.uten.imp.features.finance.gl.FinanceAccountingWorkbookParserTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 1
+    },
+    {
+      "suite": "com.uten.imp.features.finance.gl.FinanceChartWorkbookParserTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "suite": "com.uten.imp.features.finance.gl.FinanceExpenseAnalysisPostgresTest",
+      "tests": 15,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "suite": "com.uten.imp.features.finance.gl.FinanceOperatingNoteParserTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "suite": "com.uten.imp.features.finance.gl.WorkbookColumnRemediationTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "suite": "com.uten.imp.features.finance.statement.FinanceAuxiliaryWorkbookParserTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "suite": "com.uten.imp.features.master.goods.costing.CostStructureRowRemediationTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "suite": "com.uten.imp.features.master.goods.costing.CostTitleColumnRemediationTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "suite": "com.uten.imp.features.master.goods.costing.GoodsCostImportRemappingPostgresTest",
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "suite": "com.uten.imp.features.master.goods.costing.GoodsCostWorkbookParserTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "suite": "com.uten.imp.features.master.goods.GoodsBomImportStatePostgresTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "suite": "com.uten.imp.features.master.goods.importing.AdditionalSheetColumnRemediationTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "suite": "com.uten.imp.features.master.goods.importing.GoodsBomImportColumnContractTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "suite": "com.uten.imp.features.master.goods.importing.GoodsImportColumnContractTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "suite": "com.uten.imp.features.master.goods.importing.GoodsImportHistoryPostgresTest",
+      "tests": 31,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "suite": "com.uten.imp.features.master.goods.importing.GoodsImportPlanSafetyTest",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "suite": "com.uten.imp.migration.FinanceChartImportIntentUpgradePostgresTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  ]
+}

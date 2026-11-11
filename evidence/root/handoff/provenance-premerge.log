@@ -1,0 +1,73 @@
+{
+  "fingerprintContract": {
+    "gitSource": "SHA-256 of exact Git blob bytes (no EOL conversion)",
+    "binaryAndLog": "SHA-256 of exact filesystem bytes (no normalization)"
+  },
+  "baseline": "fdeda88b3d73b24b8691ad132caa765196b19a3d",
+  "candidate": "94d5f71d5e5f6e65d663ba3c033e72588483affc",
+  "branch": "uimp/feedback-remediate-20261110",
+  "main": "d5200b6bf68aae203542c3828ddc0d6498be2870",
+  "originalEvidenceChanged": [],
+  "wpf": {
+    "counts": {
+      "d73f86e1e": 373,
+      "45bf87fc9": 373,
+      "fdeda88b3d73b24b8691ad132caa765196b19a3d": 373,
+      "HEAD": 373
+    },
+    "protectedChanges": [],
+    "lostNotesOrEvidence": [],
+    "historyBaselinePreserved": true,
+    "historyCounts": {
+      "d73f86e1e": 498,
+      "45bf87fc9": 505,
+      "fdeda88b3d73b24b8691ad132caa765196b19a3d": 524,
+      "HEAD": 524
+    }
+  },
+  "oldAttributeFingerprints": {
+    ".gitattributes": {
+      "oldRecorded": "1c2fdfa11f279d34e4d6da100f6b8eea029f98b773f777ffde54c73c789e501d",
+      "gitBlob": "1c2fdfa11f279d34e4d6da100f6b8eea029f98b773f777ffde54c73c789e501d",
+      "oldCheckoutRaw": "7e40db0b4b432a0e8860f92e15b3119e215c7ddf56f3ccb7f9fddf47c29ccb4b",
+      "originalUnmodified": true
+    },
+    "master-header-early/.gitattributes": {
+      "oldRecorded": "2ae94554fb4ff4bfd910ff72f3006462aee3a3dbf64ba02103dfa9e624c119ac",
+      "gitBlob": "9871ac5d7f5decf5c31ae260a4292e515c9207a52c5435fffdab87fe403f8bc2",
+      "oldCheckoutRaw": "2ae94554fb4ff4bfd910ff72f3006462aee3a3dbf64ba02103dfa9e624c119ac",
+      "originalUnmodified": true
+    }
+  },
+  "migrations": {
+    "count": 1070,
+    "duplicates": []
+  },
+  "preservedAncestors": {
+    "d73f86e1e": true,
+    "45bf87fc9": true,
+    "fdeda88b3d73b24b8691ad132caa765196b19a3d": true
+  },
+  "protectedProductScopes": {
+    "readSession": {
+      "originalScopeCount": 104,
+      "unchangedSinceAuditedDelivery": 103,
+      "legitimateRemediationDeltaNeedsReview": [
+        "lib/core/network/api_client.dart"
+      ],
+      "baselineBlobs": {
+        "lib/core/network/api_client.dart": "3c7abe46673e97edf96298cd2062fef0116769da28e471bf5456aeca89f5b128"
+      },
+      "candidateBlobs": {
+        "lib/core/network/api_client.dart": "e2551fb38e16463d18a4844b66f769072b64863bff71d739f664290d2549473c"
+      }
+    },
+    "noticeStorage": {
+      "originalScopeCount": 17,
+      "unchangedSinceAuditedDelivery": 17,
+      "legitimateRemediationDeltaNeedsReview": [],
+      "baselineBlobs": {},
+      "candidateBlobs": {}
+    }
+  }
+}

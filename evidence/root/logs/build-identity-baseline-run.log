@@ -1,0 +1,27 @@
+
+Test run finished after 1101 ms
+[         2 containers found      ]
+[         0 containers skipped    ]
+[         2 containers started    ]
+[         0 containers aborted    ]
+[         2 containers successful ]
+[         0 containers failed     ]
+[         1 tests found           ]
+[         0 tests skipped         ]
+[         1 tests started         ]
+[         0 tests aborted         ]
+[         0 tests successful      ]
+[         1 tests failed          ]
+
+
+Failures (1):
+  JUnit Jupiter:ReportExportBuildIdentityTest:aReadyApplicationHasAlreadyFrozenItsBuildBeforeAnyExportCommand()
+    MethodSource [className = 'com.uten.imp.features.reporting.export.ReportExportBuildIdentityTest', methodName = 'aReadyApplicationHasAlreadyFrozenItsBuildBeforeAnyExportCommand', methodParameterTypes = '']
+    => org.opentest4j.AssertionFailedError: expected: <2057a6c4b1cb497b46dd82334c6512ac63ccfc98e287b8d58b78a125744b54f6> but was: <0648384050a6326128c5f38cbb84244367a62e3d3d680ac29fbb813be0a4b09e>
+       org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:158)
+       org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:139)
+       org.junit.jupiter.api.AssertEquals.failNotEqual(AssertEquals.java:201)
+       org.junit.jupiter.api.AssertEquals.assertEquals(AssertEquals.java:184)
+       org.junit.jupiter.api.AssertEquals.assertEquals(AssertEquals.java:179)
+       org.junit.jupiter.api.Assertions.assertEquals(Assertions.java:1188)
+       com.uten.imp.features.reporting.export.ReportExportBuildIdentityTest.aReadyApplicationHasAlreadyFrozenItsBuildBeforeAnyExportCommand(ReportExportBuildIdentityTest.java:19)

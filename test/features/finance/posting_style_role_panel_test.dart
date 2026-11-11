@@ -1,5 +1,8 @@
+import 'dart:async';
+import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
@@ -33,6 +36,9 @@ const _configured = PostingStyleRole(
 class _Roles implements PostingStyleRoleRepository {
   List<PostingStyleRole> roles = [_missing, _configured];
   int writes = 0;
+  int reads = 0;
+  Completer<void>? readGate, writeGate;
+  bool loseReply = false;
   bool stale = false;
   bool canConfigure = true;
   @override
@@ -44,21 +50,25 @@ class _Roles implements PostingStyleRoleRepository {
     isCurrent: isCurrent,
   );
   @override
-  Future<List<PostingStyleRole>> list(AuthenticatedRequestScope scope) async =>
-      roles
-          .map(
-            (role) => PostingStyleRole(
-              roleKey: role.roleKey,
-              description: role.description,
-              requiredCategory: role.requiredCategory,
-              updatedAt: role.updatedAt,
-              usable: role.usable,
-              styleId: role.styleId,
-              styleName: role.styleName,
-              canConfigure: canConfigure && !role.usable,
-            ),
-          )
-          .toList();
+  Future<List<PostingStyleRole>> list(AuthenticatedRequestScope scope) async {
+    reads++;
+    await readGate?.future;
+    return roles
+        .map(
+          (role) => PostingStyleRole(
+            roleKey: role.roleKey,
+            description: role.description,
+            requiredCategory: role.requiredCategory,
+            updatedAt: role.updatedAt,
+            usable: role.usable,
+            styleId: role.styleId,
+            styleName: role.styleName,
+            canConfigure: canConfigure && !role.usable,
+          ),
+        )
+        .toList();
+  }
+
   @override
   Future<PostingStyleRole> configure(
     PostingStyleRole role,
@@ -67,6 +77,7 @@ class _Roles implements PostingStyleRoleRepository {
   ) async {
     await scope.verify();
     writes++;
+    await writeGate?.future;
     expect(role.updatedAt, _stamp);
     expect(styleId, 'account');
     if (stale) throw ApiException('CONFLICT', '科目用途已变化，请刷新核对后保存');
@@ -80,6 +91,7 @@ class _Roles implements PostingStyleRoleRepository {
       styleName: '测试库存资产',
     );
     roles = [next, _configured];
+    if (loseReply) throw NetworkTimeoutException();
     return next;
   }
 }
@@ -185,6 +197,111 @@ void main() {
       expect(find.text('001 · 测试库存资产'), findsOneWidget);
       expect(roles.writes, 1);
       expect(find.text('已配置：测试库存资产'), findsNothing);
+    },
+  );
+  for (final save in [false, true]) {
+    testWidgets(
+      'role ${save ? 'save' : 'refresh'} uses one waiting card and finishes once',
+      (tester) async {
+        final roles = _Roles();
+        await _mount(tester, roles);
+        if (save) await _select(tester);
+        final gate = Completer<void>();
+        if (save) {
+          roles.writeGate = gate;
+        } else {
+          roles.readGate = gate;
+        }
+        final button = save ? find.text('保存用途') : find.byTooltip('刷新');
+        final semantics = tester.ensureSemantics();
+        try {
+          await tester.tap(button);
+          await tester.tap(button);
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 100));
+          try {
+            expect(find.byType(UtenBusyOverlayCard), findsOneWidget);
+            var announcements = 0;
+            final title = save ? '正在保存科目用途' : '正在读取科目用途';
+            void visit(SemanticsNode node) {
+              if (node.getSemanticsData().label.startsWith(title)) {
+                announcements++;
+              }
+              node.visitChildren((child) {
+                visit(child);
+                return true;
+              });
+            }
+
+            final root = tester
+                .binding
+                .renderViews
+                .single
+                .owner
+                ?.semanticsOwner
+                ?.rootSemanticsNode;
+            if (root != null) visit(root);
+            expect(announcements, 1);
+            expect(save ? roles.writes : roles.reads, save ? 1 : 2);
+          } finally {
+            gate.complete();
+          }
+          await tester.pumpAndSettle();
+          expect(find.byType(UtenBusyOverlayCard), findsNothing);
+          expect(save ? roles.writes : roles.reads, save ? 1 : 2);
+          expect(tester.takeException(), isNull);
+        } finally {
+          semantics.dispose();
+        }
+      },
+    );
+  }
+  testWidgets(
+    'lost role reply preserves choice and requires a read before another write',
+    (tester) async {
+      final roles = _Roles()..loseReply = true;
+      await _mount(tester, roles);
+      await _select(tester);
+      await tester.tap(find.text('保存用途'));
+      await tester.pumpAndSettle();
+      expect(roles.writes, 1);
+      expect(find.text('001 · 测试库存资产'), findsOneWidget);
+      expect(
+        tester
+            .widget<FilledButton>(find.widgetWithText(FilledButton, '保存用途'))
+            .onPressed,
+        isNull,
+      );
+      expect(find.byType(UtenBusyOverlayCard), findsNothing);
+      await tester.tap(find.byTooltip('刷新'));
+      await tester.pumpAndSettle();
+      expect(find.text('已配置：测试库存资产'), findsOneWidget);
+      expect(find.text('保存用途'), findsNothing);
+      expect(roles.writes, 1);
+    },
+  );
+  testWidgets(
+    'disposing a saving panel removes its wait and rereads without replay',
+    (tester) async {
+      final roles = _Roles();
+      await _mount(tester, roles);
+      await _select(tester);
+      final gate = Completer<void>();
+      roles.writeGate = gate;
+      await tester.tap(find.text('保存用途'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.byType(UtenBusyOverlayCard), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+      expect(find.byType(UtenBusyOverlayCard), findsNothing);
+      gate.complete();
+      await tester.pumpAndSettle();
+      expect(roles.writes, 1);
+      await _mount(tester, roles);
+      expect(find.text('已配置：测试库存资产'), findsOneWidget);
+      expect(roles.writes, 1);
+      expect(tester.takeException(), isNull);
     },
   );
   test(

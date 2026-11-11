@@ -80,11 +80,13 @@ public class ProductionDailyReportController {
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) UUID departmentId,
             @RequestParam(required = false) UUID executionSegmentId,
-            @RequestParam(required = false) String executionSegmentIds) {
+            @RequestParam(required = false) String executionSegmentIds,
+            @RequestParam(required = false) UUID editingReportId,
+            @RequestParam(required = false) Long expectedReportVersion) {
         List<UUID> exactSegmentIds = normalizeExecutionSegmentIds(
                 executionSegmentId, executionSegmentIds);
         return reportablePlanLines.list(
-                page, size, keyword, departmentId, exactSegmentIds);
+                page, size, keyword, departmentId, exactSegmentIds, editingReportId, expectedReportVersion);
     }
 
     /**

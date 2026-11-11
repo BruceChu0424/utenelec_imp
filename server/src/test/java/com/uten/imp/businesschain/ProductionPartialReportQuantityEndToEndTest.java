@@ -48,6 +48,8 @@ class ProductionPartialReportQuantityEndToEndTest {
     @Autowired JdbcTemplate db;
     @Autowired ProductionDailyReportService reports;
     @Autowired ProductionExecutionWorkbenchService workbench;
+    @Autowired org.springframework.transaction.PlatformTransactionManager transactions;
+    @Autowired com.uten.imp.security.TxSessionVars tx;
     @AfterEach void logout() { SecurityContextHolder.clearContext(); }
 
     @Test void partialIssueLimitsCombinedDraftsAndEditsWhilePreservingExactInputs() {
@@ -65,6 +67,12 @@ class ProductionPartialReportQuantityEndToEndTest {
         assertTrue(assertThrows(ApiException.class,()->reports.create(duplicate)).getMessage().contains("物料配套"));
         UUID draft=reports.create(request(fixture,task,initial,"300","300")).getId();
         amount("200",source(fixture,task).materialReportQty());
+        var candidates=beans.getBean(com.uten.imp.features.production.dailyreport.ReportablePlanLineQueryService.class);
+        long version=reports.detail(draft).getRowVersion();
+        var own=candidates.list(1,100,null,null,List.of(id(task,"segment")),draft,version).getItems().getFirst();
+        amount("500",own.materialReportQty());amount("500",own.maxReportQty());
+        assertThrows(ApiException.class,()->candidates.list(1,100,null,null,List.of(id(task,"segment")),draft,version+1));
+        assertThrows(ApiException.class,()->candidates.list(1,100,null,null,List.of(id(task,"segment")),null,version));
         var edited=request(fixture,task,initial,"400","400");
         edited.setExpectedVersion(reports.detail(draft).getRowVersion());
         reports.update(draft,edited); // Exclude the original draft; 400 is within 500.
@@ -73,6 +81,56 @@ class ProductionPartialReportQuantityEndToEndTest {
                 .getMessage().contains("物料配套可报数量 100"));
         reports.delete(draft);
         amount("500",source(fixture,task).materialReportQty());
+    }
+
+    @Test void realWorkbenchSqlKeepsPartialMaterialAndWorkshopAuthorityIndependent() {
+        var fixture=preparedFixture();
+        Object partial=partialTask(fixture,"projection-partial");
+        Object full=ReflectionTestUtils.invokeMethod(fixture,"createStartedTask","projection-full"+UUID.randomUUID(),false,"1000",false,BigDecimal.ONE);
+        var world=(FullChainEndToEndTest.World)ReflectionTestUtils.invokeMethod(full,"world");
+        UUID reader=new org.springframework.transaction.support.TransactionTemplate(transactions).execute(status->{
+                tx.bind();return fixture.fixture.createUserWithPerms(world,"projection-reader"+UUID.randomUUID(),
+                "production_execution:view","production_workshop_task:view:all","production_execution:start",
+                "production_daily_report:view","production_daily_report:create","workshop_material:choose");});
+        db.update("UPDATE employees SET department_id=? WHERE id=(SELECT employee_id FROM users WHERE id=?)",id(full,"workshop"),reader);
+        fixture.fixture.loginAs(reader);
+        assertFalse(((com.uten.imp.security.AuthUser)SecurityContextHolder.getContext().getAuthentication().getPrincipal()).isSuperAdmin());
+        for(Object task:List.of(partial,full)) {
+            String code=db.queryForObject("SELECT segment_code FROM production_execution_segments WHERE id=?",String.class,id(task,"segment"));
+            var page=workbench.workshopTasks(1,50,null,"IN_PROGRESS",null,null,null,null,null,null,code,null,null);
+            assertEquals(1,page.getTotal());assertEquals(1,page.getItems().size());
+            var row=page.getItems().getFirst();assertEquals(id(task,"segment"),row.segmentId());
+            boolean assigned=task==full;
+            assertEquals(!assigned,row.partialMaterialReportLimited());
+            assertEquals(assigned,row.canReport());assertFalse(row.canStart(),"an already running task does not offer START");
+            assertEquals(assigned,row.canBatchReport());
+            if(!assigned) {
+                assertTrue(row.blockedReason().contains("仅可查看其它车间"),row.blockedReason());
+                assertTrue(row.allowedActions().isEmpty());assertFalse(row.canUrgePlanning());
+            }
+        }
+    }
+
+    @Test void onlyTheOwnersCurrentEditableDraftReleasesItsStoredOccupancy() {
+        var fixture=preparedFixture();Object task=partialTask(fixture,"draft-owner");
+        var world=(FullChainEndToEndTest.World)ReflectionTestUtils.invokeMethod(task,"world");
+        UUID owner=fixture.fixture.createUserWithPerms(world,"draft-owner"+UUID.randomUUID(),
+                "production_daily_report:view","production_daily_report:create","production_daily_report:edit","production_execution:view");
+        UUID other=fixture.fixture.createUserWithPerms(world,"draft-other"+UUID.randomUUID(),
+                "production_daily_report:view","production_daily_report:create","production_daily_report:edit","production_execution:view");
+        for(UUID actor:List.of(owner,other)) db.update("UPDATE employees SET department_id=? WHERE id=(SELECT employee_id FROM users WHERE id=?)",id(task,"workshop"),actor);
+        fixture.fixture.loginAs(owner);
+        UUID draft=reports.create(request(fixture,task,source(fixture,task),"300","300")).getId();
+        long version=reports.detail(draft).getRowVersion();
+        var candidates=beans.getBean(com.uten.imp.features.production.dailyreport.ReportablePlanLineQueryService.class);
+        var own=candidates.list(1,100,null,null,List.of(id(task,"segment")),draft,version).getItems().getFirst();
+        amount("500",own.materialReportQty());
+        var edit=request(fixture,task,own,"400","400");edit.setExpectedVersion(version);
+        reports.update(draft,edit);amount("100",source(fixture,task).materialReportQty());
+        assertThrows(ApiException.class,()->candidates.list(1,100,null,null,List.of(id(task,"segment")),draft,version));
+        fixture.fixture.loginAs(other);
+        assertThrows(ApiException.class,()->candidates.list(1,100,null,null,List.of(id(task,"segment")),draft,version+1));
+        amount("100",source(fixture,task).materialReportQty());
     }
 
     @Test void pendingMaterialReturnReducesReportRoomAndCancellationRestoresIt() {
@@ -96,12 +154,21 @@ class ProductionPartialReportQuantityEndToEndTest {
     @Test void twoConcurrentOperatorsCannotTogetherExceedTheSamePartialIssue() throws Exception {
         var fixture=preparedFixture();Object task=partialTask(fixture,"partial-report-concurrent");
         var initial=source(fixture,task);
-        var auth=SecurityContextHolder.getContext().getAuthentication();
+        var world=(FullChainEndToEndTest.World)ReflectionTestUtils.invokeMethod(task,"world");
+        List<UUID> operators=new java.util.ArrayList<>();
+        for(String suffix:List.of("A","B")) {
+            UUID actor=fixture.fixture.createUserWithPerms(world,"partial-"+suffix+UUID.randomUUID(),
+                    "production_daily_report:create","production_daily_report:view","production_execution:view");
+            db.update("UPDATE employees SET department_id=? WHERE id=(SELECT employee_id FROM users WHERE id=?)",id(task,"workshop"),actor);
+            operators.add(actor);
+        }
         var ready=new CountDownLatch(2);var go=new CountDownLatch(1);
         var requests=List.of(request(fixture,task,initial,"300","300"),request(fixture,task,initial,"300","300"));
         try(var executor=Executors.newFixedThreadPool(2)) {
-            var futures=requests.stream().map(input->executor.submit(()->{
-                var context=SecurityContextHolder.createEmptyContext();context.setAuthentication(auth);SecurityContextHolder.setContext(context);
+            var futures=java.util.stream.IntStream.range(0,requests.size()).mapToObj(index->executor.submit(()->{
+                fixture.fixture.loginAs(operators.get(index));
+                assertFalse(((com.uten.imp.security.AuthUser)SecurityContextHolder.getContext().getAuthentication().getPrincipal()).isSuperAdmin());
+                var input=requests.get(index);
                 ready.countDown();
                 try { assertTrue(go.await(30,TimeUnit.SECONDS));return reports.create(input).getId(); }
                 catch(ApiException conflict){assertTrue(conflict.getMessage().contains("物料配套"),conflict.getMessage());return null;}

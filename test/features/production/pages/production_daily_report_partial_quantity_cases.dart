@@ -2,6 +2,71 @@ part of 'production_daily_report_exact_segment_test.dart';
 
 void registerDailyReportPartialQuantityTests() {
   testWidgets(
+    'editing draft reselect uses its server-fenced capacity and saves 400 of 500',
+    (tester) async {
+      final reads = <RequestOptions>[];
+      final saved = <Map<String, dynamic>>[];
+      final grid = await _pumpEditDraftPage(
+        tester,
+        sourceOverrides: const {
+          'planId': 'plan-1',
+          'plannedQty': 1000,
+          'remainingPlanQty': 1000,
+          'maxReportQty': 500,
+          'maxReportQtyExact': '500',
+          'materialReportQtyExact': '500',
+          'allowActualOverproduction': true,
+        },
+        onSourceRequest: reads.add,
+        onPutBody: saved.add,
+        surfaceSize: const Size(2700, 1250),
+        itemsOverride: [
+          {
+            'id': 'line-1',
+            'goodsId': 'goods-1',
+            'planId': 'plan-1',
+            'planItemId': 'plan-item-1',
+            'planNo': 'SJ-001',
+            'executionSegmentId': 'segment-1',
+            'unitId': 'unit-1',
+            'unitRate': 1,
+            'qty': 300,
+            'outputBatchId': 'batch-one',
+            'outputBatchQty': 300,
+            'salesOrderItemId': 'order-item-1',
+            'allowActualOverproduction': true,
+          },
+        ],
+      );
+      final row = grid.rows.firstWhere((row) => !row.isSubRow);
+      expect(row.qty.text, '300');
+      final reselect = find.byTooltip('重新选择来源子任务');
+      await tester.ensureVisible(reselect);
+      await tester.tap(reselect);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('SJ-001\nSEG-001'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(UtenButton, '确定'));
+      await tester.pumpAndSettle();
+      expect(reads, isNotEmpty);
+      for (final read in reads) {
+        expect(read.queryParameters['editingReportId'], 'draft');
+        expect(read.queryParameters['expectedReportVersion'], 1);
+      }
+      expect(row.materialReportQtyExact, '500');
+      row.qty.text = '400';
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('uten-edit-save')));
+      await tester.pumpAndSettle();
+      expect(saved, hasLength(1));
+      expect(saved.single['expectedVersion'], 1);
+      expect((saved.single['items'] as List).first['qty'], 400);
+      expect(row.qty.text, '400');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
     'partial issue blocks over-kit reporting before preview and preserves repeated input',
     (tester) async {
       var creates = 0;

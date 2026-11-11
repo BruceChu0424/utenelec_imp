@@ -1236,6 +1236,8 @@ class _ProductionDailyReportEditPageState
         final page = await ref
             .read(productionDailyReportRepositoryProvider)
             .reportablePlanLines(
+              editingReportId: widget.id,
+              expectedReportVersion: widget.id == null ? null : _rowVersion,
               size: 100,
               executionSegmentId: row.executionSegmentId,
             );
@@ -1592,6 +1594,8 @@ class _ProductionDailyReportEditPageState
       ref,
       departmentId: _departmentId,
       executionSegmentId: executionSegmentId,
+      editingReportId: widget.id,
+      expectedReportVersion: widget.id == null ? null : _rowVersion,
     );
     if (sources == null || sources.isEmpty || !mounted) return;
     final blocked = sources.firstWhere(
@@ -1633,6 +1637,8 @@ class _ProductionDailyReportEditPageState
       final page = await ref
           .read(productionDailyReportRepositoryProvider)
           .reportablePlanLines(
+            editingReportId: widget.id,
+            expectedReportVersion: widget.id == null ? null : _rowVersion,
             size: 2,
             departmentId: _departmentId,
             executionSegmentId: executionSegmentId,
@@ -1669,6 +1675,8 @@ class _ProductionDailyReportEditPageState
       final page = await ref
           .read(productionDailyReportRepositoryProvider)
           .reportablePlanLines(
+            editingReportId: widget.id,
+            expectedReportVersion: widget.id == null ? null : _rowVersion,
             size: 100,
             departmentId: _departmentId,
             executionSegmentIds: executionSegmentIds,

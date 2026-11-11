@@ -25,7 +25,7 @@ class ReportablePlanLineQuerySecurityContractTest {
                 // Full issue retains actual-output allowance. Partial issue has
                 // the independent shared physical ceiling from V1129.
                 .contains("ELSE segment.planned_qty")
-                .contains("fn_execution_partial_material_report_room(segment.id, NULL)")
+                .contains("fn_execution_partial_material_report_room(segment.id, /*EDIT_REPORT*/)")
                 .contains("COALESCE(segment_done.active_qty, 0)")
                 .doesNotContain("material_cap.remaining_qty")
                 .contains("execution_segment_id IN (")

@@ -32,11 +32,13 @@ class PartialMaterialReportCapacityPostgresTest {
         PG.start();var source=new DriverManagerDataSource(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword());
         db=new JdbcTemplate(source);tx=new TransactionTemplate(new DataSourceTransactionManager(source));
         db.execute("""
-            CREATE TABLE production_execution_segments(id uuid PRIMARY KEY,planned_qty numeric,material_requirement_mode text,is_deleted boolean DEFAULT false);
-            CREATE TABLE production_material_demands(id uuid PRIMARY KEY,execution_segment_id uuid,required_qty numeric,material_increment_request_id uuid,status text DEFAULT 'PARTIAL',is_deleted boolean DEFAULT false,consumption_snapshot jsonb,requirement_mode text DEFAULT 'LINEAR',per_product_qty numeric DEFAULT 1);
-            CREATE TABLE production_material_stock_postings(id uuid PRIMARY KEY,event_id uuid,demand_id uuid,source_posting_id uuid,posting_type text,qty_base numeric);
+            CREATE TABLE production_execution_segments(id uuid PRIMARY KEY,planned_qty numeric,material_snapshot_product_qty numeric DEFAULT 10,source_plan_item_id uuid DEFAULT md5('source-item')::uuid,material_requirement_mode text,is_deleted boolean DEFAULT false);
+            CREATE TABLE production_material_demands(id uuid PRIMARY KEY,execution_segment_id uuid,required_qty numeric,goods_id uuid DEFAULT md5('material-goods')::uuid,color_id uuid,unit_id uuid DEFAULT md5('material-unit')::uuid,material_increment_request_id uuid,status text DEFAULT 'PARTIAL',is_deleted boolean DEFAULT false,consumption_snapshot jsonb,requirement_mode text DEFAULT 'LINEAR',per_product_qty numeric DEFAULT 1);
+            CREATE TABLE production_material_stock_postings(id uuid PRIMARY KEY,event_id uuid,demand_id uuid,stock_document_item_id uuid,source_posting_id uuid,posting_type text,qty_base numeric);
             CREATE INDEX material_posting_source ON production_material_stock_postings(source_posting_id);
             CREATE INDEX material_posting_demand ON production_material_stock_postings(demand_id,posting_type);
+            CREATE TABLE stock_document_items(id uuid PRIMARY KEY,goods_id uuid,color_id uuid,unit_id uuid);
+            CREATE TABLE production_daily_report_target_events(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),plan_item_id uuid);
             CREATE TABLE production_daily_reports(id uuid PRIMARY KEY,status int,is_deleted boolean DEFAULT false);
             CREATE TABLE production_daily_report_items(id uuid PRIMARY KEY,report_id uuid,execution_segment_id uuid,qty numeric,fqc_recovery_authorization_id uuid,is_deleted boolean DEFAULT false);
             CREATE TABLE capacity_adjustments(demand_id uuid,qty numeric);
@@ -62,10 +64,11 @@ class PartialMaterialReportCapacityPostgresTest {
         db.update("INSERT INTO production_material_stock_postings(id,event_id,demand_id,posting_type,qty_base) VALUES(?,?,?,'ISSUE',5)",historical,UUID.randomUUID(),UUID.randomUUID());
         db.execute(Files.readString(Path.of("src/main/resources/db/migration/V1129__partial_material_reporting_capacity.sql")));
         assertNull(db.queryForObject("SELECT ledger_order FROM production_material_stock_postings WHERE id=?",Long.class,historical),"migration must not invent historical order");
+        db.execute(Files.readString(Path.of("src/main/resources/db/migration/V1130__verify_legacy_material_basis_and_linear_proof_sweep.sql")));
     }
     @AfterAll static void stop(){PG.stop();}
     @BeforeEach void fixture(){
-        db.execute("TRUNCATE production_material_full_kit_proof_items,production_material_full_kit_proofs,capacity_adjustments,production_daily_report_items,production_daily_reports,production_material_stock_postings,production_material_demands,production_execution_segments");
+        db.execute("TRUNCATE production_material_full_kit_proof_items,production_material_full_kit_proofs,capacity_adjustments,production_daily_report_target_events,stock_document_items,production_daily_report_items,production_daily_reports,production_material_stock_postings,production_material_demands,production_execution_segments");
         segment=UUID.randomUUID();demand=UUID.randomUUID();
         db.update("INSERT INTO production_execution_segments(id,planned_qty,material_requirement_mode) VALUES(?,10,'DEMANDED')",segment);
         db.update("INSERT INTO production_material_demands(id,execution_segment_id,required_qty) VALUES(?,?,10)",demand,segment);
@@ -130,9 +133,63 @@ class PartialMaterialReportCapacityPostgresTest {
         post(UUID.randomUUID(),demand,"ISSUE","5",null,true);
         post(UUID.randomUUID(),demand,"GOOD_RETURN","3",first,true);amount("7",room(null));
         db.execute("TRUNCATE production_material_stock_postings");
+        db.update("UPDATE production_material_demands SET consumption_snapshot='{\"perProduct\":1}'::jsonb WHERE id=?",demand);
         first=post(UUID.randomUUID(),demand,"ISSUE","10",null,true);
         post(UUID.randomUUID(),demand,"GOOD_RETURN","3",first,true);assertNull(room(null));
     }
+    @Test void anOldPartialIssueCannotBeRequalifiedByAFinalReportReducingTodaysTarget() {
+        db.update("UPDATE production_execution_segments SET planned_qty=20,material_snapshot_product_qty=20 WHERE id=?",segment);
+        db.update("UPDATE production_material_demands SET required_qty=20 WHERE id=?",demand);
+        UUID original=post(UUID.randomUUID(),demand,"ISSUE","10",null,true);
+        post(UUID.randomUUID(),demand,"GOOD_RETURN","9",original,true);
+        amount("1",room(null));
+        db.update("UPDATE production_execution_segments SET planned_qty=10 WHERE id=?",segment);
+        assertFalse(db.queryForObject("SELECT fn_capture_execution_full_material_kit(?)",Boolean.class,segment));
+        amount("1",room(null));
+        report(1,"10");amount("0",room(null));
+        assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM production_material_full_kit_proofs",Integer.class));
+    }
+
+    @Test void missingHistoricalTargetEvidenceKeepsTheCurrentVerifiableCeiling() {
+        db.update("UPDATE production_execution_segments SET material_snapshot_product_qty=NULL WHERE id=?",segment);
+        UUID original=post(UUID.randomUUID(),demand,"ISSUE","10",null,true);
+        post(UUID.randomUUID(),demand,"GOOD_RETURN","9",original,true);
+        amount("1",room(null));
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(ints={256,512,1024})
+    void invalidatedCheckpointsUseOneReversalSweep(int cycles) {
+        UUID first=post(demand,"ISSUE","10",null);
+        for(int number=0;number<cycles;number++) {
+            UUID later=post(demand,"ISSUE","1",null);
+            post(demand,"ISSUE_REVERSE","1",later);
+        }
+        assertEquals(1+cycles*2,db.queryForObject("SELECT COUNT(*) FROM production_material_full_kit_proofs",Integer.class));
+        post(demand,"ISSUE_REVERSE","10",first);
+        amount("0",room(null));
+        long started=System.nanoTime();amount("0",room(null));
+        long elapsed=(System.nanoTime()-started)/1_000_000;
+        System.out.println("proof-sweep checkpoints="+(1+cycles*2)+" warmReadMs="+elapsed+" output=0");
+        assertTrue(elapsed<1000,"indexed one-sweep read must stay responsive at this scale: "+elapsed+"ms");
+    }
+
+    @Test void restoredOriginalTargetDoesNotProveTheUnknownTargetAtAnOldIssue() {
+        db.update("UPDATE production_material_demands SET consumption_snapshot='{\"perProduct\":1}'::jsonb WHERE id=?",demand);
+        UUID original=post(UUID.randomUUID(),demand,"ISSUE","10",null,true);
+        post(UUID.randomUUID(),demand,"GOOD_RETURN","9",original,true);assertNull(room(null));
+        db.update("INSERT INTO production_daily_report_target_events(plan_item_id) VALUES(md5('source-item')::uuid)");
+        amount("1",room(null));
+    }
+
+    @Test void oldIssueCannotFollowAChangedColorOrUnitWithoutAnImmutableCheckpoint() {
+        db.update("UPDATE production_material_demands SET consumption_snapshot='{\"perProduct\":1}'::jsonb WHERE id=?",demand);
+        UUID original=post(UUID.randomUUID(),demand,"ISSUE","10",null,true);
+        post(UUID.randomUUID(),demand,"GOOD_RETURN","9",original,true);assertNull(room(null));
+        db.update("UPDATE production_material_demands SET color_id=? WHERE id=?",UUID.randomUUID(),demand);
+        amount("1",room(null));
+    }
+
     @Test void allActiveOutputIncludingDraftsConsumesRoomAndEditingExcludesOnlyItsOwnReport(){
         post(demand,"ISSUE","5",null);
         UUID draft=report(0,"2"),approved=report(1,"1");report(2,"100");report(0,"0.5");
@@ -193,7 +250,9 @@ class PartialMaterialReportCapacityPostgresTest {
     private UUID post(UUID material,String type,String quantity,UUID source){return post(UUID.randomUUID(),material,type,quantity,source,false);}
     private UUID post(UUID event,UUID material,String type,String quantity,UUID source,boolean historical){
         if(!historical && type.equals("GOOD_RETURN"))capture();
-        UUID id=UUID.randomUUID();db.update("INSERT INTO production_material_stock_postings(id,event_id,demand_id,posting_type,qty_base,source_posting_id,ledger_order) VALUES(?,?,?,?,?,?,"+(historical?"NULL":"DEFAULT")+")",id,event,material,type,new BigDecimal(quantity),source);
+        UUID sourceItem=UUID.randomUUID();
+        db.update("INSERT INTO stock_document_items(id,goods_id,color_id,unit_id) SELECT ?,goods_id,color_id,unit_id FROM production_material_demands WHERE id=?",sourceItem,material);
+        UUID id=UUID.randomUUID();db.update("INSERT INTO production_material_stock_postings(id,event_id,demand_id,stock_document_item_id,posting_type,qty_base,source_posting_id,ledger_order) VALUES(?,?,?,?,?,?,?,"+(historical?"NULL":"DEFAULT")+")",id,event,material,sourceItem,type,new BigDecimal(quantity),source);
         if(!historical)capture();return id;
     }
     private void capture(){tx.executeWithoutResult(status->db.queryForObject("SELECT fn_capture_execution_full_material_kit(?)",Boolean.class,segment));}

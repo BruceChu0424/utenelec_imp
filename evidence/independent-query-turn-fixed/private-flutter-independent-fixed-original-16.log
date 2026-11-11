@@ -1,0 +1,9 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/feedback-independent-review-20261111/test/independent/scoped_query_turn_retirement_test.dart
+00:00 +0: D:/Projects/uten_imp_worktrees/feedback-independent-review-20261111/test/independent/scoped_query_turn_retirement_test.dart: same event immediate result unchanged
+00:00 +1: D:/Projects/uten_imp_worktrees/feedback-independent-review-20261111/test/shared/paging/scoped_owner_check_budget_test.dart: one complete read answers every ownership re-check of a synchronous segment with a single query compare
+00:00 +2: D:/Projects/uten_imp_worktrees/feedback-independent-review-20261111/test/shared/paging/scoped_owner_check_budget_test.dart: one complete read answers every ownership re-check of a synchronous segment with a single query compare
+00:00 +3: D:/Projects/uten_imp_worktrees/feedback-independent-review-20261111/test/shared/paging/scoped_owner_check_budget_test.dart: one complete read answers every ownership re-check of a synchronous segment with a single query compare
+scoped owner check budget: rows=600 re-checks=3641 compares=7 loop checks=1211
+00:00 +4: D:/Projects/uten_imp_worktrees/feedback-independent-review-20261111/test/shared/paging/scoped_owner_check_budget_test.dart: a mid-read query change still retires the old flight and the fresh read completes
+00:00 +5: All tests passed!

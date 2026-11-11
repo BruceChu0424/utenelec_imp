@@ -501,6 +501,18 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
       });
     } on ApiException catch (e) {
       if (!mounted || !_loadRequests.isCurrent(generation)) return;
+      if (isRetiredViewRead(e)) {
+        // A retired old owner is not this request's failure: keep the retained
+        // previous result and let the replacement read publish (switching
+        // warehouse/filters shows the transitional notice, not a failure).
+        // A retired read changed no data: the retained totals stay current.
+        setState(() {
+          if (_pageIsPartial) _page = null;
+          _pageIsPartial = false;
+          if (_page != null) _summaryStale = false;
+        });
+        return;
+      }
       setState(() {
         if (_pageIsPartial) _page = null;
         _pageIsPartial = false;
@@ -1302,6 +1314,9 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
               },
         isLoading: _summaryLoading && _page == null,
         loadingMore: _summaryLoading && _page != null,
+        // 保留旧结果的重查(切仓/换筛选)在途：表格退休分支据此显示过渡态而非
+        // 失败文案；行仍由 keepPreviousData 语义保留旧快照。
+        isRefreshing: _loading && _page != null && !_pageIsPartial,
         error: _error,
         onRetry: () => inlineNavigate(() => _load(_refreshPage)),
         emptyMessage: '暂无库存', // TODO(l10n): 补 arb

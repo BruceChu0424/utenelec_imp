@@ -18,6 +18,15 @@ bool pagedReadAccessDenied(Object error) =>
           'READ_SCOPE_CHANGED',
         }.contains(error.code));
 
+/// The reader retired a superseded read. Extends [StateError] so historic
+/// callers and tests matching `throwsStateError` keep working, while retirement
+/// classification ([isRetiredViewRead]) matches the type instead of guessing
+/// at message strings. A retired old owner is never the current request's
+/// failure.
+class PagedReadOwnerChanged extends StateError {
+  PagedReadOwnerChanged() : super('Paged read owner changed');
+}
+
 /// A typed response and its row list remain one immutable, authorized result.
 class PagedReadSnapshot<RowT, SnapshotT> extends PagedResult<RowT>
     implements PagedResultRevision {
@@ -214,7 +223,7 @@ class ScopedPagedRead<T> {
   }) {
     final ownerCurrent = isOwnerCurrent ?? isCurrent;
     if (_disposed || !isCurrent() || !ownerCurrent()) {
-      return Future.error(StateError('Paged read owner changed'));
+      return Future.error(PagedReadOwnerChanged());
     }
     if (_ownerCurrent?.call() == false || !samePagedReadQuery(_scope, scope)) {
       invalidate();
@@ -286,7 +295,7 @@ class ScopedPagedRead<T> {
         var result = await (sink == null
             ? complete()
             : PagedReadIntent.progressiveRead(sink, complete));
-        if (!current()) throw StateError('Paged read owner changed');
+        if (!current()) throw PagedReadOwnerChanged();
         if (_accepted != null &&
             _accepted!.readScopeVersion != result.readScopeVersion) {
           session.invalidate();

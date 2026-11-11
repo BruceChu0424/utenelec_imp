@@ -544,7 +544,7 @@ void main() {
       gate.completeError(ApiException('NETWORK', 'offline'));
       await refresh;
       expect(controller.page, same(accepted));
-      expect(controller.refreshError, 'offline');
+      expect(controller.refreshError, matches(r'offline（关联号 [0-9A-Z]{6}）'));
       expect(controller.refreshing, isFalse);
       await controller.load(
         1,
@@ -552,7 +552,7 @@ void main() {
         fetch: () async => throw ApiException('FORBIDDEN', 'denied'),
       );
       expect(controller.page, isNull);
-      expect(controller.error, 'denied');
+      expect(controller.error, matches(r'denied（关联号 [0-9A-Z]{6}）'));
     },
   );
 }

@@ -3,6 +3,7 @@ package com.uten.imp.features.stock;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uten.imp.common.readsnapshot.CompleteStreamErrors;
 import com.uten.imp.common.readsnapshot.VersionedSummaryPages;
 import com.uten.imp.common.report.ReportExportCursor;
 import com.uten.imp.common.report.ReportReadPlan;
@@ -38,12 +39,19 @@ import java.util.Map;
  *     续批 {@link ReportReadPlan#ROWS_ONLY} 只取行，计数沿用首批在快照内算出的精确值。</li>
  * <li>业务谓词、排序与合计口径仍是 {@link StockQueryService} 唯一维护入口。</li>
  * </ul>
+ *
+ * <p>2026-11-10（G）：首帧在数据事务内直发保住约一秒首屏；其余帧在事务内物化到
+ * {@code CompleteStreamStaging} 有界暂存（内存上限+临时文件），事务与发布栅栏关闭后
+ * 再按客户端速度回放——慢消费者不再消耗 60 秒事务预算、不再占着 RR 快照与数据库连接
+ * 等待输出。帧形状与逐帧 flush 次序不变，三端契约零改动。
  */
 @Service
 public class InstantInventoryCompleteStreamService {
     /** 与表头筛选候选同源的即时库存新鲜度域（见类注释）。 */
     static final String READ_DOMAIN = "native-facet-instant-stock";
     private static final String CONTRACT = "instant-inventory-complete-v1";
+    private static final org.slf4j.Logger LOG =
+            org.slf4j.LoggerFactory.getLogger(InstantInventoryCompleteStreamService.class);
 
     private final StockQueryService stock;
     private final VersionedSummaryPages summaries;
@@ -76,7 +84,7 @@ public class InstantInventoryCompleteStreamService {
         response.setCharacterEncoding("UTF-8");
         response.setHeader("Cache-Control", "no-store");
         response.setHeader("X-Accel-Buffering", "no");
-        try {
+        try (var staged = com.uten.imp.common.readsnapshot.CompleteStreamStaging.open(json)) {
             var accepted = summaries.readWithProof(request,
                     () -> CurrentAuthorityGuard.requireAll("stock:view"),
                     (proof, checkpoint) -> {
@@ -109,27 +117,28 @@ public class InstantInventoryCompleteStreamService {
                                     throw incomplete();
                                 }
                                 seen += expected;
-                                writeFrame(response, Map.of("type", "page", "value", proof.snapshot(value)));
+                                // 2026-11-10 (G): only the first frame leaves during the data
+                                // RR transaction (the ~1s first screen); later frames are
+                                // staged so a slow consumer cannot spend the transaction
+                                // budget, and replay after the publication fence.
+                                var frame = Map.of("type", "page", "value", proof.snapshot(value));
+                                if (first) writeFrame(response, frame);
+                                else staged.stage(frame);
                                 if (seen == total) return total;
                             }
                         }
                     });
+            staged.replayTo(response);
             writeFrame(response, Map.of("type", "complete", "total", accepted.value(),
                     "readScopeVersion", accepted.readScopeVersion(),
                     "readSnapshotRevision", accepted.readSnapshotRevision(), "readDataVersion", accepted.readDataVersion()));
         } catch (UncheckedIOException disconnected) {
             throw disconnected.getCause();
         } catch (RuntimeException failure) {
-            ErrorCode code = failure instanceof ApiException api ? api.getCode()
-                    : failure instanceof org.springframework.security.access.AccessDeniedException ? ErrorCode.FORBIDDEN
-                    : failure instanceof org.springframework.transaction.TransactionTimedOutException
-                        || failure instanceof java.util.concurrent.CancellationException ? ErrorCode.PRIMARY_UNAVAILABLE
-                    : ErrorCode.INTERNAL;
-            if (code == ErrorCode.INTERNAL)
-                org.slf4j.LoggerFactory.getLogger(InstantInventoryCompleteStreamService.class)
-                        .error("Complete instant inventory read failed", failure);
-            String message = failure instanceof ApiException api ? api.getMessage() : code.getDefaultMessage();
-            try { writeFrame(response, Map.of("type", "error", "code", code.name(), "message", message)); }
+            // One anonymous correlation ref per real failure: the frame carries
+            // it in details.correlation and the server log line quotes it.
+            var frame = CompleteStreamErrors.errorFrame(LOG, "instant-inventory", failure);
+            try { writeFrame(response, frame); }
             catch (UncheckedIOException disconnected) { throw disconnected.getCause(); }
         }
     }

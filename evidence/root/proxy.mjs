@@ -6,7 +6,13 @@ import path from 'node:path';
 const base=path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/,'$1'));
 const web=path.join(base,'web');
 const settings=JSON.parse(fs.readFileSync(path.join(base,'private/runtime.json'),'utf8'));
-const log=fs.createWriteStream(path.join(base,'logs/proxy.jsonl'),{flags:'a'});
+const runTag=process.argv[2];
+if(!runTag || !/^[a-zA-Z0-9_-]+$/.test(runTag))throw new Error('Supply a new evidence run tag');
+const liveLogs=path.join(base,'private/runtime-logs');
+fs.mkdirSync(liveLogs,{recursive:true});
+// Refuse reuse. Copy this closed raw file into the acceptance evidence later;
+// a live logger must not keep changing an already committed receipt.
+const log=fs.createWriteStream(path.join(liveLogs,`proxy-${runTag}.jsonl`),{flags:'wx'});
 const mime={'.html':'text/html','.js':'application/javascript','.mjs':'application/javascript','.json':'application/json','.css':'text/css','.wasm':'application/wasm','.ttf':'font/ttf','.otf':'font/otf','.woff2':'font/woff2','.png':'image/png','.svg':'image/svg+xml'};
 function faultEnabled(){
   try{return JSON.parse(fs.readFileSync(path.join(base,'private/fault.json'),'utf8')).dropMouldAfterFirstFrame===true;}

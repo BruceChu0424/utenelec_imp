@@ -1517,9 +1517,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       // 外层一起回顶。否则内容替换的滚动校正会被 NestedScrollView 转嫁成外层
       // 塌陷，宿主分类栏/工具条整条滚出视口，看起来就是「分类栏消失」。
       if (!_usesPrimaryScroll) return;
-      final nested = context
-          .findAncestorWidgetOfExactType<NestedScrollView>()
-          ?.controller;
+      final nested =
+          UtenCollapsingHeaderScrollView.outerControllerOf(context) ??
+          context.findAncestorWidgetOfExactType<NestedScrollView>()?.controller;
       if (nested != null && nested.hasClients && nested.position.pixels > 0) {
         nested.jumpTo(0);
       }

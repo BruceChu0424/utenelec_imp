@@ -1,9 +1,9 @@
 // UtenCollapsingHeaderScrollView - 大屏列表页「顶部可折叠 + 表格吸顶内滚」联动滚动容器。
 //
 // 解决：主档/报表页顶部固定区（分类卡、筛选条等）挤压表格纵向空间。本组件把「会滚走的
-// 顶部」放进 collapsingHeader，外层 NestedScrollView 协调：向上滚先把 collapsingHeader 收完，
+// 顶部」放进 collapsingHeader，保留的外层/内层视口协调：向上滚先把 collapsingHeader 收完，
 // 再滚 body 内部；反向先把 body 回顶，再把 collapsingHeader 拉回原位。手感默认平滑跟手
-// （floatHeaderSlivers:false）。
+// （外层收完后再进入表体）。
 //
 // 用法（以货品资料为例）：
 //   UtenCollapsingHeaderScrollView(
@@ -31,9 +31,9 @@
 // 下滚还原顺序相反（body 先回顶 → pinnedHeader 解吸 → collapsingHeader 重新展开）。
 //
 // 小视口回退（窄 2026-09-10 / 矮 2026-09-11）：视口宽 < compactBreakpoint 或高 <
-// compactHeightBreakpoint（均默认 600）时不用 NestedScrollView——它的 body 只有
-// 「视口高 − 顶部高」，手机竖屏/横屏上会被压到表格固定件（工具条/表头/分页）纵向溢出。
-// 回退为「整页滚 + body 定高内滚」，见 compactBreakpoint/compactHeightBreakpoint 文档。
+// compactHeightBreakpoint（均默认 600）时保持同一视口/控制器，只改正文的最小高度。
+// 手机竖屏/横屏不把正文压到表格固定件（工具条/表头）以下；顶部仍随整页滚走。
+// 见 compactBreakpoint/compactHeightBreakpoint 文档。
 //
 // 滚动条口径 (2026-10-25)：外层页面及表体超出各自视口即显示可拖动条，
 // UtenInnerScrollActiveScope 只保留滚动阶段信号，不再门控表格滚动条。
@@ -42,7 +42,7 @@
 // 滚轮交接手感（2026-09-22 用户口径「表格置顶后得再滑一点点距离才开始动表内；往下
 // 也一样」）：NestedScrollView 原生把一格滚轮拆给外层和内层——收完头部剩下的余量
 // 当场就滚进表内，表格刚置顶第一行就没了；反向亦然，表内一回顶头部立刻被拉下来，
-// 「看不到最前面的内容」。本组件在 NestedScrollView 上盖一层透明 Listener 先拿到
+// 「看不到最前面的内容」。本组件在联动视口上盖一层透明 Listener 先拿到
 // 滚轮（命中序在内外 Scrollable 之前），自己决定怎么给：
 //  - 一格滚到「刚好置顶」/「刚好回顶」即止，余量丢弃；
 //  - 越过交接点之后，同方向还要再滚 [wheelGateDistance] 的空行程才开始动另一段，
@@ -54,10 +54,9 @@
 //    （滚不停的人 = 明确要继续）——放行后恢复空行程门的原有行为；
 //  - 命中点下若有**独立**（非联动）的竖向滚动件且还能滚（页内侧栏、嵌套面板），
 //    让给框架原样处理，不抢；shift+滚轮（横滚修饰键）也不接管；
-//  - 只管滚轮 / 触控板；触屏拖动仍由 NestedScrollView 原生协调。
+//  - 只管滚轮 / 触控板；触屏拖动由同一保留位置协调外层与内层。
 //
-// 卡顿本身（「表格一步步往置顶移动时一卡一卡」）的根因在 NestedScrollView 的 body
-// 每格都在变高，见 MasterDataTableView 表体 LayoutBuilder 的「只按宽度重建」。
+// 正文视口不随每格外层滚动缩放；表体布局保留原有只按宽度重建的优化。
 
 import 'dart:async';
 import 'dart:math' as math;
@@ -75,7 +74,7 @@ import 'uten_compact_linked_rail_delegate.dart';
 import 'uten_scrollbar_rail_delegate.dart';
 
 /// 联动折叠容器：向上滚先把 [collapsingHeader] 收完，再滚 [body] 内部；反向先把 [body]
-/// 回顶，再把 [collapsingHeader] 拉回。基于 [NestedScrollView]。
+/// 回顶，再把 [collapsingHeader] 拉回。所有尺寸共享同一视口与控制器拓扑。
 ///
 /// [collapsingHeader] 随上滚收起、随下滚拉回（SliverToBoxAdapter）。
 /// [pinnedHeader] 非空时在 [collapsingHeader] 之下渲染、滚到视口上沿后吸顶
@@ -105,6 +104,11 @@ class UtenCollapsingHeaderScrollView extends StatefulWidget {
   /// 滚动主体。须含一个拾取 PrimaryScrollController 的竖向可滚动件
   /// （MasterDataTableView(primary:true) 或 ListView(primary:true)）。
   final Widget body;
+
+  /// The shared outer viewport, independent of its retained presentation.
+  static ScrollController? outerControllerOf(BuildContext context) => context
+      .dependOnInheritedWidgetOfExactType<_CollapsingOuterControllerScope>()
+      ?.controller;
 
   /// Retained hierarchy panes keep one viewport/controller topology across
   /// height changes. Tall panes fill the remainder; short panes scroll the
@@ -142,10 +146,9 @@ class UtenCollapsingHeaderScrollView extends StatefulWidget {
   /// 第 2-3 格恢复跟手。
   final double wheelHoldDistance;
 
-  /// 紧凑视口回退阈值（默认 [UtenBreakpoints.mediumStart] = 600，即手机竖屏）：视口宽
-  /// 小于该值时不再用 NestedScrollView——其 body 高度 = 视口高 − 顶部内容高，手机上
-  /// 表头信息卡单列拉长后 body 只剩几十像素，表格固定件（工具条/表头/分页）直接
-  /// 纵向溢出（2026-09-10 采购详情 375 宽复现）。回退为「整页滚动 + body 定高内滚」：
+  /// 紧凑正文高度阈值（默认 [UtenBreakpoints.mediumStart] = 600，即手机竖屏）。
+  /// 宽度小于该值时保留正文最小高度，防止表头信息卡单列拉长后挤压表格固定件
+  /// （2026-09-10 采购详情 375 宽复现），仍使用同一外层/内层视口：
   /// 顶部随页滚走，body 以 max([compactBodyMinHeight], 视口高 − 吸顶头高 − 48) 定高，
   /// 内部可滚动件仍拾取本组件注入的 PrimaryScrollController。传了 [pinnedHeader]
   /// 的三段式页面不回退（横幅短、时序依赖外内协调）。
@@ -153,8 +156,8 @@ class UtenCollapsingHeaderScrollView extends StatefulWidget {
 
   /// 矮视口回退阈值（默认 600）：视口**高**小于该值时同样走紧凑回退。
   /// 2026-09-11 手机横屏（844x390 + 字号 1.5）复现：宽度够（不触发 [compactBreakpoint]），
-  /// 但 NestedScrollView 的 body 只剩 ~250px，头部收完后表格固定件（工具条/表头/分页）
-  /// 仍溢出 19px。矮视口下「整页滚 + body 定高（≥[compactBodyMinHeight]）」才装得下。
+  /// 旧正文只剩 ~250px，头部收完后表格固定件仍溢出 19px。
+  /// 矮视口下「整页滚 + body 定高（≥[compactBodyMinHeight]）」才装得下。
   final double compactHeightBreakpoint;
 
   /// 紧凑回退时 body 的最小高度（默认 360：足够容纳表格工具条三行 + 表头 + 若干行 + 分页）。
@@ -198,25 +201,17 @@ class _UtenCollapsingHeaderScrollViewState
   UtenCompactLinkedRailDelegate? _compactRail;
 
   UtenScrollbarRailDelegate? _railFor(ScrollController source) {
-    if (!mounted || !_compactMode) return null;
+    if (!mounted) return null;
     final rail = _compactRail ??= UtenCompactLinkedRailDelegate(
       _outer,
       inner: _bodyController,
       viewportKey: _compactRailViewportKey,
-      isEnabled: () => mounted && _compactMode,
+      isEnabled: () => mounted,
     );
     if (!rail.canBindSource(source)) return null;
     rail.bindSource(source);
     return rail.metrics == null ? null : rail;
   }
-
-  /// 检测到「body 被头部挤扁」的视口尺寸（null = 未挤扁）。
-  ///
-  /// NestedScrollView 的 body 高 = 视口高 − 头部滚动高度：头部一高（信息卡 + 附件区 +
-  /// 放大字号），body 就只剩几十像素甚至 0，表格固定件溢出/整块不可达
-  /// （2026-09-11 钱流/销售详情 1280x900 + 字号 1.5 复现）。挤扁一次后本视口尺寸下
-  /// 改走整页滚动回退；视口尺寸变化（窗口缩放/转屏）时重试联动模式。
-  Size? _squeezedViewport;
 
   /// 外层头部是否已收完（内滚阶段）。默认 true：外层无可滚量（无折叠头/头部本就
   /// 装得下）的页面没有「外滚阶段」，表内滚动条应常显。
@@ -228,22 +223,19 @@ class _UtenCollapsingHeaderScrollViewState
   late final ScrollController _ownedOuter = ScrollController();
   ScrollController get _outer => widget.controller ?? _ownedOuter;
 
-  // Flutter attaches an old position before recreating it when a Scrollable's
-  // controller changes. A retained body must not hand a plain position to a
-  // NestedScrollView controller during a responsive layout transition.
+  // The body borrows one retained controller. Position detach is always
+  // forwarded to the delegate that created it, including a caller handoff.
   final _bodyController = _BodyScrollController();
   late final _compactInner = _CompactTouchScrollController(() => _outer);
   final _headerSurfaceKey = GlobalKey();
   final _bodySurfaceKey = GlobalKey();
 
-  /// 两种布局都提供同一正文代理。滚轮门读取其当前位置；位置创建与附着
-  /// 由各模式的真实控制器负责，响应式切换不会更换表格看到的 controller。
+  /// 正文代理由同一控制器创建位置；滚轮门与响应式布局共用该位置。
   ScrollController? _innerController;
 
-  /// 当前是否处于紧凑回退分支（整页滚 + body 定高内滚）。滚轮门的余量去向
-  /// 两分支不同：联动分支 outer.pointerScroll 会经协调器转投表内；紧凑分支的
-  /// outer 是普通页面滚动，到顶即钳住，余量必须显式交给 inner。
-  bool _compactMode = false;
+  /// The viewport topology is retained; only its extent presentation changes.
+  bool? _lastPresentationCompact;
+  int _viewportRevision = 0;
 
   /// 滚轮门状态：方向（+1 收头部 / 表内下翻，-1 表内回顶 / 放头部；0 未上门）
   /// 与剩余空行程。
@@ -308,16 +300,6 @@ class _UtenCollapsingHeaderScrollViewState
   void _scheduleOuterPhaseEval() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _evaluateOuterPhase();
-    });
-  }
-
-  void _reportSqueezed(Size viewport) {
-    if (_squeezedViewport == viewport) return;
-    // 量到挤扁时正处在布局中，推迟到帧末再切换布局分支。
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || _squeezedViewport == viewport) return;
-      setState(() => _squeezedViewport = viewport);
-      _scheduleOuterPhaseEval();
     });
   }
 
@@ -400,9 +382,8 @@ class _UtenCollapsingHeaderScrollViewState
   }
 
   /// 把一格滚轮分给外层 / 表内。[delta] > 0 = 内容上移（先收头部，再表内下翻）；
-  /// < 0 = 内容下移（先表内回顶，再放头部）。非交接段照常交给 NestedScrollView
-  /// 协调器（它自己会把头部收完的部分给表内、表内回顶的部分给头部——所以交接
-  /// 那一格必须在这里先截住）。
+  /// < 0 = 内容下移（先表内回顶，再放头部）。交接点保留第一行，
+  /// 其余信号仍由唯一的外/内位置协调入口分配。
   void _applyWheel(double delta) {
     if (!_outer.hasClients) return;
     final outer = _outer.position;
@@ -431,6 +412,12 @@ class _UtenCollapsingHeaderScrollViewState
         // 收头部段：这一格最多滚到「刚好置顶」，余量丢弃并上门、开停顿窗。
         if (delta >= outerRoom - _epsilon) {
           _outer.jumpTo(outer.maxScrollExtent);
+          for (final position
+              in _innerController?.positions ?? const <ScrollPosition>[]) {
+            if (position.hasPixels && position.hasContentDimensions) {
+              position.jumpTo(position.minScrollExtent);
+            }
+          }
           _arm(direction);
           _armHold(direction);
           return;
@@ -442,18 +429,13 @@ class _UtenCollapsingHeaderScrollViewState
       if (innerRoom > _epsilon) _disarm();
       final rest = _consumeGate(direction, delta);
       if (rest > 0) {
-        if (_compactMode) {
-          // 紧凑回退：outer 是普通页面滚动、到顶即钳住；大字号把桌面端也压进
-          // 这个分支（2026-09-24 用户口径「字体放大后表格不会滑到顶」），余量
-          // 必须显式交给表内，否则滚轮在页到顶后全部变成无效滚动。
-          for (final position
-              in _innerController?.positions ?? const <ScrollPosition>[]) {
-            if (position.hasPixels && position.hasContentDimensions) {
-              position.pointerScroll(rest);
-            }
+        // The retained outer viewport is bounded; hand the remaining signal
+        // to the same retained primary body after the header boundary.
+        for (final position
+            in _innerController?.positions ?? const <ScrollPosition>[]) {
+          if (position.hasPixels && position.hasContentDimensions) {
+            position.pointerScroll(rest);
           }
-        } else {
-          outer.pointerScroll(rest);
         }
       }
       return;
@@ -468,18 +450,12 @@ class _UtenCollapsingHeaderScrollViewState
         _armHold(direction);
         return;
       }
-      if (_compactMode) {
-        // 紧凑回退：先收表内（联动分支里 outer.pointerScroll 的负向余量经协调器
-        // 正是先回表内再放头部；紧凑分支的 outer 是普通页面滚动，必须显式先滚
-        // 表内，否则头部先回来、表内停在半途）。
-        for (final position
-            in _innerController?.positions ?? const <ScrollPosition>[]) {
-          if (position.hasPixels && position.hasContentDimensions) {
-            position.pointerScroll(delta);
-          }
+      // Return the body first; the header only reappears after its boundary.
+      for (final position
+          in _innerController?.positions ?? const <ScrollPosition>[]) {
+        if (position.hasPixels && position.hasContentDimensions) {
+          position.pointerScroll(delta);
         }
-      } else {
-        outer.pointerScroll(delta);
       }
       return;
     }
@@ -543,40 +519,50 @@ class _UtenCollapsingHeaderScrollViewState
   @override
   Widget build(BuildContext context) {
     _scheduleOuterPhaseEval();
-    return UtenScrollSignalScope(
-      controller: _scrollSignals,
-      child: UtenInnerScrollActiveScope(
-        active: _innerActive,
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final viewport = Size(constraints.maxWidth, constraints.maxHeight);
-            // 有吸顶头（TabBar 三段式）的页面保持 NestedScrollView 联动：其顶部是横幅
-            // 而非拉长的信息卡，且「横幅滚走→Tab 吸顶→面板内滚」的时序依赖外内协调。
-            final canFallBack =
-                widget.pinnedHeader == null && constraints.hasBoundedHeight;
-            final smallViewport =
-                constraints.maxWidth < widget.compactBreakpoint ||
-                constraints.maxHeight < widget.compactHeightBreakpoint;
-            // 滚轮交接门两分支都要在（2026-09-24）：紧凑分支此前没有这层 Listener，
-            // 滚轮直接被表内 Scrollable 吃掉——先滚表内、头部永不收起，大字号把
-            // 桌面端压进紧凑分支后用户口径「表格不会滑到顶」即此。
-            _compactMode =
-                widget.stableBodyViewport ||
-                canFallBack && (smallViewport || _squeezedViewport == viewport);
-            final header = widget.collapsingHeader == null
-                ? null
-                : _RetainedScrollContent(
-                    key: _headerSurfaceKey,
-                    child: widget.collapsingHeader!,
-                  );
-            final bodySurface = _RetainedScrollContent(
-              key: _bodySurfaceKey,
-              child: widget.body,
-            );
-            final Widget content;
-            if (_compactMode) {
+    return _CollapsingOuterControllerScope(
+      controller: _outer,
+      child: UtenScrollSignalScope(
+        controller: _scrollSignals,
+        child: UtenInnerScrollActiveScope(
+          active: _innerActive,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              // A single retained outer/inner topology owns all viewport sizes.
+              final smallViewport =
+                  constraints.maxWidth < widget.compactBreakpoint ||
+                  constraints.maxHeight < widget.compactHeightBreakpoint;
+              // 滚轮交接门两分支都要在（2026-09-24）：紧凑分支此前没有这层 Listener，
+              // 滚轮直接被表内 Scrollable 吃掉——先滚表内、头部永不收起，大字号把
+              // 桌面端压进紧凑分支后用户口径「表格不会滑到顶」即此。
+              final presentationCompact =
+                  widget.pinnedHeader == null && smallViewport;
+              if (_lastPresentationCompact != null &&
+                  _lastPresentationCompact != presentationCompact) {
+                final revision = ++_viewportRevision;
+                // Preserve the established mode-transition coordinate contract:
+                // the header returns, while the body keeps its exact saved offset.
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (!mounted ||
+                      revision != _viewportRevision ||
+                      !_outer.hasClients) {
+                    return;
+                  }
+                  _outer.jumpTo(_outer.position.minScrollExtent);
+                });
+              }
+              _lastPresentationCompact = presentationCompact;
+              final header = widget.collapsingHeader == null
+                  ? null
+                  : _RetainedScrollContent(
+                      key: _headerSurfaceKey,
+                      child: widget.collapsingHeader!,
+                    );
+              final bodySurface = _RetainedScrollContent(
+                key: _bodySurfaceKey,
+                child: widget.body,
+              );
               _bodyController.useDelegate(_compactInner);
-              content = _CompactPageScroll(
+              final content = _RetainedHeaderPageViewport(
                 viewportKey: _compactRailViewportKey,
                 viewportHeight: constraints.maxHeight,
                 collapsingHeader: header,
@@ -586,79 +572,51 @@ class _UtenCollapsingHeaderScrollViewState
                 bodyMinHeight: widget.compactBodyMinHeight,
                 innerController: _bodyController,
                 body: bodySurface,
-                stableBodyViewport: widget.stableBodyViewport,
+                fillViewportHeight:
+                    !widget.stableBodyViewport &&
+                    (!smallViewport || widget.pinnedHeader != null),
                 fillViewportRemainder:
                     widget.stableBodyViewport &&
                     constraints.maxHeight >= widget.compactHeightBreakpoint,
               );
-            } else {
-              final body = canFallBack
-                  ? _SqueezeGuard(
-                      viewport: viewport,
-                      minHeight: widget.compactBodyMinHeight,
-                      onSqueezed: _reportSqueezed,
-                      child: bodySurface,
-                    )
-                  : bodySurface;
-              content = NestedScrollView(
-                controller: _outer,
-                headerSliverBuilder:
-                    (BuildContext context, bool innerBoxIsScrolled) {
-                      return <Widget>[
-                        if (header != null)
-                          SliverToBoxAdapter(
-                            child: PrimaryScrollController.none(child: header),
-                          ),
-                        if (widget.pinnedHeader != null)
-                          SliverPersistentHeader(
-                            pinned: true,
-                            delegate: _PinnedHeaderDelegate(
-                              extent: widget.pinnedHeaderExtent!,
-                              child: PrimaryScrollController.none(
-                                child: widget.pinnedHeader!,
-                              ),
-                            ),
-                          ),
-                      ];
-                    },
-                body: Builder(
-                  builder: (bodyContext) {
-                    final delegate = PrimaryScrollController.of(bodyContext);
-                    _bodyController.useDelegate(delegate);
-                    return PrimaryScrollController(
-                      controller: _bodyController,
-                      child: body,
-                    );
-                  },
+              return NotificationListener<ScrollMetricsNotification>(
+                onNotification: (_) {
+                  _compactRail?.metricsChanged();
+                  return false;
+                },
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    content,
+                    // 滚轮交接门（见文件头）：透明覆盖层在命中序上先于内外 Scrollable
+                    // 拿到滚轮；不吃点击 / 拖动 / 悬停，其余指针事件原样到达下层。
+                    Positioned.fill(
+                      child: Listener(
+                        behavior: HitTestBehavior.translucent,
+                        onPointerSignal: _scrollSignals.dispatch,
+                        child: const SizedBox.expand(),
+                      ),
+                    ),
+                  ],
                 ),
               );
-            }
-            return NotificationListener<ScrollMetricsNotification>(
-              onNotification: (_) {
-                _compactRail?.metricsChanged();
-                return false;
-              },
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  content,
-                  // 滚轮交接门（见文件头）：透明覆盖层在命中序上先于内外 Scrollable
-                  // 拿到滚轮；不吃点击 / 拖动 / 悬停，其余指针事件原样到达下层。
-                  Positioned.fill(
-                    child: Listener(
-                      behavior: HitTestBehavior.translucent,
-                      onPointerSignal: _scrollSignals.dispatch,
-                      child: const SizedBox.expand(),
-                    ),
-                  ),
-                ],
-              ),
-            );
-          },
+            },
+          ),
         ),
       ),
     );
   }
+}
+
+class _CollapsingOuterControllerScope extends InheritedWidget {
+  const _CollapsingOuterControllerScope({
+    required this.controller,
+    required super.child,
+  });
+  final ScrollController controller;
+  @override
+  bool updateShouldNotify(_CollapsingOuterControllerScope oldWidget) =>
+      controller != oldWidget.controller;
 }
 
 /// Retains the compact layout's generous body height while giving touch drags
@@ -718,6 +676,19 @@ class _CompactTouchScrollPosition extends ScrollPositionWithSingleContext {
         _CompactTouchBallisticActivity(this, simulation, context.vsync),
       );
     }
+  }
+
+  @override
+  void jumpTo(double value) {
+    final controller = outer();
+    if (hasContentDimensions &&
+        value > minScrollExtent &&
+        controller.hasClients &&
+        controller.position.hasContentDimensions &&
+        controller.position.pixels < controller.position.maxScrollExtent) {
+      controller.jumpTo(controller.position.maxScrollExtent);
+    }
+    super.jumpTo(value);
   }
 
   bool _moveCombined(double value) {
@@ -884,49 +855,11 @@ class _BodyScrollController extends ScrollController {
   }
 }
 
-/// NestedScrollView body 的「挤扁哨兵」：body 实得高度不足 [minHeight] 时不让它
-/// 按扁高度布局（否则表格固定件直接纵向溢出），改为按 [minHeight] 布局 + 裁剪，
-/// 同时上报宿主——下一帧切到整页滚动回退。
-class _SqueezeGuard extends StatelessWidget {
-  const _SqueezeGuard({
-    required this.viewport,
-    required this.minHeight,
-    required this.onSqueezed,
-    required this.child,
-  });
-
-  final Size viewport;
-  final double minHeight;
-  final ValueChanged<Size> onSqueezed;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        if (!constraints.hasBoundedHeight ||
-            constraints.maxHeight >= minHeight) {
-          return child;
-        }
-        onSqueezed(viewport);
-        return ClipRect(
-          child: OverflowBox(
-            alignment: Alignment.topCenter,
-            minHeight: minHeight,
-            maxHeight: minHeight,
-            child: child,
-          ),
-        );
-      },
-    );
-  }
-}
-
 /// 紧凑视口回退：整页 CustomScrollView 滚动（顶部内容随页滚走、吸顶头照常钉住），
 /// body 以定高盒承载并注入独立的 PrimaryScrollController，表格等 primary 可滚动件
 /// 在盒内自行滚动。见 [UtenCollapsingHeaderScrollView.compactBreakpoint]。
-class _CompactPageScroll extends StatefulWidget {
-  const _CompactPageScroll({
+class _RetainedHeaderPageViewport extends StatefulWidget {
+  const _RetainedHeaderPageViewport({
     required this.viewportKey,
     required this.viewportHeight,
     required this.body,
@@ -936,16 +869,16 @@ class _CompactPageScroll extends StatefulWidget {
     this.pinnedHeader,
     this.pinnedHeaderExtent,
     this.controller,
-    this.stableBodyViewport = false,
     this.fillViewportRemainder = false,
+    this.fillViewportHeight = false,
   });
 
   final double viewportHeight;
   final GlobalKey viewportKey;
   final Widget body;
   final double bodyMinHeight;
-  final bool stableBodyViewport;
   final bool fillViewportRemainder;
+  final bool fillViewportHeight;
 
   final ScrollController innerController;
   final Widget? collapsingHeader;
@@ -954,10 +887,12 @@ class _CompactPageScroll extends StatefulWidget {
   final ScrollController? controller;
 
   @override
-  State<_CompactPageScroll> createState() => _CompactPageScrollState();
+  State<_RetainedHeaderPageViewport> createState() =>
+      _RetainedHeaderPageViewportState();
 }
 
-class _CompactPageScrollState extends State<_CompactPageScroll> {
+class _RetainedHeaderPageViewportState
+    extends State<_RetainedHeaderPageViewport> {
   @override
   Widget build(BuildContext context) {
     // 顶部滚走后 body 几乎占满视口；预留 48 给页面自身的边距/底栏呼吸空间。
@@ -990,34 +925,29 @@ class _CompactPageScrollState extends State<_CompactPageScroll> {
               child: PrimaryScrollController.none(child: widget.pinnedHeader!),
             ),
           ),
-        if (widget.stableBodyViewport)
-          SliverLayoutBuilder(
-            builder: (context, constraints) => SliverToBoxAdapter(
-              child: SizedBox(
-                height: widget.fillViewportRemainder
-                    ? math.max(
-                        widget.bodyMinHeight,
-                        constraints.viewportMainAxisExtent -
-                            constraints.precedingScrollExtent,
-                      )
-                    : bodyHeight,
-                child: PrimaryScrollController(
-                  controller: widget.innerController,
-                  child: widget.body,
-                ),
-              ),
-            ),
-          )
-        else
-          SliverToBoxAdapter(
+        SliverLayoutBuilder(
+          builder: (context, constraints) => SliverToBoxAdapter(
             child: SizedBox(
-              height: bodyHeight,
+              height: widget.fillViewportRemainder
+                  ? math.max(
+                      widget.bodyMinHeight,
+                      constraints.viewportMainAxisExtent -
+                          constraints.precedingScrollExtent,
+                    )
+                  : widget.fillViewportHeight
+                  ? math.max(
+                      0.0,
+                      constraints.viewportMainAxisExtent -
+                          (widget.pinnedHeaderExtent ?? 0),
+                    )
+                  : bodyHeight,
               child: PrimaryScrollController(
                 controller: widget.innerController,
                 child: widget.body,
               ),
             ),
           ),
+        ),
         if (!compactPresentation && capsuleOcclusion > 0)
           SliverPadding(padding: EdgeInsets.only(bottom: capsuleOcclusion)),
       ],

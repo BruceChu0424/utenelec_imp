@@ -5,6 +5,7 @@ import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart' as foundation;
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -29,6 +30,7 @@ import 'package:uten_imp/features/subcontract/widgets/subcontract_grid_columns.d
 import 'package:uten_imp/shared/providers/session_provider.dart';
 
 import '../tool/finance_acceptance_platform.dart';
+import '../test/support/first_flutter_failure_capture.dart';
 
 const _account = String.fromEnvironment(
   'UTEN_FEEDBACK_ACCOUNT',
@@ -38,8 +40,20 @@ const _returnsAccount = String.fromEnvironment('UTEN_FEEDBACK_RETURNS_ACCOUNT');
 const _runtimeRoot = String.fromEnvironment('UTEN_FEEDBACK_RUNTIME_ROOT');
 const _evidenceRoot = String.fromEnvironment('UTEN_FEEDBACK_EVIDENCE_DIR');
 const _configPath = String.fromEnvironment('UTEN_FEEDBACK_PRIVATE_CONFIG');
+const _sourceHead = String.fromEnvironment('UTEN_FEEDBACK_SOURCE_SHA');
+const _backendSourceHead = String.fromEnvironment(
+  'UTEN_FEEDBACK_BACKEND_SOURCE_SHA',
+);
 final _capture = GlobalKey();
 final _observations = <Map<String, Object?>>[];
+FirstFlutterFailureCapture? _flutterFailure;
+var _nativeWindowSequence = 0;
+
+void _checkFlutterFailure(WidgetTester tester) {
+  final Object? pending = tester.takeException();
+  if (_flutterFailure?.first != null) _flutterFailure!.throwFirst();
+  if (pending != null) throw pending;
+}
 
 Finder get _mouldFinder => find.byWidgetPredicate(
   (widget) => widget is MasterDataTableView<MouldListItem>,
@@ -53,8 +67,10 @@ Future<void> _wait(
   String stage, {
   Duration timeout = const Duration(seconds: 60),
 }) async {
+  _flutterFailure?.phase = stage;
   final clock = Stopwatch()..start();
   while (true) {
+    _checkFlutterFailure(tester);
     final resourceWarning = find.textContaining(
       RegExp('处理器占用|系统内存占用'),
       findRichText: true,
@@ -79,7 +95,194 @@ Future<void> _wait(
     await Future<void>.delayed(const Duration(milliseconds: 20));
   }
   await tester.pump(const Duration(milliseconds: 80));
-  expect(tester.takeException(), isNull, reason: stage);
+  _checkFlutterFailure(tester);
+}
+
+Future<Map<String, dynamic>> _resizeNativeWindow(
+  WidgetTester tester,
+  Size requested,
+  String stage, {
+  bool cleanup = false,
+}) async {
+  _flutterFailure?.phase = stage;
+  final sequence = ++_nativeWindowSequence;
+  final token = sequence.toString().padLeft(4, '0');
+  final request = File('$_evidenceRoot/native-window-request-$token.json');
+  final temporary = File('${request.path}.tmp');
+  temporary.writeAsStringSync(
+    jsonEncode({
+      'sourceHead': _sourceHead,
+      'sequence': sequence,
+      'width': requested.width,
+      'height': requested.height,
+      'phase': stage,
+    }),
+    flush: true,
+  );
+  temporary.renameSync(request.path);
+  final result = File('$_evidenceRoot/native-window-result-$token.json');
+  if (cleanup) {
+    final elapsed = Stopwatch()..start();
+    while (!result.existsSync() &&
+        elapsed.elapsed < const Duration(seconds: 10)) {
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+    }
+    if (!result.existsSync()) {
+      throw StateError('Native cleanup geometry response missing');
+    }
+  } else {
+    await _wait(tester, result.existsSync, stage);
+  }
+  final receipt = jsonDecode(result.readAsStringSync()) as Map<String, dynamic>;
+  if (receipt['ok'] != true) {
+    throw StateError(
+      'Owned native window request failed: ${receipt['errorType']} ${receipt['message']}',
+    );
+  }
+  final after = receipt['after'] as Map<String, dynamic>;
+  expect(
+    (after['clientLogicalWidth'] as num).toDouble(),
+    closeTo(requested.width, 2),
+  );
+  expect(
+    (after['clientLogicalHeight'] as num).toDouble(),
+    closeTo(requested.height, 2),
+  );
+  if (!cleanup) {
+    await _wait(
+      tester,
+      () =>
+          ((tester.view.physicalSize.width / tester.view.devicePixelRatio) -
+                      requested.width)
+                  .abs() <=
+              2 &&
+          ((tester.view.physicalSize.height / tester.view.devicePixelRatio) -
+                      requested.height)
+                  .abs() <=
+              2,
+      '$stage-engine-metrics',
+    );
+  }
+  _observations.add({
+    'scene': stage,
+    'nativeRequestSequence': sequence,
+    'nativeApi': receipt['nativeApi'],
+    'requestedClientWidth': requested.width,
+    'requestedClientHeight': requested.height,
+    'observedNativeClientWidth': after['clientLogicalWidth'],
+    'observedNativeClientHeight': after['clientLogicalHeight'],
+    'engineLogicalWidth':
+        tester.view.physicalSize.width / tester.view.devicePixelRatio,
+    'engineLogicalHeight':
+        tester.view.physicalSize.height / tester.view.devicePixelRatio,
+    'fakeViewMetricsUsed': false,
+  });
+  return receipt;
+}
+
+Future<void> _wideNarrowMouldMenu(WidgetTester tester) async {
+  await _resizeNativeWindow(tester, const Size(1280, 900), 'mould-wide-native');
+  final category = find.text('全部模具').hitTestable().first;
+  expect(category, findsOneWidget);
+  final tooltip = find
+      .ancestor(of: category, matching: find.byType(Tooltip))
+      .first;
+  expect(tooltip, findsOneWidget);
+  final tooltipWidget = tester.widget<Tooltip>(tooltip);
+  final message =
+      tooltipWidget.message ?? tooltipWidget.richMessage?.toPlainText();
+  expect(message, isNotEmpty);
+  int tooltipTextMatches() => find
+      .descendant(
+        of: tooltip,
+        matching: find.byWidgetPredicate(
+          (widget) =>
+              widget is RichText && widget.text.toPlainText() == message,
+        ),
+      )
+      .evaluate()
+      .length;
+  bool tooltipVisible() => tester
+      .widgetList<FadeTransition>(
+        find.descendant(of: tooltip, matching: find.byType(FadeTransition)),
+      )
+      .any((fade) => fade.opacity.value > .9);
+  final mouse = await tester.createGesture(kind: ui.PointerDeviceKind.mouse);
+  Object? firstFailure;
+  StackTrace? firstStack;
+  try {
+    await mouse.addPointer(location: tester.getCenter(category));
+    await mouse.moveTo(tester.getCenter(category));
+    await _wait(
+      tester,
+      () => tooltipVisible() && tooltipTextMatches() >= 1,
+      'mould-category-tooltip-visible',
+    );
+    _observations.add({
+      'scene': 'mould-wide-category-tooltip',
+      'matchingRichTexts': tooltipTextMatches(),
+      'tooltipFadeVisible': tooltipVisible(),
+      'realMouseKind': true,
+    });
+    await _screen(tester, 'mould-wide-category-tooltip');
+    // Retain this pointer location through the native resize. Do not dismiss the tooltip.
+    await _resizeNativeWindow(
+      tester,
+      const Size(714, 764),
+      'mould-narrow-before-menu',
+    );
+    await _screen(tester, 'mould-narrow-before-menu');
+    final operation = find
+        .descendant(of: _mouldFinder, matching: find.byTooltip('表格操作'))
+        .hitTestable();
+    await _wait(
+      tester,
+      () => operation.evaluate().isNotEmpty,
+      'mould-table-operation-trigger',
+    );
+    await _tap(tester, operation, stage: 'mould-table-operation-click');
+    await _wait(
+      tester,
+      () => find
+          .byKey(const ValueKey('uten-anchored-popup'))
+          .evaluate()
+          .isNotEmpty,
+      'mould-table-operation-open',
+    );
+    await _screen(tester, 'mould-narrow-table-operation');
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await _wait(
+      tester,
+      () =>
+          find.byKey(const ValueKey('uten-anchored-popup')).evaluate().isEmpty,
+      'mould-table-operation-closed',
+    );
+    expect(_mould(tester).items, hasLength(1626));
+    await _resizeNativeWindow(
+      tester,
+      const Size(1280, 900),
+      'mould-wide-restored',
+    );
+    expect(_mould(tester).items, hasLength(1626));
+    await _screen(tester, 'mould-wide-restored');
+  } catch (error, stack) {
+    firstFailure = error;
+    firstStack = stack;
+  } finally {
+    try {
+      await mouse.removePointer();
+    } catch (error, stack) {
+      firstFailure ??= error;
+      firstStack ??= stack;
+      _observations.add({
+        'scene': 'mouse-cleanup-error',
+        'exceptionType': error.runtimeType.toString(),
+      });
+    }
+  }
+  if (firstFailure != null) {
+    Error.throwWithStackTrace(firstFailure, firstStack!);
+  }
 }
 
 Future<void> _settled(WidgetTester tester) => _wait(
@@ -88,8 +291,13 @@ Future<void> _settled(WidgetTester tester) => _wait(
   'busy-completed',
 );
 
-Future<void> _tap(WidgetTester tester, Finder finder) async {
+Future<void> _tap(
+  WidgetTester tester,
+  Finder finder, {
+  String stage = 'control-tap',
+}) async {
   await _settled(tester);
+  _flutterFailure?.phase = stage;
   expect(finder, findsWidgets);
   await tester.ensureVisible(finder.last);
   await tester.pump(const Duration(milliseconds: 50));
@@ -97,10 +305,15 @@ Future<void> _tap(WidgetTester tester, Finder finder) async {
   expect(reachable, findsWidgets);
   await tester.tap(reachable.last);
   await tester.pump(const Duration(milliseconds: 100));
+  _checkFlutterFailure(tester);
 }
 
 Future<void> _screen(WidgetTester tester, String scene) async {
+  _flutterFailure?.phase = 'screen:$scene';
   await tester.pump();
+  if (!scene.startsWith('failure-')) {
+    _checkFlutterFailure(tester);
+  }
   final context = _capture.currentContext;
   if (context == null || !context.mounted) {
     if (!scene.startsWith('failure-')) {
@@ -256,7 +469,7 @@ Future<void> _returnPicker(
 void main() {
   final binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
   testWidgets(
-    'actual Windows bootstrap and master read, sort, print, cancellation',
+    'actual Windows bootstrap, native narrow tooltip/menu, read sort print cancellation',
     (tester) async {
       expect(Platform.isWindows, isTrue);
       expect(
@@ -267,6 +480,9 @@ void main() {
       expect(_runtimeRoot, isNotEmpty);
       expect(_configPath, isNotEmpty);
       expect(_evidenceRoot, isNotEmpty);
+      expect(RegExp(r'^[0-9a-f]{40}$').hasMatch(_sourceHead), isTrue);
+      _observations.clear();
+      _nativeWindowSequence = 0;
       final runtime = Directory(_runtimeRoot).absolute;
       expect(runtime.isAbsolute, isTrue);
       expect(
@@ -285,6 +501,11 @@ void main() {
       StackTrace? primaryStack;
       var completedMouldReads = 0, exportCreates = 0;
       var networkProved = false;
+      final flutterFailure = _flutterFailure = FirstFlutterFailureCapture(
+        Directory(_evidenceRoot),
+        sourceHead: _sourceHead,
+      );
+      flutterFailure.install();
       void rememberError(Object error, StackTrace stack, String phase) {
         primaryError ??= error;
         primaryStack ??= stack;
@@ -298,9 +519,13 @@ void main() {
         await prepareAcceptanceRuntime(rootPath: runtime.path);
         await application.bootstrapUtenApp(
           bindingFactory: () => binding,
-          applicationWrapperForTesting: (child) =>
-              RepaintBoundary(key: _capture, child: child),
+          applicationWrapperForTesting: (child) {
+            // Diagnostics may have added its handler during bootstrap. Chain it.
+            flutterFailure.install();
+            return RepaintBoundary(key: _capture, child: child);
+          },
         );
+        flutterFailure.install();
         await _wait(
           tester,
           () => find.byType(UtenApp).evaluate().isNotEmpty,
@@ -386,6 +611,7 @@ void main() {
           'coldReadMs': cold.elapsedMilliseconds,
         });
         await _screen(tester, 'mould-complete');
+        await _wideNarrowMouldMenu(tester);
         await _tap(tester, find.text('套数'));
         await _wait(
           tester,
@@ -506,6 +732,23 @@ void main() {
       } catch (error, stack) {
         rememberError(error, stack, 'scenario');
       } finally {
+        if (flutterFailure.first case final first?) {
+          rememberError(
+            first.exception,
+            first.stack ?? StackTrace.current,
+            'first-framework',
+          );
+        }
+        try {
+          await _resizeNativeWindow(
+            tester,
+            const Size(1280, 900),
+            'cleanup-native-wide',
+            cleanup: true,
+          );
+        } catch (error, stack) {
+          rememberError(error, stack, 'native-window-cleanup');
+        }
         try {
           if (container?.read(sessionProvider).isLoggedIn == true) {
             await container!.read(sessionProvider.notifier).logout();
@@ -542,6 +785,13 @@ void main() {
         } catch (error, stack) {
           rememberError(error, stack, 'evidence');
         }
+        if (flutterFailure.first case final first?) {
+          rememberError(
+            first.exception,
+            first.stack ?? StackTrace.current,
+            'first-framework',
+          );
+        }
         networkProved = completedMouldReads >= 2 && exportCreates == 0;
         _observations.add({
           'scene': 'actual-http-observation',
@@ -555,9 +805,18 @@ void main() {
                   ? 'windows-engine-real-http'
                   : 'windows-engine-real-http-attempt',
               'nativeOS': Platform.operatingSystem,
+              'sourceHead': _sourceHead,
+              'declaredBackendSourceHead': _backendSourceHead.isEmpty
+                  ? null
+                  : _backendSourceHead,
+              'backendIdentityVerifiedByThisHarness': false,
               'frameworkTarget': foundation.defaultTargetPlatform.name,
               'debugEngine': foundation.kDebugMode,
-              'passed': passed && networkProved && primaryError == null,
+              'passed':
+                  passed &&
+                  networkProved &&
+                  primaryError == null &&
+                  flutterFailure.first == null,
               'primaryFailureType': primaryError?.runtimeType.toString(),
               'businessApiReplaced': false,
               'repositoryReplaced': false,
@@ -565,11 +824,25 @@ void main() {
               'runtimeRoot': runtime.path,
               'scenes': _observations,
               'returnsRequested': _returnsAccount.isNotEmpty,
+              'firstFlutterErrorCaptured': flutterFailure.first != null,
+              'flutterErrorNotificationCount': flutterFailure.count,
+              'firstFlutterErrorPersistenceFailureType': flutterFailure
+                  .persistenceError
+                  ?.runtimeType
+                  .toString(),
             }),
             flush: true,
           );
         } catch (error, stack) {
           rememberError(error, stack, 'result-publication');
+        }
+        flutterFailure.restore();
+        if (flutterFailure.first case final first?) {
+          rememberError(
+            first.exception,
+            first.stack ?? StackTrace.current,
+            'first-framework',
+          );
         }
       }
       final failure = primaryError;

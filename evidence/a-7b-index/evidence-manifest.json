@@ -1,0 +1,1083 @@
+{
+  "sourceHead": "7b912287e53315228b469790ff066a9fab643e3c",
+  "classification": "A backend original frozen round; not global UI acceptance",
+  "fileCount": 215,
+  "totalBytes": 101043967,
+  "files": [
+    {
+      "path": "a-backend-exit.json",
+      "bytes": 14,
+      "sha256": "6041df3e9b345d68be886f995c452395674ea950cd3ca9992c13b64f3aa9cbd0"
+    },
+    {
+      "path": "a-backend.log",
+      "bytes": 831320,
+      "sha256": "e9a46c368884bdf0b6f86dfd82a8b14222265359ab01db67e5ef3009f469a817"
+    },
+    {
+      "path": "acceptance-summary.json",
+      "bytes": 7227,
+      "sha256": "edd388000b140dfc5440ccdc9ff1d91895ab0dbef51a7212ef004cee548c9b8b"
+    },
+    {
+      "path": "compile-2-exit.json",
+      "bytes": 14,
+      "sha256": "6041df3e9b345d68be886f995c452395674ea950cd3ca9992c13b64f3aa9cbd0"
+    },
+    {
+      "path": "compile-2.log",
+      "bytes": 2417,
+      "sha256": "29769796b4391cc5a40dc9f690589866f4c1f650ee46de6dfb867ada8ee2a802"
+    },
+    {
+      "path": "compile-exit.json",
+      "bytes": 14,
+      "sha256": "d67659d29dad50e65ac903e33dc7ef4a692331d96253553956300d1fcfa5786a"
+    },
+    {
+      "path": "compile.log",
+      "bytes": 1688,
+      "sha256": "82666f462c3364ae3fc1f5a92c8d14f130bed0210b05e3aa447aab3f331b1ecf"
+    },
+    {
+      "path": "compiled-provenance.json",
+      "bytes": 2600616,
+      "sha256": "bdc40bbdcfed04af0e64ae365e7da5ba717e96c01520d9ec29aa18be1a4565da"
+    },
+    {
+      "path": "deps-cp.txt",
+      "bytes": 22140,
+      "sha256": "48bb6109a8e96a7ca9ff1196e2157561fe43c3f697b90cb8264008555e588a16"
+    },
+    {
+      "path": "direct-return/compile-2-exit.json",
+      "bytes": 172,
+      "sha256": "ba7f0b2c6e178f4229bcbb3d5158b01d54fce293b5da781a9d29106882437d03"
+    },
+    {
+      "path": "direct-return/compile-2.args",
+      "bytes": 22749,
+      "sha256": "cc8fb96ee460c1130c58fd95d014118fb97d6c3370d3edc49aef0a3154f208bf"
+    },
+    {
+      "path": "direct-return/compile-2.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "direct-return/compile-exit.json",
+      "bytes": 149,
+      "sha256": "2adbc5a1bc1462f9f95060602b663bbe41697e4027f072467dd57e57f148db74"
+    },
+    {
+      "path": "direct-return/compile.args",
+      "bytes": 22748,
+      "sha256": "24f01e816744d312c7ab0c4e78da2bd02b0aa1d0f66f58414483a4f682ba9d1d"
+    },
+    {
+      "path": "direct-return/compile.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "direct-return/completed-harness-cleanup.json",
+      "bytes": 162,
+      "sha256": "236bbac364c7fc2dd1a7edc3074a68dc7d68053abf62bd5cdf20b8691b073817"
+    },
+    {
+      "path": "direct-return/completed-process.json",
+      "bytes": 265,
+      "sha256": "0e3c27acec84113e7b8c660fc89ebabb19ff7d84e21859061f13722eea258862"
+    },
+    {
+      "path": "direct-return/completed-thread-dump.log",
+      "bytes": 39530,
+      "sha256": "a4852df094a475faa58b88cd8a9fe42c3f44312bb4fe91fc87329c00d57235c9"
+    },
+    {
+      "path": "direct-return/direct-2-exit.json",
+      "bytes": 172,
+      "sha256": "ba7f0b2c6e178f4229bcbb3d5158b01d54fce293b5da781a9d29106882437d03"
+    },
+    {
+      "path": "direct-return/direct-2-spring.log",
+      "bytes": 384601,
+      "sha256": "a49885d8641f7dda7ab447eece527c2ad1654ea90e1cd063338d756b6a594942"
+    },
+    {
+      "path": "direct-return/direct-2.args",
+      "bytes": 22905,
+      "sha256": "4eb5aaf3ce0ff0c6e824c1b5947f0e3732166c68e4b8fa49031ecf1fbd512e4a"
+    },
+    {
+      "path": "direct-return/direct-2.log",
+      "bytes": 409988,
+      "sha256": "2353a04dd529ee0c203140c6b5c210979dcf3411c9041b73e2a9f70aceaa4c5c"
+    },
+    {
+      "path": "direct-return/direct-exit.json",
+      "bytes": 158,
+      "sha256": "5f9dd61e36effdb944e6029aef1699c5f1c3f34c361924a5639c147904a24729"
+    },
+    {
+      "path": "direct-return/direct-spring.log",
+      "bytes": 383870,
+      "sha256": "ef37b43bd8cb4b151681b29f47e2a3a0e813c0a4229874ab34813d3d41f34ace"
+    },
+    {
+      "path": "direct-return/direct.args",
+      "bytes": 22902,
+      "sha256": "7908e8b518e85532d8d669e91e89f41320c2d8747e2a9436ecc67de812729b16"
+    },
+    {
+      "path": "direct-return/direct.log",
+      "bytes": 409139,
+      "sha256": "d6047ffdfea09823a10f583e93534c92edfacef4a73c5cad9f0235ff3d3704b3"
+    },
+    {
+      "path": "direct-return/DirectReturnFinalRunner.class",
+      "bytes": 2415,
+      "sha256": "d4a617a5ef0befff721bbdec589ac937831511d20357c6e2c7617dac8650c19f"
+    },
+    {
+      "path": "direct-return/DirectReturnFinalRunner.java",
+      "bytes": 1078,
+      "sha256": "d9351077e52282a6765f607ff071dc5c0e0ad6458d73e6f9c051ab9384eb5263"
+    },
+    {
+      "path": "direct-return/DirectReturnFinalRunner2.class",
+      "bytes": 2422,
+      "sha256": "e39bd4264f10c4b83afeec4cd1b2609c4f399add9b1fcd448e46aa9104722d9c"
+    },
+    {
+      "path": "direct-return/DirectReturnFinalRunner2.java",
+      "bytes": 1078,
+      "sha256": "ade171f00680c170137613394e19f3ada56c27c338bcf8617238e60f5fa39e24"
+    },
+    {
+      "path": "private/projection-runtime.json",
+      "bytes": 141,
+      "sha256": "60098578ac08397a6bd9806fac75d6c7286cc33f385f58b748e3b710ff4e8f27"
+    },
+    {
+      "path": "projection/classes/com/uten/imp/businesschain/FeedbackLegacyMaterialUpgradeFixture.class",
+      "bytes": 24601,
+      "sha256": "d6b7ff2f0a4292ae472d3e3fb42cdc379cd3253aff440e2036258576b300090e"
+    },
+    {
+      "path": "projection/classes/com/uten/imp/businesschain/FeedbackWorkbenchProjectionFixture.class",
+      "bytes": 8725,
+      "sha256": "091562c9023bfcf4385737f3fab4a8e19162d4696dcd654334fa7435f6ec30e9"
+    },
+    {
+      "path": "projection/classes/FeedbackProjectionRunner.class",
+      "bytes": 2579,
+      "sha256": "f3d98e98fb6adb88dcaec5d8bf6653c79b9bacf0d8e330b82f76a16151b65791"
+    },
+    {
+      "path": "projection/mutated/com/uten/imp/features/production/execution/ProductionExecutionWorkbenchService$PlanningFacts.class",
+      "bytes": 2587,
+      "sha256": "22c2222fc44010537d5ae8314fafd72721167a8b1a44820d48b8e8f27fdfe366"
+    },
+    {
+      "path": "projection/mutated/com/uten/imp/features/production/execution/ProductionExecutionWorkbenchService$ScopeBinding.class",
+      "bytes": 1873,
+      "sha256": "9a8bf33c0d7473cee5c8ae29018ee5f169cb881fad5e2c6501d772fd4046d418"
+    },
+    {
+      "path": "projection/mutated/com/uten/imp/features/production/execution/ProductionExecutionWorkbenchService$WorkshopTaskCountBreakdown.class",
+      "bytes": 1969,
+      "sha256": "dae42aa0bcbb27c26655ce10529ced578cd58e86a2c42837b80a958f8796714f"
+    },
+    {
+      "path": "projection/mutated/com/uten/imp/features/production/execution/ProductionExecutionWorkbenchService.class",
+      "bytes": 96349,
+      "sha256": "c8bb0648c57c6de688e3162e981214ecd8869b731f3f780d2f8ed5762bcdf1fb"
+    },
+    {
+      "path": "projection/ProductionExecutionWorkbenchService.java",
+      "bytes": 121999,
+      "sha256": "16d030c7c5e1dd0bb944a693be566ceba5e7ac57155af6e40bb0b9d332b28814"
+    },
+    {
+      "path": "projection/projection-baseline-spring.log",
+      "bytes": 381165,
+      "sha256": "09ebffa9c863d74242c114555e51209b032b1ad1038419b14e411ac33c8388d7"
+    },
+    {
+      "path": "projection/projection-baseline.args",
+      "bytes": 22975,
+      "sha256": "18890d84bcdda0910b501bd96dc557dde41fdb12ea26f287d7673c730986643e"
+    },
+    {
+      "path": "projection/projection-baseline.log",
+      "bytes": 406386,
+      "sha256": "07e290dcb87c270a11c0a3263f5f7b64822a4bbabf2f66382a4fadae935aa3ba"
+    },
+    {
+      "path": "projection/projection-fixture-javac.args",
+      "bytes": 23018,
+      "sha256": "fc171d9f6b8b01483eb434e52b1bd5167d6dce19e918863b46078a0c8fcd0968"
+    },
+    {
+      "path": "projection/projection-fixture-javac.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "projection/projection-mutant-javac.args",
+      "bytes": 22767,
+      "sha256": "ee495b15adf8e90e6e3a4676df5a44bfe0414fb6d26acf3c7ca2777a570d068a"
+    },
+    {
+      "path": "projection/projection-mutant-javac.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "projection/projection-mutant-spring.log",
+      "bytes": 4248,
+      "sha256": "b237e89e1306cea4850dfad9a2b9e0ee2ff7f70c3bf72377d5d03f1c2411d4f7"
+    },
+    {
+      "path": "projection/projection-mutant.args",
+      "bytes": 23077,
+      "sha256": "b68a3cec13d9460091d92646e7d53554ad8f552667fcbd1b6e180275ee1445f0"
+    },
+    {
+      "path": "projection/projection-mutant.log",
+      "bytes": 7821,
+      "sha256": "88369c26baac26c1722987db41ae2e1e3e801d6176d05f34a7d1beb27772f924"
+    },
+    {
+      "path": "projection/projection-mutation.diff",
+      "bytes": 861,
+      "sha256": "772a6a69241010425fc6bc23442dbcceb62088052a76ff7d99710fc756c07d18"
+    },
+    {
+      "path": "projection/projection-restored-spring.log",
+      "bytes": 4248,
+      "sha256": "e1f1605282990aec839d2987656024ba0aa451bc5024ea784cd11e2a545e0ac3"
+    },
+    {
+      "path": "projection/projection-restored.args",
+      "bytes": 22975,
+      "sha256": "2f75ba574bba0b8c2b74b7fbfc476e09634ec5d3a806a5453b2cce28eef6ac5e"
+    },
+    {
+      "path": "projection/projection-restored.log",
+      "bytes": 6705,
+      "sha256": "24b727a72ad429f14fc592ae5680b1b0ad9f0c3fe7d2cff9ac9a9655430c8cd7"
+    },
+    {
+      "path": "projection/tmp/mockitoboot13347740301988422875.jar",
+      "bytes": 1933,
+      "sha256": "757a18f6af23de62532695c74ca5b6a423129ab1681460111b2beee775461b4c"
+    },
+    {
+      "path": "projection/tmp/mockitoboot2778878787328682888.jar",
+      "bytes": 1933,
+      "sha256": "0eba54bb184c6acd710dfd7793ae1058cc40d28a659ed90c6c8780f6ca3b95de"
+    },
+    {
+      "path": "projection/tmp/mockitoboot9562710721146049607.jar",
+      "bytes": 1933,
+      "sha256": "cd211a965914faff0d01f1b3f25eed781425460e0af71174352b2914959922e9"
+    },
+    {
+      "path": "projection-database.log",
+      "bytes": 234,
+      "sha256": "fd48522f14795da0f0e28f6af17591805a61c51e21b0e1459b4c560643016acf"
+    },
+    {
+      "path": "projection-driver.log",
+      "bytes": 132,
+      "sha256": "4b5f664697e3461ae9067e0f56002e90893080e0e3449975dde1852b38d145a3"
+    },
+    {
+      "path": "proof/baseline-legacy-repeat.log",
+      "bytes": 49,
+      "sha256": "dc7e3884007dfc4fbebd479850add55b089b4982ada861c01dfcf4bc0cc1e811"
+    },
+    {
+      "path": "proof/candidate-hot-read-1024.log",
+      "bytes": 78,
+      "sha256": "7e1985824cc46c3859bab1c849c3665375cc7250748e3d6bd285ca36a5354b50"
+    },
+    {
+      "path": "proof/candidate-hot-read-256.log",
+      "bytes": 75,
+      "sha256": "47f495570d1b335a0c87e77580612dde40bf562f8f9a24dc9a67691243258e6d"
+    },
+    {
+      "path": "proof/candidate-hot-read-512.log",
+      "bytes": 75,
+      "sha256": "1f3070ac3086ef436fbdf60d13eba619d4a7253f4c79d2d826628fb0e4f4bf99"
+    },
+    {
+      "path": "proof/candidate-legacy-repeat.log",
+      "bytes": 88,
+      "sha256": "f00cbd992e195832c20dcbc7be48406917ae49a9662b7ba2496156f73c83f3b9"
+    },
+    {
+      "path": "proof/candidate-proof-plan-1024.json",
+      "bytes": 36897,
+      "sha256": "f9671e75d1eafc6ea38d190bf75f8b2c420a45d07743d39ccf27f56ca7547bb6"
+    },
+    {
+      "path": "proof/candidate-proof-plan-256.json",
+      "bytes": 36816,
+      "sha256": "a117439ad5b9f24b080fce3eb1bf9194f4333d14bb5143507048c3975735e666"
+    },
+    {
+      "path": "proof/candidate-proof-plan-512.json",
+      "bytes": 36836,
+      "sha256": "3a48ff1a5738830a5422815df3c47ed38e85bf3fe70a3c15e5679e33f80234b6"
+    },
+    {
+      "path": "proof-driver.log",
+      "bytes": 3082,
+      "sha256": "e038df047b9e6cf45d5ccb962e8e9a34b08caac65d2809df063b59b55906b032"
+    },
+    {
+      "path": "reports-backend15/com.uten.imp.businesschain.ProductionPartialReportQuantityEndToEndTest.txt",
+      "bytes": 395,
+      "sha256": "9735f96918209d299676e893009a3e97742a7452f785030b184b4a498080499d"
+    },
+    {
+      "path": "reports-backend15/com.uten.imp.businesschain.ProductionQuantityAdversarialEndToEndTest.txt",
+      "bytes": 391,
+      "sha256": "20f43efcc59d0906e967836f5c367c77e0402f621bc6ac1b8c6e88314692539f"
+    },
+    {
+      "path": "reports-backend15/com.uten.imp.businesschain.WorkshopPublicSurplusEndToEndTest.txt",
+      "bytes": 375,
+      "sha256": "953c29904b6d6278a22621085dbc76b45e0f9aa10bc0740373f2446ed21a16e9"
+    },
+    {
+      "path": "reports-backend15/com.uten.imp.common.production.ProductionMaterialKitProofsTest.txt",
+      "bytes": 378,
+      "sha256": "29de586f74e1a4542ed28c4864c25664c85c16463cb3fc0c0758566e9c385dff"
+    },
+    {
+      "path": "reports-backend15/com.uten.imp.features.production.dailyreport.DailyReportExecutionSegmentGuardTest.txt",
+      "bytes": 417,
+      "sha256": "6256b91d842bc7ec511d395f6f57e80a842624e73d16e38c5e0aa5a5aaef863d"
+    },
+    {
+      "path": "reports-backend15/com.uten.imp.features.production.dailyreport.ReportablePlanLinePostgresTest.txt",
+      "bytes": 405,
+      "sha256": "8b3aa1a36fdf71238eaed46b888cb51f1947686d9a87edebaac5e584114b8aa2"
+    },
+    {
+      "path": "reports-backend15/com.uten.imp.features.production.dailyreport.ReportablePlanLineQuerySecurityContractTest.txt",
+      "bytes": 430,
+      "sha256": "cf32504c84d4d03e88e99751e854f1f063e9db527a31cb79d82d3fdc5eec7637"
+    },
+    {
+      "path": "reports-backend15/com.uten.imp.features.production.execution.ProductionExecutionSegmentServiceTest.txt",
+      "bytes": 415,
+      "sha256": "b3fd10ff03153540404bb2bcdfff40ea4dae06057b45fb68a208e56829352a48"
+    },
+    {
+      "path": "reports-backend15/com.uten.imp.features.production.execution.ProductionExecutionWorkbenchProjectionTest.txt",
+      "bytes": 424,
+      "sha256": "85e3be82b8d07bdc5d552cca93d0b77f319aea7a0d2ca49cf6a8f245933df97d"
+    },
+    {
+      "path": "reports-backend15/com.uten.imp.features.production.execution.ProductionExecutionWorkbenchSecurityContractTest.txt",
+      "bytes": 436,
+      "sha256": "08f767939adb1467e2ed05681e07052c0bf7c2eacdb356bb4a24f2fdad7b858f"
+    },
+    {
+      "path": "reports-backend15/com.uten.imp.features.production.execution.ProductionWorkshopTaskStageContractTest.txt",
+      "bytes": 419,
+      "sha256": "6896323c4234a49915021ba17e92c095157ce3d3a624583f644ed372cd7f9bd0"
+    },
+    {
+      "path": "reports-backend15/com.uten.imp.features.stock.allocation.ProductionMaterialSettlementServiceTest.txt",
+      "bytes": 410,
+      "sha256": "baa7f6b3377fef1a2c3604c7ef4938410c760bc513652ffc29de512a3730ddd9"
+    },
+    {
+      "path": "reports-backend15/com.uten.imp.features.stock.allocation.ProductionMaterialStockLedgerCancellationPolicyTest.txt",
+      "bytes": 434,
+      "sha256": "eb1a7af0619a2b376cadd9330cbe901ac4b326f0a64209029ec9e30be640ad78"
+    },
+    {
+      "path": "reports-backend15/com.uten.imp.features.stock.allocation.ProductionMaterialStockLedgerRoutingTest.txt",
+      "bytes": 412,
+      "sha256": "55fa1bb9be9666509ac0651d75ea144417ec7915d3372a4beb080bf50ec105c9"
+    },
+    {
+      "path": "reports-backend15/com.uten.imp.migration.PartialMaterialReportCapacityPostgresTest.txt",
+      "bytes": 383,
+      "sha256": "444a3be712bf8c1b2e8204d8ac99c5e92ba3053669a6ed1f7033c21009e99b39"
+    },
+    {
+      "path": "reports-backend15/TEST-com.uten.imp.businesschain.ProductionPartialReportQuantityEndToEndTest.xml",
+      "bytes": 464682,
+      "sha256": "8de4c4ca452a213cfea289c293410f811df1fba5137ba41c6132bdcb66ff4e13"
+    },
+    {
+      "path": "reports-backend15/TEST-com.uten.imp.businesschain.ProductionQuantityAdversarialEndToEndTest.xml",
+      "bytes": 61681,
+      "sha256": "ac61dd98be578bb9668680ce76849a9762cffc8e868007e3d1b0acd005d43899"
+    },
+    {
+      "path": "reports-backend15/TEST-com.uten.imp.businesschain.WorkshopPublicSurplusEndToEndTest.xml",
+      "bytes": 62381,
+      "sha256": "e7e153ee55778b1acf5961429c095e4c1a660a176bd9f8d0074a0834e97a661f"
+    },
+    {
+      "path": "reports-backend15/TEST-com.uten.imp.common.production.ProductionMaterialKitProofsTest.xml",
+      "bytes": 55054,
+      "sha256": "0ac8b59700dd9f99a755bda67a226279c8d5a812ceff51438a68ace7dfbaa402"
+    },
+    {
+      "path": "reports-backend15/TEST-com.uten.imp.features.production.dailyreport.DailyReportExecutionSegmentGuardTest.xml",
+      "bytes": 59659,
+      "sha256": "8f31aec78131092414c7f0cf707632dd7cd5d53177ffab1b66e794b530ac92de"
+    },
+    {
+      "path": "reports-backend15/TEST-com.uten.imp.features.production.dailyreport.ReportablePlanLinePostgresTest.xml",
+      "bytes": 457660,
+      "sha256": "edc0f7de70b8d2751b84982d22511ed98358b57521a9b33b54cb105380e2176f"
+    },
+    {
+      "path": "reports-backend15/TEST-com.uten.imp.features.production.dailyreport.ReportablePlanLineQuerySecurityContractTest.xml",
+      "bytes": 54767,
+      "sha256": "1e598e16a520798a9300501448d18f8168216ffb7a8954ef2593e66a2820b502"
+    },
+    {
+      "path": "reports-backend15/TEST-com.uten.imp.features.production.execution.ProductionExecutionSegmentServiceTest.xml",
+      "bytes": 58835,
+      "sha256": "16f9b868fa42f0227fd598a6e22ebaf9891bb4ddba6fc4aa396776026ed2e9d4"
+    },
+    {
+      "path": "reports-backend15/TEST-com.uten.imp.features.production.execution.ProductionExecutionWorkbenchProjectionTest.xml",
+      "bytes": 55305,
+      "sha256": "845b50b473e692eae333831752e2bcd1519a39baa4238cd747b70087b37c9d83"
+    },
+    {
+      "path": "reports-backend15/TEST-com.uten.imp.features.production.execution.ProductionExecutionWorkbenchSecurityContractTest.xml",
+      "bytes": 55329,
+      "sha256": "096443f974a8fa42ef662bf924835de195b99ea925d9e5779caf30e796be98b0"
+    },
+    {
+      "path": "reports-backend15/TEST-com.uten.imp.features.production.execution.ProductionWorkshopTaskStageContractTest.xml",
+      "bytes": 64019,
+      "sha256": "97ea567f512bb884c487c239710a9986ebc2c4d953c534a946fdda6e5cdad4b5"
+    },
+    {
+      "path": "reports-backend15/TEST-com.uten.imp.features.stock.allocation.ProductionMaterialSettlementServiceTest.xml",
+      "bytes": 55912,
+      "sha256": "dbf4b637ae4e148e1daf1b03ff81e44657ab3aeff313a284c9b0bf1bfda853f2"
+    },
+    {
+      "path": "reports-backend15/TEST-com.uten.imp.features.stock.allocation.ProductionMaterialStockLedgerCancellationPolicyTest.xml",
+      "bytes": 54939,
+      "sha256": "879dcb4dd46b360035975bed0e73107d5b5b1a96ef37a98f53bc6e45c2675170"
+    },
+    {
+      "path": "reports-backend15/TEST-com.uten.imp.features.stock.allocation.ProductionMaterialStockLedgerRoutingTest.xml",
+      "bytes": 55029,
+      "sha256": "2beba43e6ba317ba1ea732ad551b6cd3f967d765a77a799f55f0ce7a94344c34"
+    },
+    {
+      "path": "reports-backend15/TEST-com.uten.imp.migration.PartialMaterialReportCapacityPostgresTest.xml",
+      "bytes": 60381,
+      "sha256": "e3c09b6f6a00315636e7f2576d0e120d3862a0439b13d013c9e98212972d3606"
+    },
+    {
+      "path": "source-before.json",
+      "bytes": 443,
+      "sha256": "0c7c5b17d23052cad71f3efa0a86aa772968504b2cb9ea33d36ca09f68eae7b8"
+    },
+    {
+      "path": "three-curves/candidate.log",
+      "bytes": 1497,
+      "sha256": "2e29d1b8f92cde0429e12ec3d4ce5260589a135112308c1cc61680b22840fd21"
+    },
+    {
+      "path": "three-curves/candidate.sql",
+      "bytes": 44209,
+      "sha256": "d2ae9e363417ba86a4c25ba491d63bacf0badbfafe5fca194a685996772e09ab"
+    },
+    {
+      "path": "three-curves/observations.json",
+      "bytes": 267,
+      "sha256": "e5aad30561883e7f6b1c668dcda437cefdfaf0c397d23b800a988fb50e78e839"
+    },
+    {
+      "path": "three-curves/original/legacy-repro.sql",
+      "bytes": 24451,
+      "sha256": "49785ec7e22f2a948745d76c44c9208adf925b935b4b1d6fff1b82fc152eccbf"
+    },
+    {
+      "path": "three-curves/original/three-curve-steps.sql",
+      "bytes": 2130,
+      "sha256": "44d72cf0a0891278b808c5ceca67c036f18d663076d2e0c1b8a83e068e9609e0"
+    },
+    {
+      "path": "three-curves/original/three-curve.log",
+      "bytes": 1580,
+      "sha256": "d7d6bb0f1930381a3dc4b8c5d04ef0eb3eef58e92eea1e7dbac57215a148ba54"
+    },
+    {
+      "path": "three-curves/original/three_curves.py",
+      "bytes": 923,
+      "sha256": "e6c1d8aa8181be48e8e9f37db1cab044f24ee5d9f8335b1d499f680cb99165ff"
+    },
+    {
+      "path": "three-curves/result.json",
+      "bytes": 910,
+      "sha256": "91d448239072becf8b70889fbb00dc00465cef00635670eb97a08dcee12247f2"
+    },
+    {
+      "path": "upgrade/candidate-upgrade-container.txt",
+      "bytes": 33,
+      "sha256": "90438dfc91b7946dd71899edf87bfe4dc7b405ccb538cc1751cd7ec8da63a411"
+    },
+    {
+      "path": "upgrade/deps-cp.txt",
+      "bytes": 22140,
+      "sha256": "48bb6109a8e96a7ca9ff1196e2157561fe43c3f697b90cb8264008555e588a16"
+    },
+    {
+      "path": "upgrade/FeedbackLegacyMaterialUpgradeFixture.java",
+      "bytes": 17427,
+      "sha256": "34deb2ca6c9e44c5d4c3382e246204c0f0dd8b05c26dbfa358346f0dfaa11af4"
+    },
+    {
+      "path": "upgrade/FeedbackThreeMaterialFixture.java",
+      "bytes": 85605,
+      "sha256": "f2f4ab4abf11847db42de32881a674927d9e10ebc724fd52a06032678038476d"
+    },
+    {
+      "path": "upgrade/FeedbackUpgradeRunner.java",
+      "bytes": 692,
+      "sha256": "2a16503a9d487849525109519c9585cec158ad0b485da9aba643d4c32d802d28"
+    },
+    {
+      "path": "upgrade/legacy-actor.txt",
+      "bytes": 36,
+      "sha256": "4211d4f88b7d577b62f085c7b68f195bcfc53ea66577e89c4a9e7c153429bada"
+    },
+    {
+      "path": "upgrade/legacy-segment.txt",
+      "bytes": 36,
+      "sha256": "7e59ca143d3e8042238f1c5497b8783b83335d4a014f5fc9a021b0a59d7d342b"
+    },
+    {
+      "path": "upgrade/old-approve-draft.txt",
+      "bytes": 36,
+      "sha256": "f2931783d65f7a20e67e65830db545a3a7dbd65edb1157b6dd98ef21b7d98360"
+    },
+    {
+      "path": "upgrade/old-edit-draft.txt",
+      "bytes": 36,
+      "sha256": "2a9ed0e370e18dc7bba2f1a2c49a135da27b947a9a064f6d08319a06648471ba"
+    },
+    {
+      "path": "upgrade/old-final-id.txt",
+      "bytes": 36,
+      "sha256": "788ce17dc52757140fd3a9f059b8e97546bfc724d2a832bcf47eae8e399e16cc"
+    },
+    {
+      "path": "upgrade/post-upgrade-input.json",
+      "bytes": 1627,
+      "sha256": "030f679d35e762e10c0ed06d99babfe967a287a692d93f3df1a124001a2429fd"
+    },
+    {
+      "path": "upgrade/three-legacy-approve.json",
+      "bytes": 2748,
+      "sha256": "5a16ddc0f8e49ff16bcaabee5037b5d38a740924a840934013771aa22a79c4e2"
+    },
+    {
+      "path": "upgrade/three-legacy-create.json",
+      "bytes": 2695,
+      "sha256": "7f899df0c82be48239bc69eb1f068e47ea395effd8c9e298e6905f7b7afb313f"
+    },
+    {
+      "path": "upgrade/three-legacy-edit.json",
+      "bytes": 2748,
+      "sha256": "f6191bd8daf1ae2f1200640c95e22134e496b75c0013809c7ef20300307019a8"
+    },
+    {
+      "path": "upgrade/upgrade-candidate-v1128-approve-spring.log",
+      "bytes": 4907,
+      "sha256": "53006fb3c8b050d3ca58b5dc2c867e10e5547ec9a104128907400f647069215d"
+    },
+    {
+      "path": "upgrade/upgrade-candidate-v1128-approve.log",
+      "bytes": 7562,
+      "sha256": "ed98282e984e1b2a9a044b3d86f6734d1d1bc0444b10ae100edf936510861c82"
+    },
+    {
+      "path": "upgrade/upgrade-candidate-v1128-create-spring.log",
+      "bytes": 4905,
+      "sha256": "a0bf922b795b6bbfaea425f5cd6ebd0e79703c499ed2b64fa707db9b5e8c295c"
+    },
+    {
+      "path": "upgrade/upgrade-candidate-v1128-create.log",
+      "bytes": 7559,
+      "sha256": "0c01a89df93da8029aef2ef84df24dca81146f891a4b0ba5a87171810ddefe9c"
+    },
+    {
+      "path": "upgrade/upgrade-candidate-v1128-edit-spring.log",
+      "bytes": 4904,
+      "sha256": "d557d7ffeb93fa1b7073ffef8807986efe1babd7de52da0742c153d84382f329"
+    },
+    {
+      "path": "upgrade/upgrade-candidate-v1128-edit.log",
+      "bytes": 7556,
+      "sha256": "7f65571771bd53def4e597f24067ab2fed9b19cddd30c30891f46e230b59c532"
+    },
+    {
+      "path": "upgrade/upgrade-candidate-v1129-approve-spring.log",
+      "bytes": 4715,
+      "sha256": "7ff72bef57c8dd29d03aed4a8ba5ba3bf60a71ade7fcabe39a53ff17ac9d39e0"
+    },
+    {
+      "path": "upgrade/upgrade-candidate-v1129-approve.log",
+      "bytes": 7349,
+      "sha256": "55cc8ddf970b159c22b8cdcbb1c3de697914442c5ff78fef7a1a7c66bb52dd8f"
+    },
+    {
+      "path": "upgrade/upgrade-candidate-v1129-create-spring.log",
+      "bytes": 4715,
+      "sha256": "c262c52dca1042b0d4191b7746aa280b1f7ac7118f908347656f7994ed0c4a8d"
+    },
+    {
+      "path": "upgrade/upgrade-candidate-v1129-create.log",
+      "bytes": 7348,
+      "sha256": "c745f80613720f394e3135be2e5352b280ddf62e9491ec1fed7d935e0388b38e"
+    },
+    {
+      "path": "upgrade/upgrade-candidate-v1129-edit-spring.log",
+      "bytes": 4713,
+      "sha256": "bcb2f7464611cef6377f8f884eb1c1b0228f8956896b2652dad50536495f71a2"
+    },
+    {
+      "path": "upgrade/upgrade-candidate-v1129-edit.log",
+      "bytes": 7344,
+      "sha256": "2a15682697535e3ebb0504a46d734f44b826de244fcc7aaa8bd1b6da3cb8ac48"
+    },
+    {
+      "path": "upgrade/upgrade-existing-v1129-approve-before-candidate.dump",
+      "bytes": 13008828,
+      "sha256": "30bd4dad26433da2de6e243339a23f7a16f93c6aad7b67bec0e8da0fa602d7da"
+    },
+    {
+      "path": "upgrade/upgrade-existing-v1129-approve-stage-spring.log",
+      "bytes": 4060,
+      "sha256": "2252521b0b5fd8054332eb50b3b5737e58ebd6930c982541e3c0dc23abaa3eb9"
+    },
+    {
+      "path": "upgrade/upgrade-existing-v1129-approve-stage.log",
+      "bytes": 6174,
+      "sha256": "2379bf393e17c7cbb5d8f9bfca6c21ccc8736e5ea0f44cbbe0a929b69e153609"
+    },
+    {
+      "path": "upgrade/upgrade-existing-v1129-create-before-candidate.dump",
+      "bytes": 13008824,
+      "sha256": "eb15962a2d99f03fd4858d6cddff352ca4d41be15b8f2b51b875fcf65ce9659a"
+    },
+    {
+      "path": "upgrade/upgrade-existing-v1129-create-stage-spring.log",
+      "bytes": 4062,
+      "sha256": "565a1435cad4e48574b63021a5c09bea5d77b3a59d5ce2bd4944245174ebed4e"
+    },
+    {
+      "path": "upgrade/upgrade-existing-v1129-create-stage.log",
+      "bytes": 6177,
+      "sha256": "dbfa26e46c0a433b46fba3227068bb48b8d57dfb5757fa36c4199f4e43cf23fa"
+    },
+    {
+      "path": "upgrade/upgrade-existing-v1129-edit-before-candidate.dump",
+      "bytes": 13008816,
+      "sha256": "b0557122ec20071b6c18600b89432f4ddb108f44ac1a1875dfef25c179812858"
+    },
+    {
+      "path": "upgrade/upgrade-existing-v1129-edit-stage-spring.log",
+      "bytes": 4058,
+      "sha256": "66b045cc4e489b728ab96a1a66d1d01ae03e3e50b49c6ca61b3890f0c739863b"
+    },
+    {
+      "path": "upgrade/upgrade-existing-v1129-edit-stage.log",
+      "bytes": 6172,
+      "sha256": "9ad073a6ff69fd99eb3f03d162961d0b6266c8bb14be0a6e083fb09232af4895"
+    },
+    {
+      "path": "upgrade/upgrade-javac.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "upgrade/upgrade-runtime-private.json",
+      "bytes": 162,
+      "sha256": "815d08b10c34c5b5156f5be6990916d100949995e81c51bd1c1424adae3920f4"
+    },
+    {
+      "path": "upgrade/upgrade-tests/com/uten/imp/businesschain/FeedbackLegacyMaterialUpgradeFixture.class",
+      "bytes": 24601,
+      "sha256": "d6b7ff2f0a4292ae472d3e3fb42cdc379cd3253aff440e2036258576b300090e"
+    },
+    {
+      "path": "upgrade/upgrade-tests/com/uten/imp/businesschain/FeedbackThreeMaterialFixture$Batch.class",
+      "bytes": 1516,
+      "sha256": "c535575215b82570fa7419431b3b1127761178210b6844f8a19c6220d95780d7"
+    },
+    {
+      "path": "upgrade/upgrade-tests/com/uten/imp/businesschain/FeedbackThreeMaterialFixture$Case.class",
+      "bytes": 2903,
+      "sha256": "e2a0a1aea0c7568fa68fa08430db770e8982b13f01db56eae7f459439768a51f"
+    },
+    {
+      "path": "upgrade/upgrade-tests/com/uten/imp/businesschain/FeedbackThreeMaterialFixture.class",
+      "bytes": 86464,
+      "sha256": "c24ed9d43e3c807a9d9ff8d564e8a3adcdbade4d51de92f5a9ab12918021a3ed"
+    },
+    {
+      "path": "upgrade/upgrade-tests/FeedbackUpgradeRunner.class",
+      "bytes": 2575,
+      "sha256": "f70f216cbae6e26c08efcb15bfa123dd0755049ce09c58225d3b4d51e8ab38cc"
+    },
+    {
+      "path": "upgrade/upgrade-tests/upgrade-candidate-v1128-approve.args",
+      "bytes": 22968,
+      "sha256": "96bd97e6346bda14021a52e3497cf85d1e2682c1ea3e0596baebc6f65c67ba41"
+    },
+    {
+      "path": "upgrade/upgrade-tests/upgrade-candidate-v1128-create.args",
+      "bytes": 22967,
+      "sha256": "5e7bf624d1132dc4ca26b4b0bf0af17f3c52f3ada1006521e87fb76eb9c25eb3"
+    },
+    {
+      "path": "upgrade/upgrade-tests/upgrade-candidate-v1128-edit.args",
+      "bytes": 22965,
+      "sha256": "0a6b870efed50f1820cb84acbe16810fd399fc7fe038ca68d7cd33debb302e4a"
+    },
+    {
+      "path": "upgrade/upgrade-tests/upgrade-candidate-v1129-approve.args",
+      "bytes": 22968,
+      "sha256": "fa08c25eca91bc7a4e2938b5b845a81e3e91405b52b9de63e551ea7556a971de"
+    },
+    {
+      "path": "upgrade/upgrade-tests/upgrade-candidate-v1129-create.args",
+      "bytes": 22967,
+      "sha256": "2930f4ae9d45806e901c015346ab8e98f251a6f0e08f5792804ec63c368501b7"
+    },
+    {
+      "path": "upgrade/upgrade-tests/upgrade-candidate-v1129-edit.args",
+      "bytes": 22965,
+      "sha256": "61828d7d671e89ad325f2801dadf9517c9fd96f47d53c260322b6106b9a2bfa6"
+    },
+    {
+      "path": "upgrade/upgrade-tests/upgrade-existing-v1129-approve-stage.args",
+      "bytes": 22975,
+      "sha256": "483e09ac60b00a0d0a5d9dbce6a7f0e9f7a0c299bfdf88161b0c03be70c20df5"
+    },
+    {
+      "path": "upgrade/upgrade-tests/upgrade-existing-v1129-create-stage.args",
+      "bytes": 22974,
+      "sha256": "0ea59e3d463beebeeb5e556ee50ee13946c3a1ac8fa191977a4a05d9dfad3418"
+    },
+    {
+      "path": "upgrade/upgrade-tests/upgrade-existing-v1129-edit-stage.args",
+      "bytes": 22972,
+      "sha256": "8f9e24fe364585259777ef5784b8b9d7b6e25801c34a1ba26d358900be66180b"
+    },
+    {
+      "path": "upgrade/upgrade-tests/upgrade-javac.args",
+      "bytes": 23038,
+      "sha256": "5f75c37fda1f0387158aa933ae0c5539c934b683a0c851ef36f6314297df498b"
+    },
+    {
+      "path": "upgrade/upgrade-tests/upgrade-three-existing-v1129-approve-stage.args",
+      "bytes": 22981,
+      "sha256": "7a97fa2857f94855412aeabf21ccca716054958570f40371cb9943200a285124"
+    },
+    {
+      "path": "upgrade/upgrade-tests/upgrade-three-existing-v1129-create-stage.args",
+      "bytes": 22980,
+      "sha256": "51d959771f26157ee58ff51f47692021beed9023b5551818e85e4150b8c407f9"
+    },
+    {
+      "path": "upgrade/upgrade-tests/upgrade-three-existing-v1129-edit-stage.args",
+      "bytes": 22978,
+      "sha256": "fabe3da47e68482e5d5b8e767c583f3af850fa4f789ecb3ab17fa8f131cfd129"
+    },
+    {
+      "path": "upgrade/upgrade-tests/upgrade-three-v1128-approve.args",
+      "bytes": 22969,
+      "sha256": "6eb6fca350615c71d9f2e035ce4a38a8267d853dc680bf5970823e8324a55b1d"
+    },
+    {
+      "path": "upgrade/upgrade-tests/upgrade-three-v1128-create.args",
+      "bytes": 22968,
+      "sha256": "3c5728fa2c1d8760e02d6bdc017d598d5113f428cb3dd0034074ffdbacbc307f"
+    },
+    {
+      "path": "upgrade/upgrade-tests/upgrade-three-v1128-edit.args",
+      "bytes": 22966,
+      "sha256": "1d457a1dbaa19861eb92f3239061ab63406f73644d94832efd3b710fac6ae67e"
+    },
+    {
+      "path": "upgrade/upgrade-tests/upgrade-three-v1129-approve.args",
+      "bytes": 22969,
+      "sha256": "aea9bf0490dedcad9b079fa4b6e80b9814da763c4084588d39edd5a546b08e6a"
+    },
+    {
+      "path": "upgrade/upgrade-tests/upgrade-three-v1129-create.args",
+      "bytes": 22968,
+      "sha256": "db6dd99e6d457439d834511ac01b7c091b33ec222baa02d830a6c7a7f0202fec"
+    },
+    {
+      "path": "upgrade/upgrade-tests/upgrade-three-v1129-edit.args",
+      "bytes": 22966,
+      "sha256": "ea430f84ee65452213920b03c15743c347ca7891cd9cb25e712bd7dd21cc5482"
+    },
+    {
+      "path": "upgrade/upgrade-tests/upgrade-v1128-public-baseline.args",
+      "bytes": 22971,
+      "sha256": "ead3a78247f74f58c438990f47fd752ff825caf144b6d07021a9071c90f6c900"
+    },
+    {
+      "path": "upgrade/upgrade-three-existing-v1129-approve-before-candidate.dump",
+      "bytes": 13008850,
+      "sha256": "f6152dfa24f4b7a24e9f4ebce2aabaf039f8d7bef96e37125a70749583ac5e4b"
+    },
+    {
+      "path": "upgrade/upgrade-three-existing-v1129-approve-stage-spring.log",
+      "bytes": 4068,
+      "sha256": "ac6b24085cb243b6e9b76eaec435812e61cfbb13e550e42f25c4dc701518171e"
+    },
+    {
+      "path": "upgrade/upgrade-three-existing-v1129-approve-stage.log",
+      "bytes": 6182,
+      "sha256": "0064bab3a91174192f8b1a8ed20b6c66fa3c85f360ad23caca5e42131916c9d0"
+    },
+    {
+      "path": "upgrade/upgrade-three-existing-v1129-create-before-candidate.dump",
+      "bytes": 13008849,
+      "sha256": "70a4e386168ede162a8c0ef71c349de8c74f01107cb9d5de3144bc777eb30591"
+    },
+    {
+      "path": "upgrade/upgrade-three-existing-v1129-create-stage-spring.log",
+      "bytes": 4066,
+      "sha256": "a2520c31be199c5b90b8d7fc009e13cf533f886465df84c379128239d32fcf19"
+    },
+    {
+      "path": "upgrade/upgrade-three-existing-v1129-create-stage.log",
+      "bytes": 6180,
+      "sha256": "fde509a29a2b99ae90cec6b2febe458db6927bc8c96fa65e271c59c807ea8de9"
+    },
+    {
+      "path": "upgrade/upgrade-three-existing-v1129-edit-before-candidate.dump",
+      "bytes": 13008837,
+      "sha256": "ff5e97fe2a9da36985e4119ce4f89b59df28e20daf317b5ccb6442093e1c0573"
+    },
+    {
+      "path": "upgrade/upgrade-three-existing-v1129-edit-stage-spring.log",
+      "bytes": 4064,
+      "sha256": "cf199230c1814a174e9f8be26e564c3b134fc4658196a4780772d477e98baf3f"
+    },
+    {
+      "path": "upgrade/upgrade-three-existing-v1129-edit-stage.log",
+      "bytes": 6178,
+      "sha256": "5f0d9c6e2e508ac3f8e3c6ce25e4616be2b806ee0a34173c69befb2f0e6a9349"
+    },
+    {
+      "path": "upgrade/upgrade-three-v1128-approve-spring.log",
+      "bytes": 4910,
+      "sha256": "f8d4c98cc29bdf9e12842210281b7fc712c92bd631368105c70531402d60fe08"
+    },
+    {
+      "path": "upgrade/upgrade-three-v1128-approve.log",
+      "bytes": 7398,
+      "sha256": "02e2c5d168f87fb49529fcbd5c17c83c37d7145b9e048c111e520e584a96310f"
+    },
+    {
+      "path": "upgrade/upgrade-three-v1128-create-spring.log",
+      "bytes": 4912,
+      "sha256": "edf01efa05d097f1ddc0a4603c0ec0bbd1ac67bda11908ca4c1202cdf7a229b3"
+    },
+    {
+      "path": "upgrade/upgrade-three-v1128-create.log",
+      "bytes": 7396,
+      "sha256": "2866d0232be330bf7b1ee2c24893548c9ec79b511d14e911d237d12fe27fd3b2"
+    },
+    {
+      "path": "upgrade/upgrade-three-v1128-edit-spring.log",
+      "bytes": 4911,
+      "sha256": "25319a60d503087e0ea6fbb602f919e8008709b5ebde6e4ce3ebf1a553433ecb"
+    },
+    {
+      "path": "upgrade/upgrade-three-v1128-edit.log",
+      "bytes": 7393,
+      "sha256": "db4e0ca7f392b9b153ff8afb9c96ef47d0dceb27cd2b0ad8a6575a511bb9f0b0"
+    },
+    {
+      "path": "upgrade/upgrade-three-v1129-approve-spring.log",
+      "bytes": 4722,
+      "sha256": "b10ec4698881a26dcb21819d066c5b1c0f3599d3fb2375db65857ff5592ff7f8"
+    },
+    {
+      "path": "upgrade/upgrade-three-v1129-approve.log",
+      "bytes": 7190,
+      "sha256": "f9f0b481111041d573e88007a0ad1b098d97cfe38f2e5f7e3c0d827bbee908c1"
+    },
+    {
+      "path": "upgrade/upgrade-three-v1129-create-spring.log",
+      "bytes": 4721,
+      "sha256": "978644921f3efc5bd1253e5ff2d869efaecc93303f1a1f0877f576ef3a2ae673"
+    },
+    {
+      "path": "upgrade/upgrade-three-v1129-create.log",
+      "bytes": 7184,
+      "sha256": "32bba72f89349d4e41a57284774a4fd56d5da03c25a05b4f4d77038f2368d11b"
+    },
+    {
+      "path": "upgrade/upgrade-three-v1129-edit-spring.log",
+      "bytes": 4719,
+      "sha256": "3d777bf3cee77a27dedb5f74b5d656df22e986c12980d3e16c44b08f3c6c7264"
+    },
+    {
+      "path": "upgrade/upgrade-three-v1129-edit.log",
+      "bytes": 7180,
+      "sha256": "f98d31c1a813c2b370b7787c6c074d2f12f1760b37a5013a5123cc76587ec8f6"
+    },
+    {
+      "path": "upgrade/upgrade-tmp/mockitoboot12796403874341333488.jar",
+      "bytes": 1933,
+      "sha256": "bee92babdee2960e6ec8c80d00d9c6f22b9e8d4912bf4fc4daae25d6de5bacbb"
+    },
+    {
+      "path": "upgrade/upgrade-tmp/mockitoboot13437597454443041872.jar",
+      "bytes": 1933,
+      "sha256": "5f45bcc8d1e95e55a99703e4b253e0f354b6bc4eb4e5c74027bf6de3c324120f"
+    },
+    {
+      "path": "upgrade/upgrade-tmp/mockitoboot13906999250941942241.jar",
+      "bytes": 1933,
+      "sha256": "fcf3ff6cbf3f2feeb94b5a0fc51ac1e84eb321c429ae4b8e231ac35cdd3d31dd"
+    },
+    {
+      "path": "upgrade/upgrade-tmp/mockitoboot14077223246452136855.jar",
+      "bytes": 1933,
+      "sha256": "8f9d4c3d7b76a72950e452c618d9bf98c12010bd99a43aa7c4ba56c3cc41b9b7"
+    },
+    {
+      "path": "upgrade/upgrade-tmp/mockitoboot1555653143223846729.jar",
+      "bytes": 1933,
+      "sha256": "9d1d6e5e51a490ac5f9e253da959cfd0c518889dc28e7022b6dc414e3f089642"
+    },
+    {
+      "path": "upgrade/upgrade-tmp/mockitoboot15677599466860481036.jar",
+      "bytes": 1933,
+      "sha256": "b6b0367db9b5ff098b693af76eb0cf1cafcd288cdae4793af87b87bf11856b77"
+    },
+    {
+      "path": "upgrade/upgrade-tmp/mockitoboot16395820811471957406.jar",
+      "bytes": 1933,
+      "sha256": "8327f0c2b2478f2a26efa3979196d39ce4ba96f91caef140557baed32108b8be"
+    },
+    {
+      "path": "upgrade/upgrade-tmp/mockitoboot17060133240373357036.jar",
+      "bytes": 1933,
+      "sha256": "71746b975b539566110cfc221a15c1d1f99e592a8abbd87d2d1ede49480916f6"
+    },
+    {
+      "path": "upgrade/upgrade-tmp/mockitoboot17061642131510443083.jar",
+      "bytes": 1933,
+      "sha256": "a720c628624b2d2ae1f4df52d0a5f70bd05afb66690b4146a869bad2ea1d53d8"
+    },
+    {
+      "path": "upgrade/upgrade-tmp/mockitoboot17267531561830352659.jar",
+      "bytes": 1933,
+      "sha256": "b88cabbb779f3161444db6505a46ae1b6de4b26f53abce7b3edec0aa05545ca1"
+    },
+    {
+      "path": "upgrade/upgrade-tmp/mockitoboot17747808859826933406.jar",
+      "bytes": 1933,
+      "sha256": "1dfd8144dbc1e1264cddd4a5724bdd02f52818a06f85d9513ed384768db35924"
+    },
+    {
+      "path": "upgrade/upgrade-tmp/mockitoboot17782913939025986228.jar",
+      "bytes": 1933,
+      "sha256": "6588c149b45654e9bf877546246a528a174259687cb02569a4958c14dce99252"
+    },
+    {
+      "path": "upgrade/upgrade-tmp/mockitoboot1818174649239491627.jar",
+      "bytes": 1933,
+      "sha256": "b7ff03e463a965b9edbdb558b45fc40d480517e64a895d41376d26dcf7e26f00"
+    },
+    {
+      "path": "upgrade/upgrade-tmp/mockitoboot5766104815711919063.jar",
+      "bytes": 1933,
+      "sha256": "066f99843c5870ce34d420feed2b7621528c47484f5c3ebb54387933fe23808c"
+    },
+    {
+      "path": "upgrade/upgrade-tmp/mockitoboot7103773585277394266.jar",
+      "bytes": 1933,
+      "sha256": "d4b5a4f8bffba0de25fc6adad3d47b4abe198c655f662b4d242d8d82eed37306"
+    },
+    {
+      "path": "upgrade/upgrade-tmp/mockitoboot8007153341967307055.jar",
+      "bytes": 1933,
+      "sha256": "317de6c6b6f7754d4c0a86a372e2a6c07136f6938bcf033db4dfe82113dd3895"
+    },
+    {
+      "path": "upgrade/upgrade-tmp/mockitoboot8252685742133921498.jar",
+      "bytes": 1933,
+      "sha256": "80d7193d68271894552f2158fdbc4092fe2c65d5abaa09ba4968cc4f21a96c21"
+    },
+    {
+      "path": "upgrade/upgrade-tmp/mockitoboot8734862964764008098.jar",
+      "bytes": 1933,
+      "sha256": "2f6602cc74f683de773e065b1134a39cd6374cdf5e24deaa96a7b6ff05f2f517"
+    },
+    {
+      "path": "upgrade/upgrade-tmp/mockitoboot9319512872656965992.jar",
+      "bytes": 1933,
+      "sha256": "854406c94a5b6a9ba843f9f1fe9c7da80f2d5de878a732e774e1d0550821e8a9"
+    },
+    {
+      "path": "upgrade/upgrade-v1128-before-candidate.dump",
+      "bytes": 12986405,
+      "sha256": "5c20147a35042c18f7effb9de6dfba4bfec2aaa4d608dd1461afed3d8425e9b3"
+    },
+    {
+      "path": "upgrade/upgrade-v1128-public-baseline-spring.log",
+      "bytes": 380530,
+      "sha256": "55fd32704396d262849778b5d63df7268f6f02aba3cbdf863e4ac36527f65c4c"
+    },
+    {
+      "path": "upgrade/upgrade-v1128-public-baseline.log",
+      "bytes": 406041,
+      "sha256": "2cdefd62476aa6412d4f5026a13d694f1db2aadcac006699bf19c587cf72ceec"
+    },
+    {
+      "path": "upgrade-driver.log",
+      "bytes": 495,
+      "sha256": "ae18529c86ae3152905856dd7e8149162258507cf954ea3d4e51026759d1cdea"
+    },
+    {
+      "path": "vm-five-exit.json",
+      "bytes": 181,
+      "sha256": "e0aeb4f75196a1aab48ac08d9bfc5e78cecc6047767a7d2a407856fec426b43e"
+    },
+    {
+      "path": "vm-five.log",
+      "bytes": 1408,
+      "sha256": "a013979934b3fde7619b75446060b3f7ba86f307b22f1b7904b2fd0b517b1f1a"
+    },
+    {
+      "path": "vm-pub-offline.log",
+      "bytes": 581,
+      "sha256": "1dfbfff886b449f8e1898a129668b735c02e508f744ebf3a2f10dc9716a2bd11"
+    }
+  ]
+}

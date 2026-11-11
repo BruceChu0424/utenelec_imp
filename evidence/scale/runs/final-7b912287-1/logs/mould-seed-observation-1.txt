@@ -1,0 +1,6 @@
+2026-11-10T22:23:30.9464520-07:00
+d42114b6fecea979073be33593da71ae419270af9ce09bcfb937b97743e79df9
+ datname | state | wait_event_type | wait_event | elapsed | query 
+---------+-------+-----------------+------------+---------+-------
+(0 rows)
+

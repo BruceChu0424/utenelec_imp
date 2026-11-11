@@ -1,0 +1,95 @@
+[INFO] Scanning for projects...
+[INFO] 
+[INFO] ----------------------< com.uten:uten-imp-server >----------------------
+[INFO] Building uten-imp-server 0.1.0
+[INFO]   from pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- surefire:3.5.6:test (default-cli) @ uten-imp-server ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running com.uten.imp.businesschain.FeedbackBPublicServicePrepTest
+00:38:05.600 [main] INFO org.springframework.test.context.support.AnnotationConfigContextLoaderUtils -- Could not detect default configuration classes for test class [com.uten.imp.businesschain.FeedbackBPublicServicePrepTest]: FeedbackBPublicServicePrepTest does not declare any static, non-private, non-final, nested classes annotated with @Configuration.
+00:38:06.421 [main] INFO org.springframework.boot.test.context.SpringBootTestContextBootstrapper -- Found @SpringBootConfiguration com.uten.imp.UtenImpApplication for test class com.uten.imp.businesschain.FeedbackBPublicServicePrepTest
+00:38:06.517 [main] INFO org.springframework.test.context.support.AnnotationConfigContextLoaderUtils -- Could not detect default configuration classes for test class [com.uten.imp.businesschain.FeedbackBPublicServicePrepTest]: FeedbackBPublicServicePrepTest does not declare any static, non-private, non-final, nested classes annotated with @Configuration.
+00:38:06.520 [main] INFO org.springframework.boot.test.context.SpringBootTestContextBootstrapper -- Found @SpringBootConfiguration com.uten.imp.UtenImpApplication for test class com.uten.imp.businesschain.FeedbackBPublicServicePrepTest
+2026-11-11T00:38:07.230-07:00  INFO 16408 --- [uten-imp-server] [           main] c.u.i.b.FeedbackBPublicServicePrepTest   : Starting FeedbackBPublicServicePrepTest using Java 21.0.11 with PID 16408 (started by bruce in D:\Projects\uten_imp_worktrees\feedback-b-final-prep-20261111\server)
+2026-11-11T00:38:07.231-07:00 DEBUG 16408 --- [uten-imp-server] [           main] c.u.i.b.FeedbackBPublicServicePrepTest   : Running with Spring Boot v4.1.1, Spring v7.0.9
+2026-11-11T00:38:07.233-07:00  INFO 16408 --- [uten-imp-server] [           main] c.u.i.b.FeedbackBPublicServicePrepTest   : The following 1 profile is active: "dev"
+2026-11-11T00:38:18.080-07:00  INFO 16408 --- [uten-imp-server] [           main] org.flywaydb.core.FlywayExecutor         : Database: jdbc:postgresql://127.0.0.1:26633/bremediation (PostgreSQL 16.15)
+2026-11-11T00:38:23.569-07:00  INFO 16408 --- [uten-imp-server] [           main] o.f.core.internal.command.DbMigrate      : Current version of schema "public": 1129
+2026-11-11T00:38:23.590-07:00  INFO 16408 --- [uten-imp-server] [           main] o.f.core.internal.command.DbMigrate      : Migrating schema "public" to version "1130 - verify legacy material basis and linear proof sweep"
+2026-11-11T00:38:23.840-07:00  INFO 16408 --- [uten-imp-server] [           main] o.f.core.internal.command.DbMigrate      : Migrating schema "public" to version "1131 - settle proof peers and verify legacy demand threshold"
+2026-11-11T00:38:23.870-07:00  INFO 16408 --- [uten-imp-server] [           main] o.f.core.internal.command.DbMigrate      : Successfully applied 2 migrations to schema "public", now at version v1131 (execution time 00:00.230s)
+2026-11-11T00:38:24.760-07:00  INFO 16408 --- [uten-imp-server] [           main] o.s.o.j.p.SpringPersistenceUnitInfo      : No LoadTimeWeaver setup: ignoring JPA class transformer
+2026-11-11T00:38:24.790-07:00  INFO 16408 --- [uten-imp-server] [           main] com.zaxxer.hikari.HikariDataSource       : uten-imp - Starting...
+2026-11-11T00:38:24.813-07:00  INFO 16408 --- [uten-imp-server] [           main] com.zaxxer.hikari.HikariDataSource       : uten-imp - Start completed.
+2026-11-11T00:38:28.827-07:00  INFO 16408 --- [uten-imp-server] [           main] j.LocalContainerEntityManagerFactoryBean : Initialized JPA EntityManagerFactory for persistence unit 'default'
+2026-11-11T00:38:34.103-07:00  INFO 16408 --- [uten-imp-server] [           main] c.u.i.c.storage.LocalDiskStorageService  : Local attachment storage enabled at D:\Projects\uten_imp_worktrees\feedback-b-final-prep-20261111\evidence\b-final-prep\upgrade-run1\tmp\uten-test-attachments-16408
+2026-11-11T00:38:42.748-07:00  INFO 16408 --- [uten-imp-server] [           main] com.zaxxer.hikari.HikariDataSource       : document-scan-evidence - Starting...
+2026-11-11T00:38:42.749-07:00  INFO 16408 --- [uten-imp-server] [           main] com.zaxxer.hikari.HikariDataSource       : document-scan-evidence - Start completed.
+2026-11-11T00:38:54.568-07:00  INFO 16408 --- [uten-imp-server] [knowledge-index] c.u.imp.features.ai.chat.AiDocKnowledge  : AI knowledge index: 295 documents, 2096 chunks, 85 glossary terms, 95649 terms, 577655 postings, about 12383 KB, built in 6196 ms
+2026-11-11T00:38:56.953-07:00  INFO 16408 --- [uten-imp-server] [           main] c.u.i.f.r.e.ReportExportBuildIdentity    : Report export build fingerprint initialized in 5137 ms
+2026-11-11T00:39:00.951-07:00  INFO 16408 --- [uten-imp-server] [           main] o.s.b.a.e.web.EndpointLinksResolver      : Exposing 1 endpoint beneath base path '/actuator'
+2026-11-11T00:39:01.104-07:00  INFO 16408 --- [uten-imp-server] [           main] c.u.i.b.FeedbackBPublicServicePrepTest   : Started FeedbackBPublicServicePrepTest in 54.364 seconds (process running for 56.547)
+2026-11-11T00:39:02.125-07:00  INFO 16408 --- [uten-imp-server] [           main] org.testcontainers.images.PullPolicy     : Image pull policy will be performed by: DefaultPullPolicy()
+2026-11-11T00:39:02.129-07:00  INFO 16408 --- [uten-imp-server] [           main] o.t.utility.ImageNameSubstitutor         : Image name substitution will be performed by: DefaultImageNameSubstitutor (composite of 'ConfigurationFileImageNameSubstitutor' and 'PrefixingImageNameSubstitutor')
+[ERROR] Tests run: 1, Failures: 0, Errors: 1, Skipped: 0, Time elapsed: 58.76 s <<< FAILURE! -- in com.uten.imp.businesschain.FeedbackBPublicServicePrepTest
+[ERROR] com.uten.imp.businesschain.FeedbackBPublicServicePrepTest.approveActualOldProgramReceiptOnlyDrafts -- Time elapsed: 2.610 s <<< ERROR!
+org.springframework.dao.DuplicateKeyException: 
+PreparedStatementCallback; SQL [insert into units(id, legacy_id, code, name, status) values (?, ?, ?, ?, '使用')]; ERROR: duplicate key value violates unique constraint "units_legacy_id_key"
+  详细：Key (legacy_id)=(9001) already exists.
+	at org.springframework.jdbc.support.SQLStateSQLExceptionTranslator.doTranslate(SQLStateSQLExceptionTranslator.java:138)
+	at org.springframework.jdbc.support.AbstractFallbackSQLExceptionTranslator.translate(AbstractFallbackSQLExceptionTranslator.java:102)
+	at org.springframework.jdbc.support.AbstractFallbackSQLExceptionTranslator.translate(AbstractFallbackSQLExceptionTranslator.java:111)
+	at org.springframework.jdbc.core.JdbcTemplate.translateException(JdbcTemplate.java:1549)
+	at org.springframework.jdbc.core.JdbcTemplate.execute(JdbcTemplate.java:689)
+	at org.springframework.jdbc.core.JdbcTemplate.update(JdbcTemplate.java:966)
+	at org.springframework.jdbc.core.JdbcTemplate.update(JdbcTemplate.java:1010)
+	at org.springframework.jdbc.core.JdbcTemplate.update(JdbcTemplate.java:1020)
+	at com.uten.imp.businesschain.FullChainEndToEndTest.seedWorld(FullChainEndToEndTest.java:14221)
+	at com.uten.imp.businesschain.FeedbackBPublicServicePrepTest.approveActualOldProgramReceiptOnlyDrafts(FeedbackBPublicServicePrepTest.java:95)
+Caused by: org.postgresql.util.PSQLException: ERROR: duplicate key value violates unique constraint "units_legacy_id_key"
+  详细：Key (legacy_id)=(9001) already exists.
+	at org.postgresql.core.v3.QueryExecutorImpl.receiveErrorResponse(QueryExecutorImpl.java:2904)
+	at org.postgresql.core.v3.QueryExecutorImpl.processResults(QueryExecutorImpl.java:2589)
+	at org.postgresql.core.v3.QueryExecutorImpl.execute(QueryExecutorImpl.java:431)
+	at org.postgresql.jdbc.PgStatement.executeInternal(PgStatement.java:534)
+	at org.postgresql.jdbc.PgStatement.execute(PgStatement.java:437)
+	at org.postgresql.jdbc.PgPreparedStatement.executeWithFlags(PgPreparedStatement.java:196)
+	at org.postgresql.jdbc.PgPreparedStatement.executeUpdate(PgPreparedStatement.java:157)
+	at com.zaxxer.hikari.pool.ProxyPreparedStatement.executeUpdate(ProxyPreparedStatement.java:61)
+	at com.zaxxer.hikari.pool.HikariProxyPreparedStatement.executeUpdate(HikariProxyPreparedStatement.java)
+	at org.springframework.jdbc.core.JdbcTemplate.lambda$update$0(JdbcTemplate.java:971)
+	at org.springframework.jdbc.core.JdbcTemplate.execute(JdbcTemplate.java:670)
+	... 5 more
+
+[INFO] 
+[INFO] Results:
+[INFO] 
+[ERROR] Errors: 
+[ERROR]   FeedbackBPublicServicePrepTest.approveActualOldProgramReceiptOnlyDrafts:95 ? DuplicateKey PreparedStatementCallback; SQL [insert into units(id, legacy_id, code, name, status) values (?, ?, ?, ?, '使用')]; ERROR: duplicate key value violates unique constraint "units_legacy_id_key"
+  详细：Key (legacy_id)=(9001) already exists.
+[INFO] 
+[ERROR] Tests run: 1, Failures: 0, Errors: 1, Skipped: 0
+[INFO] 
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD FAILURE
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  01:02 min
+[INFO] Finished at: 2026-11-11T00:39:04-07:00
+[INFO] ------------------------------------------------------------------------
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.5.6:test (default-cli) on project uten-imp-server: 
+[ERROR] 
+[ERROR] See D:\Projects\uten_imp_worktrees\feedback-b-final-prep-20261111\evidence\b-final-prep\build-current-6e\surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException

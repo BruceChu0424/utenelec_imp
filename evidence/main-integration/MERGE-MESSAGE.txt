@@ -1,0 +1,19 @@
+Merge main performance fixes into the feedback remediation candidate
+
+Merge d5200b6bf into the isolated remediation branch. Preserve both public output
+qualification retirement and the main read-owner/error contracts. Combine record
+membership incremental reads with serialized generation-owned I/O and displayed
+value revisions. Keep per-column/frame-budgeted width cursors alongside guarded
+layout invalidation, fresh column closures and permission masks.
+
+Opaque source revisions force revalidation; proven sealed appends reuse accepted
+membership. True extension schema changes invalidate only affected metrics. A
+small resumed width slice schedules its own frame rather than awaiting a scroll.
+Adapt four page regression drivers to the real stream event turn and single-owner
+I/O contract without changing business assertions, frame counts or deadlines.
+
+Validation on the resulting index tree: 101 Flutter files, 928 passed and 2 existing
+skips; 7-file analysis clean; fresh Maven build, 21 complete-stream tests passed.
+The original four semantic-merge failures and 29 harness failures remain preserved
+in the following evidence commit. This merge does not establish real UI or timing
+acceptance and does not change the material-order ten-second requirement.

@@ -1,0 +1,6 @@
+/private/
+/build/
+/tmp/
+*.exe
+*.dll
+*.pdb

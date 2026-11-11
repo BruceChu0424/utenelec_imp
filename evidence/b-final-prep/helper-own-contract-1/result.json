@@ -1,0 +1,9 @@
+{
+  "routeCommandKey" : "web-stale-prep-101b0dae-3500-47e6-af47-f2e67d742659",
+  "httpEquivalent" : "PUT /api/production/material-analyses/9e85b95b-3ee2-4073-b167-045af6e949d1/routes",
+  "analysisId" : "9e85b95b-3ee2-4073-b167-045af6e949d1",
+  "status" : "prep: real public saveRoutes committed; UI rejection still must be observed",
+  "beforeVersion" : 2,
+  "afterVersion" : 3,
+  "actor" : "32120ace-3396-4282-8a7a-297218c2bdb3"
+}

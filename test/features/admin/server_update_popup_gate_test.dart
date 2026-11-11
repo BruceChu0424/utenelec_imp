@@ -29,7 +29,7 @@ import '../../support/audit_screenshot_support.dart';
 
 void main() {
   test(
-    'priority ownership is immediate while UI notification is deferred',
+    'priority ownership and idle notifications preserve the synchronous contract',
     () async {
       final coordinator = OpportunisticDialogCoordinator();
       final opportunity = coordinator.tryAcquire()!;
@@ -40,8 +40,8 @@ void main() {
       expect(coordinator.blocked, true);
       expect(opportunity.interrupted, true);
       expect(coordinator.tryAcquire(), isNull);
-      expect(notices, 0);
-      expect(interruptions, 0);
+      expect(notices, 1);
+      expect(interruptions, 1);
       opportunity.addListener(() => lateInterruptions++);
       await Future<void>.delayed(Duration.zero);
       expect(notices, 1);

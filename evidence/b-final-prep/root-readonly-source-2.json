@@ -1,0 +1,211 @@
+{
+  "status": "prep; SQL evidence alone is not real Web acceptance",
+  "capturedAtUtc": "2026-11-11T07:47:19.152807+00:00",
+  "database": "jdbc:postgresql://127.0.0.1:26630/feedback",
+  "transaction": [
+    {
+      "read_only": "on",
+      "isolation": "repeatable read"
+    }
+  ],
+  "purchase": {
+    "source": [
+      {
+        "receipt_id": "f5757297-f8bc-4034-a69b-3f9b56b31d35",
+        "receipt_no": "CJ20261111000001",
+        "bill_date": "2026-11-11",
+        "receipt_status": 1,
+        "receipt_item_id": "cde0661a-7c0e-4d07-8074-1d00ac71ce7e",
+        "order_item_id": "340cc45b-8430-4b8c-97a2-b6f7affa0123",
+        "goods_id": "d92478b0-73b9-494a-aba8-cfdc850a9634",
+        "qty": "10",
+        "receipt_returned_qty": "0",
+        "price": "10",
+        "amount_local": "100.0000",
+        "order_id": "82702826-2e8e-47bb-8897-e5252b01ca27",
+        "order_no": "CD20261111000001",
+        "order_status": 1,
+        "order_price": "10",
+        "order_returned_qty": "0",
+        "supplier_id": "df24c8b5-6e7f-4844-8142-f1766fa5966a",
+        "supplier_code": "SUP-gift-f0f11c73-b246-4ed3-a1e4-2b0bf72ac563",
+        "supplier_name": "测试供应商-gift-f0f11c73-b246-4ed3-a1e4-2b0bf72ac563",
+        "warehouse_id": "104c4485-a5d3-4137-beda-53bc3a91e38b",
+        "warehouse_code": "WH-gift-f0f11c73-b246-4ed3-a1e4-2b0bf72ac563",
+        "warehouse_name": "测试仓库-gift-f0f11c73-b246-4ed3-a1e4-2b0bf72ac563",
+        "goods_code": "D-gift-f0f11c73-b246-4ed3-a1e4-2b0bf72ac563",
+        "goods_name": "原料D-gift-f0f11c73-b246-4ed3-a1e4-2b0bf72ac563"
+      }
+    ],
+    "returns": [],
+    "stock": [
+      {
+        "warehouse_id": "104c4485-a5d3-4137-beda-53bc3a91e38b",
+        "goods_id": "d92478b0-73b9-494a-aba8-cfdc850a9634",
+        "color_id": null,
+        "qty": "10",
+        "amount_local": "100.0000"
+      }
+    ],
+    "movements": [
+      {
+        "id": "07da7898-7c07-4e66-b1c6-fc9c100a72a4",
+        "source_doc_type": "PURCHASE_RECEIPT",
+        "source_doc_id": "f5757297-f8bc-4034-a69b-3f9b56b31d35",
+        "source_item_id": "5528f2b6-b660-465d-88f4-8ebce09790f2",
+        "direction": 1,
+        "qty": "10",
+        "amount_local": "100.0000",
+        "movement_type": 1,
+        "created_by": "afa9e58e-e127-46e5-a427-fe4330433fb8"
+      }
+    ],
+    "ap": [
+      {
+        "id": "2c6a31bb-1e96-4060-b601-be355e922e24",
+        "source_doc_type": "PURCHASE_RECEIPT",
+        "source_doc_id": "f5757297-f8bc-4034-a69b-3f9b56b31d35",
+        "status": 1,
+        "direction": "AP",
+        "currency_id": "40300000-0000-4000-8100-000000000001",
+        "amount_original": "100",
+        "amount_original_local": "100",
+        "amount_balance": "100",
+        "is_deleted": false
+      }
+    ],
+    "gl": []
+  },
+  "subcontract": {
+    "source": [
+      {
+        "receipt_id": "d1a30fc7-896a-436a-aecc-655b43eb4534",
+        "receipt_no": "EJ20261111000001",
+        "bill_date": "2026-11-11",
+        "receipt_status": 1,
+        "receipt_item_id": "99bb7d17-f91d-416a-b73d-52f2a25e350b",
+        "order_item_id": "c1d585c6-f80c-4e20-bf79-0e081e7a178f",
+        "goods_id": "663c6e29-ad77-4048-81df-5834c8cb8486",
+        "qty": "10",
+        "receipt_returned_qty": "0",
+        "price": "50",
+        "amount_local": "500.0000",
+        "order_id": "ee48dc7b-d169-4b21-8682-d5cbea81bf6f",
+        "order_no": "EO20261111000001",
+        "order_status": 1,
+        "order_price": "50",
+        "order_returned_qty": "0",
+        "supplier_id": "d0f59cf8-d64d-44b2-a5e6-8aa390c62872",
+        "supplier_code": "SUP-sc-return-gl-32ae9c33-157e-4ba2-a11a-d6f3f31e12cc",
+        "supplier_name": "测试供应商-sc-return-gl-32ae9c33-157e-4ba2-a11a-d6f3f31e12cc",
+        "warehouse_id": "ed928b2a-394e-4acd-8450-0a87a50d2bf3",
+        "warehouse_code": "WH-sc-return-gl-32ae9c33-157e-4ba2-a11a-d6f3f31e12cc",
+        "warehouse_name": "测试仓库-sc-return-gl-32ae9c33-157e-4ba2-a11a-d6f3f31e12cc",
+        "goods_code": "E-sc-return-gl-32ae9c33-157e-4ba2-a11a-d6f3f31e12cc",
+        "goods_name": "委外件E-sc-return-gl-32ae9c33-157e-4ba2-a11a-d6f3f31e12cc"
+      }
+    ],
+    "returns": [],
+    "stock": [
+      {
+        "warehouse_id": "ed928b2a-394e-4acd-8450-0a87a50d2bf3",
+        "goods_id": "663c6e29-ad77-4048-81df-5834c8cb8486",
+        "color_id": null,
+        "qty": "10",
+        "amount_local": "600.0000"
+      }
+    ],
+    "movements": [
+      {
+        "id": "4c9cf64c-a41d-4d34-b9f2-b8add745a463",
+        "source_doc_type": "SUBCONTRACT_RECEIPT",
+        "source_doc_id": "d1a30fc7-896a-436a-aecc-655b43eb4534",
+        "source_item_id": "88a9a19d-ef55-4b14-b6b5-885cb2d41b9e",
+        "direction": 1,
+        "qty": "10",
+        "amount_local": "500.0000",
+        "movement_type": 17,
+        "created_by": "ce1a58b9-1c84-445c-84b0-b9f7c48bbeb0"
+      }
+    ],
+    "ap": [
+      {
+        "id": "43f7f45d-b14d-4f3b-97ed-0deaebd559f9",
+        "source_doc_type": "SUBCONTRACT_RECEIPT",
+        "source_doc_id": "d1a30fc7-896a-436a-aecc-655b43eb4534",
+        "status": 1,
+        "direction": "AP",
+        "currency_id": "40300000-0000-4000-8100-000000000001",
+        "amount_original": "500",
+        "amount_original_local": "500",
+        "amount_balance": "500",
+        "is_deleted": false
+      }
+    ],
+    "gl": []
+  },
+  "maker": [
+    {
+      "id": "fa040ddd-d3a7-4ebb-bee2-c772090eb828",
+      "employee_id": "1c535dd4-b209-4519-84d7-77db7cf418ae",
+      "login_account": "USR-feedback-b-maker-64a37b8f",
+      "is_super_admin": false,
+      "status": "active",
+      "is_deleted": false
+    }
+  ],
+  "approver": [
+    {
+      "id": "fb542f46-fbff-4f03-9000-d471db935e05",
+      "employee_id": "55994084-3e4e-4bd2-9562-65e80ae65e0e",
+      "login_account": "USR-feedback-b-approver-64a37b8f",
+      "is_super_admin": false,
+      "status": "active",
+      "is_deleted": false
+    }
+  ],
+  "planner": [
+    {
+      "id": "6293936e-c0df-44b7-8472-0bd8b05c71b1",
+      "employee_id": "cd5d87ac-395c-4e07-b6b2-e03868f0bbd8",
+      "login_account": "USR-feedback-b-planner-64a37b8f",
+      "is_super_admin": false,
+      "status": "active",
+      "is_deleted": false
+    }
+  ],
+  "materialOrder": {
+    "header": [
+      {
+        "id": "2754e835-9abd-489d-9299-e7767eb29a41",
+        "analysis_no": "WL20261111000001",
+        "status": "ACTIVE",
+        "version": 2,
+        "fingerprint": "e5ac4204492ab0b84f5822dde767aa94f01cef73ffd3179a114591efe6594f51",
+        "maker_id": "cd5d87ac-395c-4e07-b6b2-e03868f0bbd8"
+      }
+    ],
+    "commands": [
+      {
+        "id": "1136d45b-f23b-445a-9fc8-7e5fae580cfb",
+        "operation": "PREVIEW",
+        "idempotency_key": "analysis-51290be3-44eb-4274-a11b-17a43cbe3b6e",
+        "request_hash": "58cf050b23c044e53811ac2d61e97f03cfe5e45f18556caf53f659e8146e01cc",
+        "result_payload": {},
+        "created_by": "67f88bec-0e94-487c-9e59-1264882e9d19",
+        "created_at": "2026-11-11 03:04:08.701964+00:00"
+      },
+      {
+        "id": "1daa5ca0-2b5a-463b-9503-c63f3a089a61",
+        "operation": "ROUTE",
+        "idempotency_key": "routes-e6107e19-e456-4ebe-9027-dbbae943a92c",
+        "request_hash": "b88a995051fda657912dd04d6bb7719895620806ae9a50d6992ebe9022f545fc",
+        "result_payload": {},
+        "created_by": "67f88bec-0e94-487c-9e59-1264882e9d19",
+        "created_at": "2026-11-11 03:04:10.969518+00:00"
+      }
+    ],
+    "batches": [],
+    "events": []
+  }
+}

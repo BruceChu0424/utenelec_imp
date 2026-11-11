@@ -1,0 +1,8 @@
+{
+  "mainTree": "2cc0052a9f561d8ed1e8f4e1d318a0d740a6086c",
+  "sourceStart": "199bb4a257d33ce6dcaa6391343f22bad2fa2065",
+  "kind": "performance-candidate-v1",
+  "groups": "35 original aggregate cases + 1 actual concurrent detail read case + 6 existing warehouse projection PG cases",
+  "workspace": "D:/Projects/uten_imp_worktrees/feedback-perf-verify-199bb-20261111",
+  "testTree": "68af6e8b4ff52105b9dededbc45bbe245c4b078d"
+}

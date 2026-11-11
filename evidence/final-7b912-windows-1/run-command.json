@@ -1,0 +1,19 @@
+[
+  "D:\\Software\\Flutter\\flutter\\bin\\cache\\dart-sdk\\bin\\dart.exe",
+  "--packages=D:\\Projects\\uten_imp_worktrees\\feedback-remediate-20261110\\build\\feedback-private-tools\\70d8797d63b94893\\package_config.json",
+  "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-20261110\\build\\feedback-private-tools\\70d8797d63b94893\\flutter_tools_private.snapshot",
+  "test",
+  "--no-pub",
+  "--device-id=windows",
+  "--reporter=expanded",
+  "integration_test/company_feedback_actual_windows_test.dart",
+  "--dart-define=UTEN_LOCAL_TEST=true",
+  "--dart-define=API_BASE_URL=http://127.0.0.1:28630/api",
+  "--dart-define=CLOUD_API_BASE_URL=http://127.0.0.1:28630/api",
+  "--dart-define=DR_CONTROL_PLANE_URL=",
+  "--dart-define=UTEN_FEEDBACK_RUNTIME_ROOT=D:\\Projects\\uten_imp_worktrees\\feedback-remediate-20261110\\evidence\\final-7b912-windows-1\\private\\windows-runtime",
+  "--dart-define=UTEN_FEEDBACK_EVIDENCE_DIR=D:\\Projects\\uten_imp_worktrees\\feedback-remediate-20261110\\evidence\\final-7b912-windows-1",
+  "--dart-define=UTEN_FEEDBACK_PRIVATE_CONFIG=D:\\Projects\\uten_imp_worktrees\\feedback-remediate-20261110\\evidence\\root\\private\\runtime.json",
+  "--dart-define=UTEN_FEEDBACK_ACCOUNT=feedback-mould-win-qa",
+  "--dart-define=UTEN_FEEDBACK_RETURNS_ACCOUNT=USR-feedback-b-maker-64a37b8f"
+]

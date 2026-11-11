@@ -7,6 +7,7 @@
 // - 主色青绿（在深色下深绿会糊，改用青绿作为 primary 提亮）
 // - 文字用三档 slate 反相色
 
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -18,7 +19,31 @@ import 'uten_page_transitions.dart';
 import '../../shared/platform_branding/platform_branding.dart';
 import 'brand_theme.dart';
 
+/// Value-keyed memo for [buildDarkTheme]; see the matching memo in
+/// light_theme.dart. Equal branding values must reuse the identical ThemeData
+/// instance or MaterialApp replays a theme transition and rebuilds every
+/// theme-dependent widget (a 35k-row table re-runs its full bookkeeping for
+/// 14 frames) on every unrelated root rebuild. The key also carries the
+/// ambient target platform: the density and page transitions below are
+/// platform-dependent and must never leak across platforms in one process.
+const _themeMemoCapacity = 8;
+final Map<(PlatformBranding, TargetPlatform), ThemeData> _darkThemeMemo = {};
+
 ThemeData buildDarkTheme({PlatformBranding? branding}) {
+  final key = (branding ?? PlatformBranding.defaults, defaultTargetPlatform);
+  final memoResult = _darkThemeMemo[key];
+  if (memoResult != null) {
+    return memoResult;
+  }
+  final built = _buildDarkTheme(key.$1);
+  if (_darkThemeMemo.length >= _themeMemoCapacity) {
+    _darkThemeMemo.clear();
+  }
+  _darkThemeMemo[key] = built;
+  return built;
+}
+
+ThemeData _buildDarkTheme(PlatformBranding branding) {
   const colorScheme = ColorScheme(
     brightness: Brightness.dark,
     primary: UtenColors.teal400,
@@ -431,5 +456,5 @@ ThemeData buildDarkTheme({PlatformBranding? branding}) {
 
     tabBarTheme: buildUtenCategoryTabTheme(colorScheme, textTheme),
   );
-  return applyPlatformBrandTheme(base, branding ?? PlatformBranding.defaults);
+  return applyPlatformBrandTheme(base, branding);
 }

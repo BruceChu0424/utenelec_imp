@@ -1,0 +1,22 @@
+{
+  "source": "7b912287e53315228b469790ff066a9fab643e3c",
+  "workingDirectory": "D:\\Projects\\uten_imp_worktrees\\feedback-final-c-20261110\\server",
+  "argv": [
+    "mvn.cmd",
+    "-B",
+    "-ntp",
+    "-Duten.build.directory=D:/Projects/uten_imp_worktrees/feedback-final-c-20261110/evidence/c-final/maven/build",
+    "-Dtest=WorkbookColumnRemediationTest,CostTitleColumnRemediationTest,CostStructureRowRemediationTest,AdditionalSheetColumnRemediationTest,ImportColumnGuardTest,PlatformWorkbookSchemaTest,GoodsCostWorkbookParserTest,GoodsImportColumnContractTest,GoodsBomImportColumnContractTest,GoodsImportPlanSafetyTest,FinanceOperatingNoteParserTest,FinanceChartWorkbookParserTest,FinanceAccountingWorkbookParserTest,FinanceAuxiliaryWorkbookParserTest,GoodsCostImportRemappingPostgresTest,FinanceExpenseAnalysisPostgresTest,FinanceChartImportPostgresTest,FinanceAccountingContinuationPostgresTest,FinanceAuxiliaryPostgresTest,GoodsImportHistoryPostgresTest,GoodsBomImportStatePostgresTest,FinanceChartImportOriginalCommandsPostgresTest,FinanceChartImportIntentUpgradePostgresTest",
+    "-Duten.test.tmpdir=D:/Projects/uten_imp_worktrees/feedback-final-c-20261110/evidence/c-final/maven/tmp",
+    "-Duten.test.jvm.heap.args=-Xmx3g",
+    "-DforkCount=1",
+    "-DreuseForks=true",
+    "test"
+  ],
+  "environment": {
+    "UTEN_RUN_DB_TESTS": "true",
+    "TEMP": "D:\\Projects\\uten_imp_worktrees\\feedback-final-c-20261110\\evidence\\c-final\\maven\\tmp",
+    "TMP": "D:\\Projects\\uten_imp_worktrees\\feedback-final-c-20261110\\evidence\\c-final\\maven\\tmp",
+    "MAVEN_OPTS": "-Xmx2304m -Djava.io.tmpdir=D:/Projects/uten_imp_worktrees/feedback-final-c-20261110/evidence/c-final/maven/tmp"
+  }
+}

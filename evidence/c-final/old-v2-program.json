@@ -1,0 +1,50 @@
+{
+  "serverSafetyVersion" : 2,
+  "owner" : "360fcf1a-e8f2-4ab1-88ea-94758a36fc7a",
+  "employee" : "537c3e59-e231-4f73-8c97-0e035258408a",
+  "goods" : "7e8a9bbc-681f-43a0-9625-34e038b9aba0",
+  "currency" : "f8791ae3-ef1e-4b67-a906-a1f4db233333",
+  "actorSuperAdmin" : false,
+  "originalV1Manifest" : "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\old-program-manifest.json",
+  "mixed-header-tail" : {
+    "id" : "944f2fc0-d664-4570-ae35-e12ef6a100b6",
+    "block" : "成本!1",
+    "sha256" : "4083d48ed841198a78cdf711a3ed902dd658a6281b2b899041b1b5b170e4c23d",
+    "frozenPreview" : "{\"id\": \"944f2fc0-d664-4570-ae35-e12ef6a100b6\", \"blocks\": [{\"key\": \"成本!1\", \"rows\": [{\"key\": \"成本!2\", \"code\": \"\", \"name\": \"铜钉\", \"unit\": \"\", \"amount\": null, \"formula\": \"\", \"quantity\": \"1.0\", \"rowNumber\": 2, \"unitPrice\": \"4.0\", \"requiresReview\": true, \"externalReference\": false}], \"label\": \"成本\", \"sheetName\": \"成本\"}], \"sha256\": \"4083d48ed841198a78cdf711a3ed902dd658a6281b2b899041b1b5b170e4c23d\", \"warnings\": [\"仅读取原文件缓存数值，公式不执行；应用前确认物料身份、计价单位和数量基准。\", \"导入价格按当前成本单币种和税口径核定；不同币种请先完成换算，不自动猜测。\", \"结构行、组合件、合计和加工费必须明确映射或跳过，不能把空价当零。\"], \"sourceName\": \"mixed-header-tail.xlsx\", \"columnContractVersion\": 2}",
+    "source" : {
+      "actor_id" : "360fcf1a-e8f2-4ab1-88ea-94758a36fc7a",
+      "goods_id" : "7e8a9bbc-681f-43a0-9625-34e038b9aba0",
+      "source_name" : "mixed-header-tail.xlsx",
+      "storage_provider" : "local",
+      "storage_key" : "d155e8a7cd9c466b86e97d5a91c618cc.xlsx",
+      "storage_version" : null,
+      "storage_size" : 3426,
+      "storage_sha256" : "4083d48ed841198a78cdf711a3ed902dd658a6281b2b899041b1b5b170e4c23d"
+    }
+  },
+  "subtotal-name-control" : {
+    "id" : "1bfd1e34-c3bd-46d1-a0ba-c9877864787c",
+    "block" : "成本!1",
+    "sha256" : "ed23c572ee1141ddbce0b8ad893ccbbe0038c65179e0db39590f8e1bf26942ea",
+    "frozenPreview" : "{\"id\": \"1bfd1e34-c3bd-46d1-a0ba-c9877864787c\", \"blocks\": [{\"key\": \"成本!1\", \"rows\": [{\"key\": \"成本!2\", \"code\": \"\", \"name\": \"铜钉\", \"unit\": \"\", \"amount\": null, \"formula\": \"\", \"quantity\": \"1.0\", \"rowNumber\": 2, \"unitPrice\": \"4.0\", \"requiresReview\": true, \"externalReference\": false}], \"label\": \"成本\", \"sheetName\": \"成本\"}], \"sha256\": \"ed23c572ee1141ddbce0b8ad893ccbbe0038c65179e0db39590f8e1bf26942ea\", \"warnings\": [\"仅读取原文件缓存数值，公式不执行；应用前确认物料身份、计价单位和数量基准。\", \"导入价格按当前成本单币种和税口径核定；不同币种请先完成换算，不自动猜测。\", \"结构行、组合件、合计和加工费必须明确映射或跳过，不能把空价当零。\"], \"sourceName\": \"subtotal-name-control.xlsx\", \"columnContractVersion\": 2}",
+    "source" : {
+      "actor_id" : "360fcf1a-e8f2-4ab1-88ea-94758a36fc7a",
+      "goods_id" : "7e8a9bbc-681f-43a0-9625-34e038b9aba0",
+      "source_name" : "subtotal-name-control.xlsx",
+      "storage_provider" : "local",
+      "storage_key" : "96db997c01644c058ca6048418b7fd27.xlsx",
+      "storage_version" : null,
+      "storage_size" : 3431,
+      "storage_sha256" : "ed23c572ee1141ddbce0b8ad893ccbbe0038c65179e0db39590f8e1bf26942ea"
+    }
+  },
+  "businessCounts" : {
+    "goods" : 5,
+    "goods_bom_items" : 4,
+    "goods_cost_import_mappings" : 1,
+    "finance_chart_codes" : 2,
+    "finance_operating_report_notes" : 2,
+    "finance_auxiliary_items" : 1,
+    "gl_entries" : 0
+  }
+}

@@ -1,0 +1,38 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/features/basic_data/pages/account_workspace_probe_test.dart
+00:00 +0: concurrent clean stale callbacks open one confirmation and write one batch
+ACCOUNT-PROBE loading=false error=null rows=3 scheduled=false widths={collectRows: 3, flatWindowRetainedRows: 12, flatWindowRetainedSlots: 12, textSnapshotRetainedRows: 15, facetRetainedRows: 0, visibleColumnIndexes: 14, selectionRowKeys: 0, rowPlanRows: 0, selectionIds: 6, windowSlotRows: 3, widthCells: 18, widthShaped: 10} requests=[(method: GET, path: /auth/me), (method: GET, path: /master/accounts/facets), (method: POST, path: /master/accounts/summaries)]
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following assertion was thrown running a test:
+pumpAndSettle timed out
+
+When the exception was thrown, this was the stack:
+#0      WidgetTester.pumpAndSettle.<anonymous closure> (package:flutter_test/src/widget_tester.dart:717:11)
+<asynchronous suspension>
+#1      TestAsyncUtils.guard.<anonymous closure> (package:flutter_test/src/test_async_utils.dart:130:27)
+<asynchronous suspension>
+#2      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/features/basic_data/pages/account_workspace_probe_test.dart:302:7)
+<asynchronous suspension>
+#3      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#4      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+The test description was:
+  concurrent clean stale callbacks open one confirmation and write one batch
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:12 +0 -1: concurrent clean stale callbacks open one confirmation and write one batch [E]
+  Test failed. See exception logs above.
+  The test description was: concurrent clean stale callbacks open one confirmation and write one batch
+  
+Warning: At least one test in this suite creates an HttpClient. When running a test suite that uses
+TestWidgetsFlutterBinding, all HTTP requests will return status code 400, and no network request
+will actually be made. Any test expecting a real network connection and status code will fail.
+To test code that needs an HttpClient, provide your own HttpClient implementation to the code under
+test, so that your test can consistently provide a testable response to the code under test.
+00:12 +0 -1: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/features/basic_data/pages/account_workspace_probe_test.dart: concurrent clean stale callbacks open one confirmation and write one batch

@@ -1,0 +1,90 @@
+{
+  "sourcesUseGitBlobs": true,
+  "rawFilesUseActualBytes": true,
+  "files": [
+    {
+      "path": ".gitattributes",
+      "bytes": 85,
+      "sha256": "06bfd526d702d86ec5d87e328519e9b75da5d35803cd55cfc7c44c01f9482c9c",
+      "byteSource": "exact-git-blob"
+    },
+    {
+      "path": "mixin-4d45dc9b-git-blob.dart",
+      "bytes": 7133,
+      "sha256": "67f282df416b8ba593bad0161091c25f71723bffbc193cf209bdd7d981e2cb37",
+      "byteSource": "exact-git-blob"
+    },
+    {
+      "path": "mixin-8c2116d9-git-blob.dart",
+      "bytes": 9146,
+      "sha256": "6cb4d266e55c2fca9b402ef29ee20abb8ad0192a472ea5728ee64c0ba14cc41e",
+      "byteSource": "exact-git-blob"
+    },
+    {
+      "path": "private-flutter-independent-owner-turn-13.json",
+      "bytes": 2901,
+      "sha256": "3a2ed3b7931262b903b6852053eb29f931c5a043bf75c2762f8698d971dd3e11",
+      "byteSource": "raw-file"
+    },
+    {
+      "path": "private-flutter-independent-owner-turn-13.log",
+      "bytes": 2794,
+      "sha256": "77e36e26ffd5444487d2c0d95bda2aa657d6fdd767e271e1e6ef5e39375fd3bf",
+      "byteSource": "raw-file"
+    },
+    {
+      "path": "private-flutter-independent-owner-turn-original-14.json",
+      "bytes": 2899,
+      "sha256": "ae472591a23b339ad4a2b6e561d9f26d5ace784f06caf2ee923e01d9f9490cd7",
+      "byteSource": "raw-file"
+    },
+    {
+      "path": "private-flutter-independent-owner-turn-original-14.log",
+      "bytes": 10624,
+      "sha256": "7205004c3d99e4bf98924273f2c5bae07b11e3e33897826439db5349a32fee20",
+      "byteSource": "raw-file"
+    },
+    {
+      "path": "private-flutter-independent-owner-turn-original-15.json",
+      "bytes": 2899,
+      "sha256": "f802fe0c5c6ba410ca4b596816cd084446f89fc5ef3786cf1986864e62cab4c3",
+      "byteSource": "raw-file"
+    },
+    {
+      "path": "private-flutter-independent-owner-turn-original-15.log",
+      "bytes": 426,
+      "sha256": "24e9b89515b95d5b8e4419d24326ce81b8545b91c13993b684257925e5788523",
+      "byteSource": "raw-file"
+    },
+    {
+      "path": "probes/original_scope_mixin_4d45.dart",
+      "bytes": 7605,
+      "sha256": "953fa6e2dc8fa7009341107ff8671ff1525f21b7823041836f2ac9191d691a7a",
+      "byteSource": "exact-git-blob"
+    },
+    {
+      "path": "probes/scoped_query_turn_original_test.dart",
+      "bytes": 2097,
+      "sha256": "861f94e711209dce8d8464bb7654a3909084e5866b843eee96da982d899e5aee",
+      "byteSource": "exact-git-blob"
+    },
+    {
+      "path": "probes/scoped_query_turn_retirement_test.dart",
+      "bytes": 2081,
+      "sha256": "b1202a646f9fe18c486c2121ec6fb3d3c5cc6c950b72266237d4449643288dc3",
+      "byteSource": "exact-git-blob"
+    },
+    {
+      "path": "REPORT.md",
+      "bytes": 2831,
+      "sha256": "d66568e38744f838dc7ee99c61ddaa52731abf618146145abe3fb5f8db50c978",
+      "byteSource": "exact-git-blob"
+    },
+    {
+      "path": "source-comparison.json",
+      "bytes": 870,
+      "sha256": "6c44a4e75c6e9caf4658be47d2c4ffc4ff258a73b8f5238bf761b2f59c9bc885",
+      "byteSource": "raw-file"
+    }
+  ]
+}

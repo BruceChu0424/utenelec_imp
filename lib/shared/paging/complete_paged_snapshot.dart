@@ -7,6 +7,7 @@ import '../models/paged_result.dart';
 import 'complete_read_progress.dart';
 import 'paged_read_intent.dart';
 import 'paged_query_identity.dart';
+import 'read_failure_diagnostics.dart';
 
 /// 2026-11-08 user decision: a complete read starts with a small batch so the
 /// first screen appears at once, then keeps reading in larger bounded batches
@@ -126,7 +127,11 @@ Future<PagedResult<T>> loadCompletePagedResult<T>({
   final parent = PagedReadIntent.currentRead;
   final activity = PagedReadIntent.currentActivity;
   final bootstrapAllowed = PagedReadIntent.allowsInactiveBootstrap;
-  bool logicalCurrent() => isCurrent() && (parent?.call() ?? true);
+  bool logicalCurrent() {
+    debugScopedReadCheckStats?.loopChecks++;
+    return isCurrent() && (parent?.call() ?? true);
+  }
+
   bool current() => logicalCurrent() && (activity?.call() ?? true);
   final pipeline = maxConcurrentPages == 1
       ? null
@@ -171,10 +176,14 @@ Future<PagedResult<T>> loadCompletePagedResult<T>({
   int? serverSize;
   try {
     while (logicalCurrent()) {
-      if (!current() && !(batch == 0 && bootstrapAllowed)) {
+      // current() == logicalCurrent() && activity, and logical already holds
+      // here, so one activity evaluation answers both the activity gate and
+      // the budget fence below — nothing runs between them that could retire.
+      final active = activity?.call() ?? true;
+      if (!active && !(batch == 0 && bootstrapAllowed)) {
         throw const UiWorkCancelled();
       }
-      if (current()) work.ensureCurrent();
+      if (active) work.ensureCurrent();
       progressive?.throwIfFailed();
       final size = serverSize ?? batches.sizeAt(offset, cap: cap);
       // One fixed size keeps the original page-by-page sequence; the ladder
@@ -368,6 +377,14 @@ Future<PagedResult<T>> loadCompletePagedResult<T>({
       }
     }
     throw const UiWorkCancelled();
+  } on Object catch (error, stack) {
+    // One anonymous correlation ref for every real failure of a complete
+    // read (retirements stay quiet): appended to the message, kept in the
+    // exception details, and recorded with a structured stage/code.
+    Error.throwWithStackTrace(
+      annotateCompleteReadFailure(error, stack, stage: 'complete-read'),
+      stack,
+    );
   } finally {
     // finish is idempotent: a succeeded task ignores this, and every failure
     // or retirement path (UiWorkCancelled included) ends its progress here.
@@ -472,7 +489,11 @@ Future<S> loadCompleteCursorSnapshot<R, S, C>({
   final parent = PagedReadIntent.currentRead;
   final activity = PagedReadIntent.currentActivity;
   final bootstrapAllowed = PagedReadIntent.allowsInactiveBootstrap;
-  bool logicalCurrent() => isCurrent() && (parent?.call() ?? true);
+  bool logicalCurrent() {
+    debugScopedReadCheckStats?.loopChecks++;
+    return isCurrent() && (parent?.call() ?? true);
+  }
+
   bool current() => logicalCurrent() && (activity?.call() ?? true);
   final work = budget ?? UiWorkBudget(isCurrent: current);
   // Cursor history has no total semantics: the top notice follows these reads
@@ -490,6 +511,7 @@ Future<S> loadCompleteCursorSnapshot<R, S, C>({
       nextCursorOf: nextCursorOf,
       logicalCurrent: logicalCurrent,
       current: current,
+      activity: activity,
       work: work,
       plan: plan,
       progress: progress,
@@ -504,6 +526,13 @@ Future<S> loadCompleteCursorSnapshot<R, S, C>({
         identities: identities,
         cursors: cursors,
       ),
+    );
+  } on Object catch (error, stack) {
+    // Same anonymous correlation ref as the offset pipeline: cursor history
+    // failures are reported with stage/code, retirements stay quiet.
+    Error.throwWithStackTrace(
+      annotateCompleteReadFailure(error, stack, stage: 'cursor-read'),
+      stack,
     );
   } finally {
     // finish is idempotent: a succeeded task ignores this; every failure or
@@ -534,6 +563,7 @@ Future<S> _cursorBatches<R, S, C>({
   required C? Function(S response) nextCursorOf,
   required bool Function() logicalCurrent,
   required bool Function() current,
+  bool Function()? activity,
   required UiWorkBudget work,
   required CompleteReadBatchPlan plan,
   required CompleteReadProgressHandle? progress,
@@ -546,10 +576,14 @@ Future<S> _cursorBatches<R, S, C>({
   required _CursorReadState<R, S, C> state,
 }) async {
   while (logicalCurrent()) {
-    if (!current() && !(!state.hasFirst && bootstrapAllowed)) {
+    // current() == logicalCurrent() && activity, and logical already holds
+    // here, so one activity evaluation answers both the activity gate and
+    // the budget fence below — nothing runs between them that could retire.
+    final active = activity?.call() ?? true;
+    if (!active && !(!state.hasFirst && bootstrapAllowed)) {
       throw const UiWorkCancelled();
     }
-    if (current()) work.ensureCurrent();
+    if (active) work.ensureCurrent();
     final size = state.hasFirst ? plan.maxBatchSize : plan.firstBatchSize;
     final response = await PagedReadIntent.scopedRead(
       logicalCurrent,

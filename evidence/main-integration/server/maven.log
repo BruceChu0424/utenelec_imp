@@ -1,0 +1,68 @@
+[INFO] Scanning for projects...
+[INFO] 
+[INFO] ----------------------< com.uten:uten-imp-server >----------------------
+[INFO] Building uten-imp-server 0.1.0
+[INFO]   from pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- clean:3.5.0:clean (refresh-migration-resources) @ uten-imp-server ---
+[INFO] 
+[INFO] --- resources:3.5.0:resources (default-resources) @ uten-imp-server ---
+[INFO] Copying 1 resource from ..\contracts\windows-payload-binding to ..\evidence\main-integration\server\build\classes\contracts\windows-payload-binding
+[INFO] Copying 1 resource from ..\contracts\windows-engine-safety to ..\evidence\main-integration\server\build\classes\contracts\windows-engine-safety
+[INFO] Copying 1086 resources from src\main\resources to ..\evidence\main-integration\server\build\classes
+[INFO] Copying 1 resource from ..\assets\fonts to ..\evidence\main-integration\server\build\classes\fonts
+[INFO] Copying 295 resources from ..\docs to ..\evidence\main-integration\server\build\classes\ai-knowledge
+[INFO] 
+[INFO] --- compiler:3.15.0:compile (default-compile) @ uten-imp-server ---
+[INFO] Recompiling the module because of changed source code.
+[INFO] Compiling 3277 source files with javac [debug deprecation parameters release 21] to ..\evidence\main-integration\server\build\classes
+[INFO] 
+[INFO] --- resources:3.5.0:testResources (default-testResources) @ uten-imp-server ---
+[INFO] Copying 79 resources from src\test\resources to ..\evidence\main-integration\server\build\test-classes
+[INFO] 
+[INFO] --- compiler:3.15.0:testCompile (default-testCompile) @ uten-imp-server ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 2757 source files with javac [debug deprecation parameters release 21] to ..\evidence\main-integration\server\build\test-classes
+[WARNING] /D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/server/src/test/java/com/uten/imp/features/stock/InstantInventoryCompleteStreamServiceTest.java:[122,56] ����Ϊԭʼ����java.util.function.BiFunction�ĳ�Ա��apply(T,U)�ĵ���δ�������
+[INFO] 
+[INFO] --- surefire:3.5.6:test (default-test) @ uten-imp-server ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running com.uten.imp.common.readsnapshot.CompleteStreamCompressionTomcatTest
+00:17:15.585 [main] INFO org.springframework.boot.tomcat.TomcatWebServer -- Tomcat initialized with port 0 (http)
+11�� 11, 2026 12:17:15 ���� org.apache.coyote.AbstractProtocol init
+��Ϣ: Initializing ProtocolHandler ["http-nio-127.0.0.1-auto-1"]
+11�� 11, 2026 12:17:15 ���� org.apache.catalina.core.StandardService startInternal
+��Ϣ: Starting service [Tomcat]
+11�� 11, 2026 12:17:15 ���� org.apache.catalina.core.StandardEngine startInternal
+��Ϣ: Starting Servlet engine: [Apache Tomcat/11.0.25]
+00:17:15.969 [main] INFO org.springframework.boot.tomcat.TomcatWebServer -- Tomcat started on port 58143 (http) with context path '/'
+11�� 11, 2026 12:17:15 ���� org.apache.coyote.AbstractProtocol start
+��Ϣ: Starting ProtocolHandler ["http-nio-127.0.0.1-auto-1"]
+11�� 11, 2026 12:17:16 ���� org.apache.coyote.AbstractProtocol stop
+��Ϣ: Stopping ProtocolHandler ["http-nio-127.0.0.1-auto-1-58143"]
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.300 s -- in com.uten.imp.common.readsnapshot.CompleteStreamCompressionTomcatTest
+[INFO] Running com.uten.imp.common.readsnapshot.CompleteStreamStagingTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.973 s -- in com.uten.imp.common.readsnapshot.CompleteStreamStagingTest
+[INFO] Running com.uten.imp.common.readsnapshot.MasterSummaryStreamTest
+00:17:18.056 [main] WARN com.uten.imp.common.readsnapshot.MasterSummaryReadSupport -- Complete stream read failed ref=60D813 source=goods-master-list code=PRIMARY_UNAVAILABLE
+00:17:18.123 [main] WARN com.uten.imp.common.readsnapshot.MasterSummaryReadSupport -- Complete stream read failed ref=NVMTF9 source=goods-master-list code=SNAPSHOT_CHANGED
+[INFO] Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.818 s -- in com.uten.imp.common.readsnapshot.MasterSummaryStreamTest
+[INFO] Running com.uten.imp.features.stock.InstantInventoryCompleteStreamServiceTest
+00:17:18.432 [main] WARN com.uten.imp.features.stock.InstantInventoryCompleteStreamService -- Complete stream read failed ref=C0AQPA source=instant-inventory code=PRIMARY_UNAVAILABLE
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.636 s -- in com.uten.imp.features.stock.InstantInventoryCompleteStreamServiceTest
+[INFO] 
+[INFO] Results:
+[INFO] 
+[INFO] Tests run: 21, Failures: 0, Errors: 0, Skipped: 0
+[INFO] 
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD SUCCESS
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  03:06 min
+[INFO] Finished at: 2026-11-11T00:17:18-07:00
+[INFO] ------------------------------------------------------------------------

@@ -1,0 +1,74 @@
+[
+  {
+    "sample": "original-red",
+    "jdbcMs": 8841.1267,
+    "trackedReads": [
+      {
+        "fingerprint": "04391d347e372f3b",
+        "calls": 4,
+        "totalMs": 761.8679,
+        "family": "read.production_material_analysis_materials"
+      },
+      {
+        "fingerprint": "73a6d6f35884c992",
+        "calls": 10,
+        "totalMs": 618.6189,
+        "family": "read.production_material_analysis_materials"
+      },
+      {
+        "fingerprint": "385d8553c35adcdc",
+        "calls": 8,
+        "totalMs": 387.5701,
+        "family": "read.production_material_analysis_materials"
+      }
+    ]
+  },
+  {
+    "sample": "quiet-v1",
+    "jdbcMs": 3604.0324,
+    "trackedReads": [
+      {
+        "fingerprint": "824b913ec3886d38",
+        "calls": 4,
+        "totalMs": 24.5921,
+        "family": "read.production_material_analysis_materials"
+      },
+      {
+        "fingerprint": "73a6d6f35884c992",
+        "calls": 10,
+        "totalMs": 270.7335,
+        "family": "read.production_material_analysis_materials"
+      },
+      {
+        "fingerprint": "385d8553c35adcdc",
+        "calls": 8,
+        "totalMs": 122.995,
+        "family": "read.production_material_analysis_materials"
+      }
+    ]
+  },
+  {
+    "sample": "concurrent-v1",
+    "jdbcMs": 4053.7877,
+    "trackedReads": [
+      {
+        "fingerprint": "824b913ec3886d38",
+        "calls": 4,
+        "totalMs": 35.9298,
+        "family": "read.production_material_analysis_materials"
+      },
+      {
+        "fingerprint": "73a6d6f35884c992",
+        "calls": 10,
+        "totalMs": 307.9921,
+        "family": "read.production_material_analysis_materials"
+      },
+      {
+        "fingerprint": "385d8553c35adcdc",
+        "calls": 8,
+        "totalMs": 120.3901,
+        "family": "read.production_material_analysis_materials"
+      }
+    ]
+  }
+]

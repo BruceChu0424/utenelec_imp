@@ -4,6 +4,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/network/api_exception.dart';
+import '../../core/performance/ui_work_budget.dart';
 import '../models/paged_result.dart';
 import '../providers/export_context_epoch_provider.dart';
 import 'complete_paged_snapshot.dart';
@@ -22,6 +23,9 @@ mixin ScopedPagedReadViewMixin<W extends ConsumerStatefulWidget>
     on ConsumerState<W> {
   final _scopedPageReads = <(Type, Object), _ScopedReadLifecycle>{};
   final _scopedOutputGuards = <CompleteOutputGuard>{};
+  // Pending query-answer expiry timers of the live read closures; disposed
+  // with the view so a check in the last moment leaves no pending timer.
+  final _scopedAnswerTimers = <Timer>{};
   ProviderSubscription<int>? _scopedOwnerSubscription;
   int _scopedOwner = 0;
   bool _scopedDisposed = false;
@@ -126,22 +130,74 @@ mixin ScopedPagedReadViewMixin<W extends ConsumerStatefulWidget>
     final owner = _scopedOwner;
     final epoch = ref.read(exportContextEpochProvider);
     final snapshot = freezePagedReadQuery(query);
-    bool ownerCurrent() =>
-        mounted &&
-        !_scopedDisposed &&
-        owner == _scopedOwner &&
-        epoch == ref.read(exportContextEpochProvider) &&
-        samePagedReadQuery(snapshot, currentQuery());
+    // Row-validation loops re-check ownership several times per row. Reuse
+    // their deep query check within an event turn, but never treat that memo
+    // as a publication proof: synchronous code and microtasks can still change
+    // the live query. Fetch/response and publication boundaries below force a
+    // fresh check; owner/disposed/mounted gates always stay outside the memo.
+    var queryAnswerValid = false;
+    var queryAnswerCurrent = false;
+    Timer? queryAnswerExpiry;
+    void expireQueryAnswer() => queryAnswerValid = false;
+    bool ownerCurrent() {
+      final stats = debugScopedReadCheckStats;
+      if (stats != null) stats.ownerChecks++;
+      if (!mounted || _scopedDisposed || owner != _scopedOwner) return false;
+      if (queryAnswerValid) return queryAnswerCurrent;
+      if (stats != null) {
+        stats.epochReads++;
+        stats.queryCompares++;
+      }
+      queryAnswerCurrent =
+          epoch == ref.read(exportContextEpochProvider) &&
+          samePagedReadQuery(snapshot, currentQuery());
+      queryAnswerValid = true;
+      if (queryAnswerExpiry == null) {
+        final timer = Timer(Duration.zero, () {
+          _scopedAnswerTimers.remove(queryAnswerExpiry);
+          queryAnswerExpiry = null;
+          expireQueryAnswer();
+        });
+        queryAnswerExpiry = timer;
+        _scopedAnswerTimers.add(timer);
+      }
+      return queryAnswerCurrent;
+    }
+
     bool current() => ownerCurrent() && (isCurrent?.call() ?? true);
-    return readViewActivity.runRead(
+    bool publicationCurrent() {
+      expireQueryAnswer();
+      return current();
+    }
+
+    Future<PagedResult<R>> checkedFetch(
+      Future<PagedResult<R>> Function() fetch,
+    ) async {
+      try {
+        final result = await fetch();
+        if (!publicationCurrent()) throw PagedReadOwnerChanged();
+        return result;
+      } finally {
+        // The reader resumes in another microtask. Its first check must not
+        // borrow the answer from the fetch completion microtask, even on error.
+        expireQueryAnswer();
+      }
+    }
+
+    final pending = readViewActivity.runRead(
       current,
       () => entry.reader
           .read(
             page,
             scope: [owner, epoch, snapshot],
-            fetchPage: fetchPage,
-            fetchPageSized: fetchPageSized,
-            fetchComplete: fetchComplete,
+            fetchPage: (page) => checkedFetch(() => fetchPage(page)),
+            fetchPageSized: fetchPageSized == null
+                ? null
+                : (page, size) =>
+                      checkedFetch(() => fetchPageSized(page, size)),
+            fetchComplete: fetchComplete == null
+                ? null
+                : () => checkedFetch(fetchComplete),
             idOf: idOf,
             isCurrent: current,
             isOwnerCurrent: ownerCurrent,
@@ -151,12 +207,20 @@ mixin ScopedPagedReadViewMixin<W extends ConsumerStatefulWidget>
             onProgressiveBatch: onProgressiveBatch == null
                 ? null
                 : (partial) {
-                    if (current()) onProgressiveBatch(partial);
+                    if (!publicationCurrent()) {
+                      throw PagedReadOwnerChanged();
+                    }
+                    try {
+                      onProgressiveBatch(partial);
+                    } finally {
+                      // A prefix consumer may synchronously change its query.
+                      expireQueryAnswer();
+                    }
                   },
             canPrefetch: () =>
                 current() && (canPrefetch?.call() ?? _scopedViewActive),
             onPrefetchError: (error) {
-              if (!current()) return;
+              if (!publicationCurrent()) return;
               if (pagedReadAccessDenied(error)) {
                 invalidateScopedPageReads();
                 _scopedOwnerChanged(error);
@@ -165,14 +229,27 @@ mixin ScopedPagedReadViewMixin<W extends ConsumerStatefulWidget>
             },
           )
           .onError((Object error, StackTrace stack) {
-            if (current() && pagedReadAccessDenied(error)) {
+            if (publicationCurrent() && pagedReadAccessDenied(error)) {
               invalidateScopedPageReads();
               _scopedOwnerChanged(error);
+            }
+            if (!current() && isRetiredViewRead(error)) {
+              // A retired old owner is not the current request's failure:
+              // translate every retirement shape (owner change, REQUEST_STALE,
+              // cancellation) into the one canonical quiet signal, so no page
+              // handler can mistake a query switch for a failed load.
+              Error.throwWithStackTrace(const UiWorkCancelled(), stack);
             }
             Error.throwWithStackTrace(error, stack);
           }),
       slot: key,
     );
+    return pending.then((result) {
+      // Includes cache hits and fetchComplete. Fence the public result after
+      // the activity wrapper's awaits, before the caller can accept/output it.
+      if (!publicationCurrent()) throw const UiWorkCancelled();
+      return result;
+    });
   }
 
   @override
@@ -180,6 +257,10 @@ mixin ScopedPagedReadViewMixin<W extends ConsumerStatefulWidget>
     _scopedDisposed = true;
     readViewActivity.dispose();
     _scopedOwnerSubscription?.close();
+    for (final timer in _scopedAnswerTimers) {
+      timer.cancel();
+    }
+    _scopedAnswerTimers.clear();
     for (final entry in _scopedPageReads.values) {
       entry.dispose();
     }

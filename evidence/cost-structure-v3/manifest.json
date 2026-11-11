@@ -1,0 +1,567 @@
+{
+  "prepOnly": true,
+  "product": "fafaaa665fd922754b66dc026246f0d94d21ae9e",
+  "fingerprintContent": "reviewed Git index bytes; raw logs/JSON/args/workbooks use binary attributes",
+  "files": [
+    {
+      "path": ".gitattributes",
+      "bytes": 170,
+      "sha256": "8f6150c26bb978b874f60c0ffab082087f9148bb7fc1a83cc248a8ced85fdb6d"
+    },
+    {
+      "path": ".gitignore",
+      "bytes": 148,
+      "sha256": "b843c053ecb437ff538635dcf79a50d897b6eea1d5ac525114e557058efdbe27"
+    },
+    {
+      "path": "CandidateImportSuite.java",
+      "bytes": 1464,
+      "sha256": "11abf2b660f8645e00d7b53d5e8ef09bac263b879559c6c8336583207327be19"
+    },
+    {
+      "path": "CostStructureVersionUpgradeAudit.java",
+      "bytes": 16165,
+      "sha256": "f84c196c557437e7a2a074dfb4c905099465f9c64c9901cce8df119e21728cec"
+    },
+    {
+      "path": "ImportVersionUpgradeAudit.java",
+      "bytes": 27832,
+      "sha256": "95a0c82d17629c53bc3aefbf4f40fcdd73fff2d9d775b1bcef6e219dc926a8c2"
+    },
+    {
+      "path": "PREP-REPORT.md",
+      "bytes": 7186,
+      "sha256": "90a91d804eddc5ffc9fcde7688fb6fef5221ac7aee2736e7910944248a41f830"
+    },
+    {
+      "path": "baseline/OriginalFileRegression.java",
+      "bytes": 2737,
+      "sha256": "2db44299c07c0b1b2232031d96143e39849c8190598e8a0c8261068f4dde32d6"
+    },
+    {
+      "path": "baseline/REPORT.md",
+      "bytes": 2857,
+      "sha256": "304593b7292e14435aca7606c6ab29c0b5e2f3710e29e29a66a981b7fd21bb47"
+    },
+    {
+      "path": "baseline/reader-baseline-java.args",
+      "bytes": 22754,
+      "sha256": "7f19fcf40a7ff2e51d4588aa7dc4b3ab40b6409eb3ed63a71ac692c0fe341ca5"
+    },
+    {
+      "path": "baseline/reader-baseline-result.log",
+      "bytes": 740,
+      "sha256": "bc1f48b678592310b4d9d7be47cd7ed1d1af6a38ce487cc8f0f5b24391f36a36"
+    },
+    {
+      "path": "baseline/reader-baseline.exit",
+      "bytes": 1,
+      "sha256": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b"
+    },
+    {
+      "path": "completed-test-cleanup/CloseCompletedTestContexts.java",
+      "bytes": 1732,
+      "sha256": "ed72068b15c0b565f0fcab3ddd5275afcc7e631b4a3647bc5f6a298332620103"
+    },
+    {
+      "path": "completed-test-cleanup/MANIFEST.MF",
+      "bytes": 63,
+      "sha256": "1b0b5dfec4d0ca8cb1561c7debfd3521a3d7f4455631410fac5e93aae17d6b36"
+    },
+    {
+      "path": "completed-test-cleanup/attach.exit",
+      "bytes": 3,
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354"
+    },
+    {
+      "path": "completed-test-cleanup/attach.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "completed-test-cleanup/compile.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "completed-test-cleanup/target-command.txt",
+      "bytes": 202,
+      "sha256": "6826821507fe833a7e2e4109b7d91f1db62ecb9a745da03e5f8aa5d2929b6149"
+    },
+    {
+      "path": "old-v2-class-manifest.initial.json",
+      "bytes": 1492385,
+      "sha256": "9b7ed495b9d2c9dcc3cc4642b0a762ca6da2331d7b2d8b9ad55c3110837b7377"
+    },
+    {
+      "path": "old-v2-class-manifest.json",
+      "bytes": 1756368,
+      "sha256": "39dcc648834566edbf4315861448cf267ec2cbb50c54745aed78c09c35e80cd3"
+    },
+    {
+      "path": "old-v2-finance-seed-compile.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "old-v2-finance-seed-spring.log",
+      "bytes": 6742,
+      "sha256": "1692754611e29122a6788f303b6528c2fed2c4326ada1512b7e1c719cd646bc0"
+    },
+    {
+      "path": "old-v2-finance-seed.exit",
+      "bytes": 3,
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354"
+    },
+    {
+      "path": "old-v2-finance-seed.log",
+      "bytes": 7655,
+      "sha256": "f3fc6546029cafb07266bfd0ea9a2faddeb8a8f36b0b2a22bd6be6e042570415"
+    },
+    {
+      "path": "old-v2-finance.json",
+      "bytes": 72884,
+      "sha256": "2c11afa4f39b4a8e1ce2b22afcbb0fb9992755fea6278f0d95d597a44c4312a7"
+    },
+    {
+      "path": "old-v2-program.json",
+      "bytes": 3814,
+      "sha256": "c07652c6d943a3f0bc78891a6a7fcc7a636b5db45327cccd012d07f1a6920d9a"
+    },
+    {
+      "path": "old-v2-public-seed-2-compile.log",
+      "bytes": 1363,
+      "sha256": "0d76490f0823121a9caba50bb8811949e9203104eb6ae6be66cadc5d89310174"
+    },
+    {
+      "path": "old-v2-public-seed-3-compile.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "old-v2-public-seed-3-spring.log",
+      "bytes": 7198,
+      "sha256": "328bf8211fe138203178620d86bcb8683bd140443334e1469bcc333f58285c0c"
+    },
+    {
+      "path": "old-v2-public-seed-3.exit",
+      "bytes": 3,
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354"
+    },
+    {
+      "path": "old-v2-public-seed-3.log",
+      "bytes": 8239,
+      "sha256": "1388bfa0a450f8e8b0ec99dceaabb2d28586f29c927db89a6d06b10ce516cd4d"
+    },
+    {
+      "path": "old-v2-public-seed-compile.log",
+      "bytes": 484,
+      "sha256": "096def48e3d198e4b9c431f4660b2a114488cd2556016c98431fc0485f9c2bfa"
+    },
+    {
+      "path": "original-reader-v3-compile.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "original-reader-v3.exit",
+      "bytes": 2,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "original-reader-v3.log",
+      "bytes": 835,
+      "sha256": "90b41bbdb139e0ecaec6c67d1574b92ac92490c276be336d144b6c6875f149f8"
+    },
+    {
+      "path": "originals/mixed-header-tail.xlsx",
+      "bytes": 3426,
+      "sha256": "4083d48ed841198a78cdf711a3ed902dd658a6281b2b899041b1b5b170e4c23d"
+    },
+    {
+      "path": "originals/ordinary-control.xlsx",
+      "bytes": 3418,
+      "sha256": "368f94ff5d3862ddb9304791bf8e6d97891370525d626cd204d5a43eeb5de885"
+    },
+    {
+      "path": "originals/reserved-name-control.xlsx",
+      "bytes": 3414,
+      "sha256": "82b0f764332052b0d1033727fec48a1fbfb3748ac994d3d69284c025a969148c"
+    },
+    {
+      "path": "originals/subtotal-name-control.xlsx",
+      "bytes": 3431,
+      "sha256": "ed23c572ee1141ddbce0b8ad893ccbbe0038c65179e0db39590f8e1bf26942ea"
+    },
+    {
+      "path": "parse-suite/exit.txt",
+      "bytes": 2,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "parse-suite/maven.log",
+      "bytes": 7829,
+      "sha256": "e9a42c4b54b21dd928e62228902618d61ae7bc104cb6aba792acd2aa070d31d6"
+    },
+    {
+      "path": "parse-suite/reports/2026-11-10T21-45-57_198.dumpstream",
+      "bytes": 309,
+      "sha256": "419193994dcfa49a2b093376fa57adc970bb5c00cfc463504ea8b396cb6a66a3"
+    },
+    {
+      "path": "parse-suite/reports/TEST-com.uten.imp.common.export.PlatformWorkbookSchemaTest.xml",
+      "bytes": 55048,
+      "sha256": "04f761ff9d7e0ae12cd79361fc98a541cc352854c365934d718ac51591c073a9"
+    },
+    {
+      "path": "parse-suite/reports/TEST-com.uten.imp.common.importing.ImportColumnGuardTest.xml",
+      "bytes": 54574,
+      "sha256": "622c39adbef8d7fc5164d6931453cffb359a2607b4bcb6d47162ae2f33c93162"
+    },
+    {
+      "path": "parse-suite/reports/TEST-com.uten.imp.features.finance.gl.FinanceAccountingWorkbookParserTest.xml",
+      "bytes": 56664,
+      "sha256": "ec733b67d45f62f38ede35c2417f5de8dbe5c7a1cf65f7460eb149a3ba107d1a"
+    },
+    {
+      "path": "parse-suite/reports/TEST-com.uten.imp.features.finance.gl.FinanceChartWorkbookParserTest.xml",
+      "bytes": 55143,
+      "sha256": "eed2847c00884292212823913e9ae98c22e29e49fa532a0293e254c7d1b6c05c"
+    },
+    {
+      "path": "parse-suite/reports/TEST-com.uten.imp.features.finance.gl.FinanceOperatingNoteParserTest.xml",
+      "bytes": 54999,
+      "sha256": "878107ce362f9a336d96af129bb9432297d12eeadbe0c97b76d644a976e884ab"
+    },
+    {
+      "path": "parse-suite/reports/TEST-com.uten.imp.features.finance.gl.WorkbookColumnRemediationTest.xml",
+      "bytes": 55678,
+      "sha256": "0700c13d01ac6359432de5f8d497ba75afd5cb0f3714aa51d71cb2057b3327bd"
+    },
+    {
+      "path": "parse-suite/reports/TEST-com.uten.imp.features.finance.statement.FinanceAuxiliaryWorkbookParserTest.xml",
+      "bytes": 54840,
+      "sha256": "1bb2a699ac555bdcf7f2d5ba0da42bff2b369fc358ecb17254dbd7cd13148fc5"
+    },
+    {
+      "path": "parse-suite/reports/TEST-com.uten.imp.features.master.goods.costing.CostStructureRowRemediationTest.xml",
+      "bytes": 55079,
+      "sha256": "a997f68a661d788d6adefffeb3154c8a3ef49859fd89fe38c9eef3ef3f1be1a1"
+    },
+    {
+      "path": "parse-suite/reports/TEST-com.uten.imp.features.master.goods.costing.CostTitleColumnRemediationTest.xml",
+      "bytes": 54467,
+      "sha256": "5e82cf8d240b0fc68b3a381de3e19e902caf951fbf05e859f3f6335236679f7e"
+    },
+    {
+      "path": "parse-suite/reports/TEST-com.uten.imp.features.master.goods.costing.GoodsCostWorkbookParserTest.xml",
+      "bytes": 55009,
+      "sha256": "559c2b054c759a2f8bc18d06d27b397a23fa5625a1552239bf72b44b15d48236"
+    },
+    {
+      "path": "parse-suite/reports/TEST-com.uten.imp.features.master.goods.importing.AdditionalSheetColumnRemediationTest.xml",
+      "bytes": 54503,
+      "sha256": "121538c0fe2029b08085814ddad33a5851499938ed23f657357c843a987231ee"
+    },
+    {
+      "path": "parse-suite/reports/TEST-com.uten.imp.features.master.goods.importing.GoodsBomImportColumnContractTest.xml",
+      "bytes": 54328,
+      "sha256": "fec283d9c6a7a1d750453bd587d89ee43a70ffcf728ac9a34dd74edc0131a686"
+    },
+    {
+      "path": "parse-suite/reports/TEST-com.uten.imp.features.master.goods.importing.GoodsImportColumnContractTest.xml",
+      "bytes": 55196,
+      "sha256": "4f37261641d42581ff5c21bdb15148a1e969e38cd9bf560d6a0ab17bd26d83b1"
+    },
+    {
+      "path": "parse-suite/reports/TEST-com.uten.imp.features.master.goods.importing.GoodsImportPlanSafetyTest.xml",
+      "bytes": 55445,
+      "sha256": "c4aa175d8227ddead0a806b2572b10a639e93d00915eea02d9efa4e4083e8a2a"
+    },
+    {
+      "path": "parse-suite/reports/com.uten.imp.common.export.PlatformWorkbookSchemaTest.txt",
+      "bytes": 360,
+      "sha256": "e52976ca4f333a19e1950d2abb7e7058f9e20d9b966910c0e7bdd518214e658e"
+    },
+    {
+      "path": "parse-suite/reports/com.uten.imp.common.importing.ImportColumnGuardTest.txt",
+      "bytes": 356,
+      "sha256": "ef02c55a348a9e3622ba927ce7c747a359990dd320f58f5eee7ad136c2964259"
+    },
+    {
+      "path": "parse-suite/reports/com.uten.imp.features.finance.gl.FinanceAccountingWorkbookParserTest.txt",
+      "bytes": 390,
+      "sha256": "5d9f90424f8ac62618187c6383b2ca842b54243e14e0a5cad439688ad5355a2d"
+    },
+    {
+      "path": "parse-suite/reports/com.uten.imp.features.finance.gl.FinanceChartWorkbookParserTest.txt",
+      "bytes": 380,
+      "sha256": "4f50644a79f832b54cf91feb65413ddeaa9beb7c68a5f74b0a020d81627cad20"
+    },
+    {
+      "path": "parse-suite/reports/com.uten.imp.features.finance.gl.FinanceOperatingNoteParserTest.txt",
+      "bytes": 380,
+      "sha256": "3ecb7f433645c79c454d27cf33b34e46998f5da643d644b7f9490995a23c6527"
+    },
+    {
+      "path": "parse-suite/reports/com.uten.imp.features.finance.gl.WorkbookColumnRemediationTest.txt",
+      "bytes": 378,
+      "sha256": "1bc0fe7ea724cbf164175ba12d29f69d33fe1b38fb5ccdffe00df69d951b288e"
+    },
+    {
+      "path": "parse-suite/reports/com.uten.imp.features.finance.statement.FinanceAuxiliaryWorkbookParserTest.txt",
+      "bytes": 402,
+      "sha256": "03fae097b1a301c89c3fa265fb440b7677cd1011207331603d48a95a3ec26810"
+    },
+    {
+      "path": "parse-suite/reports/com.uten.imp.features.master.goods.costing.CostStructureRowRemediationTest.txt",
+      "bytes": 402,
+      "sha256": "e1aa68eb134c4b9fdd9fa30650e3e4ac550207b84e06c0a571e7a68cbbd292e4"
+    },
+    {
+      "path": "parse-suite/reports/com.uten.imp.features.master.goods.costing.CostTitleColumnRemediationTest.txt",
+      "bytes": 400,
+      "sha256": "cd32f62a809efb595ac66c0030b15b29fae612e2e12db3320ec32692ec977eb0"
+    },
+    {
+      "path": "parse-suite/reports/com.uten.imp.features.master.goods.costing.GoodsCostWorkbookParserTest.txt",
+      "bytes": 394,
+      "sha256": "02a17004a3f9f87f77ee0fbfb866f28b894652eda6ad5aed7b315997925ec451"
+    },
+    {
+      "path": "parse-suite/reports/com.uten.imp.features.master.goods.importing.AdditionalSheetColumnRemediationTest.txt",
+      "bytes": 416,
+      "sha256": "d2eb1da7d2855f1f332659c8497f7ee20b4a156f2cddff6f861647655b9f0819"
+    },
+    {
+      "path": "parse-suite/reports/com.uten.imp.features.master.goods.importing.GoodsBomImportColumnContractTest.txt",
+      "bytes": 408,
+      "sha256": "794216003d9bba0b3237ccd8b62d3cc4aed9ba394f6a2d47e3f5f27c862fa1e3"
+    },
+    {
+      "path": "parse-suite/reports/com.uten.imp.features.master.goods.importing.GoodsImportColumnContractTest.txt",
+      "bytes": 402,
+      "sha256": "73c0e64c91d58f45938b0e7d4a2417f4c15b2ecced2691d595d0ab6f64b98a5a"
+    },
+    {
+      "path": "parse-suite/reports/com.uten.imp.features.master.goods.importing.GoodsImportPlanSafetyTest.txt",
+      "bytes": 394,
+      "sha256": "52fccd7f6ef9a3dfbca37fff137f0bcc09e0a9a82f446ed98832d7a34f65dfa5"
+    },
+    {
+      "path": "run-arguments/old-v2-finance-seed-classes/java.args",
+      "bytes": 23060,
+      "sha256": "24267d037841db4f7d1e49b0abd612ebe04c7ac398a2aa27f458aec9b9458e12"
+    },
+    {
+      "path": "run-arguments/old-v2-finance-seed-classes/javac.args",
+      "bytes": 22807,
+      "sha256": "6d4cdc895b6bd25d8cd4eb693d710e128eb6ff112c70dd8f1071876f0280a56a"
+    },
+    {
+      "path": "run-arguments/old-v2-public-seed-2-classes/javac.args",
+      "bytes": 22809,
+      "sha256": "6bfed6c534d74ed4dba2d1cb9f8d220facf43631a1f696e299f8383ba293a886"
+    },
+    {
+      "path": "run-arguments/old-v2-public-seed-3-classes/java.args",
+      "bytes": 23055,
+      "sha256": "be72d4f6fb14d456577ca05b871748571d862c275b1f0692c889910f4ddca9d7"
+    },
+    {
+      "path": "run-arguments/old-v2-public-seed-3-classes/javac.args",
+      "bytes": 22809,
+      "sha256": "a40ebdae59bb0ddf782736f12433321ae40707e343f1e3ba6c7d6c8967bd36f6"
+    },
+    {
+      "path": "run-arguments/old-v2-public-seed-classes/javac.args",
+      "bytes": 22805,
+      "sha256": "9df776955f5d26aff52463ca949faf357a97593ab4e0c90775183f069d31eba7"
+    },
+    {
+      "path": "run-arguments/original-reader-classes/java.args",
+      "bytes": 22607,
+      "sha256": "9b3393f7017387541003c26978410bf00dd4360ab29ef9afb7f555c27c149c1e"
+    },
+    {
+      "path": "run-arguments/original-reader-classes/javac.args",
+      "bytes": 22675,
+      "sha256": "d9241800a0527eafd8d1efd51bc840c56e2a1822cd2c8f50f9bc42ffa3e8b3be"
+    },
+    {
+      "path": "run-arguments/v3-original-intent-contracts-classes/java.args",
+      "bytes": 23350,
+      "sha256": "ec621e8914de98e7be0c5cad8b0d951bd26a0db5099c07512c4fdf53877b1b0b"
+    },
+    {
+      "path": "run-arguments/v3-original-intent-contracts-classes/javac.args",
+      "bytes": 22823,
+      "sha256": "9de7063850d4dfa80f14314fc5989448b717ebbc455610d7ef5131b314ad6806"
+    },
+    {
+      "path": "run-arguments/v3-persisted-five-kinds-classes/java.args",
+      "bytes": 23523,
+      "sha256": "2e01c6a95023b9107ce385c1e499b82a903a8e8810ed9d1ca379a4b71a30dcaf"
+    },
+    {
+      "path": "run-arguments/v3-persisted-five-kinds-classes/javac.args",
+      "bytes": 22813,
+      "sha256": "2baa616cd665c14c0fc138541e79cab3e67ad950d0b67f615df937a00b2f8a1a"
+    },
+    {
+      "path": "run-arguments/v3-public-upgrade-verify-2-classes/java.args",
+      "bytes": 23085,
+      "sha256": "9ef522c3742193fc071da2554b703a21d3069d5b267fb76260b4e56130265a6d"
+    },
+    {
+      "path": "run-arguments/v3-public-upgrade-verify-2-classes/javac.args",
+      "bytes": 22831,
+      "sha256": "9b57442bebebdfdd11038e4cf3b476e12e34f59885b0640953f588efbce45714"
+    },
+    {
+      "path": "run-arguments/v3-public-upgrade-verify-classes/java.args",
+      "bytes": 23079,
+      "sha256": "b643955a8a131a49bee5e49b36b70842fca4e8297a3a59703aa49abeecb284a7"
+    },
+    {
+      "path": "run-arguments/v3-public-upgrade-verify-classes/javac.args",
+      "bytes": 22827,
+      "sha256": "de9dc2a9e8f63cca95bba6cc87671eb5c9b52764aab9137cc9ca4bc60617ebeb"
+    },
+    {
+      "path": "run-arguments/v3-retained-v1-verify-classes/java.args",
+      "bytes": 23058,
+      "sha256": "cd7653cac5e3101e89da06dbe48dee546dfbfbaef0261b178025c16fca98bb13"
+    },
+    {
+      "path": "run-arguments/v3-retained-v1-verify-classes/javac.args",
+      "bytes": 22814,
+      "sha256": "4ce3fe7a34686a9fbeec864db07b8a1186d313b4d51673489c2b81cac2a806de"
+    },
+    {
+      "path": "run-pg.ps1",
+      "bytes": 2553,
+      "sha256": "157b59411a8c615cdf08e64edd4e42194544d4d4d9ff4f303b8539ef857fa1c8"
+    },
+    {
+      "path": "run-upgrade.ps1",
+      "bytes": 2055,
+      "sha256": "478ec40430dd7e5097d665f90380c0b9701f6d496d4b82cf82caf49db6f0683e"
+    },
+    {
+      "path": "run-v1-verify.ps1",
+      "bytes": 1773,
+      "sha256": "c62574fecef9d0d0daa82cab808a8d1f311f49609538b53d7a48146794b4978c"
+    },
+    {
+      "path": "source-and-original-proof.json",
+      "bytes": 1839,
+      "sha256": "1999a8ae1999d620afeeea2154566feec61ec9733f76d87b9d8a723f6829c8f2"
+    },
+    {
+      "path": "upgrade-v3-retained-v1-verify-spring.log",
+      "bytes": 6289,
+      "sha256": "bb0900664416f2e21a800c4d7207773d3c42650c1ebf2a7c93faa93fb39603ca"
+    },
+    {
+      "path": "v3-original-intent-contracts-compile.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "v3-original-intent-contracts-spring.log",
+      "bytes": 750781,
+      "sha256": "d6e04be4ba67c025c10894b1eba67adaeec8d1ce60bd96c70a56d8924650cfc2"
+    },
+    {
+      "path": "v3-original-intent-contracts.exit",
+      "bytes": 3,
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354"
+    },
+    {
+      "path": "v3-original-intent-contracts.log",
+      "bytes": 802526,
+      "sha256": "6bb200881f4b94ae7ea0bf0cd8c432c585271e9dfc8a34e68228e354ea273bcb"
+    },
+    {
+      "path": "v3-persisted-five-kinds-compile.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "v3-persisted-five-kinds-spring.log",
+      "bytes": 772363,
+      "sha256": "a8cdbb277dba213913e668f1407a39c5a117047d6d5ea99bf28e04b064649239"
+    },
+    {
+      "path": "v3-persisted-five-kinds.exit",
+      "bytes": 3,
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354"
+    },
+    {
+      "path": "v3-persisted-five-kinds.log",
+      "bytes": 1161063,
+      "sha256": "e269ba4e127c42c004a8c62bc5a9cbb3f4c00190b8d086ce6477eea557b85274"
+    },
+    {
+      "path": "v3-public-upgrade-verify-2-compile.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "v3-public-upgrade-verify-2-result.json",
+      "bytes": 601,
+      "sha256": "e38998f2d4fcb0167bbe629110898b3515629bb9b7c88f21b4f19e1d6dda734e"
+    },
+    {
+      "path": "v3-public-upgrade-verify-2-spring.log",
+      "bytes": 6334,
+      "sha256": "2628517615dec67e76dd97066726653ea69c2fa8b4d30cba33a6380da7b7e3d8"
+    },
+    {
+      "path": "v3-public-upgrade-verify-2.exit",
+      "bytes": 3,
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354"
+    },
+    {
+      "path": "v3-public-upgrade-verify-2.log",
+      "bytes": 7749,
+      "sha256": "b869cc5666272683e9540171a550170805ed805c8cb3c191c6dd0ca5e7d1bf39"
+    },
+    {
+      "path": "v3-public-upgrade-verify-compile.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "v3-public-upgrade-verify-spring.log",
+      "bytes": 6333,
+      "sha256": "219f272790a05eb930bc5bfb4e139d0f261b0e71602521dc409094e9294f8d2a"
+    },
+    {
+      "path": "v3-public-upgrade-verify.exit",
+      "bytes": 3,
+      "sha256": "f1b2f662800122bed0ff255693df89c4487fbdcf453d3524a42d4ec20c3d9c04"
+    },
+    {
+      "path": "v3-public-upgrade-verify.log",
+      "bytes": 7796,
+      "sha256": "1e52940a38f19f88dcf99be65052aefbc4980b29adb08e1679db328e53a6723c"
+    },
+    {
+      "path": "v3-retained-v1-verify-compile.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "v3-retained-v1-verify.exit",
+      "bytes": 3,
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354"
+    },
+    {
+      "path": "v3-retained-v1-verify.log",
+      "bytes": 7215,
+      "sha256": "6b1c0dcf975224bf5ab7d9410a7b414692cfd4d60cc8084001c9d475f7656c96"
+    }
+  ]
+}

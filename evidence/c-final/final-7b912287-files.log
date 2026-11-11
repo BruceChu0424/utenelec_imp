@@ -1,0 +1,40 @@
+2026-11-10T22:36:47.693-07:00  INFO 7752 --- [uten-imp-server] [           main] c.u.i.b.ImportVersionUpgradeAudit        : Starting ImportVersionUpgradeAudit using Java 21.0.11 with PID 7752 (D:\Projects\uten_imp_worktrees\feedback-final-c-20261110\evidence\c-final\final-7b912287-files-classes started by bruce in D:\Projects\uten_imp_worktrees\feedback-final-c-20261110)
+2026-11-10T22:36:47.697-07:00 DEBUG 7752 --- [uten-imp-server] [           main] c.u.i.b.ImportVersionUpgradeAudit        : Running with Spring Boot v4.1.1, Spring v7.0.9
+2026-11-10T22:36:47.698-07:00  INFO 7752 --- [uten-imp-server] [           main] c.u.i.b.ImportVersionUpgradeAudit        : The following 1 profile is active: "dev"
+2026-11-10T22:37:05.703-07:00  INFO 7752 --- [uten-imp-server] [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat initialized with port 0 (http)
+2026-11-10T22:37:05.952-07:00  INFO 7752 --- [uten-imp-server] [           main] b.w.c.s.WebApplicationContextInitializer : Root WebApplicationContext: initialization completed in 18177 ms
+2026-11-10T22:37:07.647-07:00  INFO 7752 --- [uten-imp-server] [           main] org.flywaydb.core.FlywayExecutor         : Database: jdbc:postgresql://127.0.0.1:26632/imports (PostgreSQL 16.15)
+2026-11-10T22:37:09.015-07:00  INFO 7752 --- [uten-imp-server] [           main] o.f.core.internal.command.DbMigrate      : Current version of schema "public": 1131
+2026-11-10T22:37:09.043-07:00  INFO 7752 --- [uten-imp-server] [           main] o.f.core.internal.command.DbMigrate      : Schema "public" is up to date. No migration necessary.
+2026-11-10T22:37:11.006-07:00  INFO 7752 --- [uten-imp-server] [           main] o.s.o.j.p.SpringPersistenceUnitInfo      : No LoadTimeWeaver setup: ignoring JPA class transformer
+2026-11-10T22:37:11.082-07:00  INFO 7752 --- [uten-imp-server] [           main] com.zaxxer.hikari.HikariDataSource       : uten-imp - Starting...
+2026-11-10T22:37:11.132-07:00  INFO 7752 --- [uten-imp-server] [           main] com.zaxxer.hikari.HikariDataSource       : uten-imp - Start completed.
+2026-11-10T22:37:21.323-07:00  INFO 7752 --- [uten-imp-server] [           main] j.LocalContainerEntityManagerFactoryBean : Initialized JPA EntityManagerFactory for persistence unit 'default'
+2026-11-10T22:37:28.612-07:00  INFO 7752 --- [uten-imp-server] [           main] o.s.boot.web.servlet.RegistrationBean    : Filter localNetworkFilterRegistration was not registered (disabled)
+2026-11-10T22:37:28.613-07:00  INFO 7752 --- [uten-imp-server] [           main] o.s.boot.web.servlet.RegistrationBean    : Filter remoteBudgetFilterRegistration was not registered (disabled)
+2026-11-10T22:37:28.613-07:00  INFO 7752 --- [uten-imp-server] [           main] o.s.boot.web.servlet.RegistrationBean    : Filter jwtFilterRegistration was not registered (disabled)
+2026-11-10T22:37:28.614-07:00  INFO 7752 --- [uten-imp-server] [           main] o.s.boot.web.servlet.RegistrationBean    : Filter impersonationFilterRegistration was not registered (disabled)
+2026-11-10T22:37:28.614-07:00  INFO 7752 --- [uten-imp-server] [           main] o.s.boot.web.servlet.RegistrationBean    : Filter remoteAccessFilterRegistration was not registered (disabled)
+2026-11-10T22:37:28.614-07:00  INFO 7752 --- [uten-imp-server] [           main] o.s.boot.web.servlet.RegistrationBean    : Filter passwordChangeRequiredFilterRegistration was not registered (disabled)
+2026-11-10T22:37:28.704-07:00 DEBUG 7752 --- [uten-imp-server] [           main] c.u.imp.audit.AuditRequestContextFilter  : Filter 'auditRequestContextFilter' configured for use
+2026-11-10T22:37:28.705-07:00 DEBUG 7752 --- [uten-imp-server] [           main] c.u.i.c.w.FulfillmentHttpDeadlineFilter  : Filter 'fulfillmentHttpDeadline' configured for use
+2026-11-10T22:37:28.706-07:00 DEBUG 7752 --- [uten-imp-server] [           main] c.u.i.c.f.BusinessPrecisionRequestFilter : Filter 'businessPrecisionRequestFilter' configured for use
+2026-11-10T22:37:28.708-07:00 DEBUG 7752 --- [uten-imp-server] [           main] u.i.c.w.WarehouseScopeReadSnapshotFilter : Filter 'warehouseScopeReadSnapshotFilter' configured for use
+2026-11-10T22:37:34.114-07:00  INFO 7752 --- [uten-imp-server] [           main] c.u.i.c.storage.LocalDiskStorageService  : Local attachment storage enabled at D:\Projects\uten_imp_worktrees\feedback-remediate-c-20261110\evidence\imports\upgrade-storage
+2026-11-10T22:37:52.003-07:00  INFO 7752 --- [uten-imp-server] [           main] com.zaxxer.hikari.HikariDataSource       : document-scan-evidence - Starting...
+2026-11-10T22:37:52.005-07:00  INFO 7752 --- [uten-imp-server] [           main] com.zaxxer.hikari.HikariDataSource       : document-scan-evidence - Start completed.
+2026-11-10T22:38:09.599-07:00  INFO 7752 --- [uten-imp-server] [knowledge-index] c.u.imp.features.ai.chat.AiDocKnowledge  : AI knowledge index: 295 documents, 2096 chunks, 85 glossary terms, 95649 terms, 577655 postings, about 12383 KB, built in 8678 ms
+2026-11-10T22:38:20.175-07:00  INFO 7752 --- [uten-imp-server] [           main] c.u.i.f.r.e.ReportExportBuildIdentity    : Report export build fingerprint initialized in 12615 ms
+2026-11-10T22:38:27.535-07:00  INFO 7752 --- [uten-imp-server] [           main] o.s.b.a.e.web.EndpointLinksResolver      : Exposing 1 endpoint beneath base path '/actuator'
+2026-11-10T22:38:27.774-07:00  INFO 7752 --- [uten-imp-server] [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat started on port 56774 (http) with context path '/'
+2026-11-10T22:38:27.818-07:00  INFO 7752 --- [uten-imp-server] [           main] c.u.i.b.ImportVersionUpgradeAudit        : Started ImportVersionUpgradeAudit in 100.973 seconds (process running for 101.672)
+CURRENT_FILES_ACTOR owner=f15072a3-517d-43bc-be2d-12b9f826db83 employee=918165da-8269-4c56-b166-fcc485571be3 superAdmin=false realOrdinaryDatabaseActor=true
+CURRENT_FILES_REJECT sevenKinds=7 publicServices=true realRepositories=true ordinaryActor=true businessTableCountsUnchanged={goods=5, goods_bom_items=4, goods_cost_import_mappings=3, finance_chart_codes=2, finance_operating_report_notes=2, finance_auxiliary_items=1, gl_entries=0}
+CURRENT_FILES_LEGAL chartApplied=1 noteApplied=1 auxiliaryDirectoryApplied=1 costMappingApplied=true ledgerEntriesUnchanged=true
+2026-11-10T22:38:33.900-07:00  INFO 7752 --- [uten-imp-server] [           main] o.s.boot.tomcat.GracefulShutdown         : Commencing graceful shutdown. Waiting for active requests to complete
+2026-11-10T22:38:33.904-07:00  INFO 7752 --- [uten-imp-server] [tomcat-shutdown] o.s.boot.tomcat.GracefulShutdown         : Graceful shutdown complete
+2026-11-10T22:38:34.124-07:00  INFO 7752 --- [uten-imp-server] [           main] com.zaxxer.hikari.HikariDataSource       : document-scan-evidence - Shutdown initiated...
+2026-11-10T22:38:34.128-07:00  INFO 7752 --- [uten-imp-server] [           main] com.zaxxer.hikari.HikariDataSource       : document-scan-evidence - Shutdown completed.
+2026-11-10T22:38:34.231-07:00  INFO 7752 --- [uten-imp-server] [           main] j.LocalContainerEntityManagerFactoryBean : Closing JPA EntityManagerFactory for persistence unit 'default'
+2026-11-10T22:38:34.240-07:00  INFO 7752 --- [uten-imp-server] [           main] com.zaxxer.hikari.HikariDataSource       : uten-imp - Shutdown initiated...
+2026-11-10T22:38:34.244-07:00  INFO 7752 --- [uten-imp-server] [           main] com.zaxxer.hikari.HikariDataSource       : uten-imp - Shutdown completed.

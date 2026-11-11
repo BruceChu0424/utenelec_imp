@@ -1,0 +1,23 @@
+{
+  "stage": "run",
+  "sourceHead": "7b912287e53315228b469790ff066a9fab643e3c",
+  "sourceWasDirty": false,
+  "sourceHeadAfter": "7b912287e53315228b469790ff066a9fab643e3c",
+  "canonicalSourceDiffAfter": "",
+  "exitCode": 1,
+  "surface": "windows-engine-real-http",
+  "sdkUnchanged": true,
+  "nativeProfile": {
+    "schemaVersion": 1,
+    "buildProfile": "local_test",
+    "applicationId": "com.uten.uten_imp.local_test",
+    "nativeProductName": "UTEN Local Test",
+    "displayName": "UTEN \u672c\u5730\u6d4b\u8bd5",
+    "runtimeFamily": "flutter",
+    "networkScope": "loopback-only",
+    "selfUpdatesAllowed": false,
+    "acceptanceNativeLogDirectory": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-20261110\\evidence\\final-7b912-windows-1\\private\\windows-runtime/com.uten.uten_imp.local_test/client-logs/flutter/debug-feedback"
+  },
+  "executableSha256ActualBytes": "fcd029a4d9f20f161dd8bce2fc89fed5e394a287dbd20c2d80f62047d9aaa4ad",
+  "credentialsInCommand": false
+}

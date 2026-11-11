@@ -1,0 +1,22 @@
+{
+  "reviewedProductSource": "8c2116d9f65342f4a3d8c486aadb5aa42b79a69f",
+  "actualExecutionHead": "929fc510cef63a3997e1738ad0b3ed5e0b2f7a62",
+  "productDeltaAgainst8c": [],
+  "originalMixinOnlyImportsRelocated": true,
+  "sources": [
+    {
+      "revision": "4d45dc9b6c291e9d8e9121b48017b69030fd1f4c",
+      "path": "lib/shared/paging/scoped_paged_read_view_mixin.dart",
+      "blob": "f8d194b06dce2581adf2d4e18956355996f3d7ec",
+      "sha256": "67f282df416b8ba593bad0161091c25f71723bffbc193cf209bdd7d981e2cb37",
+      "bytes": 7133
+    },
+    {
+      "revision": "8c2116d9f65342f4a3d8c486aadb5aa42b79a69f",
+      "path": "lib/shared/paging/scoped_paged_read_view_mixin.dart",
+      "blob": "c95f7d66c4eb2eef01c7ca8b3d8ff37b5ed016ac",
+      "sha256": "6cb4d266e55c2fca9b402ef29ee20abb8ad0192a472ea5728ee64c0ba14cc41e",
+      "bytes": 9146
+    }
+  ]
+}

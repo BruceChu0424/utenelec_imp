@@ -1,0 +1,1 @@
+PREVERIFICATION ONLY: source 1f2d140f4. Old d83f9ee41 main/test compiled output copied into this new independent directory, then all class outputs from javac of exact changed two main/two test sources overlaid. All other main/test Git blobs unchanged. This is not the final normal Maven build; final frozen candidate will rebuild fresh.

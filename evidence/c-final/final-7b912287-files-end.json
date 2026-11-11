@@ -1,0 +1,32 @@
+{
+  "stage": "final-7b912287-files",
+  "position": "end",
+  "source": "7b912287e53315228b469790ff066a9fab643e3c",
+  "timeUtc": "2026-11-11T05:38:35.447208+00:00",
+  "trackedSourceClean": true,
+  "sourceGitTreeSha256": "eeecf965cd5cf3125446178c3c1c83722c437f71d0e90d1e87a87ca47abdfa26",
+  "compiledClasses": {
+    "com/uten/imp/features/master/goods/costing/CostImportEvidenceGuard.class": "a787272a48f0ab8fb564058a7b3fb1ccfb944a28443ea99c19f0947123d13eaa",
+    "com/uten/imp/features/master/goods/costing/GoodsCostImportContracts$Preview.class": "91e9645cf42fa601ea50ad287d46ec4e3d431d1a791466b14302c0b16e785bce",
+    "com/uten/imp/features/master/goods/costing/GoodsCostImportService.class": "36ea3101ca74494c2d5ba819d6d506d5ae95ef44a39bd7eb97f083bc93490005",
+    "com/uten/imp/features/master/goods/costing/GoodsCostWorkbookParser.class": "1861ae387a5f1cf41b99bf7ac297849a3690d3a2129b4cc2e4cadec92df1a536",
+    "com/uten/imp/features/master/goods/importing/GoodsBomImportService.class": "708e9c257557e8bd32206626ede7c03019a81a0401ca96d96f135211f9173a51",
+    "com/uten/imp/features/master/goods/importing/GoodsImportService.class": "9d1224a097cd829ac317e706b190453327104ad153f5de5b7befa95099a8a3c5",
+    "com/uten/imp/features/finance/gl/FinanceAccountingImportService.class": "9b60421b0e0ff64e0a6872258b61f659d85e680a982696a5172d56bfd6d1902f",
+    "com/uten/imp/features/finance/gl/FinanceAccountingWorkbookParser.class": "91b291edb456a10e1b9fdb62914d3647764e35eb523676f5525d4625a6fe4887",
+    "com/uten/imp/features/finance/gl/FinanceChartContracts$Preview.class": "7698d86179f0f9cf931aaf7d90cb37ac949bf15d6adaf5307e9900b86bc62523",
+    "com/uten/imp/features/finance/gl/FinanceChartService.class": "ef77ef8167a3ca6bb0afe3a7a4737ae9fae27a8ece0055c5a2e549592b2e9740",
+    "com/uten/imp/features/finance/gl/FinanceChartWorkbookParser.class": "f04a85b4c219e77bdfced22cd41a92d355a451f279b3d54d473d2cd8b4f64fd1",
+    "com/uten/imp/features/finance/gl/FinanceExpenseAnalysisContracts$NoteImportPreview.class": "823c86fe686e84236540f5eda221bc1d454c5dc4f240652dbf085cd2d938118a",
+    "com/uten/imp/features/finance/gl/FinanceExpenseAnalysisService.class": "2af9a1b8c09bb9aeeef2713dff3b6d86af90de58d5a65eb21595bcf631161a76",
+    "com/uten/imp/features/finance/gl/FinanceOperatingNoteParser.class": "fb3af5813e93e702990f20e827d162a240ad7838a8fc271cb5d3c32fc2fc6234",
+    "com/uten/imp/features/finance/statement/FinanceAuxiliaryImportService.class": "3f024ca23796340fe029736c9eab09f7f570c4604f0e0bbaff12c8de62031f40",
+    "com/uten/imp/features/finance/statement/FinanceAuxiliaryWorkbookParser.class": "2d67bc74b656e004aad794086e6c6615c834ccb30ddc3c247955e72d8c0b0b68",
+    "com/uten/imp/features/finance/statement/FinancialAuxiliarySourceReadAdapter.class": "78ab45bb64c4f68a6662db4b606cfc5cb9be8c2686d371204ff7d0d273fabfc2",
+    "com/uten/imp/common/importing/ImportColumnGuard.class": "634aeaff6541245fcadbd1aed5e1579c49c5bae3f90d83a99c9598e9295bd8fe",
+    "com/uten/imp/common/files/document/SpreadsheetEvidenceReader$Value.class": "a77ec688f2eaaef24b273a2b4c3ef878efebe56883e0fd4f6febbd7c7549ecc5",
+    "com/uten/imp/common/files/document/SpreadsheetEvidenceReader.class": "0090ea06c800fd03f3c431380b25d715f2d113c5e731cec793901a8559c4e664"
+  },
+  "sameSourceObjects": true,
+  "exit": 0
+}

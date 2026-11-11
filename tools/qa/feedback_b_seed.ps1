@@ -28,7 +28,7 @@ New-Item -ItemType Directory -Force -Path "$evidence/tmp" | Out-Null
 $env:TEMP="$evidence/tmp";$env:TMP=$env:TEMP
 $env:MAVEN_OPTS="-Xmx1400m -Djava.io.tmpdir=$env:TEMP"
 try {
-  mvn -B --offline -f "$root/server/pom.xml" "-Duten.build.directory=$BuildDirectory" "-Duten.test.tmpdir=$env:TEMP" '-Dtest=FeedbackBWebSeedTest#seedOrdinaryWebReturnAndOrderScenarios' surefire:test *> "$evidence/seed-web.log"
+  mvn -B --offline -f "$root/server/pom.xml" "-Duten.build.directory=$BuildDirectory" "-Duten.test.tmpdir=$env:TEMP" '-Duten.test.jvm.heap.args=-Xmx1800m' '-Dtest=FeedbackBWebSeedTest#seedOrdinaryWebReturnAndOrderScenarios' surefire:test *> "$evidence/seed-web.log"
   $result=$LASTEXITCODE
   $result | Set-Content "$evidence/seed-web.exit"
 } finally {

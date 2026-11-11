@@ -1,3 +1,6 @@
+import 'package:uten_imp/shared/drafts/form_draft_store.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
+import '../../../remediation_b/support/memory_form_draft_storage.dart';
 import '../../../support/production_person_reference_fixture.dart';
 // 准备三桶与主表共用核对页：沿原 BOM 行输入、预览、选择和下达。
 import 'dart:async';
@@ -151,6 +154,153 @@ void main() {
     expect(find.byKey(const ValueKey('uten-progress-cancel')), findsNothing);
     expect(tester.takeException(), isNull);
   });
+  for (final subcontractRoot in [false, true]) {
+    testWidgets('根产品${subcontractRoot ? '委外' : '自制'}未知提交必须保留原意图并冻结改量', (
+      tester,
+    ) async {
+      final harness = await _pump(
+        tester,
+        subcontractRoot: subcontractRoot,
+        legacySubmitUnknown: true,
+      );
+      await _openOrder(
+        tester,
+        route: subcontractRoot ? 'subcontract' : 'workshop',
+      );
+      await _type(tester, 'root-1', '500');
+      await _submit(tester);
+      expect(_writes(harness), hasLength(1));
+      expect(
+        _writes(harness).single.path,
+        endsWith(subcontractRoot ? '/notify' : '/issue-plans'),
+      );
+      expect(
+        _input('root-1'),
+        findsNothing,
+        reason:
+            'Root commands share the frozen original-intent boundary after an unknown result',
+      );
+      expect(_table(tester).selectedIds, contains('PREPARATION|root-1'));
+      final firstBody = jsonEncode(_writes(harness).single.data);
+      await tester.tap(find.byKey(const Key('material-legacy-retry-original')));
+      await tester.pumpAndSettle();
+      expect(_writes(harness), hasLength(2));
+      expect(
+        jsonEncode(_writes(harness).last.data),
+        firstBody,
+        reason: 'Only the original body and key can be retried',
+      );
+      expect(_input('root-1'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  for (final subcontractRoot in [false, true]) {
+    testWidgets('根产品${subcontractRoot ? '委外' : '自制'}明确拒绝500后可保留输入改499', (
+      tester,
+    ) async {
+      final harness = await _pump(
+        tester,
+        subcontractRoot: subcontractRoot,
+        legacyReject500: true,
+      );
+      await _openOrder(
+        tester,
+        route: subcontractRoot ? 'subcontract' : 'workshop',
+      );
+      await _type(tester, 'root-1', '500');
+      await _submit(tester);
+      expect(_qty(tester, 'root-1'), '500');
+      await _type(tester, 'root-1', '499');
+      await _submit(tester);
+      final roots = _writes(harness)
+          .where(
+            (request) => request.path.endsWith(
+              subcontractRoot ? '/notify' : '/issue-plans',
+            ),
+          )
+          .toList();
+      expect(roots, hasLength(2));
+      final field = subcontractRoot ? 'quantities' : 'lines';
+      final changed = ((roots.last.data as Map)[field] as List).first as Map;
+      expect(double.parse(changed['qty'].toString()), 499);
+      expect(tester.takeException(), isNull);
+    });
+  }
+  for (final subcontractRoot in [false, true]) {
+    testWidgets('根产品${subcontractRoot ? '委外' : '自制'}未知票据在同owner关闭重开后仍只重放原body', (
+      tester,
+    ) async {
+      final storage = MemoryFormDraftStorage();
+      final first = await _pump(
+        tester,
+        subcontractRoot: subcontractRoot,
+        legacySubmitUnknown: true,
+        draftStorage: storage,
+      );
+      await _openOrder(
+        tester,
+        route: subcontractRoot ? 'subcontract' : 'workshop',
+      );
+      await _type(tester, 'root-1', '500');
+      await _type(tester, 'm-b', '1500');
+      await _submit(tester);
+      final original = jsonEncode(_writes(first).single.data);
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(MaterialApp)),
+      );
+      final candidates = container
+          .read(formDraftsProvider)
+          .where(
+            (draft) =>
+                draft.hasUnknownSubmission &&
+                draft.data['legacyOriginalCommand'] != null,
+          )
+          .toList();
+      expect(
+        candidates,
+        hasLength(1),
+        reason:
+            'The original body and key are persisted before any bytes are sent',
+      );
+      final pending = candidates.single;
+      expect(storage.successfulWrites, greaterThan(0));
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+      final second = await _pump(
+        tester,
+        subcontractRoot: subcontractRoot,
+        draftStorage: storage,
+        preparationDraftId: pending.id,
+      );
+      await _openOrder(
+        tester,
+        route: subcontractRoot ? 'subcontract' : 'workshop',
+      );
+      expect(_input('root-1'), findsNothing);
+      await tester.tap(find.byKey(const Key('material-legacy-retry-original')));
+      await tester.pumpAndSettle();
+      expect(_writes(second), hasLength(1));
+      expect(
+        _qty(tester, 'm-b'),
+        '1500',
+        reason: 'Unsubmitted adjacent input survives original receipt recovery',
+      );
+      expect(_table(tester).selectedIds, contains('PREPARATION|m-b'));
+      expect(jsonEncode(_writes(second).single.data), original);
+      final current = ProviderScope.containerOf(
+        tester.element(find.byType(MaterialApp)),
+      ).read(formDraftsProvider);
+      expect(
+        current.where(
+          (draft) => draft.id == pending.id && draft.hasUnknownSubmission,
+        ),
+        isEmpty,
+      );
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets('准备最新：核对页手动刷新保留已填写数量，停留期间不刷新', (tester) async {
     late Map<String, dynamic> serverData;
     await _pump(
@@ -827,6 +977,10 @@ Future<_Harness> _pump(
   String? aggregateBlockedReason,
   String? aggregateCoverageDeduction,
   bool aggregateSubmitUnknown = false,
+  bool legacySubmitUnknown = false,
+  bool legacyReject500 = false,
+  MemoryFormDraftStorage? draftStorage,
+  String? preparationDraftId,
   double aggregatePublicExtra = 0,
 }) async {
   tester.view.physicalSize = const Size(1800, 1400);
@@ -854,8 +1008,36 @@ Future<_Harness> _pump(
           return;
         }
         if (request.method != 'GET') harness.writes.add(request);
+        if (legacyReject500 &&
+            (request.path.endsWith('/notify') ||
+                request.path.endsWith('/issue-plans'))) {
+          final body = request.data as Map;
+          final values = (body['lines'] ?? body['quantities']) as List;
+          if (values.any(
+            (raw) => double.tryParse((raw as Map)['qty'].toString()) == 500,
+          )) {
+            handler.reject(
+              DioException(
+                requestOptions: request,
+                type: DioExceptionType.badResponse,
+                response: Response<dynamic>(
+                  requestOptions: request,
+                  statusCode: 422,
+                  data: {
+                    'code': 'VALIDATION_FAILED',
+                    'message': '原根产品500明确未写入',
+                  },
+                ),
+              ),
+            );
+            return;
+          }
+        }
         if (aggregateSubmitUnknown &&
-            request.path.endsWith('/aggregate-orders/submit')) {
+                request.path.endsWith('/aggregate-orders/submit') ||
+            legacySubmitUnknown &&
+                (request.path.endsWith('/notify') ||
+                    request.path.endsWith('/issue-plans'))) {
           handler.reject(
             DioException(
               requestOptions: request,
@@ -937,6 +1119,12 @@ Future<_Harness> _pump(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        if (draftStorage != null)
+          formDraftStorageProvider.overrideWithValue(draftStorage),
+        if (draftStorage != null)
+          authenticatedScopeProvider.overrideWithValue(
+            const AuthenticatedScope(userId: 'preparation-draft-owner'),
+          ),
         productionPlanRepositoryProvider.overrideWithValue(
           ProductionPlanRepository(api),
         ),
@@ -957,12 +1145,13 @@ Future<_Harness> _pump(
           Perm.productionMaterialAnalysisOverSupply,
         }),
       ],
-      child: const MaterialApp(
-        locale: Locale('zh'),
+      child: MaterialApp(
+        locale: const Locale('zh'),
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
         home: ProductionMaterialAnalysisPage(
-          seed: ProductionMaterialAnalysisSeed(
+          preparationDraftId: preparationDraftId,
+          seed: const ProductionMaterialAnalysisSeed(
             analysisId: 'analysis-1',
             warehouseId: 'warehouse-1',
           ),

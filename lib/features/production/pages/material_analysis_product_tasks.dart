@@ -1278,7 +1278,25 @@ abstract class _MaterialAnalysisProductTasksState
     List<_BucketPlanDraft>? planDrafts,
     bool silent = false,
     bool skipAutoClaim = false,
+  }) => _preparationCommands.legacyAction<bool>(
+    () => _issueWorkshopPlansInScope(
+      candidateInputs: candidateInputs,
+      planDrafts: planDrafts,
+      silent: silent,
+      skipAutoClaim: skipAutoClaim,
+    ),
+    busyValue: false,
+  );
+
+  Future<bool> _issueWorkshopPlansInScope({
+    List<_BucketCandidatePlanInput>? candidateInputs,
+    List<_BucketPlanDraft>? planDrafts,
+    bool silent = false,
+    bool skipAutoClaim = false,
   }) async {
+    if (_preparationCommands.hasLegacyUnknown) {
+      return _preparationCommands.retryLegacyOriginal();
+    }
     final analysis = _analysis;
     final warehouseId = _warehouseId;
     final candidates = candidateInputs ?? const <_BucketCandidatePlanInput>[];
@@ -1333,14 +1351,16 @@ abstract class _MaterialAnalysisProductTasksState
       context.appWarning('此来源已有未提交的汇总总量，请在汇总行下达或撤销草稿');
       return false;
     }
+    final originalBillDate = _dateText(_billDate)!;
+    final originalDeliveryDate = _dateText(_deliveryDate);
     final key = businessIdempotencyKey(
       'material-analysis-issue-plans',
       [
         analysis.analysisId,
         analysis.version,
         analysis.fingerprint,
-        _dateText(_billDate),
-        _dateText(_deliveryDate),
+        originalBillDate,
+        originalDeliveryDate,
         _preparationApproveNow,
         for (final line in lines) line.toJson().toString(),
         // 不同「是否扣可用数量」的选择是不同下达意图，幂等键必须分开。
@@ -1353,19 +1373,54 @@ abstract class _MaterialAnalysisProductTasksState
       _planSubmissionApproveNow = approveNow;
     });
     try {
-      final result = await ref
-          .read(productionPlanRepositoryProvider)
-          .issueWorkshopPlans(
-            analysis: analysis,
-            warehouseId: warehouseId,
-            idempotencyKey: key,
-            billDate: _dateText(_billDate)!,
-            deliveryDate: _dateText(_deliveryDate),
-            approveNow: approveNow,
-            lines: lines,
-            skipAutoClaim: skipAutoClaim,
-          );
-      if (!mounted || !currentScope()) return false;
+      final commandGroups = _preparationCommands.legacyGroups(
+        materialIds: lines
+            .map((line) => line.materialLineId)
+            .whereType<String>()
+            .toSet(),
+        productIds: lines
+            .map((line) => line.analysisLineId)
+            .whereType<String>()
+            .toSet(),
+      );
+      _preparationCommands.beginLegacyOriginal(
+        MaterialPreparationOriginalCommand.issuePlans(
+          analysis: analysis,
+          warehouseId: warehouseId,
+          idempotencyKey: key,
+          billDate: originalBillDate,
+          deliveryDate: originalDeliveryDate,
+          approveNow: approveNow,
+          lines: lines,
+          skipAutoClaim: skipAutoClaim,
+          rowLabels: _preparationCommands.legacyLabels(commandGroups),
+          lineIds: _preparationCommands.legacyLines(commandGroups),
+        ),
+      );
+      final result = await _preparationCommands.sendLegacyOriginal(
+        () => ref
+            .read(productionPlanRepositoryProvider)
+            .issueWorkshopPlans(
+              analysis: analysis,
+              warehouseId: warehouseId,
+              idempotencyKey: key,
+              billDate: originalBillDate,
+              deliveryDate: originalDeliveryDate,
+              approveNow: approveNow,
+              lines: lines,
+              skipAutoClaim: skipAutoClaim,
+            ),
+      );
+      if (result.analysis.analysisId != analysis.analysisId) {
+        throw const FormatException('下单回执对应另一份分析');
+      }
+      if (!mounted || !currentScope()) {
+        await _preparationCommands.failLegacyOriginal(
+          StateError('原身份已退休'),
+          received: true,
+        );
+        return false;
+      }
       setState(() {
         _setGenerating(false);
         _applyAnalysis(result.analysis);
@@ -1374,6 +1429,12 @@ abstract class _MaterialAnalysisProductTasksState
           _batchQtyControllers[line.analysisLineId]?.clear();
         }
       });
+      await _preparationCommands.acknowledgeLegacyOriginal(result.analysis);
+      if (!mounted ||
+          _sessionScopeKey() != sessionScope ||
+          !_preparationSubmissionStillCurrent) {
+        return true;
+      }
       refreshAfterProductionPlanGenerated(ref);
       final plans = result.plans;
       final approved = plans.any((plan) => plan.status == 'APPROVED');
@@ -1411,6 +1472,7 @@ abstract class _MaterialAnalysisProductTasksState
       await _showGeneratedPlans(plans);
       return true;
     } catch (error) {
+      await _preparationCommands.failLegacyOriginal(error);
       if (!mounted || !currentScope()) return false;
       if (await _recoverLatestAnalysisAfterConflict(
         error,
@@ -1424,7 +1486,8 @@ abstract class _MaterialAnalysisProductTasksState
       if (!mounted || !currentScope()) return false;
       setState(() => _setGenerating(false));
       context.appError(
-        productionErrorMessage(error, fallback: '创建生产计划失败，请刷新后重试'),
+        '${productionErrorMessage(error, fallback: '创建生产计划未完成')} '
+        '${_preparationCommands.hasLegacyUnknown ? '原编号和原内容已保留，只能原样重试核对。' : '明确未写入的行保留原输入，可修改后重试。'}',
         force: true,
       );
       return false;

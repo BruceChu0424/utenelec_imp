@@ -61,6 +61,7 @@ final class _MaterialAggregateSubmission {
     bool? skipAutoClaim,
     MaterialReceiptAllocationMode? receiptAllocationMode,
   }) async {
+    if (table.hasLegacyUnknown) return table.retryLegacyOriginal();
     if (running || table.saving || selected.isEmpty) return false;
     final sessionScope = owner._sessionScopeKey();
     final analysis = owner._analysis;

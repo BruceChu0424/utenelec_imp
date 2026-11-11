@@ -847,7 +847,7 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
       await repository.create(body);
       if (mounted && current()) {
         context.appSuccess('模具已创建');
-        await pane?.reload();
+        await pane?.reload(confirmedWrite: true);
       }
       return true;
     }
@@ -857,7 +857,7 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
       errorFallback: '更新失败，请稍后重试', // TODO(l10n): 补 arb
       isCurrent: current,
     );
-    if (ok && current()) await pane?.reload();
+    if (ok && current()) await pane?.reload(confirmedWrite: true);
     return ok;
   }
 
@@ -904,7 +904,7 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
       historyEntityType: 'moulds',
       historyRecordId: detail.id,
       isCurrent: current,
-      onHistoryChanged: pane.reload,
+      onHistoryChanged: () => pane.reload(confirmedWrite: true),
       canEdit: perms.contains(Perm.mouldEdit),
       canDelete: perms.contains(Perm.mouldDelete),
       onToggleStatus: _canStatusMaster
@@ -929,7 +929,9 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
                 success: next == '禁用' ? '已停用' : '已启用',
                 isCurrent: current,
               );
-              if (ok && mounted && current()) await pane.reload();
+              if (ok && mounted && current()) {
+                await pane.reload(confirmedWrite: true);
+              }
             }
           : null,
       statusActionLabel: detail.status == '使用' ? '停用' : '启用',

@@ -1,3 +1,4 @@
+import '../../../core/network/data_write_revision.dart';
 import '../../../core/formatters/exact_number_text.dart';
 import '../../../core/l10n/localized_text.dart';
 import '../models/goods_detail_sequence.dart';
@@ -844,7 +845,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
             height: UtenTableToolbar.controlHeight,
             onPressed: () => _openGoodsImport(
               onImported: () {
-                pane.reload(page: 1);
+                pane.reload(page: 1, confirmedWrite: true);
                 shellReload();
               },
             ),
@@ -854,9 +855,16 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
       onCreate: (pane) async {
         final categoryId = pane.categoryId;
         if (categoryId == null) return;
+        final writeRevision = ref.read(dataWriteRevisionProvider);
         await _navigation.push<void>(RoutePath.basicinfoGoodsNew(categoryId));
         // 新建货品编号最大，按编号正序落在列表最下面——跳到最后一页能看到它。
-        if (mounted) await _reloadToLastPage(pane);
+        if (mounted) {
+          await _reloadToLastPage(
+            pane,
+            confirmedWrite:
+                ref.read(dataWriteRevisionProvider) != writeRevision,
+          );
+        }
       },
       onOpen: _showGoodsDetail,
       rowMenuOverride: _goodsMenuItems,
@@ -1189,13 +1197,13 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
       }),
     );
     if (outcome == null || !mounted) return;
+    if (outcome.succeeded > 0) pane.retireAfterConfirmedWrite();
     await showMasterBatchOutcome(context, outcome, action: '粘贴', noun: '货品');
     if (mounted && createdIds.isNotEmpty) {
       final revealed = await pane.reveal(createdIds.last);
       if (!mounted) return;
-      if (!revealed) {
-        await pane.reload();
-        if (mounted) context.appInfo('货品已创建，当前筛选未包含新货品；清除筛选后可查看');
+      if (!revealed && !pane.busy && mounted) {
+        context.appInfo('货品已创建，当前筛选未包含新货品；清除筛选后可查看');
       }
       pane.selectIds(createdIds);
     }
@@ -1205,9 +1213,10 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
   /// 排在列表下面（在祖先分类下浏览、子树里存在编号序更大的别族货品时例外，
   /// 结果弹窗已报成功数，此处不保证视口正好落在副本行）。
   Future<void> _reloadToLastPage(
-    MasterEntityPaneController<GoodsListItem, GoodsDetail> pane,
-  ) async {
-    await pane.reload();
+    MasterEntityPaneController<GoodsListItem, GoodsDetail> pane, {
+    bool confirmedWrite = false,
+  }) async {
+    await pane.reload(confirmedWrite: confirmedWrite);
     final last = pane.page?.totalPages ?? 1;
     if (last > 1) await pane.reload(page: last);
     pane.scrollToEnd();
@@ -1349,6 +1358,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
     }
     _bomBatchDialogOpen = true;
     try {
+      final writeRevision = ref.read(dataWriteRevisionProvider);
       final result = await showGoodsBomBatchMaintenanceDialog(
         context: context,
         action: action,
@@ -1375,7 +1385,9 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
         }
       }
       // A user may close while a receipt is uncertain; reread the authoritative current data.
-      await pane.reload();
+      await pane.reload(
+        confirmedWrite: ref.read(dataWriteRevisionProvider) != writeRevision,
+      );
     } finally {
       _bomBatchDialogOpen = false;
     }
@@ -1592,6 +1604,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
   ) async {
     if (_detailOpening) return;
     _detailOpening = true;
+    final writeRevision = ref.read(dataWriteRevisionProvider);
     try {
       await _navigation.push<void>(
         RoutePath.basicinfoGoodsDetail(g.id),
@@ -1602,7 +1615,11 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
     } finally {
       _detailOpening = false;
     }
-    if (mounted) await pane.reload();
+    if (mounted) {
+      await pane.reload(
+        confirmedWrite: ref.read(dataWriteRevisionProvider) != writeRevision,
+      );
+    }
   }
 
   // ---- 货品列定义（表格列头 + 单元格取值 + 筛选键） ---------------------

@@ -1,3 +1,4 @@
+import '../../../shared/paging/complete_output_view_mixin.dart';
 import '../../../components/feedback/uten_task_progress_dialog.dart';
 import '../../../shared/paging/paged_read_intent.dart';
 import '../../../shared/auth/read_owner_fence.dart';
@@ -144,7 +145,11 @@ abstract interface class MasterEntityPaneController<TItem, TDetail> {
   bool get busy;
 
   /// 重拉当前页(以及前导分组)；[page] 为空时留在当前页。
-  Future<void> reload({int? page});
+  Future<void> reload({int? page, bool confirmedWrite = false});
+
+  /// Retire output qualification immediately after an authoritative write receipt.
+  /// Keeps editor input, selection and unknown-command recovery state intact.
+  void retireAfterConfirmedWrite();
 
   /// 当前页加载完成后滚到列表末尾，供追加/粘贴完成后的定位使用。
   void scrollToEnd();
@@ -384,7 +389,9 @@ class MasterEntityDetailPane<TItem, TDetail> extends ConsumerStatefulWidget {
 
 class _MasterEntityDetailPaneState<TItem, TDetail>
     extends ConsumerState<MasterEntityDetailPane<TItem, TDetail>>
-    with ReadViewActivityMixin<MasterEntityDetailPane<TItem, TDetail>>
+    with
+        ReadViewActivityMixin<MasterEntityDetailPane<TItem, TDetail>>,
+        CompleteOutputViewMixin<MasterEntityDetailPane<TItem, TDetail>>
     implements MasterEntityPaneController<TItem, TDetail> {
   @override
   Future<void> onReadViewResumed() async {
@@ -424,9 +431,6 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
   bool _listLoading = false;
   bool _displayedQueryStale = false;
   String? _listError;
-  int _acceptedQueryVersion = -1;
-  SensitiveReadBoundary? _acceptedOwner;
-  int? _acceptedReadRevision;
   List<MasterDataGroup<TItem>> _groups = const [];
   String? _groupError;
   bool _groupLoading = false;
@@ -465,14 +469,14 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
   // Progressive rows are display-only. A complete snapshot remains usable on
   // a same-query refresh, including a transient refresh failure, until its
   // identity, read revision or query is retired.
+  @override
+  Object get completeOutputQuery => [_c.batchEntityPath, _queryVersion];
+  @override
+  bool get completeOutputHasData => _page != null;
   bool get _completeResultCurrent =>
-      mounted &&
-      _page != null &&
-      !_queryPending &&
-      _error == null &&
-      _acceptedQueryVersion == _queryVersion &&
-      _acceptedOwner == ref.read(sensitiveReadBoundaryProvider) &&
-      _acceptedReadRevision == ref.read(readScopeRevisionProvider);
+      completeOutputCurrent && !_queryPending && _error == null;
+  @override
+  bool get completeOutputActionReady => _completeResultCurrent;
 
   @override
   void initState() {
@@ -604,7 +608,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
     // This callback is awaited before the controller advances to another row.
     // Refresh each completed row's server version, including partial success.
     if (current()) {
-      await reload();
+      await reload(confirmedWrite: true);
       if (mounted && _listError != null) {
         setState(() {
           _listError = '修改已保存，但列表刷新失败。请重新加载后继续编辑，不要重复保存。\n$_listError';
@@ -652,6 +656,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
               },
               afterSave: () async {
                 if (!mounted || widget.categoryId != categoryId) return;
+                retireAfterConfirmedWrite();
                 await config.afterSave?.call();
                 await reload();
                 if (mounted && _listError != null) {
@@ -748,9 +753,10 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
 
   @override
   Future<bool> reveal(String id) async {
-    if (busy) return false;
+    if (_busy || _queryPending || _inlineEdit.active) return false;
     final queryVersion = _queryVersion;
-    if (!(_page?.items.any((item) => _c.idOf(item) == id) ?? false)) {
+    if (!_completeResultCurrent ||
+        !(_page?.items.any((item) => _c.idOf(item) == id) ?? false)) {
       await reload();
     }
     // The complete current query already owns row positions. Never translate
@@ -758,6 +764,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
     await WidgetsBinding.instance.endOfFrame;
     await _tableRows.settled;
     if (!mounted ||
+        !_completeResultCurrent ||
         queryVersion != _queryVersion ||
         !(_tableRows.items.any((item) => _c.idOf(item) == id) ||
             (_page?.items.any((item) => _c.idOf(item) == id) ?? false))) {
@@ -801,8 +808,10 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
   void clearSelection() => selectIds(const []);
 
   @override
-  Future<void> reload({int? page}) async {
-    if (!mounted || widget.externalSearchPending) return;
+  Future<void> reload({int? page, bool confirmedWrite = false}) async {
+    if (!mounted) return;
+    if (confirmedWrite) retireAfterConfirmedWrite();
+    if (widget.externalSearchPending) return;
     await Future.wait([
       _loadList(1),
       _loadGroups(),
@@ -811,8 +820,21 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
   }
 
   @override
+  void retireAfterConfirmedWrite() {
+    if (!mounted) return;
+    // Keep the editor's accepted data binding as a read-only scaffold. Output
+    // qualification and pending read publication retire independently; the
+    // following reload reads fresh data without discarding raw editor input.
+    _listRequests.begin();
+    setState(() {
+      completeOutputGuard.retireAfterConfirmedWrite();
+      _listLoading = false;
+    });
+  }
+
+  @override
   Future<T?> runExclusive<T>(Future<T> Function() action) async {
-    if (_busy || _queryPending || _inlineEdit.active) return null;
+    if (_busy || !_completeResultCurrent || _inlineEdit.active) return null;
     setState(() => _busy = true);
     try {
       return await action();
@@ -873,6 +895,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
     final label = _c.labelOf(row);
     final noun = _c.noun;
     final result = await _writeCommand<bool>(
+      hasConfirmedWrite: (value) => value,
       canWrite: () => _c.canStatus && _rowWritable(row),
       confirm: (scope) => confirmMasterStatusChange(
         context,
@@ -907,6 +930,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
     final path = _c.batchEntityPath;
     final noun = _c.noun;
     final result = await _writeCommand<MasterBatchResult>(
+      hasConfirmedWrite: (value) => value.succeeded > 0,
       canWrite: () => _c.canStatus && _targetsWritable(targets),
       confirm: (scope) => confirmMasterStatusChange(
         context,
@@ -937,6 +961,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
     final single = targets.length == 1 ? labels[targets.single] : null;
     MasterDeleteResolution? resolution;
     final result = await _writeCommand<MasterBatchResult>(
+      hasConfirmedWrite: (value) => value.succeeded > 0,
       canWrite: () => _c.canDelete && _targetsWritable(targets),
       confirm: (scope) async =>
           await showDialog<bool>(
@@ -1079,6 +1104,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
   }
 
   Future<_PaneWriteResult<R>?> _writeCommand<R>({
+    required bool Function(R value) hasConfirmedWrite,
     required bool Function() canWrite,
     required Future<bool> Function(Widget Function(BuildContext, Widget))
     confirm,
@@ -1093,7 +1119,8 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
     String? progressStatus,
     String? progressDetail,
   }) async {
-    if (_busy ||
+    if (!_completeResultCurrent ||
+        _busy ||
         _queryPending ||
         _inlineEdit.active ||
         _loading ||
@@ -1176,9 +1203,9 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
         }
       }
     });
-    return value == null || !current()
-        ? null
-        : _PaneWriteResult(value, current, scope);
+    if (value == null || !current()) return null;
+    if (hasConfirmedWrite(value)) retireAfterConfirmedWrite();
+    return _PaneWriteResult(value, current, scope);
   }
 
   List<MasterBatchItem> _batchItems(Set<String> ids) {
@@ -1361,6 +1388,10 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
           ),
         );
     final generation = _listRequests.begin();
+    final outputRead = beginCompleteOutputRead<PagedResult<TItem>>(
+      _page,
+      preserveEditorInput: _inlineEdit.active,
+    );
     setState(() {
       _listLoading = true;
       _listError = null;
@@ -1370,10 +1401,10 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
     // _listLoading stays true until the complete result, which keeps export,
     // print, batch and write entry points disabled; any failed or retired read
     // takes the progressive rows down and restores what was on screen before.
-    var showedProgressive = false;
-    final beforeProgressive = _completeResultCurrent ? _page : null;
     void retireProgressive() {
-      if (showedProgressive) _page = beforeProgressive;
+      if (completeOutputGuard.isCurrent(outputRead)) {
+        _page = outputRead.fallback;
+      }
     }
 
     try {
@@ -1394,8 +1425,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
           useCache: useCache,
           onProgressiveBatch: (partial) {
             if (!mounted || !requestCurrent()) return;
-            if (beforeProgressive != null) return;
-            showedProgressive = true;
+            if (!mayPublishCompleteOutputPrefix(outputRead)) return;
             setState(() {
               _page = partial;
               _pageNum = 1;
@@ -1413,6 +1443,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
               return;
             }
             _pageReads.invalidate();
+            completeOutputGuard.retire();
             _listRequests.begin();
             setState(() {
               _page = null;
@@ -1424,12 +1455,13 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
         ),
         slot: 'master-list',
       );
-      if (!readerCurrent() || !_listRequests.isCurrent(generation)) return;
+      if (!readerCurrent() ||
+          !_listRequests.isCurrent(generation) ||
+          !acceptCompleteOutputRead(outputRead)) {
+        return;
+      }
       setState(() {
         _page = result;
-        _acceptedQueryVersion = queryVersion;
-        _acceptedOwner = owner;
-        _acceptedReadRevision = readRevision;
         _pageNum = result.page;
         _displayedQueryStale = false;
       });
@@ -1441,7 +1473,10 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
         return;
       }
       if (!readerCurrent() || !_listRequests.isCurrent(generation)) return;
-      if (_pageAccessDenied(e)) _pageReads.invalidate();
+      if (_pageAccessDenied(e)) {
+        _pageReads.invalidate();
+        completeOutputGuard.retire();
+      }
       setState(() {
         retireProgressive();
         if (_displayedQueryStale || _pageAccessDenied(e)) _page = null;
@@ -1655,6 +1690,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
       throw StateError('当前查询尚无完整结果，请重新加载后再输出');
     }
     final version = _queryVersion;
+    final qualified = captureCompleteOutput();
     final captured = _query(forPrint: true);
     final filters = Map<String, String?>.unmodifiable(captured.filters);
     final boundary = ref.read(sensitiveReadBoundaryProvider);
@@ -1667,7 +1703,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
       if (retired || !mounted) return false;
       retired =
           version != _queryVersion ||
-          !_completeResultCurrent ||
+          !qualified() ||
           boundary != ref.read(sensitiveReadBoundaryProvider) ||
           epoch != ref.read(exportContextEpochProvider);
       return !retired;
@@ -1717,9 +1753,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
     final filename = categoryName?.isNotEmpty == true
         ? categoryName!
         : export.title;
-    final outputQueryVersion = _queryVersion;
-    bool outputCurrent() =>
-        _completeResultCurrent && outputQueryVersion == _queryVersion;
+    final outputCurrent = captureCompleteOutput();
     return [
       UtenPrintPreviewButton(
         enabled: _completeResultCurrent,
@@ -1738,6 +1772,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
       ...?_c.toolbarBeforeExportActions?.call(this),
       UtenExportButton(
         enabled: _completeResultCurrent,
+        taskRecoveryEnabled: true,
         prepareExport: () async {
           if (!outputCurrent()) return null;
           return UtenExportSelection(

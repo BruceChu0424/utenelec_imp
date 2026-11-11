@@ -1,3 +1,6 @@
+import '../../../core/network/data_write_revision.dart';
+import 'dart:async';
+import '../../../shared/paging/complete_output_view_mixin.dart';
 import '../repositories/flat_master_summary_gateway.dart';
 import '../../../shared/paging/complete_paged_snapshot.dart';
 import '../../../shared/paging/paged_read_intent.dart';
@@ -70,7 +73,19 @@ class AccountPage extends ConsumerStatefulWidget {
 class _AccountPageState extends ConsumerState<AccountPage>
     with
         MasterInlinePageMixin<AccountPage, AccountListItem>,
-        ScopedPagedReadViewMixin<AccountPage> {
+        ScopedPagedReadViewMixin<AccountPage>,
+        CompleteOutputViewMixin<AccountPage> {
+  @override
+  Object get completeOutputQuery => [
+    ref.read(accountRepositoryProvider),
+    _keyword,
+    _mainListFilters,
+    _sortKey,
+    _sortAsc,
+  ];
+  @override
+  bool get completeOutputHasData => _page != null;
+
   @override
   Future<void> onReadViewResumed() => _loadAccounts(1);
 
@@ -90,11 +105,14 @@ class _AccountPageState extends ConsumerState<AccountPage>
   }
 
   @override
+  CompleteOutputGuard get inlineOutputGuard => completeOutputGuard;
+  @override
   String get inlineEntityType => 'accounts';
   @override
   bool get inlineCanEdit => _canEdit && !_batchBusy;
   @override
-  bool get inlineReadReady => _page != null && !_loading && _error == null;
+  bool get inlineReadReady =>
+      completeOutputCurrent && !_loading && _error == null;
   @override
   String inlineIdOf(AccountListItem row) => row.id;
   @override
@@ -350,18 +368,17 @@ class _AccountPageState extends ConsumerState<AccountPage>
     final filters = Map<String, String?>.unmodifiable(_mainListFilters);
     final sort = _sortKey;
     final order = sort == null ? null : (_sortAsc ? 'asc' : 'desc');
-    Object pagingQuery() => [
-      ref.read(accountRepositoryProvider),
-      _keyword,
-      _mainListFilters,
-      _sortKey,
-      _sortAsc,
-    ];
+    Object pagingQuery() => completeOutputQuery;
+    final outputRead = beginCompleteOutputRead(
+      _page,
+      preserveEditorInput: inlineEdit.active,
+    );
     try {
       final result = await readScopedPage<AccountListItem>(
         page,
         query: pagingQuery(),
         currentQuery: pagingQuery,
+        outputGuard: completeOutputGuard,
         useCache: useCache,
         fetchComplete: completeFlatMasterList<AccountListItem>(
           repository,
@@ -393,6 +410,7 @@ class _AccountPageState extends ConsumerState<AccountPage>
               !_listRequests.isCurrent(generation)) {
             return;
           }
+          if (!mayPublishCompleteOutputPrefix(outputRead)) return;
           setState(() => _page = partial);
         },
       );
@@ -401,6 +419,7 @@ class _AccountPageState extends ConsumerState<AccountPage>
           !_listRequests.isCurrent(generation)) {
         return;
       }
+      if (!acceptCompleteOutputRead(outputRead)) return;
       setState(() {
         _page = result;
         for (final item in result.items) {
@@ -414,10 +433,22 @@ class _AccountPageState extends ConsumerState<AccountPage>
         _loading = false;
       });
     } on ApiException catch (error) {
-      if (isRetiredViewRead(error)) return;
+      if (isRetiredViewRead(error)) {
+        restoreCompleteOutputRead(outputRead, (fallback) {
+          _page = fallback;
+          _loading = false;
+        }, error: error);
+        return;
+      }
       if (!mounted ||
           !inlineAcceptsRead(inlineReadBoundary) ||
           !_listRequests.isCurrent(generation)) {
+        return;
+      }
+      if (!restoreCompleteOutputRead(outputRead, (fallback) {
+        _page = fallback;
+        _loading = false;
+      }, error: error)) {
         return;
       }
       setState(() {
@@ -425,10 +456,22 @@ class _AccountPageState extends ConsumerState<AccountPage>
         _loading = false;
       });
     } catch (retiredReadError) {
-      if (isRetiredViewRead(retiredReadError)) return;
+      if (isRetiredViewRead(retiredReadError)) {
+        restoreCompleteOutputRead(outputRead, (fallback) {
+          _page = fallback;
+          _loading = false;
+        }, error: retiredReadError);
+        return;
+      }
       if (!mounted ||
           !inlineAcceptsRead(inlineReadBoundary) ||
           !_listRequests.isCurrent(generation)) {
+        return;
+      }
+      if (!restoreCompleteOutputRead(outputRead, (fallback) {
+        _page = fallback;
+        _loading = false;
+      }, error: retiredReadError)) {
         return;
       }
       setState(() {
@@ -437,6 +480,9 @@ class _AccountPageState extends ConsumerState<AccountPage>
       });
     } finally {
       await disabledLoad;
+      if (mounted && _listRequests.isCurrent(generation)) {
+        setState(() => _loading = false);
+      }
     }
   }
 
@@ -735,6 +781,7 @@ class _AccountPageState extends ConsumerState<AccountPage>
       onSubmit: (body) async {
         await ref.read(accountRepositoryProvider).create(body);
         if (mounted) {
+          retireCompleteOutputAfterWrite();
           context.appSuccess('账户已创建');
           await _refresh();
         }
@@ -781,12 +828,16 @@ class _AccountPageState extends ConsumerState<AccountPage>
     if (!await inlineEdit.confirmLeave(context) || !mounted) return;
     if (_detailBusy) return;
     _detailBusy = true;
+    final writeRevision = ref.read(dataWriteRevisionProvider);
     try {
       await _navigation.push(RoutePath.basicinfoAccountDetail(id, edit: edit));
     } finally {
       _detailBusy = false;
     }
     if (!mounted) return;
+    retireCompleteOutputAfterWrite(
+      confirmed: ref.read(dataWriteRevisionProvider) != writeRevision,
+    );
     await _refresh();
   }
 
@@ -1096,6 +1147,7 @@ class _AccountPageState extends ConsumerState<AccountPage>
       }
     }
     if (result == null || !current()) return;
+    retireCompleteOutputAfterWrite(confirmed: result.succeeded > 0);
     final failed = result.failures.map((item) => item.id).toSet();
     setState(() {
       _selectedAccountIds = failed;
@@ -1123,6 +1175,7 @@ class _AccountPageState extends ConsumerState<AccountPage>
       compactOverride: compactOverride ? true : null,
     );
     if (result == null || !mounted || !inlineAcceptsRead(boundary)) return;
+    retireCompleteOutputAfterWrite(confirmed: result.changedCount > 0);
     context.appSuccess(
       '余额核对批次 ${result.batchNo ?? result.id} 已提交，'
       '更新 ${result.changedCount}/${result.itemCount} 个账户',
@@ -1148,6 +1201,7 @@ class _AccountPageState extends ConsumerState<AccountPage>
         accountId: account.id,
       );
       if (result == null || !mounted || !inlineAcceptsRead(boundary)) return;
+      retireCompleteOutputAfterWrite();
       context.appSuccess('当前余额已保存，已保留本次调整记录');
       // Keep the editing session and unrelated master-data drafts intact.
       await _refresh(preserveSelection: true, page: _visibleReadPage);
@@ -1441,6 +1495,8 @@ class _AccountPageState extends ConsumerState<AccountPage>
   };
 
   Future<UtenPrintTable> _printLoader() async {
+    if (!completeOutputCurrent) throw StateError('当前查询尚无完整结果，请重新加载后再输出');
+    final qualified = captureCompleteOutput();
     final repository = ref.read(accountRepositoryProvider);
     final boundary = ref.read(sensitiveReadBoundaryProvider);
     final epoch = ref.read(exportContextEpochProvider);
@@ -1453,7 +1509,7 @@ class _AccountPageState extends ConsumerState<AccountPage>
     final columns = List.of(_columns);
     var retired = false;
     bool current() {
-      if (retired || !mounted) return false;
+      if (retired || !mounted || !qualified()) return false;
       retired =
           version != _commandEpoch ||
           epoch != ref.read(exportContextEpochProvider) ||
@@ -1530,7 +1586,10 @@ class _AccountPageState extends ConsumerState<AccountPage>
               actions: [
                 MasterOperationHistoryActions(
                   entityType: 'accounts',
-                  onChanged: _refresh,
+                  onChanged: () {
+                    retireCompleteOutputAfterWrite();
+                    unawaited(_refresh());
+                  },
                 ),
                 UtenRefreshButton(
                   busy: _loading,
@@ -1628,8 +1687,9 @@ class _AccountPageState extends ConsumerState<AccountPage>
                                 ? null
                                 : [
                                     UtenPrintPreviewButton(
+                                      enabled: completeOutputCurrent,
+                                      isCurrent: captureCompleteOutput(),
                                       title: '账户资料',
-                                      subtitle: '当前筛选的完整结果',
                                       loader: _printLoader,
                                       exportEndpoint: '/master/accounts/export',
                                       exportPermission: Perm.accountExport,
@@ -1642,6 +1702,15 @@ class _AccountPageState extends ConsumerState<AccountPage>
                                       icon: null,
                                     ),
                                     UtenExportButton(
+                                      taskRecoveryEnabled: true,
+                                      enabled: completeOutputCurrent,
+                                      prepareExport: () async =>
+                                          !completeOutputCurrent
+                                          ? null
+                                          : UtenExportSelection(
+                                              stillCurrent:
+                                                  captureCompleteOutput(),
+                                            ),
                                       endpoint: '/master/accounts/export',
                                       requiredPermission: Perm.accountExport,
                                       report: '',

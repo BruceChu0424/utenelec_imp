@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/inputs/uten_input.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
@@ -40,6 +41,7 @@ class _Api extends ApiClient {
       receiptGate,
       downloadGate;
   bool loseCreate = false, losePrecision = false, precisionAccepted = false;
+  bool missingOriginal = false;
   String status = 'SUCCEEDED';
   Map<String, dynamic> job(String id) => {
     'id': id,
@@ -90,6 +92,9 @@ class _Api extends ApiClient {
     final gate = readGate;
     readGate = null;
     if (gate != null) await gate.future;
+    if (missingOriginal) {
+      throw ApiException('NOT_FOUND', '原任务尚未发现', httpStatus: 404);
+    }
     return job(path.split('/').last);
   }
 
@@ -178,6 +183,7 @@ Future<_Environment> _open(
   Size? size,
   double textScale = 1,
   bool dark = false,
+  bool Function()? canCreateNew,
 }) async {
   if (size != null) {
     tester.view.physicalSize = size;
@@ -232,6 +238,7 @@ Future<_Environment> _open(
             'gl/balance-sheet',
           ),
     stillCurrent: current,
+    canCreateNew: canCreateNew,
     onDownload: (job, _) async {
       await c.download(job.id, '');
     },
@@ -277,6 +284,98 @@ void main() {
     UtenBusyOverlay.debugResetYield();
   });
   tearDown(UtenBusyOverlay.debugResetYield);
+
+  testWidgets('recovery without a complete query never auto creates a task', (
+    tester,
+  ) async {
+    final api = _Api();
+    final env = await _open(tester, api, canCreateNew: () => false);
+    await _frames(tester);
+    expect(api.creates, isEmpty);
+    expect(find.textContaining('没有可恢复的同类任务'), findsOneWidget);
+    expect(
+      tester
+          .widget<UtenButton>(find.widgetWithText(UtenButton, '按当前筛选新建'))
+          .onPressed,
+      isNull,
+    );
+    await env.close(tester);
+  });
+
+  testWidgets(
+    'recovery downloads the original completed job while current creation is blocked',
+    (tester) async {
+      const id = '00000000-0000-4000-8000-000000008001';
+      final api = _Api();
+      api.history = [api.job(id)];
+      final env = await _open(tester, api, canCreateNew: () => false);
+      await _frames(tester);
+      await tester.tap(find.byType(ListTile).first);
+      await _frames(tester);
+      expect(api.reads.single, endsWith(id));
+      expect(
+        tester
+            .widget<UtenButton>(find.widgetWithText(UtenButton, '按当前筛选新建'))
+            .onPressed,
+        isNull,
+      );
+      await tester.tap(find.text('下载文件'));
+      await _frames(tester);
+      expect(api.creates, isEmpty);
+      expect(api.downloads.single, contains('/$id/download'));
+      await env.close(tester);
+    },
+  );
+
+  testWidgets(
+    'recovery retries only the frozen original ID and intent without a new complete query',
+    (tester) async {
+      final api = _Api()..missingOriginal = true;
+      final client = ReportExportJobsClient(
+        api,
+        await api.captureRequestScope(isCurrent: () => true),
+      );
+      final original = ReportExportJobRequest.create(
+        domain: 'finance',
+        report: 'gl/balance-sheet',
+        parameters: const {
+          'dateFrom': '2026-01-01',
+          'dateTo': '2026-01-31',
+          'selectedIds': '["original-a","original-b"]',
+        },
+      );
+      final prefs = await SharedPreferences.getInstance();
+      final store = ReportExportPendingStore(
+        prefs,
+        client.scope.identity,
+        'finance',
+        'gl/balance-sheet',
+      );
+      await store.save(original);
+      final env = await _open(
+        tester,
+        api,
+        client: client,
+        store: store,
+        canCreateNew: () => false,
+      );
+      await _frames(tester);
+      expect(api.creates, isEmpty);
+      expect(store.read()!.json, original.json);
+      api.missingOriginal = false;
+      await tester.tap(find.text('按原编号重试'));
+      await _frames(tester);
+      expect(api.creates.single, original.json);
+      expect(env.store.read(), isNull);
+      expect(
+        tester
+            .widget<UtenButton>(find.widgetWithText(UtenButton, '按当前筛选新建'))
+            .onPressed,
+        isNull,
+      );
+      await env.close(tester);
+    },
+  );
 
   testWidgets(
     'initial create and every ordinary task button own one real wait mask with guarded reentry',

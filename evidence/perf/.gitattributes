@@ -1,0 +1,12 @@
+*.log binary
+*.exit binary
+*.json binary
+*.txt binary
+*.sql binary
+*.dump binary
+*.java text eol=lf
+failed-compile-source.java binary
+*.ps1 text eol=lf
+*.md text eol=lf
+.gitattributes text eol=lf
+.gitignore text eol=lf

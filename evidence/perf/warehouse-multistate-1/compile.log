@@ -1,0 +1,6 @@
+evidence\perf\WarehouseEquivalenceProbe.java:33: ����: �Ҳ�������
+        var mapper=new ObjectMapper().enable(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOAT);var receipts=new ArrayList<Map<String,Object>>();
+                                                                   ^
+  ����:   ���� USE_BIG_DECIMAL_FOR_FLOAT
+  λ��: �� DeserializationFeature
+1 ������

@@ -950,6 +950,14 @@ class AggregateMaterialOrderEndToEndTest {
      *  follow the dependent path; this is the user-visible "batch order from the
      *  preparation page" shape the plan budgets. */
     @Test void twentyMaterialLinesCompleteWithinDeadlineBudget() {
+        twentyMaterialLinesCompleteWithinDeadlineBudget(false);
+    }
+
+    @Test void twentyMaterialLinesCompleteWithinDeadlineBudgetDuringRealConcurrentDetailReads() {
+        twentyMaterialLinesCompleteWithinDeadlineBudget(true);
+    }
+
+    private void twentyMaterialLinesCompleteWithinDeadlineBudget(boolean concurrentReads) {
         String tag="aggregate-budget-"+UUID.randomUUID();
         var world=fixture.seedWorld(tag);fixture.loginAs(world.superAdminUserId());
         Object assignment=ReflectionTestUtils.invokeMethod(fixture,"productionAssignment",tag);
@@ -980,16 +988,53 @@ class AggregateMaterialOrderEndToEndTest {
         groups.add(input(c,parent,"MAKE","20",false));
         for(UUID material:materials)groups.add(input(c,material,"BUY","20",false));
         var command=command(c,groups);
+        var keepReading=new java.util.concurrent.atomic.AtomicBoolean(concurrentReads);
+        var submitting=new java.util.concurrent.atomic.AtomicBoolean(false);
+        var overlappingReads=new java.util.concurrent.atomic.AtomicInteger();
+        var readerReady=new java.util.concurrent.CountDownLatch(concurrentReads?1:0);
+        var readerPool=concurrentReads?java.util.concurrent.Executors.newSingleThreadExecutor():null;
+        AuthUser readerUser=(AuthUser)SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        java.util.concurrent.Future<?> reader=concurrentReads?readerPool.submit(()->{
+            SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(readerUser,null,readerUser.getAuthorities()));
+            var readMeasurement=ProductionJdbcMeasurement.begin();
+            try {
+                readerReady.countDown();
+                while(keepReading.get()) {
+                    boolean startedDuringSubmit=submitting.get();
+                    var snapshot=analyses.detail(c.analysis());
+                    assertEquals(c.analysis(),snapshot.analysisId());
+                    assertTrue(snapshot.flatMaterials().stream().map(MaterialView::goodsId).collect(java.util.stream.Collectors.toSet()).containsAll(materials));
+                    if(startedDuringSubmit&&submitting.get())overlappingReads.incrementAndGet();
+                }
+            } finally {
+                ProductionJdbcMeasurement.end();SecurityContextHolder.clearContext();
+                System.out.println("[aggregate-submit-20-concurrent-read-jdbc] "+readMeasurement.result());
+            }
+        }):null;
+        try {assertTrue(readerReady.await(10,java.util.concurrent.TimeUnit.SECONDS));}
+        catch(InterruptedException interrupted){Thread.currentThread().interrupt();throw new AssertionError(interrupted);}
+        submitting.set(true);
         long beganAt=System.nanoTime();
         var measurement=ProductionJdbcMeasurement.begin();
-        SubmitResult issued;
+        SubmitResult issued;long elapsedMs;
+        Throwable submitFailure=null;
         try {issued=writer.submit(c.analysis(),command);}
+        catch(RuntimeException|Error failure){submitFailure=failure;throw failure;}
         finally {
             ProductionJdbcMeasurement.end();
             System.out.println("[aggregate-submit-20-jdbc] "+measurement.result());
+            elapsedMs=(System.nanoTime()-beganAt)/1_000_000;
+            submitting.set(false);keepReading.set(false);
+            if(readerPool!=null) {
+                try {reader.get(30,java.util.concurrent.TimeUnit.SECONDS);}
+                catch(Exception failure){
+                    if(submitFailure!=null)submitFailure.addSuppressed(failure);
+                    else throw new AssertionError("Actual concurrent detail read failed",failure);
+                } finally {readerPool.shutdownNow();}
+            }
         }
-        long elapsedMs=(System.nanoTime()-beganAt)/1_000_000;
-        System.out.println("[aggregate-submit-20] elapsedMs="+elapsedMs);
+        if(concurrentReads)assertTrue(overlappingReads.get()>0,"The representative read must actually overlap the submit");
+        System.out.println("[aggregate-submit-20] elapsedMs="+elapsedMs+" load="+(concurrentReads?"one-real-concurrent-detail-client":"quiet")+" overlappingReads="+overlappingReads.get());
         assertEquals(21,issued.batches().size());
         assertEquals(1,count("SELECT COUNT(*) FROM production_plans WHERE material_analysis_id=? AND NOT is_deleted",c.analysis()));
         amount("400",db.queryForObject("SELECT SUM(item.qty) FROM purchase_request_items item WHERE NOT item.is_deleted AND item.request_id IN(SELECT external_document_id FROM preplan_supply_actions WHERE analysis_id=? AND route='BUY' AND status<>'CANCELLED')",BigDecimal.class,c.analysis()));

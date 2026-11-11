@@ -1,0 +1,6 @@
+**/probes/
+**/build/
+**/tmp/
+**/rows/
+*.dump
+!**/*.log

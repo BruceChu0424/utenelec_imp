@@ -111,7 +111,7 @@ namespace Uten.Legacy.Core
                     socket.ReceiveTimeout = (int)SessionWatchContract.ForRequest(request,
                         ClientReleaseReceiveBudget.ForRequest(request, configuration.RequestTimeout)).TotalMilliseconds;
                     return ManagedHttp11.SendAndReceive(protocol.Stream, request,
-                        responseSink == null ? configuration.MaxResponseBytes : responseSink.MaximumBytes,
+                        responseSink == null ? UnitExportReplyPermit.ResponseLimit(request, configuration.MaxResponseBytes) : responseSink.MaximumBytes,
                         originalCancellation, status =>
                         {
                             var auth = request.Method == HttpMethod.Post && status >= 200 && status <= 299

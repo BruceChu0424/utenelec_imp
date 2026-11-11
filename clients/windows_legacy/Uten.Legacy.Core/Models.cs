@@ -121,9 +121,9 @@ namespace Uten.Legacy.Core
             return result;
         }
 
-        internal static string Serialize(object value)
+        internal static string Serialize(object value, int maximumLength = 8388608)
         {
-            return new JavaScriptSerializer { MaxJsonLength = 8388608, RecursionLimit = 64 }.Serialize(value);
+            return new JavaScriptSerializer { MaxJsonLength = maximumLength, RecursionLimit = 64 }.Serialize(value);
         }
 
         internal static string RequiredString(Dictionary<string, object> value, string key, int limit)

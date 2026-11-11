@@ -58,6 +58,7 @@ namespace Uten.Legacy.Core
         public string Method { get; private set; }
         public string RelativePath { get; private set; }
         public string ResourceId { get; private set; }
+        public bool HasExportSelection { get; private set; }
         public string BodyJson { get; private set; }
         public string BodySha256 { get; private set; }
         public MutationJournalState State { get; private set; }
@@ -97,7 +98,7 @@ namespace Uten.Legacy.Core
         {
             ContractVersion = request.ContractVersion; ResponseKind = request.ResponseKind; BatchResourceIds = request.BatchResourceIds;
             RequestId = request.RequestId; Action = request.Action; Method = request.Method; RelativePath = request.RelativePath;
-            ResourceId = request.ResourceId; BodyJson = request.BodyJson; BodySha256 = request.BodySha256; State = state;
+            ResourceId = request.ResourceId; HasExportSelection = request.HasExportSelection; BodyJson = request.BodyJson; BodySha256 = request.BodySha256; State = state;
             OriginDraftId = request.OriginDraftId; OriginDraftRevision = request.OriginDraftRevision; VersionStrategy = request.VersionStrategy;
             ExpectedVersionJson = request.ExpectedVersionJson;
             ExpectedHead = request.ExpectedHead;

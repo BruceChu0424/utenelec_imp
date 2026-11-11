@@ -48,7 +48,7 @@ namespace Uten.Legacy.Core
         {
             Guid id;
             if (!Guid.TryParseExact(expectedJobId, "D", out id) || id == Guid.Empty) throw new FormatException();
-            return UnitExportMutationContract.ReadMetadata(MutationJsonTree.Parse(json, 2097152, true, 16384, false, true).Object, id.ToString("D"));
+            return UnitExportMutationContract.ReadMetadata(MutationJsonTree.Parse(json, UnitExportBudget.JobReplyBytes, true, 16384, false, true).Object, id.ToString("D"));
         }
         public static IReadOnlyList<MutationExportJob> ParseRecentUnitExportJobs(string json)
         {
@@ -77,11 +77,11 @@ namespace Uten.Legacy.Core
             {
                 if (action == MutationAction.UnitExportSubmit)
                 {
-                    var values = UnitExportMutationContract.SubmitObject(MutationJsonTree.Parse(body, 65536, false, 4096, false, true).Object);
+                    var values = UnitExportMutationContract.SubmitObject(MutationJsonTree.Parse(body, UnitExportBudget.RequestBytes, false, 4096, false, true).Object);
                     var jobId = MutationJsonTree.Uuid(values["id"]);
                     if (resourceId != null && resourceId != jobId) throw new FormatException();
                     return new MutationRequest(action, requestId, "POST", "report-export-jobs", jobId, body, owner, new[] { "unit:export" },
-                        MutationVersionStrategy.NotSupported, FlatNodes(values), null) { ResponseKind = MutationResponseKind.ExportJob };
+                        MutationVersionStrategy.NotSupported, FlatNodes(values), null) { ResponseKind = MutationResponseKind.ExportJob, HasExportSelection = values["parameters"].Object.ContainsKey("selectedIds") };
                 }
                 resourceId = CanonicalCommandId(resourceId);
                 if ((body != null && new System.Text.UTF8Encoding(false, true).GetByteCount(body) > 16384)
@@ -115,8 +115,8 @@ namespace Uten.Legacy.Core
             MutationJsonNode selected;
             if (parameters.TryGetValue("selectedIds", out selected))
             {
-                var ids = MutationJsonTree.Parse(MutationJsonTree.Text(selected, true, 40002), 40002).Array;
-                if (ids.Count == 0 || ids.Count > 1000 || ids.Any(value => MutationJsonTree.Uuid(value) != MutationJsonTree.Text(value, true, 36))
+                var ids = MutationJsonTree.Parse(MutationJsonTree.Text(selected, true, UnitExportBudget.RequestBytes), UnitExportBudget.RequestBytes, maximumNodes: UnitExportBudget.SelectionNodes).Array;
+                if (ids.Count == 0 || ids.Any(value => MutationJsonTree.Uuid(value) != MutationJsonTree.Text(value, true, 36))
                     || ids.Select(MutationJsonTree.Uuid).Distinct(StringComparer.Ordinal).Count() != ids.Count)
                     throw new FormatException();
             }
@@ -156,31 +156,37 @@ namespace Uten.Legacy.Core
         }
         internal static MutationExportJob ReadJob(MutationRequest request, string json)
         {
-            var values = MutationJsonTree.Parse(json, 2097152, true, 16384, false, true).Object;
+            var values = MutationJsonTree.Parse(json, UnitExportBudget.JobReplyBytes, true, 16384, false, true).Object;
             var result = ReadMetadata(values, request.ResourceId);
             MutationJsonNode proof;
             if (request.Action == MutationAction.UnitExportSubmit && values.TryGetValue("request", out proof) && proof.Value != null)
             {
-                if (!SameSubmit(SubmitObject(MutationJsonTree.Parse(request.BodyJson, 65536, false, 4096, false, true).Object), proof.Object)) throw new FormatException();
+                if (!SameSubmit(SubmitObject(MutationJsonTree.Parse(request.BodyJson, UnitExportBudget.RequestBytes, false, 4096, false, true).Object), proof.Object)) throw new FormatException();
                 result.HasCreationRequestProof = true;
             }
             return result;
         }
         internal static MutationExportJob ReadMetadata(Dictionary<string, MutationJsonNode> values, string expectedJobId)
         {
-            MutationJsonTree.Keys(values, "id", "domain", "report", "format", "status", "cancelRequested", "rows", "bytes", "snapshotAt", "error", "createdAt", "finishedAt", "request");
+            MutationJsonTree.Keys(values, "id", "domain", "report", "format", "status", "cancelRequested", "rows", "bytes", "snapshotAt", "error", "createdAt", "finishedAt", "request", "attempt", "precisionRequirement", "precisionChoices", "totalRows");
             var id = MutationJsonTree.Uuid(MutationJsonTree.Required(values, "id"));
             if (id != expectedJobId || MutationJsonTree.Text(MutationJsonTree.Required(values, "domain"), true) != "master"
                 || MutationJsonTree.Text(MutationJsonTree.Required(values, "report"), true) != "unit"
                 || MutationJsonTree.Text(MutationJsonTree.Required(values, "format"), true) != "xlsx") throw new FormatException();
             var status = MutationJsonTree.Text(MutationJsonTree.Required(values, "status"), true, 32);
-            if (!new[] { "PENDING", "RUNNING", "SUCCEEDED", "FAILED", "CANCELLED", "EXPIRED" }.Contains(status, StringComparer.Ordinal)) throw new FormatException();
+            if (!new[] { "PENDING", "RUNNING", "SUCCEEDED", "FAILED", "CANCELLED", "EXPIRED", "WAITING_PRECISION" }.Contains(status, StringComparer.Ordinal)) throw new FormatException();
             var cancel = MutationJsonTree.Required(values, "cancelRequested"); if (!(cancel.Value is bool)) throw new FormatException();
             var result = new MutationExportJob { Id = id, Domain = "master", Report = "unit", Format = "xlsx", Status = status,
                 CancelRequested = (bool)cancel.Value, Rows = (int)MutationJsonTree.Integer(MutationJsonTree.Required(values, "rows"), 0, Int32.MaxValue),
                 Bytes = MutationJsonTree.Integer(MutationJsonTree.Required(values, "bytes"), 0, Int64.MaxValue),
                 SnapshotAt = Optional(values, "snapshotAt", 128), Error = Optional(values, "error", 16384),
                 CreatedAt = MutationJsonTree.Text(MutationJsonTree.Required(values, "createdAt"), true, 128), FinishedAt = Optional(values, "finishedAt", 128) };
+            MutationJsonNode extra;
+            if (values.TryGetValue("attempt", out extra)) MutationJsonTree.Integer(extra, 0, Int32.MaxValue);
+            if (values.TryGetValue("totalRows", out extra) && extra.Value != null) MutationJsonTree.Integer(extra, 0, Int64.MaxValue);
+            foreach (var name in new[] { "precisionRequirement", "precisionChoices" })
+                if (values.TryGetValue(name, out extra) && extra.Value != null
+                    && (!(extra.Value is Dictionary<string, MutationJsonNode>) || extra.Raw.Length > 65536)) throw new FormatException();
             MutationJsonNode proof;
             if (values.TryGetValue("request", out proof) && proof.Value != null && !(proof.Value is Dictionary<string, MutationJsonNode>)) throw new FormatException();
             return result;

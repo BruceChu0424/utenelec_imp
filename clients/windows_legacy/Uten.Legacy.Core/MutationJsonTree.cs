@@ -117,13 +117,14 @@ namespace Uten.Legacy.Core
             }
             private string String(bool controls)
             {
-                var start = position; Take('"');
+                var start = position; bool escaped = false; Take('"');
                 while (position < text.Length)
                 {
                     var character = text[position++];
                     if (character < 32) throw new FormatException();
                     if (character == '\\')
                     {
+                        escaped = true;
                         if (position >= text.Length) throw new FormatException();
                         var escape = text[position++];
                         if (escape == 'u')
@@ -135,7 +136,8 @@ namespace Uten.Legacy.Core
                         continue;
                     }
                     if (character != '"') continue;
-                    var value = new JavaScriptSerializer().DeserializeObject(text.Substring(start, position - start)) as string;
+                    var value = escaped ? new JavaScriptSerializer { MaxJsonLength = position - start }.DeserializeObject(text.Substring(start, position - start)) as string
+                        : text.Substring(start + 1, position - start - 2);
                     if (value == null || (!controls && value.Any(Char.IsControl))) throw new FormatException();
                     new UTF8Encoding(false, true).GetByteCount(value);
                     return value;

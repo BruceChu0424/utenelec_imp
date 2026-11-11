@@ -40,6 +40,32 @@ final class MaterialAnalysisWarehouseBreakdownReader {
                       WHERE dimension.goods_id=action.goods_id
                         AND dimension.color_id IS NOT DISTINCT FROM action.color_id)
                 GROUP BY action.warehouse_id, action.goods_id, action.color_id
+            ), own_quantities AS MATERIALIZED (
+                -- The same physical reservation contributes once, even when
+                -- several active material units share its goods/color identity.
+                SELECT r.warehouse_id, r.goods_id, r.color_id,
+                       SUM(CASE
+                           WHEN EXISTS (SELECT 1 FROM preplan_stock_entitlement_events tracked
+                               WHERE tracked.stock_reservation_id=r.id)
+                           THEN COALESCE((
+                               SELECT SUM(balance.effective_qty)
+                               FROM v_preplan_stock_entitlement_beneficiary_balance balance
+                               JOIN production_material_analysis_materials beneficiary
+                                 ON beneficiary.id=balance.beneficiary_analysis_material_id
+                                AND beneficiary.analysis_id=balance.beneficiary_analysis_id
+                               WHERE balance.stock_reservation_id=r.id
+                                 AND balance.beneficiary_analysis_id=:analysisId
+                                 AND beneficiary.active=TRUE
+                           ),0)
+                           WHEN r.owner_id=:analysisId THEN r.qty-r.consumed_qty-r.released_qty
+                           ELSE 0 END) AS own_qty
+                FROM stock_reservations r
+                WHERE r.is_deleted=FALSE AND r.status=0 AND r.owner_type='PREPLAN_ANALYSIS'
+                  AND EXISTS (SELECT 1 FROM warehouse_facts warehouse WHERE warehouse.id=r.warehouse_id)
+                  AND EXISTS (SELECT 1 FROM dimensions dimension
+                      WHERE dimension.goods_id=r.goods_id
+                        AND dimension.color_id IS NOT DISTINCT FROM r.color_id)
+                GROUP BY r.warehouse_id, r.goods_id, r.color_id
             )
             SELECT dimension.goods_id, dimension.color_id, dimension.unit_id,
                    w.id, w.code, w.name,
@@ -51,29 +77,12 @@ final class MaterialAnalysisWarehouseBreakdownReader {
             CROSS JOIN warehouse_facts w
             JOIN goods g ON g.id=dimension.goods_id
             LEFT JOIN v_stock_available v
-              ON v.warehouse_id=w.id AND v.goods_id=dimension.goods_id
+              ON v.goods_id=ANY(CAST(string_to_array(:goodsIds, ',') AS uuid[]))
+             AND v.warehouse_id=w.id AND v.goods_id=dimension.goods_id
              AND v.color_id IS NOT DISTINCT FROM dimension.color_id
-            LEFT JOIN LATERAL (
-                SELECT SUM(CASE
-                    WHEN EXISTS (SELECT 1 FROM preplan_stock_entitlement_events tracked
-                        WHERE tracked.stock_reservation_id=r.id)
-                    THEN COALESCE((
-                        SELECT SUM(balance.effective_qty)
-                        FROM v_preplan_stock_entitlement_beneficiary_balance balance
-                        JOIN production_material_analysis_materials beneficiary
-                          ON beneficiary.id=balance.beneficiary_analysis_material_id
-                         AND beneficiary.analysis_id=balance.beneficiary_analysis_id
-                        WHERE balance.stock_reservation_id=r.id
-                          AND balance.beneficiary_analysis_id=:analysisId
-                          AND beneficiary.active=TRUE
-                    ),0)
-                    WHEN r.owner_id=:analysisId THEN r.qty-r.consumed_qty-r.released_qty
-                    ELSE 0 END) AS own_qty
-                FROM stock_reservations r
-                WHERE r.is_deleted=FALSE AND r.status=0 AND r.owner_type='PREPLAN_ANALYSIS'
-                  AND r.warehouse_id=w.id AND r.goods_id=dimension.goods_id
-                  AND r.color_id IS NOT DISTINCT FROM dimension.color_id
-            ) own ON TRUE
+            LEFT JOIN own_quantities own
+              ON own.warehouse_id=w.id AND own.goods_id=dimension.goods_id
+             AND own.color_id IS NOT DISTINCT FROM dimension.color_id
             LEFT JOIN open_safety
               ON open_safety.warehouse_id=w.id AND open_safety.goods_id=dimension.goods_id
              AND open_safety.color_id IS NOT DISTINCT FROM dimension.color_id

@@ -3,6 +3,8 @@
 *.xml binary
 *.json binary
 *.txt binary
+*.args binary
+*.dumpstream binary
 *.xlsx binary
 *.xls binary
 *.java text eol=lf

@@ -466,10 +466,13 @@ class ApiClient {
         options: Options(
           responseType: ResponseType.stream,
           followRedirects: false,
-          // 帧间空闲用流专用预算：首帧发出后到发布栅栏回放之间是服务端整个内部
-          // 扫描的静默期（最长接近服务端 60s 完整读取预算），普通 45s 会提前
-          // 误杀合法读取；75s 让服务端自己的错误帧合同先裁决。
-          receiveTimeout: summaryStreamChunkIdleTimeout,
+          // 帧间空闲预算不能放 receiveTimeout——dio 的 handleResponseStream 会在
+          // 字节流上武装秒表+计时器，fake-async 测试环境里即时流会被卡死（丢
+          // done 事件），而继承的通用 45s 分块守卫又会误杀合法的首帧后长静默
+          // （服务端内部扫描最长接近 60s 完整读取预算）。这里显式置零关闭 dio
+          // 层分块守卫，预算改由 CompleteSummaryStream 在帧的 moveNext 上用
+          // Future.timeout 独立裁决（见 complete_summary_stream.dart）。
+          receiveTimeout: Duration.zero,
           headers: const {'Accept': summaryStreamContentType},
           extra: const {
             summaryStreamRequestKey: true,
@@ -491,24 +494,11 @@ class ApiClient {
           '服务端尚未提供完整列表传输，请更新服务端后重试',
         );
       }
-      // Fetch returns headers before its body. Keep the existing receive
-      // timeout active while waiting for each actual network chunk as well.
-      final timeout = response.requestOptions.receiveTimeout;
-      final bytes = timeout == null || timeout <= Duration.zero
-          ? stream.stream
-          : stream.stream.timeout(
-              timeout,
-              onTimeout: (sink) {
-                sink.addError(
-                  DioException.receiveTimeout(
-                    timeout: timeout,
-                    requestOptions: response.requestOptions,
-                  ),
-                );
-                sink.close();
-                cancellation.cancel('Summary stream receive timeout');
-              },
-            );
+      // 字节流保持原始直通：Stream.timeout/控制器包装会让 utf8/LineSplitter
+      // 变换链在 fake-async 测试里丢 done 事件。帧间空闲预算由
+      // CompleteSummaryStream 在帧的 moveNext 上用 Future.timeout 裁决，超时
+      // 以 TimeoutException 冒泡，下方统一转成接收超时并取消请求。
+      final bytes = stream.stream;
       final headerScope = response.headers.value('X-Uten-Read-Scope-Version');
       final result = await consume(
         decodeSummaryFrames(
@@ -535,6 +525,21 @@ class ApiClient {
       );
       completed = true;
       return result;
+    } on TimeoutException {
+      // 帧间空闲超预算：等价于接收超时，按同一合同冒泡并中止底层请求。
+      cancellation.cancel('Summary stream receive timeout');
+      throw _convert(
+        DioException.receiveTimeout(
+          timeout: summaryStreamChunkIdleTimeout,
+          requestOptions:
+              streamedRequest ??
+              RequestOptions(
+                path: path,
+                method: 'POST',
+                baseUrl: _dio.options.baseUrl,
+              ),
+        ),
+      );
     } on DioException catch (error) {
       throw _convert(error);
     } on ApiException catch (error) {

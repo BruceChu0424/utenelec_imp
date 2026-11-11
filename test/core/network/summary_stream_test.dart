@@ -235,10 +235,13 @@ void main() {
       expect(call.headers['Accept'], summaryStreamContentType);
       expect(call.extra[summaryStreamRequestKey], isTrue);
       expect(call.extra[safeRequestRetryDisabledKey], isTrue);
-      // 2026-11-10 G: the frame idle window is stream-specific (75s) — after the
-      // first frame, the server's internal scan silence can legally approach its
-      // 60s complete-read budget; the generic 45s would abort a legal read.
-      expect(call.receiveTimeout, apiSummaryStreamChunkIdleTimeout);
+      // 2026-11-11: the frame idle budget (75s) no longer rides
+      // Options.receiveTimeout — dio's receive-timeout machinery stalls instant
+      // fixture streams under fake-async, and the inherited generic 45s chunk
+      // guard would abort legal post-first-frame silences. The request disables
+      // dio's chunk guard explicitly (zero); the budget is enforced per frame in
+      // CompleteSummaryStream.moveNext (Future.timeout).
+      expect(call.receiveTimeout, Duration.zero);
       final body = call.data as Map<String, dynamic>;
       final filter = body['filter'] as Map<String, dynamic>;
       expect(filter['categoryId'], 'category-original');

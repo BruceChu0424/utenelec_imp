@@ -49,9 +49,17 @@ class CompleteSummaryStream {
   CompleteSummaryStream(
     Stream<Map<String, dynamic>> frames, {
     this.plan = const CompleteReadBatchPlan.fixed(100),
+    this.frameIdleTimeout,
   }) : _frames = StreamIterator(frames);
 
   final CompleteReadBatchPlan plan;
+
+  /// 帧间空闲上限：首帧后到发布栅栏回放之间是服务端整个内部扫描的合法静默期
+  /// （最长接近服务端 60s 完整读取预算）。在帧的 moveNext 上用 Future.timeout
+  /// 裁决——不包装字节流（Stream 包装器会让 utf8/LineSplitter 变换链在
+  /// fake-async 测试里丢 done 事件），也不走 dio 的 receiveTimeout（秒表+
+  /// 计时器同样卡死测试）。null/零表示不设预算（即时测试夹具）。
+  final Duration? frameIdleTimeout;
   final StreamIterator<Map<String, dynamic>> _frames;
   Map<String, dynamic>? _first;
   var _offset = 0;
@@ -62,7 +70,17 @@ class CompleteSummaryStream {
   Future<bool> _moveNext() async {
     try {
       _started = true;
-      final next = await _frames.moveNext();
+      final pending = _frames.moveNext();
+      final next =
+          frameIdleTimeout == null || frameIdleTimeout! <= Duration.zero
+          ? await pending
+          : await pending.timeout(
+              frameIdleTimeout!,
+              onTimeout: () => throw TimeoutException(
+                'Summary stream frame idle exceeded the read budget',
+                frameIdleTimeout,
+              ),
+            );
       if (!next) _sourceFinished = true;
       return next;
     } catch (_) {

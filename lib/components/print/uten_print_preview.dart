@@ -406,8 +406,9 @@ Future<void> showUtenPrintPreview({
   bool showOutputScope = true,
 }) async {
   context = UtenAppBarActionScope.actionContextOf(context);
-  if (_openPrintOutputs[context] == true || !(isCurrent?.call() ?? true))
+  if (_openPrintOutputs[context] == true || !(isCurrent?.call() ?? true)) {
     return;
+  }
   _openPrintOutputs[context] = true;
   try {
     final projection = applyTableProjection
@@ -436,8 +437,9 @@ Future<void> showUtenPrintPreview({
             selectedCount: selection.count,
           )
         : UtenTableOutputScope.all;
-    if (outputScope == null || !context.mounted || !(isCurrent?.call() ?? true))
+    if (outputScope == null || !context.mounted || !(isCurrent?.call() ?? true)) {
       return;
+    }
     if (container != null &&
         (readBoundary != container.read(sensitiveReadBoundaryProvider) ||
             readRevision != container.read(readScopeRevisionProvider))) {
@@ -825,8 +827,9 @@ class _UtenPrintPreviewDialogState extends State<_UtenPrintPreviewDialog> {
     if (!mounted ||
         _invalidated ||
         version != _contextVersion ||
-        !(widget.isCurrent?.call() ?? true))
+        !(widget.isCurrent?.call() ?? true)) {
       return false;
+    }
     try {
       return widget.providerContainer == null ||
           (widget.readBoundary ==

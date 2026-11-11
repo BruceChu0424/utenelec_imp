@@ -238,8 +238,9 @@ class _FixtureApi extends ApiClient {
     var offset = 0;
     while (offset < fixture.rows.length) {
       if (offset > 0) {
-        if (fixture.failContinuation)
+        if (fixture.failContinuation) {
           throw TimeoutException('continuation failed');
+        }
       }
       final size = CompleteReadBatchPlan.progressive.sizeAt(offset);
       yield {

@@ -311,7 +311,7 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
             var plan=commands.issueAggregateAnchor(analysisId,batch.id(),batch.anchor(),group,input.allowedOverproductionRate(),
                     request.warehouseId(),request.approveNow(),stepKey(request.idempotencyKey(),group.clientGroupKey(),"PLAN"));
             em.flush();em.clear();
-            analysis.refreshWithAnchorGrowth(analysisId);
+            nextSnapshot=analysis.refreshWithAnchorGrowthView(analysisId);
             results.add(new BatchResult(batch.id(),group.clientGroupKey(),group.route(),"PRODUCTION_PLAN",plan.planId(),plan.planNo(),plan.planId(),batch.anchor(),group.requestedQty(),group.publicExtraQty(),group.sources(),plan));
         }
         List<MaterialIdentityBridge> bridges=materialBridges(results.stream().filter(result->result.batchId()!=null&&result.anchorAnalysisItemId()!=null).map(BatchResult::batchId).distinct().toList());

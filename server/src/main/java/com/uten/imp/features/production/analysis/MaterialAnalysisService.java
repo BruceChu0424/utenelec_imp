@@ -5631,17 +5631,32 @@ public class MaterialAnalysisService {
     /** [autoConfirmRoutes] 见 {@link #refreshLockedOutcome}; 锚点跟涨后的第二次重算同样确认新出现的行. */
     private RefreshOutcome refreshWithAnchorGrowth(UUID analysisId, Map<UUID, BigDecimal> previousRequirements,
             Map<UUID, BigDecimal> typedOutputByMaterialLine, boolean autoConfirmRoutes) {
+        return refreshWithAnchorGrowthState(analysisId,previousRequirements,typedOutputByMaterialLine,autoConfirmRoutes,false).outcome();
+    }
+
+    private record RefreshedAnalysis(RefreshOutcome outcome,AnalysisView view) { }
+
+    private RefreshedAnalysis refreshWithAnchorGrowthState(UUID analysisId, Map<UUID, BigDecimal> previousRequirements,
+            Map<UUID, BigDecimal> typedOutputByMaterialLine, boolean autoConfirmRoutes,boolean includeView) {
         Map<UUID, BigDecimal> previous = previousRequirements == null || previousRequirements.isEmpty()
                 ? makeAnchorParentRequirements(analysisId) : previousRequirements;
         RefreshOutcome outcome = refreshLockedOutcome(analysisId, typedOutputByMaterialLine, autoConfirmRoutes);
-        if (growMakeAnchorQuotasAfterSourcePreview(analysisId, previous)) {
+        AnalysisView inspected=previous.isEmpty()?null:detailInternal(analysisId,false);
+        if (growMakeAnchorQuotasAfterSourcePreview(analysisId, previous,inspected)) {
             outcome = outcome.plus(refreshLockedOutcome(analysisId, typedOutputByMaterialLine, autoConfirmRoutes));
+            inspected=null;
         }
-        return outcome;
+        if(includeView&&inspected==null)inspected=detailInternal(analysisId,false);
+        return new RefreshedAnalysis(outcome,inspected);
     }
 
     int refreshWithAnchorGrowth(UUID analysisId) {
         return refreshWithAnchorGrowth(analysisId, Map.of());
+    }
+
+    /** Same locked refresh; the next dependent stage consumes its final view once, before any new write. */
+    AnalysisView refreshWithAnchorGrowthView(UUID analysisId) {
+        return refreshWithAnchorGrowthState(analysisId,Map.of(),Map.of(),false,true).view();
     }
 
     /**
@@ -5942,11 +5957,11 @@ public class MaterialAnalysisService {
      * 行动背书的锚点(通知供给建的)不在这里退, 它有自己的撤回链路。</p>
      */
     private boolean growMakeAnchorQuotasAfterSourcePreview(
-            UUID analysisId, Map<UUID, BigDecimal> previousRequirements) {
+            UUID analysisId, Map<UUID, BigDecimal> previousRequirements,AnalysisView inspected) {
         if (previousRequirements.isEmpty()) return false;
         boolean changed=false;
         for (AnchorQuotaChange change : planAnchorQuotaChanges(
-                analysisId, detailInternal(analysisId,false), previousRequirements)) {
+                analysisId, inspected, previousRequirements)) {
             if (change.delta().signum()<0) {
                 BigDecimal decrease=change.delta().negate();
                 // 齐套列(ready_*)是按旧配额算的, 紧跟着的那次 refreshLocked 会重算,

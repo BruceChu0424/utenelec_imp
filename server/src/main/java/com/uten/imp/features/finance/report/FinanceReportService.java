@@ -196,7 +196,7 @@ public class FinanceReportService {
         if("settlement".equals(sort)||options.filters().keySet().stream().anyMatch(key->key.equals("settlement")||key.equals("search.settlement"))
                 ||FinanceReportColumnCandidates.current()!=null&&"settlement".equals(FinanceReportColumnCandidates.current().column()))
             throw new ApiException(ErrorCode.VALIDATION_FAILED,"当前应收款汇总表不包含结算期限列");
-        return FinancePartySummaryTemplate.receivableOverview(receivableSummaryAuthorized(keyword,dateFrom,dateTo,page,size,
+        return FinancePartySummaryTemplate.receivableOverview(receivableSummaryRows(keyword,dateFrom,dateTo,page,size,
                 options.filters(),sort,order,new ReceivableOverviewScope(categoryId,mode)));
     }
 
@@ -633,7 +633,7 @@ public class FinanceReportService {
         LocalDate from = dateFrom != null ? dateFrom : LocalDate.of(2010, 1, 1);
         LocalDate to = dateTo != null ? dateTo : BusinessTime.today();
         return "AR".equals(dir)
-                ? receivableSummaryAuthorized(keyword, from, to, page, size,headers,sort,order)
+                ? receivableSummaryRows(keyword, from, to, page, size,headers,sort,order)
                 : payableSummaryAuthorized(keyword, from, to, page, size,headers,sort,order);
     }
 
@@ -643,7 +643,7 @@ public class FinanceReportService {
     @Transactional(readOnly = true)
     public ReportTableResponse receivableSummary(String keyword, LocalDate from, LocalDate to, int page, int size) {
         requireCompanyWideReportAccess();
-        return receivableSummaryAuthorized(keyword, from, to, page, size);
+        return receivableSummaryRows(keyword, from, to, page, size);
     }
 
     /** Original 17/15-column presentation retains reconciliation facts outside the source table. */
@@ -654,19 +654,19 @@ public class FinanceReportService {
         if(!ar&&!"AP".equals(direction))throw new ApiException(ErrorCode.VALIDATION_FAILED,"应收应付方向无效");
         if(!ar){assertOpeningWindowReplayable("AP",keyword,from,to);return FinanceClassifiedPayableSummary.read(em,keyword,from,to,page,size,options);}
         FinancePartySummaryTemplate.requireOptions(true,options);
-        var source=ar?receivableSummaryAuthorized(keyword,from,to,page,size,options.filters(),options.sort(),options.order()):
+        var source=ar?receivableSummaryRows(keyword,from,to,page,size,options.filters(),options.sort(),options.order()):
                 payableSummaryAuthorized(keyword,from,to,page,size,options.filters(),options.sort(),options.order());
         return FinancePartySummaryTemplate.present(ar,source);
     }
 
-    private ReportTableResponse receivableSummaryAuthorized(
+    private ReportTableResponse receivableSummaryRows(
             String keyword, LocalDate from, LocalDate to, int page, int size) {
-        return receivableSummaryAuthorized(keyword,from,to,page,size,Map.of(),null,null);
+        return receivableSummaryRows(keyword,from,to,page,size,Map.of(),null,null);
     }
 
-    private ReportTableResponse receivableSummaryAuthorized(String keyword,LocalDate from,LocalDate to,int page,int size,
+    private ReportTableResponse receivableSummaryRows(String keyword,LocalDate from,LocalDate to,int page,int size,
             Map<String,String> headers,String sort,String order) {
-        return receivableSummaryAuthorized(keyword,from,to,page,size,headers,sort,order,null);
+        return receivableSummaryRows(keyword,from,to,page,size,headers,sort,order,null);
     }
 
     private record ReceivableOverviewScope(UUID categoryId,String displayMode) { }
@@ -684,7 +684,7 @@ public class FinanceReportService {
         return search.build(null);
     }
 
-    private ReportTableResponse receivableSummaryAuthorized(String keyword,LocalDate from,LocalDate to,int page,int size,
+    private ReportTableResponse receivableSummaryRows(String keyword,LocalDate from,LocalDate to,int page,int size,
             Map<String,String> headers,String sort,String order,ReceivableOverviewScope overview) {
         assertOpeningWindowReplayable("AR", keyword, from, to,overview);
         List<ReportColumn> cols = List.of(

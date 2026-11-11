@@ -574,6 +574,9 @@ public class PurchaseReturnService {
     }
 
     private ProcurementReturnHeaderAuthority.Header returnHeader(ReturnSaveRequest req) {
+        // 保存请求与明细由入口校验保证非空；解引用前显式钉死契约，替代后文恒真的防御分支。
+        if (req == null || req.getItems() == null)
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "采购退货单明细不能为空");
         var sourceOrders = com.uten.imp.common.finance.ProcurementReturnOrderAuthority.resolve(
                 em, "PURCHASE", req.getItems().stream().map(line ->
                         new com.uten.imp.common.finance.ProcurementReturnOrderAuthority.Source(
@@ -582,9 +585,8 @@ public class PurchaseReturnService {
         var header=ProcurementReturnHeaderAuthority.derive(
                 em,
                 "PURCHASE",
-                req == null || req.getItems() == null ? List.of()
-                        : req.getItems().stream()
-                            .map(ReturnItemLine::getReceiptItemId).toList());
+                req.getItems().stream()
+                        .map(ReturnItemLine::getReceiptItemId).toList());
         ProcurementReturnHeaderAuthority.requireSubmittedIdentity(header,req.getSupplierId(),req.getCurrencyId());
         return header;
     }

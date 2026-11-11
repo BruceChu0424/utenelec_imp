@@ -297,6 +297,7 @@ class AttachmentRetainedHistoryPostgresTest {
     private static final class HeatPublisher implements org.springframework.context.ApplicationEventPublisher {
         private final AttachmentUsageRecorder recorder;
         HeatPublisher(AttachmentUsageRecorder recorder) { this.recorder = recorder; }
+        @Override public void publishEvent(org.springframework.context.ApplicationEvent event) { publishEvent((Object) event); }
         @Override public void publishEvent(Object event) {
             if (event instanceof AttachmentAccessedEvent accessed) recorder.onAccessed(accessed);
         }

@@ -54,7 +54,10 @@ public final class FinanceAccountingWorkbookParser {
         if(sheet.maxColumn()!=82)throw invalid("原凭证须保留全部83列及输出签名");
         var signature=Pattern.compile("^凭证输出:([^:]+):(.+):([0-9]{4})$").matcher(text(header,82).replace('：',':'));
         if(!signature.matches())throw invalid("原凭证第83列输出签名缺损或格式不符，请从原账套重新导出");
-        String signatureIdentity=signature.group(2);int signatureYear=Integer.parseInt(signature.group(3));
+        String signatureIdentity=signature.group(2);
+        int signatureYear;
+        try { signatureYear=Integer.parseInt(signature.group(3)); }
+        catch (NumberFormatException unparsable) { throw invalid("原凭证第83列输出签名年份无法解析，请从原账套重新导出"); }
         List<Issue> issues=new ArrayList<>();
         for(var issue:com.uten.imp.common.importing.ImportColumnGuard.inspectExtraColumns(bytes,sheet,header.index0(),83))
             issues.add(new Issue(issue.rowNum(),issue.column(),issue.message()));

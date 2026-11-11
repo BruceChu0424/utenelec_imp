@@ -85,7 +85,7 @@ class PlatformWorkbookSchemaTest {
             for(int index=0;index<40;index++) {
                 var states=(Map<?,?>)field.get(writer);
                 if(!states.isEmpty()) {
-                    Object last=states.values().stream().reduce((first,next)->next).orElseThrow();
+                    Object last=new java.util.ArrayList<>(states.values()).getLast();
                     var rowIndex=last.getClass().getDeclaredField("rowIndex");rowIndex.setAccessible(true);rowIndex.setInt(last,org.apache.poi.ss.SpreadsheetVersion.EXCEL2007.getMaxRows());
                 }
                 writer.accept(new ExportPayload(columns,List.of(values),1));

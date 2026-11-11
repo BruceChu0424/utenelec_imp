@@ -51,9 +51,10 @@ class ServerStatusProbeTest {
     @Test void idlePoolReallyHasZeroActiveWithoutClaimingThereAreNoDatabaseConnections() throws Exception {
         var meters=new SimpleMeterRegistry();
         var active=meters.gauge("hikaricp.connections.active",Tags.of("pool","main"),new AtomicInteger(0));
-        var maximum=meters.gauge("hikaricp.connections.max",Tags.of("pool","main"),new AtomicInteger(20));
-        var idle=meters.gauge("hikaricp.connections.idle",Tags.of("pool","main"),new AtomicInteger(5));
-        var pending=meters.gauge("hikaricp.connections.pending",Tags.of("pool","main"),new AtomicInteger(0));
+        // 注册即生效：max/idle/pending 仪表只被探测读取，局部句柄从未使用。
+        meters.gauge("hikaricp.connections.max",Tags.of("pool","main"),new AtomicInteger(20));
+        meters.gauge("hikaricp.connections.idle",Tags.of("pool","main"),new AtomicInteger(5));
+        meters.gauge("hikaricp.connections.pending",Tags.of("pool","main"),new AtomicInteger(0));
         var pool=probe(meters).connectionPool();
         assertThat(pool.value()).isZero();
         assertThat(pool.status()).isEqualTo("NORMAL");

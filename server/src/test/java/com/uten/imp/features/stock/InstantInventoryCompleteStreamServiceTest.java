@@ -67,7 +67,7 @@ class InstantInventoryCompleteStreamServiceTest {
         plans.clear();
     }
 
-    private static InstantInventoryCompleteRequest request(Integer size, String revisionIgnored) {
+    private static InstantInventoryCompleteRequest request(Integer size) {
         return new InstantInventoryCompleteRequest(new InstantInventoryCompleteRequest.Filter(
                 null, null, null, null, null, null, null, null, null, null, null, null, null, null, null),
                 1, size, null, null);
@@ -135,7 +135,7 @@ class InstantInventoryCompleteStreamServiceTest {
             flushes.add(dataTransactionClosed.get() ? "after" : "during");
             return null;
         }).when(response).flushBuffer();
-        service.stream(request(1000, null), null, response);
+        service.stream(request(1000), null, response);
         // 1050 rows on the progressive plan: 50, 50, 100, 200, 200, 200, 200, 50,
         // then the complete frame — every flush after the first is post-fence.
         assertThat(flushes).containsExactly(
@@ -150,7 +150,7 @@ class InstantInventoryCompleteStreamServiceTest {
     @Test void oneSnapshotFramesTheSharedPlanAndEndsComplete() throws Exception {
         serve(1050);
         var response = new MockHttpServletResponse();
-        service.stream(request(1000, null), null, response);
+        service.stream(request(1000), null, response);
         var frames = frames(response);
         // 50, 50, 100, 200, 200, 200, 200, then 50 more on the aligned 1000 page, + complete.
         assertThat(frames).hasSize(9);
@@ -179,7 +179,7 @@ class InstantInventoryCompleteStreamServiceTest {
     @Test void emptyResultIsOnePageFrameAndOneCompleteFrame() throws Exception {
         serve(0);
         var response = new MockHttpServletResponse();
-        service.stream(request(1000, null), null, response);
+        service.stream(request(1000), null, response);
         var frames = frames(response);
         assertThat(frames).hasSize(2);
         assertThat(frames.get(0).get("value").get("items")).isEmpty();
@@ -190,7 +190,7 @@ class InstantInventoryCompleteStreamServiceTest {
     @Test void categoryIdentityIsPreservedInTheExistingSingleScanStream() throws Exception {
         serve(1);
         var response = new MockHttpServletResponse();
-        service.stream(request(1000, null), null, response);
+        service.stream(request(1000), null, response);
         var frames = frames(response);
         assertThat(frames.getFirst().path("value").path("items").get(0).path("categoryId").asText())
                 .isEqualTo(UUID.nameUUIDFromBytes("category".getBytes()).toString());
@@ -201,7 +201,7 @@ class InstantInventoryCompleteStreamServiceTest {
         when(stock.instantInventory(any(), anyInt(), anyInt(), isNull(), isNull()))
                 .thenThrow(new ApiException(ErrorCode.PRIMARY_UNAVAILABLE, "读取未完成"));
         var response = new MockHttpServletResponse();
-        service.stream(request(1000, null), null, response);
+        service.stream(request(1000), null, response);
         var frames = frames(response);
         assertThat(frames).hasSize(1);
         assertThat(frames.get(0).get("type").asText()).isEqualTo("error");
@@ -214,7 +214,7 @@ class InstantInventoryCompleteStreamServiceTest {
 
     @Test void onlyTheSharedProgressiveRequestSizeIsAccepted() {
         var response = new MockHttpServletResponse();
-        assertThatThrownBy(() -> service.stream(request(200, null), null, response))
+        assertThatThrownBy(() -> service.stream(request(200), null, response))
                 .isInstanceOf(ApiException.class)
                 .hasMessageContaining("完整即时库存读取须从首批开始");
         assertThatThrownBy(() -> service.stream(null, null, response))
@@ -224,7 +224,7 @@ class InstantInventoryCompleteStreamServiceTest {
     @Test void theProofRequestCarriesTheInventoryContractAndStockScope() throws Exception {
         serve(1);
         var response = new MockHttpServletResponse();
-        service.stream(request(1000, null), "f".repeat(64), response);
+        service.stream(request(1000), "f".repeat(64), response);
         var captor = ArgumentCaptor.forClass(VersionedSummaryPages.Request.class);
         verify(pages).readWithProof(captor.capture(), any(), any());
         var request = captor.getValue();

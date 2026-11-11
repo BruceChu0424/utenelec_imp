@@ -222,12 +222,16 @@ class MasterDirectoryExportPostgresTest extends AuthSessionPostgresTestSupport {
             factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl",true);
             var handler=new org.xml.sax.helpers.DefaultHandler() {
                 int row,column;StringBuilder value;boolean code,quantity;
-                public void startElement(String uri,String local,String tag,org.xml.sax.Attributes attributes) {
-                    if(tag.equals("row")){row=Integer.parseInt(attributes.getValue("r"));code=false;quantity=false;}
+                int sheetRow(String raw){
+                    try{return Integer.parseInt(raw);}
+                    catch(NumberFormatException broken){throw new IllegalStateException("导出工作表行号不是数字: "+raw,broken);}
+                }
+                @Override public void startElement(String uri,String local,String tag,org.xml.sax.Attributes attributes) {
+                    if(tag.equals("row")){row=sheetRow(attributes.getValue("r"));code=false;quantity=false;}
                     if(tag.equals("c")){column=new org.apache.poi.ss.util.CellReference(attributes.getValue("r")).getCol();value=new StringBuilder();}
                 }
-                public void characters(char[] chars,int begin,int length){if(value!=null)value.append(chars,begin,length);}
-                public void endElement(String uri,String local,String tag) {
+                @Override public void characters(char[] chars,int begin,int length){if(value!=null)value.append(chars,begin,length);}
+                @Override public void endElement(String uri,String local,String tag) {
                     if(tag.equals("c")) {
                         if(row==1) {
                             if(column==0)assertThat(value.toString()).isEqualTo("模具编号");

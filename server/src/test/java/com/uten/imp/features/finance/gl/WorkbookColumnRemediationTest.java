@@ -36,7 +36,8 @@ class WorkbookColumnRemediationTest {
     @Test void originalCompanyPunctuationDoesNotInvalidateAnOtherwiseMatchingSignature() throws Exception {
         try(var book=new org.apache.poi.hssf.usermodel.HSSFWorkbook(new java.io.ByteArrayInputStream(file("voucher-style.xls")));var out=new java.io.ByteArrayOutputStream()) {
             var sheet=book.getSheetAt(0);sheet.getRow(0).getCell(82).setCellValue("凭证输出：V800：T01：匿名：账套：2026");
-            for(int row=1;row<=2;row++)sheet.getRow(row).getCell(49).setCellValue("匿名：账套");book.write(out);
+            for(int row=1;row<=2;row++)sheet.getRow(row).getCell(49).setCellValue("匿名：账套");
+            book.write(out);
             assertThat(FinanceAccountingWorkbookParser.parse("VOUCHERS","source.xls",out.toByteArray()).issues()).isEmpty();
         }
     }

@@ -80,7 +80,13 @@ public final class CompleteStreamStaging implements AutoCloseable {
         try {
             Path file = Files.createTempFile("uten-complete-stream-", ".frames");
             OutputStream output = new BufferedOutputStream(Files.newOutputStream(file), FILE_BUFFER);
-            output.write(memory.toByteArray());
+            try {
+                output.write(memory.toByteArray());
+            } catch (IOException writeFailure) {
+                // 首次写入失败时没有任何接管者，必须就地关闭，避免临时文件句柄泄漏。
+                try { output.close(); } catch (IOException suppressed) { writeFailure.addSuppressed(suppressed); }
+                throw writeFailure;
+            }
             memory = null;
             spill = file;
             spillOutput = output;

@@ -207,7 +207,8 @@ class PurchaseReturnActualCostGlEndToEndTest {
         request.setBillDate(BusinessTime.today());request.setSupplierId(w.supplierId());request.setWarehouseId(w.warehouseId());
         var line=new com.uten.imp.features.subcontract.ret.dto.ReturnItemLine();
         line.setGoodsId(w.goodsE());line.setUnitId(w.unitId());line.setUnitRate(BigDecimal.ONE);line.setQty(BigDecimal.ONE);
-        if(!receiptOnly)line.setOrderItemId(orderItem);line.setReceiptItemId(subcontractReceipts.detail(receiptId).getItems().getFirst().getId());request.setItems(List.of(line));
+        if(!receiptOnly)line.setOrderItemId(orderItem);
+        line.setReceiptItemId(subcontractReceipts.detail(receiptId).getItems().getFirst().getId());request.setItems(List.of(line));
         UUID returned=subcontractReturns.create(request).getId();subcontractReturns.approve(returned);
         assertThat(ap(returned)).isEqualByComparingTo("-50");
         assertThat(number("SELECT amount_local FROM stock_balances WHERE warehouse_id=? AND goods_id=?",w.warehouseId(),w.goodsE())).isEqualByComparingTo("540");
@@ -310,7 +311,9 @@ class PurchaseReturnActualCostGlEndToEndTest {
     }
     private UUID returned(F f,UUID source,String charged,String gift){
         var request=new com.uten.imp.features.purchase.ret.dto.ReturnSaveRequest();request.setBillDate(BusinessTime.today());request.setSupplierId(f.w().supplierId());request.setWarehouseId(f.w().warehouseId());
-        var line=new com.uten.imp.features.purchase.ret.dto.ReturnItemLine();line.setGoodsId(f.w().goodsD());line.setUnitId(f.w().unitId());line.setUnitRate(BigDecimal.ONE);line.setQty(new BigDecimal(charged));line.setGiftQty(new BigDecimal(gift));line.setReceiptItemId(source);if(!receiptOnly)line.setOrderItemId(f.orderItem());request.setItems(List.of(line));
+        var line=new com.uten.imp.features.purchase.ret.dto.ReturnItemLine();line.setGoodsId(f.w().goodsD());line.setUnitId(f.w().unitId());line.setUnitRate(BigDecimal.ONE);line.setQty(new BigDecimal(charged));line.setGiftQty(new BigDecimal(gift));line.setReceiptItemId(source);
+        if(!receiptOnly)line.setOrderItemId(f.orderItem());
+        request.setItems(List.of(line));
         return returns.create(request).getId();
     }
     private void passAndStock(F f,UUID receipt){

@@ -289,7 +289,8 @@ class PartialMaterialReportCapacityPostgresTest {
         UUID sourceItem=UUID.randomUUID();
         db.update("INSERT INTO stock_document_items(id,goods_id,color_id,unit_id) SELECT ?,goods_id,color_id,unit_id FROM production_material_demands WHERE id=?",sourceItem,material);
         UUID id=UUID.randomUUID();db.update("INSERT INTO production_material_stock_postings(id,event_id,demand_id,stock_document_item_id,posting_type,qty_base,source_posting_id,ledger_order) VALUES(?,?,?,?,?,?,?,"+(historical?"NULL":"DEFAULT")+")",id,event,material,sourceItem,type,new BigDecimal(quantity),source);
-        if(!historical)capture();return id;
+        if(!historical)capture();
+        return id;
     }
     private void capture(){tx.executeWithoutResult(status->db.queryForObject("SELECT fn_capture_execution_full_material_kit(?)",Boolean.class,segment));}
     private UUID report(int status,String quantity){

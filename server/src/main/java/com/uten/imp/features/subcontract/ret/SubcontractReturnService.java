@@ -617,6 +617,9 @@ public class SubcontractReturnService {
     }
 
     private ProcurementReturnHeaderAuthority.Header returnHeader(ReturnSaveRequest req) {
+        // 保存请求与明细由入口校验保证非空；解引用前显式钉死契约，替代后文恒真的防御分支。
+        if (req == null || req.getItems() == null)
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "委外退货单明细不能为空");
         var sourceOrders = com.uten.imp.common.finance.ProcurementReturnOrderAuthority.resolve(
                 em, "SUBCONTRACT", req.getItems().stream().map(line ->
                         new com.uten.imp.common.finance.ProcurementReturnOrderAuthority.Source(
@@ -625,9 +628,8 @@ public class SubcontractReturnService {
         var header=ProcurementReturnHeaderAuthority.derive(
                 em,
                 "SUBCONTRACT",
-                req == null || req.getItems() == null ? List.of()
-                        : req.getItems().stream()
-                            .map(ReturnItemLine::getReceiptItemId).toList());
+                req.getItems().stream()
+                        .map(ReturnItemLine::getReceiptItemId).toList());
         ProcurementReturnHeaderAuthority.requireSubmittedIdentity(header,req.getSupplierId(),req.getCurrencyId());
         return header;
     }

@@ -1,0 +1,11 @@
+{
+  "workbook": "D:\\Projects\\uten_imp_worktrees\\feedback-scale-verify-20261110\\evidence\\scale\\physical-prep-1\\artifacts\\physical-1048600.xlsx",
+  "kind": "preverification; final unified source still awaits root freeze",
+  "fingerprintBytes": "exact raw file bytes",
+  "workbookSha256": "93501b872ba463024344b063d5f78b7dd2a4880cb0c27cc23beb9a9af4da1fb8",
+  "workbookBytes": 8530989,
+  "sourceStart": "c4b84f5465de1e6fcb4617a847f523383d07da64",
+  "exit": 0,
+  "sourceEnd": "c4b84f5465de1e6fcb4617a847f523383d07da64",
+  "classesDirectory": "D:/Projects/uten_imp_worktrees/feedback-scale-verify-20261110/evidence/scale/prep-1/build/classes"
+}

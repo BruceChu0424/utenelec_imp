@@ -1,0 +1,16 @@
+ prepared_goods |  min   |  max   |    sum     
+----------------+--------+--------+------------
+          78500 | 1.2345 | 1.2345 | 96908.2500
+(1 row)
+
+ disabled_goods_triggers | enabled_goods_triggers 
+-------------------------+------------------------
+                       0 |                     14
+(1 row)
+
+ state  | wait_event_type | wait_event |                                      query_shape                                       
+--------+-----------------+------------+----------------------------------------------------------------------------------------
+ active |                 |            | INSERT INTO goods(id,code,name,status,category_id,code_sequence,auto_created,price,zk)+
+        |                 |            | SELECT gen_random_uuid(),$1||lpad(i::text,6,'0'),$2||lpad(i::text,6,'0'),
+(1 row)
+

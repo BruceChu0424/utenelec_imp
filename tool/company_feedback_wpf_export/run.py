@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -45,6 +46,7 @@ def main() -> int:
         "root": str(root), "msbuild": str(msbuild), "results": [],
         "classification": "host Windows WPF/CurrentUser DPAPI/controlled HTTP codec; not PostgreSQL or Win7 target acceptance",
         "formalPackageOrInstall": False,
+        "passed": False,
     }
 
     def run(name: str, argv: list[str], env: dict | None = None) -> int:
@@ -55,7 +57,14 @@ def main() -> int:
         (output / "result.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
         return result.returncode
 
-    dependency = [sys.executable, "clients/windows_legacy/tools/restore_dependencies.py", "--restore" if args.restore_pinned_dependency else "--check"]
+    # Some installed embedded Python launchers expose their runtime directory as
+    # sys.executable. Resolve an existing executable rather than trying to launch it.
+    python = Path(sys.executable)
+    if not python.is_file():
+        python = Path(shutil.which("python.exe") or shutil.which("python") or "")
+    if not python.is_file():
+        raise RuntimeError("an existing Python executable is required; nothing will be installed")
+    dependency = [str(python), "clients/windows_legacy/tools/restore_dependencies.py", "--restore" if args.restore_pinned_dependency else "--check"]
     if run("pinned-dependency", dependency) != 0:
         return 1
     failed = False

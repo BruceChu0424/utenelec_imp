@@ -20,7 +20,9 @@ class UtenAdaptiveHierarchyPane extends StatefulWidget {
     required this.leading,
     required this.trailing,
     required this.canSplit,
-    required this.splitBuilder,
+    this.leadingWidth = 300,
+    this.separator = const SizedBox.shrink(),
+    this.separatorWidth = 0,
     this.selectedLabel,
     this.selectionKey,
     this.noun = '分类',
@@ -31,7 +33,9 @@ class UtenAdaptiveHierarchyPane extends StatefulWidget {
   final Widget leading;
   final Widget trailing;
   final bool canSplit;
-  final Widget Function(Widget leading, Widget trailing) splitBuilder;
+  final double leadingWidth;
+  final Widget separator;
+  final double separatorWidth;
   final String? selectedLabel;
   final Object? selectionKey;
   final String noun;
@@ -88,59 +92,64 @@ class _AdaptiveHierarchyPaneState extends State<UtenAdaptiveHierarchyPane> {
         ],
       ),
     );
-    final header = KeyedSubtree(
-      key: _compactHeaderKey,
-      child: compact
-          ? Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Row(
-                children: [
-                  Expanded(child: directory),
-                  if (widget.compactHeader != null) ...[
-                    const SizedBox(width: 8),
-                    ConstrainedBox(
-                      constraints: BoxConstraints(
-                        maxWidth:
-                            UtenControlMetrics.minimumHitExtent(context) * 3,
+    final header = Visibility(
+      visible: !widget.canSplit,
+      maintainState: true,
+      maintainAnimation: true,
+      child: KeyedSubtree(
+        key: _compactHeaderKey,
+        child: compact
+            ? Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  children: [
+                    Expanded(child: directory),
+                    if (widget.compactHeader != null) ...[
+                      const SizedBox(width: 8),
+                      ConstrainedBox(
+                        constraints: BoxConstraints(
+                          maxWidth:
+                              UtenControlMetrics.minimumHitExtent(context) * 3,
+                        ),
+                        child: utenCompactToolbarChild(
+                          context,
+                          widget.compactHeader!,
+                        ),
                       ),
-                      child: utenCompactToolbarChild(
-                        context,
-                        widget.compactHeader!,
-                      ),
-                    ),
+                    ],
                   ],
-                ],
-              ),
-            )
-          : Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                ?widget.compactHeader,
-                UtenPageEdgePadding.pane(
-                  padding: const EdgeInsets.all(8),
-                  child: OutlinedButton(
-                    key: widget.openButtonKey,
-                    focusNode: _triggerFocus,
-                    onPressed: () => setState(() => _open = true),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 6),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              widget.selectedLabel ?? '选择${widget.noun}',
-                              softWrap: true,
+                ),
+              )
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  ?widget.compactHeader,
+                  UtenPageEdgePadding.pane(
+                    padding: const EdgeInsets.all(8),
+                    child: OutlinedButton(
+                      key: widget.openButtonKey,
+                      focusNode: _triggerFocus,
+                      onPressed: () => setState(() => _open = true),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 6),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                widget.selectedLabel ?? '选择${widget.noun}',
+                                softWrap: true,
+                              ),
                             ),
-                          ),
-                          const SizedBox(width: 8),
-                          const Icon(Icons.account_tree_rounded, size: 20),
-                        ],
+                            const SizedBox(width: 8),
+                            const Icon(Icons.account_tree_rounded, size: 20),
+                          ],
+                        ),
                       ),
                     ),
                   ),
-                ),
-              ],
-            ),
+                ],
+              ),
+      ),
     );
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -174,72 +183,118 @@ class _AdaptiveHierarchyPaneState extends State<UtenAdaptiveHierarchyPane> {
       ),
     );
     final trailing = KeyedSubtree(key: _trailingKey, child: widget.trailing);
-    if (widget.canSplit) {
-      return UtenPagePaneScope(
-        split: true,
-        child: widget.splitBuilder(leading, trailing),
-      );
-    }
-    Widget merged = PopScope(
-      canPop: !_open,
-      onPopInvokedWithResult: (didPop, _) {
-        if (!didPop && _open) _close();
-      },
-      child: CallbackShortcuts(
-        bindings: {
-          const SingleActivator(LogicalKeyboardKey.escape): () {
-            if (_open) _close();
+    final showDirectory = !widget.canSplit && _open;
+    final ownEdges =
+        UtenPageScrollRoleScope.isPageOf(context) &&
+        !UtenContentInsetsScope.isPresentOf(context);
+    return UtenPagePaneScope(
+      split: widget.canSplit,
+      child: UtenContentContainer(
+        selectable: false,
+        applyGutter: !widget.canSplit && ownEdges,
+        child: PopScope(
+          canPop: !showDirectory,
+          onPopInvokedWithResult: (didPop, _) {
+            if (!didPop && showDirectory) _close();
           },
-        },
-        child: Stack(
-          children: [
-            Positioned.fill(
-              child: Visibility(
-                visible: !_open,
-                maintainState: true,
-                child: _buildCompactContent(trailing),
-              ),
-            ),
-            Positioned.fill(
-              child: Visibility(
-                visible: _open,
-                maintainState: true,
-                child: Material(
-                  color: Theme.of(context).colorScheme.surface,
-                  child: Column(
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(12, 4, 4, 4),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                '${widget.noun}目录',
-                                style: Theme.of(context).textTheme.titleMedium,
-                              ),
-                            ),
-                            UtenCloseButton(tooltip: '返回内容', onPressed: _close),
-                          ],
-                        ),
-                      ),
-                      const Divider(height: 1),
-                      Expanded(child: leading),
-                    ],
+          child: CallbackShortcuts(
+            bindings: {
+              const SingleActivator(LogicalKeyboardKey.escape): () {
+                if (showDirectory) _close();
+              },
+            },
+            // These slots keep their Element and render parents across widths.
+            // In particular, a live Tooltip/OverlayPortal is never activated
+            // in a different parent while an ancestor LayoutBuilder lays out.
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                PositionedDirectional(
+                  start: widget.canSplit
+                      ? widget.leadingWidth + widget.separatorWidth
+                      : 0,
+                  end: 0,
+                  top: 0,
+                  bottom: 0,
+                  child: Visibility(
+                    visible: !showDirectory,
+                    maintainState: true,
+                    maintainAnimation: true,
+                    child: _buildCompactContent(trailing),
                   ),
                 ),
-              ),
+                PositionedDirectional(
+                  start: 0,
+                  end: widget.canSplit ? null : 0,
+                  width: widget.canSplit ? widget.leadingWidth : null,
+                  top: 0,
+                  bottom: 0,
+                  child: Visibility(
+                    visible: widget.canSplit || showDirectory,
+                    maintainState: true,
+                    maintainAnimation: true,
+                    child: Material(
+                      color: Theme.of(context).colorScheme.surface,
+                      child: Column(
+                        children: [
+                          Visibility(
+                            visible: !widget.canSplit,
+                            maintainState: true,
+                            maintainAnimation: true,
+                            child: Column(
+                              children: [
+                                Padding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    12,
+                                    4,
+                                    4,
+                                    4,
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          '${widget.noun}目录',
+                                          style: Theme.of(
+                                            context,
+                                          ).textTheme.titleMedium,
+                                        ),
+                                      ),
+                                      UtenCloseButton(
+                                        tooltip: '返回内容',
+                                        onPressed: _close,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const Divider(height: 1),
+                              ],
+                            ),
+                          ),
+                          Expanded(child: leading),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                PositionedDirectional(
+                  start: widget.leadingWidth,
+                  width: widget.separatorWidth,
+                  top: 0,
+                  bottom: 0,
+                  child: Visibility(
+                    visible: widget.canSplit,
+                    maintainState: true,
+                    maintainAnimation: true,
+                    child: widget.separator,
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
-    // Standalone pages get one shared edge owner. Popup/local pickers retain
-    // their original panel spacing and scrollbar responsibility.
-    if (UtenPageScrollRoleScope.isPageOf(context) &&
-        !UtenContentInsetsScope.isPresentOf(context)) {
-      merged = UtenContentContainer(selectable: false, child: merged);
-    }
-    return UtenPagePaneScope(split: false, child: merged);
   }
 }
 

@@ -12,6 +12,7 @@ import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/core/ui/opportunistic_dialog_coordinator.dart';
+import 'package:uten_imp/core/ui/uten_notify.dart';
 import 'package:uten_imp/features/admin/models/server_operations.dart';
 import 'package:uten_imp/features/admin/providers/server_operations_access.dart';
 import 'package:uten_imp/features/admin/providers/server_storage_request_store.dart';
@@ -21,11 +22,199 @@ import 'package:uten_imp/shared/badges/badge_registry.dart';
 import 'package:uten_imp/shared/providers/app_visibility_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/widgets/reauth_dialog.dart';
+import 'package:uten_imp/features/notice/providers/review_pending_login_gate.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
 import '../../support/audit_screenshot_support.dart';
 
 void main() {
+  test(
+    'priority ownership is immediate while UI notification is deferred',
+    () async {
+      final coordinator = OpportunisticDialogCoordinator();
+      final opportunity = coordinator.tryAcquire()!;
+      var notices = 0, interruptions = 0, lateInterruptions = 0;
+      coordinator.addListener(() => notices++);
+      opportunity.addListener(() => interruptions++);
+      final priority = coordinator.prioritize();
+      expect(coordinator.blocked, true);
+      expect(opportunity.interrupted, true);
+      expect(coordinator.tryAcquire(), isNull);
+      expect(notices, 0);
+      expect(interruptions, 0);
+      opportunity.addListener(() => lateInterruptions++);
+      await Future<void>.delayed(Duration.zero);
+      expect(notices, 1);
+      expect(interruptions, 1);
+      expect(lateInterruptions, 1);
+      priority.release();
+      opportunity.dispose();
+      coordinator.dispose();
+    },
+  );
+
+  test(
+    'a removed late interruption listener cannot run after its owner retires',
+    () async {
+      final coordinator = OpportunisticDialogCoordinator();
+      final opportunity = coordinator.tryAcquire()!;
+      opportunity.interrupt();
+      await Future<void>.delayed(Duration.zero);
+      var calls = 0;
+      void listener() => calls++;
+      opportunity.addListener(listener);
+      opportunity.removeListener(listener);
+      await Future<void>.delayed(Duration.zero);
+      expect(calls, 0);
+      opportunity.dispose();
+      coordinator.dispose();
+    },
+  );
+
+  testWidgets(
+    'layout-time login priority closes only its optional route after layout',
+    (tester) async {
+      tester.view.physicalSize = const Size(900, 700);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final coordinator = OpportunisticDialogCoordinator();
+      addTearDown(coordinator.dispose);
+      final navigator = GlobalKey<NavigatorState>();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            opportunisticDialogCoordinatorProvider.overrideWithValue(
+              coordinator,
+            ),
+          ],
+          child: MaterialApp(
+            navigatorKey: navigator,
+            locale: const Locale('zh'),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: LayoutBuilder(
+              builder: (context, constraints) => Column(
+                children: [
+                  if (constraints.maxWidth < 700)
+                    ReviewPendingLoginGate(
+                      enabled: true,
+                      identityKey: 'lifecycle-owner',
+                      dialogContext: () => null,
+                    ),
+                  const Text('required work remains'),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      final opportunity = coordinator.tryAcquire()!;
+      final closed = UtenNotify.alert(
+        navigator.currentContext!,
+        title: 'optional suggestion',
+        message: 'owned optional route',
+        interruptSignal: opportunity,
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('optional suggestion'), findsOneWidget);
+      tester.view.physicalSize = const Size(500, 700);
+      await tester.pump();
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(opportunity.interrupted, true);
+      expect(find.text('optional suggestion'), findsNothing);
+      expect(find.text('required work remains'), findsOneWidget);
+      await closed;
+      opportunity.dispose();
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
+    'a real login priority gate cannot notify a deactivated reminder during layout reparent',
+    (tester) async {
+      tester.view.physicalSize = const Size(900, 700);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      SharedPreferences.setMockInitialValues({});
+      final preferences = await SharedPreferences.getInstance();
+      final reminderKey = GlobalKey();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            sharedPreferencesProvider.overrideWithValue(preferences),
+            serverOperationsOwnerProvider.overrideWithValue('lifecycle-owner'),
+            serverUpdateReminderEligibleProvider.overrideWithValue(false),
+            fixedBadgeSummaryOverride(badgeSummaryFixture()),
+          ],
+          child: MaterialApp(
+            home: LayoutBuilder(
+              builder: (context, constraints) {
+                final reminder = ServerUpdatePopupGate(
+                  key: reminderKey,
+                  visible: false,
+                  child: const SizedBox.shrink(),
+                );
+                if (constraints.maxWidth >= 700) {
+                  return Row(children: [reminder]);
+                }
+                return Column(
+                  children: [
+                    ReviewPendingLoginGate(
+                      enabled: true,
+                      identityKey: 'lifecycle-owner',
+                      dialogContext: () => null,
+                    ),
+                    reminder,
+                  ],
+                );
+              },
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(tester.takeException(), isNull);
+      tester.view.physicalSize = const Size(500, 700);
+      await tester.pump();
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets('a reattached same owner retires the old in-flight status', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(900, 700);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final old = Completer<ServerOperationsStatus>();
+    final repository = _Repository()..handler = () => old.future;
+    final oldStatus = repository.sample();
+    final fixture = await _pump(tester, repository, responsive: true);
+    await tester.pump(const Duration(seconds: 1));
+    expect(repository.statusCalls, 1);
+    tester.view.physicalSize = const Size(500, 700);
+    await tester.pump();
+    repository.version = 'v2.5.19';
+    repository.handler = null;
+    old.complete(oldStatus);
+    await tester.pumpAndSettle();
+    expect(find.text('服务器有新版本 v2.5.18'), findsNothing);
+    expect(fixture.preferences.getKeys(), isEmpty);
+    await tester.pump(const Duration(milliseconds: 800));
+    await tester.pumpAndSettle();
+    expect(repository.statusCalls, 2);
+    expect(find.text('服务器有新版本 v2.5.19'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('normal release reminder demonstration render', (tester) async {
     await loadAuditScreenshotFonts(tester);
     tester.view.physicalSize = const Size(900, 700);
@@ -256,17 +445,37 @@ _pump(
   WidgetTester tester,
   _Repository repository, {
   bool eligible = true,
+  bool responsive = false,
   GlobalKey? capture,
 }) async {
   SharedPreferences.setMockInitialValues({});
   final preferences = await SharedPreferences.getInstance();
+  final reminderKey = GlobalKey();
   final router = GoRouter(
     initialLocation: RouteName.dashboard,
     routes: [
       GoRoute(
         path: RouteName.dashboard,
-        builder: (_, _) => const Scaffold(
-          body: ServerUpdatePopupGate(visible: true, child: Text('工作台内容')),
+        builder: (_, _) => Scaffold(
+          body: responsive
+              ? LayoutBuilder(
+                  builder: (context, constraints) {
+                    final reminder = Expanded(
+                      child: ServerUpdatePopupGate(
+                        key: reminderKey,
+                        visible: true,
+                        child: const Text('工作台内容'),
+                      ),
+                    );
+                    return constraints.maxWidth >= 700
+                        ? Row(children: [reminder])
+                        : Column(children: [reminder]);
+                  },
+                )
+              : const ServerUpdatePopupGate(
+                  visible: true,
+                  child: Text('工作台内容'),
+                ),
         ),
       ),
       GoRoute(

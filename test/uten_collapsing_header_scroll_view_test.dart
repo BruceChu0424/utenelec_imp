@@ -68,7 +68,10 @@ void main() {
     await tester.pumpWidget(_harness());
     await tester.pumpAndSettle();
 
-    expect(find.byType(NestedScrollView), findsOneWidget);
+    final bodyContext = tester.element(find.text('ROW-0'));
+    final outer = UtenCollapsingHeaderScrollView.outerControllerOf(bodyContext);
+    expect(outer, isNotNull);
+    expect(outer!.positions, hasLength(1));
     expect(find.text('CARD'), findsOneWidget);
     expect(find.text('SEARCH'), findsOneWidget);
     expect(find.text('ROW-0'), findsOneWidget);

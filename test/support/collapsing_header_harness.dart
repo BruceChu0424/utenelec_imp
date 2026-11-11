@@ -39,11 +39,8 @@ TransitionBuilder utenTextScaleBuilder(double scale) {
 /// 上滚滚轮，断言 [headerAnchor]（折叠头里的任意可见控件）随之上移——即
 /// 「先滚页面收头部」生效。
 ///
-/// 悬停点按当前布局分支选：
-///  - 联动模式（NestedScrollView 在树里）：停在 [bodyAnchor]（明细表）上，验证
-///    「滚表格时先收头部」的外内交接；
-///  - 整页回退模式（头部太高/视口太小，见组件 §紧凑回退）：body 在定高盒内自滚、
-///    不与外层交接，停在滚动视图顶部（折叠头区域）滚页面。
+/// The shared controller scope coordinates all presentations. Send the original
+/// wheel over the visible body when available, or the header in a short viewport.
 ///
 /// [delta] 取小值（默认 100）以保证头部锚点滚动后仍在树里可量。
 Future<void> expectUtenHeaderCollapses(
@@ -53,7 +50,12 @@ Future<void> expectUtenHeaderCollapses(
   double delta = 100,
 }) async {
   expect(headerAnchor, findsOneWidget, reason: '折叠头锚点必须存在才能量位移');
-  final coordinated = find.byType(NestedScrollView).evaluate().isNotEmpty;
+  final coordinated =
+      UtenCollapsingHeaderScrollView.outerControllerOf(
+            tester.element(headerAnchor),
+          ) !=
+          null ||
+      find.byType(NestedScrollView).evaluate().isNotEmpty;
   if (coordinated) {
     expect(bodyAnchor, findsOneWidget, reason: 'body 锚点（表格）必须存在才能投递滚轮事件');
   }
@@ -61,8 +63,13 @@ Future<void> expectUtenHeaderCollapses(
   final scrollRect = tester.getRect(
     find.byType(UtenCollapsingHeaderScrollView),
   );
-  final point = coordinated
-      ? tester.getCenter(bodyAnchor)
+  final window =
+      Offset.zero & (tester.view.physicalSize / tester.view.devicePixelRatio);
+  final bodyRect = coordinated
+      ? tester.getRect(bodyAnchor).intersect(scrollRect).intersect(window)
+      : Rect.zero;
+  final point = bodyRect.width > 0 && bodyRect.height > 0
+      ? bodyRect.center
       : Offset(scrollRect.center.dx, scrollRect.top + 24);
   final pointer = TestPointer(1, PointerDeviceKind.mouse);
   await tester.sendEventToBinding(pointer.hover(point));

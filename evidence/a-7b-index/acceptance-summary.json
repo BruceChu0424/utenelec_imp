@@ -1,0 +1,255 @@
+{
+  "sourceHead": "7b912287e53315228b469790ff066a9fab643e3c",
+  "sourceTree": "c633a95d896111d42aa0698b97d3764d8138f565",
+  "backendOnly": true,
+  "finalGlobalCandidateAcceptance": false,
+  "mainObservedAfter": "d5200b6bf68aae203542c3828ddc0d6498be2870",
+  "canonicalDiffAfter": "",
+  "backend15": {
+    "classes": [
+      {
+        "name": "com.uten.imp.businesschain.ProductionPartialReportQuantityEndToEndTest",
+        "tests": "11",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0",
+        "time": "530.417"
+      },
+      {
+        "name": "com.uten.imp.businesschain.ProductionQuantityAdversarialEndToEndTest",
+        "tests": "13",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0",
+        "time": "341.064"
+      },
+      {
+        "name": "com.uten.imp.businesschain.WorkshopPublicSurplusEndToEndTest",
+        "tests": "17",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0",
+        "time": "683.203"
+      },
+      {
+        "name": "com.uten.imp.common.production.ProductionMaterialKitProofsTest",
+        "tests": "3",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0",
+        "time": "0.589"
+      },
+      {
+        "name": "com.uten.imp.features.production.dailyreport.DailyReportExecutionSegmentGuardTest",
+        "tests": "28",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0",
+        "time": "0.949"
+      },
+      {
+        "name": "com.uten.imp.features.production.dailyreport.ReportablePlanLinePostgresTest",
+        "tests": "14",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0",
+        "time": "112.393"
+      },
+      {
+        "name": "com.uten.imp.features.production.dailyreport.ReportablePlanLineQuerySecurityContractTest",
+        "tests": "1",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0",
+        "time": "0.207"
+      },
+      {
+        "name": "com.uten.imp.features.production.execution.ProductionExecutionSegmentServiceTest",
+        "tests": "24",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0",
+        "time": "0.968"
+      },
+      {
+        "name": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchProjectionTest",
+        "tests": "4",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0",
+        "time": "0.018"
+      },
+      {
+        "name": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchSecurityContractTest",
+        "tests": "4",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0",
+        "time": "0.024"
+      },
+      {
+        "name": "com.uten.imp.features.production.execution.ProductionWorkshopTaskStageContractTest",
+        "tests": "52",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0",
+        "time": "0.169"
+      },
+      {
+        "name": "com.uten.imp.features.stock.allocation.ProductionMaterialSettlementServiceTest",
+        "tests": "7",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0",
+        "time": "0.269"
+      },
+      {
+        "name": "com.uten.imp.features.stock.allocation.ProductionMaterialStockLedgerCancellationPolicyTest",
+        "tests": "2",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0",
+        "time": "0.002"
+      },
+      {
+        "name": "com.uten.imp.features.stock.allocation.ProductionMaterialStockLedgerRoutingTest",
+        "tests": "3",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0",
+        "time": "0.035"
+      },
+      {
+        "name": "com.uten.imp.migration.PartialMaterialReportCapacityPostgresTest",
+        "tests": "26",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0",
+        "time": "262.194"
+      }
+    ],
+    "totalTests": 209,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "exitCode": 0
+  },
+  "owningPgIsSubsetOf15": 26,
+  "upgrade": {
+    "launcherCount": 19,
+    "candidateDatabases": 12,
+    "staged1129Dumps": 6,
+    "allOneTestSuccessful": true,
+    "labels": [
+      "upgrade-v1128-public-baseline",
+      "upgrade-candidate-v1128-create",
+      "upgrade-candidate-v1128-edit",
+      "upgrade-candidate-v1128-approve",
+      "upgrade-three-v1128-create",
+      "upgrade-three-v1128-edit",
+      "upgrade-three-v1128-approve",
+      "upgrade-existing-v1129-create-stage",
+      "upgrade-candidate-v1129-create",
+      "upgrade-existing-v1129-edit-stage",
+      "upgrade-candidate-v1129-edit",
+      "upgrade-existing-v1129-approve-stage",
+      "upgrade-candidate-v1129-approve",
+      "upgrade-three-existing-v1129-create-stage",
+      "upgrade-three-v1129-create",
+      "upgrade-three-existing-v1129-edit-stage",
+      "upgrade-three-v1129-edit",
+      "upgrade-three-existing-v1129-approve-stage",
+      "upgrade-three-v1129-approve"
+    ],
+    "exitCode": 0
+  },
+  "proof": {
+    "sqlExplainMs": [
+      26.494,
+      35.782,
+      152.182
+    ],
+    "checkpoints": [
+      513,
+      1025,
+      2049
+    ],
+    "issueReverseEachRows": [
+      257,
+      513,
+      1025
+    ],
+    "postingScanLoops": 1,
+    "owningPgWarmMs": [
+      49,
+      106,
+      122
+    ],
+    "historicalRows": 20000,
+    "baselineCapacityMs": 27,
+    "roomMs": 41,
+    "singleEventPostings": 1000,
+    "checkpointWriteMs": 91,
+    "exitCode": 0
+  },
+  "projection": {
+    "projection-baseline": {
+      "expectedExit": 0,
+      "observedOneTestOutcome": "successful",
+      "rawLog": "evidence\\a-final-7b912287-1\\projection\\projection-baseline.log"
+    },
+    "projection-mutant": {
+      "expectedExit": 1,
+      "observedOneTestOutcome": "failed",
+      "rawLog": "evidence\\a-final-7b912287-1\\projection\\projection-mutant.log"
+    },
+    "projection-restored": {
+      "expectedExit": 0,
+      "observedOneTestOutcome": "successful",
+      "rawLog": "evidence\\a-final-7b912287-1\\projection\\projection-restored.log"
+    }
+  },
+  "directReturn": {
+    "tests": 2,
+    "exitCode": 0,
+    "firstLauncherCloseFailurePreserved": true
+  },
+  "vm": {
+    "cases": 5,
+    "exitCode": 0,
+    "controlledApiNotActualWindows": true
+  },
+  "originalCurves": {
+    "threeCurveOutputs": [
+      5000,
+      5000,
+      5000
+    ],
+    "checkpoint": false,
+    "roomBeforeOccupancy": 5000,
+    "posted": 1500,
+    "draft": 500,
+    "newRoom": 3000,
+    "ownEditRoom": 3500,
+    "roomAfterDraftDelete": 3500,
+    "assertionsVerified": true
+  },
+  "migrationPreservation": {
+    "1129": {
+      "originalCommit": "fdeda88b3",
+      "canonicalBlob": "9d0cab7aa785f4b9baed3732d737c02860cb7174",
+      "unchanged": true
+    },
+    "1130": {
+      "originalCommit": "81cc0eac0",
+      "canonicalBlob": "f8ae13e6105b9824ec242283b19f54c052e2d1b0",
+      "unchanged": true
+    },
+    "1131": {
+      "originalCommit": "59364ea00",
+      "canonicalBlob": "43d76fcb1bca138a7f39c3ad0000bfb01b9ba0bc",
+      "unchanged": true
+    }
+  },
+  "rootRuntimeDatabaseUsed": false
+}

@@ -21,7 +21,7 @@ INSERT INTO production_material_stock_postings(id,event_id,demand_id,posting_typ
 INSERT INTO production_material_stock_postings(id,event_id,demand_id,posting_type,qty_base,source_posting_id) VALUES(md5('return')::uuid,md5('return-event')::uuid,md5('material')::uuid,'GOOD_RETURN',9,md5('issue')::uuid);
 """
 base=bootstrap+'\n'+original_function('fn_material_snapshot_required')+'\n'+original_function('fn_demand_material_output_capacity')+'\n'+seed+'\n'+(root/'server/src/main/resources/db/migration/V1129__partial_material_reporting_capacity.sql').read_text(encoding='utf8')
-forward=(root/'server/src/main/resources/db/migration/V1130__verify_legacy_material_basis_and_linear_proof_sweep.sql').read_text(encoding='utf8')
+forward=(root/'server/src/main/resources/db/migration/V1130__verify_legacy_material_basis_and_linear_proof_sweep.sql').read_text(encoding='utf8')+'\n'+(root/'server/src/main/resources/db/migration/V1131__settle_proof_peers_and_verify_legacy_demand_threshold.sql').read_text(encoding='utf8')
 name='uten-remediate-a-'+uuid.uuid4().hex[:9]
 run(['docker','run','-d','--name',name,'--network','none','-e','POSTGRES_HOST_AUTH_METHOD=trust','postgres:16-alpine'])
 cmd=['docker','exec','-i',name,'psql','-X','-qAt','-v','ON_ERROR_STOP=1','-U','postgres']
@@ -36,7 +36,7 @@ try:
  (p/'candidate-legacy-repeat.log').write_text(run(cmd,upgrade+checks),encoding='utf8')
  steps="(n INT) RETURNS void LANGUAGE plpgsql AS $$\nDECLARE s uuid := md5('new segment')::uuid; d uuid:=md5('new material')::uuid;\n        first_issue uuid:=md5('first issue')::uuid; later_issue uuid; k int;\nBEGIN\n  INSERT INTO production_execution_segments(id,planned_qty,material_requirement_mode) VALUES(s,10,'DEMANDED');\n  INSERT INTO production_material_demands(id,execution_segment_id,required_qty) VALUES(d,s,10);\n  INSERT INTO production_material_stock_postings(id,event_id,demand_id,posting_type,qty_base) VALUES(first_issue,gen_random_uuid(),d,'ISSUE',10);\n  PERFORM fn_capture_execution_full_material_kit(s);\n  FOR k IN 1..n LOOP\n    later_issue:=gen_random_uuid();\n    INSERT INTO production_material_stock_postings(id,event_id,demand_id,posting_type,qty_base) VALUES(later_issue,gen_random_uuid(),d,'ISSUE',1);\n    PERFORM fn_capture_execution_full_material_kit(s);\n    INSERT INTO production_material_stock_postings(id,event_id,demand_id,posting_type,qty_base,source_posting_id) VALUES(gen_random_uuid(),gen_random_uuid(),d,'ISSUE_REVERSE',1,later_issue);\n    PERFORM fn_capture_execution_full_material_kit(s);\n  END LOOP;\n  INSERT INTO production_material_stock_postings(id,event_id,demand_id,posting_type,qty_base,source_posting_id) VALUES(gen_random_uuid(),gen_random_uuid(),d,'ISSUE_REVERSE',10,first_issue);\nEND; $$;\n\n"
  run(cmd,'CREATE FUNCTION audit_capture_cycles'+steps)
- body=forward.split(' RETURN (',1)[1].split('END;\n$$;',1)[0].rstrip()[:-2]
+ body=forward.rsplit(' RETURN (',1)[1].split('END;\n$$;',1)[0].rstrip()[:-2]
  body=body.replace('p_stock_order IS NULL OR proof.source_stock_order=p_stock_order','TRUE').replace('=p_segment',"=md5('new segment')::uuid")
  for cycles in [256,512,1024]:
   setup=f"""TRUNCATE production_material_full_kit_proof_items,production_material_full_kit_proofs,production_material_stock_postings,production_material_demands,production_execution_segments; SELECT audit_capture_cycles({cycles}); ANALYZE;"""

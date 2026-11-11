@@ -3,8 +3,8 @@
 所有数据库、Maven 输出、TMP、端口和证据目录必须独立。原审查目录只读保留；每轮使用新的 `--output`。这些脚本仅面向明确指定的本地回环 PostgreSQL，不连接公司库，不合并、推送、部署或打包。
 
 - `compile_legacy.py --root <候选工作树> --output <全新目录>` 从 Git `86dffb9db` 干净编译 V1128 原业务程序，输出 `legacy-build`。
-- `proof_probe.py --root <候选工作树> --output <全新目录>` 重演原 V1129 缩量反例，然后应用 V1130，并测量 513/1025/2049 个检查点及原始 EXPLAIN。使用一次性隔离容器，不修改旧证据。
-- `upgrade_probe.py --root <候选工作树> --output <全新目录> --build-dir <候选隔离Maven输出> --legacy-build <V1128的legacy-build> --deps <依赖jar清单>` 公开造原单和两个修前草稿，保全原库及 dump，独立复制创建、编辑、审核和先停 V1129 再升级的数据库。候选输出目录需要同时包含 `classes`、`test-classes`；依赖清单是 Maven test scope 的分号分隔 jar 路径，不得混入旧产物目录。
+- `proof_probe.py --root <候选工作树> --output <全新目录>` 重演原 V1129 缩量反例，然后应用 V1130/V1131，并测量 513/1025/2049 个检查点及原始 EXPLAIN。使用一次性隔离容器，不修改旧证据。
+- `upgrade_probe.py --root <候选工作树> --output <全新目录> --build-dir <候选隔离Maven输出> --legacy-build <V1128的legacy-build> --deps <依赖jar清单>` 公开造原单和两个修前草稿，保全原库及 dump，独立复制创建、编辑、审核和先停 V1129 再升级的数据库。候选必须包含 V1130/V1131，输出目录需要同时包含 `classes`、`test-classes`；依赖清单是 Maven test scope 的分号分隔 jar 路径，不得混入旧产物目录。
 - `projection_mutation.py --root <候选工作树> --output <全新目录> --build-dir <隔离Maven输出> --deps <jar清单> --runtime-config <本地私有JSON>` 在真实查询中验证两种相反岗位，另编译一个仅交换布尔表达式的类路径覆盖，要求业务断言失败，再恢复正确查询通过。产品源文件不被修改。
 - `seed_browser.py` 使用同样的 `--root/--output/--build-dir/--deps/--runtime-config` 参数。先完成最终源码迁移，再运行它；`--compile-only` 仅编译、不连接数据库。输出普通报工编辑岗、独立审批岗、三材料各领 5000/计划 10000 的工单、草稿 300/配套 500 的工单和合法齐套工单，以及可打开的页面 ID。密码只取私有配置的 `syntheticAccountPassword`，不写证据 JSON 或命令参数。
 

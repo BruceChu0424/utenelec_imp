@@ -968,9 +968,10 @@
         "docs/99-项目治理/Win7兼容版/11-业务与安装链路增量阶段.md",
         "clients/windows_legacy/progress/evidence/unit-business-installer-20261028.json",
         "clients/windows_legacy/progress/evidence/platform-search-20261103.json",
-        "clients/windows_legacy/progress/evidence/platform-search-integration-20261104.json"
+        "clients/windows_legacy/progress/evidence/platform-search-integration-20261104.json",
+        "clients/windows_legacy/progress/evidence/feedback-final-a-and-native-output-plan-20261110.json"
       ],
-      "notes": "原请求proof后端与投影null等价修复45项、旧Flutter21项；原生任务/丢响应核对/同key显式确认/取消/密码下载落盘/legacy capability fallback UI16两arch通过。尚无真实目标机/正式交付。\n2026-11-04 搜索契约及c8eb95cb1合成双架构读取/草稿fixture证据追加；仅证明当前读取增量，原status、owner、DoD和依赖保留，未声明原生业务迁移、Win7真机或正式交付完成。",
+      "notes": "原请求proof后端与投影null等价修复45项、旧Flutter21项；原生任务/丢响应核对/同key显式确认/取消/密码下载落盘/legacy capability fallback UI16两arch通过。尚无真实目标机/正式交付。\n2026-11-04 搜索契约及c8eb95cb1合成双架构读取/草稿fixture证据追加；仅证明当前读取增量，原status、owner、DoD和依赖保留，未声明原生业务迁移、Win7真机或正式交付完成。\n2026-11-10 输出链补充来源：D3单位大选中原票据、输出专属16MiB请求与64MiB保全预算的本机证据位于 docs/99-项目治理/公司网页反馈整改-20261110/D3-WPF大选中导出与原票据恢复.md。统一候选SHA复跑、真实PG/文件与Win7目标机仍分栏待验；本次只追加来源，不改变status、owner、DoD、dependencies、nativeTargets，不宣称全业务或正式分发完成。",
       "lastUpdated": "2026-11-04T09:49:55.978207+00:00"
     },
     {
@@ -998,9 +999,10 @@
         "docs/99-项目治理/Win7兼容版/11-业务与安装链路增量阶段.md",
         "clients/windows_legacy/progress/evidence/unit-business-installer-20261028.json",
         "clients/windows_legacy/progress/evidence/platform-search-20261103.json",
-        "clients/windows_legacy/progress/evidence/platform-search-integration-20261104.json"
+        "clients/windows_legacy/progress/evidence/platform-search-integration-20261104.json",
+        "clients/windows_legacy/progress/evidence/feedback-final-a-and-native-output-plan-20261110.json"
       ],
-      "notes": "完整分页、同屏幕projection、A4纸面/全中文/选择器取消/范围退役/队列适配21两arch通过；WPF原生打印内部非PDF，未实际物理打印或交付独立PDF，不能标此大能力done。\n2026-11-04 搜索契约及c8eb95cb1合成双架构读取/草稿fixture证据追加；仅证明当前读取增量，原status、owner、DoD和依赖保留，未声明原生业务迁移、Win7真机或正式交付完成。",
+      "notes": "完整分页、同屏幕projection、A4纸面/全中文/选择器取消/范围退役/队列适配21两arch通过；WPF原生打印内部非PDF，未实际物理打印或交付独立PDF，不能标此大能力done。\n2026-11-04 搜索契约及c8eb95cb1合成双架构读取/草稿fixture证据追加；仅证明当前读取增量，原status、owner、DoD和依赖保留，未声明原生业务迁移、Win7真机或正式交付完成。\n2026-11-10 输出链补充来源：D3单位大选中原票据、输出专属16MiB请求与64MiB保全预算的本机证据位于 docs/99-项目治理/公司网页反馈整改-20261110/D3-WPF大选中导出与原票据恢复.md。统一候选SHA复跑、真实PG/文件与Win7目标机仍分栏待验；本次只追加来源，不改变status、owner、DoD、dependencies、nativeTargets，不宣称全业务或正式分发完成。",
       "lastUpdated": "2026-11-04T09:49:55.978207+00:00"
     },
     {
@@ -3741,8 +3743,10 @@
         "筛选与列投影、密码、完整快照、大文件/真实打印、取消/重复/权限撤销。",
         "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
       ],
-      "evidence": [],
-      "notes": "",
+      "evidence": [
+        "clients/windows_legacy/progress/evidence/feedback-final-a-and-native-output-plan-20261110.json"
+      ],
+      "notes": "2026-11-10 输出链补充来源：D3单位大选中原票据、输出专属16MiB请求与64MiB保全预算的本机证据位于 docs/99-项目治理/公司网页反馈整改-20261110/D3-WPF大选中导出与原票据恢复.md。统一候选SHA复跑、真实PG/文件与Win7目标机仍分栏待验；本次只追加来源，不改变status、owner、DoD、dependencies、nativeTargets，不宣称全业务或正式分发完成。",
       "lastUpdated": "2026-10-28"
     },
     {
@@ -5386,9 +5390,10 @@
         "clients/windows_legacy/progress/evidence/platform-search-integration-20261104.json",
         "clients/windows_legacy/progress/evidence/table-output-selection-20261105.json",
         "docs/99-项目治理/2026-11-10-截图批注补齐与本地主链整合.md",
-        "clients/windows_legacy/progress/evidence/company-feedback-20261110.json"
+        "clients/windows_legacy/progress/evidence/company-feedback-20261110.json",
+        "clients/windows_legacy/progress/evidence/feedback-final-a-and-native-output-plan-20261110.json"
       ],
-      "notes": "尚未迁移；先做动作/合同审计。\n2026-10-31 read-only company/old-backup audit confirms original summary text is preserved as keeper while manufacturer is blank. Native mould workspace remains unported. Retain raw text, supplier UUID ambiguity and approved data-recovery boundary. See E-MOULD-BOM-WINDOWS-20261031.\n2026-10-31 user confirmed summary is manufacturer/mould supplier. V972 and offline import now recover/preserve original text; company read-only preflight: 1300 eligible, zero conflicts. Production was not written. WPF mould page remains unported.\n2026-11-01 业务辅助选择改用已有业务动作授权的最小引用，人员仅工号、姓名、部门、职位；本次未实施或验收此WPF任务的原生增量，既有状态与DoD保留。见业务辅助引用证据及治理记录。\n2026-11-04 搜索契约及c8eb95cb1合成双架构读取/草稿fixture证据追加；仅证明当前读取增量，原status、owner、DoD和依赖保留，未声明原生业务迁移、Win7真机或正式交付完成。\n2026-11-05图2：服务端已有mould后台流式全量导出数据集；公共主档selectedIds增加当前筛选/权限交集及精确核对，未删除同步500行安全预算。原生模具主档/导出/打印仍未迁移，后端合同不代表原生入口完成。见E-TABLE-OUTPUT-SELECTION-20261105。\n2026-11-10 补交11图：分类主档共用导出弹窗去冗余范围标题，默认文件名取实际分类名；原生同责分类导出尚未迁移，平面单位主档不冒用分类规则。\n2026-11-10 公司网页反馈：真实表头与完整导出合同有变；本次仅同步Web/Flutter及服务端权威，未新增WPF对应业务入口，不提升原生完成状态。详见E-COMPANY-FEEDBACK-20261110。",
+      "notes": "尚未迁移；先做动作/合同审计。\n2026-10-31 read-only company/old-backup audit confirms original summary text is preserved as keeper while manufacturer is blank. Native mould workspace remains unported. Retain raw text, supplier UUID ambiguity and approved data-recovery boundary. See E-MOULD-BOM-WINDOWS-20261031.\n2026-10-31 user confirmed summary is manufacturer/mould supplier. V972 and offline import now recover/preserve original text; company read-only preflight: 1300 eligible, zero conflicts. Production was not written. WPF mould page remains unported.\n2026-11-01 业务辅助选择改用已有业务动作授权的最小引用，人员仅工号、姓名、部门、职位；本次未实施或验收此WPF任务的原生增量，既有状态与DoD保留。见业务辅助引用证据及治理记录。\n2026-11-04 搜索契约及c8eb95cb1合成双架构读取/草稿fixture证据追加；仅证明当前读取增量，原status、owner、DoD和依赖保留，未声明原生业务迁移、Win7真机或正式交付完成。\n2026-11-05图2：服务端已有mould后台流式全量导出数据集；公共主档selectedIds增加当前筛选/权限交集及精确核对，未删除同步500行安全预算。原生模具主档/导出/打印仍未迁移，后端合同不代表原生入口完成。见E-TABLE-OUTPUT-SELECTION-20261105。\n2026-11-10 补交11图：分类主档共用导出弹窗去冗余范围标题，默认文件名取实际分类名；原生同责分类导出尚未迁移，平面单位主档不冒用分类规则。\n2026-11-10 公司网页反馈：真实表头与完整导出合同有变；本次仅同步Web/Flutter及服务端权威，未新增WPF对应业务入口，不提升原生完成状态。详见E-COMPANY-FEEDBACK-20261110。\n2026-11-10 真实Flutter Windows模具bootstrap harness来源为 integration_test/company_feedback_actual_windows_test.dart（ec6f82065修复完整已提交）；当前只具备非最终SHA预验收，WPF模具业务页仍未迁移，不能用Flutter预验升级本任务状态或Win7支持。最终候选重编译/真实HTTP由总验收另记。",
       "lastUpdated": "2026-11-10T20:57:50.024419+00:00"
     },
     {
@@ -5684,9 +5689,10 @@
         "clients/windows_legacy/progress/evidence/platform-loading-history-20261105.json",
         "clients/windows_legacy/progress/evidence/platform-loading-main3068-20261105.json",
         "clients/windows_legacy/progress/evidence/complete-master-stream-20261106.json",
-        "clients/windows_legacy/progress/evidence/table-read-performance-20261110.json"
+        "clients/windows_legacy/progress/evidence/table-read-performance-20261110.json",
+        "clients/windows_legacy/progress/evidence/feedback-final-a-and-native-output-plan-20261110.json"
       ],
-      "notes": "单位完整列表同步一次NDJSON HTTP读取并保留精确/空值筛选、scope、未知写及500项命令上限；x86/x64 Debug/Release编译及PE、本机501行连续读取/全选/拒绝超限写验证通过。完整28动作/Win7目标机未验收，其余9类基础资料原生入口未迁移。\n2026-11-10 公共表格/完整读取性能适用性：现有WPF货品/单位是单List追加、终帧/EOF后一次发布，无Dart逐批前缀复制/整表重建同形问题，未改产品实现。本机x86/x64 35k/100k货品每组64断言、50次虚拟滚动(最多18个实际行容器)、12次真实重读取消、旧查询退休、最小化恢复及501单位写边界通过；原流协议29/架构与搜索/IME/owner合同通过。单次完整初载2494-5194ms仅合成观察，未达到1秒性能验收，不是Win7真机。首批50行渐进展示/自适应批计划、其余业务及目标机仍未迁移或未验收；保留原状态/owner/DoD/依赖。既有业务inventory漂移检查失败另记，见E-WPF-TABLE-READ-PERFORMANCE-20261110。",
+      "notes": "单位完整列表同步一次NDJSON HTTP读取并保留精确/空值筛选、scope、未知写及500项命令上限；x86/x64 Debug/Release编译及PE、本机501行连续读取/全选/拒绝超限写验证通过。完整28动作/Win7目标机未验收，其余9类基础资料原生入口未迁移。\n2026-11-10 公共表格/完整读取性能适用性：现有WPF货品/单位是单List追加、终帧/EOF后一次发布，无Dart逐批前缀复制/整表重建同形问题，未改产品实现。本机x86/x64 35k/100k货品每组64断言、50次虚拟滚动(最多18个实际行容器)、12次真实重读取消、旧查询退休、最小化恢复及501单位写边界通过；原流协议29/架构与搜索/IME/owner合同通过。单次完整初载2494-5194ms仅合成观察，未达到1秒性能验收，不是Win7真机。首批50行渐进展示/自适应批计划、其余业务及目标机仍未迁移或未验收；保留原状态/owner/DoD/依赖。既有业务inventory漂移检查失败另记，见E-WPF-TABLE-READ-PERFORMANCE-20261110。\n2026-11-10 输出链补充来源：D3单位大选中原票据、输出专属16MiB请求与64MiB保全预算的本机证据位于 docs/99-项目治理/公司网页反馈整改-20261110/D3-WPF大选中导出与原票据恢复.md。统一候选SHA复跑、真实PG/文件与Win7目标机仍分栏待验；本次只追加来源，不改变status、owner、DoD、dependencies、nativeTargets，不宣称全业务或正式分发完成。",
       "lastUpdated": "2026-11-10T15:26:09.737401+00:00"
     },
     {
@@ -8708,9 +8714,10 @@
         "clients/windows_legacy/progress/evidence/platform-search-20261103.json",
         "clients/windows_legacy/progress/evidence/platform-search-integration-20261104.json",
         "docs/99-项目治理/2026-11-10-截图批注补齐与本地主链整合.md",
-        "clients/windows_legacy/progress/evidence/company-feedback-20261110.json"
+        "clients/windows_legacy/progress/evidence/company-feedback-20261110.json",
+        "clients/windows_legacy/progress/evidence/feedback-final-a-and-native-output-plan-20261110.json"
       ],
-      "notes": "尚未迁移；先做动作/合同审计。\n2026-11-01 业务辅助选择改用已有业务动作授权的最小引用，人员仅工号、姓名、部门、职位；本次未实施或验收此WPF任务的原生增量，既有状态与DoD保留。见业务辅助引用证据及治理记录。\n2026-11-04 搜索契约及c8eb95cb1合成双架构读取/草稿fixture证据追加；仅证明当前读取增量，原status、owner、DoD和依赖保留，未声明原生业务迁移、Win7真机或正式交付完成。\n2026-11-06 任务徽章与物料准备回归。原生生产日报编辑仍待迁移。Flutter 来源子任务靠左，保留现有报工数量及来源契约。本轮未验收本原生业务或 Win7 真机。\n2026-11-06 报工称重补充合同。由授权来源读取货品资料单重，实称总重与确认后的申报数量各自留存，服务端冻结单重与有效换算方式。原生编辑仍待迁移。\n2026-11-10 补交11图：日报来源列默认加宽并按文字、缩放与三项操作完整测宽；原始来源UUID、打开/重选/清除与报工提交合同保留；原生该业务仍未迁移。\n2026-11-10 公司网页反馈：当前配套报工与状态合同合同有变；本次仅同步Web/Flutter及服务端权威，未新增WPF对应业务入口，不提升原生完成状态。详见E-COMPANY-FEEDBACK-20261110。",
+      "notes": "尚未迁移；先做动作/合同审计。\n2026-11-01 业务辅助选择改用已有业务动作授权的最小引用，人员仅工号、姓名、部门、职位；本次未实施或验收此WPF任务的原生增量，既有状态与DoD保留。见业务辅助引用证据及治理记录。\n2026-11-04 搜索契约及c8eb95cb1合成双架构读取/草稿fixture证据追加；仅证明当前读取增量，原status、owner、DoD和依赖保留，未声明原生业务迁移、Win7真机或正式交付完成。\n2026-11-06 任务徽章与物料准备回归。原生生产日报编辑仍待迁移。Flutter 来源子任务靠左，保留现有报工数量及来源契约。本轮未验收本原生业务或 Win7 真机。\n2026-11-06 报工称重补充合同。由授权来源读取货品资料单重，实称总重与确认后的申报数量各自留存，服务端冻结单重与有效换算方式。原生编辑仍待迁移。\n2026-11-10 补交11图：日报来源列默认加宽并按文字、缩放与三项操作完整测宽；原始来源UUID、打开/重选/清除与报工提交合同保留；原生该业务仍未迁移。\n2026-11-10 公司网页反馈：当前配套报工与状态合同合同有变；本次仅同步Web/Flutter及服务端权威，未新增WPF对应业务入口，不提升原生完成状态。详见E-COMPANY-FEEDBACK-20261110。\n2026-11-10 反馈A最终候选复跑计划：服务端配套/原日报ID+版本/工作台投影共用正式入口；本WPF生产业务页面仍未迁移，原status、owner、DoD、dependencies、nativeTargets不变。最终SHA真实PG升级及证据位置见 E-FEEDBACK-FINAL-A-NATIVE-OUTPUT-PLAN-20261110；本记录不是本机或Win7验收通过。",
       "lastUpdated": "2026-11-10T20:57:57.898209+00:00"
     },
     {
@@ -9190,9 +9197,10 @@
       "evidence": [
         "clients/windows_legacy/progress/evidence/order-bom-delivery-20261104.json",
         "docs/99-项目治理/2026-11-10-截图批注补齐与本地主链整合.md",
-        "clients/windows_legacy/progress/evidence/company-feedback-20261110.json"
+        "clients/windows_legacy/progress/evidence/company-feedback-20261110.json",
+        "clients/windows_legacy/progress/evidence/feedback-final-a-and-native-output-plan-20261110.json"
       ],
-      "notes": "尚未迁移；先做动作/合同审计。\n2026-11-04：订单BOM交付配置、必要加工、组件实物库存及发货合同新增；本WPF入口尚未迁移，保留原状态/DoD/依赖，不开放占位写入。见E-ORDER-BOM-DELIVERY-20261104。\n2026-11-10 补交11图：本页同责确认弹窗去重复流程段落，必要说明用事实标签旁提示icon；保留审核身份、数量精度、真实放行/跨仓/赠品收费/隐藏选择及未知提交合同；原生业务状态不提升。\n2026-11-10 公司网页反馈：当前配套报工与状态合同合同有变；本次仅同步Web/Flutter及服务端权威，未新增WPF对应业务入口，不提升原生完成状态。详见E-COMPANY-FEEDBACK-20261110。",
+      "notes": "尚未迁移；先做动作/合同审计。\n2026-11-04：订单BOM交付配置、必要加工、组件实物库存及发货合同新增；本WPF入口尚未迁移，保留原状态/DoD/依赖，不开放占位写入。见E-ORDER-BOM-DELIVERY-20261104。\n2026-11-10 补交11图：本页同责确认弹窗去重复流程段落，必要说明用事实标签旁提示icon；保留审核身份、数量精度、真实放行/跨仓/赠品收费/隐藏选择及未知提交合同；原生业务状态不提升。\n2026-11-10 公司网页反馈：当前配套报工与状态合同合同有变；本次仅同步Web/Flutter及服务端权威，未新增WPF对应业务入口，不提升原生完成状态。详见E-COMPANY-FEEDBACK-20261110。\n2026-11-10 反馈A最终候选复跑计划：服务端配套/原日报ID+版本/工作台投影共用正式入口；本WPF生产业务页面仍未迁移，原status、owner、DoD、dependencies、nativeTargets不变。最终SHA真实PG升级及证据位置见 E-FEEDBACK-FINAL-A-NATIVE-OUTPUT-PLAN-20261110；本记录不是本机或Win7验收通过。",
       "lastUpdated": "2026-11-10T20:57:59.333889+00:00"
     },
     {
@@ -9411,9 +9419,10 @@
         "clients/windows_legacy/progress/evidence/category-prefetch-sweep-20261103.json",
         "clients/windows_legacy/progress/evidence/finance-entry-ui-20261103.json",
         "clients/windows_legacy/progress/evidence/order-bom-delivery-20261104.json",
-        "clients/windows_legacy/progress/evidence/company-feedback-20261110.json"
+        "clients/windows_legacy/progress/evidence/company-feedback-20261110.json",
+        "clients/windows_legacy/progress/evidence/feedback-final-a-and-native-output-plan-20261110.json"
       ],
-      "notes": "尚未迁移；2026-10-31 Flutter已接入workshop-tasks Excel公共后台导出，须同步production_execution:view与production_report:export、原任务范围/筛选及native_workshop_tasks下载围栏；见2026-10-31仓库选仓与车间任务导出记录。 2026-10-31整合复核：导出状态须消费workshop-task-stage-v1共享样例，区分报完/待检/点收入库及备料阶段；不得仅映射底层segmentStatus，本地报工草稿不作为已审核事实导出。\n2026-11-01 必要合同增量仍未迁移：production_execution:view + production_workshop_task:view:all只扩列表/历史/详情/材料阅读；assignment、原动作、count/徽章不扩大，缓存弹窗及迟到响应须按Me/范围ABA失效。原状态和DoD保留。\n2026-11-01 同责车间表格的销售要求动作改用单行公共控件；WPF 本页仍未迁移，后续迁移须保留完整备注与紧凑行高，不得用固定高度裁掉内容。\n2026-11-03 同类任务页面预加载扩查：前端同口径徽章/有界首屏交接已按当前源码处理；WPF 对应业务仍未迁移，不因 Dart 或公共测试提高状态。后续接入须遵守完整查询、源实例/身份/权限/写修订隔离、全 App 两条物理投机预算及原历史/期间/能力闸门；详见本轮 evidence。\n2026-11-03 财务录入与公共表格增量：费用/收入项目同源新增及即时回显、备注末列、正常字号汇总、完整查询文本候选、表格工具栏日期及历史门控。来源、权限、精确金额、草稿及未知提交保留；完整调用清单见finance-entry-ui-20261103证据。 本任务WPF同责业务仍未迁移或未完成原DoD，不开放占位写入口，不据Flutter/后端验证提升完成状态。 完整ERP、Win7目标机与正式分发未验收；原状态、负责人、DoD及历史证据保留。\n2026-11-04：订单BOM交付配置、必要加工、组件实物库存及发货合同新增；本WPF入口尚未迁移，保留原状态/DoD/依赖，不开放占位写入。见E-ORDER-BOM-DELIVERY-20261104。\n2026-11-10 公司网页反馈：当前配套报工与状态合同合同有变；本次仅同步Web/Flutter及服务端权威，未新增WPF对应业务入口，不提升原生完成状态。详见E-COMPANY-FEEDBACK-20261110。",
+      "notes": "尚未迁移；2026-10-31 Flutter已接入workshop-tasks Excel公共后台导出，须同步production_execution:view与production_report:export、原任务范围/筛选及native_workshop_tasks下载围栏；见2026-10-31仓库选仓与车间任务导出记录。 2026-10-31整合复核：导出状态须消费workshop-task-stage-v1共享样例，区分报完/待检/点收入库及备料阶段；不得仅映射底层segmentStatus，本地报工草稿不作为已审核事实导出。\n2026-11-01 必要合同增量仍未迁移：production_execution:view + production_workshop_task:view:all只扩列表/历史/详情/材料阅读；assignment、原动作、count/徽章不扩大，缓存弹窗及迟到响应须按Me/范围ABA失效。原状态和DoD保留。\n2026-11-01 同责车间表格的销售要求动作改用单行公共控件；WPF 本页仍未迁移，后续迁移须保留完整备注与紧凑行高，不得用固定高度裁掉内容。\n2026-11-03 同类任务页面预加载扩查：前端同口径徽章/有界首屏交接已按当前源码处理；WPF 对应业务仍未迁移，不因 Dart 或公共测试提高状态。后续接入须遵守完整查询、源实例/身份/权限/写修订隔离、全 App 两条物理投机预算及原历史/期间/能力闸门；详见本轮 evidence。\n2026-11-03 财务录入与公共表格增量：费用/收入项目同源新增及即时回显、备注末列、正常字号汇总、完整查询文本候选、表格工具栏日期及历史门控。来源、权限、精确金额、草稿及未知提交保留；完整调用清单见finance-entry-ui-20261103证据。 本任务WPF同责业务仍未迁移或未完成原DoD，不开放占位写入口，不据Flutter/后端验证提升完成状态。 完整ERP、Win7目标机与正式分发未验收；原状态、负责人、DoD及历史证据保留。\n2026-11-04：订单BOM交付配置、必要加工、组件实物库存及发货合同新增；本WPF入口尚未迁移，保留原状态/DoD/依赖，不开放占位写入。见E-ORDER-BOM-DELIVERY-20261104。\n2026-11-10 公司网页反馈：当前配套报工与状态合同合同有变；本次仅同步Web/Flutter及服务端权威，未新增WPF对应业务入口，不提升原生完成状态。详见E-COMPANY-FEEDBACK-20261110。\n2026-11-10 反馈A最终候选复跑计划：服务端配套/原日报ID+版本/工作台投影共用正式入口；本WPF生产业务页面仍未迁移，原status、owner、DoD、dependencies、nativeTargets不变。最终SHA真实PG升级及证据位置见 E-FEEDBACK-FINAL-A-NATIVE-OUTPUT-PLAN-20261110；本记录不是本机或Win7验收通过。",
       "lastUpdated": "2026-11-10T20:58:00.705982+00:00"
     },
     {

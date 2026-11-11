@@ -40,18 +40,26 @@ def java(phase,classes,label,extra=None):
 if not (p/'old-final-id.txt').exists():java('old',legacy,'upgrade-v1128-public-baseline')
 # Freeze a real pre-upgrade database, then isolate create/edit/approve paths.
 with (p/'upgrade-v1128-before-candidate.dump').open('wb') as stream:sp.run(['docker','exec',name,'pg_dump','-U','postgres','-d','audit_kit','-Fc'],stdout=stream,check=True)
-for mode in ['create','edit','approve','already1129']:
- database='candidate_'+mode
- exists=docker(['exec',name,'psql','-X','-qAt','-U','postgres','-c',"SELECT 1 FROM pg_database WHERE datname='"+database+"'"])
- if exists!='1':docker(['exec',name,'psql','-X','-v','ON_ERROR_STOP=1','-U','postgres','-c','CREATE DATABASE '+database+' TEMPLATE audit_kit'])
- special={'AUDIT_KIT_DATABASE':database,'AUDIT_KIT_OPERATION':'create' if mode=='already1129' else mode}
- if mode=='already1129':java('stage1129',current,'upgrade-existing-v1129-stage',dict(special,AUDIT_KIT_TARGET='1129'))
- java('current',current,'upgrade-candidate-'+mode,special)
- print('PASSED',mode,flush=True)
-for mode in ['create','edit','approve']:
- database='candidate_three_'+mode
- docker(['exec',name,'psql','-X','-v','ON_ERROR_STOP=1','-U','postgres','-c','CREATE DATABASE '+database+' TEMPLATE audit_kit'])
- java('currentThree',current,'upgrade-three-'+mode,{'AUDIT_KIT_DATABASE':database,'AUDIT_THREE_OPERATION':mode})
- print('PASSED three-material',mode,flush=True)
+for starting in ['1128','1129']:
+ for mode in ['create','edit','approve']:
+  database='candidate_v'+starting+'_'+mode
+  docker(['exec',name,'psql','-X','-v','ON_ERROR_STOP=1','-U','postgres','-c','CREATE DATABASE '+database+' TEMPLATE audit_kit'])
+  special={'AUDIT_KIT_DATABASE':database,'AUDIT_KIT_OPERATION':mode}
+  if starting=='1129':
+   java('stage1129',current,'upgrade-existing-v1129-'+mode+'-stage',dict(special,AUDIT_KIT_TARGET='1129'))
+   with (p/('upgrade-existing-v1129-'+mode+'-before-candidate.dump')).open('wb') as stream:
+    sp.run(['docker','exec',name,'pg_dump','-U','postgres','-d',database,'-Fc'],stdout=stream,check=True)
+  java('current',current,'upgrade-candidate-v'+starting+'-'+mode,special)
+  print('PASSED from V'+starting,mode,flush=True)
+ for mode in ['create','edit','approve']:
+  database='candidate_three_v'+starting+'_'+mode
+  docker(['exec',name,'psql','-X','-v','ON_ERROR_STOP=1','-U','postgres','-c','CREATE DATABASE '+database+' TEMPLATE audit_kit'])
+  special={'AUDIT_KIT_DATABASE':database,'AUDIT_THREE_OPERATION':mode}
+  if starting=='1129':
+   java('stage1129',current,'upgrade-three-existing-v1129-'+mode+'-stage',dict(special,AUDIT_KIT_TARGET='1129'))
+   with (p/('upgrade-three-existing-v1129-'+mode+'-before-candidate.dump')).open('wb') as stream:
+    sp.run(['docker','exec',name,'pg_dump','-U','postgres','-d',database,'-Fc'],stdout=stream,check=True)
+  java('currentThree',current,'upgrade-three-v'+starting+'-'+mode,special)
+  print('PASSED three-material from V'+starting,mode,flush=True)
 (p/'upgrade-runtime-private.json').write_text(json.dumps({'container':name,'port':env['AUDIT_KIT_PG_PORT'],'database':'audit_kit','username':'postgres','password':'fixture-only'},indent=2),encoding='utf8')
-print('PRESERVED isolated original and seven candidate databases; no accepted business ledger changed',flush=True)
+print('PRESERVED isolated original and twelve candidate databases; no accepted business ledger changed',flush=True)

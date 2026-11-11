@@ -14,4 +14,6 @@
 
 测试启动前安装首次FlutterError捕获，并在生产诊断接链后再接链。首次原始exception/details.stack同步写入`first-flutter-error.json/.txt`，含当前阶段及真实源码SHA，后续错误风暴不能覆盖；全部通知继续到原handler，测试按首次错误失败。`--backend-source-head <40位SHA>`只记录Root声明的后端来源，独立注明本harness没有验证后端编译产物身份，不能把诊断混版本视为最终同版通过。实际run必须等Root明确runtime-ready并锁win账号/Root库写；build阶段不会启动客户端。
 
+几何分栏使用`--window-scenario`：默认`original-714`保留原714强断言；已观察生产交互min800把它钳到800，该失败是测试前置未达到，不能冒充Flutter产品错。`supported-min800`以真实800强核并按实际inline/menu执行操作；`below-min714`是另一个显式授权的隔离压力场景，仅对本轮精确exe/PID/HWND的714请求使用`SWP_NOSENDCHANGING`，不改生产WM_GETMINMAXINFO、窗口style、SDK或OS设置，原生/引擎714仍强核，且明确不表示714正式支持。两场景必须不同新run-tag，原失败不删。菜单用同一个mouse gesture真实指针种类点击，保持首错捕获与原等待门槛。
+
 路径/原runtime合同准备轮10/10、定向 Dart 分析0问题。准备期 Debug编译不等于真实 HTTP验收；最终必须在统一冻结 SHA重新构建/实跑，检查 `run-receipt.json`、`result.json`、截图和原始日志。私有配置和存储文件不得提交。

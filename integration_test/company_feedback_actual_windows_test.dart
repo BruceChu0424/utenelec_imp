@@ -44,6 +44,10 @@ const _sourceHead = String.fromEnvironment('UTEN_FEEDBACK_SOURCE_SHA');
 const _backendSourceHead = String.fromEnvironment(
   'UTEN_FEEDBACK_BACKEND_SOURCE_SHA',
 );
+const _windowScenario = String.fromEnvironment(
+  'UTEN_FEEDBACK_WINDOW_SCENARIO',
+  defaultValue: 'original-714',
+);
 final _capture = GlobalKey();
 final _observations = <Map<String, Object?>>[];
 FirstFlutterFailureCapture? _flutterFailure;
@@ -116,6 +120,7 @@ Future<Map<String, dynamic>> _resizeNativeWindow(
       'width': requested.width,
       'height': requested.height,
       'phase': stage,
+      'scenario': _windowScenario,
     }),
     flush: true,
   );
@@ -176,6 +181,9 @@ Future<Map<String, dynamic>> _resizeNativeWindow(
     'engineLogicalHeight':
         tester.view.physicalSize.height / tester.view.devicePixelRatio,
     'fakeViewMetricsUsed': false,
+    'scenario': _windowScenario,
+    'belowInteractiveMinimumStress': receipt['belowInteractiveMinimumStress'],
+    'setWindowPosFlags': receipt['setWindowPosFlags'],
   });
   return receipt;
 }
@@ -226,37 +234,86 @@ Future<void> _wideNarrowMouldMenu(WidgetTester tester) async {
     });
     await _screen(tester, 'mould-wide-category-tooltip');
     // Retain this pointer location through the native resize. Do not dismiss the tooltip.
+    const narrowWidth = _windowScenario == 'supported-min800' ? 800.0 : 714.0;
     await _resizeNativeWindow(
       tester,
-      const Size(714, 764),
-      'mould-narrow-before-menu',
+      Size(narrowWidth, 764),
+      'mould-$_windowScenario-before-operation',
     );
     await _screen(tester, 'mould-narrow-before-menu');
     final operation = find
         .descendant(of: _mouldFinder, matching: find.byTooltip('表格操作'))
         .hitTestable();
-    await _wait(
-      tester,
-      () => operation.evaluate().isNotEmpty,
-      'mould-table-operation-trigger',
-    );
-    await _tap(tester, operation, stage: 'mould-table-operation-click');
-    await _wait(
-      tester,
-      () => find
-          .byKey(const ValueKey('uten-anchored-popup'))
-          .evaluate()
-          .isNotEmpty,
-      'mould-table-operation-open',
-    );
-    await _screen(tester, 'mould-narrow-table-operation');
-    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    final inlinePrint = find.text('预览打印').hitTestable();
     await _wait(
       tester,
       () =>
-          find.byKey(const ValueKey('uten-anchored-popup')).evaluate().isEmpty,
-      'mould-table-operation-closed',
+          operation.evaluate().isNotEmpty || inlinePrint.evaluate().isNotEmpty,
+      'mould-table-operation-presentation',
     );
+    if (operation.evaluate().isNotEmpty) {
+      _observations.add({
+        'scene': 'narrow-operation-presentation',
+        'presentation': 'menu',
+        'scenario': _windowScenario,
+      });
+      await _mouseClick(
+        tester,
+        mouse,
+        operation,
+        'mould-table-operation-click',
+      );
+      await _wait(
+        tester,
+        () => find
+            .byKey(const ValueKey('uten-anchored-popup'))
+            .evaluate()
+            .isNotEmpty,
+        'mould-table-operation-open',
+      );
+      await _screen(tester, 'mould-narrow-table-operation');
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await _wait(
+        tester,
+        () => find
+            .byKey(const ValueKey('uten-anchored-popup'))
+            .evaluate()
+            .isEmpty,
+        'mould-table-operation-closed',
+      );
+    } else {
+      _observations.add({
+        'scene': 'narrow-operation-presentation',
+        'presentation': 'inline',
+        'scenario': _windowScenario,
+      });
+      await _mouseClick(tester, mouse, inlinePrint, 'mould-inline-print-click');
+      await _wait(
+        tester,
+        () => find
+            .byKey(const ValueKey('table-output-all'))
+            .evaluate()
+            .isNotEmpty,
+        'mould-inline-print-scope',
+      );
+      await _screen(tester, 'mould-narrow-inline-operation');
+      final scope = find
+          .ancestor(
+            of: find.byKey(const ValueKey('table-output-all')),
+            matching: find.byType(UtenDialogFrame),
+          )
+          .first;
+      await _tap(
+        tester,
+        find.descendant(of: scope, matching: find.byType(UtenCloseButton)),
+        stage: 'mould-inline-print-scope-cancel',
+      );
+      await _wait(
+        tester,
+        () => find.byKey(const ValueKey('table-output-all')).evaluate().isEmpty,
+        'mould-inline-print-scope-closed',
+      );
+    }
     expect(_mould(tester).items, hasLength(1626));
     await _resizeNativeWindow(
       tester,
@@ -283,6 +340,25 @@ Future<void> _wideNarrowMouldMenu(WidgetTester tester) async {
   if (firstFailure != null) {
     Error.throwWithStackTrace(firstFailure, firstStack!);
   }
+}
+
+Future<void> _mouseClick(
+  WidgetTester tester,
+  TestGesture mouse,
+  Finder finder,
+  String stage,
+) async {
+  await _settled(tester);
+  _flutterFailure?.phase = stage;
+  final reachable = finder.hitTestable();
+  expect(reachable, findsWidgets);
+  await tester.ensureVisible(reachable.last);
+  final position = tester.getCenter(reachable.last);
+  await mouse.moveTo(position);
+  await mouse.down(position);
+  await mouse.up();
+  await tester.pump(const Duration(milliseconds: 100));
+  _checkFlutterFailure(tester);
 }
 
 Future<void> _settled(WidgetTester tester) => _wait(
@@ -481,6 +557,10 @@ void main() {
       expect(_configPath, isNotEmpty);
       expect(_evidenceRoot, isNotEmpty);
       expect(RegExp(r'^[0-9a-f]{40}$').hasMatch(_sourceHead), isTrue);
+      expect(
+        _windowScenario,
+        isIn(['original-714', 'supported-min800', 'below-min714']),
+      );
       _observations.clear();
       _nativeWindowSequence = 0;
       final runtime = Directory(_runtimeRoot).absolute;
@@ -810,6 +890,9 @@ void main() {
                   ? null
                   : _backendSourceHead,
               'backendIdentityVerifiedByThisHarness': false,
+              'windowScenario': _windowScenario,
+              'belowMinimumIsNotFormalSupport':
+                  _windowScenario == 'below-min714',
               'frameworkTarget': foundation.defaultTargetPlatform.name,
               'debugEngine': foundation.kDebugMode,
               'passed':

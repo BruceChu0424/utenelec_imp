@@ -31,6 +31,9 @@ env = dict(os.environ, TMP=str(tmp), TEMP=str(tmp), UTEN_RUN_DB_TESTS='true',
            AUDIT_LEGACY_DIR=str(out), AUDIT_KIT_PG_PORT=port, AUDIT_KIT_JDBC=url,
            AUDIT_KIT_USERNAME=config['username'], AUDIT_KIT_PASSWORD=config['password'])
 
+for field,key in [('jwtSecret','AUDIT_JWT_SECRET'),('hmacKey','AUDIT_HMAC_KEY'),('pgpMasterKey','AUDIT_PGP_MASTER_KEY')]:
+    if config.get(field):env[key]=config[field]
+
 
 def run(cmd, args, label, expect=0):
     arg = out / (label + '.args')

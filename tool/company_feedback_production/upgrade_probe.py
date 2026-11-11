@@ -22,7 +22,10 @@ env=dict(os.environ,TMP=str(tmp),TEMP=str(tmp),UTEN_RUN_DB_TESTS='true',AUDIT_LE
 current=p/'upgrade-current/classes';legacy=a.legacy_build.resolve()/'classes'
 assert (legacy/'db/migration/V1128__goods_used_identity_delete_guard.sql').exists()
 assert (current/'db/migration/V1130__verify_legacy_material_basis_and_linear_proof_sweep.sql').exists()
-run('javac',['-proc:none','-encoding','UTF-8','-cp',cp(current),'-d',dest,p/'FeedbackLegacyMaterialUpgradeFixture.java',p/'FeedbackUpgradeRunner.java'],'upgrade-javac',env)
+assert (current/'db/migration/V1131__settle_proof_peers_and_verify_legacy_demand_threshold.sql').exists()
+from three_material_fixture import write_three_material_fixture
+three_fixture=write_three_material_fixture(root,p)
+run('javac',['-proc:none','-encoding','UTF-8','-cp',cp(current),'-d',dest,p/'FeedbackLegacyMaterialUpgradeFixture.java',p/'FeedbackUpgradeRunner.java',three_fixture],'upgrade-javac',env)
 namefile=p/'candidate-upgrade-container.txt'
 if namefile.exists():name=namefile.read_text().strip()
 else:
@@ -45,5 +48,10 @@ for mode in ['create','edit','approve','already1129']:
  if mode=='already1129':java('stage1129',current,'upgrade-existing-v1129-stage',dict(special,AUDIT_KIT_TARGET='1129'))
  java('current',current,'upgrade-candidate-'+mode,special)
  print('PASSED',mode,flush=True)
+for mode in ['create','edit','approve']:
+ database='candidate_three_'+mode
+ docker(['exec',name,'psql','-X','-v','ON_ERROR_STOP=1','-U','postgres','-c','CREATE DATABASE '+database+' TEMPLATE audit_kit'])
+ java('currentThree',current,'upgrade-three-'+mode,{'AUDIT_KIT_DATABASE':database,'AUDIT_THREE_OPERATION':mode})
+ print('PASSED three-material',mode,flush=True)
 (p/'upgrade-runtime-private.json').write_text(json.dumps({'container':name,'port':env['AUDIT_KIT_PG_PORT'],'database':'audit_kit','username':'postgres','password':'fixture-only'},indent=2),encoding='utf8')
-print('PRESERVED isolated original and four candidate databases; no accepted business ledger changed',flush=True)
+print('PRESERVED isolated original and seven candidate databases; no accepted business ledger changed',flush=True)

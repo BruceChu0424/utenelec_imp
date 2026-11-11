@@ -10,16 +10,13 @@ if (out/'browser-production-seed.json').exists():raise SystemExit('Existing seed
 config=json.loads(a.runtime_config.read_text(encoding='utf-8-sig'));url=config['jdbcUrl'];assert url.startswith('jdbc:postgresql://127.0.0.1:'), 'Only explicit loopback PG is supported'
 port=re.search(r':(\d+)/',url).group(1);deps=a.deps.read_text(encoding='utf-8-sig').strip();assert all(Path(x).is_file() and x.endswith('.jar') for x in deps.split(';'))
 classes=out/'classes';classes.mkdir(exist_ok=True);tmp=out/'tmp';tmp.mkdir(exist_ok=True)
-# The three-material variant retains public business commands from the owning
-# fixture; it changes only synthetic BOM cardinality and receipt quantities.
-code=(root/'server/src/test/java/com/uten/imp/businesschain/WorkshopPublicSurplusEndToEndTest.java').read_text(encoding='utf8').replace('WorkshopPublicSurplusEndToEndTest','FeedbackThreeMaterialFixture')
-replacements=[('UUID extraMaterial=secondMaterial?UUID.randomUUID():null;','UUID thirdMaterial=UUID.randomUUID(); fixture.insertGoods(thirdMaterial,"QA3-"+thirdMaterial,"第三原料","采购",world.unitId(),world.unitLegacy());fixture.insertBom(product,thirdMaterial,"1");\n        UUID extraMaterial=secondMaterial?UUID.randomUUID():null;'),('fixture.insertBom(product,extraMaterial,"2")','fixture.insertBom(product,extraMaterial,"1")'),('if(secondMaterial)receiveMaterial(c,extraMaterial);','if(secondMaterial)receiveMaterial(c,extraMaterial); receiveMaterial(c,thirdMaterial);'),('line.setQty(new BigDecimal("2000")); line.setPrice','line.setQty(new BigDecimal("10000")); line.setPrice'),('line.setAmountOriginal(new BigDecimal("20000")); line.setAmountLocal(new BigDecimal("20000"));','line.setAmountOriginal(new BigDecimal("100000")); line.setAmountLocal(new BigDecimal("100000"));')]
-for before,after in replacements:
- if before not in code:raise SystemExit('Owning fixture changed: '+before)
- code=code.replace(before,after)
-fixture=out/'FeedbackThreeMaterialFixture.java';fixture.write_text(code,encoding='utf8')
+from three_material_fixture import write_three_material_fixture
+fixture=write_three_material_fixture(root,out)
 cp=';'.join(str(x.resolve()) for x in [classes,a.build_dir/'test-classes',a.build_dir/'classes'])+';'+deps
 env=dict(os.environ,TMP=str(tmp),TEMP=str(tmp),UTEN_RUN_DB_TESTS='true',AUDIT_LEGACY_DIR=str(out),AUDIT_KIT_PG_PORT=port,AUDIT_KIT_JDBC=url,AUDIT_KIT_USERNAME=config['username'],AUDIT_KIT_PASSWORD=config['password'],AUDIT_BROWSER_PASSWORD=config['syntheticAccountPassword'])
+for field,key in [('jwtSecret','AUDIT_JWT_SECRET'),('hmacKey','AUDIT_HMAC_KEY'),('pgpMasterKey','AUDIT_PGP_MASTER_KEY')]:
+ if config.get(field):env[key]=config[field]
+ elif not a.compile_only:raise SystemExit('Private runtime config requires '+field+'; no database writes were made')
 def run(cmd,args,label):
  arg=out/(label+'.args');arg.write_text('\n'.join('"'+str(x).replace('\\','/')+'"' for x in args),encoding='utf8')
  with (out/(label+'.log')).open('wb') as stream:

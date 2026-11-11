@@ -60,7 +60,10 @@ void registerDailyReportPartialQuantityTests() {
       await tester.pumpAndSettle();
       expect(saved, hasLength(1));
       expect(saved.single['expectedVersion'], 1);
-      expect((saved.single['items'] as List).first['qty'], 400);
+      final savedLine =
+          (saved.single['items'] as List<Object?>).first!
+              as Map<String, dynamic>;
+      expect(savedLine['qty'], 400);
       expect(row.qty.text, '400');
       expect(tester.takeException(), isNull);
     },

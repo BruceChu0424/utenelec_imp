@@ -1,0 +1,7 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_platform_refresh_test.dart
+00:00 +0: progressive platform reloads retain columns and scan only appended width cells
+PLATFORM-PREFIX widthCells=1576 expected=1576 indexBuilds=0
+00:02 +1: fresh same-key column getters retain current closures and widths
+00:03 +2: real persisted cell and definition updates still publish and fit
+00:04 +3: All tests passed!

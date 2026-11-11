@@ -1,0 +1,89 @@
+{
+  "command": [
+    "D:\\Software\\Flutter\\flutter\\bin\\cache\\dart-sdk\\bin\\dart.exe",
+    "--packages=D:\\Projects\\uten_imp_worktrees\\feedback-table-layout-20261110\\evidence\\table-layout\\private-tools\\70d8797d63b94893\\package_config.json",
+    "D:\\Projects\\uten_imp_worktrees\\feedback-table-layout-20261110\\evidence\\table-layout\\private-tools\\70d8797d63b94893\\flutter_tools_private.snapshot",
+    "test",
+    "--no-pub",
+    "--reporter=expanded",
+    "--timeout=45s",
+    "test/master_data_table_view_platform_refresh_test.dart",
+    "test/master_data_table_view_width_cache_test.dart",
+    "test/master_data_table_view_rich_width_budget_test.dart",
+    "test/master_data_table_view_input_auto_width_test.dart",
+    "test/master_data_table_view_column_chooser_test.dart",
+    "test/master_data_table_view_header_menu_test.dart",
+    "test/master_data_table_view_column_search_test.dart",
+    "test/master_data_table_view_drag_hide_test.dart",
+    "test/master_data_table_view_required_leading_test.dart",
+    "test/master_data_table_view_local_work_budget_test.dart",
+    "test/master_data_table_view_cell_scope_test.dart",
+    "test/features/basic_data/widgets/master_inline_resize_draft_test.dart",
+    "test/shared/platform_tables/platform_table_widgets_test.dart",
+    "test/shared/platform_tables/platform_table_display_preferences_test.dart",
+    "test/shared/platform_tables/table_search_page_return_test.dart",
+    "test/components/master_data_table_progressive_batch_actions_test.dart",
+    "test/shared/platform_tables/platform_table_recovery_test.dart",
+    "test/shared/platform_tables/platform_table_deletion_test.dart",
+    "test/shared/platform_tables/platform_progressive_reads_test.dart"
+  ],
+  "source": "b39eebfeaebc7cf88385337768f64d3c6ca28111",
+  "working_tree": " M lib/features/basic_data/widgets/master_data_table_view.dart\n?? evidence/table-layout/\n?? test/master_data_table_view_platform_refresh_test.dart\n",
+  "exit": 0,
+  "sdk": {
+    "kind": "isolated-pinned-web-test-tools",
+    "inputs": {
+      "version": 1,
+      "sdk_revision": "c9a6c484230f8b5e408ec57be1ef71dee1e77020",
+      "sdk_root": "D:\\Software\\Flutter\\flutter",
+      "sdk_source_normalized_sha256": "2b7ab129052f2ffceba5cadd2c738d9bb69a1dcd7acde1bdc0fb4ef77b6b7403",
+      "sdk_inputs": {
+        "packages/flutter_tools/lib/src/test/flutter_web_platform.dart": "7f986a70ec05e496051cfceae0537e4fd3963f8e609b1e8ea04caa3d362a4f41",
+        "packages/flutter_tools/.dart_tool/package_config.json": "ac1a28c160e0eccc5e155202f70a9d18c69bb1916c8db04818907fb60668eac9",
+        "bin/cache/flutter_tools.snapshot": "abe2cf3b9476521b972dedc1aa4fff032e099a3de94415fb3f843b91fcea73d8"
+      },
+      "bootstrap_sha256": "1575165bfa7f0df3414957ecce343155556a379c703baed58b73d9d06ca20c12",
+      "asset_fragment_sha256": "2837b228a556d06078a8f072cd037e9fcc11afbad72e116ec52de5b58779ab73",
+      "patched_source_sha256": "532bdcfb3ff4cf6df9fb3809a30e957df30b69a3fa2eff5af2e7b950ace96769"
+    },
+    "files": {
+      "package_config.json": "beda0d586627908c8687c72d2da8396baffa69c8d73c4b77aab2bc9f2334c4af",
+      "flutter_tools_private.snapshot": "49ae37e5ea41531debad6bd5e299893abc00cc48e88895b5edab4b13afc5d128",
+      "framework/lib/src/test/flutter_web_platform.dart": "532bdcfb3ff4cf6df9fb3809a30e957df30b69a3fa2eff5af2e7b950ace96769"
+    },
+    "command_prefix": [
+      "D:\\Software\\Flutter\\flutter\\bin\\cache\\dart-sdk\\bin\\dart.exe",
+      "--packages=D:\\Projects\\uten_imp_worktrees\\feedback-table-layout-20261110\\evidence\\table-layout\\private-tools\\70d8797d63b94893\\package_config.json",
+      "D:\\Projects\\uten_imp_worktrees\\feedback-table-layout-20261110\\evidence\\table-layout\\private-tools\\70d8797d63b94893\\flutter_tools_private.snapshot",
+      "test",
+      "--no-pub",
+      "--reporter=expanded",
+      "--timeout=45s",
+      "test/master_data_table_view_platform_refresh_test.dart",
+      "test/master_data_table_view_width_cache_test.dart",
+      "test/master_data_table_view_rich_width_budget_test.dart",
+      "test/master_data_table_view_input_auto_width_test.dart",
+      "test/master_data_table_view_column_chooser_test.dart",
+      "test/master_data_table_view_header_menu_test.dart",
+      "test/master_data_table_view_column_search_test.dart",
+      "test/master_data_table_view_drag_hide_test.dart",
+      "test/master_data_table_view_required_leading_test.dart",
+      "test/master_data_table_view_local_work_budget_test.dart",
+      "test/master_data_table_view_cell_scope_test.dart",
+      "test/features/basic_data/widgets/master_inline_resize_draft_test.dart",
+      "test/shared/platform_tables/platform_table_widgets_test.dart",
+      "test/shared/platform_tables/platform_table_display_preferences_test.dart",
+      "test/shared/platform_tables/table_search_page_return_test.dart",
+      "test/components/master_data_table_progressive_batch_actions_test.dart",
+      "test/shared/platform_tables/platform_table_recovery_test.dart",
+      "test/shared/platform_tables/platform_table_deletion_test.dart",
+      "test/shared/platform_tables/platform_progressive_reads_test.dart"
+    ],
+    "sdk_inputs_after": {
+      "packages/flutter_tools/lib/src/test/flutter_web_platform.dart": "7f986a70ec05e496051cfceae0537e4fd3963f8e609b1e8ea04caa3d362a4f41",
+      "packages/flutter_tools/.dart_tool/package_config.json": "ac1a28c160e0eccc5e155202f70a9d18c69bb1916c8db04818907fb60668eac9",
+      "bin/cache/flutter_tools.snapshot": "abe2cf3b9476521b972dedc1aa4fff032e099a3de94415fb3f843b91fcea73d8"
+    },
+    "sdk_unchanged": true
+  }
+}

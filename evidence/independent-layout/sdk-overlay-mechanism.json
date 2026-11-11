@@ -1,0 +1,8 @@
+{
+  "standardLayoutBuilder": "Flutter widgets/layout_builder.dart:391",
+  "overlayLayoutBuilder": "Flutter widgets/overlay.dart:2778",
+  "webActualConstructor": "_RenderLayoutBuilder0 has _layoutInfo and _callbackId, matching overlay.dart private render class",
+  "activation": "overlay.dart:2417 activate -> old _OverlayEntryLocation._activate -> _RenderTheater._addDeferredChild -> RenderObject.attach -> markNeedsLayout",
+  "versionedSource": "D:/Software/Flutter/flutter",
+  "sdkModified": false
+}

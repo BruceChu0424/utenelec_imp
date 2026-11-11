@@ -4,7 +4,9 @@
 > 分类：Layout
 > 关联：[MasterDataTableView](MasterDataTableView.md)（`primary` 模式）、[UtenSplitView](UtenSplitView.md)（主档页右详情面板）
 
-> 2026-10-13：紧凑与Nested布局向正文提供同一个primary代理，位置创建委托当前布局的真实控制器，detach始终归创建该位置的原控制器。保留同一正文/表格/行/输入State时，不能把旧普通位置直接挂到Nested控制器。既有到点截停、交接门和唯一滚轮换算保持；回归覆盖多轮窗口切换、非线性字号、Semantics、焦点/IME/选区/组合文本、偏移与真实连续滚轮。代理不释放由Nested协调器拥有的控制器。
+> 当前契约（2026-11-11）：全部适用调用方共用一个保留的外层 `CustomScrollView` 与内层 primary 控制器，宽窄/高度只改变正文 extent，不再迁移头部或正文的祖先视口。`stableBodyViewport` 只选择层级面板的高度策略。外层回顶使用 `UtenCollapsingHeaderScrollView.outerControllerOf(context)`；独立的外部 `NestedScrollView` 调用方可保留原兼容兜底。原 600/360 高度、50 交接距离、350ms/250 停顿窗、pinned/独立滚动/Shift/缩放换算边界保留。
+
+> 历史实现 2026-10-13：紧凑与Nested布局向正文提供同一个primary代理，位置创建委托当前布局的真实控制器，detach始终归创建该位置的原控制器。保留同一正文/表格/行/输入State时，不能把旧普通位置直接挂到Nested控制器。既有到点截停、交接门和唯一滚轮换算保持；回归覆盖多轮窗口切换、非线性字号、Semantics、焦点/IME/选区/组合文本、偏移与真实连续滚轮。代理不释放由Nested协调器拥有的控制器。
 
 > 生命周期补充（2026-11-03 修订）：组件持有头部和正文的保留根，调用方使用普通Key也能在紧凑/Nested/挤扁回退之间保留Element、输入控制器、焦点和组合文本。保留根使用稳定、显式的semantics boundary，隔离不同viewport的兄弟语义合并；detach后重新attach时，在整个子树拥有有效owner后递归调用公开`markNeedsSemanticsUpdate()`，由渲染生命周期更新完整语义拓扑和geometry，保留EditableText及父语义ID。不能在重挂时调用`clearSemantics()`销毁输入语义ID：Web会替换对应输入DOM，破坏仍保留的输入连接。不能禁用Semantics或略过渲染异常。`collapsingHeader`与`pinnedHeader`使用`PrimaryScrollController.none`隔离，头部独立滚动件不会借用正文或外层控制器。正文仍按API拾取primary代理。
 
@@ -14,7 +16,7 @@
 
 ## 一、用途
 
-大屏主档/列表页**顶部固定区**（分类详情卡、统计卡等）会挤压下方表格的纵向空间。本组件把「会滚走的顶部」放进 `collapsingHeader`，用一个 `NestedScrollView` 把外层（顶部）与内层（表格）的滚动**联动**起来：
+大屏主档/列表页**顶部固定区**（分类详情卡、统计卡等）会挤压下方表格的纵向空间。本组件把「会滚走的顶部」放进 `collapsingHeader`，用同一组保留的外层（顶部）与内层（表格）视口把滚动**联动**起来：
 
 - **向上滚**（鼠标滚轮 / 触屏上滑）：先把 `collapsingHeader` 收完，再滚 `body` 内部；
 - **向下滚**：先把 `body` 回顶，再把 `collapsingHeader` 拉回原位；
@@ -56,7 +58,8 @@
 | `wheelHoldDistance` | `double` | `250` | 停顿窗的距离放行线（逻辑像素，§八）：没停但同方向累计推过量达到该值即放行——滚不停的用户不卡死在置顶点（2026-09-25）。 |
 | `compactBreakpoint` | `double` | `UtenBreakpoints.mediumStart`(600) | 视口**宽**小于该值时走**紧凑回退**（整页滚动 + body 定高内滚），见 §四 |
 | `compactHeightBreakpoint` | `double` | `UtenBreakpoints.mediumStart`(600) | 视口**高**小于该值时同样走紧凑回退（2026-09-11 手机横屏 844x390） |
-| `compactBodyMinHeight` | `double` | `360` | 紧凑回退时 body 的最小高度；同时是「body 被头部挤扁」的判定线（body 实得高 < 该值 → 下一帧切紧凑回退） |
+| `compactBodyMinHeight` | `double` | `360` | 紧凑正文的最小高度；低视口保留可用表体，不在帧末切换祖先视口 |
+| `stableBodyViewport` | `bool` | `false` | 层级面板高度策略：高视口填剩余区域，低视口保留正文最小高；不改变视口拓扑 |
 
 ---
 
@@ -64,7 +67,7 @@
 
 `MasterDataTableView` 默认自管竖向 `ScrollController`（私有的 `_bodyV`），不参与外层联动。包进本组件的 `body` 时需传 **`primary: true`**：
 
-- 表体竖向 `ListView` 改用 `primary:true`（拾取 `NestedScrollView` 注入的 inner controller，参与联动）；
+- 表体竖向 `ListView` 改用 `primary:true`（拾取本组件注入的保留 inner controller，参与联动）；
 - `shrinkWrap` 关、physics 改 `AlwaysScrollableScrollPhysics`（否则短表 `maxScrollExtent=0`，顶部收完后滚动「卡死」）；
 - 翻页回顶经 `PrimaryScrollController.maybeOf` + post-frame；
 - 不能与 `embedded:true` 同用（断言拦截）。
@@ -75,23 +78,10 @@
 
 ## 四、响应式 / 性能档 / 主题
 
-- **响应式（2026-09-11 矮视口 / 挤扁回退）**：另有两条回退触发线，与下面的窄视口回退走同一分支：
-  - **矮视口**：视口高 < `compactHeightBreakpoint`（默认 600，手机横屏 844x390）。NestedScrollView
-    的 body 只剩 ~250px，头部收完后表格固定件（工具条/表头/分页）仍溢出 19px。
-  - **被头部挤扁**：`NestedScrollView` 的 body 高 = 视口高 − **头部滚动高度**，头部一高
-    （信息卡 + 附件区 + 放大字号）body 就只剩几十像素甚至 0（表格整块不可达）。组件在 body 外
-    包了一层挤扁哨兵：实得高 < `compactBodyMinHeight` 时先按最小高布局 + `ClipRect`（当帧不溢出），
-    并在帧末把本视口尺寸标记为「挤扁」→ 下一帧切整页滚动回退；视口尺寸变化（缩放/转屏）后重试联动模式。
-    2026-09-11 钱流/销售单据详情 1280x900 + 字号 1.5 复现。
-- **响应式（2026-09-10 紧凑回退）**：视口宽 < `compactBreakpoint`（默认 600，手机竖屏）时
-  不再用 `NestedScrollView`——它的 body 高度 = 视口高 − 顶部内容高，手机上单列拉长的
-  表头信息卡会把 body 压到几十像素，表格固定件（工具条/表头/分页）直接纵向溢出
-  （采购单据详情 375 宽复现）。回退为「整页 `CustomScrollView` 滚动 + body 定高盒」：
-  顶部随页滚走、吸顶头照常钉住，body 高 = max(`compactBodyMinHeight`, 视口高 − 吸顶头高 − 48)，
-  body 内的 `primary:true` 可滚动件拾取组件注入的独立 `PrimaryScrollController` 在盒内滚。
-  ≥ 600 宽、或传了 `pinnedHeader` 的三段式页面（横幅短、Tab 吸顶时序依赖外内协调）仍是原联动行为。
+- **响应式**：宽或高小于原 `compactBreakpoint` / `compactHeightBreakpoint`（默认 600）时，正文高度保持 max(`compactBodyMinHeight`, 视口高 − 吸顶头高 − 48)，顶部随整页滚走；普通高视口正文填满视口，`pinnedHeader` 保留原三段吸顶顺序。层级面板的 `stableBodyViewport:true` 在高视口填余高、低视口保留最小正文高度。
+- **保留生命周期**：全部尺寸共用一个外层 `CustomScrollView` 和同一个内层 primary 控制器，头部/正文不在 `NestedScrollView`、紧凑分支或挤扁回退之间搬移。长头部也由整页滚走，不再通过 `_SqueezeGuard` 帧末换祖先。活 Tooltip、焦点、IME、选区、输入 Element 与语义 ID 必须连续。
 - **响应式（宽屏）**：不限屏宽，任何比例都生效。主档页通常包在 `UtenSplitView` 的右详情面板（`Expanded`，有界高度）里；窄屏（compact）分类树折成 `endDrawer`，右侧详情同样有界，联动照常。
-- **性能档**：无自定义动画（滚动协调由 Flutter `NestedScrollView` 原生完成），lite / standard / rich 三档一致。
+- **性能档**：无自定义动画（滚轮、触摸与保留位置共用公共外层/内层协调入口），lite / standard / rich 三档一致。
 - **主题**：本组件是布局壳，不取色；顶部 / 表格各自的配色仍由它们自己负责。
 
 ---
@@ -158,12 +148,12 @@ return Padding(
 
 ## 七、实现要点 / 避坑
 
-- **为什么用 `NestedScrollView`**：它是 Flutter 原生的「外层先收、内层后滚，反向内层先回顶、外层再展开」协调机制，与诉求逐条吻合（不开 floating，平滑跟手；2026-09-22 起 `floatHeaderSlivers` 参数删除——滚轮交接门依赖这个固定顺序）。**不要**改用 `SliverFillRemaining`（它不会做这种「先收后滚」的交接）或 `UtenEditableGrid` 的 rect 量测浮层（那是单视图内吸顶，不跨两个滚动视图）。
-- **body 每格都在变高——body 里的重活必须对「只有高度变」免疫**：`NestedScrollView` 把 body 放在 `SliverFillRemaining` 里，body 高 = 视口剩余高，头部每收 / 放一格 body 就重新布局一次。body 里若有 `LayoutBuilder` 按约束整树重建、或按约束做 post-frame 量测 + `setState`，就会「表格一步步往置顶移动时一格一顿」。`MasterDataTableView` 的表体已改成只按宽度重建（见其文档 §七），新接入的 body 组件照此办理：子树里不要出现高度值，让高度只经约束传给可滚动视口。
-- **`body` 必须用注入的 `PrimaryScrollController`**：`NestedScrollView` 给 `body` 注入 inner controller，`body` 的可滚动件必须用 `primary:true`（不传自己的 controller）才能被协调。`MasterDataTableView` 传 `primary:true` 即满足。
-- **`collapsingHeader` 整块随滚动消失 / 重现**：它放在 `SliverToBoxAdapter` 里，滚出视口后会被释放（widget 不在树里）——这是预期行为，不是泄漏。
+- **稳定视口**：外层/内层固定拓扑完成「先收头部、再滚正文，反向先正文回顶、再展开头部」。不能在 `LayoutBuilder` 的布局期搬移带活 Tooltip/OverlayPortal 的保留子树，也不能以隐藏 Tooltip、固定等待或清除输入语义节点代替生命周期修复。
+- **保留表体优化**：正文高度不随每格外层滚动缩放；表格仍保留按宽度缓存舞台、有效约束/行身份与最新回调的既有优化。新 body 不能因可用高度变化重建整张表。
+- **`body` 必须用注入的 `PrimaryScrollController`**：可滚动件用 `primary:true`（不传自己的 controller）才能被协调。外层命令从 `outerControllerOf(context)` 取得本组件的实际控制器，不依赖祖先的具体 widget 类型。
+- **`collapsingHeader` 整块随滚动消失 / 重现**：它保留在同一 `SliverToBoxAdapter` 中；离开可见区域不代表释放输入 State，不通过换视口重建头部。
 - **短表也要能收**：联动模式下表格 `shrinkWrap` 必须关、physics 必须 `AlwaysScrollable`，否则行少时表格不滚 → 顶部收不动（`MasterDataTableView.primary:true` 已自动处理）。
-- **有界高度前提**：`NestedScrollView` 需要父级给有界高度。主档页的 `UtenSplitView` 右面板 / `UtenContentContainer` 都在 `Scaffold` body 有界区内，满足。
+- **有界高度前提**：保留的外层/内层视口需要父级给有界高度。主档页的 `UtenSplitView` 右面板 / `UtenContentContainer` 都在 `Scaffold` body 有界区内，满足。
 
 ---
 
@@ -171,18 +161,18 @@ return Padding(
 
 用户口径：「所有页面鼠标上下滚动都一卡一卡的，表格里面滚动还好，就是表格一步一步往置顶移动的时候」；「表格置顶后得再滑一点点距离才开始动表内，往下也一样——之前一置顶瞬间就滚表内，看不到最前面的内容」；「不管在表格内还是表格外滚，都先把表格置顶」。
 
-**卡顿根因**（探针 `test/uten_collapsing_header_scroll_relayout_test.dart`）：`NestedScrollView` 的 body 高 = 视口剩余高，头部每收一格 body 就变一次高；`MasterDataTableView` 表体的 `LayoutBuilder` 每次约束变化都整树重建——一格滚轮 25-31 个可见单元格从头建一遍再布局，而表内滚动高度不变、只动偏移，所以「表内滚还好、往上移就卡」。根治在表格侧：表体子树只按**宽度**重建，高度只经约束传给 `ListView` 视口，高度只变时原样交回同一 widget 实例（框架看到同一实例跳过重建，行按原约束缓存）。修后收头部每格 0-3 个单元格重建、耗时与表内滚动同级；放头部每格 0 个。
+**历史卡顿根因**（探针 `test/uten_collapsing_header_scroll_relayout_test.dart`）：`NestedScrollView` 的 body 高 = 视口剩余高，头部每收一格 body 就变一次高；`MasterDataTableView` 表体的 `LayoutBuilder` 每次约束变化都整树重建——一格滚轮 25-31 个可见单元格从头建一遍再布局，而表内滚动高度不变、只动偏移，所以「表内滚还好、往上移就卡」。根治在表格侧：表体子树只按**宽度**重建，高度只经约束传给 `ListView` 视口，高度只变时原样交回同一 widget 实例（框架看到同一实例跳过重建，行按原约束缓存）。修后收头部每格 0-3 个单元格重建、耗时与表内滚动同级；放头部每格 0 个。
 
-**滚轮交接门**（本组件）：在 `NestedScrollView` 上盖一层透明 `Listener`，命中序先于内外 `Scrollable` 拿到滚轮，自己决定怎么给：
+**滚轮交接门**（本组件）：在保留的联动视口上盖一层透明 `Listener`，命中序先于内外 `Scrollable` 拿到滚轮，自己决定怎么给：
 
 - 一格滚到「刚好置顶」/「刚好回顶」即止，余量丢弃（原生会把余量当场滚进另一段）；
 - **停顿窗（2026-09-25）**：截停在交接点后，`wheelHoldWindow`（默认 350ms，滑动续窗）内同方向的后续格属**同一滚势**，整格吞掉——连续快滚一口气冲过置顶点后不再「马上继续往下滑」。两条放行线**先到先放**：①滚势停住（窗口内无新格）；②没停但同方向累计推过量达到 `wheelHoldDistance`（默认 250 逻辑像素 ≈ 两格半滚轮）——滚不停的人 = 明确要继续，放行那格走正常门逻辑。掉头 / `PointerScrollInertiaCancelEvent`（用户重新触碰滚轮）立即关窗；
 - 越过交接点之后，同方向还要再滚 `wheelGateDistance`（默认 50）的空行程才开始动另一段；
 - 掉头即撤门：反向是明确意图，不吃空行程；触屏拖过 / 拖过滚动条离开交接点后门自动失效；
 - 头部没收完之前的上滚一律归联动（鼠标在表格内 / 表格外 / 页内侧栏上都先把表格置顶）；置顶之后沿命中路径由内向外找竖向滚动件——先碰到联动的（外层 / inner）就接管，先碰到**独立**的（`primary:false` / 自带 controller 的侧栏、嵌套面板、多行文本框）且它还能往这个方向滚，就让给框架原样处理；
-- shift+滚轮（`ScrollBehavior.pointerAxisModifiers`）是横滚，不接管；触屏拖动仍由 `NestedScrollView` 原生协调。
+- shift+滚轮（`ScrollBehavior.pointerAxisModifiers`）是横滚，不接管；触屏拖动由同一保留位置按外层/内层顺序协调。
 
-> 注意：body 里不传 controller 的竖向可滚动件会继承 `NestedScrollView` 注入的 inner controller（它对全平台开启自动继承），成为联动的一员——这是既有行为，也是「表格 `primary:true`」生效的原因；要独立就显式传 `primary:false` + 自己的 controller。
+> 注意：body 的联动竖向可滚动件显式传 `primary:true`，拾取本组件注入的 inner controller；要独立就显式传 `primary:false` + 自己的 controller。不能依赖默认平台的自动继承差异。
 
 ---
 

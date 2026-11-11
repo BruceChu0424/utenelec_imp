@@ -1,0 +1,44 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/minimal_compact_header_width_test.dart
+00:00 +0: retained compact header closed tooltip survives icon width global=false
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: same instance as StatefulElement:<StatefulElement#4d0ad(DEFUNCT)(no widget)>
+  Actual: StatefulElement:<EditableText-[LabeledGlobalKey<EditableTextState>#2b861](controller:
+TextEditingController#3acc9(TextEditingValue(text: ┤7.125├, selection:
+TextSelection.collapsed(offset: 5, affinity: TextAffinity.downstream, isDirectional: false),
+composing: TextRange(start: 0, end: 2))), focusNode: FocusNode#58db8([PRIMARY FOCUS]), autocorrect:
+true, debugLabel: (((englishLike bodyLarge 2021).merge((blackMountainView
+bodyLarge).apply)).copyWith).merge(unknown), inherit: false, color: Color(alpha: 1.0000, red:
+0.1137, green: 0.1059, blue: 0.1255, colorSpace: ColorSpace.sRGB), family: Roboto, size: 14.0,
+weight: 400, letterSpacing: 0.5, baseline: alphabetic, height: 1.5x, leadingDistribution: even,
+decoration: Color(alpha: 1.0000, red: 0.1137, green: 0.1059, blue: 0.1255, colorSpace:
+ColorSpace.sRGB) TextDecoration.none, textAlign: start, keyboardType: TextInputType(name:
+TextInputType.text, signed: null, decimal: null), autofillHints: [], spellCheckConfiguration:
+SpellCheckConfiguration(disabled, service: null, text style: null, toolbar builder: null),
+dependencies: [Directionality, MediaQuery, _EffectiveTickerMode], state:
+EditableTextState#bc065(tickers: tracking 1 ticker))>
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/minimal_compact_header_width_test.dart:86:11)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/minimal_compact_header_width_test.dart line 86
+The test description was:
+  retained compact header closed tooltip survives icon width global=false
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:01 +0 -1: retained compact header closed tooltip survives icon width global=false [E]
+  Test failed. See exception logs above.
+  The test description was: retained compact header closed tooltip survives icon width global=false
+  
+00:01 +0 -1: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/minimal_compact_header_width_test.dart: retained compact header closed tooltip survives icon width global=false

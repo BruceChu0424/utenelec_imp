@@ -1,0 +1,11 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart
+00:00 +0: full App wide narrow actual ellipsis scheduler hover=false semantics=true timing=mount
+MENU-SEMANTICS requested=true actual=true timing=mount
+00:05 +1: full App wide narrow actual ellipsis scheduler hover=true semantics=true timing=mount
+MENU-SEMANTICS requested=true actual=true timing=mount
+00:07 +2: full App wide narrow actual ellipsis scheduler hover=false semantics=true timing=beforeMenu
+MENU-SEMANTICS requested=true actual=true timing=beforeMenu
+00:09 +3: full App wide narrow actual ellipsis scheduler hover=true semantics=true timing=beforeMenu
+MENU-SEMANTICS requested=true actual=true timing=beforeMenu
+00:11 +4: All tests passed!

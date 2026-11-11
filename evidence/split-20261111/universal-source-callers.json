@@ -1,0 +1,461 @@
+{
+  "testedSource": "07d3be3a019fe753a06f0242a00ae2770728668c",
+  "sharedEntry": "UtenCollapsingHeaderScrollView",
+  "outerCommandEntry": "UtenCollapsingHeaderScrollView.outerControllerOf",
+  "directCallerFileCount": 90,
+  "directCallers": [
+    {
+      "path": "lib/components/layout/uten_adaptive_hierarchy_pane.dart",
+      "gitBlob": "c65f4cfefe27f9637a66675d49fa2be240b2443e",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/applications/pages/business_application_list_page.dart",
+      "gitBlob": "a580dce57c26f6ba5d992901617335a0466efc9f",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/basic_data/pages/account_detail_page.dart",
+      "gitBlob": "0a7f9c31ad28f16f8309549705b7964c14c7294b",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/basic_data/pages/account_workspace_page.dart",
+      "gitBlob": "8e01ab2b11946836ce155594c58a03f49b361aaf",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/basic_data/pages/goods_price_analysis_page.dart",
+      "gitBlob": "ea7405cdf968c1a71501b567cf1bff04941b87bd",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/basic_data/pages/party_detail_page.dart",
+      "gitBlob": "f3fb25c308d274a48ff9fd9c543295970a9265fa",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/basic_data/pages/warehouse_page.dart",
+      "gitBlob": "b025d1dad4b7bffb13ce33d2741cbee5e272dd7e",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/goods_cost_actual_panel.dart",
+      "gitBlob": "8fe6ad96013f0546d4563223fe8b8382b4f935ec",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/goods_cost_tab.dart",
+      "gitBlob": "81fdb8dc746981059cd19b2b4ba788545b3fcf53",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/goods_price_facet_picker.dart",
+      "gitBlob": "76ac19db44d1e0a462a948ec6e72085b9e4ca45b",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/goods_price_observation_detail.dart",
+      "gitBlob": "371f3c57788580796cff1ebb1ac49bacbc2ccc52",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/goods_subcontract_supplier_table.dart",
+      "gitBlob": "c0475a1e602da9a2a49acf660eca5983bd632458",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/master_entity_detail_pane.dart",
+      "gitBlob": "f1928afedcc791ec56069674fc3c2509e1b5df88",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/department/widgets/department_overview_pane.dart",
+      "gitBlob": "7eea7966e6070460735492eb2b75bdf2348ebf26",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/employee/pages/employee_detail_page.dart",
+      "gitBlob": "73cab0e0191d87e8d902d5b65fc72f01165a2b75",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/expense/pages/expense_approval_list_page.dart",
+      "gitBlob": "a447a7c35eb6aac2140e2eac8b7e6cc711eaf80a",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/expense/pages/expense_list_page.dart",
+      "gitBlob": "8b1301c113d2266be4289f7b91f62a033c5ceda1",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_account_flow_page.dart",
+      "gitBlob": "48b2054067e82d8e3527ff7c705e3cecfa3d031e",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_applications_page.dart",
+      "gitBlob": "6915fc22ed4aa6322747fe8f9b93e5ab1a9edeb7",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_ar_ap_page.dart",
+      "gitBlob": "36768f73a8edb6ac35b7f71102fe4c598f4a4ab3",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_asset_workbench_page.dart",
+      "gitBlob": "75e9c22c8b3e0a2693b17a1f8dba7045c1b0c931",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_doc_detail_page.dart",
+      "gitBlob": "1b17e86bd35a0ea0951c3ee988455afb7e3b62c5",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_procurement_approval_review_page.dart",
+      "gitBlob": "ffc2f6cab9afb798c6e136653492c531428ba19b",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_procurement_approval_tasks_page.dart",
+      "gitBlob": "f475d3276e25aa772b5be2ef8c4af0a0e2ca5c17",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_quote_review_list_page.dart",
+      "gitBlob": "83647b137bf7dc233d6c070eeb8986185fdbffb5",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_quote_review_page.dart",
+      "gitBlob": "18197f3e779ab607e13623f3b1579b5b8544a1d1",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_reconciliation_page.dart",
+      "gitBlob": "2a252d778d648e89bea2fcc472c201cb24d52580",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_report_table_page.dart",
+      "gitBlob": "a86249982b856a6168b6de683e1b7ac20e8cfbd5",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_sales_order_confirmation_page.dart",
+      "gitBlob": "038316e35b3e75112f5142b17254ac443046dd29",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_sales_order_review_page.dart",
+      "gitBlob": "68a7b158492980de77ffe5750821503bf7811d26",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_sales_shipment_audit_review_page.dart",
+      "gitBlob": "55d22bd64383792e829b519a6540a267651d1e26",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_statement_page.dart",
+      "gitBlob": "f209a7042f7c843a1517ad59f2b184468fceb862",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/finance/payables/pages/finance_payables_page.dart",
+      "gitBlob": "204919e433343a2748cebb874aae2f8c54f0f455",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/hr_profile/pages/hr_profile_changes_list_page.dart",
+      "gitBlob": "4feec11ccb65017cce684d8dd33dd65740396013",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/hr_task/pages/hr_reconcile_page.dart",
+      "gitBlob": "bb65a0cb27e809b17a29d7e1169f00d33172597d",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/hr_task/pages/hr_task_list_page.dart",
+      "gitBlob": "5b879a862211cb0caf30c89e31dd6ffeb9f2c542",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/operations_workbench/pages/operations_workbench_page.dart",
+      "gitBlob": "7cb972381d9d3f368d5bc8a7b391dc4ce4a47b2b",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/payroll/pages/payroll_review_page.dart",
+      "gitBlob": "9afbd2dab40feb594c65fe9ba0f009003bcfb707",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/procurement_iqc_rejection/pages/procurement_iqc_rejection_list_page.dart",
+      "gitBlob": "21d895bc6a9353545fda00f9a9e21bb7c4ea3c1e",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/production/pages/production_daily_report_detail_page.dart",
+      "gitBlob": "36c89c62f64f80db9e97e9d4089247316a6395c0",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/production/pages/production_draw_request_page.dart",
+      "gitBlob": "be332c8dd6408cdecf708cc0615438befcb8ecc5",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/production/pages/production_execution_batch_page.dart",
+      "gitBlob": "8ab33beb939a2dd7c28908082b386765783403fa",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/production/pages/production_material_analysis_page.dart",
+      "gitBlob": "8c0a28f3bf64186c960ee12993d6db5e54ecac03",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/production/pages/production_material_discovery_request_page.dart",
+      "gitBlob": "c5e4dcc6f6af5bd52997603fa10317fdd865a7e0",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/production/pages/production_workshop_tasks_page.dart",
+      "gitBlob": "d37075d8ee4e6423f07b4469f5fe70dc71b012b3",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/production/pages/where_used_report_page.dart",
+      "gitBlob": "eca64304894eb2acea413839238f125ad38a00bd",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/production/pages/workshop_material_reports_page.dart",
+      "gitBlob": "7f9cb6fde226557e6c17db4093bbd244cdf33de1",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/production/widgets/production_execution_card_print_preview.dart",
+      "gitBlob": "382cffa15c9da2949a63e7ced9efa317dbd13222",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/profile/pages/profile_page.dart",
+      "gitBlob": "f14c5e16f53cf2d3ab4ef3947507ef8147cc17e4",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/purchase/pages/purchase_doc_detail_page.dart",
+      "gitBlob": "3486b2b5051de0603ab626e455efb32fd2a83af7",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/purchase/pages/purchase_doc_list_page.dart",
+      "gitBlob": "0b92b3f85a6a1ed381561cf6bbcff3924d9cd246",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/quality/pages/production_fqc_handling_page.dart",
+      "gitBlob": "4243b8c324424841772e0ed666bb38fd48b68e14",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/quality/pages/quality_pending_disposal_page.dart",
+      "gitBlob": "0e095c2a3fd28adbb15cfa97886b4047e6e3de36",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/sales/pages/sales_doc_detail_page.dart",
+      "gitBlob": "0737f514411dd7b82438b390a90bb7571130471a",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/sales/pages/sales_doc_list_page.dart",
+      "gitBlob": "2a30da7803f7745095ee3178e28e7e17b6553acf",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/sales/pages/sales_manager_review_page.dart",
+      "gitBlob": "8707f90abed5aede6f966c74cb805633ae8e3afa",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/sales/pages/sales_order_progress_page.dart",
+      "gitBlob": "a344fa8b2b41669d20fdab24144402d5d90b38f1",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/sales/widgets/sales_shipment_task_workbench.dart",
+      "gitBlob": "436ac94c1aa67dc47d9693aa3e933be3a3517a32",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/stock/pages/instant_inventory_page.dart",
+      "gitBlob": "6d37922cb92513300590062a8a166a10b0abc9a5",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/subcontract/pages/subcontract_business_list_pages.dart",
+      "gitBlob": "c251f272097bd81ed7e8deca5f7e94f8622f02e0",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/subcontract/pages/subcontract_decomposition_page.dart",
+      "gitBlob": "cfe1a708a7016b9d2330bc1f83fa963a04648ef0",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/subcontract/pages/subcontract_doc_detail_page.dart",
+      "gitBlob": "365d3675c68b84862dce2e436113243225671d54",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/subcontract/pages/subcontract_short_delivery_page.dart",
+      "gitBlob": "df257185b21f684f7a678d15d2eb971097654ca2",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/warehouse/materialbin/pages/workshop_material_issue_batch_page.dart",
+      "gitBlob": "5cc290b8f8f051a238e704b9a41722bf26378b5b",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/warehouse/materialbin/widgets/workshop_material_task_center.dart",
+      "gitBlob": "e1ba3c9dbff272da0803ff74439f7dc90c52aece",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/warehouse/pages/production_draw_batch_issue_page.dart",
+      "gitBlob": "b2c46525830c33eb02af99d63d928f145ef251e4",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/warehouse/pages/production_finished_batch_stock_in_page.dart",
+      "gitBlob": "c98f6f252a7d882cdefc016b2deb2c5b15ad291e",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/warehouse/pages/production_material_discovery_page.dart",
+      "gitBlob": "c72cb0821427fdb549f5104147a808a1080586a3",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/warehouse/pages/shelf_label_page.dart",
+      "gitBlob": "66259c49cdeb03246b7ec80c05cbe44dfa8d796e",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/warehouse/pages/stock_doc_detail_page.dart",
+      "gitBlob": "3bba65c08caf95eff8c1c08fc9f0f3f80d2beb8f",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/warehouse/pages/stock_doc_list_page.dart",
+      "gitBlob": "534f285b7830d52692d9b175157cd7b7349b79ec",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/warehouse/pages/warehouse_document_history_detail_page.dart",
+      "gitBlob": "c1b41ac761aed4790f8ac7b78b3ab00eaa10bfa3",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/warehouse/pages/warehouse_insight_page.dart",
+      "gitBlob": "b967064c567e216a0d44c00cf245bf86b27defde",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/warehouse/pages/warehouse_quality_results_page.dart",
+      "gitBlob": "314bf70a1572c20e644a12f35aa30df395198edb",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/warehouse/pages/warehouse_sales_outbound_batch_page.dart",
+      "gitBlob": "e8a82e34f727762cc5a0ff2aae3e7898ddca23b5",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/warehouse/pages/warehouse_sales_outbound_detail_page.dart",
+      "gitBlob": "5555d4abf19e3baa91559d919d20abf2efd8fecb",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/warehouse/pages/warehouse_stock_batch_outbound_page.dart",
+      "gitBlob": "59f8feaa62b3cd9fec765f8df4b960ed39ba2471",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/warehouse/pages/warehouse_subcontract_outbound_edit_page.dart",
+      "gitBlob": "bab36b7695db8430006b2226fe3d2a8f1bc64d9e",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/warehouse/widgets/production_finished_inbound_tasks_view.dart",
+      "gitBlob": "05fe8be168c82f7eb35639b77eb5cf08f6b0c45d",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/warehouse/widgets/warehouse_arrival_exceptions_view.dart",
+      "gitBlob": "4598b4771327b49a4c1ab91012d12d02a756efa8",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/warehouse/widgets/warehouse_document_history_view.dart",
+      "gitBlob": "f1a565c8b05a533b62322051ff2729604e088f18",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/warehouse/widgets/warehouse_draw_task_segment.dart",
+      "gitBlob": "1b1df7fef4b98b4d424af984d4505097ab940633",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/warehouse/widgets/warehouse_inbound_expectations_view.dart",
+      "gitBlob": "24068369323ad916c38527842768234d4981d046",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/warehouse/widgets/warehouse_sales_outbound_workbench.dart",
+      "gitBlob": "01ecb8ca586cff8525a6e8adada89c7e859721d1",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/warehouse/widgets/warehouse_stock_doc_segment.dart",
+      "gitBlob": "2b32297738291c619f54de6dee478650fd8dca91",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/warehouse/widgets/warehouse_subcontract_outbound_workbench.dart",
+      "gitBlob": "dda9c9148a620fb7fae263efb03c44cca86fe502",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/features/warehouse/widgets/warehouse_task_records_view.dart",
+      "gitBlob": "9cf15506295da19901e4f75207eb567e2c4bcd10",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/shared/drafts/draft_workspace_table.dart",
+      "gitBlob": "06e98868318ec6698d73655f85af080bebe6760a",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/shared/drafts/form_draft_category_table.dart",
+      "gitBlob": "8a12eb78e6c09b497969f9ae31f49f481020b413",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    },
+    {
+      "path": "lib/shared/stock_ledger/goods_stock_ledger_panel.dart",
+      "gitBlob": "d457a9af75096fad820d409ed718a8ec214bdc78",
+      "validation": "shared widget contract; no claim that every page was opened in real runtime"
+    }
+  ],
+  "heightStrategyDifference": "stableBodyViewport:true belongs to hierarchy panes; pinned headers retain their existing configured extent",
+  "foreignNestedFallbackRetained": true,
+  "wpfMigrationClaimed": false
+}

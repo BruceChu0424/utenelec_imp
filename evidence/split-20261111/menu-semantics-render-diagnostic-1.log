@@ -1,0 +1,907 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/features/basic_data/pages/master_menu_semantics_diagnostic_test.dart
+00:00 +0: column settings prelude full App wide narrow actual ellipsis scheduler hover=true semantics=true timing=mount
+MENU-SEMANTICS requested=true actual=true timing=mount
+SEM-RENDER id=0 attached=true parent=null render=_ReusableRenderView#2d8e4 creator=_RawViewInternal-[_DeprecatedRawViewKey TestFlutterView#f66fb] ← RawView ← View ← [root] data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 2142.0, 2292.0))
+SEM-RENDER id=199 attached=false parent=null render=RenderSemanticsAnnotations#e4148 creator=Semantics ← Builder ← _RenderTheaterMarker ← _EffectiveTickerMode ← TickerMode ← _OverlayEntryWidget-[LabeledGlobalKey<_OverlayEntryWidgetState>#2d77c] ← _Theater ← Overlay-[LabeledGlobalKey<OverlayState>#411a0] ← UnmanagedRestorationScope ← _FocusInheritedScope ← Focus ← _FocusInheritedScope ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 594.0, 728.0), [1.0,0.0,0.0,96.0; 0.0,1.0,0.0,0.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0])
+SEM-RENDER id=5 attached=true parent=4 render=RenderSemanticsAnnotations#80b92 creator=Semantics ← Builder ← RepaintBoundary-[GlobalKey#6b9ca] ← IgnorePointer ← ListenableBuilder ← FadeTransition ← _OpeningReadiness ← UtenOpeningScope ← _TransitionActivity ← _PageTransitionsThemeTransitions<void> ← ListenableBuilder ← RepaintBoundary ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 594.0, 728.0), [1.0,0.0,0.0,96.0; 0.0,1.0,0.0,0.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], flags: [scopesRoute])
+SEM-RENDER id=25 attached=true parent=5 render=RenderSemanticsAnnotations#43b11 relayoutBoundary=up15 creator=Semantics ← _FocusInheritedScope ← Focus ← CallbackShortcuts ← PopScope<Object> ← UtenContentInsetsScope ← SizedBox ← ConstrainedBox ← Align ← Padding ← SizedBox ← LayoutBuilder ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 594.0, 672.0), [1.0,0.0,0.0,0.0; 0.0,1.0,0.0,56.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0])
+SEM-RENDER id=26 attached=true parent=25 render=_RenderScrollSemantics#a1cdd creator=_ScrollSemantics-[GlobalKey#c9511] ← NotificationListener<ScrollMetricsNotification> ← SelectionRegistrarScope ← _AttachmentObserver ← UtenSelectionLifecycleScope ← _GutterPadding ← UtenScrollGutter ← ScrollbarTheme ← Stack ← RepaintBoundary ← CustomPaint-[GlobalKey#ebdf1] ← MouseRegion ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 594.0, 672.0))
+SEM-RENDER id=189 attached=true parent=29 render=_RenderRetainedScrollContent#c25c0 relayoutBoundary=up2 creator=_RetainedScrollContent-[GlobalKey#d5950] ← PrimaryScrollController ← SliverToBoxAdapter ← Viewport ← IgnorePointer-[GlobalKey#aaf48] ← Semantics ← Listener ← _GestureSemantics ← RawGestureDetector-[LabeledGlobalKey<RawGestureDetectorState>#8ae70] ← Listener ← _ScrollableScope ← _ScrollSemantics-[GlobalKey#c9511] ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 594.0, 56.0))
+SEM-RENDER id=190 attached=true parent=189 render=RenderSemanticsAnnotations#b0380 relayoutBoundary=up7 creator=Semantics ← OutlinedButton ← Padding ← UtenPageEdgePadding ← Flexible ← Flex ← Padding ← KeyedSubtree-[GlobalKey#2777c] ← _FocusInheritedScope ← Focus ← ExcludeFocus ← Offstage ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 466.0, 48.0), [1.0,0.0,0.0,0.0; 0.0,1.0,0.0,4.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [tap, focus], flags: [isButton, hasEnabledState, isEnabled, isFocusable], label: "全部模具", textDirection: ltr)
+SEM-RENDER id=191 attached=true parent=189 render=RenderSemanticsAnnotations#2f938 relayoutBoundary=up11 creator=Semantics ← _OverlayPortal ← OverlayPortal ← UtenAnchoredPopup ← UtenSearchBar-[<'master-search-0'>] ← Row ← UtenHierarchySearchHeader ← Column ← Consumer ← UtenMotion ← Padding ← ConstrainedBox ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 40.0, 40.0), [1.0,0.0,0.0,474.0; 0.0,1.0,0.0,8.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], traversalParentIdentifier: _OverlayPortalState#0b711)
+SEM-RENDER id=192 attached=true parent=191 render=RenderSemanticsAnnotations#67c0f relayoutBoundary=up13 creator=Semantics ← _IconButtonM3 ← _SelectableIconButton ← IconButton ← ValueListenableBuilder<TextEditingValue> ← Align ← Semantics ← _OverlayPortal ← OverlayPortal ← UtenAnchoredPopup ← UtenSearchBar-[<'master-search-0'>] ← Row ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 40.0, 40.0), actions: [tap, focus], flags: [isButton, hasEnabledState, isEnabled, isFocusable], traversalParentIdentifier: _OverlayPortalState#92440, tooltip: "搜索分类/模具名称或编号", textDirection: ltr)
+SEM-RENDER id=27 attached=true parent=29 render=_RenderRetainedScrollContent#c1a39 creator=_RetainedScrollContent-[GlobalKey#cd72d] ← PrimaryScrollController ← SizedBox ← SliverToBoxAdapter ← SliverLayoutBuilder ← Viewport ← IgnorePointer-[GlobalKey#aaf48] ← Semantics ← Listener ← _GestureSemantics ← RawGestureDetector-[LabeledGlobalKey<RawGestureDetectorState>#8ae70] ← Listener ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 594.0, 616.0), [1.0,0.0,0.0,0.0; 0.0,1.0,0.0,56.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0])
+SEM-RENDER id=37 attached=true parent=27 render=_RenderScrollSemantics#f4ed1 creator=_ScrollSemantics-[GlobalKey#3bdcd] ← NotificationListener<ScrollMetricsNotification> ← SelectionRegistrarScope ← _AttachmentObserver ← UtenSelectionLifecycleScope ← _GutterPadding ← UtenScrollGutter ← ScrollbarTheme ← Stack ← RepaintBoundary ← CustomPaint-[GlobalKey#01c31] ← MouseRegion ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 594.0, 616.0))
+SEM-RENDER id=38 attached=true parent=74 render=_RenderRetainedScrollContent#7f188 creator=_RetainedScrollContent-[GlobalKey#ffb50] ← PrimaryScrollController ← SizedBox ← SliverToBoxAdapter ← SliverLayoutBuilder ← Viewport ← IgnorePointer-[GlobalKey#dc7ed] ← Semantics ← Listener ← _GestureSemantics ← RawGestureDetector-[LabeledGlobalKey<RawGestureDetectorState>#e873c] ← Listener ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 594.0, 616.0))
+SEM-RENDER id=39 attached=true parent=38 render=RenderSemanticsAnnotations#706f9 relayoutBoundary=up1 creator=Semantics ← KeyedSubtree-[GlobalKey#32241] ← MasterDataTableView<MouldListItem> ← Expanded ← Column ← _RetainedScrollContent-[GlobalKey#ffb50] ← PrimaryScrollController ← SizedBox ← SliverToBoxAdapter ← SliverLayoutBuilder ← Viewport ← IgnorePointer-[GlobalKey#dc7ed] ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 594.0, 616.0))
+SEM-RENDER id=40 attached=true parent=39 render=_RenderScrollSemantics#b94a6 creator=_ScrollSemantics-[GlobalKey#0ad77] ← NotificationListener<ScrollMetricsNotification> ← SelectionRegistrarScope ← _AttachmentObserver ← UtenSelectionLifecycleScope ← SelectionRegistrarScope ← SelectionContainer ← _ScrollableSelectionHandler ← Scrollable ← SingleChildScrollView ← _GutterPadding ← UtenScrollGutter ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 594.0, 616.0), flags: [hasImplicitScrolling], scrollExtentMin: 0.0, scrollPosition: 0.0, scrollExtentMax: 0.0)
+SEM-RENDER id=41 attached=true parent=40 render=RenderSemanticsAnnotations#4d4e1 relayoutBoundary=up2 creator=Semantics ← ConstrainedBox ← NotificationListener<ScrollNotification> ← NotificationListener<ScrollMetricsNotification> ← Column-[GlobalKey#fb82f] ← SizedBox ← _SingleChildViewport ← IgnorePointer-[GlobalKey#65cb1] ← Semantics ← Listener ← _GestureSemantics ← RawGestureDetector-[LabeledGlobalKey<RawGestureDetectorState>#75e5c] ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 594.0, 56.0))
+SEM-RENDER id=42 attached=true parent=41 render=_RenderScrollSemantics#88541 relayoutBoundary=up16 creator=_ScrollSemantics-[GlobalKey#c3236] ← NotificationListener<ScrollMetricsNotification> ← SelectionRegistrarScope ← _AttachmentObserver ← UtenSelectionLifecycleScope ← SelectionRegistrarScope ← SelectionContainer ← _ScrollableSelectionHandler ← Scrollable ← SingleChildScrollView ← _GutterPadding ← UtenScrollGutter ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 594.0, 56.0), flags: [hasImplicitScrolling], scrollExtentMin: 0.0, scrollPosition: 0.0, scrollExtentMax: 0.0)
+SEM-RENDER id=181 attached=true parent=42 render=RenderSemanticsAnnotations#e96e4 relayoutBoundary=up28 creator=Semantics ← _OverlayPortal ← OverlayPortal ← RawTooltip-[LabeledGlobalKey<RawTooltipState>#294ad] ← Tooltip ← UtenButton ← CompositedTransformTarget ← UtenColumnChooserButton ← Wrap ← LayoutBuilder ← Padding ← _SingleChildViewport ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 48.0, 48.0), [1.0,0.0,0.0,0.0; 0.0,1.0,0.0,4.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], traversalParentIdentifier: _OverlayPortalState#01d9b)
+SEM-RENDER id=182 attached=true parent=181 render=RenderMergeSemantics#1f145 relayoutBoundary=up33 creator=MergeSemantics ← MouseRegion ← Semantics ← Listener ← _ExclusiveMouseRegion ← Semantics ← _OverlayPortal ← OverlayPortal ← RawTooltip-[LabeledGlobalKey<RawTooltipState>#294ad] ← Tooltip ← UtenButton ← CompositedTransformTarget ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 48.0, 48.0), actions: [tap, focus], flags: [isButton, isFocused, hasEnabledState, isEnabled, isFocusable], label: "表头设置 10/10", textDirection: ltr)
+SEM-RENDER id=183 attached=true parent=182 render=RenderSemanticsAnnotations#c94d3 relayoutBoundary=up39 creator=Semantics ← RawMaterialButton ← _FocusInheritedScope ← Focus ← ExcludeFocus ← _CompactHitTarget ← Listener ← RawGestureDetector ← GestureDetector ← Listener ← Builder ← Semantics ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 48.0, 48.0), actions: [tap, focus], flags: [isButton, hasEnabledState, isEnabled, isFocusable])
+SEM-RENDER id=184 attached=true parent=42 render=RenderSemanticsAnnotations#44fce relayoutBoundary=up27 creator=Semantics ← _OverlayPortal ← OverlayPortal ← RawTooltip-[LabeledGlobalKey<RawTooltipState>#7d774] ← Tooltip ← UtenButton-[<'master-table-fullscreen-toggle'>] ← Wrap ← LayoutBuilder ← Padding ← _SingleChildViewport ← IgnorePointer-[GlobalKey#a6b64] ← Semantics ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 48.0, 48.0), [1.0,0.0,0.0,52.0; 0.0,1.0,0.0,4.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], traversalParentIdentifier: _OverlayPortalState#bef30)
+SEM-RENDER id=185 attached=true parent=184 render=RenderMergeSemantics#ca6c3 relayoutBoundary=up32 creator=MergeSemantics ← MouseRegion ← Semantics ← Listener ← _ExclusiveMouseRegion ← Semantics ← _OverlayPortal ← OverlayPortal ← RawTooltip-[LabeledGlobalKey<RawTooltipState>#7d774] ← Tooltip ← UtenButton-[<'master-table-fullscreen-toggle'>] ← Wrap ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 48.0, 48.0), actions: [tap, focus], flags: [isButton, hasEnabledState, isEnabled, isFocusable], label: "全屏", textDirection: ltr)
+SEM-RENDER id=186 attached=true parent=185 render=RenderSemanticsAnnotations#1b213 relayoutBoundary=up38 creator=Semantics ← RawMaterialButton ← _FocusInheritedScope ← Focus ← ExcludeFocus ← _CompactHitTarget ← Listener ← RawGestureDetector ← GestureDetector ← Listener ← Builder ← Semantics ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 48.0, 48.0), actions: [tap, focus], flags: [isButton, hasEnabledState, isEnabled, isFocusable])
+SEM-RENDER id=187 attached=true parent=42 render=RenderSemanticsAnnotations#88318 relayoutBoundary=up27 creator=Semantics ← _OverlayPortal ← OverlayPortal ← UtenAnchoredPopup ← UtenActionOverflow-[<'master-table-action-overflow'>] ← Wrap ← LayoutBuilder ← Padding ← _SingleChildViewport ← IgnorePointer-[GlobalKey#a6b64] ← Semantics ← Listener ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 40.0, 40.0), [1.0,0.0,0.0,104.0; 0.0,1.0,0.0,8.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], traversalParentIdentifier: _OverlayPortalState#4954a)
+SEM-RENDER id=188 attached=true parent=187 render=RenderSemanticsAnnotations#bbaa1 relayoutBoundary=up29 creator=Semantics ← _IconButtonM3 ← _SelectableIconButton ← IconButton-[<'uten-action-overflow-trigger'>] ← _FocusInheritedScope ← _FocusWithExternalFocusNode ← SelectionRegistrarScope ← SelectionContainer ← _FitLayout ← UtenFitOrCompact ← Semantics ← _OverlayPortal ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 40.0, 40.0), actions: [tap, focus], flags: [isButton, hasEnabledState, isEnabled, isFocusable], traversalParentIdentifier: _OverlayPortalState#f7f92, tooltip: "表格操作", textDirection: ltr)
+SEM-RENDER id=47 attached=true parent=40 render=_RenderScrollSemantics#9dbb2 relayoutBoundary=up6 creator=_ScrollSemantics-[GlobalKey#0e79c] ← NotificationListener<ScrollMetricsNotification> ← Scrollable ← SingleChildScrollView ← DefaultTextStyle ← AnimatedDefaultTextStyle ← _InkFeatures-[GlobalKey#d421f ink renderer] ← NotificationListener<LayoutChangedNotification> ← PhysicalModel ← AnimatedPhysicalModel ← Material ← LayoutBuilder ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 594.0, 48.0), [1.0,0.0,0.0,0.0; 0.0,1.0,0.0,56.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [scrollLeft, scrollToOffset], flags: [hasImplicitScrolling], scrollExtentMin: 0.0, scrollPosition: 0.0, scrollExtentMax: 543.0)
+SEM-RENDER id=48 attached=true parent=47 render=RenderSemanticsAnnotations#d0195 relayoutBoundary=up1 creator=Semantics ← Checkbox-[<'master-data-table-select-all'>] ← Center ← DecoratedBox ← SizedBox ← Row ← Stack ← Stack ← UtenFrozenLeadingColumn ← Stack ← IntrinsicHeight ← DecoratedBox ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 40.0, 40.0), [1.0,0.0,0.0,4.0; 0.0,1.0,0.0,4.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [tap, focus], flags: [hasCheckedState, hasEnabledState, isEnabled, isFocusable])
+SEM-RENDER id=49 attached=true parent=47 render=RenderSemanticsGestureHandler#db0bb relayoutBoundary=up1 creator=_GestureSemantics ← RawGestureDetector ← GestureDetector ← Builder ← Expanded ← Row ← Listener ← UtenColumnHeaderMenuRegion ← UtenTableCellFrame ← SizedBox ← Row ← Stack ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 82.0, 48.0), [1.0,0.0,0.0,48.0; 0.0,1.0,0.0,0.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [scrollLeft, scrollRight, scrollUp, scrollDown], label: "状态", textDirection: ltr)
+SEM-RENDER id=50 attached=true parent=47 render=RenderSemanticsGestureHandler#b4c2e relayoutBoundary=up1 creator=_GestureSemantics ← RawGestureDetector ← GestureDetector ← Builder ← Expanded ← Row ← Listener ← UtenColumnHeaderMenuRegion ← UtenTableCellFrame ← SizedBox ← Row ← Stack ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 143.0, 48.0), [1.0,0.0,0.0,131.0; 0.0,1.0,0.0,0.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [tap, scrollLeft, scrollRight, scrollUp, scrollDown, focus], flags: [isFocusable], label: "模具编号", textDirection: ltr)
+SEM-RENDER id=51 attached=true parent=47 render=RenderSemanticsGestureHandler#a9b43 relayoutBoundary=up1 creator=_GestureSemantics ← RawGestureDetector ← GestureDetector ← Builder ← Expanded ← Row ← Listener ← UtenColumnHeaderMenuRegion ← UtenTableCellFrame ← SizedBox ← Row ← Stack ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 158.0, 48.0), [1.0,0.0,0.0,275.0; 0.0,1.0,0.0,0.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [tap, scrollLeft, scrollRight, scrollUp, scrollDown, focus], flags: [isFocusable], label: "模具名称", textDirection: ltr)
+SEM-RENDER id=52 attached=true parent=47 render=RenderSemanticsGestureHandler#d5ee4 relayoutBoundary=up1 creator=_GestureSemantics ← RawGestureDetector ← GestureDetector ← Builder ← Expanded ← Row ← Listener ← UtenColumnHeaderMenuRegion ← UtenTableCellFrame ← SizedBox ← Row ← Stack ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 82.0, 48.0), [1.0,0.0,0.0,434.0; 0.0,1.0,0.0,0.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [scrollLeft, scrollRight, scrollUp, scrollDown], label: "模数", textDirection: ltr)
+SEM-RENDER id=53 attached=true parent=47 render=RenderSemanticsGestureHandler#3a698 relayoutBoundary=up1 creator=_GestureSemantics ← RawGestureDetector ← GestureDetector ← Builder ← Expanded ← Row ← Listener ← UtenColumnHeaderMenuRegion ← UtenTableCellFrame ← SizedBox ← Row ← Stack ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 77.0, 48.0), [1.0,0.0,0.0,517.0; 0.0,1.0,0.0,0.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [tap, scrollLeft, scrollRight, scrollUp, scrollDown, focus], flags: [isFocusable], label: "套数", textDirection: ltr)
+SEM-RENDER id=54 attached=true parent=47 render=RenderSemanticsGestureHandler#d71b2 relayoutBoundary=up1 creator=_GestureSemantics ← RawGestureDetector ← GestureDetector ← Builder ← Expanded ← Row ← Listener ← UtenColumnHeaderMenuRegion ← UtenTableCellFrame ← SizedBox ← Row ← Stack ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 86.0, 48.0), [1.0,0.0,0.0,600.0; 0.0,1.0,0.0,0.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [scrollLeft, scrollRight, scrollUp, scrollDown], flags: [isHidden], label: "模具类型", textDirection: ltr)
+SEM-RENDER id=55 attached=true parent=47 render=RenderSemanticsGestureHandler#d9b46 relayoutBoundary=up1 creator=_GestureSemantics ← RawGestureDetector ← GestureDetector ← Builder ← Expanded ← Row ← Listener ← UtenColumnHeaderMenuRegion ← UtenTableCellFrame ← SizedBox ← Row ← Stack ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 110.0, 48.0), [1.0,0.0,0.0,687.0; 0.0,1.0,0.0,0.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [tap, scrollLeft, scrollRight, scrollUp, scrollDown, focus], flags: [isHidden, isFocusable], label: "存放位置", textDirection: ltr)
+SEM-RENDER id=56 attached=true parent=47 render=RenderSemanticsGestureHandler#b3e61 relayoutBoundary=up1 creator=_GestureSemantics ← RawGestureDetector ← GestureDetector ← Builder ← Expanded ← Row ← Listener ← UtenColumnHeaderMenuRegion ← UtenTableCellFrame ← SizedBox ← Row ← Stack ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 96.0, 48.0), [1.0,0.0,0.0,798.0; 0.0,1.0,0.0,0.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [tap, scrollLeft, scrollRight, scrollUp, scrollDown, focus], flags: [isHidden, isFocusable], label: "制造商", textDirection: ltr)
+SEM-RENDER id=57 attached=true parent=47 render=RenderSemanticsGestureHandler#a2258 relayoutBoundary=up1 creator=_GestureSemantics ← RawGestureDetector ← GestureDetector ← Builder ← Expanded ← Row ← Listener ← UtenColumnHeaderMenuRegion ← UtenTableCellFrame ← SizedBox ← Row ← Stack ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 110.0, 48.0), [1.0,0.0,0.0,895.0; 0.0,1.0,0.0,0.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [scrollLeft, scrollRight, scrollUp, scrollDown], flags: [isHidden], label: "制造年月", textDirection: ltr)
+SEM-RENDER id=58 attached=true parent=47 render=RenderSemanticsGestureHandler#b2524 relayoutBoundary=up1 creator=_GestureSemantics ← RawGestureDetector ← GestureDetector ← Builder ← Expanded ← Row ← Listener ← UtenColumnHeaderMenuRegion ← UtenTableCellFrame ← SizedBox ← Row ← Stack ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 82.0, 48.0), [1.0,0.0,0.0,1006.0; 0.0,1.0,0.0,0.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [tap, scrollLeft, scrollRight, scrollUp, scrollDown, focus], flags: [isHidden, isFocusable], label: "备注", textDirection: ltr)
+SEM-RENDER id=59 attached=true parent=47 render=RenderSemanticsAnnotations#9278b creator=Semantics ← _IconButtonM3 ← _SelectableIconButton ← IconButton-[<'platform-table-add-column'>] ← SizedBox ← Row ← Stack ← Stack ← UtenFrozenLeadingColumn ← Stack ← IntrinsicHeight ← DecoratedBox ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 48.0, 48.0), [1.0,0.0,0.0,1089.0; 0.0,1.0,0.0,0.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [tap, focus], flags: [isButton, hasEnabledState, isEnabled, isHidden, isFocusable], traversalParentIdentifier: _OverlayPortalState#214bb, tooltip: "显示列", textDirection: ltr)
+SEM-RENDER id=60 attached=true parent=47 render=RenderSemanticsAnnotations#3078e creator=Semantics ← _OverlayPortal ← OverlayPortal ← RawTooltip-[LabeledGlobalKey<RawTooltipState>#1b2b5] ← Tooltip ← UtenColumnResizeHandle ← Positioned ← PositionedDirectional-[<(0, 状态)>] ← Stack ← Stack ← UtenFrozenLeadingColumn ← Stack ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 16.0, 48.0), [1.0,0.0,0.0,123.0; 0.0,1.0,0.0,0.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [scrollLeft, scrollRight, increase, decrease, focus], flags: [isFocusable], traversalParentIdentifier: _OverlayPortalState#08766, label: "调整 状态 列宽", tooltip: "拖动调整 状态 列宽，双击恢复自动宽度", textDirection: ltr)
+SEM-RENDER id=61 attached=true parent=47 render=RenderSemanticsAnnotations#7d86a creator=Semantics ← _OverlayPortal ← OverlayPortal ← RawTooltip-[LabeledGlobalKey<RawTooltipState>#58556] ← Tooltip ← UtenColumnResizeHandle ← Positioned ← PositionedDirectional-[<(1, 模具编号)>] ← Stack ← Stack ← UtenFrozenLeadingColumn ← Stack ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 16.0, 48.0), [1.0,0.0,0.0,267.0; 0.0,1.0,0.0,0.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [scrollLeft, scrollRight, increase, decrease, focus], flags: [isFocusable], traversalParentIdentifier: _OverlayPortalState#c2629, label: "调整 模具编号 列宽", tooltip: "拖动调整 模具编号 列宽，双击恢复自动宽度", textDirection: ltr)
+SEM-RENDER id=62 attached=true parent=47 render=RenderSemanticsAnnotations#0d9cd creator=Semantics ← _OverlayPortal ← OverlayPortal ← RawTooltip-[LabeledGlobalKey<RawTooltipState>#ff6b4] ← Tooltip ← UtenColumnResizeHandle ← Positioned ← PositionedDirectional-[<(2, 模具名称)>] ← Stack ← Stack ← UtenFrozenLeadingColumn ← Stack ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 16.0, 48.0), [1.0,0.0,0.0,426.0; 0.0,1.0,0.0,0.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [scrollLeft, scrollRight, increase, decrease, focus], flags: [isFocusable], traversalParentIdentifier: _OverlayPortalState#0dfed, label: "调整 模具名称 列宽", tooltip: "拖动调整 模具名称 列宽，双击恢复自动宽度", textDirection: ltr)
+SEM-RENDER id=63 attached=true parent=47 render=RenderSemanticsAnnotations#3f228 creator=Semantics ← _OverlayPortal ← OverlayPortal ← RawTooltip-[LabeledGlobalKey<RawTooltipState>#09d2e] ← Tooltip ← UtenColumnResizeHandle ← Positioned ← PositionedDirectional-[<(3, 模数)>] ← Stack ← Stack ← UtenFrozenLeadingColumn ← Stack ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 16.0, 48.0), [1.0,0.0,0.0,509.0; 0.0,1.0,0.0,0.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [scrollLeft, scrollRight, increase, decrease, focus], flags: [isFocusable], traversalParentIdentifier: _OverlayPortalState#3bdc4, label: "调整 模数 列宽", tooltip: "拖动调整 模数 列宽，双击恢复自动宽度", textDirection: ltr)
+SEM-RENDER id=64 attached=true parent=47 render=RenderSemanticsAnnotations#64a47 creator=Semantics ← _OverlayPortal ← OverlayPortal ← RawTooltip-[LabeledGlobalKey<RawTooltipState>#b4a60] ← Tooltip ← UtenColumnResizeHandle ← Positioned ← PositionedDirectional-[<(4, 套数)>] ← Stack ← Stack ← UtenFrozenLeadingColumn ← Stack ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 2.0, 48.0), [1.0,0.0,0.0,592.0; 0.0,1.0,0.0,0.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [scrollLeft, scrollRight, increase, decrease, focus], flags: [isFocusable], traversalParentIdentifier: _OverlayPortalState#09c80, label: "调整 套数 列宽", tooltip: "拖动调整 套数 列宽，双击恢复自动宽度", textDirection: ltr)
+SEM-RENDER id=65 attached=true parent=47 render=RenderSemanticsAnnotations#ffad9 creator=Semantics ← _OverlayPortal ← OverlayPortal ← RawTooltip-[LabeledGlobalKey<RawTooltipState>#5315b] ← Tooltip ← UtenColumnResizeHandle ← Positioned ← PositionedDirectional-[<(5, 模具类型)>] ← Stack ← Stack ← UtenFrozenLeadingColumn ← Stack ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 16.0, 48.0), [1.0,0.0,0.0,679.0; 0.0,1.0,0.0,0.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [scrollLeft, scrollRight, increase, decrease, focus], flags: [isHidden, isFocusable], traversalParentIdentifier: _OverlayPortalState#3f962, label: "调整 模具类型 列宽", tooltip: "拖动调整 模具类型 列宽，双击恢复自动宽度", textDirection: ltr)
+SEM-RENDER id=66 attached=true parent=47 render=RenderSemanticsAnnotations#7b73f creator=Semantics ← _OverlayPortal ← OverlayPortal ← RawTooltip-[LabeledGlobalKey<RawTooltipState>#33928] ← Tooltip ← UtenColumnResizeHandle ← Positioned ← PositionedDirectional-[<(6, 存放位置)>] ← Stack ← Stack ← UtenFrozenLeadingColumn ← Stack ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 16.0, 48.0), [1.0,0.0,0.0,790.0; 0.0,1.0,0.0,0.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [scrollLeft, scrollRight, increase, decrease, focus], flags: [isHidden, isFocusable], traversalParentIdentifier: _OverlayPortalState#d8636, label: "调整 存放位置 列宽", tooltip: "拖动调整 存放位置 列宽，双击恢复自动宽度", textDirection: ltr)
+SEM-RENDER id=67 attached=true parent=47 render=RenderSemanticsAnnotations#d4767 creator=Semantics ← _OverlayPortal ← OverlayPortal ← RawTooltip-[LabeledGlobalKey<RawTooltipState>#09571] ← Tooltip ← UtenColumnResizeHandle ← Positioned ← PositionedDirectional-[<(7, 制造商)>] ← Stack ← Stack ← UtenFrozenLeadingColumn ← Stack ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 16.0, 48.0), [1.0,0.0,0.0,887.0; 0.0,1.0,0.0,0.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [scrollLeft, scrollRight, increase, decrease, focus], flags: [isHidden, isFocusable], traversalParentIdentifier: _OverlayPortalState#7c851, label: "调整 制造商 列宽", tooltip: "拖动调整 制造商 列宽，双击恢复自动宽度", textDirection: ltr)
+SEM-RENDER id=68 attached=true parent=47 render=RenderSemanticsAnnotations#0423d creator=Semantics ← _OverlayPortal ← OverlayPortal ← RawTooltip-[LabeledGlobalKey<RawTooltipState>#1abc1] ← Tooltip ← UtenColumnResizeHandle ← Positioned ← PositionedDirectional-[<(8, 制造年月)>] ← Stack ← Stack ← UtenFrozenLeadingColumn ← Stack ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 16.0, 48.0), [1.0,0.0,0.0,998.0; 0.0,1.0,0.0,0.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [scrollLeft, scrollRight, increase, decrease, focus], flags: [isHidden, isFocusable], traversalParentIdentifier: _OverlayPortalState#444a9, label: "调整 制造年月 列宽", tooltip: "拖动调整 制造年月 列宽，双击恢复自动宽度", textDirection: ltr)
+SEM-RENDER id=69 attached=true parent=47 render=RenderSemanticsAnnotations#d00ad creator=Semantics ← _OverlayPortal ← OverlayPortal ← RawTooltip-[LabeledGlobalKey<RawTooltipState>#8131e] ← Tooltip ← UtenColumnResizeHandle ← Positioned ← PositionedDirectional-[<(9, 备注)>] ← Stack ← Stack ← UtenFrozenLeadingColumn ← Stack ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 16.0, 48.0), [1.0,0.0,0.0,1081.0; 0.0,1.0,0.0,0.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [scrollLeft, scrollRight, increase, decrease, focus], flags: [isHidden, isFocusable], traversalParentIdentifier: _OverlayPortalState#4966a, label: "调整 备注 列宽", tooltip: "拖动调整 备注 列宽，双击恢复自动宽度", textDirection: ltr)
+SEM-RENDER id=70 attached=true parent=40 render=_RenderScrollSemantics#9059f relayoutBoundary=up4 creator=_ScrollSemantics-[GlobalKey#9f8f5] ← NotificationListener<ScrollMetricsNotification> ← SelectionRegistrarScope ← _AttachmentObserver ← UtenSelectionLifecycleScope ← SelectionRegistrarScope ← SelectionContainer ← _ScrollableSelectionHandler ← Scrollable ← SingleChildScrollView-[GlobalKey#0e290] ← LayoutBuilder ← Padding ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 594.0, 511.0), [1.0,0.0,0.0,0.0; 0.0,1.0,0.0,105.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [scrollLeft, scrollToOffset], flags: [hasImplicitScrolling], scrollExtentMin: 0.0, scrollPosition: 0.0, scrollExtentMax: 543.0)
+SEM-RENDER id=71 attached=true parent=70 render=_RenderScrollSemantics#f4a28 relayoutBoundary=up13 creator=_ScrollSemantics-[GlobalKey#78ced] ← NotificationListener<ScrollMetricsNotification> ← SelectionRegistrarScope ← _AttachmentObserver ← UtenSelectionLifecycleScope ← SelectionRegistrarScope ← SelectionContainer ← _ScrollableSelectionHandler ← Scrollable ← ListView ← ScrollConfiguration ← SizedBox ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 594.0, 511.0))
+SEM-RENDER id=72 attached=true parent=73 render=RenderIndexedSemantics#030ec relayoutBoundary=up3 creator=IndexedSemantics ← SelectionRegistrarScope ← _SelectionKeepAlive ← NotificationListener<KeepAliveNotification> ← KeepAlive ← AutomaticKeepAlive ← KeyedSubtree ← SliverList ← SliverPadding ← Viewport ← IgnorePointer-[GlobalKey#28270] ← Semantics ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 594.0, 511.0))
+SEM-RENDER id=75 attached=true parent=72 render=RenderSemanticsAnnotations#104bc relayoutBoundary=up7 creator=Semantics ← _FocusInheritedScope ← Focus ← _RowExtentObserver ← KeyedSubtree-[GlobalKey#6244d] ← Column ← _EffectiveTickerMode ← TickerMode ← UtenAncestorRowWindow<_MasterWindowSlot> ← RepaintBoundary ← IndexedSemantics ← SelectionRegistrarScope ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 594.0, 40.0), actions: [tap, longPress, customAction, focus], customActions: [打开详情], flags: [isFocusable, hasSelectedState], label: "使用\nCODE0\n合成原名龘0\n制造商\n备注", textDirection: ltr)
+SEM-RENDER id=76 attached=true parent=75 render=RenderSemanticsAnnotations#a46c7 relayoutBoundary=up1 creator=Semantics ← Checkbox ← DefaultSelectionStyle ← IconTheme ← IconTheme ← InheritedCupertinoTheme ← CupertinoTheme ← _InheritedTheme ← Theme ← Center ← DecoratedBox ← SizedBox ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 40.0, 40.0), [1.0,0.0,0.0,4.0; 0.0,1.0,0.0,0.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [tap, focus], flags: [hasCheckedState, hasEnabledState, isEnabled, isFocusable])
+SEM-RENDER id=77 attached=true parent=75 render=RenderSemanticsAnnotations#70e8b relayoutBoundary=up2 creator=Semantics-[GlobalKey#ed17c] ← Tooltip-[LabeledGlobalKey<TooltipState>#8f288] ← Semantics ← _FocusInheritedScope ← Focus ← _TableCellHintScope ← UtenTableCellHints ← UtenStatusCellScope ← IconTheme ← Builder ← DefaultTextStyle ← Builder ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 42.8, 21.0), [1.0,0.0,0.0,810.0; 0.0,1.0,0.0,9.5; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], flags: [isHidden], traversalParentIdentifier: _OverlayPortalState#40efc, label: "待补充", tooltip: "制造商尚未登记", textDirection: ltr)
+SEM-RENDER id=78 attached=true parent=75 render=RenderSemanticsAnnotations#b8b7b relayoutBoundary=up2 creator=Semantics-[GlobalKey#95d3c] ← Tooltip-[LabeledGlobalKey<TooltipState>#f5d1a] ← Semantics ← _FocusInheritedScope ← Focus ← _TableCellHintScope ← UtenTableCellHints ← UtenStatusCellScope ← IconTheme ← Builder ← DefaultTextStyle ← Builder ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 14.3, 21.0), [1.0,0.0,0.0,1018.0; 0.0,1.0,0.0,9.5; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], flags: [isHidden], traversalParentIdentifier: _OverlayPortalState#c1d7f, label: "—", tooltip: "—", textDirection: ltr)
+SEM-RENDER id=79 attached=true parent=72 render=RenderSemanticsAnnotations#77c44 relayoutBoundary=up7 creator=Semantics ← _FocusInheritedScope ← Focus ← _RowExtentObserver ← KeyedSubtree-[GlobalKey#14091] ← Column ← _EffectiveTickerMode ← TickerMode ← UtenAncestorRowWindow<_MasterWindowSlot> ← RepaintBoundary ← IndexedSemantics ← SelectionRegistrarScope ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 594.0, 40.0), [1.0,0.0,0.0,0.0; 0.0,1.0,0.0,40.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [tap, longPress, customAction, focus], customActions: [打开详情], flags: [isFocusable, hasSelectedState], label: "使用\nCODE1\n合成原名龘1\n制造商\n备注", textDirection: ltr)
+SEM-RENDER id=80 attached=true parent=79 render=RenderSemanticsAnnotations#d039e relayoutBoundary=up1 creator=Semantics ← Checkbox ← DefaultSelectionStyle ← IconTheme ← IconTheme ← InheritedCupertinoTheme ← CupertinoTheme ← _InheritedTheme ← Theme ← Center ← DecoratedBox ← SizedBox ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 40.0, 40.0), [1.0,0.0,0.0,4.0; 0.0,1.0,0.0,0.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [tap, focus], flags: [hasCheckedState, hasEnabledState, isEnabled, isFocusable])
+SEM-RENDER id=81 attached=true parent=79 render=RenderSemanticsAnnotations#bd020 relayoutBoundary=up2 creator=Semantics-[GlobalKey#91351] ← Tooltip-[LabeledGlobalKey<TooltipState>#38ffe] ← Semantics ← _FocusInheritedScope ← Focus ← _TableCellHintScope ← UtenTableCellHints ← UtenStatusCellScope ← IconTheme ← Builder ← DefaultTextStyle ← Builder ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 42.8, 21.0), [1.0,0.0,0.0,810.0; 0.0,1.0,0.0,9.5; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], flags: [isHidden], traversalParentIdentifier: _OverlayPortalState#1b8c7, label: "待补充", tooltip: "制造商尚未登记", textDirection: ltr)
+SEM-RENDER id=82 attached=true parent=79 render=RenderSemanticsAnnotations#5c7fc relayoutBoundary=up2 creator=Semantics-[GlobalKey#90ce6] ← Tooltip-[LabeledGlobalKey<TooltipState>#f5584] ← Semantics ← _FocusInheritedScope ← Focus ← _TableCellHintScope ← UtenTableCellHints ← UtenStatusCellScope ← IconTheme ← Builder ← DefaultTextStyle ← Builder ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 14.3, 21.0), [1.0,0.0,0.0,1018.0; 0.0,1.0,0.0,9.5; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], flags: [isHidden], traversalParentIdentifier: _OverlayPortalState#9b495, label: "—", tooltip: "—", textDirection: ltr)
+SEM-RENDER id=83 attached=true parent=72 render=RenderSemanticsAnnotations#50d39 relayoutBoundary=up7 creator=Semantics ← _FocusInheritedScope ← Focus ← _RowExtentObserver ← KeyedSubtree-[GlobalKey#a12fb] ← Column ← _EffectiveTickerMode ← TickerMode ← UtenAncestorRowWindow<_MasterWindowSlot> ← RepaintBoundary ← IndexedSemantics ← SelectionRegistrarScope ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 594.0, 40.0), [1.0,0.0,0.0,0.0; 0.0,1.0,0.0,80.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [tap, longPress, customAction, focus], customActions: [打开详情], flags: [isFocusable, hasSelectedState], label: "使用\nCODE2\n合成原名龘2\n制造商\n备注", textDirection: ltr)
+SEM-RENDER id=84 attached=true parent=83 render=RenderSemanticsAnnotations#84766 relayoutBoundary=up1 creator=Semantics ← Checkbox ← DefaultSelectionStyle ← IconTheme ← IconTheme ← InheritedCupertinoTheme ← CupertinoTheme ← _InheritedTheme ← Theme ← Center ← DecoratedBox ← SizedBox ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 40.0, 40.0), [1.0,0.0,0.0,4.0; 0.0,1.0,0.0,0.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [tap, focus], flags: [hasCheckedState, hasEnabledState, isEnabled, isFocusable])
+SEM-RENDER id=85 attached=true parent=83 render=RenderSemanticsAnnotations#8fe6e relayoutBoundary=up2 creator=Semantics-[GlobalKey#5fa35] ← Tooltip-[LabeledGlobalKey<TooltipState>#250c3] ← Semantics ← _FocusInheritedScope ← Focus ← _TableCellHintScope ← UtenTableCellHints ← UtenStatusCellScope ← IconTheme ← Builder ← DefaultTextStyle ← Builder ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 42.8, 21.0), [1.0,0.0,0.0,810.0; 0.0,1.0,0.0,9.5; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], flags: [isHidden], traversalParentIdentifier: _OverlayPortalState#5ca29, label: "待补充", tooltip: "制造商尚未登记", textDirection: ltr)
+SEM-RENDER id=86 attached=true parent=83 render=RenderSemanticsAnnotations#16c4c relayoutBoundary=up2 creator=Semantics-[GlobalKey#7589a] ← Tooltip-[LabeledGlobalKey<TooltipState>#e2263] ← Semantics ← _FocusInheritedScope ← Focus ← _TableCellHintScope ← UtenTableCellHints ← UtenStatusCellScope ← IconTheme ← Builder ← DefaultTextStyle ← Builder ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 14.3, 21.0), [1.0,0.0,0.0,1018.0; 0.0,1.0,0.0,9.5; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], flags: [isHidden], traversalParentIdentifier: _OverlayPortalState#96461, label: "—", tooltip: "—", textDirection: ltr)
+SEM-RENDER id=87 attached=true parent=72 render=RenderSemanticsAnnotations#301bf relayoutBoundary=up7 creator=Semantics ← _FocusInheritedScope ← Focus ← _RowExtentObserver ← KeyedSubtree-[GlobalKey#12e48] ← Column ← _EffectiveTickerMode ← TickerMode ← UtenAncestorRowWindow<_MasterWindowSlot> ← RepaintBoundary ← IndexedSemantics ← SelectionRegistrarScope ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 594.0, 40.0), [1.0,0.0,0.0,0.0; 0.0,1.0,0.0,120.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [tap, longPress, customAction, focus], customActions: [打开详情], flags: [isFocusable, hasSelectedState], label: "使用\nCODE3\n合成原名龘3\n制造商\n备注", textDirection: ltr)
+SEM-RENDER id=88 attached=true parent=87 render=RenderSemanticsAnnotations#95add relayoutBoundary=up1 creator=Semantics ← Checkbox ← DefaultSelectionStyle ← IconTheme ← IconTheme ← InheritedCupertinoTheme ← CupertinoTheme ← _InheritedTheme ← Theme ← Center ← DecoratedBox ← SizedBox ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 40.0, 40.0), [1.0,0.0,0.0,4.0; 0.0,1.0,0.0,0.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [tap, focus], flags: [hasCheckedState, hasEnabledState, isEnabled, isFocusable])
+SEM-RENDER id=89 attached=true parent=87 render=RenderSemanticsAnnotations#6291f relayoutBoundary=up2 creator=Semantics-[GlobalKey#24255] ← Tooltip-[LabeledGlobalKey<TooltipState>#ba67c] ← Semantics ← _FocusInheritedScope ← Focus ← _TableCellHintScope ← UtenTableCellHints ← UtenStatusCellScope ← IconTheme ← Builder ← DefaultTextStyle ← Builder ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 42.8, 21.0), [1.0,0.0,0.0,810.0; 0.0,1.0,0.0,9.5; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], flags: [isHidden], traversalParentIdentifier: _OverlayPortalState#f7f32, label: "待补充", tooltip: "制造商尚未登记", textDirection: ltr)
+SEM-RENDER id=90 attached=true parent=87 render=RenderSemanticsAnnotations#779ab relayoutBoundary=up2 creator=Semantics-[GlobalKey#82d85] ← Tooltip-[LabeledGlobalKey<TooltipState>#ade21] ← Semantics ← _FocusInheritedScope ← Focus ← _TableCellHintScope ← UtenTableCellHints ← UtenStatusCellScope ← IconTheme ← Builder ← DefaultTextStyle ← Builder ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 14.3, 21.0), [1.0,0.0,0.0,1018.0; 0.0,1.0,0.0,9.5; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], flags: [isHidden], traversalParentIdentifier: _OverlayPortalState#8595e, label: "—", tooltip: "—", textDirection: ltr)
+SEM-RENDER id=91 attached=true parent=72 render=RenderSemanticsAnnotations#9ef85 relayoutBoundary=up7 creator=Semantics ← _FocusInheritedScope ← Focus ← _RowExtentObserver ← KeyedSubtree-[GlobalKey#dcd25] ← Column ← _EffectiveTickerMode ← TickerMode ← UtenAncestorRowWindow<_MasterWindowSlot> ← RepaintBoundary ← IndexedSemantics ← SelectionRegistrarScope ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 594.0, 40.0), [1.0,0.0,0.0,0.0; 0.0,1.0,0.0,160.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [tap, longPress, customAction, focus], customActions: [打开详情], flags: [isFocusable, hasSelectedState], label: "使用\nCODE4\n合成原名龘4\n制造商\n备注", textDirection: ltr)
+SEM-RENDER id=92 attached=true parent=91 render=RenderSemanticsAnnotations#1cffa relayoutBoundary=up1 creator=Semantics ← Checkbox ← DefaultSelectionStyle ← IconTheme ← IconTheme ← InheritedCupertinoTheme ← CupertinoTheme ← _InheritedTheme ← Theme ← Center ← DecoratedBox ← SizedBox ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 40.0, 40.0), [1.0,0.0,0.0,4.0; 0.0,1.0,0.0,0.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [tap, focus], flags: [hasCheckedState, hasEnabledState, isEnabled, isFocusable])
+SEM-RENDER id=93 attached=true parent=91 render=RenderSemanticsAnnotations#c565b relayoutBoundary=up2 creator=Semantics-[GlobalKey#65131] ← Tooltip-[LabeledGlobalKey<TooltipState>#dc037] ← Semantics ← _FocusInheritedScope ← Focus ← _TableCellHintScope ← UtenTableCellHints ← UtenStatusCellScope ← IconTheme ← Builder ← DefaultTextStyle ← Builder ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 42.8, 21.0), [1.0,0.0,0.0,810.0; 0.0,1.0,0.0,9.5; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], flags: [isHidden], traversalParentIdentifier: _OverlayPortalState#34a3c, label: "待补充", tooltip: "制造商尚未登记", textDirection: ltr)
+SEM-RENDER id=94 attached=true parent=91 render=RenderSemanticsAnnotations#e5cb3 relayoutBoundary=up2 creator=Semantics-[GlobalKey#b1cec] ← Tooltip-[LabeledGlobalKey<TooltipState>#da5f0] ← Semantics ← _FocusInheritedScope ← Focus ← _TableCellHintScope ← UtenTableCellHints ← UtenStatusCellScope ← IconTheme ← Builder ← DefaultTextStyle ← Builder ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 14.3, 21.0), [1.0,0.0,0.0,1018.0; 0.0,1.0,0.0,9.5; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], flags: [isHidden], traversalParentIdentifier: _OverlayPortalState#e2c3c, label: "—", tooltip: "—", textDirection: ltr)
+SEM-RENDER id=95 attached=true parent=72 render=RenderSemanticsAnnotations#c3637 relayoutBoundary=up7 creator=Semantics ← _FocusInheritedScope ← Focus ← _RowExtentObserver ← KeyedSubtree-[GlobalKey#8532f] ← Column ← _EffectiveTickerMode ← TickerMode ← UtenAncestorRowWindow<_MasterWindowSlot> ← RepaintBoundary ← IndexedSemantics ← SelectionRegistrarScope ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 594.0, 40.0), [1.0,0.0,0.0,0.0; 0.0,1.0,0.0,200.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [tap, longPress, customAction, focus], customActions: [打开详情], flags: [isFocusable, hasSelectedState], label: "使用\nCODE5\n合成原名龘5\n制造商\n备注", textDirection: ltr)
+SEM-RENDER id=96 attached=true parent=95 render=RenderSemanticsAnnotations#37a2e relayoutBoundary=up1 creator=Semantics ← Checkbox ← DefaultSelectionStyle ← IconTheme ← IconTheme ← InheritedCupertinoTheme ← CupertinoTheme ← _InheritedTheme ← Theme ← Center ← DecoratedBox ← SizedBox ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 40.0, 40.0), [1.0,0.0,0.0,4.0; 0.0,1.0,0.0,0.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [tap, focus], flags: [hasCheckedState, hasEnabledState, isEnabled, isFocusable])
+SEM-RENDER id=97 attached=true parent=95 render=RenderSemanticsAnnotations#f13ad relayoutBoundary=up2 creator=Semantics-[GlobalKey#62f07] ← Tooltip-[LabeledGlobalKey<TooltipState>#6a06e] ← Semantics ← _FocusInheritedScope ← Focus ← _TableCellHintScope ← UtenTableCellHints ← UtenStatusCellScope ← IconTheme ← Builder ← DefaultTextStyle ← Builder ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 42.8, 21.0), [1.0,0.0,0.0,810.0; 0.0,1.0,0.0,9.5; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], flags: [isHidden], traversalParentIdentifier: _OverlayPortalState#f1db0, label: "待补充", tooltip: "制造商尚未登记", textDirection: ltr)
+SEM-RENDER id=98 attached=true parent=95 render=RenderSemanticsAnnotations#6a954 relayoutBoundary=up2 creator=Semantics-[GlobalKey#e458f] ← Tooltip-[LabeledGlobalKey<TooltipState>#24bc4] ← Semantics ← _FocusInheritedScope ← Focus ← _TableCellHintScope ← UtenTableCellHints ← UtenStatusCellScope ← IconTheme ← Builder ← DefaultTextStyle ← Builder ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 14.3, 21.0), [1.0,0.0,0.0,1018.0; 0.0,1.0,0.0,9.5; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], flags: [isHidden], traversalParentIdentifier: _OverlayPortalState#1a3db, label: "—", tooltip: "—", textDirection: ltr)
+SEM-RENDER id=99 attached=true parent=72 render=RenderSemanticsAnnotations#6cfbb relayoutBoundary=up7 creator=Semantics ← _FocusInheritedScope ← Focus ← _RowExtentObserver ← KeyedSubtree-[GlobalKey#c5483] ← Column ← _EffectiveTickerMode ← TickerMode ← UtenAncestorRowWindow<_MasterWindowSlot> ← RepaintBoundary ← IndexedSemantics ← SelectionRegistrarScope ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 594.0, 40.0), [1.0,0.0,0.0,0.0; 0.0,1.0,0.0,240.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [tap, longPress, customAction, focus], customActions: [打开详情], flags: [isFocusable, hasSelectedState], label: "使用\nCODE6\n合成原名龘6\n制造商\n备注", textDirection: ltr)
+SEM-RENDER id=100 attached=true parent=99 render=RenderSemanticsAnnotations#09830 relayoutBoundary=up1 creator=Semantics ← Checkbox ← DefaultSelectionStyle ← IconTheme ← IconTheme ← InheritedCupertinoTheme ← CupertinoTheme ← _InheritedTheme ← Theme ← Center ← DecoratedBox ← SizedBox ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 40.0, 40.0), [1.0,0.0,0.0,4.0; 0.0,1.0,0.0,0.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [tap, focus], flags: [hasCheckedState, hasEnabledState, isEnabled, isFocusable])
+SEM-RENDER id=101 attached=true parent=99 render=RenderSemanticsAnnotations#dd4d6 relayoutBoundary=up2 creator=Semantics-[GlobalKey#eb853] ← Tooltip-[LabeledGlobalKey<TooltipState>#77006] ← Semantics ← _FocusInheritedScope ← Focus ← _TableCellHintScope ← UtenTableCellHints ← UtenStatusCellScope ← IconTheme ← Builder ← DefaultTextStyle ← Builder ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 42.8, 21.0), [1.0,0.0,0.0,810.0; 0.0,1.0,0.0,9.5; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], flags: [isHidden], traversalParentIdentifier: _OverlayPortalState#0d738, label: "待补充", tooltip: "制造商尚未登记", textDirection: ltr)
+SEM-RENDER id=102 attached=true parent=99 render=RenderSemanticsAnnotations#26b3d relayoutBoundary=up2 creator=Semantics-[GlobalKey#c918b] ← Tooltip-[LabeledGlobalKey<TooltipState>#3c8ba] ← Semantics ← _FocusInheritedScope ← Focus ← _TableCellHintScope ← UtenTableCellHints ← UtenStatusCellScope ← IconTheme ← Builder ← DefaultTextStyle ← Builder ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 14.3, 21.0), [1.0,0.0,0.0,1018.0; 0.0,1.0,0.0,9.5; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], flags: [isHidden], traversalParentIdentifier: _OverlayPortalState#8ef91, label: "—", tooltip: "—", textDirection: ltr)
+SEM-RENDER id=103 attached=true parent=72 render=RenderSemanticsAnnotations#d961d relayoutBoundary=up7 creator=Semantics ← _FocusInheritedScope ← Focus ← _RowExtentObserver ← KeyedSubtree-[GlobalKey#8de8c] ← Column ← _EffectiveTickerMode ← TickerMode ← UtenAncestorRowWindow<_MasterWindowSlot> ← RepaintBoundary ← IndexedSemantics ← SelectionRegistrarScope ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 594.0, 40.0), [1.0,0.0,0.0,0.0; 0.0,1.0,0.0,280.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [tap, longPress, customAction, focus], customActions: [打开详情], flags: [isFocusable, hasSelectedState], label: "使用\nCODE7\n合成原名龘7\n制造商\n备注", textDirection: ltr)
+SEM-RENDER id=104 attached=true parent=103 render=RenderSemanticsAnnotations#40430 relayoutBoundary=up1 creator=Semantics ← Checkbox ← DefaultSelectionStyle ← IconTheme ← IconTheme ← InheritedCupertinoTheme ← CupertinoTheme ← _InheritedTheme ← Theme ← Center ← DecoratedBox ← SizedBox ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 40.0, 40.0), [1.0,0.0,0.0,4.0; 0.0,1.0,0.0,0.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [tap, focus], flags: [hasCheckedState, hasEnabledState, isEnabled, isFocusable])
+SEM-RENDER id=105 attached=true parent=103 render=RenderSemanticsAnnotations#50749 relayoutBoundary=up2 creator=Semantics-[GlobalKey#42747] ← Tooltip-[LabeledGlobalKey<TooltipState>#94600] ← Semantics ← _FocusInheritedScope ← Focus ← _TableCellHintScope ← UtenTableCellHints ← UtenStatusCellScope ← IconTheme ← Builder ← DefaultTextStyle ← Builder ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 42.8, 21.0), [1.0,0.0,0.0,810.0; 0.0,1.0,0.0,9.5; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], flags: [isHidden], traversalParentIdentifier: _OverlayPortalState#69c9f, label: "待补充", tooltip: "制造商尚未登记", textDirection: ltr)
+SEM-RENDER id=106 attached=true parent=103 render=RenderSemanticsAnnotations#655d7 relayoutBoundary=up2 creator=Semantics-[GlobalKey#797e7] ← Tooltip-[LabeledGlobalKey<TooltipState>#5d445] ← Semantics ← _FocusInheritedScope ← Focus ← _TableCellHintScope ← UtenTableCellHints ← UtenStatusCellScope ← IconTheme ← Builder ← DefaultTextStyle ← Builder ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 14.3, 21.0), [1.0,0.0,0.0,1018.0; 0.0,1.0,0.0,9.5; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], flags: [isHidden], traversalParentIdentifier: _OverlayPortalState#f2fb2, label: "—", tooltip: "—", textDirection: ltr)
+SEM-RENDER id=107 attached=true parent=72 render=RenderSemanticsAnnotations#208db relayoutBoundary=up7 creator=Semantics ← _FocusInheritedScope ← Focus ← _RowExtentObserver ← KeyedSubtree-[GlobalKey#fc5ea] ← Column ← _EffectiveTickerMode ← TickerMode ← UtenAncestorRowWindow<_MasterWindowSlot> ← RepaintBoundary ← IndexedSemantics ← SelectionRegistrarScope ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 594.0, 40.0), [1.0,0.0,0.0,0.0; 0.0,1.0,0.0,320.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [tap, longPress, customAction, focus], customActions: [打开详情], flags: [isFocusable, hasSelectedState], label: "使用\nCODE8\n合成原名龘8\n制造商\n备注", textDirection: ltr)
+SEM-RENDER id=108 attached=true parent=107 render=RenderSemanticsAnnotations#5f39f relayoutBoundary=up1 creator=Semantics ← Checkbox ← DefaultSelectionStyle ← IconTheme ← IconTheme ← InheritedCupertinoTheme ← CupertinoTheme ← _InheritedTheme ← Theme ← Center ← DecoratedBox ← SizedBox ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 40.0, 40.0), [1.0,0.0,0.0,4.0; 0.0,1.0,0.0,0.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [tap, focus], flags: [hasCheckedState, hasEnabledState, isEnabled, isFocusable])
+SEM-RENDER id=109 attached=true parent=107 render=RenderSemanticsAnnotations#acbee relayoutBoundary=up2 creator=Semantics-[GlobalKey#e052e] ← Tooltip-[LabeledGlobalKey<TooltipState>#698a0] ← Semantics ← _FocusInheritedScope ← Focus ← _TableCellHintScope ← UtenTableCellHints ← UtenStatusCellScope ← IconTheme ← Builder ← DefaultTextStyle ← Builder ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 42.8, 21.0), [1.0,0.0,0.0,810.0; 0.0,1.0,0.0,9.5; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], flags: [isHidden], traversalParentIdentifier: _OverlayPortalState#7f6b2, label: "待补充", tooltip: "制造商尚未登记", textDirection: ltr)
+SEM-RENDER id=110 attached=true parent=107 render=RenderSemanticsAnnotations#cc497 relayoutBoundary=up2 creator=Semantics-[GlobalKey#69aed] ← Tooltip-[LabeledGlobalKey<TooltipState>#a67f1] ← Semantics ← _FocusInheritedScope ← Focus ← _TableCellHintScope ← UtenTableCellHints ← UtenStatusCellScope ← IconTheme ← Builder ← DefaultTextStyle ← Builder ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 14.3, 21.0), [1.0,0.0,0.0,1018.0; 0.0,1.0,0.0,9.5; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], flags: [isHidden], traversalParentIdentifier: _OverlayPortalState#e8ebf, label: "—", tooltip: "—", textDirection: ltr)
+SEM-RENDER id=111 attached=true parent=72 render=RenderSemanticsAnnotations#0c365 relayoutBoundary=up7 creator=Semantics ← _FocusInheritedScope ← Focus ← _RowExtentObserver ← KeyedSubtree-[GlobalKey#1ff2b] ← Column ← _EffectiveTickerMode ← TickerMode ← UtenAncestorRowWindow<_MasterWindowSlot> ← RepaintBoundary ← IndexedSemantics ← SelectionRegistrarScope ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 594.0, 40.0), [1.0,0.0,0.0,0.0; 0.0,1.0,0.0,360.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [tap, longPress, customAction, focus], customActions: [打开详情], flags: [isFocusable, hasSelectedState], label: "使用\nCODE9\n合成原名龘9\n制造商\n备注", textDirection: ltr)
+SEM-RENDER id=112 attached=true parent=111 render=RenderSemanticsAnnotations#c8278 relayoutBoundary=up1 creator=Semantics ← Checkbox ← DefaultSelectionStyle ← IconTheme ← IconTheme ← InheritedCupertinoTheme ← CupertinoTheme ← _InheritedTheme ← Theme ← Center ← DecoratedBox ← SizedBox ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 40.0, 40.0), [1.0,0.0,0.0,4.0; 0.0,1.0,0.0,0.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [tap, focus], flags: [hasCheckedState, hasEnabledState, isEnabled, isFocusable])
+SEM-RENDER id=113 attached=true parent=111 render=RenderSemanticsAnnotations#7f2ad relayoutBoundary=up2 creator=Semantics-[GlobalKey#b8e0e] ← Tooltip-[LabeledGlobalKey<TooltipState>#ad2ba] ← Semantics ← _FocusInheritedScope ← Focus ← _TableCellHintScope ← UtenTableCellHints ← UtenStatusCellScope ← IconTheme ← Builder ← DefaultTextStyle ← Builder ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 42.8, 21.0), [1.0,0.0,0.0,810.0; 0.0,1.0,0.0,9.5; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], flags: [isHidden], traversalParentIdentifier: _OverlayPortalState#c30d9, label: "待补充", tooltip: "制造商尚未登记", textDirection: ltr)
+SEM-RENDER id=114 attached=true parent=111 render=RenderSemanticsAnnotations#b70dd relayoutBoundary=up2 creator=Semantics-[GlobalKey#cd13f] ← Tooltip-[LabeledGlobalKey<TooltipState>#c5417] ← Semantics ← _FocusInheritedScope ← Focus ← _TableCellHintScope ← UtenTableCellHints ← UtenStatusCellScope ← IconTheme ← Builder ← DefaultTextStyle ← Builder ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 14.3, 21.0), [1.0,0.0,0.0,1018.0; 0.0,1.0,0.0,9.5; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], flags: [isHidden], traversalParentIdentifier: _OverlayPortalState#538b2, label: "—", tooltip: "—", textDirection: ltr)
+SEM-RENDER id=115 attached=true parent=72 render=RenderSemanticsAnnotations#0a659 relayoutBoundary=up7 creator=Semantics ← _FocusInheritedScope ← Focus ← _RowExtentObserver ← KeyedSubtree-[GlobalKey#0f966] ← Column ← _EffectiveTickerMode ← TickerMode ← UtenAncestorRowWindow<_MasterWindowSlot> ← RepaintBoundary ← IndexedSemantics ← SelectionRegistrarScope ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 594.0, 40.0), [1.0,0.0,0.0,0.0; 0.0,1.0,0.0,400.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [tap, longPress, customAction, focus], customActions: [打开详情], flags: [isFocusable, hasSelectedState], label: "使用\nCODE10\n合成原名龘10\n制造商\n备注", textDirection: ltr)
+SEM-RENDER id=116 attached=true parent=115 render=RenderSemanticsAnnotations#82370 relayoutBoundary=up1 creator=Semantics ← Checkbox ← DefaultSelectionStyle ← IconTheme ← IconTheme ← InheritedCupertinoTheme ← CupertinoTheme ← _InheritedTheme ← Theme ← Center ← DecoratedBox ← SizedBox ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 40.0, 40.0), [1.0,0.0,0.0,4.0; 0.0,1.0,0.0,0.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [tap, focus], flags: [hasCheckedState, hasEnabledState, isEnabled, isFocusable])
+SEM-RENDER id=117 attached=true parent=115 render=RenderSemanticsAnnotations#78fca relayoutBoundary=up2 creator=Semantics-[GlobalKey#71b66] ← Tooltip-[LabeledGlobalKey<TooltipState>#93908] ← Semantics ← _FocusInheritedScope ← Focus ← _TableCellHintScope ← UtenTableCellHints ← UtenStatusCellScope ← IconTheme ← Builder ← DefaultTextStyle ← Builder ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 42.8, 21.0), [1.0,0.0,0.0,810.0; 0.0,1.0,0.0,9.5; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], flags: [isHidden], traversalParentIdentifier: _OverlayPortalState#b7f53, label: "待补充", tooltip: "制造商尚未登记", textDirection: ltr)
+SEM-RENDER id=118 attached=true parent=115 render=RenderSemanticsAnnotations#31830 relayoutBoundary=up2 creator=Semantics-[GlobalKey#f5daf] ← Tooltip-[LabeledGlobalKey<TooltipState>#b230f] ← Semantics ← _FocusInheritedScope ← Focus ← _TableCellHintScope ← UtenTableCellHints ← UtenStatusCellScope ← IconTheme ← Builder ← DefaultTextStyle ← Builder ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 14.3, 21.0), [1.0,0.0,0.0,1018.0; 0.0,1.0,0.0,9.5; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], flags: [isHidden], traversalParentIdentifier: _OverlayPortalState#0fc3a, label: "—", tooltip: "—", textDirection: ltr)
+SEM-RENDER id=119 attached=true parent=72 render=RenderSemanticsAnnotations#a85a5 relayoutBoundary=up7 creator=Semantics ← _FocusInheritedScope ← Focus ← _RowExtentObserver ← KeyedSubtree-[GlobalKey#b4037] ← Column ← _EffectiveTickerMode ← TickerMode ← UtenAncestorRowWindow<_MasterWindowSlot> ← RepaintBoundary ← IndexedSemantics ← SelectionRegistrarScope ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 594.0, 40.0), [1.0,0.0,0.0,0.0; 0.0,1.0,0.0,440.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [tap, longPress, customAction, focus], customActions: [打开详情], flags: [isFocusable, hasSelectedState], label: "使用\nCODE11\n合成原名龘11\n制造商\n备注", textDirection: ltr)
+SEM-RENDER id=120 attached=true parent=119 render=RenderSemanticsAnnotations#180b0 relayoutBoundary=up1 creator=Semantics ← Checkbox ← DefaultSelectionStyle ← IconTheme ← IconTheme ← InheritedCupertinoTheme ← CupertinoTheme ← _InheritedTheme ← Theme ← Center ← DecoratedBox ← SizedBox ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 40.0, 40.0), [1.0,0.0,0.0,4.0; 0.0,1.0,0.0,0.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [tap, focus], flags: [hasCheckedState, hasEnabledState, isEnabled, isFocusable])
+SEM-RENDER id=121 attached=true parent=119 render=RenderSemanticsAnnotations#6108b relayoutBoundary=up2 creator=Semantics-[GlobalKey#91e6b] ← Tooltip-[LabeledGlobalKey<TooltipState>#b3d0a] ← Semantics ← _FocusInheritedScope ← Focus ← _TableCellHintScope ← UtenTableCellHints ← UtenStatusCellScope ← IconTheme ← Builder ← DefaultTextStyle ← Builder ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 42.8, 21.0), [1.0,0.0,0.0,810.0; 0.0,1.0,0.0,9.5; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], flags: [isHidden], traversalParentIdentifier: _OverlayPortalState#a740b, label: "待补充", tooltip: "制造商尚未登记", textDirection: ltr)
+SEM-RENDER id=122 attached=true parent=119 render=RenderSemanticsAnnotations#bbf26 relayoutBoundary=up2 creator=Semantics-[GlobalKey#8eda7] ← Tooltip-[LabeledGlobalKey<TooltipState>#c4566] ← Semantics ← _FocusInheritedScope ← Focus ← _TableCellHintScope ← UtenTableCellHints ← UtenStatusCellScope ← IconTheme ← Builder ← DefaultTextStyle ← Builder ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 14.3, 21.0), [1.0,0.0,0.0,1018.0; 0.0,1.0,0.0,9.5; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], flags: [isHidden], traversalParentIdentifier: _OverlayPortalState#d30b1, label: "—", tooltip: "—", textDirection: ltr)
+SEM-RENDER id=123 attached=true parent=72 render=RenderSemanticsAnnotations#cb88d relayoutBoundary=up7 creator=Semantics ← _FocusInheritedScope ← Focus ← _RowExtentObserver ← KeyedSubtree-[GlobalKey#bff93] ← Column ← _EffectiveTickerMode ← TickerMode ← UtenAncestorRowWindow<_MasterWindowSlot> ← RepaintBoundary ← IndexedSemantics ← SelectionRegistrarScope ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 594.0, 31.0), [1.0,0.0,0.0,0.0; 0.0,1.0,0.0,480.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [tap, longPress, customAction, focus], customActions: [打开详情], flags: [isFocusable, hasSelectedState], label: "使用\nCODE12\n合成原名龘12\n制造商\n备注", textDirection: ltr)
+SEM-RENDER id=124 attached=true parent=123 render=RenderSemanticsAnnotations#c78cb relayoutBoundary=up1 creator=Semantics ← Checkbox ← DefaultSelectionStyle ← IconTheme ← IconTheme ← InheritedCupertinoTheme ← CupertinoTheme ← _InheritedTheme ← Theme ← Center ← DecoratedBox ← SizedBox ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 40.0, 31.0), [1.0,0.0,0.0,4.0; 0.0,1.0,0.0,0.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [tap, focus], flags: [hasCheckedState, hasEnabledState, isEnabled, isFocusable])
+SEM-RENDER id=125 attached=true parent=123 render=RenderSemanticsAnnotations#4a249 relayoutBoundary=up2 creator=Semantics-[GlobalKey#af6d5] ← Tooltip-[LabeledGlobalKey<TooltipState>#ffb80] ← Semantics ← _FocusInheritedScope ← Focus ← _TableCellHintScope ← UtenTableCellHints ← UtenStatusCellScope ← IconTheme ← Builder ← DefaultTextStyle ← Builder ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 42.8, 21.0), [1.0,0.0,0.0,810.0; 0.0,1.0,0.0,9.5; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], flags: [isHidden], traversalParentIdentifier: _OverlayPortalState#aeba5, label: "待补充", tooltip: "制造商尚未登记", textDirection: ltr)
+SEM-RENDER id=126 attached=true parent=123 render=RenderSemanticsAnnotations#98528 relayoutBoundary=up2 creator=Semantics-[GlobalKey#8fe94] ← Tooltip-[LabeledGlobalKey<TooltipState>#a91aa] ← Semantics ← _FocusInheritedScope ← Focus ← _TableCellHintScope ← UtenTableCellHints ← UtenStatusCellScope ← IconTheme ← Builder ← DefaultTextStyle ← Builder ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 14.3, 21.0), [1.0,0.0,0.0,1018.0; 0.0,1.0,0.0,9.5; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], flags: [isHidden], traversalParentIdentifier: _OverlayPortalState#82d21, label: "—", tooltip: "—", textDirection: ltr)
+SEM-RENDER id=127 attached=true parent=72 render=RenderSemanticsAnnotations#b8a5d relayoutBoundary=up7 creator=Semantics ← _FocusInheritedScope ← Focus ← _RowExtentObserver ← KeyedSubtree-[GlobalKey#7411e] ← Column ← _EffectiveTickerMode ← TickerMode ← UtenAncestorRowWindow<_MasterWindowSlot> ← RepaintBoundary ← IndexedSemantics ← SelectionRegistrarScope ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 1137.0, 40.0), [1.0,0.0,0.0,0.0; 0.0,1.0,0.0,520.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [tap, longPress, customAction, focus], customActions: [打开详情], flags: [isHidden, isFocusable, hasSelectedState], label: "使用\nCODE13\n合成原名龘13\n制造商\n备注", textDirection: ltr)
+SEM-RENDER id=128 attached=true parent=127 render=RenderSemanticsAnnotations#7400f relayoutBoundary=up1 creator=Semantics ← Checkbox ← DefaultSelectionStyle ← IconTheme ← IconTheme ← InheritedCupertinoTheme ← CupertinoTheme ← _InheritedTheme ← Theme ← Center ← DecoratedBox ← SizedBox ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 40.0, 40.0), [1.0,0.0,0.0,4.0; 0.0,1.0,0.0,0.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [tap, focus], flags: [hasCheckedState, hasEnabledState, isEnabled, isHidden, isFocusable])
+SEM-RENDER id=129 attached=true parent=127 render=RenderSemanticsAnnotations#60a29 relayoutBoundary=up2 creator=Semantics-[GlobalKey#ff8d6] ← Tooltip-[LabeledGlobalKey<TooltipState>#b6a40] ← Semantics ← _FocusInheritedScope ← Focus ← _TableCellHintScope ← UtenTableCellHints ← UtenStatusCellScope ← IconTheme ← Builder ← DefaultTextStyle ← Builder ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 42.8, 21.0), [1.0,0.0,0.0,810.0; 0.0,1.0,0.0,9.5; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], flags: [isHidden], traversalParentIdentifier: _OverlayPortalState#10231, label: "待补充", tooltip: "制造商尚未登记", textDirection: ltr)
+SEM-RENDER id=130 attached=true parent=127 render=RenderSemanticsAnnotations#cd64e relayoutBoundary=up2 creator=Semantics-[GlobalKey#d94e2] ← Tooltip-[LabeledGlobalKey<TooltipState>#6744a] ← Semantics ← _FocusInheritedScope ← Focus ← _TableCellHintScope ← UtenTableCellHints ← UtenStatusCellScope ← IconTheme ← Builder ← DefaultTextStyle ← Builder ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 14.3, 21.0), [1.0,0.0,0.0,1018.0; 0.0,1.0,0.0,9.5; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], flags: [isHidden], traversalParentIdentifier: _OverlayPortalState#92c2c, label: "—", tooltip: "—", textDirection: ltr)
+SEM-RENDER id=131 attached=true parent=72 render=RenderSemanticsAnnotations#e605b relayoutBoundary=up7 creator=Semantics ← _FocusInheritedScope ← Focus ← _RowExtentObserver ← KeyedSubtree-[GlobalKey#12f69] ← Column ← _EffectiveTickerMode ← TickerMode ← UtenAncestorRowWindow<_MasterWindowSlot> ← RepaintBoundary ← IndexedSemantics ← SelectionRegistrarScope ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 1137.0, 40.0), [1.0,0.0,0.0,0.0; 0.0,1.0,0.0,560.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [tap, longPress, customAction, focus], customActions: [打开详情], flags: [isHidden, isFocusable, hasSelectedState], label: "使用\nCODE14\n合成原名龘14\n制造商\n备注", textDirection: ltr)
+SEM-RENDER id=132 attached=true parent=131 render=RenderSemanticsAnnotations#0f583 relayoutBoundary=up1 creator=Semantics ← Checkbox ← DefaultSelectionStyle ← IconTheme ← IconTheme ← InheritedCupertinoTheme ← CupertinoTheme ← _InheritedTheme ← Theme ← Center ← DecoratedBox ← SizedBox ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 40.0, 40.0), [1.0,0.0,0.0,4.0; 0.0,1.0,0.0,0.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [tap, focus], flags: [hasCheckedState, hasEnabledState, isEnabled, isHidden, isFocusable])
+SEM-RENDER id=133 attached=true parent=131 render=RenderSemanticsAnnotations#f96c9 relayoutBoundary=up2 creator=Semantics-[GlobalKey#b20f3] ← Tooltip-[LabeledGlobalKey<TooltipState>#3112a] ← Semantics ← _FocusInheritedScope ← Focus ← _TableCellHintScope ← UtenTableCellHints ← UtenStatusCellScope ← IconTheme ← Builder ← DefaultTextStyle ← Builder ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 42.8, 21.0), [1.0,0.0,0.0,810.0; 0.0,1.0,0.0,9.5; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], flags: [isHidden], traversalParentIdentifier: _OverlayPortalState#69692, label: "待补充", tooltip: "制造商尚未登记", textDirection: ltr)
+SEM-RENDER id=134 attached=true parent=131 render=RenderSemanticsAnnotations#5a56b relayoutBoundary=up2 creator=Semantics-[GlobalKey#b481f] ← Tooltip-[LabeledGlobalKey<TooltipState>#3dd75] ← Semantics ← _FocusInheritedScope ← Focus ← _TableCellHintScope ← UtenTableCellHints ← UtenStatusCellScope ← IconTheme ← Builder ← DefaultTextStyle ← Builder ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 14.3, 21.0), [1.0,0.0,0.0,1018.0; 0.0,1.0,0.0,9.5; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], flags: [isHidden], traversalParentIdentifier: _OverlayPortalState#00ed9, label: "—", tooltip: "—", textDirection: ltr)
+SEM-RENDER id=135 attached=true parent=72 render=RenderSemanticsAnnotations#db7e4 relayoutBoundary=up7 creator=Semantics ← _FocusInheritedScope ← Focus ← _RowExtentObserver ← KeyedSubtree-[GlobalKey#09614] ← Column ← _EffectiveTickerMode ← TickerMode ← UtenAncestorRowWindow<_MasterWindowSlot> ← RepaintBoundary ← IndexedSemantics ← SelectionRegistrarScope ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 1137.0, 40.0), [1.0,0.0,0.0,0.0; 0.0,1.0,0.0,600.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [tap, longPress, customAction, focus], customActions: [打开详情], flags: [isHidden, isFocusable, hasSelectedState], label: "使用\nCODE15\n合成原名龘15\n制造商\n备注", textDirection: ltr)
+SEM-RENDER id=136 attached=true parent=135 render=RenderSemanticsAnnotations#c1770 relayoutBoundary=up1 creator=Semantics ← Checkbox ← DefaultSelectionStyle ← IconTheme ← IconTheme ← InheritedCupertinoTheme ← CupertinoTheme ← _InheritedTheme ← Theme ← Center ← DecoratedBox ← SizedBox ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 40.0, 40.0), [1.0,0.0,0.0,4.0; 0.0,1.0,0.0,0.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [tap, focus], flags: [hasCheckedState, hasEnabledState, isEnabled, isHidden, isFocusable])
+SEM-RENDER id=137 attached=true parent=135 render=RenderSemanticsAnnotations#71ff6 relayoutBoundary=up2 creator=Semantics-[GlobalKey#a608c] ← Tooltip-[LabeledGlobalKey<TooltipState>#178ef] ← Semantics ← _FocusInheritedScope ← Focus ← _TableCellHintScope ← UtenTableCellHints ← UtenStatusCellScope ← IconTheme ← Builder ← DefaultTextStyle ← Builder ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 42.8, 21.0), [1.0,0.0,0.0,810.0; 0.0,1.0,0.0,9.5; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], flags: [isHidden], traversalParentIdentifier: _OverlayPortalState#60882, label: "待补充", tooltip: "制造商尚未登记", textDirection: ltr)
+SEM-RENDER id=138 attached=true parent=135 render=RenderSemanticsAnnotations#3e47d relayoutBoundary=up2 creator=Semantics-[GlobalKey#30986] ← Tooltip-[LabeledGlobalKey<TooltipState>#a8259] ← Semantics ← _FocusInheritedScope ← Focus ← _TableCellHintScope ← UtenTableCellHints ← UtenStatusCellScope ← IconTheme ← Builder ← DefaultTextStyle ← Builder ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 14.3, 21.0), [1.0,0.0,0.0,1018.0; 0.0,1.0,0.0,9.5; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], flags: [isHidden], traversalParentIdentifier: _OverlayPortalState#dd063, label: "—", tooltip: "—", textDirection: ltr)
+SEM-RENDER id=139 attached=true parent=72 render=RenderSemanticsAnnotations#2e2cf relayoutBoundary=up7 creator=Semantics ← _FocusInheritedScope ← Focus ← _RowExtentObserver ← KeyedSubtree-[GlobalKey#31477] ← Column ← _EffectiveTickerMode ← TickerMode ← UtenAncestorRowWindow<_MasterWindowSlot> ← RepaintBoundary ← IndexedSemantics ← SelectionRegistrarScope ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 1137.0, 40.0), [1.0,0.0,0.0,0.0; 0.0,1.0,0.0,640.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [tap, longPress, customAction, focus], customActions: [打开详情], flags: [isHidden, isFocusable, hasSelectedState], label: "使用\nCODE16\n合成原名龘16\n制造商\n备注", textDirection: ltr)
+SEM-RENDER id=140 attached=true parent=139 render=RenderSemanticsAnnotations#fabfb relayoutBoundary=up1 creator=Semantics ← Checkbox ← DefaultSelectionStyle ← IconTheme ← IconTheme ← InheritedCupertinoTheme ← CupertinoTheme ← _InheritedTheme ← Theme ← Center ← DecoratedBox ← SizedBox ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 40.0, 40.0), [1.0,0.0,0.0,4.0; 0.0,1.0,0.0,0.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [tap, focus], flags: [hasCheckedState, hasEnabledState, isEnabled, isHidden, isFocusable])
+SEM-RENDER id=141 attached=true parent=139 render=RenderSemanticsAnnotations#ecaa9 relayoutBoundary=up2 creator=Semantics-[GlobalKey#1eb2e] ← Tooltip-[LabeledGlobalKey<TooltipState>#0f75b] ← Semantics ← _FocusInheritedScope ← Focus ← _TableCellHintScope ← UtenTableCellHints ← UtenStatusCellScope ← IconTheme ← Builder ← DefaultTextStyle ← Builder ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 42.8, 21.0), [1.0,0.0,0.0,810.0; 0.0,1.0,0.0,9.5; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], flags: [isHidden], traversalParentIdentifier: _OverlayPortalState#7f725, label: "待补充", tooltip: "制造商尚未登记", textDirection: ltr)
+SEM-RENDER id=142 attached=true parent=139 render=RenderSemanticsAnnotations#445c9 relayoutBoundary=up2 creator=Semantics-[GlobalKey#398f2] ← Tooltip-[LabeledGlobalKey<TooltipState>#d156c] ← Semantics ← _FocusInheritedScope ← Focus ← _TableCellHintScope ← UtenTableCellHints ← UtenStatusCellScope ← IconTheme ← Builder ← DefaultTextStyle ← Builder ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 14.3, 21.0), [1.0,0.0,0.0,1018.0; 0.0,1.0,0.0,9.5; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], flags: [isHidden], traversalParentIdentifier: _OverlayPortalState#851b4, label: "—", tooltip: "—", textDirection: ltr)
+SEM-RENDER id=143 attached=true parent=72 render=RenderSemanticsAnnotations#53e43 relayoutBoundary=up7 creator=Semantics ← _FocusInheritedScope ← Focus ← _RowExtentObserver ← KeyedSubtree-[GlobalKey#1a8d7] ← Column ← _EffectiveTickerMode ← TickerMode ← UtenAncestorRowWindow<_MasterWindowSlot> ← RepaintBoundary ← IndexedSemantics ← SelectionRegistrarScope ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 1137.0, 40.0), [1.0,0.0,0.0,0.0; 0.0,1.0,0.0,680.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [tap, longPress, customAction, focus], customActions: [打开详情], flags: [isHidden, isFocusable, hasSelectedState], label: "使用\nCODE17\n合成原名龘17\n制造商\n备注", textDirection: ltr)
+SEM-RENDER id=144 attached=true parent=143 render=RenderSemanticsAnnotations#c4cbb relayoutBoundary=up1 creator=Semantics ← Checkbox ← DefaultSelectionStyle ← IconTheme ← IconTheme ← InheritedCupertinoTheme ← CupertinoTheme ← _InheritedTheme ← Theme ← Center ← DecoratedBox ← SizedBox ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 40.0, 40.0), [1.0,0.0,0.0,4.0; 0.0,1.0,0.0,0.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [tap, focus], flags: [hasCheckedState, hasEnabledState, isEnabled, isHidden, isFocusable])
+SEM-RENDER id=145 attached=true parent=143 render=RenderSemanticsAnnotations#bde98 relayoutBoundary=up2 creator=Semantics-[GlobalKey#f01de] ← Tooltip-[LabeledGlobalKey<TooltipState>#e50fd] ← Semantics ← _FocusInheritedScope ← Focus ← _TableCellHintScope ← UtenTableCellHints ← UtenStatusCellScope ← IconTheme ← Builder ← DefaultTextStyle ← Builder ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 42.8, 21.0), [1.0,0.0,0.0,810.0; 0.0,1.0,0.0,9.5; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], flags: [isHidden], traversalParentIdentifier: _OverlayPortalState#61b5b, label: "待补充", tooltip: "制造商尚未登记", textDirection: ltr)
+SEM-RENDER id=146 attached=true parent=143 render=RenderSemanticsAnnotations#a9e9b relayoutBoundary=up2 creator=Semantics-[GlobalKey#a62c4] ← Tooltip-[LabeledGlobalKey<TooltipState>#b8f81] ← Semantics ← _FocusInheritedScope ← Focus ← _TableCellHintScope ← UtenTableCellHints ← UtenStatusCellScope ← IconTheme ← Builder ← DefaultTextStyle ← Builder ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 14.3, 21.0), [1.0,0.0,0.0,1018.0; 0.0,1.0,0.0,9.5; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], flags: [isHidden], traversalParentIdentifier: _OverlayPortalState#ee625, label: "—", tooltip: "—", textDirection: ltr)
+SEM-RENDER id=147 attached=true parent=72 render=RenderSemanticsAnnotations#5c122 relayoutBoundary=up7 creator=Semantics ← _FocusInheritedScope ← Focus ← _RowExtentObserver ← KeyedSubtree-[GlobalKey#412be] ← Column ← _EffectiveTickerMode ← TickerMode ← UtenAncestorRowWindow<_MasterWindowSlot> ← RepaintBoundary ← IndexedSemantics ← SelectionRegistrarScope ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 1137.0, 31.0), [1.0,0.0,0.0,0.0; 0.0,1.0,0.0,720.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [tap, longPress, customAction, focus], customActions: [打开详情], flags: [isHidden, isFocusable, hasSelectedState], label: "使用\nCODE18\n合成原名龘18\n制造商\n备注", textDirection: ltr)
+SEM-RENDER id=148 attached=true parent=147 render=RenderSemanticsAnnotations#e8abe relayoutBoundary=up1 creator=Semantics ← Checkbox ← DefaultSelectionStyle ← IconTheme ← IconTheme ← InheritedCupertinoTheme ← CupertinoTheme ← _InheritedTheme ← Theme ← Center ← DecoratedBox ← SizedBox ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 40.0, 31.0), [1.0,0.0,0.0,4.0; 0.0,1.0,0.0,0.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [tap, focus], flags: [hasCheckedState, hasEnabledState, isEnabled, isHidden, isFocusable])
+SEM-RENDER id=149 attached=true parent=147 render=RenderSemanticsAnnotations#ef5f3 relayoutBoundary=up2 creator=Semantics-[GlobalKey#92aac] ← Tooltip-[LabeledGlobalKey<TooltipState>#c7a04] ← Semantics ← _FocusInheritedScope ← Focus ← _TableCellHintScope ← UtenTableCellHints ← UtenStatusCellScope ← IconTheme ← Builder ← DefaultTextStyle ← Builder ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 42.8, 21.0), [1.0,0.0,0.0,810.0; 0.0,1.0,0.0,9.5; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], flags: [isHidden], traversalParentIdentifier: _OverlayPortalState#70eff, label: "待补充", tooltip: "制造商尚未登记", textDirection: ltr)
+SEM-RENDER id=150 attached=true parent=147 render=RenderSemanticsAnnotations#49b3e relayoutBoundary=up2 creator=Semantics-[GlobalKey#cc29d] ← Tooltip-[LabeledGlobalKey<TooltipState>#1887e] ← Semantics ← _FocusInheritedScope ← Focus ← _TableCellHintScope ← UtenTableCellHints ← UtenStatusCellScope ← IconTheme ← Builder ← DefaultTextStyle ← Builder ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 14.3, 21.0), [1.0,0.0,0.0,1018.0; 0.0,1.0,0.0,9.5; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], flags: [isHidden], traversalParentIdentifier: _OverlayPortalState#79328, label: "—", tooltip: "—", textDirection: ltr)
+SEM-RENDER id=151 attached=false parent=null render=RenderSemanticsAnnotations#b2177 relayoutBoundary=up7 creator=Semantics ← _FocusInheritedScope ← Focus ← _RowExtentObserver ← KeyedSubtree-[GlobalKey#481d3] ← Column ← _EffectiveTickerMode ← TickerMode ← UtenAncestorRowWindow<_MasterWindowSlot> ← RepaintBoundary ← IndexedSemantics ← SelectionRegistrarScope ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 594.0, -249.0), [1.0,0.0,0.0,0.0; 0.0,1.0,0.0,760.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [tap, longPress, customAction, focus], customActions: [打开详情], flags: [isFocusable, hasSelectedState], label: "使用\nCODE19\n合成原名龘19\n制造商\n备注", textDirection: ltr)
+SEM-RENDER id=152 attached=false parent=null render=RenderSemanticsAnnotations#bd100 relayoutBoundary=up1 creator=Semantics ← Checkbox ← DefaultSelectionStyle ← IconTheme ← IconTheme ← InheritedCupertinoTheme ← CupertinoTheme ← _InheritedTheme ← Theme ← Center ← DecoratedBox ← SizedBox ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 40.0, -249.0), [1.0,0.0,0.0,4.0; 0.0,1.0,0.0,0.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [tap, focus], flags: [hasCheckedState, hasEnabledState, isEnabled, isFocusable])
+SEM-RENDER id=153 attached=false parent=null render=RenderSemanticsAnnotations#3bafc relayoutBoundary=up2 creator=Semantics-[GlobalKey#602ab] ← Tooltip-[LabeledGlobalKey<TooltipState>#bd299] ← Semantics ← _FocusInheritedScope ← Focus ← _TableCellHintScope ← UtenTableCellHints ← UtenStatusCellScope ← IconTheme ← Builder ← DefaultTextStyle ← Builder ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, -216.0, -258.5), [1.0,0.0,0.0,810.0; 0.0,1.0,0.0,9.5; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], traversalParentIdentifier: _OverlayPortalState#9b05c, label: "待补充", tooltip: "制造商尚未登记", textDirection: ltr)
+SEM-RENDER id=154 attached=false parent=null render=RenderSemanticsAnnotations#d2b1d relayoutBoundary=up2 creator=Semantics-[GlobalKey#061a7] ← Tooltip-[LabeledGlobalKey<TooltipState>#6600c] ← Semantics ← _FocusInheritedScope ← Focus ← _TableCellHintScope ← UtenTableCellHints ← UtenStatusCellScope ← IconTheme ← Builder ← DefaultTextStyle ← Builder ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, -424.0, -258.5), [1.0,0.0,0.0,1018.0; 0.0,1.0,0.0,9.5; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], traversalParentIdentifier: _OverlayPortalState#d398c, label: "—", tooltip: "—", textDirection: ltr)
+SEM-RENDER id=173 attached=false parent=null render=RenderSemanticsAnnotations#87ba3 relayoutBoundary=up7 creator=Semantics ← _FocusInheritedScope ← Focus ← _RowExtentObserver ← KeyedSubtree-[GlobalKey#3d59f] ← Column ← _EffectiveTickerMode ← TickerMode ← UtenAncestorRowWindow<_MasterWindowSlot> ← RepaintBoundary ← IndexedSemantics ← SelectionRegistrarScope ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 594.0, -289.0), [1.0,0.0,0.0,0.0; 0.0,1.0,0.0,800.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [tap, longPress, customAction, focus], customActions: [打开详情], flags: [isFocusable, hasSelectedState], label: "使用\nCODE20\n合成原名龘20\n制造商\n备注", textDirection: ltr)
+SEM-RENDER id=174 attached=false parent=null render=RenderSemanticsAnnotations#37009 relayoutBoundary=up1 creator=Semantics ← Checkbox ← DefaultSelectionStyle ← IconTheme ← IconTheme ← InheritedCupertinoTheme ← CupertinoTheme ← _InheritedTheme ← Theme ← Center ← DecoratedBox ← SizedBox ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 40.0, -289.0), [1.0,0.0,0.0,4.0; 0.0,1.0,0.0,0.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [tap, focus], flags: [hasCheckedState, hasEnabledState, isEnabled, isFocusable])
+SEM-RENDER id=175 attached=false parent=null render=RenderSemanticsAnnotations#19c11 relayoutBoundary=up2 creator=Semantics-[GlobalKey#b2e8d] ← Tooltip-[LabeledGlobalKey<TooltipState>#58e6f] ← Semantics ← _FocusInheritedScope ← Focus ← _TableCellHintScope ← UtenTableCellHints ← UtenStatusCellScope ← IconTheme ← Builder ← DefaultTextStyle ← Builder ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, -216.0, -298.5), [1.0,0.0,0.0,810.0; 0.0,1.0,0.0,9.5; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], traversalParentIdentifier: _OverlayPortalState#c006c, label: "待补充", tooltip: "制造商尚未登记", textDirection: ltr)
+SEM-RENDER id=176 attached=false parent=null render=RenderSemanticsAnnotations#781a8 relayoutBoundary=up2 creator=Semantics-[GlobalKey#19905] ← Tooltip-[LabeledGlobalKey<TooltipState>#b9175] ← Semantics ← _FocusInheritedScope ← Focus ← _TableCellHintScope ← UtenTableCellHints ← UtenStatusCellScope ← IconTheme ← Builder ← DefaultTextStyle ← Builder ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, -424.0, -298.5), [1.0,0.0,0.0,1018.0; 0.0,1.0,0.0,9.5; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], traversalParentIdentifier: _OverlayPortalState#fd89e, label: "—", tooltip: "—", textDirection: ltr)
+SEM-RENDER id=163 attached=true parent=40 render=_RenderScrollSemantics#077ac creator=_ScrollSemantics-[GlobalKey#f088f] ← NotificationListener<ScrollMetricsNotification> ← SelectionRegistrarScope ← _AttachmentObserver ← UtenSelectionLifecycleScope ← SelectionRegistrarScope ← SelectionContainer ← _ScrollableSelectionHandler ← Scrollable ← SingleChildScrollView ← RepaintBoundary ← CustomPaint-[GlobalKey#456a3] ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 594.0, 11.0), [1.0,0.0,0.0,0.0; 0.0,1.0,0.0,605.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [scrollLeft, scrollToOffset], flags: [hasImplicitScrolling], scrollExtentMin: 0.0, scrollPosition: 0.0, scrollExtentMax: 543.0)
+SEM-RENDER id=164 attached=true parent=40 render=_RenderScrollSemantics#f8b99 relayoutBoundary=up17 creator=_ScrollSemantics-[GlobalKey#af6b5] ← NotificationListener<ScrollMetricsNotification> ← SelectionRegistrarScope ← _AttachmentObserver ← UtenSelectionLifecycleScope ← SelectionRegistrarScope ← SelectionContainer ← _ScrollableSelectionHandler ← Scrollable ← SingleChildScrollView ← RepaintBoundary ← CustomPaint-[GlobalKey#e7379] ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 121.5, 48.0), [1.0,0.0,0.0,456.5; 0.0,1.0,0.0,552.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], flags: [hasImplicitScrolling], scrollExtentMin: 0.0, scrollPosition: 0.0, scrollExtentMax: 0.0)
+SEM-RENDER id=170 attached=true parent=164 render=RenderSemanticsAnnotations#1d2a3 relayoutBoundary=up28 creator=Semantics ← _OverlayPortal ← OverlayPortal ← RawTooltip-[LabeledGlobalKey<RawTooltipState>#ca916] ← Tooltip ← UtenSelectionSummaryPill ← ConstrainedBox ← DecoratedBox ← KeyedSubtree-[GlobalKey#1c888] ← Wrap ← _SingleChildViewport ← IgnorePointer-[GlobalKey#618af] ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 113.5, 48.0), traversalParentIdentifier: _OverlayPortalState#5d5de, tooltip: "清除选择", textDirection: ltr)
+SEM-RENDER id=171 attached=true parent=170 render=RenderMergeSemantics#dd354 relayoutBoundary=up33 creator=MergeSemantics ← UtenButton-[<'master-table-clear-selection'>] ← MouseRegion ← Semantics ← Listener ← _ExclusiveMouseRegion ← Semantics ← _OverlayPortal ← OverlayPortal ← RawTooltip-[LabeledGlobalKey<RawTooltipState>#ca916] ← Tooltip ← UtenSelectionSummaryPill ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 113.5, 48.0), flags: [isButton, hasEnabledState], label: "已选 0 项", textDirection: ltr)
+SEM-RENDER id=172 attached=true parent=171 render=RenderSemanticsAnnotations#18c87 relayoutBoundary=up39 creator=Semantics ← RawMaterialButton ← _FocusInheritedScope ← Focus ← ExcludeFocus ← _CompactHitTarget ← Listener ← RawGestureDetector ← GestureDetector ← Listener ← Builder ← Semantics ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 113.5, 48.0), flags: [isButton, hasEnabledState], label: "已选 0 项", textDirection: ltr)
+SEM-RENDER id=31 attached=false parent=null render=_RenderScrollSemantics#c632f relayoutBoundary=up8 NEEDS-PAINT creator=_ScrollSemantics-[GlobalKey#71688] ← NotificationListener<ScrollMetricsNotification> ← SelectionRegistrarScope ← _AttachmentObserver ← UtenSelectionLifecycleScope ← SelectionRegistrarScope ← SelectionContainer ← _ScrollableSelectionHandler ← Scrollable ← ListView ← _GutterPadding ← UtenScrollGutter ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 284.0, 572.0), [1.0,0.0,0.0,0.0; 0.0,1.0,0.0,56.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0])
+SEM-RENDER id=32 attached=false parent=34 render=RenderIndexedSemantics#84305 relayoutBoundary=up3 NEEDS-PAINT creator=IndexedSemantics ← SelectionRegistrarScope ← _SelectionKeepAlive ← NotificationListener<KeepAliveNotification> ← KeepAlive ← AutomaticKeepAlive ← KeyedSubtree-[Key <[<'hierarchy-row:__all_moulds__'>]>] ← SliverList ← SliverPadding ← Viewport ← IgnorePointer-[GlobalKey#41415] ← Semantics ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 578.0, 36.0), actions: [tap, longPress, focus], flags: [isSelected, isFocusable, hasExpandedState, isExpanded, hasSelectedState], traversalParentIdentifier: _OverlayPortalState#f5930, label: "全部模具", tooltip: "全部模具", textDirection: ltr)
+SEM-RENDER id=33 attached=false parent=32 render=RenderSemanticsAnnotations#e1723 creator=Semantics ← _IconButtonM3 ← _SelectableIconButton ← IconButton ← SizedBox ← Row ← Padding ← Stack ← ConstrainedBox ← LayoutBuilder ← Expanded ← _HierarchyRow ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 32.0, 32.0), [1.0,0.0,0.0,8.0; 0.0,1.0,0.0,2.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [tap, focus], flags: [isButton, hasEnabledState, isEnabled, isFocusable], traversalParentIdentifier: _OverlayPortalState#f639d, tooltip: "收起全部模具", textDirection: ltr)
+SEM-RENDER id=36 attached=false parent=34 render=RenderIndexedSemantics#01d5a relayoutBoundary=up3 creator=IndexedSemantics ← SelectionRegistrarScope ← _SelectionKeepAlive ← NotificationListener<KeepAliveNotification> ← KeepAlive ← AutomaticKeepAlive ← KeyedSubtree-[Key <[<'hierarchy-row:20000000-0000-4000-8000-000000000001'>]>] ← SliverList ← SliverPadding ← Viewport ← IgnorePointer-[GlobalKey#41415] ← Semantics ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 578.0, 36.0), [1.0,0.0,0.0,0.0; 0.0,1.0,0.0,36.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [tap, longPress, focus], flags: [isFocusable, hasSelectedState], traversalParentIdentifier: _OverlayPortalState#a911a, label: "合成类别", tooltip: "全部模具 / 合成类别", textDirection: ltr)
+SEM-RENDER id=35 attached=false parent=null render=RenderSemanticsAnnotations#5037b NEEDS-PAINT creator=Semantics ← UtenSplitHandle ← _FocusInheritedScope ← Focus ← ExcludeFocus ← Offstage ← _VisibilityScope ← Visibility ← Positioned ← PositionedDirectional ← Stack ← Semantics ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 12.0, 628.0), [1.0,0.0,0.0,300.0; 0.0,1.0,0.0,0.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [tap, longPress, scrollLeft, scrollRight, increase, decrease, focus], flags: [isFocusable], traversalParentIdentifier: _OverlayPortalState#bc5e4, label: "拖动调整宽度 · 双击复位", tooltip: "拖动调整宽度 · 双击复位", textDirection: ltr)
+SEM-RENDER id=7 attached=true parent=5 render=RenderSemanticsAnnotations#0b344 relayoutBoundary=up3 creator=Semantics ← AppBar ← LayoutBuilder ← AiPageRegistrar ← UtenAppBar ← FlexibleSpaceBarSettings ← ConstrainedBox ← MediaQuery ← LayoutId-[<_ScaffoldSlot.appBar>] ← CustomMultiChildLayout ← _ActionsScope ← Actions ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 594.0, 56.0))
+SEM-RENDER id=8 attached=true parent=7 render=RenderSemanticsAnnotations#c8132 creator=Semantics ← _IconButtonM3 ← _SelectableIconButton ← IconButton ← SizedBox ← Align ← UtenBackButton ← IconButtonTheme ← ConstrainedBox ← LayoutId-[<_ToolbarSlot.leading>] ← CustomMultiChildLayout ← NavigationToolbar ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 32.0, 32.0), [1.0,0.0,0.0,0.0; 0.0,1.0,0.0,12.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [tap, focus], flags: [isButton, hasEnabledState, isEnabled, isFocusable], traversalParentIdentifier: _OverlayPortalState#e6c15, tooltip: "返回", textDirection: ltr)
+SEM-RENDER id=9 attached=true parent=7 render=RenderSemanticsAnnotations#1f9a6 relayoutBoundary=up14 creator=Semantics ← DefaultTextStyle ← MediaQuery ← Builder ← LayoutId-[<_ToolbarSlot.middle>] ← CustomMultiChildLayout ← NavigationToolbar ← DefaultTextStyle ← IconTheme ← Builder ← CustomSingleChildLayout ← ClipRect ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 64.0, 16.0), [1.0,0.0,0.0,48.0; 0.0,1.0,0.0,20.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], flags: [isHeader, namesRoute], traversalParentIdentifier: _OverlayPortalState#7a134, label: "模具资料", tooltip: "模具资料", textDirection: ltr)
+SEM-RENDER id=10 attached=false parent=null render=RenderSemanticsAnnotations#c81c2 relayoutBoundary=up21 NEEDS-PAINT creator=Semantics ← _OverlayPortal ← OverlayPortal ← RawTooltip-[LabeledGlobalKey<RawTooltipState>#b61bb] ← Tooltip ← Padding ← UtenAppBarActionButton-[<'business-open-window'>] ← BusinessWindowAction ← UtenAppBarActionPresentation ← UtenAppBarActionRow ← _FocusInheritedScope ← _FocusWithExternalFocusNode ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 66.8, 36.0), [1.0,0.0,0.0,810.3; 0.0,1.0,0.0,10.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], traversalParentIdentifier: _OverlayPortalState#4bb57, tooltip: "在独立窗口打开已保存资料，可拖动并排核对", textDirection: ltr)
+SEM-RENDER id=11 attached=false parent=10 render=RenderMergeSemantics#d33a7 relayoutBoundary=up26 NEEDS-PAINT creator=MergeSemantics ← UtenAppBarActionFeedback ← UtenButton ← MouseRegion ← Semantics ← Listener ← _ExclusiveMouseRegion ← Semantics ← _OverlayPortal ← OverlayPortal ← RawTooltip-[LabeledGlobalKey<RawTooltipState>#b61bb] ← Tooltip ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 66.8, 36.0), actions: [tap, focus], flags: [isButton, hasEnabledState, isEnabled, isFocusable], label: "新窗口", textDirection: ltr)
+SEM-RENDER id=196 attached=false parent=11 render=RenderSemanticsAnnotations#503f0 relayoutBoundary=up32 NEEDS-PAINT creator=Semantics ← RawMaterialButton ← _FocusInheritedScope ← Focus ← ExcludeFocus ← _CompactHitTarget ← Listener ← RawGestureDetector ← GestureDetector ← Listener ← Builder ← Semantics ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 55.8, 46.0), actions: [tap, focus], flags: [isButton, hasEnabledState, isEnabled, isFocusable], label: "新窗口", textDirection: ltr)
+SEM-RENDER id=12 attached=false parent=null render=RenderSemanticsAnnotations#f07c0 relayoutBoundary=up22 NEEDS-PAINT creator=Semantics ← _OverlayPortal ← OverlayPortal ← RawTooltip-[LabeledGlobalKey<RawTooltipState>#36171] ← Tooltip ← Padding ← UtenAppBarActionButton ← RecordHistoryAction ← Row ← MasterOperationHistoryActions ← UtenAppBarActionPresentation ← UtenAppBarActionRow ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 81.0, 36.0), [1.0,0.0,0.0,881.0; 0.0,1.0,0.0,10.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], traversalParentIdentifier: _OverlayPortalState#393d3, tooltip: "修改历史", textDirection: ltr)
+SEM-RENDER id=13 attached=false parent=12 render=RenderMergeSemantics#80d64 relayoutBoundary=up27 NEEDS-PAINT creator=MergeSemantics ← UtenAppBarActionFeedback ← UtenButton ← MouseRegion ← Semantics ← Listener ← _ExclusiveMouseRegion ← Semantics ← _OverlayPortal ← OverlayPortal ← RawTooltip-[LabeledGlobalKey<RawTooltipState>#36171] ← Tooltip ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 81.0, 36.0), actions: [tap, focus], flags: [isButton, hasEnabledState, isEnabled, isFocusable], label: "修改历史", textDirection: ltr)
+SEM-RENDER id=195 attached=false parent=13 render=RenderSemanticsAnnotations#f3c9e relayoutBoundary=up33 NEEDS-PAINT creator=Semantics ← RawMaterialButton ← _FocusInheritedScope ← Focus ← ExcludeFocus ← _CompactHitTarget ← Listener ← RawGestureDetector ← GestureDetector ← Listener ← Builder ← Semantics ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 69.0, 46.0), actions: [tap, focus], flags: [isButton, hasEnabledState, isEnabled, isFocusable], label: "修改历史", textDirection: ltr)
+SEM-RENDER id=14 attached=false parent=null render=RenderSemanticsAnnotations#e060e relayoutBoundary=up22 NEEDS-PAINT creator=Semantics ← _OverlayPortal ← OverlayPortal ← RawTooltip-[LabeledGlobalKey<RawTooltipState>#661dc] ← Tooltip ← Padding ← UtenAppBarActionButton ← Row ← MasterOperationHistoryActions ← UtenAppBarActionPresentation ← UtenAppBarActionRow ← _FocusInheritedScope ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 52.5, 36.0), [1.0,0.0,0.0,966.0; 0.0,1.0,0.0,10.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], traversalParentIdentifier: _OverlayPortalState#e580e, tooltip: "撤回", textDirection: ltr)
+SEM-RENDER id=15 attached=false parent=14 render=RenderMergeSemantics#f9021 relayoutBoundary=up27 NEEDS-PAINT creator=MergeSemantics ← UtenAppBarActionFeedback ← UtenButton ← MouseRegion ← Semantics ← Listener ← _ExclusiveMouseRegion ← Semantics ← _OverlayPortal ← OverlayPortal ← RawTooltip-[LabeledGlobalKey<RawTooltipState>#661dc] ← Tooltip ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 52.5, 36.0), actions: [tap, focus], flags: [isButton, hasEnabledState, isEnabled, isFocusable], label: "撤回", textDirection: ltr)
+SEM-RENDER id=194 attached=false parent=15 render=RenderSemanticsAnnotations#e85c9 relayoutBoundary=up33 NEEDS-PAINT creator=Semantics ← RawMaterialButton ← _FocusInheritedScope ← Focus ← ExcludeFocus ← _CompactHitTarget ← Listener ← RawGestureDetector ← GestureDetector ← Listener ← Builder ← Semantics ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 48.0, 46.0), actions: [tap, focus], flags: [isButton, hasEnabledState, isEnabled, isFocusable], label: "撤回", textDirection: ltr)
+SEM-RENDER id=16 attached=false parent=null render=RenderSemanticsAnnotations#c64bb relayoutBoundary=up22 NEEDS-PAINT creator=Semantics ← _OverlayPortal ← OverlayPortal ← RawTooltip-[LabeledGlobalKey<RawTooltipState>#d7718] ← Tooltip ← Padding ← UtenAppBarActionButton ← Row ← MasterOperationHistoryActions ← UtenAppBarActionPresentation ← UtenAppBarActionRow ← _FocusInheritedScope ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 81.0, 36.0), [1.0,0.0,0.0,1022.5; 0.0,1.0,0.0,10.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], traversalParentIdentifier: _OverlayPortalState#0d63b, tooltip: "取消撤回", textDirection: ltr)
+SEM-RENDER id=17 attached=false parent=16 render=RenderMergeSemantics#fcf22 relayoutBoundary=up27 NEEDS-PAINT creator=MergeSemantics ← UtenAppBarActionFeedback ← UtenButton ← MouseRegion ← Semantics ← Listener ← _ExclusiveMouseRegion ← Semantics ← _OverlayPortal ← OverlayPortal ← RawTooltip-[LabeledGlobalKey<RawTooltipState>#d7718] ← Tooltip ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 81.0, 36.0), actions: [tap, focus], flags: [isButton, hasEnabledState, isEnabled, isFocusable], label: "取消撤回", textDirection: ltr)
+SEM-RENDER id=193 attached=false parent=17 render=RenderSemanticsAnnotations#8716c relayoutBoundary=up33 NEEDS-PAINT creator=Semantics ← RawMaterialButton ← _FocusInheritedScope ← Focus ← ExcludeFocus ← _CompactHitTarget ← Listener ← RawGestureDetector ← GestureDetector ← Listener ← Builder ← Semantics ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 69.0, 46.0), actions: [tap, focus], flags: [isButton, hasEnabledState, isEnabled, isFocusable], label: "取消撤回", textDirection: ltr)
+SEM-RENDER id=18 attached=false parent=null render=RenderSemanticsAnnotations#bdc79 relayoutBoundary=up21 NEEDS-PAINT creator=Semantics ← _OverlayPortal ← OverlayPortal ← RawTooltip-[LabeledGlobalKey<RawTooltipState>#67feb] ← Tooltip ← Padding ← UtenAppBarActionButton ← UtenRefreshButton ← UtenAppBarActionPresentation ← UtenAppBarActionRow ← _FocusInheritedScope ← _FocusWithExternalFocusNode ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 52.5, 36.0), [1.0,0.0,0.0,1107.5; 0.0,1.0,0.0,10.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], traversalParentIdentifier: _OverlayPortalState#2bbef, tooltip: "刷新", textDirection: ltr)
+SEM-RENDER id=19 attached=false parent=18 render=RenderMergeSemantics#7943b relayoutBoundary=up26 NEEDS-PAINT creator=MergeSemantics ← UtenAppBarActionFeedback ← UtenButton ← MouseRegion ← Semantics ← Listener ← _ExclusiveMouseRegion ← Semantics ← _OverlayPortal ← OverlayPortal ← RawTooltip-[LabeledGlobalKey<RawTooltipState>#67feb] ← Tooltip ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 52.5, 36.0), actions: [tap, focus], flags: [isButton, hasEnabledState, isEnabled, isFocusable], label: "刷新", textDirection: ltr)
+SEM-RENDER id=197 attached=false parent=19 render=RenderSemanticsAnnotations#22a3f relayoutBoundary=up32 NEEDS-PAINT creator=Semantics ← RawMaterialButton ← _FocusInheritedScope ← Focus ← ExcludeFocus ← _CompactHitTarget ← Listener ← RawGestureDetector ← GestureDetector ← Listener ← Builder ← Semantics ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 48.0, 46.0), actions: [tap, focus], flags: [isButton, hasEnabledState, isEnabled, isFocusable], label: "刷新", textDirection: ltr)
+SEM-RENDER id=198 attached=true parent=7 render=RenderSemanticsAnnotations#c6d2b relayoutBoundary=up18 creator=Semantics ← _IconButtonM3 ← _SelectableIconButton ← IconButton-[<'uten-app-bar-more-actions'>] ← KeyedSubtree-[GlobalKey#15f94] ← UtenAppBarActionPresentation ← _FocusInheritedScope ← _FocusWithExternalFocusNode ← SelectionRegistrarScope ← SelectionContainer ← _FitLayout ← UtenFitOrCompact ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 40.0, 40.0), [1.0,0.0,0.0,554.0; 0.0,1.0,0.0,8.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [tap, focus], flags: [isButton, hasEnabledState, isEnabled, isFocusable], traversalParentIdentifier: _OverlayPortalState#05331, tooltip: "更多操作", textDirection: ltr)
+SEM-RENDER id=201 attached=false parent=null render=RenderSemanticsAnnotations#74ded creator=Semantics ← SizedBox ← Align ← AnimatedBuilder ← LayoutBuilder ← UtenContentScrollbar-[<'uten-page-scrollbar-rail'>] ← _PageScrollbarRailGate ← _PageScrollbarScope ← Positioned ← Stack-[GlobalKey#14b2c] ← _PageScrollbarGeometryObserver ← _ScrollNotificationObserverScope ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 14.0, 728.0), [1.0,0.0,0.0,698.0; 0.0,1.0,0.0,0.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [scrollUp, scrollDown])
+SEM-RENDER id=167 attached=true parent=null render=RenderSemanticsGestureHandler#9c3f3 relayoutBoundary=up1 creator=_GestureSemantics ← RawGestureDetector ← GestureDetector ← Stack ← MouseRegion ← Listener ← Semantics ← SizedBox ← Align ← AnimatedBuilder ← LayoutBuilder ← UtenContentScrollbar-[<'uten-page-scrollbar-rail'>] ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 14.0, 728.0), [1.0,0.0,0.0,698.0; 0.0,1.0,0.0,0.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [tap, scrollUp, scrollDown])
+SEM-RENDER id=168 attached=true parent=null render=RenderSemanticsAnnotations#d4926 creator=Semantics-[<'uten-scrollbar-up'>] ← Positioned ← Stack ← LayoutBuilder ← UtenScrollbarArrowButtons ← Positioned ← Stack ← MouseRegion ← Listener ← Semantics ← SizedBox ← Align ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 14.0, 16.0), flags: [isButton, hasEnabledState], label: "向上滚动", textDirection: ltr)
+SEM-RENDER id=169 attached=true parent=null render=RenderSemanticsAnnotations#db48c creator=Semantics-[<'uten-scrollbar-down'>] ← Positioned ← Stack ← LayoutBuilder ← UtenScrollbarArrowButtons ← Positioned ← Stack ← MouseRegion ← Listener ← Semantics ← SizedBox ← Align ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 14.0, 16.0), [1.0,0.0,0.0,0.0; 0.0,1.0,0.0,712.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [tap], flags: [isButton, hasEnabledState, isEnabled], label: "向下滚动", textDirection: ltr)
+SEM-RENDER id=20 attached=true parent=1 render=RenderSemanticsGestureHandler#d2454 relayoutBoundary=up1 creator=_GestureSemantics ← RawGestureDetector ← GestureDetector-[<'desktop-window-drag'>] ← Expanded ← Row ← Padding ← DefaultTextStyle ← AnimatedDefaultTextStyle ← _InkFeatures-[GlobalKey#4dff0 ink renderer] ← NotificationListener<LayoutChangedNotification> ← PhysicalModel ← AnimatedPhysicalModel ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 608.0, 36.0), [1.0,0.0,0.0,8.0; 0.0,1.0,0.0,0.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [scrollLeft, scrollRight, scrollUp, scrollDown])
+SEM-RENDER id=21 attached=true parent=1 render=RenderSemanticsAnnotations#ed4d7 creator=Semantics ← SizedBox ← UtenWindowControlButton-[<'desktop-window-minimize'>] ← Row ← UtenWindowControls ← ValueListenableBuilder<bool> ← Row ← Padding ← DefaultTextStyle ← AnimatedDefaultTextStyle ← _InkFeatures-[GlobalKey#4dff0 ink renderer] ← NotificationListener<LayoutChangedNotification> ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 30.0, 36.0), [1.0,0.0,0.0,616.0; 0.0,1.0,0.0,0.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [tap], flags: [isButton, hasEnabledState, isEnabled], label: "最小化", textDirection: ltr)
+SEM-RENDER id=22 attached=true parent=1 render=RenderSemanticsAnnotations#74a9c creator=Semantics ← SizedBox ← UtenWindowControlButton-[<'desktop-window-maximize'>] ← Row ← UtenWindowControls ← ValueListenableBuilder<bool> ← Row ← Padding ← DefaultTextStyle ← AnimatedDefaultTextStyle ← _InkFeatures-[GlobalKey#4dff0 ink renderer] ← NotificationListener<LayoutChangedNotification> ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 30.0, 36.0), [1.0,0.0,0.0,646.0; 0.0,1.0,0.0,0.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [tap], flags: [isButton, hasEnabledState, isEnabled], label: "最大化", textDirection: ltr)
+SEM-RENDER id=23 attached=true parent=1 render=RenderSemanticsAnnotations#6b4a1 creator=Semantics ← SizedBox ← UtenCloseButton-[<'desktop-window-close'>] ← Row ← UtenWindowControls ← ValueListenableBuilder<bool> ← Row ← Padding ← DefaultTextStyle ← AnimatedDefaultTextStyle ← _InkFeatures-[GlobalKey#4dff0 ink renderer] ← NotificationListener<LayoutChangedNotification> ← ⋯ data=SemanticsData(Rect.fromLTRB(0.0, 0.0, 30.0, 36.0), [1.0,0.0,0.0,676.0; 0.0,1.0,0.0,0.0; 0.0,0.0,1.0,0.0; 0.0,0.0,0.0,1.0], actions: [tap], flags: [isButton, hasEnabledState, isEnabled], label: "关闭", textDirection: ltr)
+MENU-FIRST-ERROR phase=escape library=scheduler library context=during a scheduler callback
+'package:flutter/src/semantics/semantics.dart': Failed assertion: line 3008 pos 16: '!child.attached': is not true.
+#0      _AssertionError._doThrowNew (dart:core-patch/errors_patch.dart:67:4)
+#1      _AssertionError._throwNew (dart:core-patch/errors_patch.dart:49:5)
+#2      SemanticsNode._replaceChildren (package:flutter/src/semantics/semantics.dart:3008:16)
+#3      SemanticsNode.updateWith (package:flutter/src/semantics/semantics.dart:3750:5)
+#4      _RenderObjectSemantics._buildSemanticsSubtree (package:flutter/src/rendering/object.dart:6258:12)
+#5      _RenderObjectSemantics._produceSemanticsNode (package:flutter/src/rendering/object.dart:6272:5)
+#6      _RenderObjectSemantics._buildSemantics (package:flutter/src/rendering/object.dart:6205:7)
+#7      _RenderObjectSemantics._buildSemanticsSubtree (package:flutter/src/rendering/object.dart:6241:13)
+#8      _RenderObjectSemantics._produceSemanticsNode (package:flutter/src/rendering/object.dart:6272:5)
+#9      _RenderObjectSemantics._buildSemantics (package:flutter/src/rendering/object.dart:6205:7)
+#10     _RenderObjectSemantics._buildSemanticsSubtree (package:flutter/src/rendering/object.dart:6241:13)
+#11     _RenderObjectSemantics._produceSemanticsNode (package:flutter/src/rendering/object.dart:6272:5)
+#12     _RenderObjectSemantics._buildSemantics (package:flutter/src/rendering/object.dart:6205:7)
+#13     _RenderObjectSemantics._buildSemanticsSubtree (package:flutter/src/rendering/object.dart:6241:13)
+#14     _RenderObjectSemantics._produceSemanticsNode (package:flutter/src/rendering/object.dart:6272:5)
+#15     _RenderObjectSemantics._buildSemantics (package:flutter/src/rendering/object.dart:6205:7)
+#16     _RenderObjectSemantics._buildSemanticsSubtree (package:flutter/src/rendering/object.dart:6241:13)
+#17     _RenderObjectSemantics.ensureSemanticsNode (package:flutter/src/rendering/object.dart:6177:7)
+#18     PipelineOwner.flushSemantics (package:flutter/src/rendering/object.dart:1636:18)
+#19     PipelineOwner.flushSemantics (package:flutter/src/rendering/object.dart:1653:15)
+#20     AutomatedTestWidgetsFlutterBinding.drawFrame (package:flutter_test/src/binding.dart:2444:35)
+#21     RendererBinding._handlePersistentFrameCallback (package:flutter/src/rendering/binding.dart:509:5)
+#22     SchedulerBinding._invokeFrameCallback (package:flutter/src/scheduler/binding.dart:1430:15)
+#23     SchedulerBinding.handleDrawFrame (package:flutter/src/scheduler/binding.dart:1345:9)
+#24     AutomatedTestWidgetsFlutterBinding.pump.<anonymous closure> (package:flutter_test/src/binding.dart:2260:9)
+#25     _rootRun (dart:async/zone_root.dart:35:13)
+#26     _CustomZone.run (dart:async/zone.dart:726:19)
+#27     TestAsyncUtils.guard (package:flutter_test/src/test_async_utils.dart:74:41)
+#28     AutomatedTestWidgetsFlutterBinding.pump (package:flutter_test/src/binding.dart:2249:27)
+#29     WidgetTester.pump.<anonymous closure> (package:flutter_test/src/widget_tester.dart:652:53)
+#30     _rootRun (dart:async/zone_root.dart:35:13)
+#31     _CustomZone.run (dart:async/zone.dart:726:19)
+#32     TestAsyncUtils.guard (package:flutter_test/src/test_async_utils.dart:74:41)
+#33     WidgetTester.pump (package:flutter_test/src/widget_tester.dart:652:27)
+#34     pumpWithIo (file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/support/pump_until.dart:17:16)
+<asynchronous suspension>
+#35     pumpAndSettleWithIo.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/support/pump_until.dart:36:7)
+<asynchronous suspension>
+#36     TestAsyncUtils.guard.<anonymous closure> (package:flutter_test/src/test_async_utils.dart:130:27)
+<asynchronous suspension>
+#37     main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/features/basic_data/pages/master_menu_semantics_diagnostic_test.dart:710:15)
+<asynchronous suspension>
+#38     testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#39     TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+#40     StackZoneSpecification._registerCallback.<anonymous closure> (package:stack_trace/src/stack_zone_specification.dart:114:42)
+<asynchronous suspension>
+
+MENU-FIRST-ERROR phase=restore-wide library=scheduler library context=during a scheduler callback
+'package:flutter/src/semantics/semantics.dart': Failed assertion: line 3008 pos 16: '!child.attached': is not true.
+#0      _AssertionError._doThrowNew (dart:core-patch/errors_patch.dart:67:4)
+#1      _AssertionError._throwNew (dart:core-patch/errors_patch.dart:49:5)
+#2      SemanticsNode._replaceChildren (package:flutter/src/semantics/semantics.dart:3008:16)
+#3      SemanticsNode.updateWith (package:flutter/src/semantics/semantics.dart:3750:5)
+#4      _RenderObjectSemantics._buildSemanticsSubtree (package:flutter/src/rendering/object.dart:6258:12)
+#5      _RenderObjectSemantics._produceSemanticsNode (package:flutter/src/rendering/object.dart:6272:5)
+#6      _RenderObjectSemantics._buildSemantics (package:flutter/src/rendering/object.dart:6205:7)
+#7      _RenderObjectSemantics._buildSemanticsSubtree (package:flutter/src/rendering/object.dart:6241:13)
+#8      _RenderObjectSemantics._produceSemanticsNode (package:flutter/src/rendering/object.dart:6272:5)
+#9      _RenderObjectSemantics._buildSemantics (package:flutter/src/rendering/object.dart:6205:7)
+#10     _RenderObjectSemantics._buildSemanticsSubtree (package:flutter/src/rendering/object.dart:6241:13)
+#11     _RenderObjectSemantics._produceSemanticsNode (package:flutter/src/rendering/object.dart:6272:5)
+#12     _RenderObjectSemantics._buildSemantics (package:flutter/src/rendering/object.dart:6205:7)
+#13     _RenderObjectSemantics._buildSemanticsSubtree (package:flutter/src/rendering/object.dart:6241:13)
+#14     _RenderObjectSemantics._produceSemanticsNode (package:flutter/src/rendering/object.dart:6272:5)
+#15     _RenderObjectSemantics._buildSemantics (package:flutter/src/rendering/object.dart:6205:7)
+#16     _RenderObjectSemantics._buildSemanticsSubtree (package:flutter/src/rendering/object.dart:6241:13)
+#17     _RenderObjectSemantics._produceSemanticsNode (package:flutter/src/rendering/object.dart:6272:5)
+#18     _RenderObjectSemantics._buildSemantics (package:flutter/src/rendering/object.dart:6205:7)
+#19     _RenderObjectSemantics.ensureSemanticsNode (package:flutter/src/rendering/object.dart:6170:7)
+#20     PipelineOwner.flushSemantics (package:flutter/src/rendering/object.dart:1636:18)
+#21     PipelineOwner.flushSemantics (package:flutter/src/rendering/object.dart:1653:15)
+#22     AutomatedTestWidgetsFlutterBinding.drawFrame (package:flutter_test/src/binding.dart:2444:35)
+#23     RendererBinding._handlePersistentFrameCallback (package:flutter/src/rendering/binding.dart:509:5)
+#24     SchedulerBinding._invokeFrameCallback (package:flutter/src/scheduler/binding.dart:1430:15)
+#25     SchedulerBinding.handleDrawFrame (package:flutter/src/scheduler/binding.dart:1345:9)
+#26     AutomatedTestWidgetsFlutterBinding.pump.<anonymous closure> (package:flutter_test/src/binding.dart:2260:9)
+#27     _rootRun (dart:async/zone_root.dart:35:13)
+#28     _CustomZone.run (dart:async/zone.dart:726:19)
+#29     TestAsyncUtils.guard (package:flutter_test/src/test_async_utils.dart:74:41)
+#30     AutomatedTestWidgetsFlutterBinding.pump (package:flutter_test/src/binding.dart:2249:27)
+#31     WidgetTester.pump.<anonymous closure> (package:flutter_test/src/widget_tester.dart:652:53)
+#32     _rootRun (dart:async/zone_root.dart:35:13)
+#33     _CustomZone.run (dart:async/zone.dart:726:19)
+#34     TestAsyncUtils.guard (package:flutter_test/src/test_async_utils.dart:74:41)
+#35     WidgetTester.pump (package:flutter_test/src/widget_tester.dart:652:27)
+#36     pumpWithIo (file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/support/pump_until.dart:17:16)
+<asynchronous suspension>
+#37     pumpAndSettleWithIo.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/support/pump_until.dart:36:7)
+<asynchronous suspension>
+#38     TestAsyncUtils.guard.<anonymous closure> (package:flutter_test/src/test_async_utils.dart:130:27)
+<asynchronous suspension>
+#39     main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/features/basic_data/pages/master_menu_semantics_diagnostic_test.dart:713:15)
+<asynchronous suspension>
+#40     testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#41     TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+#42     StackZoneSpecification._registerCallback.<anonymous closure> (package:stack_trace/src/stack_zone_specification.dart:114:42)
+<asynchronous suspension>
+
+══╡ EXCEPTION CAUGHT BY SCHEDULER LIBRARY ╞═════════════════════════════════════════════════════════
+The following assertion was thrown during a scheduler callback:
+'package:flutter/src/semantics/semantics.dart': Failed assertion: line 3008 pos 16:
+'!child.attached': is not true.
+
+Either the assertion indicates an error in the framework itself, or we should provide substantially
+more information in this error message to help you determine and fix the underlying cause.
+In either case, please report this assertion by filing a bug on GitHub:
+  https://github.com/flutter/flutter/issues/new?template=02_bug.yml
+
+When the exception was thrown, this was the stack:
+#2      SemanticsNode._replaceChildren (package:flutter/src/semantics/semantics.dart:3008:16)
+#3      SemanticsNode.updateWith (package:flutter/src/semantics/semantics.dart:3750:5)
+#4      _RenderObjectSemantics._buildSemanticsSubtree (package:flutter/src/rendering/object.dart:6258:12)
+#5      _RenderObjectSemantics._produceSemanticsNode (package:flutter/src/rendering/object.dart:6272:5)
+#6      _RenderObjectSemantics._buildSemantics (package:flutter/src/rendering/object.dart:6205:7)
+#7      _RenderObjectSemantics._buildSemanticsSubtree (package:flutter/src/rendering/object.dart:6241:13)
+#8      _RenderObjectSemantics._produceSemanticsNode (package:flutter/src/rendering/object.dart:6272:5)
+#9      _RenderObjectSemantics._buildSemantics (package:flutter/src/rendering/object.dart:6205:7)
+#10     _RenderObjectSemantics._buildSemanticsSubtree (package:flutter/src/rendering/object.dart:6241:13)
+#11     _RenderObjectSemantics._produceSemanticsNode (package:flutter/src/rendering/object.dart:6272:5)
+#12     _RenderObjectSemantics._buildSemantics (package:flutter/src/rendering/object.dart:6205:7)
+#13     _RenderObjectSemantics._buildSemanticsSubtree (package:flutter/src/rendering/object.dart:6241:13)
+#14     _RenderObjectSemantics._produceSemanticsNode (package:flutter/src/rendering/object.dart:6272:5)
+#15     _RenderObjectSemantics._buildSemantics (package:flutter/src/rendering/object.dart:6205:7)
+#16     _RenderObjectSemantics._buildSemanticsSubtree (package:flutter/src/rendering/object.dart:6241:13)
+#17     _RenderObjectSemantics.ensureSemanticsNode (package:flutter/src/rendering/object.dart:6177:7)
+#18     PipelineOwner.flushSemantics (package:flutter/src/rendering/object.dart:1636:18)
+#19     PipelineOwner.flushSemantics (package:flutter/src/rendering/object.dart:1653:15)
+#20     AutomatedTestWidgetsFlutterBinding.drawFrame (package:flutter_test/src/binding.dart:2444:35)
+#21     RendererBinding._handlePersistentFrameCallback (package:flutter/src/rendering/binding.dart:509:5)
+#22     SchedulerBinding._invokeFrameCallback (package:flutter/src/scheduler/binding.dart:1430:15)
+#23     SchedulerBinding.handleDrawFrame (package:flutter/src/scheduler/binding.dart:1345:9)
+#24     AutomatedTestWidgetsFlutterBinding.pump.<anonymous closure> (package:flutter_test/src/binding.dart:2260:9)
+#27     TestAsyncUtils.guard (package:flutter_test/src/test_async_utils.dart:74:41)
+#28     AutomatedTestWidgetsFlutterBinding.pump (package:flutter_test/src/binding.dart:2249:27)
+#29     WidgetTester.pump.<anonymous closure> (package:flutter_test/src/widget_tester.dart:652:53)
+#32     TestAsyncUtils.guard (package:flutter_test/src/test_async_utils.dart:74:41)
+#33     WidgetTester.pump (package:flutter_test/src/widget_tester.dart:652:27)
+#34     pumpWithIo (file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/support/pump_until.dart:17:16)
+<asynchronous suspension>
+#35     pumpAndSettleWithIo.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/support/pump_until.dart:36:7)
+<asynchronous suspension>
+#36     TestAsyncUtils.guard.<anonymous closure> (package:flutter_test/src/test_async_utils.dart:130:27)
+<asynchronous suspension>
+#37     main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/features/basic_data/pages/master_menu_semantics_diagnostic_test.dart:710:15)
+<asynchronous suspension>
+#38     testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#39     TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided 7 frames from class _AssertionError, dart:async, and package:stack_trace)
+════════════════════════════════════════════════════════════════════════════════════════════════════
+══╡ EXCEPTION CAUGHT BY SCHEDULER LIBRARY ╞═════════════════════════════════════════════════════════
+The following assertion was thrown during a scheduler callback:
+'package:flutter/src/semantics/semantics.dart': Failed assertion: line 3008 pos 16:
+'!child.attached': is not true.
+
+Either the assertion indicates an error in the framework itself, or we should provide substantially
+more information in this error message to help you determine and fix the underlying cause.
+In either case, please report this assertion by filing a bug on GitHub:
+  https://github.com/flutter/flutter/issues/new?template=02_bug.yml
+
+When the exception was thrown, this was the stack:
+#2      SemanticsNode._replaceChildren (package:flutter/src/semantics/semantics.dart:3008:16)
+#3      SemanticsNode.updateWith (package:flutter/src/semantics/semantics.dart:3750:5)
+#4      _RenderObjectSemantics._buildSemanticsSubtree (package:flutter/src/rendering/object.dart:6258:12)
+#5      _RenderObjectSemantics._produceSemanticsNode (package:flutter/src/rendering/object.dart:6272:5)
+#6      _RenderObjectSemantics._buildSemantics (package:flutter/src/rendering/object.dart:6205:7)
+#7      _RenderObjectSemantics._buildSemanticsSubtree (package:flutter/src/rendering/object.dart:6241:13)
+#8      _RenderObjectSemantics._produceSemanticsNode (package:flutter/src/rendering/object.dart:6272:5)
+#9      _RenderObjectSemantics._buildSemantics (package:flutter/src/rendering/object.dart:6205:7)
+#10     _RenderObjectSemantics._buildSemanticsSubtree (package:flutter/src/rendering/object.dart:6241:13)
+#11     _RenderObjectSemantics._produceSemanticsNode (package:flutter/src/rendering/object.dart:6272:5)
+#12     _RenderObjectSemantics._buildSemantics (package:flutter/src/rendering/object.dart:6205:7)
+#13     _RenderObjectSemantics._buildSemanticsSubtree (package:flutter/src/rendering/object.dart:6241:13)
+#14     _RenderObjectSemantics._produceSemanticsNode (package:flutter/src/rendering/object.dart:6272:5)
+#15     _RenderObjectSemantics._buildSemantics (package:flutter/src/rendering/object.dart:6205:7)
+#16     _RenderObjectSemantics._buildSemanticsSubtree (package:flutter/src/rendering/object.dart:6241:13)
+#17     _RenderObjectSemantics._produceSemanticsNode (package:flutter/src/rendering/object.dart:6272:5)
+#18     _RenderObjectSemantics._buildSemantics (package:flutter/src/rendering/object.dart:6205:7)
+#19     _RenderObjectSemantics.ensureSemanticsNode (package:flutter/src/rendering/object.dart:6170:7)
+#20     PipelineOwner.flushSemantics (package:flutter/src/rendering/object.dart:1636:18)
+#21     PipelineOwner.flushSemantics (package:flutter/src/rendering/object.dart:1653:15)
+#22     AutomatedTestWidgetsFlutterBinding.drawFrame (package:flutter_test/src/binding.dart:2444:35)
+#23     RendererBinding._handlePersistentFrameCallback (package:flutter/src/rendering/binding.dart:509:5)
+#24     SchedulerBinding._invokeFrameCallback (package:flutter/src/scheduler/binding.dart:1430:15)
+#25     SchedulerBinding.handleDrawFrame (package:flutter/src/scheduler/binding.dart:1345:9)
+#26     AutomatedTestWidgetsFlutterBinding.pump.<anonymous closure> (package:flutter_test/src/binding.dart:2260:9)
+#29     TestAsyncUtils.guard (package:flutter_test/src/test_async_utils.dart:74:41)
+#30     AutomatedTestWidgetsFlutterBinding.pump (package:flutter_test/src/binding.dart:2249:27)
+#31     WidgetTester.pump.<anonymous closure> (package:flutter_test/src/widget_tester.dart:652:53)
+#34     TestAsyncUtils.guard (package:flutter_test/src/test_async_utils.dart:74:41)
+#35     WidgetTester.pump (package:flutter_test/src/widget_tester.dart:652:27)
+#36     pumpWithIo (file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/support/pump_until.dart:17:16)
+<asynchronous suspension>
+#37     pumpAndSettleWithIo.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/support/pump_until.dart:36:7)
+<asynchronous suspension>
+#38     TestAsyncUtils.guard.<anonymous closure> (package:flutter_test/src/test_async_utils.dart:130:27)
+<asynchronous suspension>
+#39     main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/features/basic_data/pages/master_menu_semantics_diagnostic_test.dart:713:15)
+<asynchronous suspension>
+#40     testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#41     TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided 7 frames from class _AssertionError, dart:async, and package:stack_trace)
+════════════════════════════════════════════════════════════════════════════════════════════════════
+MENU-FIRST-ERROR phase=restore-wide library=scheduler library context=during a scheduler callback
+'package:flutter/src/semantics/semantics.dart': Failed assertion: line 3008 pos 16: '!child.attached': is not true.
+#0      _AssertionError._doThrowNew (dart:core-patch/errors_patch.dart:67:4)
+#1      _AssertionError._throwNew (dart:core-patch/errors_patch.dart:49:5)
+#2      SemanticsNode._replaceChildren (package:flutter/src/semantics/semantics.dart:3008:16)
+#3      SemanticsNode.updateWith (package:flutter/src/semantics/semantics.dart:3750:5)
+#4      _RenderObjectSemantics._buildSemanticsSubtree (package:flutter/src/rendering/object.dart:6258:12)
+#5      _RenderObjectSemantics._produceSemanticsNode (package:flutter/src/rendering/object.dart:6272:5)
+#6      _RenderObjectSemantics._buildSemantics (package:flutter/src/rendering/object.dart:6205:7)
+#7      _RenderObjectSemantics._buildSemanticsSubtree (package:flutter/src/rendering/object.dart:6241:13)
+#8      _RenderObjectSemantics._produceSemanticsNode (package:flutter/src/rendering/object.dart:6272:5)
+#9      _RenderObjectSemantics._buildSemantics (package:flutter/src/rendering/object.dart:6205:7)
+#10     _RenderObjectSemantics._buildSemanticsSubtree (package:flutter/src/rendering/object.dart:6241:13)
+#11     _RenderObjectSemantics._produceSemanticsNode (package:flutter/src/rendering/object.dart:6272:5)
+#12     _RenderObjectSemantics._buildSemantics (package:flutter/src/rendering/object.dart:6205:7)
+#13     _RenderObjectSemantics._buildSemanticsSubtree (package:flutter/src/rendering/object.dart:6241:13)
+#14     _RenderObjectSemantics._produceSemanticsNode (package:flutter/src/rendering/object.dart:6272:5)
+#15     _RenderObjectSemantics._buildSemantics (package:flutter/src/rendering/object.dart:6205:7)
+#16     _RenderObjectSemantics._buildSemanticsSubtree (package:flutter/src/rendering/object.dart:6241:13)
+#17     _RenderObjectSemantics._produceSemanticsNode (package:flutter/src/rendering/object.dart:6272:5)
+#18     _RenderObjectSemantics._buildSemantics (package:flutter/src/rendering/object.dart:6205:7)
+#19     _RenderObjectSemantics.ensureSemanticsNode (package:flutter/src/rendering/object.dart:6170:7)
+#20     PipelineOwner.flushSemantics (package:flutter/src/rendering/object.dart:1636:18)
+#21     PipelineOwner.flushSemantics (package:flutter/src/rendering/object.dart:1653:15)
+#22     AutomatedTestWidgetsFlutterBinding.drawFrame (package:flutter_test/src/binding.dart:2444:35)
+#23     RendererBinding._handlePersistentFrameCallback (package:flutter/src/rendering/binding.dart:509:5)
+#24     SchedulerBinding._invokeFrameCallback (package:flutter/src/scheduler/binding.dart:1430:15)
+#25     SchedulerBinding.handleDrawFrame (package:flutter/src/scheduler/binding.dart:1345:9)
+#26     AutomatedTestWidgetsFlutterBinding.pump.<anonymous closure> (package:flutter_test/src/binding.dart:2260:9)
+#27     _rootRun (dart:async/zone_root.dart:35:13)
+#28     _CustomZone.run (dart:async/zone.dart:726:19)
+#29     TestAsyncUtils.guard (package:flutter_test/src/test_async_utils.dart:74:41)
+#30     AutomatedTestWidgetsFlutterBinding.pump (package:flutter_test/src/binding.dart:2249:27)
+#31     WidgetTester.pump.<anonymous closure> (package:flutter_test/src/widget_tester.dart:652:53)
+#32     _rootRun (dart:async/zone_root.dart:35:13)
+#33     _CustomZone.run (dart:async/zone.dart:726:19)
+#34     TestAsyncUtils.guard (package:flutter_test/src/test_async_utils.dart:74:41)
+#35     WidgetTester.pump (package:flutter_test/src/widget_tester.dart:652:27)
+#36     pumpWithIo (file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/support/pump_until.dart:17:16)
+<asynchronous suspension>
+#37     pumpAndSettleWithIo.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/support/pump_until.dart:36:7)
+<asynchronous suspension>
+#38     TestAsyncUtils.guard.<anonymous closure> (package:flutter_test/src/test_async_utils.dart:130:27)
+<asynchronous suspension>
+#39     main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/features/basic_data/pages/master_menu_semantics_diagnostic_test.dart:713:15)
+<asynchronous suspension>
+#40     testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#41     TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+#42     StackZoneSpecification._registerCallback.<anonymous closure> (package:stack_trace/src/stack_zone_specification.dart:114:42)
+<asynchronous suspension>
+
+══╡ EXCEPTION CAUGHT BY SCHEDULER LIBRARY ╞═════════════════════════════════════════════════════════
+The following assertion was thrown during a scheduler callback:
+'package:flutter/src/semantics/semantics.dart': Failed assertion: line 3008 pos 16:
+'!child.attached': is not true.
+
+Either the assertion indicates an error in the framework itself, or we should provide substantially
+more information in this error message to help you determine and fix the underlying cause.
+In either case, please report this assertion by filing a bug on GitHub:
+  https://github.com/flutter/flutter/issues/new?template=02_bug.yml
+
+When the exception was thrown, this was the stack:
+#2      SemanticsNode._replaceChildren (package:flutter/src/semantics/semantics.dart:3008:16)
+#3      SemanticsNode.updateWith (package:flutter/src/semantics/semantics.dart:3750:5)
+#4      _RenderObjectSemantics._buildSemanticsSubtree (package:flutter/src/rendering/object.dart:6258:12)
+#5      _RenderObjectSemantics._produceSemanticsNode (package:flutter/src/rendering/object.dart:6272:5)
+#6      _RenderObjectSemantics._buildSemantics (package:flutter/src/rendering/object.dart:6205:7)
+#7      _RenderObjectSemantics._buildSemanticsSubtree (package:flutter/src/rendering/object.dart:6241:13)
+#8      _RenderObjectSemantics._produceSemanticsNode (package:flutter/src/rendering/object.dart:6272:5)
+#9      _RenderObjectSemantics._buildSemantics (package:flutter/src/rendering/object.dart:6205:7)
+#10     _RenderObjectSemantics._buildSemanticsSubtree (package:flutter/src/rendering/object.dart:6241:13)
+#11     _RenderObjectSemantics._produceSemanticsNode (package:flutter/src/rendering/object.dart:6272:5)
+#12     _RenderObjectSemantics._buildSemantics (package:flutter/src/rendering/object.dart:6205:7)
+#13     _RenderObjectSemantics._buildSemanticsSubtree (package:flutter/src/rendering/object.dart:6241:13)
+#14     _RenderObjectSemantics._produceSemanticsNode (package:flutter/src/rendering/object.dart:6272:5)
+#15     _RenderObjectSemantics._buildSemantics (package:flutter/src/rendering/object.dart:6205:7)
+#16     _RenderObjectSemantics._buildSemanticsSubtree (package:flutter/src/rendering/object.dart:6241:13)
+#17     _RenderObjectSemantics._produceSemanticsNode (package:flutter/src/rendering/object.dart:6272:5)
+#18     _RenderObjectSemantics._buildSemantics (package:flutter/src/rendering/object.dart:6205:7)
+#19     _RenderObjectSemantics.ensureSemanticsNode (package:flutter/src/rendering/object.dart:6170:7)
+#20     PipelineOwner.flushSemantics (package:flutter/src/rendering/object.dart:1636:18)
+#21     PipelineOwner.flushSemantics (package:flutter/src/rendering/object.dart:1653:15)
+#22     AutomatedTestWidgetsFlutterBinding.drawFrame (package:flutter_test/src/binding.dart:2444:35)
+#23     RendererBinding._handlePersistentFrameCallback (package:flutter/src/rendering/binding.dart:509:5)
+#24     SchedulerBinding._invokeFrameCallback (package:flutter/src/scheduler/binding.dart:1430:15)
+#25     SchedulerBinding.handleDrawFrame (package:flutter/src/scheduler/binding.dart:1345:9)
+#26     AutomatedTestWidgetsFlutterBinding.pump.<anonymous closure> (package:flutter_test/src/binding.dart:2260:9)
+#29     TestAsyncUtils.guard (package:flutter_test/src/test_async_utils.dart:74:41)
+#30     AutomatedTestWidgetsFlutterBinding.pump (package:flutter_test/src/binding.dart:2249:27)
+#31     WidgetTester.pump.<anonymous closure> (package:flutter_test/src/widget_tester.dart:652:53)
+#34     TestAsyncUtils.guard (package:flutter_test/src/test_async_utils.dart:74:41)
+#35     WidgetTester.pump (package:flutter_test/src/widget_tester.dart:652:27)
+#36     pumpWithIo (file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/support/pump_until.dart:17:16)
+<asynchronous suspension>
+#37     pumpAndSettleWithIo.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/support/pump_until.dart:36:7)
+<asynchronous suspension>
+#38     TestAsyncUtils.guard.<anonymous closure> (package:flutter_test/src/test_async_utils.dart:130:27)
+<asynchronous suspension>
+#39     main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/features/basic_data/pages/master_menu_semantics_diagnostic_test.dart:713:15)
+<asynchronous suspension>
+#40     testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#41     TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided 7 frames from class _AssertionError, dart:async, and package:stack_trace)
+════════════════════════════════════════════════════════════════════════════════════════════════════
+MENU-FIRST-ERROR phase=restore-wide library=scheduler library context=during a scheduler callback
+'package:flutter/src/semantics/semantics.dart': Failed assertion: line 3008 pos 16: '!child.attached': is not true.
+#0      _AssertionError._doThrowNew (dart:core-patch/errors_patch.dart:67:4)
+#1      _AssertionError._throwNew (dart:core-patch/errors_patch.dart:49:5)
+#2      SemanticsNode._replaceChildren (package:flutter/src/semantics/semantics.dart:3008:16)
+#3      SemanticsNode.updateWith (package:flutter/src/semantics/semantics.dart:3750:5)
+#4      _RenderObjectSemantics._buildSemanticsSubtree (package:flutter/src/rendering/object.dart:6258:12)
+#5      _RenderObjectSemantics._produceSemanticsNode (package:flutter/src/rendering/object.dart:6272:5)
+#6      _RenderObjectSemantics._buildSemantics (package:flutter/src/rendering/object.dart:6205:7)
+#7      _RenderObjectSemantics._buildSemanticsSubtree (package:flutter/src/rendering/object.dart:6241:13)
+#8      _RenderObjectSemantics._produceSemanticsNode (package:flutter/src/rendering/object.dart:6272:5)
+#9      _RenderObjectSemantics._buildSemantics (package:flutter/src/rendering/object.dart:6205:7)
+#10     _RenderObjectSemantics._buildSemanticsSubtree (package:flutter/src/rendering/object.dart:6241:13)
+#11     _RenderObjectSemantics._produceSemanticsNode (package:flutter/src/rendering/object.dart:6272:5)
+#12     _RenderObjectSemantics._buildSemantics (package:flutter/src/rendering/object.dart:6205:7)
+#13     _RenderObjectSemantics._buildSemanticsSubtree (package:flutter/src/rendering/object.dart:6241:13)
+#14     _RenderObjectSemantics._produceSemanticsNode (package:flutter/src/rendering/object.dart:6272:5)
+#15     _RenderObjectSemantics._buildSemantics (package:flutter/src/rendering/object.dart:6205:7)
+#16     _RenderObjectSemantics._buildSemanticsSubtree (package:flutter/src/rendering/object.dart:6241:13)
+#17     _RenderObjectSemantics._produceSemanticsNode (package:flutter/src/rendering/object.dart:6272:5)
+#18     _RenderObjectSemantics._buildSemantics (package:flutter/src/rendering/object.dart:6205:7)
+#19     _RenderObjectSemantics.ensureSemanticsNode (package:flutter/src/rendering/object.dart:6170:7)
+#20     PipelineOwner.flushSemantics (package:flutter/src/rendering/object.dart:1636:18)
+#21     PipelineOwner.flushSemantics (package:flutter/src/rendering/object.dart:1653:15)
+#22     AutomatedTestWidgetsFlutterBinding.drawFrame (package:flutter_test/src/binding.dart:2444:35)
+#23     RendererBinding._handlePersistentFrameCallback (package:flutter/src/rendering/binding.dart:509:5)
+#24     SchedulerBinding._invokeFrameCallback (package:flutter/src/scheduler/binding.dart:1430:15)
+#25     SchedulerBinding.handleDrawFrame (package:flutter/src/scheduler/binding.dart:1345:9)
+#26     AutomatedTestWidgetsFlutterBinding.pump.<anonymous closure> (package:flutter_test/src/binding.dart:2260:9)
+#27     _rootRun (dart:async/zone_root.dart:35:13)
+#28     _CustomZone.run (dart:async/zone.dart:726:19)
+#29     TestAsyncUtils.guard (package:flutter_test/src/test_async_utils.dart:74:41)
+#30     AutomatedTestWidgetsFlutterBinding.pump (package:flutter_test/src/binding.dart:2249:27)
+#31     WidgetTester.pump.<anonymous closure> (package:flutter_test/src/widget_tester.dart:652:53)
+#32     _rootRun (dart:async/zone_root.dart:35:13)
+#33     _CustomZone.run (dart:async/zone.dart:726:19)
+#34     TestAsyncUtils.guard (package:flutter_test/src/test_async_utils.dart:74:41)
+#35     WidgetTester.pump (package:flutter_test/src/widget_tester.dart:652:27)
+#36     pumpWithIo (file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/support/pump_until.dart:17:16)
+<asynchronous suspension>
+#37     pumpAndSettleWithIo.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/support/pump_until.dart:36:7)
+<asynchronous suspension>
+#38     TestAsyncUtils.guard.<anonymous closure> (package:flutter_test/src/test_async_utils.dart:130:27)
+<asynchronous suspension>
+#39     main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/features/basic_data/pages/master_menu_semantics_diagnostic_test.dart:713:15)
+<asynchronous suspension>
+#40     testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#41     TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+#42     StackZoneSpecification._registerCallback.<anonymous closure> (package:stack_trace/src/stack_zone_specification.dart:114:42)
+<asynchronous suspension>
+
+══╡ EXCEPTION CAUGHT BY SCHEDULER LIBRARY ╞═════════════════════════════════════════════════════════
+The following assertion was thrown during a scheduler callback:
+'package:flutter/src/semantics/semantics.dart': Failed assertion: line 3008 pos 16:
+'!child.attached': is not true.
+
+Either the assertion indicates an error in the framework itself, or we should provide substantially
+more information in this error message to help you determine and fix the underlying cause.
+In either case, please report this assertion by filing a bug on GitHub:
+  https://github.com/flutter/flutter/issues/new?template=02_bug.yml
+
+When the exception was thrown, this was the stack:
+#2      SemanticsNode._replaceChildren (package:flutter/src/semantics/semantics.dart:3008:16)
+#3      SemanticsNode.updateWith (package:flutter/src/semantics/semantics.dart:3750:5)
+#4      _RenderObjectSemantics._buildSemanticsSubtree (package:flutter/src/rendering/object.dart:6258:12)
+#5      _RenderObjectSemantics._produceSemanticsNode (package:flutter/src/rendering/object.dart:6272:5)
+#6      _RenderObjectSemantics._buildSemantics (package:flutter/src/rendering/object.dart:6205:7)
+#7      _RenderObjectSemantics._buildSemanticsSubtree (package:flutter/src/rendering/object.dart:6241:13)
+#8      _RenderObjectSemantics._produceSemanticsNode (package:flutter/src/rendering/object.dart:6272:5)
+#9      _RenderObjectSemantics._buildSemantics (package:flutter/src/rendering/object.dart:6205:7)
+#10     _RenderObjectSemantics._buildSemanticsSubtree (package:flutter/src/rendering/object.dart:6241:13)
+#11     _RenderObjectSemantics._produceSemanticsNode (package:flutter/src/rendering/object.dart:6272:5)
+#12     _RenderObjectSemantics._buildSemantics (package:flutter/src/rendering/object.dart:6205:7)
+#13     _RenderObjectSemantics._buildSemanticsSubtree (package:flutter/src/rendering/object.dart:6241:13)
+#14     _RenderObjectSemantics._produceSemanticsNode (package:flutter/src/rendering/object.dart:6272:5)
+#15     _RenderObjectSemantics._buildSemantics (package:flutter/src/rendering/object.dart:6205:7)
+#16     _RenderObjectSemantics._buildSemanticsSubtree (package:flutter/src/rendering/object.dart:6241:13)
+#17     _RenderObjectSemantics._produceSemanticsNode (package:flutter/src/rendering/object.dart:6272:5)
+#18     _RenderObjectSemantics._buildSemantics (package:flutter/src/rendering/object.dart:6205:7)
+#19     _RenderObjectSemantics.ensureSemanticsNode (package:flutter/src/rendering/object.dart:6170:7)
+#20     PipelineOwner.flushSemantics (package:flutter/src/rendering/object.dart:1636:18)
+#21     PipelineOwner.flushSemantics (package:flutter/src/rendering/object.dart:1653:15)
+#22     AutomatedTestWidgetsFlutterBinding.drawFrame (package:flutter_test/src/binding.dart:2444:35)
+#23     RendererBinding._handlePersistentFrameCallback (package:flutter/src/rendering/binding.dart:509:5)
+#24     SchedulerBinding._invokeFrameCallback (package:flutter/src/scheduler/binding.dart:1430:15)
+#25     SchedulerBinding.handleDrawFrame (package:flutter/src/scheduler/binding.dart:1345:9)
+#26     AutomatedTestWidgetsFlutterBinding.pump.<anonymous closure> (package:flutter_test/src/binding.dart:2260:9)
+#29     TestAsyncUtils.guard (package:flutter_test/src/test_async_utils.dart:74:41)
+#30     AutomatedTestWidgetsFlutterBinding.pump (package:flutter_test/src/binding.dart:2249:27)
+#31     WidgetTester.pump.<anonymous closure> (package:flutter_test/src/widget_tester.dart:652:53)
+#34     TestAsyncUtils.guard (package:flutter_test/src/test_async_utils.dart:74:41)
+#35     WidgetTester.pump (package:flutter_test/src/widget_tester.dart:652:27)
+#36     pumpWithIo (file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/support/pump_until.dart:17:16)
+<asynchronous suspension>
+#37     pumpAndSettleWithIo.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/support/pump_until.dart:36:7)
+<asynchronous suspension>
+#38     TestAsyncUtils.guard.<anonymous closure> (package:flutter_test/src/test_async_utils.dart:130:27)
+<asynchronous suspension>
+#39     main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/features/basic_data/pages/master_menu_semantics_diagnostic_test.dart:713:15)
+<asynchronous suspension>
+#40     testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#41     TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided 7 frames from class _AssertionError, dart:async, and package:stack_trace)
+════════════════════════════════════════════════════════════════════════════════════════════════════
+MENU-FIRST-ERROR phase=restore-wide library=scheduler library context=during a scheduler callback
+'package:flutter/src/semantics/semantics.dart': Failed assertion: line 3008 pos 16: '!child.attached': is not true.
+#0      _AssertionError._doThrowNew (dart:core-patch/errors_patch.dart:67:4)
+#1      _AssertionError._throwNew (dart:core-patch/errors_patch.dart:49:5)
+#2      SemanticsNode._replaceChildren (package:flutter/src/semantics/semantics.dart:3008:16)
+#3      SemanticsNode.updateWith (package:flutter/src/semantics/semantics.dart:3750:5)
+#4      _RenderObjectSemantics._buildSemanticsSubtree (package:flutter/src/rendering/object.dart:6258:12)
+#5      _RenderObjectSemantics._produceSemanticsNode (package:flutter/src/rendering/object.dart:6272:5)
+#6      _RenderObjectSemantics._buildSemantics (package:flutter/src/rendering/object.dart:6205:7)
+#7      _RenderObjectSemantics._buildSemanticsSubtree (package:flutter/src/rendering/object.dart:6241:13)
+#8      _RenderObjectSemantics._produceSemanticsNode (package:flutter/src/rendering/object.dart:6272:5)
+#9      _RenderObjectSemantics._buildSemantics (package:flutter/src/rendering/object.dart:6205:7)
+#10     _RenderObjectSemantics._buildSemanticsSubtree (package:flutter/src/rendering/object.dart:6241:13)
+#11     _RenderObjectSemantics._produceSemanticsNode (package:flutter/src/rendering/object.dart:6272:5)
+#12     _RenderObjectSemantics._buildSemantics (package:flutter/src/rendering/object.dart:6205:7)
+#13     _RenderObjectSemantics._buildSemanticsSubtree (package:flutter/src/rendering/object.dart:6241:13)
+#14     _RenderObjectSemantics._produceSemanticsNode (package:flutter/src/rendering/object.dart:6272:5)
+#15     _RenderObjectSemantics._buildSemantics (package:flutter/src/rendering/object.dart:6205:7)
+#16     _RenderObjectSemantics._buildSemanticsSubtree (package:flutter/src/rendering/object.dart:6241:13)
+#17     _RenderObjectSemantics._produceSemanticsNode (package:flutter/src/rendering/object.dart:6272:5)
+#18     _RenderObjectSemantics._buildSemantics (package:flutter/src/rendering/object.dart:6205:7)
+#19     _RenderObjectSemantics.ensureSemanticsNode (package:flutter/src/rendering/object.dart:6170:7)
+#20     PipelineOwner.flushSemantics (package:flutter/src/rendering/object.dart:1636:18)
+#21     PipelineOwner.flushSemantics (package:flutter/src/rendering/object.dart:1653:15)
+#22     AutomatedTestWidgetsFlutterBinding.drawFrame (package:flutter_test/src/binding.dart:2444:35)
+#23     RendererBinding._handlePersistentFrameCallback (package:flutter/src/rendering/binding.dart:509:5)
+#24     SchedulerBinding._invokeFrameCallback (package:flutter/src/scheduler/binding.dart:1430:15)
+#25     SchedulerBinding.handleDrawFrame (package:flutter/src/scheduler/binding.dart:1345:9)
+#26     AutomatedTestWidgetsFlutterBinding.pump.<anonymous closure> (package:flutter_test/src/binding.dart:2260:9)
+#27     _rootRun (dart:async/zone_root.dart:35:13)
+#28     _CustomZone.run (dart:async/zone.dart:726:19)
+#29     TestAsyncUtils.guard (package:flutter_test/src/test_async_utils.dart:74:41)
+#30     AutomatedTestWidgetsFlutterBinding.pump (package:flutter_test/src/binding.dart:2249:27)
+#31     WidgetTester.pump.<anonymous closure> (package:flutter_test/src/widget_tester.dart:652:53)
+#32     _rootRun (dart:async/zone_root.dart:35:13)
+#33     _CustomZone.run (dart:async/zone.dart:726:19)
+#34     TestAsyncUtils.guard (package:flutter_test/src/test_async_utils.dart:74:41)
+#35     WidgetTester.pump (package:flutter_test/src/widget_tester.dart:652:27)
+#36     pumpWithIo (file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/support/pump_until.dart:17:16)
+<asynchronous suspension>
+#37     pumpAndSettleWithIo.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/support/pump_until.dart:36:7)
+<asynchronous suspension>
+#38     TestAsyncUtils.guard.<anonymous closure> (package:flutter_test/src/test_async_utils.dart:130:27)
+<asynchronous suspension>
+#39     main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/features/basic_data/pages/master_menu_semantics_diagnostic_test.dart:713:15)
+<asynchronous suspension>
+#40     testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#41     TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+#42     StackZoneSpecification._registerCallback.<anonymous closure> (package:stack_trace/src/stack_zone_specification.dart:114:42)
+<asynchronous suspension>
+
+══╡ EXCEPTION CAUGHT BY SCHEDULER LIBRARY ╞═════════════════════════════════════════════════════════
+The following assertion was thrown during a scheduler callback:
+'package:flutter/src/semantics/semantics.dart': Failed assertion: line 3008 pos 16:
+'!child.attached': is not true.
+
+Either the assertion indicates an error in the framework itself, or we should provide substantially
+more information in this error message to help you determine and fix the underlying cause.
+In either case, please report this assertion by filing a bug on GitHub:
+  https://github.com/flutter/flutter/issues/new?template=02_bug.yml
+
+When the exception was thrown, this was the stack:
+#2      SemanticsNode._replaceChildren (package:flutter/src/semantics/semantics.dart:3008:16)
+#3      SemanticsNode.updateWith (package:flutter/src/semantics/semantics.dart:3750:5)
+#4      _RenderObjectSemantics._buildSemanticsSubtree (package:flutter/src/rendering/object.dart:6258:12)
+#5      _RenderObjectSemantics._produceSemanticsNode (package:flutter/src/rendering/object.dart:6272:5)
+#6      _RenderObjectSemantics._buildSemantics (package:flutter/src/rendering/object.dart:6205:7)
+#7      _RenderObjectSemantics._buildSemanticsSubtree (package:flutter/src/rendering/object.dart:6241:13)
+#8      _RenderObjectSemantics._produceSemanticsNode (package:flutter/src/rendering/object.dart:6272:5)
+#9      _RenderObjectSemantics._buildSemantics (package:flutter/src/rendering/object.dart:6205:7)
+#10     _RenderObjectSemantics._buildSemanticsSubtree (package:flutter/src/rendering/object.dart:6241:13)
+#11     _RenderObjectSemantics._produceSemanticsNode (package:flutter/src/rendering/object.dart:6272:5)
+#12     _RenderObjectSemantics._buildSemantics (package:flutter/src/rendering/object.dart:6205:7)
+#13     _RenderObjectSemantics._buildSemanticsSubtree (package:flutter/src/rendering/object.dart:6241:13)
+#14     _RenderObjectSemantics._produceSemanticsNode (package:flutter/src/rendering/object.dart:6272:5)
+#15     _RenderObjectSemantics._buildSemantics (package:flutter/src/rendering/object.dart:6205:7)
+#16     _RenderObjectSemantics._buildSemanticsSubtree (package:flutter/src/rendering/object.dart:6241:13)
+#17     _RenderObjectSemantics._produceSemanticsNode (package:flutter/src/rendering/object.dart:6272:5)
+#18     _RenderObjectSemantics._buildSemantics (package:flutter/src/rendering/object.dart:6205:7)
+#19     _RenderObjectSemantics.ensureSemanticsNode (package:flutter/src/rendering/object.dart:6170:7)
+#20     PipelineOwner.flushSemantics (package:flutter/src/rendering/object.dart:1636:18)
+#21     PipelineOwner.flushSemantics (package:flutter/src/rendering/object.dart:1653:15)
+#22     AutomatedTestWidgetsFlutterBinding.drawFrame (package:flutter_test/src/binding.dart:2444:35)
+#23     RendererBinding._handlePersistentFrameCallback (package:flutter/src/rendering/binding.dart:509:5)
+#24     SchedulerBinding._invokeFrameCallback (package:flutter/src/scheduler/binding.dart:1430:15)
+#25     SchedulerBinding.handleDrawFrame (package:flutter/src/scheduler/binding.dart:1345:9)
+#26     AutomatedTestWidgetsFlutterBinding.pump.<anonymous closure> (package:flutter_test/src/binding.dart:2260:9)
+#29     TestAsyncUtils.guard (package:flutter_test/src/test_async_utils.dart:74:41)
+#30     AutomatedTestWidgetsFlutterBinding.pump (package:flutter_test/src/binding.dart:2249:27)
+#31     WidgetTester.pump.<anonymous closure> (package:flutter_test/src/widget_tester.dart:652:53)
+#34     TestAsyncUtils.guard (package:flutter_test/src/test_async_utils.dart:74:41)
+#35     WidgetTester.pump (package:flutter_test/src/widget_tester.dart:652:27)
+#36     pumpWithIo (file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/support/pump_until.dart:17:16)
+<asynchronous suspension>
+#37     pumpAndSettleWithIo.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/support/pump_until.dart:36:7)
+<asynchronous suspension>
+#38     TestAsyncUtils.guard.<anonymous closure> (package:flutter_test/src/test_async_utils.dart:130:27)
+<asynchronous suspension>
+#39     main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/features/basic_data/pages/master_menu_semantics_diagnostic_test.dart:713:15)
+<asynchronous suspension>
+#40     testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#41     TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided 7 frames from class _AssertionError, dart:async, and package:stack_trace)
+════════════════════════════════════════════════════════════════════════════════════════════════════
+MENU-FIRST-ERROR phase=restore-wide library=scheduler library context=during a scheduler callback
+'package:flutter/src/semantics/semantics.dart': Failed assertion: line 3008 pos 16: '!child.attached': is not true.
+#0      _AssertionError._doThrowNew (dart:core-patch/errors_patch.dart:67:4)
+#1      _AssertionError._throwNew (dart:core-patch/errors_patch.dart:49:5)
+#2      SemanticsNode._replaceChildren (package:flutter/src/semantics/semantics.dart:3008:16)
+#3      SemanticsNode.updateWith (package:flutter/src/semantics/semantics.dart:3750:5)
+#4      _RenderObjectSemantics._buildSemanticsSubtree (package:flutter/src/rendering/object.dart:6258:12)
+#5      _RenderObjectSemantics._produceSemanticsNode (package:flutter/src/rendering/object.dart:6272:5)
+#6      _RenderObjectSemantics._buildSemantics (package:flutter/src/rendering/object.dart:6205:7)
+#7      _RenderObjectSemantics._buildSemanticsSubtree (package:flutter/src/rendering/object.dart:6241:13)
+#8      _RenderObjectSemantics._produceSemanticsNode (package:flutter/src/rendering/object.dart:6272:5)
+#9      _RenderObjectSemantics._buildSemantics (package:flutter/src/rendering/object.dart:6205:7)
+#10     _RenderObjectSemantics._buildSemanticsSubtree (package:flutter/src/rendering/object.dart:6241:13)
+#11     _RenderObjectSemantics._produceSemanticsNode (package:flutter/src/rendering/object.dart:6272:5)
+#12     _RenderObjectSemantics._buildSemantics (package:flutter/src/rendering/object.dart:6205:7)
+#13     _RenderObjectSemantics._buildSemanticsSubtree (package:flutter/src/rendering/object.dart:6241:13)
+#14     _RenderObjectSemantics._produceSemanticsNode (package:flutter/src/rendering/object.dart:6272:5)
+#15     _RenderObjectSemantics._buildSemantics (package:flutter/src/rendering/object.dart:6205:7)
+#16     _RenderObjectSemantics._buildSemanticsSubtree (package:flutter/src/rendering/object.dart:6241:13)
+#17     _RenderObjectSemantics._produceSemanticsNode (package:flutter/src/rendering/object.dart:6272:5)
+#18     _RenderObjectSemantics._buildSemantics (package:flutter/src/rendering/object.dart:6205:7)
+#19     _RenderObjectSemantics.ensureSemanticsNode (package:flutter/src/rendering/object.dart:6170:7)
+#20     PipelineOwner.flushSemantics (package:flutter/src/rendering/object.dart:1636:18)
+#21     PipelineOwner.flushSemantics (package:flutter/src/rendering/object.dart:1653:15)
+#22     AutomatedTestWidgetsFlutterBinding.drawFrame (package:flutter_test/src/binding.dart:2444:35)
+#23     RendererBinding._handlePersistentFrameCallback (package:flutter/src/rendering/binding.dart:509:5)
+#24     SchedulerBinding._invokeFrameCallback (package:flutter/src/scheduler/binding.dart:1430:15)
+#25     SchedulerBinding.handleDrawFrame (package:flutter/src/scheduler/binding.dart:1345:9)
+#26     AutomatedTestWidgetsFlutterBinding.pump.<anonymous closure> (package:flutter_test/src/binding.dart:2260:9)
+#27     _rootRun (dart:async/zone_root.dart:35:13)
+#28     _CustomZone.run (dart:async/zone.dart:726:19)
+#29     TestAsyncUtils.guard (package:flutter_test/src/test_async_utils.dart:74:41)
+#30     AutomatedTestWidgetsFlutterBinding.pump (package:flutter_test/src/binding.dart:2249:27)
+#31     WidgetTester.pump.<anonymous closure> (package:flutter_test/src/widget_tester.dart:652:53)
+#32     _rootRun (dart:async/zone_root.dart:35:13)
+#33     _CustomZone.run (dart:async/zone.dart:726:19)
+#34     TestAsyncUtils.guard (package:flutter_test/src/test_async_utils.dart:74:41)
+#35     WidgetTester.pump (package:flutter_test/src/widget_tester.dart:652:27)
+#36     pumpWithIo (file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/support/pump_until.dart:17:16)
+<asynchronous suspension>
+#37     pumpAndSettleWithIo.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/support/pump_until.dart:36:7)
+<asynchronous suspension>
+#38     TestAsyncUtils.guard.<anonymous closure> (package:flutter_test/src/test_async_utils.dart:130:27)
+<asynchronous suspension>
+#39     main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/features/basic_data/pages/master_menu_semantics_diagnostic_test.dart:713:15)
+<asynchronous suspension>
+#40     testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#41     TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+#42     StackZoneSpecification._registerCallback.<anonymous closure> (package:stack_trace/src/stack_zone_specification.dart:114:42)
+<asynchronous suspension>
+
+══╡ EXCEPTION CAUGHT BY SCHEDULER LIBRARY ╞═════════════════════════════════════════════════════════
+The following assertion was thrown during a scheduler callback:
+'package:flutter/src/semantics/semantics.dart': Failed assertion: line 3008 pos 16:
+'!child.attached': is not true.
+
+Either the assertion indicates an error in the framework itself, or we should provide substantially
+more information in this error message to help you determine and fix the underlying cause.
+In either case, please report this assertion by filing a bug on GitHub:
+  https://github.com/flutter/flutter/issues/new?template=02_bug.yml
+
+When the exception was thrown, this was the stack:
+#2      SemanticsNode._replaceChildren (package:flutter/src/semantics/semantics.dart:3008:16)
+#3      SemanticsNode.updateWith (package:flutter/src/semantics/semantics.dart:3750:5)
+#4      _RenderObjectSemantics._buildSemanticsSubtree (package:flutter/src/rendering/object.dart:6258:12)
+#5      _RenderObjectSemantics._produceSemanticsNode (package:flutter/src/rendering/object.dart:6272:5)
+#6      _RenderObjectSemantics._buildSemantics (package:flutter/src/rendering/object.dart:6205:7)
+#7      _RenderObjectSemantics._buildSemanticsSubtree (package:flutter/src/rendering/object.dart:6241:13)
+#8      _RenderObjectSemantics._produceSemanticsNode (package:flutter/src/rendering/object.dart:6272:5)
+#9      _RenderObjectSemantics._buildSemantics (package:flutter/src/rendering/object.dart:6205:7)
+#10     _RenderObjectSemantics._buildSemanticsSubtree (package:flutter/src/rendering/object.dart:6241:13)
+#11     _RenderObjectSemantics._produceSemanticsNode (package:flutter/src/rendering/object.dart:6272:5)
+#12     _RenderObjectSemantics._buildSemantics (package:flutter/src/rendering/object.dart:6205:7)
+#13     _RenderObjectSemantics._buildSemanticsSubtree (package:flutter/src/rendering/object.dart:6241:13)
+#14     _RenderObjectSemantics._produceSemanticsNode (package:flutter/src/rendering/object.dart:6272:5)
+#15     _RenderObjectSemantics._buildSemantics (package:flutter/src/rendering/object.dart:6205:7)
+#16     _RenderObjectSemantics._buildSemanticsSubtree (package:flutter/src/rendering/object.dart:6241:13)
+#17     _RenderObjectSemantics._produceSemanticsNode (package:flutter/src/rendering/object.dart:6272:5)
+#18     _RenderObjectSemantics._buildSemantics (package:flutter/src/rendering/object.dart:6205:7)
+#19     _RenderObjectSemantics.ensureSemanticsNode (package:flutter/src/rendering/object.dart:6170:7)
+#20     PipelineOwner.flushSemantics (package:flutter/src/rendering/object.dart:1636:18)
+#21     PipelineOwner.flushSemantics (package:flutter/src/rendering/object.dart:1653:15)
+#22     AutomatedTestWidgetsFlutterBinding.drawFrame (package:flutter_test/src/binding.dart:2444:35)
+#23     RendererBinding._handlePersistentFrameCallback (package:flutter/src/rendering/binding.dart:509:5)
+#24     SchedulerBinding._invokeFrameCallback (package:flutter/src/scheduler/binding.dart:1430:15)
+#25     SchedulerBinding.handleDrawFrame (package:flutter/src/scheduler/binding.dart:1345:9)
+#26     AutomatedTestWidgetsFlutterBinding.pump.<anonymous closure> (package:flutter_test/src/binding.dart:2260:9)
+#29     TestAsyncUtils.guard (package:flutter_test/src/test_async_utils.dart:74:41)
+#30     AutomatedTestWidgetsFlutterBinding.pump (package:flutter_test/src/binding.dart:2249:27)
+#31     WidgetTester.pump.<anonymous closure> (package:flutter_test/src/widget_tester.dart:652:53)
+#34     TestAsyncUtils.guard (package:flutter_test/src/test_async_utils.dart:74:41)
+#35     WidgetTester.pump (package:flutter_test/src/widget_tester.dart:652:27)
+#36     pumpWithIo (file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/support/pump_until.dart:17:16)
+<asynchronous suspension>
+#37     pumpAndSettleWithIo.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/support/pump_until.dart:36:7)
+<asynchronous suspension>
+#38     TestAsyncUtils.guard.<anonymous closure> (package:flutter_test/src/test_async_utils.dart:130:27)
+<asynchronous suspension>
+#39     main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/features/basic_data/pages/master_menu_semantics_diagnostic_test.dart:713:15)
+<asynchronous suspension>
+#40     testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#41     TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided 7 frames from class _AssertionError, dart:async, and package:stack_trace)
+════════════════════════════════════════════════════════════════════════════════════════════════════
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: null
+  Actual: 'Multiple exceptions (6) were detected during the running of the current test, and at
+least one was unexpected.'
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/features/basic_data/pages/master_menu_semantics_diagnostic_test.dart:714:15)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/features/basic_data/pages/master_menu_semantics_diagnostic_test.dart line 714
+The test description was:
+  column settings prelude full App wide narrow actual ellipsis scheduler hover=true semantics=true
+  timing=mount
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:17 +0 -1: column settings prelude full App wide narrow actual ellipsis scheduler hover=true semantics=true timing=mount [E]
+  Test failed. See exception logs above.
+  The test description was: column settings prelude full App wide narrow actual ellipsis scheduler hover=true semantics=true timing=mount
+  
+══╡ EXCEPTION CAUGHT BY GESTURE LIBRARY ╞═══════════════════════════════════════════════════════════
+The following assertion was thrown while routing a pointer event:
+Looking up a deactivated widget's ancestor is unsafe.
+At this point the state of the widget's element tree is no longer stable.
+To safely refer to a widget's ancestor in its dispose() method, save a reference to the ancestor by
+calling dependOnInheritedWidgetOfExactType() in the widget's didChangeDependencies() method.
+
+When the exception was thrown, this was the stack:
+#0      Element._debugCheckStateIsActiveForAncestorLookup.<anonymous closure> (package:flutter/src/widgets/framework.dart:5049:9)
+#1      Element._debugCheckStateIsActiveForAncestorLookup (package:flutter/src/widgets/framework.dart:5063:6)
+#2      Element.getElementForInheritedWidgetOfExactType (package:flutter/src/widgets/framework.dart:5098:12)
+#3      Element.getInheritedWidgetOfExactType (package:flutter/src/widgets/framework.dart:5093:12)
+#4      TickerMode.getValuesNotifier (package:flutter/src/widgets/ticker_provider.dart:177:10)
+#5      SingleTickerProviderStateMixin._updateTickerModeNotifier (package:flutter/src/widgets/ticker_provider.dart:395:68)
+#6      SingleTickerProviderStateMixin.createTicker (package:flutter/src/widgets/ticker_provider.dart:345:5)
+#7      new AnimationController (package:flutter/src/animation/animation_controller.dart:257:21)
+#8      RawTooltipState._controller (package:flutter/src/widgets/raw_tooltip.dart:544:35)
+#9      RawTooltipState._handleGlobalPointerEvent (package:flutter/src/widgets/raw_tooltip.dart:680:28)
+#10     PointerRouter._dispatch (package:flutter/src/gestures/pointer_router.dart:97:12)
+#11     PointerRouter._dispatchEventToRoutes.<anonymous closure> (package:flutter/src/gestures/pointer_router.dart:140:9)
+#12     _LinkedHashMapMixin.forEach (dart:_compact_hash:772:13)
+#13     PointerRouter._dispatchEventToRoutes (package:flutter/src/gestures/pointer_router.dart:138:18)
+#14     PointerRouter.route (package:flutter/src/gestures/pointer_router.dart:130:5)
+#15     GestureBinding.dispatchEvent (package:flutter/src/gestures/binding.dart:475:23)
+#16     RendererBinding.dispatchEvent (package:flutter/src/rendering/binding.dart:473:11)
+#17     GestureBinding._handlePointerEventImmediately (package:flutter/src/gestures/binding.dart:437:7)
+#18     GestureBinding.handlePointerEvent (package:flutter/src/gestures/binding.dart:394:5)
+#19     TestWidgetsFlutterBinding.handlePointerEventForSource.<anonymous closure> (package:flutter_test/src/binding.dart:1570:42)
+#20     TestWidgetsFlutterBinding.withPointerEventSource (package:flutter_test/src/binding.dart:1580:11)
+#21     TestWidgetsFlutterBinding.handlePointerEventForSource (package:flutter_test/src/binding.dart:1570:5)
+#22     WidgetTester.sendEventToBinding.<anonymous closure> (package:flutter_test/src/widget_tester.dart:869:15)
+#25     TestAsyncUtils.guard (package:flutter_test/src/test_async_utils.dart:74:41)
+#26     WidgetTester.sendEventToBinding (package:flutter_test/src/widget_tester.dart:868:27)
+#27     TestGesture.removePointer.<anonymous closure> (package:flutter_test/src/test_pointer.dart:526:25)
+#30     TestAsyncUtils.guard (package:flutter_test/src/test_async_utils.dart:74:41)
+#31     TestGesture.removePointer (package:flutter_test/src/test_pointer.dart:525:27)
+#33     Invoker.runTearDowns.<anonymous closure>.<anonymous closure> (package:test_api/src/backend/invoker.dart:296:18)
+#34     Invoker._waitForOutstandingCallbacks.<anonymous closure> (package:test_api/src/backend/invoker.dart:318:17)
+#39     Invoker._waitForOutstandingCallbacks (package:test_api/src/backend/invoker.dart:314:5)
+#40     Invoker.runTearDowns.<anonymous closure> (package:test_api/src/backend/invoker.dart:295:9)
+#45     Invoker.runTearDowns (package:test_api/src/backend/invoker.dart:290:12)
+#46     Invoker._onRun.<anonymous closure>.<anonymous closure>.<anonymous closure>.<anonymous closure> (package:test_api/src/backend/invoker.dart:459:23)
+#47     Invoker._waitForOutstandingCallbacks.<anonymous closure> (package:test_api/src/backend/invoker.dart:318:17)
+#52     Invoker._waitForOutstandingCallbacks (package:test_api/src/backend/invoker.dart:314:5)
+#53     Invoker._onRun.<anonymous closure>.<anonymous closure>.<anonymous closure> (package:test_api/src/backend/invoker.dart:458:21)
+<asynchronous suspension>
+(elided 17 frames from dart:async)
+
+router: Instance of 'PointerRouter'
+route: Closure: (PointerEvent) => void from Function '_handleGlobalPointerEvent@4183258657':.
+event: PointerRemovedEvent#c3f68(position: Offset(220.0, 176.0))
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:17 +0 -1: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/features/basic_data/pages/master_menu_semantics_diagnostic_test.dart: column settings prelude full App wide narrow actual ellipsis scheduler hover=true semantics=true timing=mount

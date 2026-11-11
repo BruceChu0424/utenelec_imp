@@ -1,0 +1,8 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/default_collapsing_tooltip_reparent_test.dart
+00:00 +0: default retained header closed Tooltip crosses compact both ways with semantics
+00:00 +1: default retained header visible Tooltip crosses compact both ways with semantics
+00:01 +2: default retained body closed Tooltip crosses compact both ways with semantics
+00:01 +3: default retained body visible Tooltip crosses compact both ways with semantics
+00:01 +4: retained viewport keeps pinned tab at the original extent while header and rows coordinate
+00:01 +5: All tests passed!

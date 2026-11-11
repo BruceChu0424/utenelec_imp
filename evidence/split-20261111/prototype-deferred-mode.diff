@@ -1,0 +1,44 @@
+diff --git a/lib/components/layout/uten_adaptive_hierarchy_pane.dart b/lib/components/layout/uten_adaptive_hierarchy_pane.dart
+index db7df4430..a4b7bbf60 100644
+--- a/lib/components/layout/uten_adaptive_hierarchy_pane.dart
++++ b/lib/components/layout/uten_adaptive_hierarchy_pane.dart
+@@ -49,12 +49,22 @@ class _AdaptiveHierarchyPaneState extends State<UtenAdaptiveHierarchyPane> {
+   final _compactHeaderKey = GlobalKey();
+   final _triggerFocus = FocusNode();
+   bool _open = false;
++  late bool _presentedCanSplit = widget.canSplit;
++  bool _presentationQueued = false;
+ 
+   @override
+   void didUpdateWidget(UtenAdaptiveHierarchyPane oldWidget) {
+     super.didUpdateWidget(oldWidget);
+-    if (widget.canSplit) {
+-      _open = false;
++    if (widget.canSplit != _presentedCanSplit && !_presentationQueued) {
++      _presentationQueued = true;
++      WidgetsBinding.instance.addPostFrameCallback((_) {
++        _presentationQueued = false;
++        if (!mounted || widget.canSplit == _presentedCanSplit) return;
++        setState(() {
++          _presentedCanSplit = widget.canSplit;
++          if (_presentedCanSplit) _open = false;
++        });
++      });
+     }
+   }
+ 
+@@ -169,12 +179,12 @@ class _AdaptiveHierarchyPaneState extends State<UtenAdaptiveHierarchyPane> {
+     final leading = KeyedSubtree(
+       key: _leadingKey,
+       child: UtenHierarchyPanelScope(
+-        onSelection: widget.canSplit ? null : _close,
++        onSelection: _presentedCanSplit ? null : _close,
+         child: widget.leading,
+       ),
+     );
+     final trailing = KeyedSubtree(key: _trailingKey, child: widget.trailing);
+-    if (widget.canSplit) {
++    if (_presentedCanSplit) {
+       return UtenPagePaneScope(
+         split: true,
+         child: widget.splitBuilder(leading, trailing),

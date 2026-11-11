@@ -1,0 +1,149 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_split_view_test.dart
+00:00 +0: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_split_view_test.dart: 初始宽度 = initialLeadingWidth(默认 300)
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: <300>
+  Actual: <Infinity>
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_split_view_test.dart:103:5)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_split_view_test.dart line 103
+The test description was:
+  初始宽度 = initialLeadingWidth(默认 300)
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:00 +0 -1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_split_view_controlled_width_test.dart: late preference restoration cannot replace a controlled width
+00:00 +0 -1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_split_view_test.dart: 初始宽度 = initialLeadingWidth(默认 300) [E]
+  Test failed. See exception logs above.
+  The test description was: 初始宽度 = initialLeadingWidth(默认 300)
+  
+00:00 +1 -1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/shared/widgets/uten_hierarchy_short_viewport_test.dart: 179px tree scrolls all controls and selectable nodes; error=false
+00:00 +1 -1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_split_view_test.dart: 向右拖动分割线 → 左栏变宽；向左拖到底 → 钳在 minLeadingWidth
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: <220>
+  Actual: <Infinity>
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_split_view_test.dart:118:5)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_split_view_test.dart line 118
+The test description was:
+  向右拖动分割线 → 左栏变宽；向左拖到底 → 钳在 minLeadingWidth
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:00 +1 -2: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/shared/widgets/uten_hierarchy_short_viewport_test.dart: 179px tree scrolls all controls and selectable nodes; error=false
+00:00 +1 -2: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_split_view_test.dart: 向右拖动分割线 → 左栏变宽；向左拖到底 → 钳在 minLeadingWidth [E]
+  Test failed. See exception logs above.
+  The test description was: 向右拖动分割线 → 左栏变宽；向左拖到底 → 钳在 minLeadingWidth
+  
+00:00 +2 -2: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/shared/widgets/uten_hierarchy_short_viewport_test.dart: 179px tree scrolls all controls and selectable nodes; error=false
+00:01 +2 -2: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_split_view_test.dart: 向右拖到底 → 钳在 min(maxLeadingWidth, 总宽-手柄-右栏保底)
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: <428>
+  Actual: <Infinity>
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_split_view_test.dart:129:5)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_split_view_test.dart line 129
+The test description was:
+  向右拖到底 → 钳在 min(maxLeadingWidth, 总宽-手柄-右栏保底)
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:01 +2 -3: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/shared/widgets/uten_hierarchy_short_viewport_test.dart: 179px tree scrolls all controls and selectable nodes; error=false
+00:01 +2 -3: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_split_view_test.dart: 向右拖到底 → 钳在 min(maxLeadingWidth, 总宽-手柄-右栏保底) [E]
+  Test failed. See exception logs above.
+  The test description was: 向右拖到底 → 钳在 min(maxLeadingWidth, 总宽-手柄-右栏保底)
+  
+00:01 +2 -3: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_split_view_test.dart: 双击分割线复位到初始宽度
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: <300>
+  Actual: <Infinity>
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_split_view_test.dart:145:5)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_split_view_test.dart line 145
+The test description was:
+  双击分割线复位到初始宽度
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:01 +2 -4: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/shared/widgets/uten_hierarchy_short_viewport_test.dart: 179px tree scrolls all controls and selectable nodes; error=false
+00:01 +2 -4: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_split_view_test.dart: 双击分割线复位到初始宽度 [E]
+  Test failed. See exception logs above.
+  The test description was: 双击分割线复位到初始宽度
+  
+00:01 +2 -4: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_split_view_test.dart: persistenceKey：拖动结果落盘，重进页面自动恢复
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: <Infinity>
+  Actual: <380.0>
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_split_view_test.dart:158:5)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_split_view_test.dart line 158
+The test description was:
+  persistenceKey：拖动结果落盘，重进页面自动恢复
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:01 +2 -5: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/shared/widgets/uten_hierarchy_short_viewport_test.dart: 179px tree scrolls all controls and selectable nodes; error=false
+00:01 +2 -5: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_split_view_test.dart: persistenceKey：拖动结果落盘，重进页面自动恢复 [E]
+  Test failed. See exception logs above.
+  The test description was: persistenceKey：拖动结果落盘，重进页面自动恢复
+  
+00:01 +3 -5: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/shared/widgets/uten_hierarchy_short_viewport_test.dart: 179px tree scrolls all controls and selectable nodes; error=false
+00:01 +4 -5: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_split_view_test.dart: 长分类缩窄偏好重挂保留，双击清除偏好并恢复自然宽
+00:01 +5 -5: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_split_view_test.dart: 长分类缩窄偏好重挂保留，双击清除偏好并恢复自然宽
+00:01 +6 -5: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/shared/widgets/uten_hierarchy_short_viewport_test.dart: normal height pins the header and short-height transitions retain focus and expansion
+00:01 +6 ~1 -5: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/shared/widgets/uten_hierarchy_short_viewport_test.dart: normal height pins the header and short-height transitions retain focus and expansion
+00:02 +7 ~1 -5: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/shared/widgets/uten_hierarchy_short_viewport_test.dart: short compact pane keeps header, directory and results reachable while offstage trees remain safe
+00:02 +8 ~1 -5: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/shared/widgets/uten_hierarchy_short_viewport_test.dart: compact height transitions retain header IME focus and the mounted result list
+00:03 +9 ~1 -5: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_split_view_test.dart: persistenceKey：拖动结果落盘，重进页面自动恢复
+  D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_split_view_test.dart: 初始宽度 = initialLeadingWidth(默认 300)
+  D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_split_view_test.dart: 双击分割线复位到初始宽度
+  D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_split_view_test.dart: 向右拖到底 → 钳在 min(maxLeadingWidth, 总宽-手柄-右栏保底)
+  D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_split_view_test.dart: 向右拖动分割线 → 左栏变宽；向左拖到底 → 钳在 minLeadingWidth

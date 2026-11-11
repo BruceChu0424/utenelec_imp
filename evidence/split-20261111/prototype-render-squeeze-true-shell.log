@@ -1,0 +1,15 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart
+test/features/basic_data/pages/master_menu_scheduler_probe_test.dart:652:17: Error: Setter not found: 'semanticsHandle'.
+                semanticsHandle = tester.ensureSemantics();
+                ^^^^^^^^^^^^^^^
+00:00 +0 -1: loading D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart [E]
+  Failed to load "D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart":
+  Compilation failed for testPath=D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: test/features/basic_data/pages/master_menu_scheduler_probe_test.dart:652:17: Error: Setter not found: 'semanticsHandle'.
+                  semanticsHandle = tester.ensureSemantics();
+                  ^^^^^^^^^^^^^^^
+  .
+00:00 +0 -1: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: loading D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart

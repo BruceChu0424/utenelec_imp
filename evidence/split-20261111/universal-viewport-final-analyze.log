@@ -1,0 +1,35 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+Analyzing 11 items...                                           
+
+warning - Unused import: 'dart:convert'. Try removing the import directive - test\features\basic_data\pages\master_menu_column_settings_probe_test.dart:4:8 - unused_import
+warning - Unused import: '../../../support/complete_read_plan_batches.dart'. Try removing the import directive - test\features\basic_data\pages\master_menu_column_settings_probe_test.dart:14:8 - unused_import
+warning - Unused import: 'package:uten_imp/core/network/read_scope_revision.dart'. Try removing the import directive - test\features\basic_data\pages\master_menu_column_settings_probe_test.dart:37:8 - unused_import
+warning - Unused import: 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart'. Try removing the import directive - test\features\basic_data\pages\master_menu_column_settings_probe_test.dart:48:8 - unused_import
+warning - Unused import: 'package:uten_imp/features/basic_data/widgets/master_entity_detail_pane.dart'. Try removing the import directive - test\features\basic_data\pages\master_menu_column_settings_probe_test.dart:49:8 - unused_import
+warning - Unused import: 'package:uten_imp/components/buttons/uten_export_button.dart'. Try removing the import directive - test\features\basic_data\pages\master_menu_column_settings_probe_test.dart:50:8 - unused_import
+warning - Unused import: 'package:uten_imp/components/buttons/uten_refresh_button.dart'. Try removing the import directive - test\features\basic_data\pages\master_menu_column_settings_probe_test.dart:51:8 - unused_import
+warning - Unused import: 'package:uten_imp/components/feedback/uten_context_menu.dart'. Try removing the import directive - test\features\basic_data\pages\master_menu_column_settings_probe_test.dart:52:8 - unused_import
+warning - Unused import: 'package:uten_imp/components/buttons/uten_button.dart'. Try removing the import directive - test\features\basic_data\pages\master_menu_column_settings_probe_test.dart:53:8 - unused_import
+warning - Unused import: 'package:uten_imp/shared/export/report_export_job_dialog.dart'. Try removing the import directive - test\features\basic_data\pages\master_menu_column_settings_probe_test.dart:54:8 - unused_import
+warning - Unused import: 'package:uten_imp/components/print/uten_print_preview.dart'. Try removing the import directive - test\features\basic_data\pages\master_menu_column_settings_probe_test.dart:55:8 - unused_import
+warning - The declaration '_domains' isn't referenced. Try removing the declaration of '_domains' - test\features\basic_data\pages\master_menu_column_settings_probe_test.dart:69:7 - unused_element
+   info - Use 'const' with the constructor to improve performance. Try adding the 'const' keyword to the constructor invocation - test\features\basic_data\pages\master_menu_column_settings_probe_test.dart:132:27 - prefer_const_constructors
+   info - Use 'const' with the constructor to improve performance. Try adding the 'const' keyword to the constructor invocation - test\features\basic_data\pages\master_menu_column_settings_probe_test.dart:134:11 - prefer_const_constructors
+   info - Statements in an if should be enclosed in a block. Try wrapping the statement in a block - test\features\basic_data\pages\master_menu_column_settings_probe_test.dart:531:5 - curly_braces_in_flow_control_structures
+warning - Unused import: 'dart:convert'. Try removing the import directive - test\features\basic_data\pages\master_menu_scheduler_probe_test.dart:3:8 - unused_import
+warning - Unused import: '../../../support/complete_read_plan_batches.dart'. Try removing the import directive - test\features\basic_data\pages\master_menu_scheduler_probe_test.dart:13:8 - unused_import
+warning - Unused import: 'package:uten_imp/core/network/read_scope_revision.dart'. Try removing the import directive - test\features\basic_data\pages\master_menu_scheduler_probe_test.dart:36:8 - unused_import
+warning - Unused import: 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart'. Try removing the import directive - test\features\basic_data\pages\master_menu_scheduler_probe_test.dart:47:8 - unused_import
+warning - Unused import: 'package:uten_imp/features/basic_data/widgets/master_entity_detail_pane.dart'. Try removing the import directive - test\features\basic_data\pages\master_menu_scheduler_probe_test.dart:48:8 - unused_import
+warning - Unused import: 'package:uten_imp/components/buttons/uten_export_button.dart'. Try removing the import directive - test\features\basic_data\pages\master_menu_scheduler_probe_test.dart:49:8 - unused_import
+warning - Unused import: 'package:uten_imp/components/buttons/uten_refresh_button.dart'. Try removing the import directive - test\features\basic_data\pages\master_menu_scheduler_probe_test.dart:50:8 - unused_import
+warning - Unused import: 'package:uten_imp/components/feedback/uten_context_menu.dart'. Try removing the import directive - test\features\basic_data\pages\master_menu_scheduler_probe_test.dart:51:8 - unused_import
+warning - Unused import: 'package:uten_imp/components/buttons/uten_button.dart'. Try removing the import directive - test\features\basic_data\pages\master_menu_scheduler_probe_test.dart:52:8 - unused_import
+warning - Unused import: 'package:uten_imp/shared/export/report_export_job_dialog.dart'. Try removing the import directive - test\features\basic_data\pages\master_menu_scheduler_probe_test.dart:53:8 - unused_import
+warning - Unused import: 'package:uten_imp/components/print/uten_print_preview.dart'. Try removing the import directive - test\features\basic_data\pages\master_menu_scheduler_probe_test.dart:54:8 - unused_import
+warning - The declaration '_domains' isn't referenced. Try removing the declaration of '_domains' - test\features\basic_data\pages\master_menu_scheduler_probe_test.dart:68:7 - unused_element
+   info - Use 'const' with the constructor to improve performance. Try adding the 'const' keyword to the constructor invocation - test\features\basic_data\pages\master_menu_scheduler_probe_test.dart:131:27 - prefer_const_constructors
+   info - Use 'const' with the constructor to improve performance. Try adding the 'const' keyword to the constructor invocation - test\features\basic_data\pages\master_menu_scheduler_probe_test.dart:133:11 - prefer_const_constructors
+   info - Statements in an if should be enclosed in a block. Try wrapping the statement in a block - test\features\basic_data\pages\master_menu_scheduler_probe_test.dart:530:5 - curly_braces_in_flow_control_structures
+
+30 issues found. (ran in 9.8s)

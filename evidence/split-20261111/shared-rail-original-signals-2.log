@@ -1,0 +1,9 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/components/uten_page_scrollbar_signal_test.dart
+00:00 +0: scope chains run outer before inner once for transformed signal views
+00:00 +1: root rail returns from inner.min to the real nested header at zoom 1.0
+00:01 +2: root rail returns from inner.min to the real nested header at zoom 1.5
+00:01 +3: root rail returns from inner.min to the real nested header at zoom 2.0
+00:01 +4: rail and arrow listeners do not bypass or double-consume the nested hold gate
+00:02 +5: root rail reuses the real sticky gate and its pause window
+00:02 +6: All tests passed!

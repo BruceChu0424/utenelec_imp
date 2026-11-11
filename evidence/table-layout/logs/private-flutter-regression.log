@@ -1,0 +1,143 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_platform_refresh_test.dart
+00:00 +0: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_platform_refresh_test.dart: progressive platform reloads retain columns and scan only appended width cells
+00:02 +1: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_platform_refresh_test.dart: progressive platform reloads retain columns and scan only appended width cells
+00:02 +2: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_platform_refresh_test.dart: progressive platform reloads retain columns and scan only appended width cells
+00:03 +3: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_platform_refresh_test.dart: progressive platform reloads retain columns and scan only appended width cells
+00:03 +4: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_platform_refresh_test.dart: progressive platform reloads retain columns and scan only appended width cells
+00:03 +5: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_platform_refresh_test.dart: progressive platform reloads retain columns and scan only appended width cells
+PLATFORM-PREFIX widthCells=1576 expected=1576 indexBuilds=0
+00:04 +6: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_input_auto_width_test.dart: controller edits grow custom inputs without saved value changes or losing editing state
+00:04 +7: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_column_chooser_test.dart: the trailing column action scrolls with the table header
+00:04 +8: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_column_chooser_test.dart: the trailing column action scrolls with the table header
+00:05 +9: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_column_chooser_test.dart: the trailing column action scrolls with the table header
+00:05 +10: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_column_chooser_test.dart: the trailing column action scrolls with the table header
+00:05 +11: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_column_chooser_test.dart: the trailing column action scrolls with the table header
+00:05 +12: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_column_chooser_test.dart: the trailing column action scrolls with the table header
+00:05 +13: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_column_chooser_test.dart: the trailing column action scrolls with the table header
+00:05 +14: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_column_chooser_test.dart: the trailing column action scrolls with the table header
+00:05 +15: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_header_menu_test.dart: 右击列头弹固定/移动/隐藏菜单
+00:06 +16: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_column_search_test.dart: text suggestions support keyboard focus and activation
+00:06 +17: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_column_search_test.dart: text suggestions support keyboard focus and activation
+00:06 +18: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_column_search_test.dart: text suggestions support keyboard focus and activation
+00:06 +19: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_column_search_test.dart: text suggestions support keyboard focus and activation
+00:06 +20: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_column_search_test.dart: text suggestions support keyboard focus and activation
+00:07 +21: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_column_search_test.dart: text suggestions support keyboard focus and activation
+00:07 +22: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_column_search_test.dart: text suggestions support keyboard focus and activation
+00:07 +23: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_column_search_test.dart: text suggestions support keyboard focus and activation
+00:07 +24: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_column_search_test.dart: text suggestions support keyboard focus and activation
+00:07 +25: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_rich_width_budget_test.dart: cached widths leave the frame budget for unmeasured values
+00:07 +26: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_rich_width_budget_test.dart: cached widths leave the frame budget for unmeasured values
+00:07 +27: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_rich_width_budget_test.dart: cached widths leave the frame budget for unmeasured values
+00:07 +28: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_rich_width_budget_test.dart: cached widths leave the frame budget for unmeasured values
+00:08 +29: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_rich_width_budget_test.dart: cached widths leave the frame budget for unmeasured values
+00:08 +30: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_rich_width_budget_test.dart: cached widths leave the frame budget for unmeasured values
+00:08 +31: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_rich_width_budget_test.dart: cached widths leave the frame budget for unmeasured values
+00:08 +32: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_rich_width_budget_test.dart: cached widths leave the frame budget for unmeasured values
+00:08 +33: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_rich_width_budget_test.dart: cached widths leave the frame budget for unmeasured values
+00:08 +34: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_rich_width_budget_test.dart: cached widths leave the frame budget for unmeasured values
+00:08 +35: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_rich_width_budget_test.dart: cached widths leave the frame budget for unmeasured values
+00:09 +36: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_rich_width_budget_test.dart: cached widths leave the frame budget for unmeasured values
+00:09 +37: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_rich_width_budget_test.dart: cached widths leave the frame budget for unmeasured values
+00:09 +38: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_rich_width_budget_test.dart: cached widths leave the frame budget for unmeasured values
+00:09 +39: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_rich_width_budget_test.dart: cached widths leave the frame budget for unmeasured values
+00:09 +40: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_rich_width_budget_test.dart: cached widths leave the frame budget for unmeasured values
+00:09 +41: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_rich_width_budget_test.dart: cached widths leave the frame budget for unmeasured values
+00:09 +42: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_rich_width_budget_test.dart: cached widths leave the frame budget for unmeasured values
+00:10 +43: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_rich_width_budget_test.dart: cached widths leave the frame budget for unmeasured values
+00:10 +44: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_rich_width_budget_test.dart: cached widths leave the frame budget for unmeasured values
+00:10 +45: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_rich_width_budget_test.dart: cached widths leave the frame budget for unmeasured values
+00:10 +46: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_rich_width_budget_test.dart: cached widths leave the frame budget for unmeasured values
+00:10 +47: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_rich_width_budget_test.dart: cached widths leave the frame budget for unmeasured values
+00:10 +48: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_rich_width_budget_test.dart: cached widths leave the frame budget for unmeasured values
+00:10 +49: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_rich_width_budget_test.dart: cached widths leave the frame budget for unmeasured values
+00:10 +50: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_rich_width_budget_test.dart: cached widths leave the frame budget for unmeasured values
+00:10 +51: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_rich_width_budget_test.dart: cached widths leave the frame budget for unmeasured values
+00:11 +52: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_rich_width_budget_test.dart: cached widths leave the frame budget for unmeasured values
+00:11 +53: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_rich_width_budget_test.dart: cached widths leave the frame budget for unmeasured values
+00:11 +54: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_rich_width_budget_test.dart: cached widths leave the frame budget for unmeasured values
+00:11 +55: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_rich_width_budget_test.dart: cached widths leave the frame budget for unmeasured values
+00:11 +56: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_rich_width_budget_test.dart: cached widths leave the frame budget for unmeasured values
+00:12 +57: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_rich_width_budget_test.dart: cached widths leave the frame budget for unmeasured values
+00:12 +58: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_rich_width_budget_test.dart: cached widths leave the frame budget for unmeasured values
+00:12 +59: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_rich_width_budget_test.dart: cached widths leave the frame budget for unmeasured values
+00:12 +59: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_local_work_budget_test.dart: local sorting reads values linearly and reuses the view for selection chrome
+master-local-sort rows=600 valueReads=613
+00:12 +60: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_rich_width_budget_test.dart: cached widths leave the frame budget for unmeasured values
+00:14 +61: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_rich_width_budget_test.dart: slow shaping respects elapsed budget and still reaches the tail
+00:15 +62: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_rich_width_budget_test.dart: rich width callback and inherited geometry retire cached widths for unchanged rows
+00:16 +63: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_rich_width_budget_test.dart: rich width hooks keep frame budget and late geometry without changing values
+00:20 +64: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/features/basic_data/widgets/master_inline_resize_draft_test.dart: inline draft survives balance refresh and desktop mobile desktop resize (richPreview=false)
+00:22 +65: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/features/basic_data/widgets/master_inline_resize_draft_test.dart: inline draft survives balance refresh and desktop mobile desktop resize (richPreview=false)
+00:22 +66: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/features/basic_data/widgets/master_inline_resize_draft_test.dart: inline draft survives balance refresh and desktop mobile desktop resize (richPreview=false)
+00:22 +67: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/features/basic_data/widgets/master_inline_resize_draft_test.dart: inline draft survives balance refresh and desktop mobile desktop resize (richPreview=false)
+00:22 +68: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/features/basic_data/widgets/master_inline_resize_draft_test.dart: inline draft survives balance refresh and desktop mobile desktop resize (richPreview=false)
+00:23 +69: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/shared/platform_tables/platform_table_widgets_test.dart: master custom TEXT columns use their declared type even when named status
+00:24 +70: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/shared/platform_tables/table_search_page_return_test.dart: master table clears keywords and exact values after returning to its kept page
+00:24 +71: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/shared/platform_tables/table_search_page_return_test.dart: master table clears keywords and exact values after returning to its kept page
+00:24 +72: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/shared/platform_tables/table_search_page_return_test.dart: master table clears keywords and exact values after returning to its kept page
+00:24 +73: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/shared/platform_tables/table_search_page_return_test.dart: master table clears keywords and exact values after returning to its kept page
+00:25 +74: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/shared/platform_tables/table_search_page_return_test.dart: master table clears keywords and exact values after returning to its kept page
+00:25 +75: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/shared/platform_tables/table_search_page_return_test.dart: master table clears keywords and exact values after returning to its kept page
+00:25 +76: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/shared/platform_tables/table_search_page_return_test.dart: master table clears keywords and exact values after returning to its kept page
+00:26 +77: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/shared/platform_tables/table_search_page_return_test.dart: master table clears keywords and exact values after returning to its kept page
+00:26 +78: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/shared/platform_tables/table_search_page_return_test.dart: master table clears keywords and exact values after returning to its kept page
+00:26 +79: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/shared/platform_tables/table_search_page_return_test.dart: master table clears keywords and exact values after returning to its kept page
+00:26 +80: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/shared/platform_tables/table_search_page_return_test.dart: master table clears keywords and exact values after returning to its kept page
+00:26 +81: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/shared/platform_tables/table_search_page_return_test.dart: master table clears keywords and exact values after returning to its kept page
+00:26 +82: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/shared/platform_tables/table_search_page_return_test.dart: master table clears keywords and exact values after returning to its kept page
+00:26 +83: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/shared/platform_tables/table_search_page_return_test.dart: master table clears keywords and exact values after returning to its kept page
+00:26 +84: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/shared/platform_tables/table_search_page_return_test.dart: master table clears keywords and exact values after returning to its kept page
+00:26 +85: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/shared/platform_tables/table_search_page_return_test.dart: master table clears keywords and exact values after returning to its kept page
+00:26 +86: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/shared/platform_tables/table_search_page_return_test.dart: master table clears keywords and exact values after returning to its kept page
+00:26 +87: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/shared/platform_tables/table_search_page_return_test.dart: master table clears keywords and exact values after returning to its kept page
+00:26 +88: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/shared/platform_tables/table_search_page_return_test.dart: master table clears keywords and exact values after returning to its kept page
+00:26 +89: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/shared/platform_tables/table_search_page_return_test.dart: master table clears keywords and exact values after returning to its kept page
+00:26 +90: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/shared/platform_tables/table_search_page_return_test.dart: master table clears keywords and exact values after returning to its kept page
+00:26 +91: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/shared/platform_tables/table_search_page_return_test.dart: master table clears keywords and exact values after returning to its kept page
+00:26 +92: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/shared/platform_tables/table_search_page_return_test.dart: master table clears keywords and exact values after returning to its kept page
+00:26 +93: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/shared/platform_tables/table_search_page_return_test.dart: master table clears keywords and exact values after returning to its kept page
+00:26 +94: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/shared/platform_tables/table_search_page_return_test.dart: master table clears keywords and exact values after returning to its kept page
+00:26 +95: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/shared/platform_tables/table_search_page_return_test.dart: master table clears keywords and exact values after returning to its kept page
+00:26 +96: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/shared/platform_tables/table_search_page_return_test.dart: master table clears keywords and exact values after returning to its kept page
+00:26 +97: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/shared/platform_tables/table_search_page_return_test.dart: master table clears keywords and exact values after returning to its kept page
+00:26 +98: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/shared/platform_tables/table_search_page_return_test.dart: master table clears keywords and exact values after returning to its kept page
+00:26 +99: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/shared/platform_tables/table_search_page_return_test.dart: master table clears keywords and exact values after returning to its kept page
+00:26 +100: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/shared/platform_tables/table_search_page_return_test.dart: master table clears keywords and exact values after returning to its kept page
+00:26 +101: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/shared/platform_tables/table_search_page_return_test.dart: master table clears keywords and exact values after returning to its kept page
+00:26 +102: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/shared/platform_tables/table_search_page_return_test.dart: master table clears keywords and exact values after returning to its kept page
+00:26 +103: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/shared/platform_tables/table_search_page_return_test.dart: master table clears keywords and exact values after returning to its kept page
+00:26 +104: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/shared/platform_tables/table_search_page_return_test.dart: master table clears keywords and exact values after returning to its kept page
+00:26 +105: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/components/master_data_table_progressive_batch_actions_test.dart: floating batch actions wait for the complete result while rows grow; the kept selection acts after completion and a failure hides them
+00:27 +106: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/components/master_data_table_progressive_batch_actions_test.dart: floating batch actions wait for the complete result while rows grow; the kept selection acts after completion and a failure hides them
+00:27 +107: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/components/master_data_table_progressive_batch_actions_test.dart: floating batch actions wait for the complete result while rows grow; the kept selection acts after completion and a failure hides them
+00:27 +108: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/shared/platform_tables/platform_table_recovery_test.dart: zh master retries an incomplete successful response without replacing base input
+00:27 +109: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/shared/platform_tables/platform_table_recovery_test.dart: zh master retries an incomplete successful response without replacing base input
+00:27 +110: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/shared/platform_tables/platform_table_recovery_test.dart: zh master retries an incomplete successful response without replacing base input
+00:27 +111: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/shared/platform_tables/platform_table_recovery_test.dart: zh master retries an incomplete successful response without replacing base input
+00:27 +112: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/shared/platform_tables/platform_table_recovery_test.dart: zh master retries an incomplete successful response without replacing base input
+00:28 +113: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/shared/platform_tables/platform_table_recovery_test.dart: zh master retries an incomplete successful response without replacing base input
+00:28 +114: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/shared/platform_tables/platform_table_recovery_test.dart: zh master retries an incomplete successful response without replacing base input
+00:28 +115: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/components/master_data_table_progressive_batch_actions_test.dart: the fullscreen table applies the same wait and recovery
+00:28 +116: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/shared/platform_tables/platform_table_widgets_test.dart: historical review with explicit opt-in only restores existing hidden columns for a writable account
+00:29 +117: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/shared/platform_tables/platform_table_recovery_test.dart: zh master shows the cause and recovers without replacing base input
+00:29 +118: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/shared/platform_tables/platform_table_recovery_test.dart: zh master shows the cause and recovers without replacing base input
+00:29 +119: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/shared/platform_tables/platform_table_widgets_test.dart: new grid explicitly enables column creation and staged input
+00:29 +120: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/shared/platform_tables/platform_table_widgets_test.dart: new grid explicitly enables column creation and staged input
+00:30 +121: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/shared/platform_tables/platform_table_recovery_test.dart: zh grid shows the cause and recovers without replacing base input
+00:30 +122: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/shared/platform_tables/platform_table_widgets_test.dart: switching out of edit mode fences open editors and direct writes
+00:30 +123: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/shared/platform_tables/platform_table_recovery_test.dart: en master retries an incomplete successful response without replacing base input
+00:30 +124: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/shared/platform_tables/platform_table_widgets_test.dart: master table reads persisted fields and saves a complete CAS payload
+00:30 +125: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/shared/platform_tables/platform_table_recovery_test.dart: en master shows the cause and recovers without replacing base input
+00:30 +126: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/shared/platform_tables/platform_table_recovery_test.dart: en master shows the cause and recovers without replacing base input
+00:31 +127: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/shared/platform_tables/platform_table_widgets_test.dart: read-only row never gets an edit affordance
+00:31 +128: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/shared/platform_tables/platform_table_recovery_test.dart: en grid retries an incomplete successful response without replacing base input
+00:31 +129: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/shared/platform_tables/platform_table_recovery_test.dart: en grid retries an incomplete successful response without replacing base input
+00:31 +130: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/shared/platform_tables/platform_table_widgets_test.dart: selected calculation is captured on hydrated document rows without PUT
+00:31 +131: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/shared/platform_tables/platform_table_recovery_test.dart: en grid shows the cause and recovers without replacing base input
+00:31 +132: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/shared/platform_tables/platform_table_recovery_test.dart: ko master retries an incomplete successful response without replacing base input
+00:31 +133: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/shared/platform_tables/platform_table_recovery_test.dart: ko master shows the cause and recovers without replacing base input
+00:32 +134: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/shared/platform_tables/platform_table_recovery_test.dart: ko grid retries an incomplete successful response without replacing base input
+00:32 +135: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/shared/platform_tables/platform_table_recovery_test.dart: ko grid shows the cause and recovers without replacing base input
+00:32 +136: D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/shared/platform_tables/platform_table_recovery_test.dart: a later batch failure preserves the complete prior snapshot and dirty drafts; lost access masks it
+00:32 +137: All tests passed!

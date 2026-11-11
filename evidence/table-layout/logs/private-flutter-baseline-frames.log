@@ -1,0 +1,39 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_platform_refresh_test.dart
+00:00 +0: progressive platform reloads retain columns and scan only appended width cells
+PLATFORM-PREFIX widthCells=3988 expected=1576 indexBuilds=10
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: <1576>
+  Actual: <3988>
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_platform_refresh_test.dart:176:7)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_platform_refresh_test.dart line 176
+The test description was:
+  progressive platform reloads retain columns and scan only appended width cells
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:04 +0 -1: progressive platform reloads retain columns and scan only appended width cells [E]
+  Test failed. See exception logs above.
+  The test description was: progressive platform reloads retain columns and scan only appended width cells
+  
+Warning: At least one test in this suite creates an HttpClient. When running a test suite that uses
+TestWidgetsFlutterBinding, all HTTP requests will return status code 400, and no network request
+will actually be made. Any test expecting a real network connection and status code will fail.
+To test code that needs an HttpClient, provide your own HttpClient implementation to the code under
+test, so that your test can consistently provide a testable response to the code under test.
+00:04 +0 -1: fresh same-key column getters retain current closures and widths
+00:05 +1 -1: real persisted cell and definition updates still publish and fit
+00:06 +2 -1: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/feedback-table-layout-20261110/test/master_data_table_view_platform_refresh_test.dart: progressive platform reloads retain columns and scan only appended width cells

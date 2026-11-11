@@ -28,7 +28,7 @@ runtime.mkdir(parents=True, exist_ok=True)
 tmp = out / 'private/tmp'
 tmp.mkdir(exist_ok=True)
 config = a.runtime_config.resolve(strict=True)
-if (out / (a.stage + '-receipt.json')).exists():
+if any((out / (a.stage + suffix)).exists() for suffix in ['-receipt.json', '-command.json', '.log', '-private-tool-preparation.log']):
     raise SystemExit('Evidence for this stage exists; choose a fresh run tag')
 
 
@@ -55,11 +55,11 @@ spec = importlib.util.spec_from_file_location('feedback_private_flutter', root /
 tools = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(tools)
 os.environ.update(TMP=str(tmp), TEMP=str(tmp), PUB_HOSTED_URL='https://pub.dev', FLUTTER_SUPPRESS_ANALYTICS='true')
-with (out / 'private-tool-preparation.log').open('wb') as log:
+with (out / (a.stage + '-private-tool-preparation.log')).open('wb') as log:
     prefix, tool_evidence, env = tools.prepare(str(sdk / 'bin/flutter.bat'), identity,
                                               root / 'build/feedback-private-tools', log, log)
 env.update(TMP=str(tmp), TEMP=str(tmp), PUB_HOSTED_URL='https://pub.dev')
-(out / 'private-flutter-tools.json').write_text(json.dumps(tool_evidence, indent=2), encoding='utf8')
+(out / (a.stage + '-private-flutter-tools.json')).write_text(json.dumps(tool_evidence, indent=2), encoding='utf8')
 
 defines = {
     'UTEN_LOCAL_TEST': 'true', 'API_BASE_URL': 'http://127.0.0.1:28630/api',
@@ -94,7 +94,7 @@ receipt = {
     'credentialsInCommand': False,
 }
 (out / (a.stage + '-receipt.json')).write_text(json.dumps(receipt, indent=2), encoding='utf8')
-(out / 'private-flutter-tools.json').write_text(json.dumps(tool_evidence, indent=2), encoding='utf8')
+(out / (a.stage + '-private-flutter-tools.json')).write_text(json.dumps(tool_evidence, indent=2), encoding='utf8')
 print(json.dumps({'stage': a.stage, 'exitCode': result.returncode, 'sourceHead': head,
                   'evidence': str(out), 'clientLaunched': a.stage == 'run'}, ensure_ascii=False))
 if a.stage == 'run' and (receipt['sourceHeadAfter'] != head or receipt['canonicalSourceDiffAfter']):

@@ -1,0 +1,13 @@
+{
+  "kind": "actual Settings > Runtime logs UI download",
+  "sourceRevision": "d3be61be89d3c8553c0a1c81182dffffd962e734",
+  "downloadPath": "C:\\Users\\bruce\\Downloads\\UTEN-2.5.52-1794401748579.log",
+  "preservedPath": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-20261110\\evidence\\root\\raw\\layout0b5e-runtime-healthy.log",
+  "byteContract": "raw downloaded bytes; no normalization",
+  "bytes": 91863,
+  "sha256": "0c21359ebdf1a650023084c5d816163fa49982ded7165cecdf5c348d736a5736",
+  "flutterErrors": 0,
+  "firstError": null,
+  "knownRuntimeSecretsAndBearerJwtScan": "0 matches",
+  "classification": "actual Web diagnostic, not final acceptance: All scope with column settings and keyboard menu restorewide0; category native menu restorewide0; settings remains reachable; native All menu retention under separate investigation"
+}

@@ -1,0 +1,15 @@
+{
+  "tasks": 373,
+  "protectedFieldsUnchanged": [
+    "status",
+    "owner",
+    "definitionOfDone",
+    "dependencies",
+    "nativeTargets"
+  ],
+  "oldNotesAndEvidencePreserved": true,
+  "oldHistoryPrefixPreserved": true,
+  "historyLines": 524,
+  "protectedCanonicalSha256": "00481794e72aaa8bca595bddd722b2b84c5a8995d15a427700c2e6f51ff0a4a4",
+  "kind": "lexical source inventory synchronization only; no DoD or target-device promotion"
+}

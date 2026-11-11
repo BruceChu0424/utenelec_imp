@@ -1,0 +1,9 @@
+{
+  "database": "127.0.0.1:26630/feedback",
+  "expectedSource": "47c96198ae10ab21a4f2d6d63b206e721214458c",
+  "proxyPid": 33456,
+  "runName": "layout47-durable-1",
+  "kind": "durable hidden isolated helpers; new outputs, prior raw runs preserved",
+  "backendHelperPid": 34992,
+  "timeUtc": "2026-11-11T11:03:22.4255645Z"
+}

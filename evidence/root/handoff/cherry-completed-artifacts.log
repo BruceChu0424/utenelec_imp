@@ -1,0 +1,192 @@
+[uimp/feedback-remediate-20261110 0432641c6] test(audit): prove compact header recollapse regresses retained row offset
+ Date: Wed Nov 11 06:03:54 2026 -0700
+ 33 files changed, 5 insertions(+)
+ create mode 100644 evidence/independent-scroll/.gitattributes
+ create mode 100644 evidence/independent-scroll/manifest.json
+ create mode 100644 evidence/independent-scroll/private-flutter-independent-scroll-animate-baseline-7.json
+ create mode 100644 evidence/independent-scroll/private-flutter-independent-scroll-animate-baseline-7.log
+ create mode 100644 evidence/independent-scroll/private-flutter-independent-scroll-animate-current-7.json
+ create mode 100644 evidence/independent-scroll/private-flutter-independent-scroll-animate-current-7.log
+ create mode 100644 evidence/independent-scroll/private-flutter-independent-scroll-baseline-1.json
+ create mode 100644 evidence/independent-scroll/private-flutter-independent-scroll-baseline-1.log
+ create mode 100644 evidence/independent-scroll/private-flutter-independent-scroll-baseline-2.json
+ create mode 100644 evidence/independent-scroll/private-flutter-independent-scroll-baseline-2.log
+ create mode 100644 evidence/independent-scroll/private-flutter-independent-scroll-baseline-3.json
+ create mode 100644 evidence/independent-scroll/private-flutter-independent-scroll-baseline-3.log
+ create mode 100644 evidence/independent-scroll/private-flutter-independent-scroll-baseline-4.json
+ create mode 100644 evidence/independent-scroll/private-flutter-independent-scroll-baseline-4.log
+ create mode 100644 evidence/independent-scroll/private-flutter-independent-scroll-current-1.json
+ create mode 100644 evidence/independent-scroll/private-flutter-independent-scroll-current-1.log
+ create mode 100644 evidence/independent-scroll/private-flutter-independent-scroll-current-2.json
+ create mode 100644 evidence/independent-scroll/private-flutter-independent-scroll-current-2.log
+ create mode 100644 evidence/independent-scroll/private-flutter-independent-scroll-current-3.json
+ create mode 100644 evidence/independent-scroll/private-flutter-independent-scroll-current-3.log
+ create mode 100644 evidence/independent-scroll/private-flutter-independent-scroll-current-4.json
+ create mode 100644 evidence/independent-scroll/private-flutter-independent-scroll-current-4.log
+ create mode 100644 evidence/independent-scroll/private-flutter-independent-scroll-regression-baseline-5.json
+ create mode 100644 evidence/independent-scroll/private-flutter-independent-scroll-regression-baseline-5.log
+ create mode 100644 evidence/independent-scroll/private-flutter-independent-scroll-regression-current-5.json
+ create mode 100644 evidence/independent-scroll/private-flutter-independent-scroll-regression-current-5.log
+ create mode 100644 evidence/independent-scroll/private-flutter-independent-scroll-stable-baseline-6.json
+ create mode 100644 evidence/independent-scroll/private-flutter-independent-scroll-stable-baseline-6.log
+ create mode 100644 evidence/independent-scroll/private-flutter-independent-scroll-stable-current-6.json
+ create mode 100644 evidence/independent-scroll/private-flutter-independent-scroll-stable-current-6.log
+ create mode 100644 evidence/independent-scroll/probe-v1-invalid-wide-jump-setup.dart
+ create mode 100644 evidence/independent-scroll/probe-v2-invalid-wheel-point.dart
+ create mode 100644 evidence/independent-scroll/probe-v3-incomplete-settling-setup.dart
+[uimp/feedback-remediate-20261110 373f1c721] docs(audit): complete paired scroll regression probes and source comparison
+ Date: Wed Nov 11 06:05:10 2026 -0700
+ 8 files changed, 34 insertions(+)
+ create mode 100644 evidence/independent-scroll/REPORT.md
+ create mode 100644 evidence/independent-scroll/archive-first-failure.json
+ create mode 100644 evidence/independent-scroll/comparison.json
+ create mode 100644 evidence/independent-scroll/probes/scroll_external_outer_animate_regression_test.dart
+ create mode 100644 evidence/independent-scroll/probes/scroll_offset_retention_regression_test.dart
+ create mode 100644 evidence/independent-scroll/probes/scroll_offset_retirement_probe_test.dart
+ create mode 100644 evidence/independent-scroll/probes/scroll_stable_hierarchy_fact_probe_test.dart
+[uimp/feedback-remediate-20261110 e4e82b044] test(audit): independently confirm compact offsets and legacy wheel contracts
+ Date: Wed Nov 11 06:08:21 2026 -0700
+ 14 files changed, 24 insertions(+)
+ create mode 100644 evidence/independent-scroll-fixed/.gitattributes
+ create mode 100644 evidence/independent-scroll-fixed/REPORT.md
+ create mode 100644 evidence/independent-scroll-fixed/behavior-comparison.json
+ create mode 100644 evidence/independent-scroll-fixed/manifest.json
+ create mode 100644 evidence/independent-scroll-fixed/private-flutter-independent-scroll-fixed-8.json
+ create mode 100644 evidence/independent-scroll-fixed/private-flutter-independent-scroll-fixed-8.log
+ create mode 100644 evidence/independent-scroll-fixed/private-flutter-independent-scroll-public-9.json
+ create mode 100644 evidence/independent-scroll-fixed/private-flutter-independent-scroll-public-9.log
+ create mode 100644 evidence/independent-scroll-fixed/probes/scroll_external_outer_animate_regression_test.dart
+ create mode 100644 evidence/independent-scroll-fixed/probes/scroll_offset_retention_regression_test.dart
+ create mode 100644 evidence/independent-scroll-fixed/probes/scroll_offset_retirement_probe_test.dart
+ create mode 100644 evidence/independent-scroll-fixed/probes/scroll_stable_hierarchy_fact_probe_test.dart
+ create mode 100644 evidence/independent-scroll-fixed/result.json
+ create mode 100644 evidence/independent-scroll-fixed/source-start.json
+[uimp/feedback-remediate-20261110 12cb0b181] test: inventory Web import entrypoints and prepare scoped actors and October pair
+ Date: Wed Nov 11 06:03:15 2026 -0700
+ 44 files changed, 6093 insertions(+)
+ create mode 100644 evidence/b-import-ui-prep/.gitattributes
+ create mode 100644 evidence/b-import-ui-prep/.gitignore
+ create mode 100644 evidence/b-import-ui-prep/FeedbackBImportUiActorsPrepTest.java
+ create mode 100644 evidence/b-import-ui-prep/PrepareRootWebAccountingPair.java
+ create mode 100644 "evidence/b-import-ui-prep/UI-\345\205\245\345\217\243\347\237\251\351\230\265.md"
+ create mode 100644 evidence/b-import-ui-prep/accounting-pair-202610/legal-balances-202610.xls
+ create mode 100644 evidence/b-import-ui-prep/accounting-pair-202610/legal-chart-202610.xlsx
+ create mode 100644 evidence/b-import-ui-prep/accounting-pair-202610/legal-vouchers-202610.xls
+ create mode 100644 evidence/b-import-ui-prep/accounting-pair-202610/local-format-check.json
+ create mode 100644 evidence/b-import-ui-prep/accounting-pair-file-hashes.json
+ create mode 100644 evidence/b-import-ui-prep/accounting-pair/legal-balances-202611.xls
+ create mode 100644 evidence/b-import-ui-prep/accounting-pair/legal-chart-202611.xlsx
+ create mode 100644 evidence/b-import-ui-prep/accounting-pair/legal-vouchers-202611.xls
+ create mode 100644 evidence/b-import-ui-prep/accounting-pair/local-format-check.json
+ create mode 100644 evidence/b-import-ui-prep/capture_imports.py
+ create mode 100644 evidence/b-import-ui-prep/complete_new_master_profile.py
+ create mode 100644 evidence/b-import-ui-prep/cutover-source-evidence.json
+ create mode 100644 evidence/b-import-ui-prep/finalize.py
+ create mode 100644 evidence/b-import-ui-prep/import-actors-final.json
+ create mode 100644 evidence/b-import-ui-prep/input-files-absolute.json
+ create mode 100644 evidence/b-import-ui-prep/manifest.json
+ create mode 100644 evidence/b-import-ui-prep/only-new-fixture-proof.json
+ create mode 100644 evidence/b-import-ui-prep/pair-javac.exit
+ create mode 100644 evidence/b-import-ui-prep/pair-javac.log
+ create mode 100644 evidence/b-import-ui-prep/pair-oct-javac.exit
+ create mode 100644 evidence/b-import-ui-prep/pair-oct-javac.log
+ create mode 100644 evidence/b-import-ui-prep/pair-oct-prepare.exit
+ create mode 100644 evidence/b-import-ui-prep/pair-oct-prepare.log
+ create mode 100644 evidence/b-import-ui-prep/pair-prepare.exit
+ create mode 100644 evidence/b-import-ui-prep/pair-prepare.log
+ create mode 100644 evidence/b-import-ui-prep/read_preparation.py
+ create mode 100644 evidence/b-import-ui-prep/root-actors-run1/TEST-com.uten.imp.businesschain.FeedbackBImportUiActorsPrepTest.xml
+ create mode 100644 evidence/b-import-ui-prep/root-actors-run1/build-provenance.json
+ create mode 100644 evidence/b-import-ui-prep/root-actors-run1/com.uten.imp.businesschain.FeedbackBImportUiActorsPrepTest.txt
+ create mode 100644 evidence/b-import-ui-prep/root-actors-run1/compile.exit
+ create mode 100644 evidence/b-import-ui-prep/root-actors-run1/compile.log
+ create mode 100644 evidence/b-import-ui-prep/root-actors-run1/exit.txt
+ create mode 100644 evidence/b-import-ui-prep/root-actors-run1/import-actors-seed.json
+ create mode 100644 evidence/b-import-ui-prep/root-actors-run1/import-actors-seed.log
+ create mode 100644 evidence/b-import-ui-prep/root-import-baseline-with-opening.json
+ create mode 100644 evidence/b-import-ui-prep/root-import-baseline.json
+ create mode 100644 evidence/b-import-ui-prep/root-readonly-1.json
+ create mode 100644 evidence/b-import-ui-prep/root-readonly-after-actors.json
+ create mode 100644 evidence/b-import-ui-prep/run_import_actors.py
+[uimp/feedback-remediate-20261110 dc402f6ee] docs: preserve role waits and native focus failure checkpoint
+ Date: Wed Nov 11 06:32:50 2026 -0700
+ 54 files changed, 158 insertions(+)
+ create mode 100644 evidence/posting-dropdown/.gitattributes
+ create mode 100644 evidence/posting-dropdown/.gitignore
+ create mode 100644 evidence/posting-dropdown/HANDOFF.md
+ create mode 100644 evidence/posting-dropdown/REPORT.md
+ create mode 100644 evidence/posting-dropdown/credential-scan.json
+ create mode 100644 evidence/posting-dropdown/full-app-original-driver.dart.txt
+ create mode 100644 evidence/posting-dropdown/logs/private-flutter-baseline-app.log
+ create mode 100644 evidence/posting-dropdown/logs/private-flutter-baseline-complete-repos.log
+ create mode 100644 evidence/posting-dropdown/logs/private-flutter-baseline-confirmed-app.log
+ create mode 100644 evidence/posting-dropdown/logs/private-flutter-chrome-pointer-baseline.log
+ create mode 100644 evidence/posting-dropdown/logs/private-flutter-concrete-ui-pointer-baseline.log
+ create mode 100644 evidence/posting-dropdown/logs/private-flutter-deps.log
+ create mode 100644 evidence/posting-dropdown/logs/private-flutter-fixture-mount-probe.log
+ create mode 100644 evidence/posting-dropdown/logs/private-flutter-full-app-final-controls.log
+ create mode 100644 evidence/posting-dropdown/logs/private-flutter-panel-analyze-clean.log
+ create mode 100644 evidence/posting-dropdown/logs/private-flutter-panel-analyze.log
+ create mode 100644 evidence/posting-dropdown/logs/private-flutter-panel-final-validated.log
+ create mode 100644 evidence/posting-dropdown/logs/private-flutter-panel-wait-baseline.log
+ create mode 100644 evidence/posting-dropdown/logs/private-flutter-panel-wait-candidate.log
+ create mode 100644 evidence/posting-dropdown/logs/private-flutter-panel-wait-final.log
+ create mode 100644 evidence/posting-dropdown/manifest.json
+ create mode 100644 evidence/posting-dropdown/native/browser_focus.dart.txt
+ create mode 100644 evidence/posting-dropdown/native/built-artifact.json
+ create mode 100644 evidence/posting-dropdown/native/instrumentation-formatted.patch
+ create mode 100644 evidence/posting-dropdown/native/logs/private-flutter-diag-analyze-clean.log
+ create mode 100644 evidence/posting-dropdown/native/logs/private-flutter-diag-analyze.log
+ create mode 100644 evidence/posting-dropdown/native/logs/private-flutter-web-build.log
+ create mode 100644 evidence/posting-dropdown/native/main.dart.txt
+ create mode 100644 evidence/posting-dropdown/native/native-pointer-original-proof.json
+ create mode 100644 evidence/posting-dropdown/native/native-pointer-original.log
+ create mode 100644 evidence/posting-dropdown/native/private-flutter-diag-analyze-clean.json
+ create mode 100644 evidence/posting-dropdown/native/private-flutter-diag-analyze.json
+ create mode 100644 evidence/posting-dropdown/native/private-flutter-web-build.json
+ create mode 100644 evidence/posting-dropdown/native/private_flutter.py
+ create mode 100644 evidence/posting-dropdown/native/serve.cjs
+ create mode 100644 evidence/posting-dropdown/native/source-before-build.json
+ create mode 100644 evidence/posting-dropdown/native/source-formatted-before-build.json
+ create mode 100644 evidence/posting-dropdown/native/static-listener-proof.json
+ create mode 100644 evidence/posting-dropdown/private-flutter-baseline-app.json
+ create mode 100644 evidence/posting-dropdown/private-flutter-baseline-complete-repos.json
+ create mode 100644 evidence/posting-dropdown/private-flutter-baseline-confirmed-app.json
+ create mode 100644 evidence/posting-dropdown/private-flutter-chrome-pointer-baseline.json
+ create mode 100644 evidence/posting-dropdown/private-flutter-concrete-ui-pointer-baseline.json
+ create mode 100644 evidence/posting-dropdown/private-flutter-deps.json
+ create mode 100644 evidence/posting-dropdown/private-flutter-fixture-mount-probe.json
+ create mode 100644 evidence/posting-dropdown/private-flutter-full-app-final-controls.json
+ create mode 100644 evidence/posting-dropdown/private-flutter-panel-analyze-clean.json
+ create mode 100644 evidence/posting-dropdown/private-flutter-panel-analyze.json
+ create mode 100644 evidence/posting-dropdown/private-flutter-panel-final-validated.json
+ create mode 100644 evidence/posting-dropdown/private-flutter-panel-wait-baseline.json
+ create mode 100644 evidence/posting-dropdown/private-flutter-panel-wait-candidate.json
+ create mode 100644 evidence/posting-dropdown/private-flutter-panel-wait-final.json
+ create mode 100644 evidence/posting-dropdown/private_flutter.py
+ create mode 100644 evidence/posting-dropdown/product-source.json
+[uimp/feedback-remediate-20261110 0abb54b84] test(production): prepare pinned final acceptance driver and source attestation
+ Date: Wed Nov 11 05:44:14 2026 -0700
+ 23 files changed, 44336 insertions(+)
+ create mode 100644 "docs/99-\351\241\271\347\233\256\346\262\273\347\220\206/\345\205\254\345\217\270\347\275\221\351\241\265\345\217\215\351\246\210\346\225\264\346\224\271-20261110/A-\346\234\200\347\273\210\345\220\216\347\253\257\346\225\264\347\273\204\346\211\247\350\241\214\345\205\245\345\217\243-20261111.md"
+ create mode 100644 evidence/a-final-runner-preparation-1/.gitattributes
+ create mode 100644 evidence/a-final-runner-preparation-1/direct-javac-2-result.json
+ create mode 100644 evidence/a-final-runner-preparation-1/direct-javac-2.args
+ create mode 100644 evidence/a-final-runner-preparation-1/direct-javac-2.log
+ create mode 100644 evidence/a-final-runner-preparation-1/direct-javac-result.json
+ create mode 100644 evidence/a-final-runner-preparation-1/direct-javac.args
+ create mode 100644 evidence/a-final-runner-preparation-1/direct-javac.log
+ create mode 100644 evidence/a-final-runner-preparation-1/embedded-python-runtime-control.json
+ create mode 100644 evidence/a-final-runner-preparation-1/existing-output.stderr.txt
+ create mode 100644 evidence/a-final-runner-preparation-1/existing-output.stdout.txt
+ create mode 100644 evidence/a-final-runner-preparation-1/manifest.json
+ create mode 100644 evidence/a-final-runner-preparation-1/negative-preflight-controls.json
+ create mode 100644 evidence/a-final-runner-preparation-1/old-7b-xml-reader-smoke.json
+ create mode 100644 evidence/a-final-runner-preparation-1/plan-only-final.json
+ create mode 100644 evidence/a-final-runner-preparation-1/plan-only.json
+ create mode 100644 evidence/a-final-runner-preparation-1/source-14e-vs-7b-per-file.json
+ create mode 100644 evidence/a-final-runner-preparation-1/wrong-candidate.stderr.txt
+ create mode 100644 evidence/a-final-runner-preparation-1/wrong-candidate.stdout.txt
+ create mode 100644 tool/company_feedback_production/FeedbackDirectReturnRunner.java
+ create mode 100644 tool/company_feedback_production/attest_candidate.py
+ create mode 100644 tool/company_feedback_production/run_final_a.py

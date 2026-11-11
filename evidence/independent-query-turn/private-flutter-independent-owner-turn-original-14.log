@@ -1,0 +1,137 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/feedback-independent-review-20261111/test/independent/scoped_query_turn_original_test.dart
+test/independent/original_scope_mixin_4d45.dart:9:8: Error: Error when reading 'test/independent/complete_paged_snapshot.dart': 系统找不到指定的文件。
+import 'complete_paged_snapshot.dart';
+       ^
+test/independent/original_scope_mixin_4d45.dart:15:1: Error: Error when reading 'test/independent/complete_paged_snapshot.dart': 系统找不到指定的文件。
+export 'complete_paged_snapshot.dart' show CompleteReadBatchPlan;
+^
+test/independent/original_scope_mixin_4d45.dart:10:8: Error: Error when reading 'test/independent/scoped_paged_read.dart': 系统找不到指定的文件。
+import 'scoped_paged_read.dart';
+       ^
+test/independent/original_scope_mixin_4d45.dart:11:8: Error: Error when reading 'test/independent/paged_query_identity.dart': 系统找不到指定的文件。
+import 'paged_query_identity.dart';
+       ^
+test/independent/original_scope_mixin_4d45.dart:12:8: Error: Error when reading 'test/independent/read_view_activity.dart': 系统找不到指定的文件。
+import 'read_view_activity.dart';
+       ^
+test/independent/original_scope_mixin_4d45.dart:16:1: Error: Error when reading 'test/independent/read_view_activity.dart': 系统找不到指定的文件。
+export 'read_view_activity.dart' show isRetiredViewRead;
+^
+test/independent/original_scope_mixin_4d45.dart:13:8: Error: Error when reading 'test/independent/complete_output_guard.dart': 系统找不到指定的文件。
+import 'complete_output_guard.dart';
+       ^
+test/independent/original_scope_mixin_4d45.dart:118:5: Error: Type 'CompleteReadBatchPlan' not found.
+    CompleteReadBatchPlan? plan,
+    ^^^^^^^^^^^^^^^^^^^^^
+test/independent/original_scope_mixin_4d45.dart:119:5: Error: Type 'CompleteOutputGuard' not found.
+    CompleteOutputGuard? outputGuard,
+    ^^^^^^^^^^^^^^^^^^^
+test/independent/original_scope_mixin_4d45.dart:24:32: Error: 'CompleteOutputGuard' isn't a type.
+  final _scopedOutputGuards = <CompleteOutputGuard>{};
+                               ^^^^^^^^^^^^^^^^^^^
+test/independent/original_scope_mixin_4d45.dart:29:33: Error: The method 'ReadViewActivity' isn't defined for the type 'ScopedPagedReadViewMixin<W>'.
+ - 'ScopedPagedReadViewMixin' is from 'test/independent/original_scope_mixin_4d45.dart'.
+Try correcting the name to the name of an existing method, or defining a method named 'ReadViewActivity'.
+  late final readViewActivity = ReadViewActivity(onResume: onReadViewResumed);
+                                ^^^^^^^^^^^^^^^^
+test/independent/original_scope_mixin_4d45.dart:197:18: Error: Method not found: 'ScopedPagedRead'.
+  final reader = ScopedPagedRead<R>();
+                 ^^^^^^^^^^^^^^^
+test/independent/original_scope_mixin_4d45.dart:118:5: Error: 'CompleteReadBatchPlan' isn't a type.
+    CompleteReadBatchPlan? plan,
+    ^^^^^^^^^^^^^^^^^^^^^
+test/independent/original_scope_mixin_4d45.dart:119:5: Error: 'CompleteOutputGuard' isn't a type.
+    CompleteOutputGuard? outputGuard,
+    ^^^^^^^^^^^^^^^^^^^
+test/independent/original_scope_mixin_4d45.dart:128:22: Error: The method 'freezePagedReadQuery' isn't defined for the type 'ScopedPagedReadViewMixin<W>'.
+ - 'ScopedPagedReadViewMixin' is from 'test/independent/original_scope_mixin_4d45.dart'.
+Try correcting the name to the name of an existing method, or defining a method named 'freezePagedReadQuery'.
+    final snapshot = freezePagedReadQuery(query);
+                     ^^^^^^^^^^^^^^^^^^^^
+test/independent/original_scope_mixin_4d45.dart:134:9: Error: The method 'samePagedReadQuery' isn't defined for the type 'ScopedPagedReadViewMixin<W>'.
+ - 'ScopedPagedReadViewMixin' is from 'test/independent/original_scope_mixin_4d45.dart'.
+Try correcting the name to the name of an existing method, or defining a method named 'samePagedReadQuery'.
+        samePagedReadQuery(snapshot, currentQuery());
+        ^^^^^^^^^^^^^^^^^^
+test/independent/original_scope_mixin_4d45.dart:160:19: Error: The method 'pagedReadAccessDenied' isn't defined for the type 'ScopedPagedReadViewMixin<W>'.
+ - 'ScopedPagedReadViewMixin' is from 'test/independent/original_scope_mixin_4d45.dart'.
+Try correcting the name to the name of an existing method, or defining a method named 'pagedReadAccessDenied'.
+              if (pagedReadAccessDenied(error)) {
+                  ^^^^^^^^^^^^^^^^^^^^^
+test/independent/original_scope_mixin_4d45.dart:168:30: Error: The method 'pagedReadAccessDenied' isn't defined for the type 'ScopedPagedReadViewMixin<W>'.
+ - 'ScopedPagedReadViewMixin' is from 'test/independent/original_scope_mixin_4d45.dart'.
+Try correcting the name to the name of an existing method, or defining a method named 'pagedReadAccessDenied'.
+            if (current() && pagedReadAccessDenied(error)) {
+                             ^^^^^^^^^^^^^^^^^^^^^
+00:00 +0 -1: loading D:/Projects/uten_imp_worktrees/feedback-independent-review-20261111/test/independent/scoped_query_turn_original_test.dart [E]
+  Failed to load "D:/Projects/uten_imp_worktrees/feedback-independent-review-20261111/test/independent/scoped_query_turn_original_test.dart":
+  Compilation failed for testPath=D:/Projects/uten_imp_worktrees/feedback-independent-review-20261111/test/independent/scoped_query_turn_original_test.dart: test/independent/original_scope_mixin_4d45.dart:9:8: Error: Error when reading 'test/independent/complete_paged_snapshot.dart': 系统找不到指定的文件。
+  import 'complete_paged_snapshot.dart';
+         ^
+  test/independent/original_scope_mixin_4d45.dart:15:1: Error: Error when reading 'test/independent/complete_paged_snapshot.dart': 系统找不到指定的文件。
+  export 'complete_paged_snapshot.dart' show CompleteReadBatchPlan;
+  ^
+  test/independent/original_scope_mixin_4d45.dart:10:8: Error: Error when reading 'test/independent/scoped_paged_read.dart': 系统找不到指定的文件。
+  import 'scoped_paged_read.dart';
+         ^
+  test/independent/original_scope_mixin_4d45.dart:11:8: Error: Error when reading 'test/independent/paged_query_identity.dart': 系统找不到指定的文件。
+  import 'paged_query_identity.dart';
+         ^
+  test/independent/original_scope_mixin_4d45.dart:12:8: Error: Error when reading 'test/independent/read_view_activity.dart': 系统找不到指定的文件。
+  import 'read_view_activity.dart';
+         ^
+  test/independent/original_scope_mixin_4d45.dart:16:1: Error: Error when reading 'test/independent/read_view_activity.dart': 系统找不到指定的文件。
+  export 'read_view_activity.dart' show isRetiredViewRead;
+  ^
+  test/independent/original_scope_mixin_4d45.dart:13:8: Error: Error when reading 'test/independent/complete_output_guard.dart': 系统找不到指定的文件。
+  import 'complete_output_guard.dart';
+         ^
+  test/independent/original_scope_mixin_4d45.dart:118:5: Error: Type 'CompleteReadBatchPlan' not found.
+      CompleteReadBatchPlan? plan,
+      ^^^^^^^^^^^^^^^^^^^^^
+  test/independent/original_scope_mixin_4d45.dart:119:5: Error: Type 'CompleteOutputGuard' not found.
+      CompleteOutputGuard? outputGuard,
+      ^^^^^^^^^^^^^^^^^^^
+  test/independent/original_scope_mixin_4d45.dart:24:32: Error: 'CompleteOutputGuard' isn't a type.
+    final _scopedOutputGuards = <CompleteOutputGuard>{};
+                                 ^^^^^^^^^^^^^^^^^^^
+  test/independent/original_scope_mixin_4d45.dart:29:33: Error: The method 'ReadViewActivity' isn't defined for the type 'ScopedPagedReadViewMixin<W>'.
+   - 'ScopedPagedReadViewMixin' is from 'test/independent/original_scope_mixin_4d45.dart'.
+  Try correcting the name to the name of an existing method, or defining a method named 'ReadViewActivity'.
+    late final readViewActivity = ReadViewActivity(onResume: onReadViewResumed);
+                                  ^^^^^^^^^^^^^^^^
+  test/independent/original_scope_mixin_4d45.dart:197:18: Error: Method not found: 'ScopedPagedRead'.
+    final reader = ScopedPagedRead<R>();
+                   ^^^^^^^^^^^^^^^
+  test/independent/original_scope_mixin_4d45.dart:118:5: Error: 'CompleteReadBatchPlan' isn't a type.
+      CompleteReadBatchPlan? plan,
+      ^^^^^^^^^^^^^^^^^^^^^
+  test/independent/original_scope_mixin_4d45.dart:119:5: Error: 'CompleteOutputGuard' isn't a type.
+      CompleteOutputGuard? outputGuard,
+      ^^^^^^^^^^^^^^^^^^^
+  test/independent/original_scope_mixin_4d45.dart:128:22: Error: The method 'freezePagedReadQuery' isn't defined for the type 'ScopedPagedReadViewMixin<W>'.
+   - 'ScopedPagedReadViewMixin' is from 'test/independent/original_scope_mixin_4d45.dart'.
+  Try correcting the name to the name of an existing method, or defining a method named 'freezePagedReadQuery'.
+      final snapshot = freezePagedReadQuery(query);
+                       ^^^^^^^^^^^^^^^^^^^^
+  test/independent/original_scope_mixin_4d45.dart:134:9: Error: The method 'samePagedReadQuery' isn't defined for the type 'ScopedPagedReadViewMixin<W>'.
+   - 'ScopedPagedReadViewMixin' is from 'test/independent/original_scope_mixin_4d45.dart'.
+  Try correcting the name to the name of an existing method, or defining a method named 'samePagedReadQuery'.
+          samePagedReadQuery(snapshot, currentQuery());
+          ^^^^^^^^^^^^^^^^^^
+  test/independent/original_scope_mixin_4d45.dart:160:19: Error: The method 'pagedReadAccessDenied' isn't defined for the type 'ScopedPagedReadViewMixin<W>'.
+   - 'ScopedPagedReadViewMixin' is from 'test/independent/original_scope_mixin_4d45.dart'.
+  Try correcting the name to the name of an existing method, or defining a method named 'pagedReadAccessDenied'.
+                if (pagedReadAccessDenied(error)) {
+                    ^^^^^^^^^^^^^^^^^^^^^
+  test/independent/original_scope_mixin_4d45.dart:168:30: Error: The method 'pagedReadAccessDenied' isn't defined for the type 'ScopedPagedReadViewMixin<W>'.
+   - 'ScopedPagedReadViewMixin' is from 'test/independent/original_scope_mixin_4d45.dart'.
+  Try correcting the name to the name of an existing method, or defining a method named 'pagedReadAccessDenied'.
+              if (current() && pagedReadAccessDenied(error)) {
+                               ^^^^^^^^^^^^^^^^^^^^^
+  .
+00:00 +0 -1: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/feedback-independent-review-20261111/test/independent/scoped_query_turn_original_test.dart: loading D:/Projects/uten_imp_worktrees/feedback-independent-review-20261111/test/independent/scoped_query_turn_original_test.dart

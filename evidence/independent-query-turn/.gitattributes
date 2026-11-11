@@ -1,0 +1,5 @@
+*.log binary
+*.json binary
+*.dart binary
+*.md text eol=lf
+.gitattributes text eol=lf

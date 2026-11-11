@@ -44,14 +44,7 @@ public final class MasterExportSelection implements AutoCloseable {
     public static <T> Specification<T> intersect(Specification<T> original) {
         var ids = CURRENT.get();
         if (ids == null) return original;
-        Specification<T> selected = (root, query, cb) -> {
-            if(ids.size()<=1024)return root.get("id").in(ids);
-            // A single typed array parameter avoids PostgreSQL's scalar-bind
-            // ceiling and IN-padding. The authorized list predicate and its
-            // repeatable-read cursor still own ordering and completeness.
-            return cb.isTrue(cb.function("array_contains", Boolean.class,
-                    ((org.hibernate.query.criteria.HibernateCriteriaBuilder) cb).value(ids.toArray(UUID[]::new)), root.get("id")));
-        };
+        Specification<T> selected = (root, query, cb) -> MasterSelectionPredicate.contains(root.get("id"), ids, cb);
         return original == null ? selected : original.and(selected);
     }
     public static void requireComplete(long count) {

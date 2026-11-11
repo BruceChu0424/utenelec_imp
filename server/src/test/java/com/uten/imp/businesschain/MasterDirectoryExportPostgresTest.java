@@ -185,6 +185,10 @@ class MasterDirectoryExportPostgresTest extends AuthSessionPostgresTestSupport {
         assertThat(measurement.maxPreparedParameterIndex).isLessThan(100);
         System.out.println("D3_SELECTION_READ sourceMs="+(System.nanoTime()-started)/1000000+" jdbc="+measurement.result());
         assertThat(MasterExportSelection.current()).isNull();
+        exporter("unit");
+        assertThatThrownBy(()->master.read(req)).isInstanceOfSatisfying(com.uten.imp.common.web.ApiException.class,
+                denied->assertThat(denied.getCode()).isEqualTo(com.uten.imp.common.web.ErrorCode.FORBIDDEN));
+        assertThat(MasterExportSelection.current()).isNull();exporter("mould");
         try(var sink=ExportPageSink.open(page->{throw new java.util.concurrent.CancellationException("selection interruption");})) {
             assertThatThrownBy(()->master.read(req)).isInstanceOf(java.util.concurrent.CancellationException.class);
         }
@@ -193,7 +197,7 @@ class MasterDirectoryExportPostgresTest extends AuthSessionPostgresTestSupport {
         var stale=new ReportExportRequest(UUID.randomUUID(),"master","mould",
                 Map.of("filter",req.parameters().get("filter"),"selectedIds",objectMapper.writeValueAsString(missing)),"tqty","desc",null);
         assertThatThrownBy(()->master.read(stale)).hasMessageContaining("本次未生成文件");
-        System.out.println("D3_REAL_SELECTION selected=50001 matching=50002 excluded=1 ordered=50001 cancellation=preserved missing=rejected");
+        System.out.println("D3_REAL_SELECTION selected=50001 matching=50002 excluded=1 ordered=50001 cancellation=preserved missing=rejected revokedAuthority=rejected");
         long writeStart=System.nanoTime();
         var workbook=context.getBean(XlsxExportService.class).buildSource(()->master.read(req),null,"master_mould");
         long sourceAndWriteMs=(System.nanoTime()-writeStart)/1_000_000;

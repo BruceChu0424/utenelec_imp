@@ -1,10 +1,14 @@
 param([Parameter(Mandatory)][ValidatePattern('^[a-z0-9-]+$')][string]$Attempt,
       [Parameter(Mandatory)][string]$ClassesDirectory,
       [string]$WorkspaceRoot=(Join-Path $PSScriptRoot '../..'),
-      [ValidateSet('preverification','final-unified')][string]$Kind='preverification')
+      [ValidateSet('preverification','final-unified')][string]$Kind='preverification',
+      [string]$ExpectedRevision)
 $ErrorActionPreference='Stop'
 $root=[IO.Path]::GetFullPath($WorkspaceRoot)
 $sourceStart=(git -C $root rev-parse HEAD)
+if($Kind-eq'final-unified' -and !$ExpectedRevision){throw 'Final unified replay requires the parent-frozen revision.'}
+if($ExpectedRevision -and $sourceStart-ne(git -C $root rev-parse $ExpectedRevision)){throw 'Workspace HEAD differs from the parent-frozen revision.'}
+if(@(git -C $root diff --name-only HEAD -- server/src server/pom.xml).Count){throw 'Freeze server source before physical replay.'}
 $out=Join-Path $PSScriptRoot $Attempt
 $log=Join-Path $out 'physical.log'
 if(Test-Path -LiteralPath $log){throw 'Preserve the previous physical workbook attempt.'}

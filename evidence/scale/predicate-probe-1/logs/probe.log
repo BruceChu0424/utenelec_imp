@@ -1,0 +1,5 @@
+D3_PREDICATE_PLAN name=contains actualExecutionMs=10420.792 planningMs=1.351 probeWallMs=11017
+D3_PREDICATE_ROWS name=contains actualRows=50001 orderedReadMs=14504
+D3_PREDICATE_PLAN name=any actualExecutionMs=10.437 planningMs=11.2 probeWallMs=165
+D3_PREDICATE_ROWS name=any actualRows=50001 orderedReadMs=232
+D3_PREDICATE_EQUIVALENCE realTableRows=50002 sameSelectedUuidCount=50001 selected=50001 excluded=1 permissionDenied=0 filterExcluded=0 sourceOrderAndExactQtyHash=6bad399401808217be8606d42ec42d570f666b7b9593a86a4eab61ace1909f19 exactSum=1250031250.125 scalarBindMax=3 uuidArrayBinds=1

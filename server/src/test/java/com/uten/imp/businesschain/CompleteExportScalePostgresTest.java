@@ -68,6 +68,25 @@ class CompleteExportScalePostgresTest extends AuthSessionPostgresTestSupport {
         assertThat((BigDecimal)sql.get("minimum")).isEqualByComparingTo("1.2345");
         assertThat((BigDecimal)sql.get("maximum")).isEqualByComparingTo("1.2345");
         assertThat((BigDecimal)sql.get("sum")).isEqualByComparingTo("123450.0000");
+        var oracleDigest=java.security.MessageDigest.getInstance("SHA-256");
+        long oracleStarted=System.nanoTime();int oracleRows=0;BigDecimal oracleSum=BigDecimal.ZERO;
+        try(var connection=java.util.Objects.requireNonNull(jdbc.getDataSource()).getConnection()) {
+            connection.setReadOnly(true);connection.setAutoCommit(false);
+            try(var statement=connection.prepareStatement("SELECT code,price FROM goods WHERE left(code,?)=? ORDER BY code,id")) {
+                statement.setFetchSize(1000);statement.setInt(1,PREFIX.length());statement.setString(2,PREFIX);
+                try(var result=statement.executeQuery()) {
+                    while(result.next()) {
+                        String code=result.getString(1);BigDecimal price=result.getBigDecimal(2);
+                        oracleDigest.update((code+"\0"+price.stripTrailingZeros().toPlainString()+"\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                        oracleRows++;oracleSum=oracleSum.add(price);
+                    }
+                }
+            } finally {connection.rollback();}
+        }
+        assertThat(oracleRows).isEqualTo(100000);assertThat(oracleSum).isEqualByComparingTo((BigDecimal)sql.get("sum"));
+        String oracleOrderHash=java.util.HexFormat.of().formatHex(oracleDigest.digest());
+        long oracleMs=(System.nanoTime()-oracleStarted)/1_000_000;
+        var sourceDigest=java.security.MessageDigest.getInstance("SHA-256");
         var rows=new AtomicInteger();var batches=new AtomicInteger();var peak=new AtomicInteger();
         BigDecimal[] sum={BigDecimal.ZERO};long started=System.nanoTime();
         try(var sink=ExportPageSink.open(page->{
@@ -77,6 +96,7 @@ class CompleteExportScalePostgresTest extends AuthSessionPostgresTestSupport {
                 assertThat(row.get("code")).isEqualTo(PREFIX+"%06d".formatted(rows.getAndIncrement()));
                 assertThat((BigDecimal)row.get("price")).isEqualByComparingTo("1.2345");
                 sum[0]=sum[0].add((BigDecimal)row.get("price"));
+                sourceDigest.update((row.get("code")+"\0"+((BigDecimal)row.get("price")).stripTrailingZeros().toPlainString()+"\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));
             }
         })) {
             var result=master.read(new com.uten.imp.features.reporting.export.ReportExportRequest(UUID.randomUUID(),"master","goods",
@@ -85,6 +105,9 @@ class CompleteExportScalePostgresTest extends AuthSessionPostgresTestSupport {
         }
         assertThat(rows).hasValue(100000);assertThat(batches).hasValue(1000);
         assertThat(sum[0]).isEqualByComparingTo("123450.0000");assertThat(peak.get()).isLessThan(2000);
+        String sourceOrderHash=java.util.HexFormat.of().formatHex(sourceDigest.digest());
+        assertThat(sourceOrderHash).isEqualTo(oracleOrderHash);
         System.out.println("D3_SCALE_READ sql="+sql+" rows="+rows+" batches="+batches+" peakManaged="+peak+" sourceReadMs="+(System.nanoTime()-started)/1000000);
+        System.out.println("D3_SCALE_SQL_ORACLE rows="+oracleRows+" fetchSize=1000 exactSum="+oracleSum.toPlainString()+" oracleMs="+oracleMs+" orderHash="+oracleOrderHash+" sourceOrderHash="+sourceOrderHash+" hashBytes=UTF8(code+NUL+plainExactPrice+LF)");
     }
 }

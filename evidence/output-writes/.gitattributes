@@ -1,0 +1,4 @@
+logs/*.log binary
+private-flutter-*.json binary
+manifest.json binary
+source-fingerprints.json binary

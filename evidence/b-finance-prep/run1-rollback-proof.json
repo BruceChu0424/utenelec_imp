@@ -1,0 +1,9 @@
+{
+  "kind": "failed public-create fixture transaction rolled back; not Web acceptance",
+  "unchanged": {
+    "roles": true,
+    "styles": true,
+    "accounts": true,
+    "businessCounts": true
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "status": "prep; no UI mapping or GL generation performed",
+  "checks": {
+    "roleMappingsByteEquivalent": true,
+    "oldStylesUnchanged": true,
+    "oldAccountsSelectedFieldsUnchanged": true,
+    "onlyExpectedNewStyles": true,
+    "onlyExpectedNewActor": true,
+    "businessCountsUnchanged": true
+  },
+  "addedStyleCount": 7,
+  "addedActorCount": 1
+}

@@ -1,0 +1,20 @@
+-------------------------------------------------------------------------------
+Test set: com.uten.imp.businesschain.FeedbackBFinanceUiPrepTest
+-------------------------------------------------------------------------------
+Tests run: 1, Failures: 0, Errors: 1, Skipped: 0, Time elapsed: 56.42 s <<< FAILURE! -- in com.uten.imp.businesschain.FeedbackBFinanceUiPrepTest
+com.uten.imp.businesschain.FeedbackBFinanceUiPrepTest.seedOnlyNewFinanceActorAndUnassignedStyles -- Time elapsed: 0.918 s <<< ERROR!
+org.springframework.security.authorization.AuthorizationDeniedException: Access Denied
+	at org.springframework.security.authorization.method.ThrowingMethodAuthorizationDeniedHandler.handleDeniedInvocation(ThrowingMethodAuthorizationDeniedHandler.java:38)
+	at org.springframework.security.authorization.method.PreAuthorizeAuthorizationManager.handleDeniedInvocation(PreAuthorizeAuthorizationManager.java:96)
+	at org.springframework.security.authorization.ObservationAuthorizationManager.handleDeniedInvocation(ObservationAuthorizationManager.java:116)
+	at org.springframework.security.authorization.method.AuthorizationManagerBeforeMethodInterceptor.handle(AuthorizationManagerBeforeMethodInterceptor.java:290)
+	at org.springframework.security.authorization.method.AuthorizationManagerBeforeMethodInterceptor.attemptAuthorization(AuthorizationManagerBeforeMethodInterceptor.java:263)
+	at org.springframework.security.authorization.method.AuthorizationManagerBeforeMethodInterceptor.invoke(AuthorizationManagerBeforeMethodInterceptor.java:197)
+	at org.springframework.security.config.annotation.method.configuration.DeferringMethodInterceptor.invoke(DeferringMethodInterceptor.java:44)
+	at org.springframework.aop.framework.ReflectiveMethodInvocation.proceed(ReflectiveMethodInvocation.java:179)
+	at org.springframework.aop.framework.CglibAopProxy$DynamicAdvisedInterceptor.intercept(CglibAopProxy.java:719)
+	at com.uten.imp.features.master.paymentstyle.PaymentStyleService$$SpringCGLIB$$0.create(<generated>)
+	at com.uten.imp.businesschain.FeedbackBFinanceUiPrepTest.lambda$seedOnlyNewFinanceActorAndUnassignedStyles$1(FeedbackBFinanceUiPrepTest.java:72)
+	at org.springframework.transaction.support.TransactionTemplate.execute(TransactionTemplate.java:137)
+	at com.uten.imp.businesschain.FeedbackBFinanceUiPrepTest.seedOnlyNewFinanceActorAndUnassignedStyles(FeedbackBFinanceUiPrepTest.java:49)
+

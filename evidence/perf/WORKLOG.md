@@ -31,4 +31,4 @@ ANALYZE后 `warehouse-probe-2` 真实EXPLAIN观察：
 
 生产目前只改唯一 `MaterialAnalysisWarehouseBreakdownReader`。原20物料方法保留原10秒及21批/计划1/采购总量400/原幂等重放断言；公共测试体增加一组同库真实 `analyses.detail` 并行读，验证真实重叠和完整物料身份，并独立记录writer和reader JDBC。原35方法仍需全部验，新增并行例单列，不把6例仓分解投影测试冒称完整业务账。
 
-本阶段尚未用真实服务结果签署性能通过。新代码后续必须进入同一整合候选重新验收；7b已完成的D3证据保持原SHA。
+199bb真实服务后续已完成42/42：原35逐case全部保留且通过，新增并发1、仓投影6；quiet4172ms/同库真实detail并发4506ms（11次完整读取真实重叠）。详见ACCEPTANCE-warehouse-v1.md及summary/manifest，不以此覆盖原10214ms红或把所有加速归因于该查询。新代码后续必须进入同一整合候选继续适用回归；7b已完成的D3证据保持原SHA。

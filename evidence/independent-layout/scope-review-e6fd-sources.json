@@ -1,0 +1,90 @@
+{
+  "reviewedSource": "e6fd716164e2c8f56f558cc683fa153e5a4f4391",
+  "kind": "limited read-only semantic review, not final acceptance",
+  "sources": [
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Core/UnitExportMutationContract.cs",
+      "blob": "4fa736236ba2a6380dc77e3a194eb262e21d027d",
+      "sha256": "76762ad90bc840cf90403df02da74d4f543c6dc233f152effe431b9e8636503f",
+      "bytes": 14608,
+      "byteSource": "exact-git-blob"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitExportWindow.cs",
+      "blob": "ab8a6f1e8fded8cc7b11f67cfd597b749a27a8cb",
+      "sha256": "a153504392db13c4ed4289dbc245df191b1943964916404e385bcab0c76cdef5",
+      "bytes": 24634,
+      "byteSource": "exact-git-blob"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Core/MutationCoordinator.cs",
+      "blob": "a9e2847d890bc8fdae6a09d6425e11722ad1d4eb",
+      "sha256": "d40c7c5384852521e3f598243a03319306ed05c026b82b7df5d7d008d61e15d5",
+      "bytes": 22021,
+      "byteSource": "exact-git-blob"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Core/UnitExportReceiptCoordinator.cs",
+      "blob": "5961df49c2574514d21c77aa7807188d1952265d",
+      "sha256": "f0fa887536ccf4b496f094b1311810786ddf404d8c4d9fa33f11d98b5bce41d8",
+      "bytes": 6656,
+      "byteSource": "exact-git-blob"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Core/UnitExportBudget.cs",
+      "blob": "2544bf14adc90bd7b4d2ac6082e5de297cecff10",
+      "sha256": "ce6cc234242e15e72f4b65de79c9bb1a9037930a3f6a88ae597b349523bd21f4",
+      "bytes": 1680,
+      "byteSource": "exact-git-blob"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/production/analysis/MaterialAnalysisWarehouseBreakdownReader.java",
+      "blob": "3eec72e86f8a8b949244de9834de52fd74bbe599",
+      "sha256": "66fabcb316728f667fdc597cf78ace7f92362afed1c6853392131045be625943",
+      "bytes": 5803,
+      "byteSource": "exact-git-blob"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/common/importing/ImportColumnGuard.java",
+      "blob": "8d846ae5e40c0c419aa1065f417ef4a44c754333",
+      "sha256": "9a13c5bc383b74792349a40813547466438cc522e65f494fdc4653ae3acf4448",
+      "bytes": 7016,
+      "byteSource": "exact-git-blob"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/gl/FinanceExpenseAnalysisService.java",
+      "blob": "e1c970bd5c203774b1f3f927cdda3b28f41fd35b",
+      "sha256": "ea1b1b6bd8fb6f8c0cec79256b9ce91e31053bdd41c002df225f21c73f6a1c48",
+      "bytes": 29679,
+      "byteSource": "exact-git-blob"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/gl/FinanceChartService.java",
+      "blob": "435adf56e2c6a7b3524312b809053ba4ec291ef9",
+      "sha256": "82934d52ebc06200275e32299e470e487b7ecd91dbbc89efd20b46331e0039be",
+      "bytes": 62457,
+      "byteSource": "exact-git-blob"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/gl/FinanceAccountingImportService.java",
+      "blob": "e64ca85651c8f4c6bc63fcdcd0af204883d0949e",
+      "sha256": "cbb023e1627c53cbaef9832faf26b7ae3faf1cc7f9bba51a46f9f2c8e9d65331",
+      "bytes": 49504,
+      "byteSource": "exact-git-blob"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/statement/FinanceAuxiliaryImportService.java",
+      "blob": "0c8351f3cecf3822ac4109551f6ccc67e977aa3b",
+      "sha256": "c1ea59d61667d1ffbd92b61c1e1fcf531e0000b22888918680baf2e31f2b7fe9",
+      "bytes": 20835,
+      "byteSource": "exact-git-blob"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/master/goods/costing/GoodsCostImportService.java",
+      "blob": "e687723d551b922196ecfa73fd9198a2b17210f4",
+      "sha256": "dc22e238ee215b4b909630c56ad44d6e46123f5620da3e93b85ab03eda0c051c",
+      "bytes": 19152,
+      "byteSource": "exact-git-blob"
+    }
+  ]
+}

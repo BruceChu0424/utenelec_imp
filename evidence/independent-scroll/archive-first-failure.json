@@ -1,0 +1,5 @@
+{
+  "kind": "archive setup error, not a product/test failure",
+  "reason": "initial glob also matched a product tracked default Tooltip test absent in old14e, so copy stopped after raw logs; existing original log bytes were not altered",
+  "correction": "copy only four explicitly named independent helpers"
+}

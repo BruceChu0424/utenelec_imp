@@ -222,6 +222,8 @@ class _PreparationOrderPageState extends State<_PreparationOrderPage> {
                   revealRequest: _revealRequest,
                   emptyMessage: _host._l10n.materialPreparationNoActions,
                   toolbarLeadingActions: [
+                    if (_host._aggregateTable.hasLegacyUnknown)
+                      _host._aggregateTable.toolbarAction()!,
                     if (_host._permissions.contains(Perm.productionPlanApprove))
                       SizedBox(
                         width: 220,
@@ -247,21 +249,22 @@ class _PreparationOrderPageState extends State<_PreparationOrderPage> {
                   ],
 
                   batchActionsBuilder: (_, _) => [
-                    UtenButton(
-                      key: const Key('material-preparation-order-submit'),
-                      size: UtenButtonSize.large,
-                      icon: Icons.shopping_cart_checkout_rounded,
-                      onPressed: _submitting || _host._busy || selected == 0
-                          ? null
-                          : () => unawaited(_submit(rows)),
-                      child: Text(
-                        _submitting
-                            ? _host._l10n.materialPreparationOrdering
-                            : _host._l10n.materialPreparationOrderCount(
-                                selected,
-                              ),
+                    if (!_host._aggregateTable.hasLegacyUnknown)
+                      UtenButton(
+                        key: const Key('material-preparation-order-submit'),
+                        size: UtenButtonSize.large,
+                        icon: Icons.shopping_cart_checkout_rounded,
+                        onPressed: _submitting || _host._busy || selected == 0
+                            ? null
+                            : () => unawaited(_submit(rows)),
+                        child: Text(
+                          _submitting
+                              ? _host._l10n.materialPreparationOrdering
+                              : _host._l10n.materialPreparationOrderCount(
+                                  selected,
+                                ),
+                        ),
                       ),
-                    ),
                   ],
                 ),
               ),

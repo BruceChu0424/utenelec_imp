@@ -1,3 +1,4 @@
+import '../models/material_preparation_original_command.dart';
 import '../../../core/formatters/exact_number_text.dart';
 import 'package:uten_imp/components/feedback/uten_modal_bottom_sheet.dart';
 import 'package:uten_imp/components/buttons/uten_close_button.dart';
@@ -146,6 +147,7 @@ part 'material_analysis_product_tasks.dart';
 part 'material_analysis_material_table.dart';
 part 'material_analysis_aggregate_table.dart';
 part 'material_analysis_precision_draft.dart';
+part 'material_analysis_original_commands.dart';
 part 'material_analysis_aggregate_actions.dart';
 part 'material_analysis_aggregate_submission.dart';
 part 'material_analysis_draft_budget.dart';
@@ -229,6 +231,7 @@ abstract class _MaterialAnalysisPageBase
       (_sessionScopeKey() == _preparationScopeSession &&
           _analysis?.analysisId == _preparationScopeAnalysis);
 
+  _MaterialAggregateTableController get _preparationCommands;
   bool _sameAnalysisSnapshot(
     ProductionMaterialAnalysisView expected,
     String sessionScope,

@@ -1,3 +1,4 @@
+import '../../core/network/api_mutation_reload_safety.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
 import 'dart:async';
@@ -31,6 +32,27 @@ import 'platform_draft_restore.dart';
 
 export 'form_draft.dart';
 export 'form_draft_store.dart' show describeFormSaveError, describeSubmitError;
+
+/// Shared positive evidence for a fresh, unwritten form command. A reload
+/// fence alone cannot classify an arbitrary 4xx/gateway reply as a write refusal.
+bool isDefiniteFreshFormDraftRejection(Object failure) {
+  if (failure is! ApiException ||
+      !ApiMutationReloadSafety.isDefiniteRejection(failure)) {
+    return false;
+  }
+  if (failure.code == 'PRECISION_CHOICE_REQUIRED') {
+    return failure.httpStatus == 422 && failure.details?['notWritten'] == true;
+  }
+  return failure.httpStatus == 400 ||
+      failure.httpStatus == 422 ||
+      failure.httpStatus == 409 && failure.code == 'CONFLICT' ||
+      failure.hasResponseCode &&
+          failure.httpStatus == 403 &&
+          failure.code == 'REMOTE_ACCESS_DENIED' ||
+      failure.hasResponseCode &&
+          failure.httpStatus == 429 &&
+          failure.code == 'REMOTE_CAPACITY_REJECTED';
+}
 
 /// Pages provide only their typed snapshot codec and editable listenables.
 /// Saving here never invokes a business create/submit/approve endpoint.
@@ -1031,11 +1053,7 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
           : remoteAdmissionRejected
           ? !wasUnknown
           : (isDefiniteRejection?.call(error) ??
-                (!wasUnknown &&
-                    (error.httpStatus == 400 ||
-                        error.httpStatus == 422 ||
-                        (error.httpStatus == 409 &&
-                            error.code == 'CONFLICT'))));
+                (!wasUnknown && isDefiniteFreshFormDraftRejection(error)));
       if (rejected) {
         _draftSubmissionPending = false;
         // The server's definite rejection is what the user must see. A failing

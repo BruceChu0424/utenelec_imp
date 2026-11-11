@@ -139,6 +139,14 @@ Future<Map<String, dynamic>> _resizeNativeWindow(
     await _wait(tester, result.existsSync, stage);
   }
   final receipt = jsonDecode(result.readAsStringSync()) as Map<String, dynamic>;
+  if (cleanup && receipt['expectedWindowAlreadyClosed'] == true) {
+    _observations.add({
+      'scene': stage,
+      'expectedOwnedWindowAlreadyClosed': true,
+      'replacementWindowsTouched': false,
+    });
+    return receipt;
+  }
   if (receipt['ok'] != true) {
     throw StateError(
       'Owned native window request failed: ${receipt['errorType']} ${receipt['message']}',
@@ -581,11 +589,6 @@ void main() {
       StackTrace? primaryStack;
       var completedMouldReads = 0, exportCreates = 0;
       var networkProved = false;
-      final flutterFailure = _flutterFailure = FirstFlutterFailureCapture(
-        Directory(_evidenceRoot),
-        sourceHead: _sourceHead,
-      );
-      flutterFailure.install();
       void rememberError(Object error, StackTrace stack, String phase) {
         primaryError ??= error;
         primaryStack ??= stack;
@@ -594,6 +597,54 @@ void main() {
           'exceptionType': error.runtimeType.toString(),
         });
       }
+
+      void publishFailureSync(String phase, {FlutterErrorDetails? framework}) {
+        try {
+          File('$_evidenceRoot/result.json').writeAsStringSync(
+            const JsonEncoder.withIndent('  ').convert({
+              'surface': 'windows-engine-real-http-attempt',
+              'sourceHead': _sourceHead,
+              'declaredBackendSourceHead': _backendSourceHead.isEmpty
+                  ? null
+                  : _backendSourceHead,
+              'backendIdentityVerifiedByThisHarness': false,
+              'windowScenario': _windowScenario,
+              'belowMinimumIsNotFormalSupport':
+                  _windowScenario == 'below-min714',
+              'passed': false,
+              'publicationPhase': phase,
+              'cleanupComplete': false,
+              'networkObservationComplete': false,
+              'primaryFailureType':
+                  primaryError?.runtimeType.toString() ??
+                  framework?.exception.runtimeType.toString(),
+              'firstFlutterErrorCaptured': _flutterFailure?.first != null,
+              'businessApiReplaced': false,
+              'repositoryReplaced': false,
+              'sessionReplaced': false,
+              'scenes': List<Map<String, Object?>>.of(_observations),
+            }),
+            flush: true,
+          );
+        } catch (error) {
+          _observations.add({
+            'scene': 'emergency-result-publication-error',
+            'exceptionType': error.runtimeType.toString(),
+          });
+        }
+      }
+
+      final flutterFailure = _flutterFailure = FirstFlutterFailureCapture(
+        Directory(_evidenceRoot),
+        sourceHead: _sourceHead,
+        onFirstCaptured: (details) => publishFailureSync(
+          'first-framework-synchronous-before-cleanup',
+          framework: details,
+        ),
+      );
+      flutterFailure.install();
+      var cleanupComplete = false;
+      var networkObservationComplete = false;
 
       try {
         await prepareAcceptanceRuntime(rootPath: runtime.path);
@@ -812,6 +863,12 @@ void main() {
       } catch (error, stack) {
         rememberError(error, stack, 'scenario');
       } finally {
+        if (primaryError != null || flutterFailure.first != null) {
+          publishFailureSync(
+            'scenario-before-cleanup',
+            framework: flutterFailure.first,
+          );
+        }
         if (flutterFailure.first case final first?) {
           rememberError(
             first.exception,
@@ -826,6 +883,7 @@ void main() {
             'cleanup-native-wide',
             cleanup: true,
           );
+          cleanupComplete = true;
         } catch (error, stack) {
           rememberError(error, stack, 'native-window-cleanup');
         }
@@ -861,6 +919,7 @@ void main() {
                 exportCreates++;
               }
             }
+            networkObservationComplete = true;
           }
         } catch (error, stack) {
           rememberError(error, stack, 'evidence');
@@ -879,12 +938,15 @@ void main() {
           'exportJobsCreatedAfterCancellation': exportCreates,
         });
         try {
-          await File('$_evidenceRoot/result.json').writeAsString(
+          File('$_evidenceRoot/result.json').writeAsStringSync(
             const JsonEncoder.withIndent('  ').convert({
               'surface': networkProved
                   ? 'windows-engine-real-http'
                   : 'windows-engine-real-http-attempt',
               'nativeOS': Platform.operatingSystem,
+              'publicationPhase': 'final-cleanup-observed',
+              'cleanupComplete': cleanupComplete,
+              'networkObservationComplete': networkObservationComplete,
               'sourceHead': _sourceHead,
               'declaredBackendSourceHead': _backendSourceHead.isEmpty
                   ? null
@@ -911,6 +973,10 @@ void main() {
               'flutterErrorNotificationCount': flutterFailure.count,
               'firstFlutterErrorPersistenceFailureType': flutterFailure
                   .persistenceError
+                  ?.runtimeType
+                  .toString(),
+              'firstFlutterErrorPublicationFailureType': flutterFailure
+                  .publicationError
                   ?.runtimeType
                   .toString(),
             }),

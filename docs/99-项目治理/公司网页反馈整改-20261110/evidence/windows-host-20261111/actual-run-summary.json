@@ -1,0 +1,555 @@
+{
+  "classification": "local Windows debug/real HTTP diagnostics; not Win7 or formal below-minimum support",
+  "backendIdentityDeclaredNotVerifiedByHarness": true,
+  "runs": {
+    "windows-host-bbc0e-native-1": {
+      "sourceHead": "bbc0e2fd7c71db8ffdbad064588ea3d787057cbc",
+      "sourceTree": "3c0efa33904cae623661a6f9172376ba253f06e1",
+      "declaredBackend": "47c96198ae10ab21a4f2d6d63b206e721214458c",
+      "exitCode": 1,
+      "resultPresent": true,
+      "resultPassed": false,
+      "firstFlutterErrorPresent": false,
+      "firstErrorPhase": null,
+      "firstStackLineCount": 0,
+      "firstErrorSha256": null,
+      "nativeReceipts": [
+        {
+          "request": "native-window-request-0001.json",
+          "ok": true,
+          "sourceHead": "bbc0e2fd7c71db8ffdbad064588ea3d787057cbc",
+          "sequence": 1,
+          "phase": "mould-wide-native",
+          "requestedLogicalWidth": 1280.0,
+          "requestedLogicalHeight": 900.0,
+          "processId": 35800,
+          "executable": "d:\\projects\\uten_imp_worktrees\\feedback-windows-host-20261111\\build\\windows\\x64\\runner\\debug\\uten_imp.exe",
+          "hwnd": 722910,
+          "before": {
+            "clientPhysicalWidth": 2560,
+            "clientPhysicalHeight": 1600,
+            "outerPhysicalWidth": 2560,
+            "outerPhysicalHeight": 1600,
+            "dpi": 192,
+            "clientLogicalWidth": 1280.0,
+            "clientLogicalHeight": 800.0
+          },
+          "after": {
+            "clientPhysicalWidth": 2560,
+            "clientPhysicalHeight": 1800,
+            "outerPhysicalWidth": 2560,
+            "outerPhysicalHeight": 1800,
+            "dpi": 192,
+            "clientLogicalWidth": 1280.0,
+            "clientLogicalHeight": 900.0
+          },
+          "nativeApi": "user32.SetWindowPos"
+        },
+        {
+          "request": "native-window-request-0002.json",
+          "ok": true,
+          "sourceHead": "bbc0e2fd7c71db8ffdbad064588ea3d787057cbc",
+          "sequence": 2,
+          "phase": "mould-narrow-before-menu",
+          "requestedLogicalWidth": 714.0,
+          "requestedLogicalHeight": 764.0,
+          "processId": 35800,
+          "executable": "d:\\projects\\uten_imp_worktrees\\feedback-windows-host-20261111\\build\\windows\\x64\\runner\\debug\\uten_imp.exe",
+          "hwnd": 722910,
+          "before": {
+            "clientPhysicalWidth": 2560,
+            "clientPhysicalHeight": 1800,
+            "outerPhysicalWidth": 2560,
+            "outerPhysicalHeight": 1800,
+            "dpi": 192,
+            "clientLogicalWidth": 1280.0,
+            "clientLogicalHeight": 900.0
+          },
+          "after": {
+            "clientPhysicalWidth": 1600,
+            "clientPhysicalHeight": 1528,
+            "outerPhysicalWidth": 1600,
+            "outerPhysicalHeight": 1528,
+            "dpi": 192,
+            "clientLogicalWidth": 800.0,
+            "clientLogicalHeight": 764.0
+          },
+          "nativeApi": "user32.SetWindowPos"
+        },
+        {
+          "request": "native-window-request-0003.json",
+          "ok": true,
+          "sourceHead": "bbc0e2fd7c71db8ffdbad064588ea3d787057cbc",
+          "sequence": 3,
+          "phase": "cleanup-native-wide",
+          "requestedLogicalWidth": 1280.0,
+          "requestedLogicalHeight": 900.0,
+          "processId": 35800,
+          "executable": "d:\\projects\\uten_imp_worktrees\\feedback-windows-host-20261111\\build\\windows\\x64\\runner\\debug\\uten_imp.exe",
+          "hwnd": 722910,
+          "before": {
+            "clientPhysicalWidth": 1600,
+            "clientPhysicalHeight": 1528,
+            "outerPhysicalWidth": 1600,
+            "outerPhysicalHeight": 1528,
+            "dpi": 192,
+            "clientLogicalWidth": 800.0,
+            "clientLogicalHeight": 764.0
+          },
+          "after": {
+            "clientPhysicalWidth": 2560,
+            "clientPhysicalHeight": 1800,
+            "outerPhysicalWidth": 2560,
+            "outerPhysicalHeight": 1800,
+            "dpi": 192,
+            "clientLogicalWidth": 1280.0,
+            "clientLogicalHeight": 900.0
+          },
+          "nativeApi": "user32.SetWindowPos"
+        }
+      ],
+      "screenshots": [
+        {
+          "path": "screenshots\\mould-complete.png",
+          "logicalPngWidth": 1280,
+          "logicalPngHeight": 800,
+          "sha256": "cb2ee4f4f38196d9d25802aa83b63c1040dbb7d43dbcbce2e9eef245957ee1f5"
+        },
+        {
+          "path": "screenshots\\mould-wide-category-tooltip.png",
+          "logicalPngWidth": 1280,
+          "logicalPngHeight": 900,
+          "sha256": "a1e8b0bb594b460d494983e2574936e5a0bb516ebb9bf857ac6cb39f78463292"
+        }
+      ],
+      "sceneSummary": [
+        {
+          "scene": "complete-mould-read",
+          "rows": 1626,
+          "coldReadMs": 3120
+        },
+        {
+          "scene": "actual-http-observation",
+          "completedMouldReads": 1,
+          "exportJobsCreatedAfterCancellation": 0
+        }
+      ]
+    },
+    "windows-host-aa448-supported800-1": {
+      "sourceHead": "aa44886e160ae2c2a83e4c5f2e06da64e417d5b9",
+      "sourceTree": "77fb46d460cc6a0ac4a1b3bcfc9b8515330170d9",
+      "declaredBackend": "47c96198ae10ab21a4f2d6d63b206e721214458c",
+      "exitCode": 0,
+      "resultPresent": true,
+      "resultPassed": true,
+      "firstFlutterErrorPresent": false,
+      "firstErrorPhase": null,
+      "firstStackLineCount": 0,
+      "firstErrorSha256": null,
+      "nativeReceipts": [
+        {
+          "request": "native-window-request-0001.json",
+          "ok": true,
+          "sourceHead": "aa44886e160ae2c2a83e4c5f2e06da64e417d5b9",
+          "sequence": 1,
+          "phase": "mould-wide-native",
+          "requestedLogicalWidth": 1280.0,
+          "requestedLogicalHeight": 900.0,
+          "processId": 30364,
+          "executable": "d:\\projects\\uten_imp_worktrees\\feedback-windows-host-20261111\\build\\windows\\x64\\runner\\debug\\uten_imp.exe",
+          "hwnd": 1247400,
+          "before": {
+            "clientPhysicalWidth": 2560,
+            "clientPhysicalHeight": 1600,
+            "outerPhysicalWidth": 2560,
+            "outerPhysicalHeight": 1600,
+            "dpi": 192,
+            "clientLogicalWidth": 1280.0,
+            "clientLogicalHeight": 800.0
+          },
+          "after": {
+            "clientPhysicalWidth": 2560,
+            "clientPhysicalHeight": 1800,
+            "outerPhysicalWidth": 2560,
+            "outerPhysicalHeight": 1800,
+            "dpi": 192,
+            "clientLogicalWidth": 1280.0,
+            "clientLogicalHeight": 900.0
+          },
+          "nativeApi": "user32.SetWindowPos",
+          "scenario": "supported-min800",
+          "setWindowPosFlags": 22,
+          "setWindowPosFlagNames": [
+            "SWP_NOMOVE",
+            "SWP_NOZORDER",
+            "SWP_NOACTIVATE"
+          ],
+          "belowInteractiveMinimumStress": false,
+          "productionMinimumPolicyChanged": false
+        },
+        {
+          "request": "native-window-request-0002.json",
+          "ok": true,
+          "sourceHead": "aa44886e160ae2c2a83e4c5f2e06da64e417d5b9",
+          "sequence": 2,
+          "phase": "mould-supported-min800-before-operation",
+          "requestedLogicalWidth": 800.0,
+          "requestedLogicalHeight": 764.0,
+          "processId": 30364,
+          "executable": "d:\\projects\\uten_imp_worktrees\\feedback-windows-host-20261111\\build\\windows\\x64\\runner\\debug\\uten_imp.exe",
+          "hwnd": 1247400,
+          "before": {
+            "clientPhysicalWidth": 2560,
+            "clientPhysicalHeight": 1800,
+            "outerPhysicalWidth": 2560,
+            "outerPhysicalHeight": 1800,
+            "dpi": 192,
+            "clientLogicalWidth": 1280.0,
+            "clientLogicalHeight": 900.0
+          },
+          "after": {
+            "clientPhysicalWidth": 1600,
+            "clientPhysicalHeight": 1528,
+            "outerPhysicalWidth": 1600,
+            "outerPhysicalHeight": 1528,
+            "dpi": 192,
+            "clientLogicalWidth": 800.0,
+            "clientLogicalHeight": 764.0
+          },
+          "nativeApi": "user32.SetWindowPos",
+          "scenario": "supported-min800",
+          "setWindowPosFlags": 22,
+          "setWindowPosFlagNames": [
+            "SWP_NOMOVE",
+            "SWP_NOZORDER",
+            "SWP_NOACTIVATE"
+          ],
+          "belowInteractiveMinimumStress": false,
+          "productionMinimumPolicyChanged": false
+        },
+        {
+          "request": "native-window-request-0003.json",
+          "ok": true,
+          "sourceHead": "aa44886e160ae2c2a83e4c5f2e06da64e417d5b9",
+          "sequence": 3,
+          "phase": "mould-wide-restored",
+          "requestedLogicalWidth": 1280.0,
+          "requestedLogicalHeight": 900.0,
+          "processId": 30364,
+          "executable": "d:\\projects\\uten_imp_worktrees\\feedback-windows-host-20261111\\build\\windows\\x64\\runner\\debug\\uten_imp.exe",
+          "hwnd": 1247400,
+          "before": {
+            "clientPhysicalWidth": 1600,
+            "clientPhysicalHeight": 1528,
+            "outerPhysicalWidth": 1600,
+            "outerPhysicalHeight": 1528,
+            "dpi": 192,
+            "clientLogicalWidth": 800.0,
+            "clientLogicalHeight": 764.0
+          },
+          "after": {
+            "clientPhysicalWidth": 2560,
+            "clientPhysicalHeight": 1800,
+            "outerPhysicalWidth": 2560,
+            "outerPhysicalHeight": 1800,
+            "dpi": 192,
+            "clientLogicalWidth": 1280.0,
+            "clientLogicalHeight": 900.0
+          },
+          "nativeApi": "user32.SetWindowPos",
+          "scenario": "supported-min800",
+          "setWindowPosFlags": 22,
+          "setWindowPosFlagNames": [
+            "SWP_NOMOVE",
+            "SWP_NOZORDER",
+            "SWP_NOACTIVATE"
+          ],
+          "belowInteractiveMinimumStress": false,
+          "productionMinimumPolicyChanged": false
+        },
+        {
+          "request": "native-window-request-0004.json",
+          "ok": true,
+          "sourceHead": "aa44886e160ae2c2a83e4c5f2e06da64e417d5b9",
+          "sequence": 4,
+          "phase": "cleanup-native-wide",
+          "requestedLogicalWidth": 1280.0,
+          "requestedLogicalHeight": 900.0,
+          "processId": 30364,
+          "executable": "d:\\projects\\uten_imp_worktrees\\feedback-windows-host-20261111\\build\\windows\\x64\\runner\\debug\\uten_imp.exe",
+          "hwnd": 1247400,
+          "before": {
+            "clientPhysicalWidth": 2560,
+            "clientPhysicalHeight": 1800,
+            "outerPhysicalWidth": 2560,
+            "outerPhysicalHeight": 1800,
+            "dpi": 192,
+            "clientLogicalWidth": 1280.0,
+            "clientLogicalHeight": 900.0
+          },
+          "after": {
+            "clientPhysicalWidth": 2560,
+            "clientPhysicalHeight": 1800,
+            "outerPhysicalWidth": 2560,
+            "outerPhysicalHeight": 1800,
+            "dpi": 192,
+            "clientLogicalWidth": 1280.0,
+            "clientLogicalHeight": 900.0
+          },
+          "nativeApi": "user32.SetWindowPos",
+          "scenario": "supported-min800",
+          "setWindowPosFlags": 22,
+          "setWindowPosFlagNames": [
+            "SWP_NOMOVE",
+            "SWP_NOZORDER",
+            "SWP_NOACTIVATE"
+          ],
+          "belowInteractiveMinimumStress": false,
+          "productionMinimumPolicyChanged": false
+        }
+      ],
+      "screenshots": [
+        {
+          "path": "screenshots\\mould-complete-sorted-print.png",
+          "logicalPngWidth": 1280,
+          "logicalPngHeight": 900,
+          "sha256": "85b51600ef71ce3c721412286b50f448c0045cbca63e8471f1c7dda0aba9f398"
+        },
+        {
+          "path": "screenshots\\mould-complete.png",
+          "logicalPngWidth": 1280,
+          "logicalPngHeight": 800,
+          "sha256": "cb2ee4f4f38196d9d25802aa83b63c1040dbb7d43dbcbce2e9eef245957ee1f5"
+        },
+        {
+          "path": "screenshots\\mould-direct-export-cancel.png",
+          "logicalPngWidth": 1280,
+          "logicalPngHeight": 900,
+          "sha256": "f7db69eebe7178965cf628c46ef14631a45ef8d733658e6e1cf22faa44d5a47f"
+        },
+        {
+          "path": "screenshots\\mould-narrow-before-menu.png",
+          "logicalPngWidth": 800,
+          "logicalPngHeight": 764,
+          "sha256": "499c262dfa20eca524971a9a28a228acb9436c714b5d15010532c2db9cfe7f21"
+        },
+        {
+          "path": "screenshots\\mould-narrow-table-operation.png",
+          "logicalPngWidth": 800,
+          "logicalPngHeight": 764,
+          "sha256": "0afc799b519f2f3b71725f5c1deb3d440eac483ffc9d07fbeaaa00ae9457df4b"
+        },
+        {
+          "path": "screenshots\\mould-nested-export-cancel.png",
+          "logicalPngWidth": 1280,
+          "logicalPngHeight": 900,
+          "sha256": "fefe3a72a31b2afbd3a42ac198a134ef98e67bd74322f64c97cf808ff3a3befe"
+        },
+        {
+          "path": "screenshots\\mould-tqty-ascending.png",
+          "logicalPngWidth": 1280,
+          "logicalPngHeight": 900,
+          "sha256": "583a5180d9075cc9d7d61861df660ab88ca98588a37dbe09b97f05807a43a044"
+        },
+        {
+          "path": "screenshots\\mould-wide-category-tooltip.png",
+          "logicalPngWidth": 1280,
+          "logicalPngHeight": 900,
+          "sha256": "041fc980c9df4233a51ac821116d97ff88eb86f320992bf4ce21028debcbbf31"
+        },
+        {
+          "path": "screenshots\\mould-wide-restored.png",
+          "logicalPngWidth": 1280,
+          "logicalPngHeight": 900,
+          "sha256": "041fc980c9df4233a51ac821116d97ff88eb86f320992bf4ce21028debcbbf31"
+        }
+      ],
+      "sceneSummary": [
+        {
+          "scene": "complete-mould-read",
+          "rows": 1626,
+          "coldReadMs": 4014
+        },
+        {
+          "scene": "narrow-operation-presentation",
+          "presentation": "menu",
+          "scenario": "supported-min800"
+        },
+        {
+          "scene": "actual-http-observation",
+          "completedMouldReads": 2,
+          "exportJobsCreatedAfterCancellation": 0
+        }
+      ]
+    },
+    "windows-host-aa448-below714-1": {
+      "sourceHead": "aa44886e160ae2c2a83e4c5f2e06da64e417d5b9",
+      "sourceTree": "77fb46d460cc6a0ac4a1b3bcfc9b8515330170d9",
+      "declaredBackend": "47c96198ae10ab21a4f2d6d63b206e721214458c",
+      "exitCode": 1,
+      "resultPresent": false,
+      "resultPassed": null,
+      "firstFlutterErrorPresent": true,
+      "firstErrorPhase": "mould-wide-restored",
+      "firstStackLineCount": 598,
+      "firstErrorSha256": "214ac0586adac1317d05e4d66b4a21637732dbf84843520fc907dff09bfb9191",
+      "nativeReceipts": [
+        {
+          "request": "native-window-request-0001.json",
+          "ok": true,
+          "sourceHead": "aa44886e160ae2c2a83e4c5f2e06da64e417d5b9",
+          "sequence": 1,
+          "phase": "mould-wide-native",
+          "requestedLogicalWidth": 1280.0,
+          "requestedLogicalHeight": 900.0,
+          "processId": 15200,
+          "executable": "d:\\projects\\uten_imp_worktrees\\feedback-windows-host-20261111\\build\\windows\\x64\\runner\\debug\\uten_imp.exe",
+          "hwnd": 1901550,
+          "before": {
+            "clientPhysicalWidth": 2560,
+            "clientPhysicalHeight": 1600,
+            "outerPhysicalWidth": 2560,
+            "outerPhysicalHeight": 1600,
+            "dpi": 192,
+            "clientLogicalWidth": 1280.0,
+            "clientLogicalHeight": 800.0
+          },
+          "after": {
+            "clientPhysicalWidth": 2560,
+            "clientPhysicalHeight": 1800,
+            "outerPhysicalWidth": 2560,
+            "outerPhysicalHeight": 1800,
+            "dpi": 192,
+            "clientLogicalWidth": 1280.0,
+            "clientLogicalHeight": 900.0
+          },
+          "nativeApi": "user32.SetWindowPos",
+          "scenario": "below-min714",
+          "setWindowPosFlags": 22,
+          "setWindowPosFlagNames": [
+            "SWP_NOMOVE",
+            "SWP_NOZORDER",
+            "SWP_NOACTIVATE"
+          ],
+          "belowInteractiveMinimumStress": false,
+          "productionMinimumPolicyChanged": false
+        },
+        {
+          "request": "native-window-request-0002.json",
+          "ok": true,
+          "sourceHead": "aa44886e160ae2c2a83e4c5f2e06da64e417d5b9",
+          "sequence": 2,
+          "phase": "mould-below-min714-before-operation",
+          "requestedLogicalWidth": 714.0,
+          "requestedLogicalHeight": 764.0,
+          "processId": 15200,
+          "executable": "d:\\projects\\uten_imp_worktrees\\feedback-windows-host-20261111\\build\\windows\\x64\\runner\\debug\\uten_imp.exe",
+          "hwnd": 1901550,
+          "before": {
+            "clientPhysicalWidth": 2560,
+            "clientPhysicalHeight": 1800,
+            "outerPhysicalWidth": 2560,
+            "outerPhysicalHeight": 1800,
+            "dpi": 192,
+            "clientLogicalWidth": 1280.0,
+            "clientLogicalHeight": 900.0
+          },
+          "after": {
+            "clientPhysicalWidth": 1428,
+            "clientPhysicalHeight": 1528,
+            "outerPhysicalWidth": 1428,
+            "outerPhysicalHeight": 1528,
+            "dpi": 192,
+            "clientLogicalWidth": 714.0,
+            "clientLogicalHeight": 764.0
+          },
+          "nativeApi": "user32.SetWindowPos",
+          "scenario": "below-min714",
+          "setWindowPosFlags": 1046,
+          "setWindowPosFlagNames": [
+            "SWP_NOMOVE",
+            "SWP_NOZORDER",
+            "SWP_NOACTIVATE",
+            "SWP_NOSENDCHANGING"
+          ],
+          "belowInteractiveMinimumStress": true,
+          "productionMinimumPolicyChanged": false
+        },
+        {
+          "request": "native-window-request-0003.json",
+          "ok": true,
+          "sourceHead": "aa44886e160ae2c2a83e4c5f2e06da64e417d5b9",
+          "sequence": 3,
+          "phase": "mould-wide-restored",
+          "requestedLogicalWidth": 1280.0,
+          "requestedLogicalHeight": 900.0,
+          "processId": 15200,
+          "executable": "d:\\projects\\uten_imp_worktrees\\feedback-windows-host-20261111\\build\\windows\\x64\\runner\\debug\\uten_imp.exe",
+          "hwnd": 1901550,
+          "before": {
+            "clientPhysicalWidth": 1428,
+            "clientPhysicalHeight": 1528,
+            "outerPhysicalWidth": 1428,
+            "outerPhysicalHeight": 1528,
+            "dpi": 192,
+            "clientLogicalWidth": 714.0,
+            "clientLogicalHeight": 764.0
+          },
+          "after": {
+            "clientPhysicalWidth": 2560,
+            "clientPhysicalHeight": 1800,
+            "outerPhysicalWidth": 2560,
+            "outerPhysicalHeight": 1800,
+            "dpi": 192,
+            "clientLogicalWidth": 1280.0,
+            "clientLogicalHeight": 900.0
+          },
+          "nativeApi": "user32.SetWindowPos",
+          "scenario": "below-min714",
+          "setWindowPosFlags": 22,
+          "setWindowPosFlagNames": [
+            "SWP_NOMOVE",
+            "SWP_NOZORDER",
+            "SWP_NOACTIVATE"
+          ],
+          "belowInteractiveMinimumStress": false,
+          "productionMinimumPolicyChanged": false
+        },
+        {
+          "request": "native-window-request-0004.json",
+          "ok": false,
+          "sourceHead": "aa44886e160ae2c2a83e4c5f2e06da64e417d5b9",
+          "errorType": "OSError",
+          "message": "[WinError 1400] 无效的窗口句柄。"
+        }
+      ],
+      "screenshots": [
+        {
+          "path": "screenshots\\mould-complete.png",
+          "logicalPngWidth": 1280,
+          "logicalPngHeight": 800,
+          "sha256": "cb2ee4f4f38196d9d25802aa83b63c1040dbb7d43dbcbce2e9eef245957ee1f5"
+        },
+        {
+          "path": "screenshots\\mould-narrow-before-menu.png",
+          "logicalPngWidth": 714,
+          "logicalPngHeight": 764,
+          "sha256": "49d46e7d0ba095f3162950092999d5dcc11bbaeac49144870f1f63574fd294cb"
+        },
+        {
+          "path": "screenshots\\mould-narrow-table-operation.png",
+          "logicalPngWidth": 714,
+          "logicalPngHeight": 764,
+          "sha256": "931be37f83aa26ab6b0992ccba948b291930edc02024f444018afafd9a6cce34"
+        },
+        {
+          "path": "screenshots\\mould-wide-category-tooltip.png",
+          "logicalPngWidth": 1280,
+          "logicalPngHeight": 900,
+          "sha256": "05ee99a027a9b62622746d57c2a17063e16f89f999c0a4d0cfcda90bdee42269"
+        }
+      ]
+    }
+  },
+  "rawEvidenceWorkspace": "D:\\Projects\\uten_imp_worktrees\\feedback-windows-host-20261111"
+}

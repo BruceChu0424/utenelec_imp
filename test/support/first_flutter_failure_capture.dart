@@ -6,10 +6,15 @@ import 'package:flutter/foundation.dart';
 /// Test evidence only. Keeps the first original stack before a later error storm.
 /// Every error still reaches the handler that the app/test binding installed.
 class FirstFlutterFailureCapture {
-  FirstFlutterFailureCapture(this.directory, {required this.sourceHead});
+  FirstFlutterFailureCapture(
+    this.directory, {
+    required this.sourceHead,
+    this.onFirstCaptured,
+  });
 
   final Directory directory;
   final String sourceHead;
+  final void Function(FlutterErrorDetails details)? onFirstCaptured;
   final _seen = Expando<bool>('first-flutter-failure-forwarding');
   FlutterExceptionHandler? _original;
   FlutterExceptionHandler? _installed;
@@ -19,6 +24,7 @@ class FirstFlutterFailureCapture {
   FlutterErrorDetails? first;
   int count = 0;
   Object? persistenceError;
+  Object? publicationError;
 
   void install() {
     if (!_alive || identical(FlutterError.onError, _installed)) return;
@@ -72,6 +78,11 @@ class FirstFlutterFailureCapture {
     } catch (error) {
       // The original framework error is still forwarded and remains fatal.
       persistenceError = error;
+    }
+    try {
+      onFirstCaptured?.call(details);
+    } catch (error) {
+      publicationError = error;
     }
   }
 

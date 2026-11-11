@@ -58,6 +58,8 @@ class NativeWindowEvidenceDriver:
         user.GetWindow.argtypes = [wintypes.HWND, wintypes.UINT]
         user.GetWindow.restype = wintypes.HWND
         user.IsWindowVisible.argtypes = [wintypes.HWND]
+        user.IsWindow.argtypes = [wintypes.HWND]
+        user.IsWindow.restype = wintypes.BOOL
         user.GetClientRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
         user.GetWindowRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
         user.GetDpiForWindow.argtypes = [wintypes.HWND]
@@ -120,6 +122,8 @@ class NativeWindowEvidenceDriver:
                     continue
                 self.seen.add(request.name)
                 result = {"request": request.name, "ok": False, "sourceHead": self.source_head}
+                data = None
+                validated = False
                 try:
                     data = json.loads(request.read_text(encoding="utf-8"))
                     if set(data) != {"sourceHead", "sequence", "width", "height", "phase", "scenario"} or data["sourceHead"] != self.source_head or data["scenario"] != self.scenario:
@@ -130,6 +134,7 @@ class NativeWindowEvidenceDriver:
                     narrow = 800 if self.scenario == "supported-min800" else 714
                     if (width, height) not in {(1280, 900), (narrow, 764)}:
                         raise RuntimeError("Native window request is not a reviewed wide/narrow geometry")
+                    validated = True
                     hwnd, pid = find_owned()
                     identity = (int(hwnd), pid)
                     if self.pinned_window is None:
@@ -159,7 +164,20 @@ class NativeWindowEvidenceDriver:
                                   belowInteractiveMinimumStress=below_min_stress,
                                   productionMinimumPolicyChanged=False)
                 except Exception as error:
-                    result.update(errorType=type(error).__name__, message=str(error))
+                    # Only terminal cleanup may accept a destroyed *pinned*
+                    # HWND. A missing window in any scenario step stays fatal.
+                    closed_window_error = (isinstance(error, OSError) and getattr(error, "winerror", None) == 1400
+                                           or isinstance(error, RuntimeError) and str(error) == "Expected one visible owned application window; found 0")
+                    if (closed_window_error and validated and data is not None and data.get("phase") == "cleanup-native-wide"
+                            and self.pinned_window is not None
+                            and not user.IsWindow(self.pinned_window[0])):
+                        result.update(ok=True, phase=data["phase"],
+                                      expectedWindowAlreadyClosed=True,
+                                      processId=self.pinned_window[1], hwnd=self.pinned_window[0],
+                                      replacementWindowsTouched=False,
+                                      observedCleanupErrorType=type(error).__name__)
+                    else:
+                        result.update(errorType=type(error).__name__, message=str(error))
                 destination = self.output / request.name.replace("request", "result")
                 temporary = destination.with_suffix(".tmp")
                 temporary.write_text(json.dumps(result, indent=2), encoding="utf-8")

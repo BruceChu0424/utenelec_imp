@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../components/buttons/uten_button.dart';
 import '../../components/cards/uten_card.dart';
+import '../../components/inputs/uten_field_hint_icon.dart';
 import '../../core/responsive/breakpoint.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../../core/l10n/gen/app_localizations.dart';
@@ -56,6 +57,8 @@ class MasterDetailCard extends StatelessWidget {
   });
 
   final String title;
+  /// Kept for existing callers; displayed beside the title through the shared
+  /// accessible hint control, without a separate explanatory subtitle row.
   final String subtitle;
 
   /// 统计项；空值项自动隐藏。
@@ -142,23 +145,21 @@ class MasterDetailCard extends StatelessWidget {
     final entriesBuilder =
         inheritedMenu?.entriesBuilder ??
         (ownEntries.isEmpty ? null : () => _managementMenu(context));
-    final titleColumn = Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    final titleColumn = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
-          title,
-          style: theme.textTheme.headlineSmall?.copyWith(
-            fontWeight: FontWeight.w700,
+        Flexible(
+          child: Text(
+            title,
+            style: theme.textTheme.headlineSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
           ),
         ),
-        const SizedBox(height: UtenSpacing.s4),
-        Text(
-          subtitle,
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
+        if (subtitle.trim().isNotEmpty) ...[
+          const SizedBox(width: UtenSpacing.s4),
+          UtenFieldHintIcon(info: subtitle, dense: true),
+        ],
       ],
     );
     // 前置着色方框徽标（与基础资料 hub 卡片同一视觉语言）。

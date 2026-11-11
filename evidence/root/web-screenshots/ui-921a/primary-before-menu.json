@@ -1,0 +1,26 @@
+[
+  {
+    "level": "debug",
+    "message": "Injecting <script> tag. Using callback.",
+    "timestamp": "2026-11-11T06:38:17.472Z",
+    "url": "http://127.0.0.1:28631/flutter_bootstrap.js"
+  },
+  {
+    "level": "error",
+    "message": "══╡ EXCEPTION CAUGHT BY WIDGETS LIBRARY ╞═══════════════════════════════════════════════════════════\nThe following assertion was thrown building Expanded(flex: 1):\nA _RenderLayoutBuilder0 was mutated in _RenderLayoutBuilder.performLayout.\nThe RenderObject was mutated when none of its ancestors is actively performing layout.\nThe RenderObject being mutated was:\n  _RenderLayoutBuilder0#84913\nThe RenderObject that was mutating the said _RenderLayoutBuilder0 was:\n  _RenderLayoutBuilder#ec5b2 relayoutBoundary=up8 NEEDS-LAYOUT NEEDS-COMPOSITING-BITS-UPDATE\n\nWidget creation tracking is currently disabled. Enabling it enables improved error messages. It can\nbe enabled by passing `--track-widget-creation` to `flutter run` or `flutter test`.\n\nWhen the exception was thrown, this was the stack\n\n════════════════════════════════════════════════════════════════════════════════════════════════════",
+    "timestamp": "2026-11-11T06:39:06.555Z",
+    "url": "http://127.0.0.1:28631/main.dart.js"
+  },
+  {
+    "level": "error",
+    "message": "Another exception was thrown: Assertion failed",
+    "timestamp": "2026-11-11T06:39:20.323Z",
+    "url": "http://127.0.0.1:28631/main.dart.js"
+  },
+  {
+    "level": "error",
+    "message": "Another exception was thrown: Assertion failed",
+    "timestamp": "2026-11-11T06:39:20.558Z",
+    "url": "http://127.0.0.1:28631/main.dart.js"
+  }
+]

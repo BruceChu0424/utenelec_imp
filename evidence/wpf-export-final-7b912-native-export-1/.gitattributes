@@ -1,0 +1,8 @@
+*.log binary
+*.json binary
+*.txt binary
+*.exit binary
+*.png binary
+*.jpg binary
+.gitignore text eol=lf
+.gitattributes text eol=lf

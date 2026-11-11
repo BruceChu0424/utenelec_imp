@@ -1,0 +1,13 @@
+-------------------------------------------------------------------------------
+Test set: com.uten.imp.businesschain.AggregateMaterialOrderEndToEndTest
+-------------------------------------------------------------------------------
+Tests run: 35, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 1095 s <<< FAILURE! -- in com.uten.imp.businesschain.AggregateMaterialOrderEndToEndTest
+com.uten.imp.businesschain.AggregateMaterialOrderEndToEndTest.twentyMaterialLinesCompleteWithinDeadlineBudget -- Time elapsed: 27.12 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 20 material lines must complete within 10000ms, took 10214 ==> expected: <true> but was: <false>
+	at org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:158)
+	at org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:139)
+	at org.junit.jupiter.api.AssertTrue.failNotTrue(AssertTrue.java:69)
+	at org.junit.jupiter.api.AssertTrue.assertTrue(AssertTrue.java:41)
+	at org.junit.jupiter.api.Assertions.assertTrue(Assertions.java:228)
+	at com.uten.imp.businesschain.AggregateMaterialOrderEndToEndTest.twentyMaterialLinesCompleteWithinDeadlineBudget(AggregateMaterialOrderEndToEndTest.java:998)
+

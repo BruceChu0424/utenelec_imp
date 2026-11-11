@@ -1,0 +1,179 @@
+{
+  "status" : "prep only: new synthetic finance actor and unassigned accounts; no Web configuration, GL generation or return approval executed",
+  "fixtureTag" : "a635aa02",
+  "database" : "jdbc:postgresql://127.0.0.1:26630/feedback",
+  "syntheticFinance" : {
+    "permissions" : [ "payment_style:view", "payment_style:edit", "payment_style:create", "finance_post:execute", "finance_report:view", "finance:view:all" ],
+    "login" : "USR-b-finance-ui-a635aa02",
+    "userId" : "0b887a85-239a-4118-8d3f-246b166a7189",
+    "passwordSource" : "private runtime syntheticAccountPassword; no credential in this seed",
+    "employeeId" : "73b11ea4-25fd-4fd5-ac0c-132c04514de5",
+    "isSuperAdmin" : false
+  },
+  "roleCandidates" : [ {
+    "roleKey" : "ACCOUNT_BALANCE_CLEARING",
+    "description" : "上线账户余额核对差额的权益清算科目；只能由不可变余额调整批次使用",
+    "requiredCategory" : "EQUITY",
+    "existingStyleId" : "40000000-0000-4000-8100-000000000001",
+    "existingStyleName" : "账户余额调整清算",
+    "usableBefore" : true,
+    "action" : "KEEP_EXISTING_USABLE_MAPPING"
+  }, {
+    "roleKey" : "AP_CONTROL",
+    "description" : "采购立账与付款的应付账款科目",
+    "requiredCategory" : "LIABILITY",
+    "existingStyleId" : "52300000-0000-4000-8100-000000000001",
+    "existingStyleName" : "应付账款控制",
+    "usableBefore" : true,
+    "action" : "KEEP_EXISTING_USABLE_MAPPING"
+  }, {
+    "roleKey" : "AR_CONTROL",
+    "description" : "销售立账与收款的应收账款科目",
+    "requiredCategory" : "ACCOUNT",
+    "existingStyleId" : "40700000-0000-4000-8100-000000000003",
+    "existingStyleName" : "应收账款控制",
+    "usableBefore" : true,
+    "action" : "KEEP_EXISTING_USABLE_MAPPING"
+  }, {
+    "roleKey" : "BANK_FEE_EXPENSE",
+    "description" : "收款手续费科目",
+    "requiredCategory" : "EXPENSE",
+    "existingStyleId" : "0f735157-cb6b-419b-a88c-12cb3be5cbe4",
+    "existingStyleName" : "手续费",
+    "usableBefore" : true,
+    "action" : "KEEP_EXISTING_USABLE_MAPPING"
+  }, {
+    "roleKey" : "CUSTOMER_ADVANCE",
+    "description" : "客户预收现金负债；只有显式转销才可借记并冲减正式应收",
+    "requiredCategory" : "LIABILITY",
+    "existingStyleId" : "37900000-0000-4000-8100-000000000001",
+    "existingStyleName" : "客户预收款",
+    "usableBefore" : true,
+    "action" : "KEEP_EXISTING_USABLE_MAPPING"
+  }, {
+    "roleKey" : "FX_GAIN_LOSS",
+    "description" : "收付款汇兑损益科目",
+    "requiredCategory" : "EXPENSE",
+    "existingStyleId" : "b7d28df6-26f4-4aa0-a2e6-379b34606cab",
+    "existingStyleName" : "汇兑损益",
+    "usableBefore" : true,
+    "action" : "KEEP_EXISTING_USABLE_MAPPING"
+  }, {
+    "roleKey" : "INVENTORY_ASSET",
+    "description" : "采购立账与成本结转的库存商品科目",
+    "requiredCategory" : "ACCOUNT",
+    "existingStyleId" : null,
+    "existingStyleName" : null,
+    "usableBefore" : false,
+    "candidateStyleId" : "4c1a909f-52d9-4303-aab2-e987f3431592",
+    "candidateStyleCode" : "SK000001",
+    "candidateStyleName" : "B验收合成-INVENTORY_ASSET-a635aa02",
+    "candidateCategory" : "ACCOUNT",
+    "action" : "PREPARED_UNASSIGNED: Root must configure through actual ordinary finance UI"
+  }, {
+    "roleKey" : "PROCUREMENT_GRNI_PENDING",
+    "description" : "收货已入账、尚待对账确认的供应商暂估债务",
+    "requiredCategory" : "LIABILITY",
+    "existingStyleId" : null,
+    "existingStyleName" : null,
+    "usableBefore" : false,
+    "candidateStyleId" : "b9a28d09-8432-4aef-adb2-39561e46f519",
+    "candidateStyleCode" : "SK000002",
+    "candidateStyleName" : "B验收合成-PROCUREMENT_GRNI_PENDING-a635aa02",
+    "candidateCategory" : "LIABILITY",
+    "action" : "PREPARED_UNASSIGNED: Root must configure through actual ordinary finance UI"
+  }, {
+    "roleKey" : "PROCUREMENT_RETURN_PENDING_ASSET",
+    "description" : "实物已退回、尚待确认供应商贷项的应收资产",
+    "requiredCategory" : "ACCOUNT",
+    "existingStyleId" : null,
+    "existingStyleName" : null,
+    "usableBefore" : false,
+    "candidateStyleId" : "9d8e8bd1-c11d-403e-8973-be134740d94f",
+    "candidateStyleCode" : "SK000003",
+    "candidateStyleName" : "B验收合成-PROCUREMENT_RETURN_PENDING_ASSET-a635aa02",
+    "candidateCategory" : "ACCOUNT",
+    "action" : "PREPARED_UNASSIGNED: Root must configure through actual ordinary finance UI"
+  }, {
+    "roleKey" : "PROCUREMENT_RETURN_VARIANCE",
+    "description" : "采购与委外退货商业贷项和库存实际成本差额，正数损失负数收益",
+    "requiredCategory" : "EXPENSE",
+    "existingStyleId" : null,
+    "existingStyleName" : null,
+    "usableBefore" : false,
+    "candidateStyleId" : "a3be929d-eebf-4bb5-9e76-c0876988d2f3",
+    "candidateStyleCode" : "SK000004",
+    "candidateStyleName" : "B验收合成-PROCUREMENT_RETURN_VARIANCE-a635aa02",
+    "candidateCategory" : "EXPENSE",
+    "action" : "PREPARED_UNASSIGNED: Root must configure through actual ordinary finance UI"
+  }, {
+    "roleKey" : "SALES_COST",
+    "description" : "销售成本结转科目",
+    "requiredCategory" : "EXPENSE",
+    "existingStyleId" : null,
+    "existingStyleName" : null,
+    "usableBefore" : false,
+    "candidateStyleId" : "00dac92d-3aaf-48c3-b1b1-914ba6597de7",
+    "candidateStyleCode" : "SK000005",
+    "candidateStyleName" : "B验收合成-SALES_COST-a635aa02",
+    "candidateCategory" : "EXPENSE",
+    "action" : "PREPARED_UNASSIGNED: Root must configure through actual ordinary finance UI"
+  }, {
+    "roleKey" : "SALES_REVENUE",
+    "description" : "销售立账的销售收入科目",
+    "requiredCategory" : "INCOME",
+    "existingStyleId" : null,
+    "existingStyleName" : null,
+    "usableBefore" : false,
+    "candidateStyleId" : "2c31c181-cfa3-4256-ba3d-7873ffa5e009",
+    "candidateStyleCode" : "SK000006",
+    "candidateStyleName" : "B验收合成-SALES_REVENUE-a635aa02",
+    "candidateCategory" : "INCOME",
+    "action" : "PREPARED_UNASSIGNED: Root must configure through actual ordinary finance UI"
+  }, {
+    "roleKey" : "SUBCONTRACT_ABNORMAL_LOSS",
+    "description" : "超过合同允许损耗的委外材料账面损失；不得与供应商赔偿或应付抵销净额记账",
+    "requiredCategory" : "EXPENSE",
+    "existingStyleId" : "37600000-0000-4000-8100-000000000001",
+    "existingStyleName" : "委外超耗异常损失",
+    "usableBefore" : true,
+    "action" : "KEEP_EXISTING_USABLE_MAPPING"
+  }, {
+    "roleKey" : "SUBCONTRACT_LOSS_RECOVERY",
+    "description" : "已确认委外异常损失赔偿的追回科目",
+    "requiredCategory" : "INCOME",
+    "existingStyleId" : "37300000-0000-4000-8100-000000000002",
+    "existingStyleName" : "委外异常损失追回",
+    "usableBefore" : true,
+    "action" : "KEEP_EXISTING_USABLE_MAPPING"
+  }, {
+    "roleKey" : "SUPPLIER_CLAIM_RECEIVABLE",
+    "description" : "供应商赔偿、索赔和现金追回的其它应收控制科目",
+    "requiredCategory" : "ACCOUNT",
+    "existingStyleId" : "37300000-0000-4000-8100-000000000001",
+    "existingStyleName" : "供应商索赔应收",
+    "usableBefore" : true,
+    "action" : "KEEP_EXISTING_USABLE_MAPPING"
+  }, {
+    "roleKey" : "SUPPLIER_PREPAYMENT_ASSET",
+    "description" : "供应商实际预付资产；须财务明确对应科目",
+    "requiredCategory" : "ACCOUNT",
+    "existingStyleId" : null,
+    "existingStyleName" : null,
+    "usableBefore" : false,
+    "candidateStyleId" : "cdc43873-2228-49fd-b27f-c07f40aac7e4",
+    "candidateStyleCode" : "SK000007",
+    "candidateStyleName" : "B验收合成-SUPPLIER_PREPAYMENT_ASSET-a635aa02",
+    "candidateCategory" : "ACCOUNT",
+    "action" : "PREPARED_UNASSIGNED: Root must configure through actual ordinary finance UI"
+  } ],
+  "roleMappingsUnchanged" : true,
+  "oldAccountsUnchanged" : true,
+  "oldPaymentStylesUnchanged" : true,
+  "publicCreationService" : "PaymentStyleService.create / POST /api/master/payment-styles; new ordinary syntheticFinance with required payment_style:create",
+  "publicConfigurationService" : "SystemPostingStyleService.configure / PUT /api/finance/posting-style-roles/{roleKey}; {styleId,expectedUpdatedAt}",
+  "configurationUi" : "/basicinfo/payment-style > 系统科目用途 > 对应用途类别下拉 > 保存用途",
+  "glGenerationUi" : "NO EXISTING FLUTTER BUTTON/CALLER FOUND; future ordinary public HTTP generation and actual GL report UI must be separate evidence",
+  "glPublicHttp" : "POST /api/finance/gl/generate?period=YYYY-MM",
+  "glReadUi" : "/finance/report/gl"
+}

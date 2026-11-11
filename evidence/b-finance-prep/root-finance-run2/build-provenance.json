@@ -1,0 +1,15 @@
+{
+  "kind": "prep; reused read-only Root eba5 program main bytes, only fixture overlay compiled",
+  "sourceBuild": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-20261110\\evidence\\root\\b-ui-prep-eba5-build",
+  "privateBuild": "D:\\Projects\\uten_imp_worktrees\\feedback-b-finance-prep-20261111\\evidence\\b-finance-prep\\build-root-finance-run1",
+  "sourceHeadObserved": "55d74b716acf49e8b6d81024f062cdebe46e518b",
+  "copiedAtUtc": "2026-11-11T11:50:41.741143+00:00",
+  "originalMain": {
+    "files": 8142,
+    "sha256": "f9c1c6448a1a5c67367e76306e79708c4faaf7130f438a40c77ae7d2f27d710b"
+  },
+  "copiedMain": {
+    "files": 8142,
+    "sha256": "f9c1c6448a1a5c67367e76306e79708c4faaf7130f438a40c77ae7d2f27d710b"
+  }
+}

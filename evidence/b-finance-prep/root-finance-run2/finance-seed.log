@@ -1,0 +1,50 @@
+[INFO] Scanning for projects...
+[INFO] 
+[INFO] ----------------------< com.uten:uten-imp-server >----------------------
+[INFO] Building uten-imp-server 0.1.0
+[INFO]   from pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- surefire:3.5.6:test (default-cli) @ uten-imp-server ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running com.uten.imp.businesschain.FeedbackBFinanceUiPrepTest
+04:50:48.152 [main] INFO org.springframework.test.context.support.AnnotationConfigContextLoaderUtils -- Could not detect default configuration classes for test class [com.uten.imp.businesschain.FeedbackBFinanceUiPrepTest]: FeedbackBFinanceUiPrepTest does not declare any static, non-private, non-final, nested classes annotated with @Configuration.
+04:50:48.858 [main] INFO org.springframework.boot.test.context.SpringBootTestContextBootstrapper -- Found @SpringBootConfiguration com.uten.imp.UtenImpApplication for test class com.uten.imp.businesschain.FeedbackBFinanceUiPrepTest
+04:50:48.937 [main] INFO org.springframework.test.context.support.AnnotationConfigContextLoaderUtils -- Could not detect default configuration classes for test class [com.uten.imp.businesschain.FeedbackBFinanceUiPrepTest]: FeedbackBFinanceUiPrepTest does not declare any static, non-private, non-final, nested classes annotated with @Configuration.
+04:50:48.940 [main] INFO org.springframework.boot.test.context.SpringBootTestContextBootstrapper -- Found @SpringBootConfiguration com.uten.imp.UtenImpApplication for test class com.uten.imp.businesschain.FeedbackBFinanceUiPrepTest
+2026-11-11T04:50:49.378-07:00  INFO 35172 --- [uten-imp-server] [           main] c.u.i.b.FeedbackBFinanceUiPrepTest       : Starting FeedbackBFinanceUiPrepTest using Java 21.0.11 with PID 35172 (started by bruce in D:\Projects\uten_imp_worktrees\feedback-b-finance-prep-20261111\server)
+2026-11-11T04:50:49.379-07:00 DEBUG 35172 --- [uten-imp-server] [           main] c.u.i.b.FeedbackBFinanceUiPrepTest       : Running with Spring Boot v4.1.1, Spring v7.0.9
+2026-11-11T04:50:49.380-07:00  INFO 35172 --- [uten-imp-server] [           main] c.u.i.b.FeedbackBFinanceUiPrepTest       : The following 1 profile is active: "dev"
+2026-11-11T04:50:57.164-07:00  INFO 35172 --- [uten-imp-server] [           main] org.flywaydb.core.FlywayExecutor         : Database: jdbc:postgresql://127.0.0.1:26630/feedback (PostgreSQL 16.15)
+2026-11-11T04:50:57.877-07:00  INFO 35172 --- [uten-imp-server] [           main] o.f.core.internal.command.DbMigrate      : Current version of schema "public": 1131
+2026-11-11T04:50:57.891-07:00  INFO 35172 --- [uten-imp-server] [           main] o.f.core.internal.command.DbMigrate      : Schema "public" is up to date. No migration necessary.
+2026-11-11T04:50:59.021-07:00  INFO 35172 --- [uten-imp-server] [           main] o.s.o.j.p.SpringPersistenceUnitInfo      : No LoadTimeWeaver setup: ignoring JPA class transformer
+2026-11-11T04:50:59.073-07:00  INFO 35172 --- [uten-imp-server] [           main] com.zaxxer.hikari.HikariDataSource       : uten-imp - Starting...
+2026-11-11T04:50:59.112-07:00  INFO 35172 --- [uten-imp-server] [           main] com.zaxxer.hikari.HikariDataSource       : uten-imp - Start completed.
+2026-11-11T04:51:06.100-07:00  INFO 35172 --- [uten-imp-server] [           main] j.LocalContainerEntityManagerFactoryBean : Initialized JPA EntityManagerFactory for persistence unit 'default'
+2026-11-11T04:51:13.652-07:00  INFO 35172 --- [uten-imp-server] [           main] c.u.i.c.storage.LocalDiskStorageService  : Local attachment storage enabled at D:\Projects\uten_imp_worktrees\feedback-b-finance-prep-20261111\evidence\b-finance-prep\root-finance-run2\tmp\uten-test-attachments-35172
+2026-11-11T04:51:22.839-07:00  INFO 35172 --- [uten-imp-server] [           main] com.zaxxer.hikari.HikariDataSource       : document-scan-evidence - Starting...
+2026-11-11T04:51:22.840-07:00  INFO 35172 --- [uten-imp-server] [           main] com.zaxxer.hikari.HikariDataSource       : document-scan-evidence - Start completed.
+2026-11-11T04:51:32.330-07:00  INFO 35172 --- [uten-imp-server] [knowledge-index] c.u.imp.features.ai.chat.AiDocKnowledge  : AI knowledge index: 295 documents, 2096 chunks, 85 glossary terms, 95649 terms, 577655 postings, about 12383 KB, built in 4472 ms
+2026-11-11T04:51:34.719-07:00  INFO 35172 --- [uten-imp-server] [           main] c.u.i.f.r.e.ReportExportBuildIdentity    : Report export build fingerprint initialized in 3757 ms
+2026-11-11T04:51:39.230-07:00  INFO 35172 --- [uten-imp-server] [           main] o.s.b.a.e.web.EndpointLinksResolver      : Exposing 1 endpoint beneath base path '/actuator'
+2026-11-11T04:51:39.388-07:00  INFO 35172 --- [uten-imp-server] [           main] c.u.i.b.FeedbackBFinanceUiPrepTest       : Started FeedbackBFinanceUiPrepTest in 50.39 seconds (process running for 52.137)
+2026-11-11T04:51:40.186-07:00  INFO 35172 --- [uten-imp-server] [           main] org.testcontainers.images.PullPolicy     : Image pull policy will be performed by: DefaultPullPolicy()
+2026-11-11T04:51:40.189-07:00  INFO 35172 --- [uten-imp-server] [           main] o.t.utility.ImageNameSubstitutor         : Image name substitution will be performed by: DefaultImageNameSubstitutor (composite of 'ConfigurationFileImageNameSubstitutor' and 'PrefixingImageNameSubstitutor')
+Synthetic finance preparation committed; seed contains no credentials: D:\Projects\uten_imp_worktrees\feedback-b-finance-prep-20261111\evidence\b-finance-prep\root-finance-run2\finance-seed.json
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 53.13 s -- in com.uten.imp.businesschain.FeedbackBFinanceUiPrepTest
+[INFO] 
+[INFO] Results:
+[INFO] 
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0
+[INFO] 
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD SUCCESS
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  56.410 s
+[INFO] Finished at: 2026-11-11T04:51:41-07:00
+[INFO] ------------------------------------------------------------------------

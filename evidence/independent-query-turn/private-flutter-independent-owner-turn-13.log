@@ -1,0 +1,41 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/feedback-independent-review-20261111/test/independent/scoped_query_turn_retirement_test.dart
+00:00 +0: same event immediate result unchanged
+00:00 +1: same event immediate result query-only
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown while running async test code:
+Expected: throws <Instance of 'UiWorkCancelled'>
+  Actual: <Instance of 'Future<PagedResult<int>>'>
+   Which: emitted <Instance of 'PagedResult<int>'>
+currentQuery is required specifically to retire results for a changed live query
+
+When the exception was thrown, this was the stack:
+#0      fail (package:matcher/src/expect/expect.dart:187:31)
+#1      _expect.<anonymous closure> (package:matcher/src/expect/expect.dart:155:13)
+<asynchronous suspension>
+<asynchronous suspension>
+#8      expectLater.<anonymous closure> (package:flutter_test/src/widget_tester.dart:508:19)
+<asynchronous suspension>
+#9      main.<anonymous closure>.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-independent-review-20261111/test/independent/scoped_query_turn_retirement_test.dart:44:11)
+<asynchronous suspension>
+<asynchronous suspension>
+#11     main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-independent-review-20261111/test/independent/scoped_query_turn_retirement_test.dart:36:7)
+<asynchronous suspension>
+#12     testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#13     TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided 8 frames from dart:async and package:stack_trace)
+
+The exception was caught asynchronously.
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:00 +1 -1: same event immediate result query-only [E]
+  Test failed. See exception logs above.
+  The test description was: same event immediate result query-only
+  
+00:00 +1 -1: same event immediate result explicit-invalidate
+00:00 +2 -1: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/feedback-independent-review-20261111/test/independent/scoped_query_turn_retirement_test.dart: same event immediate result query-only

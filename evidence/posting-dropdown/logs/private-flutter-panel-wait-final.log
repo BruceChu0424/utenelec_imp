@@ -1,0 +1,11 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/feedback-posting-dropdown-20261111/test/features/finance/posting_style_role_panel_test.dart
+00:00 +0: missing role saves matching active account; configured role remains readonly
+00:00 +1: viewing finance actor with no account edit cannot configure
+00:01 +2: stale role refreshes without losing selected account or pretending success
+00:01 +3: role refresh uses one waiting card and finishes once
+00:01 +4: role save uses one waiting card and finishes once
+00:01 +5: lost role reply preserves choice and requires a read before another write
+00:01 +6: disposing a saving panel removes its wait and rereads without replay
+00:01 +7: repository retains raw server stamp and rejects invalid page scope before PUT
+00:02 +8: All tests passed!

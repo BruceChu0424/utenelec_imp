@@ -1,0 +1,121 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/feedback-posting-dropdown-20261111/test/features/finance/posting_style_role_full_app_probe_test.dart
+00:00 +0: real App posting drawer mouse options=3 semantics
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following assertion was thrown running a test:
+The finder "Found 0 widgets with widget matching predicate (considering only hit-testable widgets
+with a RenderBox): []" (used in a call to "tap()") could not find any matching widgets.
+
+When the exception was thrown, this was the stack:
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2095:7)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1947:12)
+#2      WidgetController.tap (package:flutter_test/src/controller.dart:1080:7)
+#3      _mountApp (file:///D:/Projects/uten_imp_worktrees/feedback-posting-dropdown-20261111/test/features/finance/posting_style_role_full_app_probe_test.dart:158:16)
+<asynchronous suspension>
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-posting-dropdown-20261111/test/features/finance/posting_style_role_full_app_probe_test.dart:173:18)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+The test description was:
+  real App posting drawer mouse options=3 semantics
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:02 +0 -1: real App posting drawer mouse options=3 semantics [E]
+  Test failed. See exception logs above.
+  The test description was: real App posting drawer mouse options=3 semantics
+  
+00:02 +0 -1: real App posting drawer keyboard options=3 semantics
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following assertion was thrown running a test:
+The finder "Found 0 widgets with widget matching predicate (considering only hit-testable widgets
+with a RenderBox): []" (used in a call to "tap()") could not find any matching widgets.
+
+When the exception was thrown, this was the stack:
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2095:7)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1947:12)
+#2      WidgetController.tap (package:flutter_test/src/controller.dart:1080:7)
+#3      _mountApp (file:///D:/Projects/uten_imp_worktrees/feedback-posting-dropdown-20261111/test/features/finance/posting_style_role_full_app_probe_test.dart:158:16)
+<asynchronous suspension>
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-posting-dropdown-20261111/test/features/finance/posting_style_role_full_app_probe_test.dart:173:18)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+The test description was:
+  real App posting drawer keyboard options=3 semantics
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:03 +0 -2: real App posting drawer keyboard options=3 semantics [E]
+  Test failed. See exception logs above.
+  The test description was: real App posting drawer keyboard options=3 semantics
+  
+00:03 +0 -2: real App posting drawer mouse options=5 semantics
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following assertion was thrown running a test:
+The finder "Found 0 widgets with widget matching predicate (considering only hit-testable widgets
+with a RenderBox): []" (used in a call to "tap()") could not find any matching widgets.
+
+When the exception was thrown, this was the stack:
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2095:7)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1947:12)
+#2      WidgetController.tap (package:flutter_test/src/controller.dart:1080:7)
+#3      _mountApp (file:///D:/Projects/uten_imp_worktrees/feedback-posting-dropdown-20261111/test/features/finance/posting_style_role_full_app_probe_test.dart:158:16)
+<asynchronous suspension>
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-posting-dropdown-20261111/test/features/finance/posting_style_role_full_app_probe_test.dart:173:18)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+The test description was:
+  real App posting drawer mouse options=5 semantics
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:03 +0 -3: real App posting drawer mouse options=5 semantics [E]
+  Test failed. See exception logs above.
+  The test description was: real App posting drawer mouse options=5 semantics
+  
+00:03 +0 -3: real App posting drawer keyboard options=5 semantics
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following assertion was thrown running a test:
+The finder "Found 0 widgets with widget matching predicate (considering only hit-testable widgets
+with a RenderBox): []" (used in a call to "tap()") could not find any matching widgets.
+
+When the exception was thrown, this was the stack:
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2095:7)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1947:12)
+#2      WidgetController.tap (package:flutter_test/src/controller.dart:1080:7)
+#3      _mountApp (file:///D:/Projects/uten_imp_worktrees/feedback-posting-dropdown-20261111/test/features/finance/posting_style_role_full_app_probe_test.dart:158:16)
+<asynchronous suspension>
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-posting-dropdown-20261111/test/features/finance/posting_style_role_full_app_probe_test.dart:173:18)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+The test description was:
+  real App posting drawer keyboard options=5 semantics
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:04 +0 -4: real App posting drawer keyboard options=5 semantics [E]
+  Test failed. See exception logs above.
+  The test description was: real App posting drawer keyboard options=5 semantics
+  
+00:04 +0 -4: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/feedback-posting-dropdown-20261111/test/features/finance/posting_style_role_full_app_probe_test.dart: real App posting drawer keyboard options=3 semantics
+  D:/Projects/uten_imp_worktrees/feedback-posting-dropdown-20261111/test/features/finance/posting_style_role_full_app_probe_test.dart: real App posting drawer keyboard options=5 semantics
+  D:/Projects/uten_imp_worktrees/feedback-posting-dropdown-20261111/test/features/finance/posting_style_role_full_app_probe_test.dart: real App posting drawer mouse options=3 semantics
+  D:/Projects/uten_imp_worktrees/feedback-posting-dropdown-20261111/test/features/finance/posting_style_role_full_app_probe_test.dart: real App posting drawer mouse options=5 semantics

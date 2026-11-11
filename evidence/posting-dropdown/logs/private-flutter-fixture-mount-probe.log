@@ -1,0 +1,34 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/feedback-posting-dropdown-20261111/test/features/finance/posting_style_role_full_app_probe_test.dart
+00:00 +0: real App posting drawer mouse options=3 semantics
+POSTING-MOUNT reads=2 panels=1 dropdowns=1 scheduled=true progress=1
+POSTING-MOUNT labels=[加载类别详情失败，请稍后重试, 系统科目用途, 系统科目用途, 保存用途]
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following assertion was thrown running a test:
+pumpAndSettle timed out
+
+When the exception was thrown, this was the stack:
+#0      pumpAndSettleWithIo.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-posting-dropdown-20261111/test/support/pump_until.dart:34:9)
+<asynchronous suspension>
+#1      TestAsyncUtils.guard.<anonymous closure> (package:flutter_test/src/test_async_utils.dart:130:27)
+<asynchronous suspension>
+#2      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-posting-dropdown-20261111/test/features/finance/posting_style_role_full_app_probe_test.dart:270:13)
+<asynchronous suspension>
+#3      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#4      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+The test description was:
+  real App posting drawer mouse options=3 semantics
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:19 +0 -1: real App posting drawer mouse options=3 semantics [E]
+  Test failed. See exception logs above.
+  The test description was: real App posting drawer mouse options=3 semantics
+  
+00:20 +0 -1: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/feedback-posting-dropdown-20261111/test/features/finance/posting_style_role_full_app_probe_test.dart: real App posting drawer mouse options=3 semantics

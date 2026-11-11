@@ -1,0 +1,89 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/feedback-posting-dropdown-20261111/test/features/finance/posting_style_role_panel_test.dart
+00:00 +0: missing role saves matching active account; configured role remains readonly
+00:01 +1: viewing finance actor with no account edit cannot configure
+00:01 +2: stale role refreshes without losing selected account or pretending success
+00:01 +3: role refresh uses one waiting card and finishes once
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: exactly one matching candidate
+  Actual: _TypeWidgetFinder:<Found 0 widgets with type "UtenBusyOverlayCard": []>
+   Which: means none were found but one was expected
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-posting-dropdown-20261111/test/features/finance/posting_style_role_panel_test.dart:219:11)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/feedback-posting-dropdown-20261111/test/features/finance/posting_style_role_panel_test.dart line 219
+The test description was:
+  role refresh uses one waiting card and finishes once
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:01 +3 -1: role refresh uses one waiting card and finishes once [E]
+  Test failed. See exception logs above.
+  The test description was: role refresh uses one waiting card and finishes once
+  
+00:01 +3 -1: role save uses one waiting card and finishes once
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: exactly one matching candidate
+  Actual: _TypeWidgetFinder:<Found 0 widgets with type "UtenBusyOverlayCard": []>
+   Which: means none were found but one was expected
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-posting-dropdown-20261111/test/features/finance/posting_style_role_panel_test.dart:219:11)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/feedback-posting-dropdown-20261111/test/features/finance/posting_style_role_panel_test.dart line 219
+The test description was:
+  role save uses one waiting card and finishes once
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:01 +3 -2: role save uses one waiting card and finishes once [E]
+  Test failed. See exception logs above.
+  The test description was: role save uses one waiting card and finishes once
+  
+00:01 +3 -2: lost role reply preserves choice and requires a read before another write
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: null
+  Actual: <Closure: () => void>
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-posting-dropdown-20261111/test/features/finance/posting_style_role_panel_test.dart:241:7)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/feedback-posting-dropdown-20261111/test/features/finance/posting_style_role_panel_test.dart line 241
+The test description was:
+  lost role reply preserves choice and requires a read before another write
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:02 +3 -3: lost role reply preserves choice and requires a read before another write [E]
+  Test failed. See exception logs above.
+  The test description was: lost role reply preserves choice and requires a read before another write
+  
+00:02 +3 -3: repository retains raw server stamp and rejects invalid page scope before PUT
+00:02 +4 -3: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/feedback-posting-dropdown-20261111/test/features/finance/posting_style_role_panel_test.dart: lost role reply preserves choice and requires a read before another write
+  D:/Projects/uten_imp_worktrees/feedback-posting-dropdown-20261111/test/features/finance/posting_style_role_panel_test.dart: role refresh uses one waiting card and finishes once
+  D:/Projects/uten_imp_worktrees/feedback-posting-dropdown-20261111/test/features/finance/posting_style_role_panel_test.dart: role save uses one waiting card and finishes once

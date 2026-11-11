@@ -1,0 +1,48 @@
+// Diagnostic-only native DOM metadata. Never read labels, values or credentials.
+// ignore_for_file: deprecated_member_use, avoid_web_libraries_in_flutter
+import 'dart:html' as html;
+import 'dart:js_util' as js_util;
+import 'package:uten_imp/core/diagnostics/diagnostic_log.dart';
+
+void installBrowserFocusDiagnostics() {
+  void capture(String stage, html.Event? event) {
+    final target = event?.target;
+    final element = target is html.Element ? target : null;
+    AppDiagnostics.record(
+      'diag.browser.input',
+      fields: {
+        'stage': stage,
+        'reason':
+            'documentFocus=${js_util.callMethod<bool>(html.document, 'hasFocus', const [])} targetTag=${element?.tagName} role=${element?.getAttribute('role')} activeTag=${html.document.activeElement?.tagName} hidden=${html.document.hidden}',
+      },
+    );
+  }
+
+  html.window.addEventListener(
+    'focus',
+    (event) => capture('window-focus', event),
+  );
+  html.window.addEventListener(
+    'blur',
+    (event) => capture('window-blur', event),
+  );
+  html.document.addEventListener(
+    'focusin',
+    (event) => capture('element-focusin', event),
+  );
+  html.document.addEventListener(
+    'focusout',
+    (event) => capture('element-focusout', event),
+  );
+  html.document.addEventListener(
+    'pointerdown',
+    (event) => capture('native-pointerdown', event),
+    true,
+  );
+  html.document.addEventListener(
+    'pointerup',
+    (event) => capture('native-pointerup', event),
+    true,
+  );
+  capture('installed', null);
+}

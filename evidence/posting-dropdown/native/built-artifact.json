@@ -1,0 +1,13 @@
+{
+  "source": "178e5a295091b4e817676e6fe0e224b2765fd5ae",
+  "diagnosticOnly": true,
+  "entrySha256": "f649f527c1189b0e260f40b7c83a8b92b6d6f2582f909f6d03f8309abf2ad991",
+  "browserFocusSha256": "bb5f37fc7bc0290af98ae4a10fea4093ff3e09be3eeeebbcc1c7b98958101881",
+  "mainJsSha256": "c3f940333b284791becaeafc91e8ee5c6549e093b431e18cc95b662a026cacf6",
+  "sourceMapSha256": "51a39013edf4f081cbda7384ba96549d754152505fb3b040cf978ea0a58de1d1",
+  "url": "http://127.0.0.1:28636/#/basicinfo/payment-style",
+  "browserControl": "Root only",
+  "webBuildExit": 0,
+  "noHttpBackend": true,
+  "analyzerLimitation": "host analyze reports legacy dart:js_util URI unsupported; actual Dart2js debug compilation succeeded. Wasm dry-run unsupported is not a target acceptance."
+}

@@ -1,0 +1,7 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+Analyzing 4 items...                                            
+
+  error - Target of URI doesn't exist: 'dart:js_util'. Try creating the file referenced by the URI, or try using a URI for a file that does exist - evidence\posting-diag-native\browser_focus.dart:4:8 - uri_does_not_exist
+warning - The type argument(s) of 'List' can't be inferred. Use explicit type argument(s) for 'List' - evidence\posting-diag-native\browser_focus.dart:16:82 - inference_failure_on_collection_literal
+
+2 issues found. (ran in 9.0s)

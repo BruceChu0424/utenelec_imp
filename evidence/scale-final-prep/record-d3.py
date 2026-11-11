@@ -90,6 +90,8 @@ else:
         suites.append({'file':str(path.relative_to(out)),**counts})
         for case in suite.findall('testcase'):actual[(case.get('classname',suite.get('name')),case.get('name'))]+=1
         if counts['failures'] or counts['errors'] or counts['skipped']:problems.append('failed/error/skipped JUnit suite: '+suite.get('name'))
+        if suite.findall('.//flakyFailure') or suite.findall('.//rerunFailure') or suite.findall('.//flakyError'):
+            problems.append('flaky/rerun failure remains in the original JUnit evidence: '+suite.get('name'))
     if expected-actual:problems.append('original 23 cases are missing')
     log=(out/'logs/maven.log').read_text(encoding='utf8',errors='replace') if (out/'logs/maven.log').exists() else ''
     physical_log=(out/'physical/physical.log').read_text(encoding='utf8',errors='replace') if (out/'physical/physical.log').exists() else ''
@@ -101,6 +103,10 @@ else:
     if not oracle or oracle.group(1)!=oracle.group(2):problems.append('independent SQL order/amount hash is absent or mismatched')
     if 'rows=1048600 sheets=2 last=R1048599' not in physical_log or 'cancelledFilePublished=false leftoverTableTempDirs=0' not in physical_log:
         problems.append('physical 1048600-row/two-sheet/readback/cancellation evidence is absent')
+    physical_book=out/'physical/artifacts/physical-1048600.xlsx'
+    physical_size=re.search(r'D3_PHYSICAL_XLSX .*?bytes=(\d+)',physical_log)
+    if not physical_book.is_file() or not physical_size or physical_book.stat().st_size!=int(physical_size.group(1)):
+        problems.append('physical workbook original is missing or its bytes differ from the writer receipt')
     selected=re.search(r'D3_SELECTED_XLSX .*?physicalDataRows=50001.*?exactQuantityRows=50001.*?bytes=(\d+) sha256=([a-f0-9]{64}) file=([^\r\n]+)',log)
     if not selected:problems.append('real selected workbook evidence is absent')
     else:

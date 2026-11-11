@@ -1,0 +1,15 @@
+[INFO] Scanning for projects...
+[INFO] 
+[INFO] ----------------------< com.uten:uten-imp-server >----------------------
+[INFO] Building uten-imp-server 0.1.0
+[INFO]   from pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- dependency:3.10.0:build-classpath (default-cli) @ uten-imp-server ---
+[INFO] Wrote classpath file 'D:\Projects\uten_imp_worktrees\feedback-scale-verify-20261110\evidence\scale\deps-cp.txt'.
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD SUCCESS
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  4.608 s
+[INFO] Finished at: 2026-11-10T21:15:15-07:00
+[INFO] ------------------------------------------------------------------------

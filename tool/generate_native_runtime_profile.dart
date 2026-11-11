@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:uten_imp/core/runtime/client_runtime_profile.dart';
+import 'feedback_desktop_runtime_paths.dart';
 
 void main(List<String> args) {
   final options = <String, String>{};
@@ -35,11 +36,21 @@ void main(List<String> args) {
     cloud: defines['CLOUD_API_BASE_URL'] ?? '',
     controlPlane: defines['DR_CONTROL_PLANE_URL'] ?? '',
   );
+  final acceptanceLogs = feedbackDesktopNativeLogDirectory(
+    defines: defines,
+    profile: profile,
+    workspace: File.fromUri(Platform.script).parent.parent,
+  );
+  final header =
+      profile.toNativeHeader() +
+      (acceptanceLogs == null
+          ? ''
+          : '#define UTEN_FEEDBACK_NATIVE_LOG_DIRECTORY_W L${jsonEncode(acceptanceLogs)}\n');
   for (final pair in [
-    (options['header'], profile.toNativeHeader()),
+    (options['header'], header),
     (
       options['manifest'],
-      '${const JsonEncoder.withIndent('  ').convert(profile.toMetadata())}\n',
+      '${const JsonEncoder.withIndent('  ').convert({...profile.toMetadata(), 'acceptanceNativeLogDirectory': ?acceptanceLogs})}\n',
     ),
   ]) {
     final path = pair.$1;

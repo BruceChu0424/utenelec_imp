@@ -150,7 +150,7 @@ class InstantInventoryRepository {
           final stream = CompleteSummaryStream(
             frames,
             plan: CompleteReadBatchPlan.progressive,
-            frameIdleTimeout: api.summaryStreamChunkIdleTimeout,
+            frameIdleTimeout: _api.summaryStreamChunkIdleTimeout,
           );
           // This complete read owns the view's rows, so it claims the slot
           // unless another reader in the same zone already did.

@@ -35,7 +35,7 @@ import static com.uten.imp.features.finance.procurement.ProcurementApprovalContr
 import static org.assertj.core.api.Assertions.*;
 
 /** One isolated migrated context; new business data and actual approval/quality/stock/value ports in every case. */
-@EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
+@EnabledIfEnvironmentVariable(named="UTEN_REMEDIATION_B_ALLOW_SEED",matches="(?i)true")
 @SpringBootTest(properties={"spring.profiles.active=dev","uten.audit.retention.enabled=false",
     "uten.reporting.materialized-view-refresh.enabled=false","uten.production.readiness-reconcile.enabled=false",
     "uten.features.goods-owner-scope-enabled=false","uten.storage.uploads-enabled=false",

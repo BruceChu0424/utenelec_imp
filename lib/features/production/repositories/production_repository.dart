@@ -2362,7 +2362,7 @@ class ProductionDailyReportRepository {
           'executionSegmentId': executionSegmentId,
         if (executionSegmentIds.isNotEmpty)
           'executionSegmentIds': executionSegmentIds.join(','),
-        if (editingReportId != null) 'editingReportId': editingReportId,
+        'editingReportId': ?editingReportId,
         if (editingReportId != null)
           'expectedReportVersion': expectedReportVersion,
       },

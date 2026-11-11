@@ -8,6 +8,16 @@ class FeedbackWorkbenchProjectionFixture extends FeedbackLegacyMaterialUpgradeFi
  @Autowired ProductionExecutionWorkbenchService workbench;
  @Autowired org.springframework.transaction.PlatformTransactionManager transactions;
  @Autowired com.uten.imp.security.TxSessionVars tx;
+ @Test void directLotReturnsKeepTheLockedGraphAndFinalOwnerState() {
+    var fixture=new ProductionExecutionRouteGateEndToEndTest();beans.autowireBean(fixture);
+    ((java.util.concurrent.atomic.AtomicInteger)ReflectionTestUtils.getField(FullChainEndToEndTest.class,"LEGACY_SEQ")).set(db.queryForObject("SELECT COALESCE(MAX(legacy_id),10000)+100 FROM units",Integer.class));
+    for(String method:List.of("unissuedDirectMaterialCanGoToNormalStockBeforeIssueOnAnExplicitBatchRoute","unusedPreparedDirectReturnAndReversalAdjustOnlyExactPickingInstructions")) {
+        fixture.prepare();
+        try {ReflectionTestUtils.invokeMethod(fixture,method);}
+        finally {fixture.logout();}
+    }
+    System.out.println("DIRECT_LOT_RETURN real PostgreSQL ordinary source graph, final return/terminal reverse, exact picking instructions and forbidden generic reversal boundaries verified");
+ }
     @Test void realWorkbenchSqlKeepsPartialMaterialAndWorkshopAuthorityIndependent() {
         var fixture=new WorkshopPublicSurplusEndToEndTest();beans.autowireBean(fixture);fixture.prepare();
         ((java.util.concurrent.atomic.AtomicInteger)ReflectionTestUtils.getField(FullChainEndToEndTest.class,"LEGACY_SEQ")).set(db.queryForObject("SELECT COALESCE(MAX(legacy_id),10000)+100 FROM units",Integer.class));

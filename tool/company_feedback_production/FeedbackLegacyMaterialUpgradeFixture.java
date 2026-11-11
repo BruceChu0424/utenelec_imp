@@ -27,6 +27,9 @@ class FeedbackLegacyMaterialUpgradeFixture {
    String port=System.getenv("AUDIT_KIT_PG_PORT");assertTrue(port.matches("[1-9][0-9]+"));
    FixtureDatabaseProperties.bindSameRole(registry,()->System.getenv().getOrDefault("AUDIT_KIT_JDBC","jdbc:postgresql://127.0.0.1:"+port+"/"+System.getenv().getOrDefault("AUDIT_KIT_DATABASE","audit_kit")),()->System.getenv().getOrDefault("AUDIT_KIT_USERNAME","postgres"),()->System.getenv().getOrDefault("AUDIT_KIT_PASSWORD","fixture-only"));
    if(System.getenv("AUDIT_KIT_TARGET")!=null) registry.add("spring.flyway.target",()->System.getenv("AUDIT_KIT_TARGET"));
+   if(System.getenv("AUDIT_JWT_SECRET")!=null) registry.add("uten.jwt.secret",()->System.getenv("AUDIT_JWT_SECRET"));
+   if(System.getenv("AUDIT_HMAC_KEY")!=null) registry.add("uten.crypto.hmac-key",()->System.getenv("AUDIT_HMAC_KEY"));
+   if(System.getenv("AUDIT_PGP_MASTER_KEY")!=null) registry.add("uten.crypto.pgp-master-key",()->System.getenv("AUDIT_PGP_MASTER_KEY"));
    registry.add("uten.storage.local-dir",()->System.getProperty("java.io.tmpdir")+"/attachments");
  }
  @Autowired AutowireCapableBeanFactory beans; @Autowired JdbcTemplate db; @Autowired ProductionDailyReportService reports;
@@ -60,6 +63,40 @@ class FeedbackLegacyMaterialUpgradeFixture {
      System.out.println("OLD_DRAFT "+kind+" "+draft+" quantity=3 status=0");
    }
    Files.writeString(store.resolve("post-upgrade-input.json"),json.writeValueAsString(extra));Files.writeString(store.resolve("legacy-segment.txt"),segment.toString());Files.writeString(store.resolve("legacy-actor.txt"),w.superAdminUserId().toString());
+   oldThreeMaterialCases();
+ }
+ @Test void oldThreeOnly() throws Exception {
+   assertEquals("1128",db.queryForObject("SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1",String.class));
+   oldThreeMaterialCases();
+ }
+ private void oldThreeMaterialCases() throws Exception {
+   Object h=Class.forName("com.uten.imp.businesschain.FeedbackThreeMaterialFixture").getDeclaredConstructor().newInstance();
+   beans.autowireBean(h);ReflectionTestUtils.invokeMethod(h,"prepare");
+   FullChainEndToEndTest fixture=(FullChainEndToEndTest)ReflectionTestUtils.getField(h,"fixture");
+   ((java.util.concurrent.atomic.AtomicInteger)ReflectionTestUtils.getField(FullChainEndToEndTest.class,"LEGACY_SEQ")).set(db.queryForObject("SELECT COALESCE(MAX(legacy_id),10000)+100 FROM units",Integer.class));
+   for(String mode:List.of("create","edit","approve")) {
+     Object task=ReflectionTestUtils.invokeMethod(h,"createStartedTask","old-three-"+mode+UUID.randomUUID().toString().substring(0,7),false,"10000",true,new BigDecimal("0.5"));
+     UUID segment=ReflectionTestUtils.invokeMethod(task,"segment"),workshop=ReflectionTestUtils.invokeMethod(task,"workshop");
+     FullChainEndToEndTest.World world=ReflectionTestUtils.invokeMethod(task,"world");
+     UUID reporter=fixture.createUserWithPerms(world,"three-reporter"+UUID.randomUUID(),"production_daily_report:view","production_daily_report:create","production_daily_report:edit","production_execution:view");
+     UUID approver=fixture.createUserWithPerms(world,"three-approver"+UUID.randomUUID(),"production_daily_report:view","production_daily_report:approve","production_execution:view");
+     for(UUID actor:List.of(reporter,approver))db.update("UPDATE employees SET department_id=? WHERE id=(SELECT employee_id FROM users WHERE id=?)",workshop,actor);
+     fixture.loginAs(reporter);
+     List<ReportablePlanLine> sources=ReflectionTestUtils.invokeMethod(h,"sources",task);
+     DailyReportSaveRequest request=ReflectionTestUtils.invokeMethod(h,"reportRequest",task,sources.getFirst(),"6000","5000");
+     request.getItems().getFirst().setOverLimitReason("旧版真实草稿六千，原因不能扩大物料配套额度");
+     List<UUID> demands=db.queryForList("SELECT id FROM production_material_demands WHERE execution_segment_id=? AND NOT is_deleted ORDER BY id",UUID.class,segment);
+     assertEquals(3,demands.size());List<DailyReportMaterialUsageLine> usages=new ArrayList<>();
+     for(UUID demand:demands) {
+       assertEquals(0,new BigDecimal("5000").compareTo(db.queryForObject("SELECT fn_execution_material_net_issued_qty(?)",BigDecimal.class,demand)));
+       var usage=new DailyReportMaterialUsageLine();usage.setDemandId(demand);usage.setQtyBase(new BigDecimal("5000"));usages.add(usage);
+     }
+     request.setMaterialLines(usages);
+     Map<String,Object> record=new LinkedHashMap<>();record.put("segment",segment);record.put("reporter",reporter);record.put("approver",approver);record.put("request",request);
+     if(!mode.equals("create"))record.put("draft",reports.create(request).getId());
+     Files.writeString(store.resolve("three-legacy-"+mode+".json"),json.writerWithDefaultPrettyPrinter().writeValueAsString(record));
+     System.out.println("OLD_THREE mode="+mode+" plan=10000 issued=5000/5000/5000 ordinary=true savedOutput="+(mode.equals("create")?"none":"6000")+" actual=5000/5000/5000");
+   }
  }
  @Test void stage1129() throws Exception {
    assertEquals("1129",db.queryForObject("select version from flyway_schema_history order by installed_rank desc limit 1",String.class));
@@ -94,7 +131,36 @@ class FeedbackLegacyMaterialUpgradeFixture {
    assertEquals(0,new BigDecimal("10").compareTo(db.queryForObject("select sum(item.qty) from production_daily_report_items item join production_daily_reports report on report.id=item.report_id where item.execution_segment_id=? and report.status=1 and not item.is_deleted and not report.is_deleted",BigDecimal.class,segment)));
    System.out.println("UPGRADE_REJECTION operation="+mode+" room=0 extra=3 rejected="+failure.getMessage()+" accepted_output=10 all_existing_facts_unchanged=true");
  }
+ @Test void currentThree() throws Exception {
+   assertTrue(Boolean.TRUE.equals(db.queryForObject("SELECT success FROM flyway_schema_history WHERE version='1131'",Boolean.class)));
+   String mode=System.getenv("AUDIT_THREE_OPERATION");assertTrue(List.of("create","edit","approve").contains(mode));
+   var record=json.readTree(Files.readString(store.resolve("three-legacy-"+mode+".json")));
+   UUID segment=UUID.fromString(record.get("segment").asText()),reporter=UUID.fromString(record.get("reporter").asText());
+   var fixture=new FullChainEndToEndTest();beans.autowireBean(fixture);fixture.loginAs(reporter);
+   assertFalse(((com.uten.imp.security.AuthUser)org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getPrincipal()).isSuperAdmin());
+   assertEquals(0,new BigDecimal("5000").compareTo(db.queryForObject("SELECT fn_execution_material_output_capacity(?,TRUE)",BigDecimal.class,segment)));
+   UUID draft=record.has("draft")?UUID.fromString(record.get("draft").asText()):null;
+   var request=json.treeToValue(record.get("request"),DailyReportSaveRequest.class);
+   if(!mode.equals("approve")) {
+     if(draft!=null)request.setExpectedVersion(reports.detail(draft).getRowVersion());
+     var sources=beans.getBean(ReportablePlanLineQueryService.class).list(1,100,null,null,List.of(segment),draft,draft==null?null:request.getExpectedVersion()).getItems();
+     assertEquals(1,sources.size());assertEquals(0,new BigDecimal("5000").compareTo(sources.getFirst().materialReportQty()));
+     request.getMaterialLines().get(1).setQtyBase(new BigDecimal("6000"));request.getMaterialLines().get(2).setQtyBase(new BigDecimal("6000"));
+   } else fixture.loginAs(UUID.fromString(record.get("approver").asText()));
+   String before=facts(segment);
+   var failure=assertThrows(com.uten.imp.common.web.ApiException.class,()->{
+     if(mode.equals("edit"))reports.update(draft,request);
+     else if(mode.equals("approve"))reports.approve(draft,DailyReportApproveRequests.freshKey());
+     else reports.create(request);
+   });
+   assertTrue(failure.getMessage().contains("物料配套"),failure.getMessage());
+   assertEquals(before,facts(segment));
+   assertEquals(0,new BigDecimal("6000").compareTo(request.getItems().getFirst().getQty()));
+   if(!mode.equals("approve"))assertEquals(List.of(new BigDecimal("5000"),new BigDecimal("6000"),new BigDecimal("6000")),request.getMaterialLines().stream().map(DailyReportMaterialUsageLine::getQtyBase).toList());
+   assertEquals(0,new BigDecimal("0").compareTo(db.queryForObject("SELECT COALESCE(SUM(item.qty),0) FROM production_daily_report_items item JOIN production_daily_reports report ON report.id=item.report_id WHERE item.execution_segment_id=? AND report.status=1",BigDecimal.class,segment)));
+   System.out.println("THREE_REJECTION mode="+mode+" ordinary=true plan=10000 issued=5000/5000/5000 output=6000 reason=true submittedActual="+(mode.equals("approve")?"old 5000/5000/5000":"5000/6000/6000")+" rejected="+failure.getMessage()+" facts_unchanged=true approved_output=0");
+ }
  private String facts(UUID segment) {
-   return db.queryForObject("select jsonb_build_object('segment',to_jsonb(s),'demands',(select jsonb_agg(to_jsonb(d) order by d.id) from production_material_demands d where d.execution_segment_id=s.id),'posting',(select jsonb_agg(to_jsonb(p) order by p.id) from production_material_stock_postings p join production_material_demands d on d.id=p.demand_id where d.execution_segment_id=s.id),'reports',(select jsonb_agg(to_jsonb(r) order by r.id) from production_daily_reports r where exists(select 1 from production_daily_report_items i where i.report_id=r.id and i.execution_segment_id=s.id)),'items',(select jsonb_agg(to_jsonb(i) order by i.id) from production_daily_report_items i where i.execution_segment_id=s.id))::text from production_execution_segments s where s.id=?",String.class,segment);
+   return db.queryForObject("select jsonb_build_object('segment',to_jsonb(s),'demands',(select jsonb_agg(to_jsonb(d) order by d.id) from production_material_demands d where d.execution_segment_id=s.id),'posting',(select jsonb_agg(to_jsonb(p) order by p.id) from production_material_stock_postings p join production_material_demands d on d.id=p.demand_id where d.execution_segment_id=s.id),'reports',(select jsonb_agg(to_jsonb(r) order by r.id) from production_daily_reports r where exists(select 1 from production_daily_report_items i where i.report_id=r.id and i.execution_segment_id=s.id)),'usages',(select jsonb_agg(to_jsonb(u) order by u.report_id,u.demand_id) from production_daily_report_material_usages u where u.material_execution_segment_id=s.id),'items',(select jsonb_agg(to_jsonb(i) order by i.id) from production_daily_report_items i where i.execution_segment_id=s.id))::text from production_execution_segments s where s.id=?",String.class,segment);
  }
 }

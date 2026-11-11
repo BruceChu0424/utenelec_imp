@@ -1,0 +1,25 @@
+{
+  "kind": "preparation-only",
+  "referenceSource": "518008bae71d386b50ce07fd28c7a5b375d75699",
+  "mainChecked": "d5200b6bf68aae203542c3828ddc0d6498be2870",
+  "mainIsAncestorOfReference": true,
+  "observedAt": "2026-11-11T12:10:23.814308+00:00",
+  "newAcceptanceStarted": false,
+  "newMavenStarted": false,
+  "newPostgresStarted": false,
+  "newRunTagCreated": false,
+  "productPathsChanged": [],
+  "syntaxOnlyChecks": [
+    "PowerShell parser",
+    "Python compile without executing runner",
+    "default plan-only invocation"
+  ],
+  "preservedHistoricalSource": "7b912287e53315228b469790ff066a9fab643e3c",
+  "historicalRawArtifactsVerified": 32,
+  "rootClarifiedDockerExit255": [
+    "uten-feedback-final-20261110",
+    "uten-feedback-b-legacy-prep-20261111"
+  ],
+  "scaleExit255WasNotEstablished": true,
+  "waitingFor": "explicit final frozen SHA from Root"
+}

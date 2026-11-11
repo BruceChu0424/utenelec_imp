@@ -1,0 +1,12 @@
+{
+  "kind": "read-only preparation reference, not final acceptance",
+  "source": "518008bae71d386b50ce07fd28c7a5b375d75699",
+  "taskCount": 373,
+  "historyLineCount": 524,
+  "protectedFieldsCanonicalSha256": "b6d25066dfad10d317b1b9cf0ccbb76cc441ed9855bacfb29dacd0dbfcd0d3ac",
+  "sourceGitBlobSha256": {
+    "clients/windows_legacy/progress/work-items.json": "32af248c6e5666a7114b5f030e9ac862d168411de13811e8ec72466bf99f6582",
+    "clients/windows_legacy/progress/history.jsonl": "3864d285e230689e4c0a3158dad97116025a134e343903777eabc86db64d2e9f"
+  },
+  "modifiedLedger": false
+}

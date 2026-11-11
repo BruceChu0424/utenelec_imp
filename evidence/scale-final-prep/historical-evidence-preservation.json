@@ -1,0 +1,9 @@
+{
+  "kind": "preparation-only; no new acceptance executed",
+  "historicalSource": "7b912287e53315228b469790ff066a9fab643e3c",
+  "manifest": "D:\\Projects\\uten_imp_worktrees\\feedback-scale-verify-20261110\\evidence\\scale\\final-7b912287-manifest.json",
+  "checkedRawArtifacts": 32,
+  "missing": [],
+  "mismatchedBytesOrSha": [],
+  "oldTimesAndFilesNotOverwritten": true
+}

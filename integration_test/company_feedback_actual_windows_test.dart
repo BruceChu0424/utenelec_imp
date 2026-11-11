@@ -270,12 +270,10 @@ void main() {
       final runtime = Directory(_runtimeRoot).absolute;
       expect(runtime.isAbsolute, isTrue);
       expect(
-        File(
-          '${runtime.path}/UTEN Local Test/shared_preferences.json',
-        ).existsSync(),
+        Directory('${runtime.path}/UTEN Local Test').existsSync(),
         isFalse,
         reason:
-            'Every cold run owns a fresh runtime root; old runs are preserved',
+            'Every cold run owns a fresh support root; old credentials/drafts are preserved',
       );
       final config =
           jsonDecode(await File(_configPath).readAsString())

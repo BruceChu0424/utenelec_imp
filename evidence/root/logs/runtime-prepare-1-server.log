@@ -3822,3 +3822,16 @@
 2026-11-10T21:43:52.105-07:00  WARN 59440 --- [uten-imp-server] [t-export-worker] c.u.i.f.r.export.ReportExportWorker      : Export queue poll failed: UncategorizedSQLException
 2026-11-10T21:44:02.217-07:00  WARN 59440 --- [uten-imp-server] [t-export-worker] c.u.i.f.r.export.ReportExportWorker      : Export queue poll failed: UncategorizedSQLException
 2026-11-10T21:44:11.231-07:00  WARN 59440 --- [uten-imp-server] [1-28630-exec-10] c.u.i.common.web.GlobalExceptionHandler  : Database deadline reached, request rolled back: TransactionTimedOutException sqlState=none
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD FAILURE
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  02:28 h
+[INFO] Finished at: 2026-11-10T21:58:38-07:00
+[INFO] ------------------------------------------------------------------------
+[ERROR] Failed to execute goal org.springframework.boot:spring-boot-maven-plugin:4.1.1:run (default-cli) on project uten-imp-server: Process terminated with exit code: -1 -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoExecutionException

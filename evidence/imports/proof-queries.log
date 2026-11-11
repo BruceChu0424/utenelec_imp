@@ -1,0 +1,79 @@
+BEGIN
+    login_account     | is_super_admin | status 
+----------------------+----------------+--------
+ SU-old-v1-previews   | f              | active
+ other-import-auditor | f              | active
+(2 rows)
+
+    login_account     |                                financial_rights                                
+----------------------+--------------------------------------------------------------------------------
+ SU-old-v1-previews   | {finance:view:all,finance_post:execute,finance_report:view,payment_style:edit}
+ other-import-auditor | {finance:view:all,finance_post:execute,finance_report:view,payment_style:edit}
+(2 rows)
+
+ family |                  id                  | server_version | source_rows 
+--------+--------------------------------------+----------------+-------------
+ cost   | 52132cdc-2d51-4a12-bcf3-204a3793fa31 | 1              |           2
+ cost   | 0fd69df7-5b65-4cba-a986-74d587a93bba | 1              |           1
+ cost   | 8404488f-38bc-4cd4-b8ec-bc8fafa1c473 | 2              |           2
+(3 rows)
+
+                  id                  |           parent_import_id           |               actor_id               | server_version | issues | applied 
+--------------------------------------+--------------------------------------+--------------------------------------+----------------+--------+---------
+ 9de10532-cff0-4355-a91c-c0fb76e2953e |                                      | 360fcf1a-e8f2-4ab1-88ea-94758a36fc7a | 1              |      0 | f
+ ec56ece6-bc7c-48cd-96a5-d1e6b1152097 | 9de10532-cff0-4355-a91c-c0fb76e2953e | 360fcf1a-e8f2-4ab1-88ea-94758a36fc7a | 1              |      0 | f
+ 0cb60c8e-ca6d-4845-bfd1-a76696570b9b |                                      | 90a2284d-2091-48fb-806b-ffc00adda152 | 2              |      1 | f
+ b521f21b-5174-42e3-afc5-5c6aafcaab13 |                                      | 90a2284d-2091-48fb-806b-ffc00adda152 | 2              |      0 | t
+(4 rows)
+
+                  id                  |               actor_id               | period  | server_version | applied 
+--------------------------------------+--------------------------------------+---------+----------------+---------
+ 27d48175-e519-42d5-a4f7-bd8df299a0f0 | 360fcf1a-e8f2-4ab1-88ea-94758a36fc7a | 2026-08 | 1              | f
+ dcba4754-5614-4e6c-8faa-997d1d356a34 | 360fcf1a-e8f2-4ab1-88ea-94758a36fc7a | 2026-09 | 1              | t
+ ef60de34-e9f4-4647-a558-b27379cd8569 | 90a2284d-2091-48fb-806b-ffc00adda152 | 2026-07 | 2              | t
+(3 rows)
+
+ period  | locked 
+---------+--------
+ 2026-09 | t
+(1 row)
+
+                  id                  |               actor_id               |         kind         | server_version | issues | applied 
+--------------------------------------+--------------------------------------+----------------------+----------------+--------+---------
+ bc502e15-bf40-4e9d-8df1-517eebdbf2e0 | 360fcf1a-e8f2-4ab1-88ea-94758a36fc7a | AUXILIARY_RECEIVABLE | 1              |      0 | f
+ d9b896ba-2597-43ba-8df9-65c8668cfac8 | 90a2284d-2091-48fb-806b-ffc00adda152 | AUXILIARY_RECEIVABLE | 2              |      1 | f
+ 5b967fd3-da4b-4298-a593-d0d68e26e27f | 90a2284d-2091-48fb-806b-ffc00adda152 | AUXILIARY_RECEIVABLE | 2              |      0 | t
+(3 rows)
+
+                  id                  |               actor_id               |   kind   | status  | server_version | issues 
+--------------------------------------+--------------------------------------+----------+---------+----------------+--------
+ dd6ece4c-9444-4ea6-a6f0-3763ded9ec96 | 360fcf1a-e8f2-4ab1-88ea-94758a36fc7a | VOUCHERS | PREVIEW | 1              |      0
+ a9f78b0d-db98-454e-b22b-3ae513a00c15 | 360fcf1a-e8f2-4ab1-88ea-94758a36fc7a | BALANCE  | PREVIEW | 1              |      0
+ 774cc898-99fa-43e0-8b10-9ddbf2b999ad | 90a2284d-2091-48fb-806b-ffc00adda152 | VOUCHERS | PREVIEW | 2              |      1
+ df847b11-644d-4ce0-94dd-96562fca0504 | 90a2284d-2091-48fb-806b-ffc00adda152 | BALANCE  | PREVIEW | 2              |      0
+(4 rows)
+
+   code    |       name       |           source_import_id           
+-----------+------------------+--------------------------------------
+ 100199991 | 合成导入现金核查 | b521f21b-5174-42e3-afc5-5c6aafcaab13
+ 112201    | 匿名原科目       | 9de10532-cff0-4355-a91c-c0fb76e2953e
+(2 rows)
+
+ period  |   line_key    |           remark           
+---------+---------------+----------------------------
+ 2026-07 | OP_MATERIAL_4 | 本地真实网页导入核验备注
+ 2026-09 | OP_MATERIAL_4 | 旧程序已写入并保留的原回执
+(2 rows)
+
+           table_name           | count 
+--------------------------------+-------
+ goods                          |     5
+ goods_bom_items                |     4
+ goods_cost_import_mappings     |     1
+ finance_chart_codes            |     2
+ finance_operating_report_notes |     2
+ finance_auxiliary_items        |     1
+ gl_entries                     |     0
+(7 rows)
+
+COMMIT

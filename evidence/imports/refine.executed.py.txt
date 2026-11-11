@@ -1,0 +1,24 @@
+from pathlib import Path
+p=Path('server/src/main/java/com/uten/imp/common/importing/ImportColumnGuard.java');s=p.read_text();a=s.index('        var headers = new ArrayList<Header>();',s.index('public static List<Issue> inspectExtraColumns(DocumentGrid.Sheet'));b=s.index('\n    /** The value grid',a);s=s[:a]+'''        var issues=new ArrayList<Issue>();
+        for(var row:sheet.rows()) if(row.index0()!=headerRow)
+            for(var cell:row.cells()) if(cell.col0()>=knownWidth&&!cell.text().isBlank()) {
+                String caption=sheet.text(headerRow,cell.col0());
+                issues.add(unsupported(row.index0(),label(caption,cell.col0())));
+            }
+        return List.copyOf(issues);
+    }
+'''+s[b:];a=s.index('                var headers=new ArrayList<Header>();');b=s.index('\n            }catch(',a);s=s[:a]+'''                var issues=new ArrayList<Issue>();var header=sheet.getRow(headerRow);var formatter=new DataFormatter();
+                for(Row row:sheet)if(row.getRowNum()!=headerRow){deadline.check();for(Cell cell:row)
+                    if(cell.getColumnIndex()>=knownWidth&&hasContent(cell)) {
+                        Cell heading=header==null?null:header.getCell(cell.getColumnIndex());
+                        issues.add(unsupported(row.getRowNum(),label(heading==null?null:formatter.formatCellValue(heading),cell.getColumnIndex())));
+                    }
+                }
+                return List.copyOf(issues);'''+s[b:];p.write_text(s,encoding='utf-8',newline='\n')
+p=Path('server/src/main/java/com/uten/imp/features/finance/gl/FinanceChartWorkbookParser.java');s=p.read_text();s=s.replace('''            if(row.cells().stream().anyMatch(c->c.col0()>=3&&!c.text().isBlank()))
+                issues.add(new Issue(line,"金额","此入口只导入科目目录；带金额的期初/发生额须另行受控接续"));
+''','');p.write_text(s,encoding='utf-8',newline='\n')
+# The attack files remain exact bytes from independent audit, now committed as regression fixtures.
+src=Path('D:/Projects/uten_imp_worktrees/feedback-audit-20261110/audit/import-export');dst=Path('server/src/test/resources/import-column-remediation');dst.mkdir(parents=True,exist_ok=True)
+for name in ['cost-title-true.xlsx','cost-title-false.xlsx','note-duplicate.xlsx','note-unknown.xlsx','chart-true.xlsx','chart-false.xlsx','voucher-empty-formula.xls','voucher-wrong-signature.xls','voucher-style.xls','goods-extra-second-true.xlsx','bom-extra-second-true.xlsx']:
+ (dst/name).write_bytes((src/name).read_bytes())

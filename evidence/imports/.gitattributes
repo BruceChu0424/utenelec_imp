@@ -1,0 +1,15 @@
+*.log binary
+*.exit binary
+*.xls binary
+*.xlsx binary
+*.dump binary
+*.json binary
+*.txt binary
+*.md text eol=lf
+*.py text eol=lf
+*.ps1 text eol=lf
+*.java text eol=lf
+*.sql text eol=lf
+.gitattributes text eol=lf
+.gitignore text eol=lf
+baseline/*.java binary

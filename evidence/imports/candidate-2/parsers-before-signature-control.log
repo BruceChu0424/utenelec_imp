@@ -1,0 +1,30 @@
+18:03:49.630 [main] WARN org.apache.poi.POIDocument -- DocumentSummaryInformation property set came back as null
+18:03:49.637 [main] WARN org.apache.poi.POIDocument -- SummaryInformation property set came back as null
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+18:04:09.312 [main] WARN org.apache.poi.POIDocument -- DocumentSummaryInformation property set came back as null
+18:04:09.312 [main] WARN org.apache.poi.POIDocument -- SummaryInformation property set came back as null
+18:04:09.419 [main] WARN org.apache.poi.POIDocument -- DocumentSummaryInformation property set came back as null
+18:04:09.420 [main] WARN org.apache.poi.POIDocument -- SummaryInformation property set came back as null
+18:04:09.527 [main] WARN org.apache.poi.POIDocument -- DocumentSummaryInformation property set came back as null
+18:04:09.528 [main] WARN org.apache.poi.POIDocument -- SummaryInformation property set came back as null
+18:04:09.561 [main] WARN org.apache.poi.POIDocument -- DocumentSummaryInformation property set came back as null
+18:04:09.561 [main] WARN org.apache.poi.POIDocument -- SummaryInformation property set came back as null
+18:04:09.565 [main] WARN org.apache.poi.POIDocument -- DocumentSummaryInformation property set came back as null
+18:04:09.566 [main] WARN org.apache.poi.POIDocument -- SummaryInformation property set came back as null
+18:04:09.611 [main] WARN org.apache.poi.POIDocument -- DocumentSummaryInformation property set came back as null
+18:04:09.613 [main] WARN org.apache.poi.POIDocument -- SummaryInformation property set came back as null
+
+Test run finished after 23297 ms
+[        14 containers found      ]
+[         0 containers skipped    ]
+[        14 containers started    ]
+[         0 containers aborted    ]
+[        14 containers successful ]
+[         0 containers failed     ]
+[        58 tests found           ]
+[         1 tests skipped         ]
+[        57 tests started         ]
+[         0 tests aborted         ]
+[        57 tests successful      ]
+[         0 tests failed          ]
+

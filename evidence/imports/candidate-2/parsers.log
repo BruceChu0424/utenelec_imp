@@ -1,0 +1,32 @@
+18:11:11.125 [main] WARN org.apache.poi.POIDocument -- DocumentSummaryInformation property set came back as null
+18:11:11.136 [main] WARN org.apache.poi.POIDocument -- SummaryInformation property set came back as null
+18:11:12.408 [main] WARN org.apache.poi.POIDocument -- DocumentSummaryInformation property set came back as null
+18:11:12.409 [main] WARN org.apache.poi.POIDocument -- SummaryInformation property set came back as null
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+18:11:31.470 [main] WARN org.apache.poi.POIDocument -- DocumentSummaryInformation property set came back as null
+18:11:31.471 [main] WARN org.apache.poi.POIDocument -- SummaryInformation property set came back as null
+18:11:31.565 [main] WARN org.apache.poi.POIDocument -- DocumentSummaryInformation property set came back as null
+18:11:31.565 [main] WARN org.apache.poi.POIDocument -- SummaryInformation property set came back as null
+18:11:31.644 [main] WARN org.apache.poi.POIDocument -- DocumentSummaryInformation property set came back as null
+18:11:31.644 [main] WARN org.apache.poi.POIDocument -- SummaryInformation property set came back as null
+18:11:31.668 [main] WARN org.apache.poi.POIDocument -- DocumentSummaryInformation property set came back as null
+18:11:31.668 [main] WARN org.apache.poi.POIDocument -- SummaryInformation property set came back as null
+18:11:31.675 [main] WARN org.apache.poi.POIDocument -- DocumentSummaryInformation property set came back as null
+18:11:31.675 [main] WARN org.apache.poi.POIDocument -- SummaryInformation property set came back as null
+18:11:31.700 [main] WARN org.apache.poi.POIDocument -- DocumentSummaryInformation property set came back as null
+18:11:31.700 [main] WARN org.apache.poi.POIDocument -- SummaryInformation property set came back as null
+
+Test run finished after 23625 ms
+[        14 containers found      ]
+[         0 containers skipped    ]
+[        14 containers started    ]
+[         0 containers aborted    ]
+[        14 containers successful ]
+[         0 containers failed     ]
+[        59 tests found           ]
+[         1 tests skipped         ]
+[        58 tests started         ]
+[         0 tests aborted         ]
+[        58 tests successful      ]
+[         0 tests failed          ]
+

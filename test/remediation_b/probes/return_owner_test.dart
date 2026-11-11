@@ -1,3 +1,5 @@
+import '../support/return_probe_grid.dart';
+import 'package:uten_imp/shared/drafts/form_draft_mixin.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/shared/drafts/form_draft_store.dart';
 import '../support/memory_form_draft_storage.dart';
@@ -7,16 +9,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uten_imp/components/layout/uten_doc_link_picker_sheet.dart';
-import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/components/buttons/uten_import_button.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/features/purchase/models/purchase_doc.dart';
 import 'package:uten_imp/features/purchase/pages/purchase_doc_edit_page.dart';
-import 'package:uten_imp/features/purchase/widgets/purchase_grid_columns.dart';
 import 'package:uten_imp/features/subcontract/models/subcontract_doc.dart';
 import 'package:uten_imp/features/subcontract/pages/subcontract_doc_edit_page.dart';
-import 'package:uten_imp/features/subcontract/widgets/subcontract_grid_columns.dart';
 import 'package:uten_imp/shared/models/procurement_source_terms.dart';
 import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
@@ -84,9 +83,7 @@ class Names extends MasterNameService {
 void main() {
   for (final purchase in [true, false]) {
     testWidgets(
-      'retired owner must not append a late upstream ' +
-          (purchase ? 'purchase' : 'subcontract') +
-          ' source',
+      'retired owner must not append a late upstream ${purchase ? 'purchase' : 'subcontract'} source',
       (t) async {
         await t.binding.setSurfaceSize(const Size(1800, 1150));
         addTearDown(() => t.binding.setSurfaceSize(null));
@@ -125,18 +122,10 @@ void main() {
         for (var tick = 0; tick < 12; tick++) {
           await t.pump(const Duration(milliseconds: 80));
         }
-        final dynamic state = t.state(find.byWidget(page));
-        final dynamic grid = purchase
-            ? t
-                  .widget<UtenEditableGrid<PurchaseGridRow>>(
-                    find.byType(UtenEditableGrid<PurchaseGridRow>),
-                  )
-                  .controller
-            : t
-                  .widget<UtenEditableGrid<SubcontractGridRow>>(
-                    find.byType(UtenEditableGrid<SubcontractGridRow>),
-                  )
-                  .controller;
+        final state =
+            t.state<State>(find.byWidget(page))
+                as FormDraftMixin<ConsumerStatefulWidget>;
+        final grid = ReturnProbeGrid.capture(t, purchase);
         grid.rows.first.qty.text = '7.125';
         expect(state.formDraftIdentityIsCurrent, true);
         await t.tap(find.byType(UtenImportButton));
@@ -186,7 +175,7 @@ void main() {
           await t.pump(const Duration(milliseconds: 80));
         }
         final ids = [for (final row in grid.rows) row.upstreamItemId];
-        print(
+        debugPrint(
           'audit purchase=$purchase retired=${!state.formDraftIdentityIsCurrent} sourceIds=$ids originalInput=${grid.rows.first.qty.text}',
         );
         expect(

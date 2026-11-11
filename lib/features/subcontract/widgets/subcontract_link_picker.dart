@@ -278,6 +278,7 @@ Future<SubcontractLinkPickResult?> showSubcontractLinkPicker(
           colorId: (it) => it.colorId,
           unitId: (it) => it.unitId,
           price: (it) => it.price,
+          priceText: (it) => it.priceText,
           upstreamItemId: (it) => it.id,
           unitRate: (it) => it.unitRate,
           unitRateText: (it) => it.unitRateText,

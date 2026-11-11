@@ -281,6 +281,19 @@ void main() {
       final password = config['syntheticAccountPassword'] as String;
       ProviderContainer? container;
       var passed = false;
+      Object? primaryError;
+      StackTrace? primaryStack;
+      var completedMouldReads = 0, exportCreates = 0;
+      var networkProved = false;
+      void rememberError(Object error, StackTrace stack, String phase) {
+        primaryError ??= error;
+        primaryStack ??= stack;
+        _observations.add({
+          'scene': '$phase-error',
+          'exceptionType': error.runtimeType.toString(),
+        });
+      }
+
       try {
         await prepareAcceptanceRuntime(rootPath: runtime.path);
         await application.bootstrapUtenApp(
@@ -340,8 +353,18 @@ void main() {
           'credentialContentsInspected': false,
         });
         final router = container.read(appRouterProvider);
-        final cold = Stopwatch()..start();
         router.go('/basicinfo/mould');
+        await _wait(
+          tester,
+          () =>
+              find.text('全部模具').evaluate().isNotEmpty ||
+              _mouldFinder.evaluate().isNotEmpty,
+          'mould-entry',
+        );
+        final cold = Stopwatch()..start();
+        if (find.text('全部模具').evaluate().isNotEmpty) {
+          await _tap(tester, find.text('全部模具'));
+        }
         await _wait(
           tester,
           () =>
@@ -480,68 +503,87 @@ void main() {
           });
         }
         passed = true;
+      } catch (error, stack) {
+        rememberError(error, stack, 'scenario');
       } finally {
-        if (container?.read(sessionProvider).isLoggedIn == true) {
-          await container!.read(sessionProvider.notifier).logout();
+        try {
+          if (container?.read(sessionProvider).isLoggedIn == true) {
+            await container!.read(sessionProvider.notifier).logout();
+          }
+        } catch (error, stack) {
+          rememberError(error, stack, 'logout');
         }
-        final bytes = await AppDiagnostics.log?.export();
-        var completedMouldReads = 0, exportCreates = 0;
-        if (bytes != null) {
-          await File(
-            '$_evidenceRoot/actual-http-and-client.log',
-          ).writeAsBytes(bytes, flush: true);
-          for (final line in const LineSplitter().convert(utf8.decode(bytes))) {
-            final record = jsonDecode(line) as Map<String, dynamic>;
-            final path = record['path'] as String? ?? '';
-            if (record['event'] == 'request.end' &&
-                record['status'] == 200 &&
-                path.endsWith('/master/moulds/summaries')) {
-              completedMouldReads++;
-            }
-            if (record['event'] == 'request.begin' &&
-                record['method'] == 'POST' &&
-                path.endsWith('/report-export-jobs')) {
-              exportCreates++;
+        try {
+          final bytes = await AppDiagnostics.log?.export();
+          if (bytes != null) {
+            await File(
+              '$_evidenceRoot/actual-http-and-client.log',
+            ).writeAsBytes(bytes, flush: true);
+            // The production bundle joins complete JSON log files with blank
+            // separator lines. Preserve all raw bytes, parse nonempty records.
+            for (final line in const LineSplitter().convert(
+              utf8.decode(bytes),
+            )) {
+              if (line.trim().isEmpty) continue;
+              final record = jsonDecode(line) as Map<String, dynamic>;
+              final path = record['path'] as String? ?? '';
+              if (record['event'] == 'request.end' &&
+                  record['status'] == 200 &&
+                  path.endsWith('/master/moulds/summaries')) {
+                completedMouldReads++;
+              }
+              if (record['event'] == 'request.begin' &&
+                  record['method'] == 'POST' &&
+                  path.endsWith('/report-export-jobs')) {
+                exportCreates++;
+              }
             }
           }
+        } catch (error, stack) {
+          rememberError(error, stack, 'evidence');
         }
-        final networkProved = completedMouldReads >= 2 && exportCreates == 0;
+        networkProved = completedMouldReads >= 2 && exportCreates == 0;
         _observations.add({
           'scene': 'actual-http-observation',
           'completedMouldReads': completedMouldReads,
           'exportJobsCreatedAfterCancellation': exportCreates,
         });
-        await File('$_evidenceRoot/result.json').writeAsString(
-          const JsonEncoder.withIndent('  ').convert({
-            'surface': networkProved
-                ? 'windows-engine-real-http'
-                : 'windows-engine-real-http-attempt',
-            'nativeOS': Platform.operatingSystem,
-            'frameworkTarget': foundation.defaultTargetPlatform.name,
-            'debugEngine': foundation.kDebugMode,
-            'passed': passed && networkProved,
-            'businessApiReplaced': false,
-            'repositoryReplaced': false,
-            'sessionReplaced': false,
-            'runtimeRoot': runtime.path,
-            'scenes': _observations,
-            'returnsRequested': _returnsAccount.isNotEmpty,
-          }),
-          flush: true,
-        );
-        if (passed) {
-          expect(
-            completedMouldReads,
-            greaterThanOrEqualTo(2),
-            reason: 'Cold read and sort must reach the actual HTTP service',
+        try {
+          await File('$_evidenceRoot/result.json').writeAsString(
+            const JsonEncoder.withIndent('  ').convert({
+              'surface': networkProved
+                  ? 'windows-engine-real-http'
+                  : 'windows-engine-real-http-attempt',
+              'nativeOS': Platform.operatingSystem,
+              'frameworkTarget': foundation.defaultTargetPlatform.name,
+              'debugEngine': foundation.kDebugMode,
+              'passed': passed && networkProved && primaryError == null,
+              'primaryFailureType': primaryError?.runtimeType.toString(),
+              'businessApiReplaced': false,
+              'repositoryReplaced': false,
+              'sessionReplaced': false,
+              'runtimeRoot': runtime.path,
+              'scenes': _observations,
+              'returnsRequested': _returnsAccount.isNotEmpty,
+            }),
+            flush: true,
           );
-          expect(
-            exportCreates,
-            0,
-            reason: 'Cancelling either export dialog must not create a job',
-          );
+        } catch (error, stack) {
+          rememberError(error, stack, 'result-publication');
         }
       }
+      final failure = primaryError;
+      if (failure != null) Error.throwWithStackTrace(failure, primaryStack!);
+      expect(
+        completedMouldReads,
+        greaterThanOrEqualTo(2),
+        reason: 'Cold read and sort must reach the actual HTTP service',
+      );
+      expect(
+        exportCreates,
+        0,
+        reason: 'Cancelling either export dialog must not create a job',
+      );
     },
     timeout: const Timeout(Duration(minutes: 8)),
   );

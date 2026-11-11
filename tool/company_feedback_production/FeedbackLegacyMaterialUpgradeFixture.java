@@ -67,7 +67,8 @@ class FeedbackLegacyMaterialUpgradeFixture {
  }
  @Test void current() throws Exception {
    assertTrue(Boolean.TRUE.equals(db.queryForObject("select success from flyway_schema_history where version='1130'",Boolean.class)));
-   System.out.println("CANDIDATE_MIGRATION latest="+db.queryForObject("select version from flyway_schema_history order by installed_rank desc limit 1",String.class)+" V1130_applied=true");
+   assertTrue(Boolean.TRUE.equals(db.queryForObject("select success from flyway_schema_history where version='1131'",Boolean.class)));
+   System.out.println("CANDIDATE_MIGRATION latest="+db.queryForObject("select version from flyway_schema_history order by installed_rank desc limit 1",String.class)+" V1130_applied=true V1131_applied=true");
    UUID segment=UUID.fromString(Files.readString(store.resolve("legacy-segment.txt"))), actor=UUID.fromString(Files.readString(store.resolve("legacy-actor.txt")));
    var h=new FullChainEndToEndTest();beans.autowireBean(h);h.loginAs(actor);
    var state=db.queryForMap("select status,planned_qty,material_snapshot_product_qty,fn_execution_material_output_capacity(id,true) as capacity,fn_execution_partial_material_report_room(id,null) as room,fn_execution_full_kit_checkpoint_valid(id) as valid_proof,(select count(*) from production_material_full_kit_proofs p where p.execution_segment_id=s.id) as proofs from production_execution_segments s where id=?",segment);

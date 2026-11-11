@@ -65,6 +65,7 @@ class PartialMaterialReportCapacityPostgresTest {
         db.execute(Files.readString(Path.of("src/main/resources/db/migration/V1129__partial_material_reporting_capacity.sql")));
         assertNull(db.queryForObject("SELECT ledger_order FROM production_material_stock_postings WHERE id=?",Long.class,historical),"migration must not invent historical order");
         db.execute(Files.readString(Path.of("src/main/resources/db/migration/V1130__verify_legacy_material_basis_and_linear_proof_sweep.sql")));
+        db.execute(Files.readString(Path.of("src/main/resources/db/migration/V1131__settle_proof_peers_and_verify_legacy_demand_threshold.sql")));
     }
     @AfterAll static void stop(){PG.stop();}
     @BeforeEach void fixture(){
@@ -188,6 +189,41 @@ class PartialMaterialReportCapacityPostgresTest {
         post(UUID.randomUUID(),demand,"GOOD_RETURN","9",original,true);assertNull(room(null));
         db.update("UPDATE production_material_demands SET color_id=? WHERE id=?",UUID.randomUUID(),demand);
         amount("1",room(null));
+    }
+
+    @Test void theFirstIssueCheckpointPositionIsStrictlyAfterItsSourcePrefix() {
+        UUID first=post(demand,"ISSUE","10",null);
+        var proof=db.queryForMap("SELECT source_stock_order,ledger_order FROM production_material_full_kit_proofs");
+        long issueOrder=db.queryForObject("SELECT ledger_order FROM production_material_stock_postings WHERE id=?",Long.class,first);
+        assertEquals(issueOrder,((Number)proof.get("source_stock_order")).longValue());
+        assertTrue(((Number)proof.get("ledger_order")).longValue()>issueOrder);
+        post(demand,"ISSUE_REVERSE","1",first);amount("9",room(null));
+    }
+
+    @Test void aCheckpointCapturedAtAReversalPrefixSettlesThatDeltaBeforeLaterCreditIsUsed() {
+        UUID first=post(demand,"ISSUE","10",null);
+        UUID later=post(demand,"ISSUE","1",null);
+        UUID reversed=post(demand,"ISSUE_REVERSE","1",later);
+        long reverseOrder=db.queryForObject("SELECT ledger_order FROM production_material_stock_postings WHERE id=?",Long.class,reversed);
+        var proof=db.queryForMap("SELECT source_stock_order,ledger_order FROM production_material_full_kit_proofs ORDER BY ledger_order DESC LIMIT 1");
+        assertEquals(reverseOrder,((Number)proof.get("source_stock_order")).longValue());
+        assertTrue(((Number)proof.get("ledger_order")).longValue()>reverseOrder);
+        post(demand,"GOOD_RETURN","9",first);assertNull(room(null));
+        post(demand,"ISSUE_REVERSE","1",first);amount("0",room(null));
+    }
+
+    @Test void aSmallerCurrentDemandCannotCertifyTheOlderPartialIssueAgainstANewThreshold() {
+        db.update("UPDATE production_material_demands SET required_qty=5,consumption_snapshot='{\"perProduct\":1}'::jsonb WHERE id=?",demand);
+        UUID original=post(UUID.randomUUID(),demand,"ISSUE","5",null,true);
+        post(UUID.randomUUID(),demand,"GOOD_RETURN","4",original,true);
+        amount("1",room(null));
+    }
+
+    @Test void aVerifiableHistoricalFullCurveStillAllowsItsOriginalMaterialLossBudget() {
+        db.update("UPDATE production_material_demands SET required_qty=12,consumption_snapshot='{\"perProduct\":1}'::jsonb WHERE id=?",demand);
+        UUID original=post(UUID.randomUUID(),demand,"ISSUE","10",null,true);
+        post(UUID.randomUUID(),demand,"GOOD_RETURN","9",original,true);
+        assertNull(room(null));
     }
 
     @Test void allActiveOutputIncludingDraftsConsumesRoomAndEditingExcludesOnlyItsOwnReport(){

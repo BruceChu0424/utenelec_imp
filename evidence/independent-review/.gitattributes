@@ -1,0 +1,8 @@
+*.log binary
+*.txt binary
+*.args binary
+*.json binary
+*.xlsx binary
+*.md text eol=lf
+*.py text eol=lf
+*.java text eol=lf

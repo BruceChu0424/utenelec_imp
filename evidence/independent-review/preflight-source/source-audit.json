@@ -1,0 +1,56 @@
+{
+  "reviewedRevision": "c4b84f5465de1e6fcb4617a847f523383d07da64",
+  "actualMain": "fdeda88b3d73b24b8691ad132caa765196b19a3d",
+  "byteContract": {
+    "source": "exact Git blob bytes",
+    "originalEvidence": "exact raw file bytes"
+  },
+  "originalRawFilesChecked": 11185,
+  "originalRawDeltas": [],
+  "ancestors": {
+    "d73f86e1e": true,
+    "45bf87fc9": true,
+    "fdeda88b3d73b24b8691ad132caa765196b19a3d": true
+  },
+  "wpf": {
+    "baselineTasks": 373,
+    "candidateTasks": 373,
+    "protectedFieldDeltas": [],
+    "lostNotesOrEvidence": [],
+    "baselineHistoryRows": 524,
+    "candidateHistoryRows": 524,
+    "baselineHistoryExactPrefix": true
+  },
+  "appliedMigrationDeltas": [],
+  "newMigrationPaths": [
+    "server/src/main/resources/db/migration/V1130__verify_legacy_material_basis_and_linear_proof_sweep.sql",
+    "server/src/main/resources/db/migration/V1131__settle_proof_peers_and_verify_legacy_demand_threshold.sql"
+  ],
+  "duplicateMigrationVersions": [],
+  "protectedScopes": {
+    "readSession": {
+      "originalPaths": 104,
+      "changedPaths": [],
+      "candidateExactBlobSha256": {}
+    },
+    "noticeStorage": {
+      "originalPaths": 17,
+      "changedPaths": [],
+      "candidateExactBlobSha256": {}
+    }
+  },
+  "attributes": {
+    ".gitattributes": {
+      "originalRecorded": "1c2fdfa11f279d34e4d6da100f6b8eea029f98b773f777ffde54c73c789e501d",
+      "baselineExactBlobSha256": "1c2fdfa11f279d34e4d6da100f6b8eea029f98b773f777ffde54c73c789e501d",
+      "candidateExactBlobSha256": "1c2fdfa11f279d34e4d6da100f6b8eea029f98b773f777ffde54c73c789e501d",
+      "originalCheckoutRawSha256": "7e40db0b4b432a0e8860f92e15b3119e215c7ddf56f3ccb7f9fddf47c29ccb4b"
+    },
+    "master-header-early/.gitattributes": {
+      "originalRecorded": "2ae94554fb4ff4bfd910ff72f3006462aee3a3dbf64ba02103dfa9e624c119ac",
+      "baselineExactBlobSha256": "9871ac5d7f5decf5c31ae260a4292e515c9207a52c5435fffdab87fe403f8bc2",
+      "candidateExactBlobSha256": "9871ac5d7f5decf5c31ae260a4292e515c9207a52c5435fffdab87fe403f8bc2",
+      "originalCheckoutRawSha256": "2ae94554fb4ff4bfd910ff72f3006462aee3a3dbf64ba02103dfa9e624c119ac"
+    }
+  }
+}

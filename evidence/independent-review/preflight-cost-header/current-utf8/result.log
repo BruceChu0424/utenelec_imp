@@ -1,0 +1,4 @@
+ordinary-control ACCEPTED rows=2 names=[铜钉, 铜片] columnVersion=2
+reserved-name-control ACCEPTED rows=2 names=[铜钉, 材料名称] columnVersion=2
+mixed-header-tail ACCEPTED rows=1 names=[铜钉] columnVersion=2
+subtotal-name-control ACCEPTED rows=1 names=[铜钉] columnVersion=2

@@ -1,0 +1,26 @@
+{
+  "kind": "actual Settings > Runtime logs UI download",
+  "sourceRevision": "23dd508a6340c5d9f57de5df9180466bff092e70",
+  "downloadPath": "C:\\Users\\bruce\\Downloads\\UTEN-2.5.52-1794397317183.log",
+  "preservedPath": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-20261110\\evidence\\root\\raw\\layout235-runtime-original.log",
+  "byteContract": "raw downloaded bytes; no normalization",
+  "bytes": 41039,
+  "sha256": "0666a82c2529c03763c97d96e83393065fc48c82173e98e83ffcd970384d9680",
+  "flutterErrors": 2,
+  "firstError": {
+    "schemaVersion": 1,
+    "atUtc": "2026-11-11T11:41:16.704Z",
+    "level": "error",
+    "event": "flutter.error",
+    "exceptionType": "AssertionError",
+    "reason": "unhandled",
+    "stack": "\n    at Object.wrapException (http://127.0.0.1:28631/main.dart.js:9225:47)\n    at Object.assertHelper (http://127.0.0.1:28631/main.dart.js:9731:17)\n    at SemanticsNode._replaceChildren$1 (http://127.0.0.1:28631/main.dart.js:500859:13)\n    at SemanticsNode.updateWith$2$childrenInInversePaintOrder$config (http://127.0.0.1:28631/main.dart.js:501053:13)\n    at _RenderObjectSemantics._buildSemanticsSubtree$1$usedSemanticsIds (http://127.0.0.1:28631/main.dart.js:485169:12)\n    at _RenderObjectSemantics._buildSemantics$1$usedSemanticsIds (http://127.0.0.1:28631/main.dart.js:485110:15)\n    at _RenderObjectSemantics._buildSemanticsSubtree$1$usedSemanticsIds (http://127.0.0.1:28631/main.dart.js:485151:15)\n    at _RenderObjectSemantics._buildSemantics$1$usedSemanticsIds (http://127.0.0.1:28631/main.dart.js:485110:15)\n    at _RenderObjectSemantics._buildSemanticsSubtree$1$usedSemanticsIds (http://127.0.0.1:28631/main.dart.js:485151:15)",
+    "version": "2.5.52",
+    "build": "dev",
+    "runtime": "web",
+    "os": "windows",
+    "architecture": "browser"
+  },
+  "knownRuntimeSecretsAndBearerJwtScan": "0 matches",
+  "classification": "local red; category-header variation, actual menu opened with zero errors, first semantics ownership assertion after Escape and restore-wide; these two actions were not sampled separately"
+}

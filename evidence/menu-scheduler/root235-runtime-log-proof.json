@@ -1,0 +1,8 @@
+{
+  "source": "C:\\Users\\bruce\\Downloads\\UTEN-2.5.52-1794397317183.log",
+  "bytes": 41039,
+  "sha256": "0666a82c2529c03763c97d96e83393065fc48c82173e98e83ffcd970384d9680",
+  "copiedWholeFile": false,
+  "sourcePerRoot": "23dd (UI product tree 14e)",
+  "scopeDifference": "Root235 category variant, not the original Root47 ALLscope; Escape and restore-wide actions were not sampled separately"
+}

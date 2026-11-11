@@ -1,0 +1,68 @@
+[
+  {
+    "level": "debug",
+    "message": "Injecting <script> tag. Using callback.",
+    "timestamp": "2026-11-11T11:07:51.134Z",
+    "url": "http://127.0.0.1:28631/flutter_bootstrap.js"
+  },
+  {
+    "level": "error",
+    "message": "══╡ EXCEPTION CAUGHT BY SCHEDULER LIBRARY ╞═════════════════════════════════════════════════════════\nThe following assertion was thrown during a scheduler callback:\nAssertion failed\n\nWhen the exception was thrown, this was the stack\n════════════════════════════════════════════════════════════════════════════════════════════════════",
+    "timestamp": "2026-11-11T11:09:54.040Z",
+    "url": "http://127.0.0.1:28631/main.dart.js"
+  },
+  {
+    "level": "error",
+    "message": "Another exception was thrown: Assertion failed",
+    "timestamp": "2026-11-11T11:09:54.056Z",
+    "url": "http://127.0.0.1:28631/main.dart.js"
+  },
+  {
+    "level": "error",
+    "message": "Another exception was thrown: Assertion failed",
+    "timestamp": "2026-11-11T11:09:54.681Z",
+    "url": "http://127.0.0.1:28631/main.dart.js"
+  },
+  {
+    "level": "error",
+    "message": "Another exception was thrown: Assertion failed",
+    "timestamp": "2026-11-11T11:09:54.724Z",
+    "url": "http://127.0.0.1:28631/main.dart.js"
+  },
+  {
+    "level": "error",
+    "message": "Another exception was thrown: Assertion failed",
+    "timestamp": "2026-11-11T11:09:55.746Z",
+    "url": "http://127.0.0.1:28631/main.dart.js"
+  },
+  {
+    "level": "error",
+    "message": "Another exception was thrown: Assertion failed",
+    "timestamp": "2026-11-11T11:09:55.775Z",
+    "url": "http://127.0.0.1:28631/main.dart.js"
+  },
+  {
+    "level": "error",
+    "message": "Another exception was thrown: Assertion failed",
+    "timestamp": "2026-11-11T11:09:56.807Z",
+    "url": "http://127.0.0.1:28631/main.dart.js"
+  },
+  {
+    "level": "error",
+    "message": "Another exception was thrown: Assertion failed",
+    "timestamp": "2026-11-11T11:10:00.479Z",
+    "url": "http://127.0.0.1:28631/main.dart.js"
+  },
+  {
+    "level": "error",
+    "message": "Another exception was thrown: Assertion failed",
+    "timestamp": "2026-11-11T11:10:10.793Z",
+    "url": "http://127.0.0.1:28631/main.dart.js"
+  },
+  {
+    "level": "error",
+    "message": "Another exception was thrown: Assertion failed",
+    "timestamp": "2026-11-11T11:10:10.842Z",
+    "url": "http://127.0.0.1:28631/main.dart.js"
+  }
+]

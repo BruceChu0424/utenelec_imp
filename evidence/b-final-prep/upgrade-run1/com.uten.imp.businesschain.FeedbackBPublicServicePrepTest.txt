@@ -1,0 +1,33 @@
+-------------------------------------------------------------------------------
+Test set: com.uten.imp.businesschain.FeedbackBPublicServicePrepTest
+-------------------------------------------------------------------------------
+Tests run: 1, Failures: 0, Errors: 1, Skipped: 0, Time elapsed: 58.76 s <<< FAILURE! -- in com.uten.imp.businesschain.FeedbackBPublicServicePrepTest
+com.uten.imp.businesschain.FeedbackBPublicServicePrepTest.approveActualOldProgramReceiptOnlyDrafts -- Time elapsed: 2.610 s <<< ERROR!
+org.springframework.dao.DuplicateKeyException: 
+PreparedStatementCallback; SQL [insert into units(id, legacy_id, code, name, status) values (?, ?, ?, ?, '使用')]; ERROR: duplicate key value violates unique constraint "units_legacy_id_key"
+  详细：Key (legacy_id)=(9001) already exists.
+	at org.springframework.jdbc.support.SQLStateSQLExceptionTranslator.doTranslate(SQLStateSQLExceptionTranslator.java:138)
+	at org.springframework.jdbc.support.AbstractFallbackSQLExceptionTranslator.translate(AbstractFallbackSQLExceptionTranslator.java:102)
+	at org.springframework.jdbc.support.AbstractFallbackSQLExceptionTranslator.translate(AbstractFallbackSQLExceptionTranslator.java:111)
+	at org.springframework.jdbc.core.JdbcTemplate.translateException(JdbcTemplate.java:1549)
+	at org.springframework.jdbc.core.JdbcTemplate.execute(JdbcTemplate.java:689)
+	at org.springframework.jdbc.core.JdbcTemplate.update(JdbcTemplate.java:966)
+	at org.springframework.jdbc.core.JdbcTemplate.update(JdbcTemplate.java:1010)
+	at org.springframework.jdbc.core.JdbcTemplate.update(JdbcTemplate.java:1020)
+	at com.uten.imp.businesschain.FullChainEndToEndTest.seedWorld(FullChainEndToEndTest.java:14221)
+	at com.uten.imp.businesschain.FeedbackBPublicServicePrepTest.approveActualOldProgramReceiptOnlyDrafts(FeedbackBPublicServicePrepTest.java:95)
+Caused by: org.postgresql.util.PSQLException: ERROR: duplicate key value violates unique constraint "units_legacy_id_key"
+  详细：Key (legacy_id)=(9001) already exists.
+	at org.postgresql.core.v3.QueryExecutorImpl.receiveErrorResponse(QueryExecutorImpl.java:2904)
+	at org.postgresql.core.v3.QueryExecutorImpl.processResults(QueryExecutorImpl.java:2589)
+	at org.postgresql.core.v3.QueryExecutorImpl.execute(QueryExecutorImpl.java:431)
+	at org.postgresql.jdbc.PgStatement.executeInternal(PgStatement.java:534)
+	at org.postgresql.jdbc.PgStatement.execute(PgStatement.java:437)
+	at org.postgresql.jdbc.PgPreparedStatement.executeWithFlags(PgPreparedStatement.java:196)
+	at org.postgresql.jdbc.PgPreparedStatement.executeUpdate(PgPreparedStatement.java:157)
+	at com.zaxxer.hikari.pool.ProxyPreparedStatement.executeUpdate(ProxyPreparedStatement.java:61)
+	at com.zaxxer.hikari.pool.HikariProxyPreparedStatement.executeUpdate(HikariProxyPreparedStatement.java)
+	at org.springframework.jdbc.core.JdbcTemplate.lambda$update$0(JdbcTemplate.java:971)
+	at org.springframework.jdbc.core.JdbcTemplate.execute(JdbcTemplate.java:670)
+	... 5 more
+

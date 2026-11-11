@@ -1,0 +1,1 @@
+{"kind": "fixture contract probe only; no real Web request was sent", "path": "/api/production/material-analyses/9e85b95b-3ee2-4073-b167-045af6e949d1/aggregate-orders/submit", "method": "POST"}

@@ -1,0 +1,22 @@
+{
+  "capturedAt": "2026-11-11T08:06:59.009959+00:00",
+  "base": "4070cd831731c8246ecf76ba6ee64d8ca7c72733",
+  "product": "b0fe9f7f6cc156db8a05d2b5fd07a642845bcac2",
+  "tree": "6010d1834744ecf0845235ec04f2ba3bea523a8c",
+  "originalMixinBlob": "c95f7d66c4eb2eef01c7ca8b3d8ff37b5ed016ac",
+  "independent8cMixinBlob": "c95f7d66c4eb2eef01c7ca8b3d8ff37b5ed016ac",
+  "paths": {
+    "lib/shared/paging/scoped_paged_read_view_mixin.dart": {
+      "blob": "897b8563f09c699f6819a6edd2554f85ed8c030f",
+      "sha256": "2e37c425afcc4efca51a5c6d55e9c64d3caa076b67289f502ac160c10be53178"
+    },
+    "test/shared/paging/scoped_query_publication_fence_test.dart": {
+      "blob": "9d5c17dcc3beb4a04bbfe18a3782c0c43c2eb211",
+      "sha256": "43f94d28ccf739508585db4cf60ba1afd1ece1c2e50546568e7027cf9efcc3fa"
+    }
+  },
+  "unchangedHosts": {
+    "lib/features/basic_data/widgets/master_data_table_view.dart": "d41f07f2595df3aa6f5dda734e3aeb4bc50a91af",
+    "lib/shared/platform_tables/platform_table_controller.dart": "84523f9bc4c1bc234bf3745e325db962ba8385a2"
+  }
+}

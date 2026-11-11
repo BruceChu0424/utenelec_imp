@@ -181,7 +181,15 @@ void main() {
           result,
           throwsA(
             invalid == 'network'
-                ? same(source.failure)
+                // 真失败带匿名关联号后缀（read_failure_diagnostics）：原始 code
+                // 与消息前缀原样到达，实例不再是同一个。
+                ? isA<ApiException>()
+                      .having((error) => error.code, 'code', 'NETWORK')
+                      .having(
+                        (error) => error.message,
+                        'message',
+                        startsWith('原始尾批失败'),
+                      )
                 : isA<ApiException>().having(
                     (e) => e.code,
                     'code',

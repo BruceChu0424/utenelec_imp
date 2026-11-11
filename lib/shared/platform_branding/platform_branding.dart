@@ -129,4 +129,46 @@ class PlatformBranding {
     updatedAt: updatedAt,
     serverEndpoint: endpoint,
   );
+
+  /// Value equality over every presentation field plus the endpoint fence.
+  /// The 60s branding poll produces a fresh instance each cycle; without
+  /// semantic equality every equal-payload cycle republishes a "changed"
+  /// object and the whole app re-runs theme construction for nothing
+  /// (ADR-173 established the same pattern for session state). Colors are
+  /// normalized (uppercase) by [fromJson], so equal text means equal color.
+  @override
+  bool operator ==(Object other) =>
+      other is PlatformBranding &&
+      version == other.version &&
+      companyName == other.companyName &&
+      companyAliases == other.companyAliases &&
+      platformName == other.platformName &&
+      tagline == other.tagline &&
+      primaryColor == other.primaryColor &&
+      secondaryColor == other.secondaryColor &&
+      loginNotice == other.loginNotice &&
+      supportPhone == other.supportPhone &&
+      supportEmail == other.supportEmail &&
+      website == other.website &&
+      hasLogo == other.hasLogo &&
+      updatedAt == other.updatedAt &&
+      serverEndpoint == other.serverEndpoint;
+
+  @override
+  int get hashCode => Object.hash(
+    version,
+    companyName,
+    companyAliases,
+    platformName,
+    tagline,
+    primaryColor,
+    secondaryColor,
+    loginNotice,
+    supportPhone,
+    supportEmail,
+    website,
+    hasLogo,
+    updatedAt,
+    serverEndpoint,
+  );
 }

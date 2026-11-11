@@ -305,15 +305,20 @@ void main() {
     await tester.pump();
     repository.rowGate = null;
     repository.targetVisible = false;
-    await cell.controller.reload();
+    // Values I/O has one owner: retire the held response immediately, then let
+    // it drain before the queued capability revalidation can reach the server.
+    final revoked = cell.controller.reload();
+    await tester.pump();
+    expect(find.text('旧权限在途响应'), findsNothing);
+    oldRows.complete();
+    await pending;
+    await revoked;
     await tester.pumpAndSettle();
     expect(find.text('厂家乙'), findsNothing);
+    expect(find.text('旧权限在途响应'), findsNothing);
     repository.targetVisible = true;
     repository.relatedValue = '重新授权后的厂家';
     await cell.controller.reload();
-    await tester.pumpAndSettle();
-    oldRows.complete();
-    await pending;
     await tester.pumpAndSettle();
     expect(find.text('重新授权后的厂家'), findsWidgets);
     expect(find.text('旧权限在途响应'), findsNothing);

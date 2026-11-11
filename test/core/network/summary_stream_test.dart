@@ -8,6 +8,7 @@ import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/network/api_mutation_reload_safety.dart';
 import 'package:uten_imp/core/network/interceptors/safe_request_retry_interceptor.dart';
+import 'package:uten_imp/core/network/network_policy.dart';
 import 'package:uten_imp/core/network/responsive_json_decoder.dart';
 import 'package:uten_imp/core/network/responsive_json_transformer.dart';
 import 'package:uten_imp/core/network/summary_stream_contract.dart';
@@ -78,6 +79,7 @@ ResponseBody _body(Stream<Uint8List> stream) => ResponseBody(
 ({ApiClient api, _Adapter adapter, ApiMutationReloadSafety safety}) _client(
   ResponseBody Function(RequestOptions) response, {
   Duration receiveTimeout = const Duration(seconds: 45),
+  Duration streamIdleTimeout = apiSummaryStreamChunkIdleTimeout,
 }) {
   final adapter = _Adapter(response);
   final decoder = ResponsiveJsonDecoder();
@@ -97,7 +99,11 @@ ResponseBody _body(Stream<Uint8List> stream) => ResponseBody(
     dio.close(force: true);
   });
   return (
-    api: ApiClient(dio, reloadSafety: safety),
+    api: ApiClient(
+      dio,
+      reloadSafety: safety,
+      summaryStreamChunkIdleTimeout: streamIdleTimeout,
+    ),
     adapter: adapter,
     safety: safety,
   );
@@ -229,7 +235,10 @@ void main() {
       expect(call.headers['Accept'], summaryStreamContentType);
       expect(call.extra[summaryStreamRequestKey], isTrue);
       expect(call.extra[safeRequestRetryDisabledKey], isTrue);
-      expect(call.receiveTimeout, const Duration(seconds: 45));
+      // 2026-11-10 G: the frame idle window is stream-specific (75s) — after the
+      // first frame, the server's internal scan silence can legally approach its
+      // 60s complete-read budget; the generic 45s would abort a legal read.
+      expect(call.receiveTimeout, apiSummaryStreamChunkIdleTimeout);
       final body = call.data as Map<String, dynamic>;
       final filter = body['filter'] as Map<String, dynamic>;
       expect(filter['categoryId'], 'category-original');
@@ -301,7 +310,7 @@ void main() {
       addTearDown(() => source.close());
       final client = _client(
         (_) => _body(source.stream),
-        receiveTimeout: const Duration(milliseconds: 30),
+        streamIdleTimeout: const Duration(milliseconds: 30),
       );
       await expectLater(
         DioGoodsRepository(client.api).completeList(null),

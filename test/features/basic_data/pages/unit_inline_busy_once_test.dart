@@ -19,6 +19,7 @@ import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 
 import '../../../support/master_summary_stream_fixture.dart';
+import '../../../support/pump_until.dart';
 
 class _Session extends SessionNotifier {
   @override
@@ -154,7 +155,7 @@ Future<void> _pump(
       ),
     ),
   );
-  await tester.pumpAndSettle();
+  await pumpAndSettleWithIo(tester);
 }
 
 void main() {
@@ -187,14 +188,14 @@ void main() {
           await _pump(tester, transport, scenario.size, scenario.scale);
           if (scenario.fullscreen) {
             await tester.tap(find.text('全屏'));
-            await tester.pumpAndSettle();
+            await pumpAndSettleWithIo(tester);
           }
           await tester.tap(find.text('编辑模式'));
-          await tester.pumpAndSettle();
+          await pumpAndSettleWithIo(tester);
           await tester.tap(
             find.byKey(const ValueKey('inline-activate-unit-1-name')),
           );
-          await tester.pumpAndSettle();
+          await pumpAndSettleWithIo(tester);
           await tester.enterText(
             find.byWidgetPredicate(
               (widget) => widget is TextField && widget.controller?.text == '个',
@@ -207,7 +208,7 @@ void main() {
           try {
             await tester.tap(find.text('保存 1 行修改'));
             for (var frame = 0; frame < 20; frame++) {
-              await tester.pump(const Duration(milliseconds: 20));
+              await pumpWithIo(tester, const Duration(milliseconds: 20));
               samples.add(_counts(tester));
             }
             expect(transport.writes, 1);
@@ -215,12 +216,12 @@ void main() {
               Size(scenario.size.width - 20, scenario.size.height),
             );
             for (var frame = 0; frame < 20; frame++) {
-              await tester.pump(const Duration(milliseconds: 20));
+              await pumpWithIo(tester, const Duration(milliseconds: 20));
               samples.add(_counts(tester));
             }
             transport.write.complete();
             for (var frame = 0; frame < 20; frame++) {
-              await tester.pump(const Duration(milliseconds: 20));
+              await pumpWithIo(tester, const Duration(milliseconds: 20));
               samples.add(_counts(tester));
             }
             expect(transport.readbacks, 1);
@@ -259,7 +260,7 @@ void main() {
           } finally {
             if (!transport.write.isCompleted) transport.write.complete();
             if (!transport.readback.isCompleted) transport.readback.complete();
-            await tester.pumpAndSettle();
+            await pumpAndSettleWithIo(tester);
           }
           expect(_counts(tester).hosts, 0);
           expect(_counts(tester).cards, 0);

@@ -218,7 +218,11 @@ void main() {
       find.byKey(const ValueKey('master-table-initial-read-details')),
     );
     await tester.pumpAndSettle();
-    expect(find.text('denied'), findsOneWidget);
+    // 真失败带匿名关联号后缀（read_failure_diagnostics）。
+    expect(
+      find.textContaining(RegExp(r'denied（关联号 [0-9A-Z]{6}）')),
+      findsOneWidget,
+    );
     await tester.tap(find.byType(UtenCloseButton));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);

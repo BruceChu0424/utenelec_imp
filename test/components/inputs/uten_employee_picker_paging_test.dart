@@ -107,7 +107,11 @@ void main() {
         find.byKey(const Key('uten-employee-picker-candidates')),
         findsNothing,
       );
-      expect(find.text('数据访问范围已变化'), findsOneWidget);
+      // 真失败带匿名关联号后缀（read_failure_diagnostics）。
+      expect(
+        find.textContaining(RegExp(r'数据访问范围已变化(（关联号 [0-9A-Z]{6}）)?$')),
+        findsOneWidget,
+      );
       expect(find.text('已选 1 人'), findsOneWidget);
     },
   );
@@ -141,7 +145,11 @@ void main() {
       await tester.enterText(search, '人员');
       await tester.pump(const Duration(milliseconds: 310));
       await tester.pumpAndSettle();
-      expect(find.text('分页信息异常，请刷新后重新读取完整结果'), findsOneWidget);
+      // 真失败带匿名关联号后缀（read_failure_diagnostics），钉住文案前缀即可。
+      expect(
+        find.textContaining(RegExp(r'分页信息异常，请刷新后重新读取完整结果（关联号 [0-9A-Z]{6}）')),
+        findsOneWidget,
+      );
       expect(tester.widget<TextField>(search).controller!.text, '人员');
       expect(find.text('已选 1 人'), findsOneWidget);
       await tester.tap(find.text('重试').last);

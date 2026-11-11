@@ -33,6 +33,13 @@ class WorkbookColumnRemediationTest {
                 .isInstanceOf(ApiException.class).hasMessageContaining("重新生成文件");
         assertThatCode(()->ImportColumnGuard.requireValidated(2)).doesNotThrowAnyException();
     }
+    @Test void originalCompanyPunctuationDoesNotInvalidateAnOtherwiseMatchingSignature() throws Exception {
+        try(var book=new org.apache.poi.hssf.usermodel.HSSFWorkbook(new java.io.ByteArrayInputStream(file("voucher-style.xls")));var out=new java.io.ByteArrayOutputStream()) {
+            var sheet=book.getSheetAt(0);sheet.getRow(0).getCell(82).setCellValue("凭证输出：V800：T01：匿名：账套：2026");
+            for(int row=1;row<=2;row++)sheet.getRow(row).getCell(49).setCellValue("匿名：账套");book.write(out);
+            assertThat(FinanceAccountingWorkbookParser.parse("VOUCHERS","source.xls",out.toByteArray()).issues()).isEmpty();
+        }
+    }
     @Test void anExtraSheetWithOnlyAnEmptyCacheFormulaIsStillARealInput() throws Exception {
         try(var book=new org.apache.poi.hssf.usermodel.HSSFWorkbook(new java.io.ByteArrayInputStream(file("voucher-style.xls")));var out=new java.io.ByteArrayOutputStream()) {
             var cell=book.createSheet("额外表").createRow(0).createCell(83);cell.setCellFormula("IF(1=1,\"\",\"\")");book.getCreationHelper().createFormulaEvaluator().evaluateFormulaCell(cell);book.write(out);

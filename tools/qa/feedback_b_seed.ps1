@@ -21,6 +21,8 @@ $env:UTEN_REMEDIATION_B_ACCOUNT_PASSWORD=$config.syntheticAccountPassword
 $env:UTEN_REMEDIATION_B_JWT_SECRET=$config.jwtSecret
 $env:UTEN_REMEDIATION_B_HMAC_KEY=$config.hmacKey
 $env:UTEN_REMEDIATION_B_PGP_MASTER_KEY=$config.pgpMasterKey
+$env:UTEN_REMEDIATION_B_BOOTSTRAP_LOGIN=$config.bootstrapLogin
+$env:UTEN_REMEDIATION_B_BOOTSTRAP_PASSWORD=$config.bootstrapPassword
 $env:UTEN_REMEDIATION_B_SEED_OUTPUT=$OutputPath
 $env:UTEN_REMEDIATION_B_INCLUDE_LEGACY_DRAFTS=if($LegacyDrafts){'true'}else{'false'}
 $env:UTEN_RUN_DB_TESTS='true'
@@ -28,10 +30,10 @@ New-Item -ItemType Directory -Force -Path "$evidence/tmp" | Out-Null
 $env:TEMP="$evidence/tmp";$env:TMP=$env:TEMP
 $env:MAVEN_OPTS="-Xmx1400m -Djava.io.tmpdir=$env:TEMP"
 try {
-  mvn -B --offline -f "$root/server/pom.xml" "-Duten.build.directory=$BuildDirectory" "-Duten.test.tmpdir=$env:TEMP" '-Dtest=FeedbackBWebSeedTest#seedOrdinaryWebReturnAndOrderScenarios' surefire:test *> "$evidence/seed-web.log"
+  mvn -B --offline -f "$root/server/pom.xml" "-Duten.build.directory=$BuildDirectory" "-Duten.test.tmpdir=$env:TEMP" '-Duten.test.jvm.heap.args=-Xmx1800m' '-Dtest=FeedbackBWebSeedTest#seedOrdinaryWebReturnAndOrderScenarios' surefire:test *> "$evidence/seed-web.log"
   $result=$LASTEXITCODE
   $result | Set-Content "$evidence/seed-web.exit"
 } finally {
-  Remove-Item Env:UTEN_REMEDIATION_B_DB_PASSWORD,Env:UTEN_REMEDIATION_B_ACCOUNT_PASSWORD,Env:UTEN_REMEDIATION_B_JWT_SECRET,Env:UTEN_REMEDIATION_B_HMAC_KEY,Env:UTEN_REMEDIATION_B_PGP_MASTER_KEY,Env:UTEN_REMEDIATION_B_ALLOW_SEED,Env:UTEN_REMEDIATION_B_INCLUDE_LEGACY_DRAFTS,Env:UTEN_REMEDIATION_B_JDBC_URL,Env:UTEN_REMEDIATION_B_DB_USER,Env:UTEN_REMEDIATION_B_SEED_OUTPUT -ErrorAction SilentlyContinue
+  Remove-Item Env:UTEN_REMEDIATION_B_DB_PASSWORD,Env:UTEN_REMEDIATION_B_ACCOUNT_PASSWORD,Env:UTEN_REMEDIATION_B_JWT_SECRET,Env:UTEN_REMEDIATION_B_HMAC_KEY,Env:UTEN_REMEDIATION_B_PGP_MASTER_KEY,Env:UTEN_REMEDIATION_B_BOOTSTRAP_LOGIN,Env:UTEN_REMEDIATION_B_BOOTSTRAP_PASSWORD,Env:UTEN_REMEDIATION_B_ALLOW_SEED,Env:UTEN_REMEDIATION_B_INCLUDE_LEGACY_DRAFTS,Env:UTEN_REMEDIATION_B_JDBC_URL,Env:UTEN_REMEDIATION_B_DB_USER,Env:UTEN_REMEDIATION_B_SEED_OUTPUT -ErrorAction SilentlyContinue
 }
 exit $result

@@ -56,25 +56,34 @@ public final class PlatformWorkbookSchema {
         try {
             if (value == null || value.length() > MAX_CHARS) throw new IllegalArgumentException();
             var root = JSON.readTree(value);
-            if (!root.isObject() || !root.path("schemaVersion").isIntegralNumber() || root.path("schemaVersion").intValue() != 1
+            if (!root.isObject() || !root.path("schemaVersion").isIntegralNumber() || !root.path("schemaVersion").canConvertToInt() || root.path("schemaVersion").intValue() != 1
                     || !root.path("scope").isTextual() || root.path("scope").asText().isBlank() || root.path("scope").asText().length() > 120
                     || !root.path("sheets").isArray() || root.path("sheets").isEmpty() || root.path("sheets").size() > MAX_CHARS/16
                     || !root.path("columnSets").isArray() || root.path("columnSets").isEmpty() || root.path("columnSets").size() > MAX_CHARS/16) throw new IllegalArgumentException();
             for(var columns:root.path("columnSets")) {
                 if(!columns.isArray()||columns.isEmpty()||columns.size()>160)throw new IllegalArgumentException();
+                var positions=new HashSet<Integer>();var identities=new HashSet<UUID>();
                 for(var column:columns) {
                     if (!column.path("index").isIntegralNumber() || !column.path("index").canConvertToInt() || column.path("index").intValue() < 0 || column.path("index").intValue() >= 16384
-                            || !column.path("label").isTextual() || column.path("label").asText().length() > 200
+                            || !column.path("label").isTextual() || column.path("label").asText().isBlank() || column.path("label").asText().length() > 200
                             || !column.path("definitionId").isTextual()) throw new IllegalArgumentException();
-                    UUID.fromString(column.path("definitionId").asText());
+                    if(!positions.add(column.path("index").intValue())||!identities.add(UUID.fromString(column.path("definitionId").asText())))throw new IllegalArgumentException();
                 }
             }
+            var names=new HashSet<String>();var formatter=new org.apache.poi.ss.usermodel.DataFormatter();
             for (var sheet : root.path("sheets")) {
                 if (!sheet.path("name").isTextual() || sheet.path("name").asText().length() > 31
                         || !sheet.path("headerRow").isIntegralNumber() || !sheet.path("headerRow").canConvertToInt() || sheet.path("headerRow").intValue() < 0
                         || sheet.path("headerRow").intValue()>=1_048_576 || !sheet.path("columnSet").isIntegralNumber()
                         || !sheet.path("columnSet").canConvertToInt() || sheet.path("columnSet").intValue()<0
                         || sheet.path("columnSet").intValue()>=root.path("columnSets").size()) throw new IllegalArgumentException();
+                String name=sheet.path("name").asText();var actual=workbook.getSheet(name);
+                if(!names.add(name)||actual==null)throw new IllegalArgumentException();
+                var header=actual.getRow(sheet.path("headerRow").intValue());if(header==null)throw new IllegalArgumentException();
+                for(var column:root.path("columnSets").get(sheet.path("columnSet").intValue())) {
+                    var cell=header.getCell(column.path("index").intValue());
+                    if(cell==null||!formatter.formatCellValue(cell).equals(column.path("label").asText()))throw new IllegalArgumentException();
+                }
             }
             return "文件含有导出的自定义列，当前导入尚不支持自定义列写回；请重新导出仅含系统列的文件后导入，不能按显示名称改写系统字段";
         } catch (Exception error) {

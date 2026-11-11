@@ -31,7 +31,7 @@ public final class FinanceAccountingWorkbookParser {
                    @JsonFormat(shape=JsonFormat.Shape.STRING) BigDecimal debit,@JsonFormat(shape=JsonFormat.Shape.STRING) BigDecimal credit,
                    @JsonFormat(shape=JsonFormat.Shape.STRING) BigDecimal closingDebit,@JsonFormat(shape=JsonFormat.Shape.STRING) BigDecimal closingCredit) { }
     public record Parsed(String kind,List<Voucher> vouchers,List<Balance> balances,List<Issue> issues,List<String> headers,int columnContractVersion) {
-        public Parsed(String kind,List<Voucher> vouchers,List<Balance> balances,List<Issue> issues,List<String> headers){this(kind,vouchers,balances,issues,headers,1);}
+        public Parsed(String kind,List<Voucher> vouchers,List<Balance> balances,List<Issue> issues,List<String> headers){this(kind,vouchers,balances,issues,headers,com.uten.imp.common.importing.ImportColumnGuard.VERSION);}
         public Parsed(String kind,List<Voucher> vouchers,List<Balance> balances,List<Issue> issues){this(kind,vouchers,balances,issues,List.of());}
     }
     private static final Pattern CODE=Pattern.compile("[0-9]{1,32}");
@@ -39,19 +39,26 @@ public final class FinanceAccountingWorkbookParser {
         var document=DocumentSniffer.sniff(bytes,filename);
         if(document!=DocumentKind.XLS&&document!=DocumentKind.XLSX)throw invalid("原账套凭证或余额只支持完整XLS/XLSX文件");
         var grid=SpreadsheetGridReader.read(bytes,document,DocumentIntakeProfile.FINANCIAL_TEMPLATE);
+        // Inspect physical cells before selecting a business sheet from the value grid.
+        // Raw BIFF3 has no formula support. OLE/XML identity and amount fields must be literal.
+        if(!LegacyBiffGridReader.isRaw(bytes))SpreadsheetImportVisibility.requireCompleteLiteralIdentities(bytes,83);
         if(grid.sheets().size()!=1)throw invalid("请上传一张完整的原账套工作表");
         var sheet=grid.sheets().getFirst();
         if(sheet.truncated()||sheet.skippedHiddenRows()!=0||sheet.rows().isEmpty())throw invalid("原账套文件未完整读取");
-        // Raw BIFF3 has no formula support. OLE/XML identity and amount fields must be literal.
-        if(!LegacyBiffGridReader.isRaw(bytes))SpreadsheetImportVisibility.requireCompleteLiteralIdentities(bytes,83);
-        return switch(kind){case "VOUCHERS"->vouchers(sheet);case "BALANCE"->balances(sheet,bytes);default->throw invalid("请选择凭证或科目余额文件类型");};
+        return switch(kind){case "VOUCHERS"->vouchers(sheet,bytes);case "BALANCE"->balances(sheet,bytes);default->throw invalid("请选择凭证或科目余额文件类型");};
     }
-    private static Parsed vouchers(DocumentGrid.Sheet sheet) {
+    private static Parsed vouchers(DocumentGrid.Sheet sheet,byte[] bytes) {
         var header=sheet.rows().getFirst();
         for(int index=1;index<=82;index++)if(!Pattern.compile("^F"+index+"(?![0-9]).*",Pattern.DOTALL).matcher(text(header,index-1)).matches())
             throw invalid("原凭证第"+index+"列表头不符合F"+index+"，不能猜测列位置");
         if(sheet.maxColumn()!=82)throw invalid("原凭证须保留全部83列及输出签名");
-        List<Issue> issues=new ArrayList<>();Map<String,List<Entry>> grouped=new LinkedHashMap<>();Set<String> sourceIds=new HashSet<>();
+        var signature=Pattern.compile("^凭证输出[：:]([^：:]+)[：:]([^：:]+)[：:]([^：:]+)[：:]([0-9]{4})$").matcher(text(header,82));
+        if(!signature.matches())throw invalid("原凭证第83列输出签名缺损或格式不符，请从原账套重新导出");
+        String signatureLedger=signature.group(2),signatureCompany=signature.group(3);int signatureYear=Integer.parseInt(signature.group(4));
+        List<Issue> issues=new ArrayList<>();
+        for(var issue:com.uten.imp.common.importing.ImportColumnGuard.inspectExtraColumns(bytes,sheet,header.index0(),83))
+            issues.add(new Issue(issue.rowNum(),issue.column(),issue.message()));
+        Map<String,List<Entry>> grouped=new LinkedHashMap<>();Set<String> sourceIds=new HashSet<>();
         for(var row:sheet.rows()) {
             if(row.index0()<=header.index0()||row.cells().isEmpty())continue;
             int line=row.index0()+1;
@@ -60,6 +67,8 @@ public final class FinanceAccountingWorkbookParser {
                 LocalDate date=LocalDate.parse(text(row,0));int year=integer(row,50),month=integer(row,51),lineNo=integer(row,58);
                 if(year!=date.getYear()||month!=date.getMonthValue()||lineNo<1)throw invalid("日期、会计年/期间或凭证行号不一致");
                 String type=required(row,1,"凭证类别"),number=literal(row,2,"凭证号"),ledger=literal(row,48,"账套号");
+                if(!ledger.equals(signatureLedger)||!text(row,49).equals(signatureCompany)||year!=signatureYear)
+                    throw invalid("原凭证分录的账套、核算单位或年度与输出签名不一致");
                 BigDecimal debit=number(row,6),credit=number(row,7),original=nullableNumber(row,9,false),rate=nullableNumber(row,10,false);
                 if((debit.signum()==0)==(credit.signum()==0))throw invalid("借贷两列必须仅有一列为非零，红字保留原方向负金额");
                 String entryId=required(row,80,"分录自动编号"),voucherId=required(row,81,"凭证唯一标识");

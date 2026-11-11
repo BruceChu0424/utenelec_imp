@@ -29,7 +29,8 @@ class ImportColumnGuardTest {
         var old=json.readValue("{}",com.uten.imp.features.master.goods.costing.GoodsCostImportContracts.Preview.class);
         assertThat(old.columnContractVersion()).isZero();
         assertThatThrownBy(()->ImportColumnGuard.requireValidated(old.columnContractVersion())).hasMessageContaining("重新检测");
-        assertThatThrownBy(()->ImportColumnGuard.requireValidated(2)).hasMessageContaining("重新检测");
+        assertThatThrownBy(()->ImportColumnGuard.requireValidated(1)).hasMessageContaining("重新检测");
+        assertThatThrownBy(()->ImportColumnGuard.requireValidated(ImportColumnGuard.VERSION+1)).hasMessageContaining("重新检测");
         assertThatCode(()->ImportColumnGuard.requireValidated(ImportColumnGuard.VERSION)).doesNotThrowAnyException();
     }
 }

@@ -121,30 +121,26 @@ final class GoodsImportWorkbookSecurity {
             throw rejected("Excel 工作表数量超出允许范围，请仅保留商品导入工作表");
         }
 
-        Sheet first = workbook.getSheetAt(0);
-        if (first.getLastRowNum() >= MAX_ROWS || first.getPhysicalNumberOfRows() > MAX_ROWS) {
-            throw rejected("Excel 商品行超过 20000 行，请拆分为多个批次后重试");
-        }
-
+        // Resource limits apply to physical cells in every sheet, including styles.
+        // Content in extra sheets is then rejected with its exact original location.
         int cells = 0;
-        for (Row row : first) {
-            if (row.getLastCellNum() > MAX_COLUMNS || row.getPhysicalNumberOfCells() > MAX_COLUMNS) {
-                throw rejected("Excel 列数超过 64 列，请使用标准商品导入模板");
-            }
-            cells += row.getPhysicalNumberOfCells();
-            if (cells > MAX_CELLS) {
-                throw rejected("Excel 单元格数量过多，请拆分为多个批次后重试");
-            }
-            for (Cell cell : row) {
-                if (cell.getCellType() == CellType.FORMULA) {
-                    throw rejected("商品导入不执行公式，请先将公式复制并粘贴为值");
-                }
-                if (cell.getCellType() == CellType.STRING
-                        && cell.getStringCellValue().length() > MAX_CELL_CHARACTERS) {
+        for (Sheet sheet : workbook) {
+            if (sheet.getLastRowNum() >= MAX_ROWS || sheet.getPhysicalNumberOfRows() > MAX_ROWS)
+                throw rejected("Excel 工作表「"+sheet.getSheetName()+"」超过 20000 行，请拆分为多个批次后重试");
+            for (Row row : sheet) {
+                if (row.getLastCellNum() > MAX_COLUMNS || row.getPhysicalNumberOfCells() > MAX_COLUMNS)
+                    throw rejected("Excel 列数超过 64 列，请使用标准商品导入模板");
+                cells += row.getPhysicalNumberOfCells();
+                if (cells > MAX_CELLS) throw rejected("Excel 单元格数量过多，请拆分为多个批次后重试");
+                for (Cell cell : row) if (cell.getCellType() == CellType.STRING
+                        && cell.getStringCellValue().length() > MAX_CELL_CHARACTERS)
                     throw rejected("Excel 单元格文本过长，请检查后重试");
-                }
             }
         }
+        com.uten.imp.common.importing.ImportColumnGuard.requireSingleContentSheet(workbook);
+        for (Row row : workbook.getSheetAt(0)) for (Cell cell : row)
+            if (cell.getCellType() == CellType.FORMULA)
+                throw rejected("商品导入不执行公式，请先将公式复制并粘贴为值");
     }
 
     private static void validateEntryName(String name, Set<String> names) {

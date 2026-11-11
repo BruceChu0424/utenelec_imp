@@ -164,8 +164,28 @@ public final class AggregateMaterialOrderContracts {
                                List<SourcePreview> sources, List<ChildPreview> sharedBomChildren,
                                String blockedReason,UUID existingBatchId,BigDecimal priorOutputQty,
                                @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
-                               String receiptAllocationMode) {
-        public GroupPreview { sources=List.copyOf(sources);sharedBomChildren=List.copyOf(sharedBomChildren);priorOutputQty=priorOutputQty==null?BigDecimal.ZERO:priorOutputQty; }
+                               String receiptAllocationMode,Map<String,String> quantityBreakdown) {
+        public GroupPreview { quantityBreakdown=quantityBreakdown==null?Map.of():Map.copyOf(quantityBreakdown);sources=List.copyOf(sources);sharedBomChildren=List.copyOf(sharedBomChildren);priorOutputQty=priorOutputQty==null?BigDecimal.ZERO:priorOutputQty; }
+        public GroupPreview(String clientGroupKey, String compatibilityKey, String route,
+                               UUID goodsId, String goodsCode, String goodsName,
+                               UUID colorId, String colorName, UUID unitId, String unitName,
+                               BigDecimal sourceRequiredQty, BigDecimal orderedQty, BigDecimal remainingQty,
+                               BigDecimal requestedQty, BigDecimal publicExtraQty, BigDecimal safetyQty,
+                               UUID departmentId, UUID workerId, UUID teamDepartmentId,
+                               LocalDate billDate, LocalDate deliveryDate, String productNo,
+                               BigDecimal allowedOverproductionRate,
+                               List<SourcePreview> sources, List<ChildPreview> sharedBomChildren,
+                               String blockedReason,UUID existingBatchId,BigDecimal priorOutputQty,
+                               String receiptAllocationMode ) {
+            this(clientGroupKey,compatibilityKey,route,goodsId,goodsCode,goodsName,colorId,colorName,unitId,unitName,
+                    sourceRequiredQty,orderedQty,remainingQty,requestedQty,publicExtraQty,safetyQty,departmentId,workerId,teamDepartmentId,
+                    billDate,deliveryDate,productNo,allowedOverproductionRate,sources,sharedBomChildren,blockedReason,existingBatchId,priorOutputQty,receiptAllocationMode,Map.of());
+        }
+        public GroupPreview withQuantityBreakdown(Map<String,String> quantities) {
+            return new GroupPreview(clientGroupKey,compatibilityKey,route,goodsId,goodsCode,goodsName,colorId,colorName,unitId,unitName,
+                    sourceRequiredQty,orderedQty,remainingQty,requestedQty,publicExtraQty,safetyQty,departmentId,workerId,teamDepartmentId,
+                    billDate,deliveryDate,productNo,allowedOverproductionRate,sources,sharedBomChildren,blockedReason,existingBatchId,priorOutputQty,receiptAllocationMode,quantities);
+        }
         @com.fasterxml.jackson.annotation.JsonProperty(value="publicExtraQtyExact",access=com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
         public String publicExtraQtyExact() { return publicExtraQty.toPlainString(); }
         public GroupPreview(String clientGroupKey,String compatibilityKey,String route,UUID goodsId,String goodsCode,String goodsName,

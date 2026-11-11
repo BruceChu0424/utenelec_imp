@@ -1,3 +1,4 @@
+import '../../../shared/forms/upstream_import_operation.dart';
 import '../../../core/formatters/exact_number_text.dart';
 import '../../../shared/models/employee_reference.dart';
 import '../../../shared/repositories/employee_reference_repository.dart';
@@ -169,6 +170,8 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
       : const SizedBox.shrink();
 
   bool _saving = false;
+  bool _importingUpstream = false;
+  bool _resolvingUpstream = false;
   bool _confirmGiftSemantics = false;
   bool _loading = false;
   bool _documentIdentityChanged = false;
@@ -989,14 +992,59 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
   /// V463：同「货品+颜色+单位」的引入项并入既有行（数量加总、来源聚合），
   /// 不再产生同货品重复行。
   Future<void> _importFromUpstream() async {
+    if (_importingUpstream ||
+        _saving ||
+        _loading ||
+        !formDraftIdentityIsCurrent) {
+      return;
+    }
+    final session = ref.read(sessionProvider.notifier);
+    final epoch = session.requestIntentEpoch;
+    final documentId = widget.id;
+    final originalRows = List.of(_grid.rows);
+    final operation = UpstreamImportOperation(
+      () =>
+          mounted &&
+          formDraftIdentityIsCurrent &&
+          identical(ref.read(sessionProvider.notifier), session) &&
+          session.requestIntentEpoch == epoch &&
+          widget.id == documentId &&
+          _grid.rows.length == originalRows.length &&
+          List.generate(
+            originalRows.length,
+            (index) => index,
+          ).every((index) => identical(_grid.rows[index], originalRows[index])),
+    );
+    setState(() => _importingUpstream = true);
+    try {
+      await _importFromUpstreamInScope(operation);
+    } catch (error) {
+      if (mounted && operation.isCurrent) {
+        context.appError('引入来源未完成，请保留原输入后重试：$error');
+      }
+    } finally {
+      operation.retire();
+      if (mounted) {
+        setState(() {
+          _importingUpstream = false;
+          _resolvingUpstream = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _importFromUpstreamInScope(
+    UpstreamImportOperation operation,
+  ) async {
     final result = await showDocLinkPicker(
       context,
       ref,
       _cfg,
       allowOverRemaining: true,
     );
-    if (!mounted || !formDraftIdentityIsCurrent) return;
+    if (!mounted || !operation.isCurrent) return;
     if (result == null || result.items.isEmpty) return;
+    setState(() => _resolvingUpstream = true);
     final goodsIds = result.items
         .map((e) => e.goodsId)
         .where((id) => id.isNotEmpty)
@@ -1006,7 +1054,17 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
           .read(masterNameServiceProvider)
           .loadGoodsNamesWithCodes(goodsIds);
     }
-    if (!mounted || !formDraftIdentityIsCurrent) return;
+    if (!mounted || !operation.isCurrent) return;
+    final unresolved = result.items.any(
+      (item) =>
+          item.goodsId.isNotEmpty &&
+          ref.read(masterNameServiceProvider).goodsOptionOf(item.goodsId) ==
+              null,
+    );
+    if (unresolved) {
+      context.appWarning('部分来源货品尚未完整读取，请保留原输入并重新引入');
+      return;
+    }
     // 本次引入触达的行（新加行 + 被并入的既有行）：新建态自动勾上。
     final touched = <PurchaseGridRow>[];
     void mergeIntoGrid(PurchaseGridRow row) {
@@ -1033,21 +1091,36 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
         existing.maxGiftQtyText = financeExactTrimmed(
           financeExactSumTexts([existing.maxGiftQtyText, row.maxGiftQtyText]),
         );
-        existing.maxQty = (existing.maxQty ?? 0) + (row.maxQty ?? 0);
+        existing.maxQtyText = financeExactTrimmed(
+          financeExactSumTexts([
+            existing.maxQtyText ?? existing.maxQty?.toString(),
+            row.maxQtyText ?? row.maxQty?.toString(),
+          ]),
+        );
+        existing.maxQty = double.tryParse(existing.maxQtyText ?? '');
         existing.upstreamItemIds = [
           ...existing.upstreamItemIds,
           ...row.upstreamItemIds,
         ];
         existing.sourceDocs = [...existing.sourceDocs, ...row.sourceDocs];
         touched.add(existing);
+        row.dispose();
         return;
       }
       _grid.addRow(row);
       touched.add(row);
     }
 
+    final sources = <String>{
+      for (final row in _grid.rows) ...row.upstreamItemIds,
+      for (final row in _grid.rows)
+        if (row.upstreamItemId != null) row.upstreamItemId!,
+    };
     for (final li in result.items) {
-      if (li.goodsId.isEmpty) continue;
+      if (li.goodsId.isEmpty ||
+          (li.upstreamItemId != null && !sources.add(li.upstreamItemId!))) {
+        continue;
+      }
       final goods = ref
           .read(masterNameServiceProvider)
           .goodsOptionOf(li.goodsId)!;
@@ -1283,7 +1356,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
   }
 
   Future<void> _saveOwned() async {
-    if (_saving) return;
+    if (_saving || _importingUpstream) return;
     if (_createdOrders case final created?) {
       // 订货单已生成、附件未全部上传：只补传附件，成功后再提交财务/进入详情。
       setState(() => _saving = true);
@@ -2022,7 +2095,9 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
                                     toolbarActions: [
                                       UtenImportButton(
                                         label: '从上游引入',
-                                        onPressed: _importFromUpstream,
+                                        onPressed: _importingUpstream
+                                            ? null
+                                            : _importFromUpstream,
                                       ),
                                     ],
                                     // 「统一设置条款」2026-09-11 从工具条撤到行右键菜单
@@ -2201,6 +2276,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
                     ),
                   ),
             // 保存/提交财务审核网络段的全屏加载遮罩。
+            if (_resolvingUpstream) const UtenBusyOverlay(title: '正在补全来源明细'),
             if (_saving)
               UtenBusyOverlay(
                 title: _isCreate ? '正在创建${_cfg.label}' : '正在保存${_cfg.label}',

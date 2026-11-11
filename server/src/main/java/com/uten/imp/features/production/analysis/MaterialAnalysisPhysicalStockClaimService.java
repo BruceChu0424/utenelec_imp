@@ -75,18 +75,57 @@ public class MaterialAnalysisPhysicalStockClaimService {
         final var lockedView = snapshots.getObject().detailInternal(analysisId, false);
         byId.clear();
         lockedView.flatMaterials().forEach(row -> byId.put(row.materialLineId(), row));
-        boolean changed = false;
-        for (final var entry : ordered) {
-            final var material = byId.get(entry.getKey());
-            if (material == null) throw conflict("原公共现货采用来源已经变化");
-            if ("ROOT_SUPPLY".equals(material.nodeRole())) continue;
-            final var aggregate = material.aggregatePreparation();
-            final boolean effectiveNeed = material.requiredQty().signum() > 0
-                    || aggregate != null && aggregate.actionable() && aggregate.requiredQty().signum() > 0;
-            if (!effectiveNeed) continue;
-            BigDecimal remaining = entry.getValue().min(nonnegative(material.preparationUncoveredBeforeSharedQty()));
-            if (remaining.signum() <= 0) continue;
-            final var leaves = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+        var plan = plan(analysisId,maxByMaterial,lockedView);
+        for (var allocation : plan) {
+            var material=byId.get(allocation.materialLineId());
+            var warehouse=allocation.warehouseId();
+            var take=allocation.qty();
+            final UUID reservation = UUID.randomUUID();
+            final String reservationKey = "PREPLAN-STOCK:" + CanonicalFingerprint.sha256(List.of(
+                    commandId.toString(), material.materialLineId().toString(), warehouse.toString()));
+            em.createNativeQuery("""
+                    INSERT INTO stock_reservations(id,owner_type,owner_id,purpose,goods_id,color_id,warehouse_id,
+                      qty,consumed_qty,released_qty,status,source,source_doc_type,source_doc_id,supply_type,supply_id,
+                      idempotency_key,created_by,updated_by)
+                    VALUES(:id,'PREPLAN_ANALYSIS',:analysis,'PREPLAN_MATERIAL',:goods,:color,:warehouse,
+                      :qty,0,0,0,3,'PREPLAN_STOCK_BALANCE',:material,'STOCK_BALANCE',:material,:key,:actor,:actor)
+                    """).setParameter("id", reservation).setParameter("analysis", analysisId)
+                    .setParameter("goods", material.goodsId()).setParameter("color", material.colorId())
+                    .setParameter("warehouse", warehouse).setParameter("qty", take)
+                    .setParameter("material", material.materialLineId()).setParameter("key", reservationKey)
+                    .setParameter("actor", currentUser.requireId()).executeUpdate();
+            em.createNativeQuery("""
+                    INSERT INTO preplan_physical_stock_claim_allocations(command_id,stock_reservation_id,material_id,qty)
+                    VALUES(:command,:reservation,:material,:qty)
+                    """).setParameter("command", commandId).setParameter("reservation", reservation)
+                    .setParameter("material", material.materialLineId()).setParameter("qty", take).executeUpdate();
+        }
+        return !plan.isEmpty();
+    }
+
+
+    record Allocation(UUID materialLineId,UUID warehouseId,BigDecimal qty) { }
+    private record Dimension(UUID goods,UUID color) { }
+
+    /** Read-only plan; callers of claim re-read under the existing inventory mutex. */
+    List<Allocation> plan(UUID analysisId,Map<UUID,BigDecimal> maxByMaterial,
+            MaterialAnalysisContracts.AnalysisView view) {
+        Map<UUID,MaterialAnalysisContracts.MaterialView> byId=new HashMap<>();
+        view.flatMaterials().forEach(row->byId.put(row.materialLineId(),row));
+        Map<Dimension,Map<UUID,BigDecimal>> pools=new HashMap<>();
+        List<Allocation> result=new ArrayList<>();
+        for (var entry:maxByMaterial.entrySet().stream().sorted(Map.Entry.comparingByKey()).toList()) {
+            var material=byId.get(entry.getKey());
+            if(material==null)throw conflict("原公共现货采用来源已经变化");
+            if("ROOT_SUPPLY".equals(material.nodeRole()))continue;
+            var aggregate=material.aggregatePreparation();
+            if(material.requiredQty().signum()<=0&&(aggregate==null||!aggregate.actionable()||aggregate.requiredQty().signum()<=0))continue;
+            BigDecimal remaining=entry.getValue().min(nonnegative(material.preparationUncoveredBeforeSharedQty()));
+            if(remaining.signum()<=0)continue;
+            var dimension=new Dimension(material.goodsId(),material.colorId());
+            var pool=pools.get(dimension);
+            if(pool==null) {
+                final var leaves = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                     SELECT stock.warehouse_id,CAST(GREATEST(CAST(stock.qty AS numeric)
                       -COALESCE((SELECT SUM(r.qty-r.consumed_qty-r.released_qty) FROM stock_reservations r
                         WHERE r.goods_id=:goods AND r.color_id IS NOT DISTINCT FROM CAST(:color AS uuid)
@@ -105,38 +144,45 @@ public class MaterialAnalysisPhysicalStockClaimService {
                     ORDER BY stock.warehouse_id
                     """).setParameter("goods", material.goodsId()).setParameter("color", material.colorId())
                     .setParameter("analysis", analysisId));
-            final var usable = MainWarehouseStockBudget.distribute(leaves.stream().map(leaf ->
+                final var usable = MainWarehouseStockBudget.distribute(leaves.stream().map(leaf ->
                     new MainWarehouseStockBudget.Leaf<>((UUID) leaf[0], (BigDecimal) leaf[1],
                             BigDecimal.ZERO, BigDecimal.ZERO)).toList(), leaves.isEmpty() ? BigDecimal.ZERO
                     : ((BigDecimal) leaves.getFirst()[2]).add((BigDecimal) leaves.getFirst()[3]));
-            for (final var leaf : leaves) {
-                final BigDecimal take = remaining.min(usable.get((UUID) leaf[0]));
-                if (take.signum() <= 0) continue;
-                final UUID reservation = UUID.randomUUID();
-                final String reservationKey = "PREPLAN-STOCK:" + CanonicalFingerprint.sha256(List.of(
-                        commandId.toString(), entry.getKey().toString(), leaf[0].toString()));
-                em.createNativeQuery("""
-                        INSERT INTO stock_reservations(id,owner_type,owner_id,purpose,goods_id,color_id,warehouse_id,
-                          qty,consumed_qty,released_qty,status,source,source_doc_type,source_doc_id,supply_type,supply_id,
-                          idempotency_key,created_by,updated_by)
-                        VALUES(:id,'PREPLAN_ANALYSIS',:analysis,'PREPLAN_MATERIAL',:goods,:color,:warehouse,
-                          :qty,0,0,0,3,'PREPLAN_STOCK_BALANCE',:material,'STOCK_BALANCE',:material,:key,:actor,:actor)
-                        """).setParameter("id", reservation).setParameter("analysis", analysisId)
-                        .setParameter("goods", material.goodsId()).setParameter("color", material.colorId())
-                        .setParameter("warehouse", leaf[0]).setParameter("qty", take)
-                        .setParameter("material", entry.getKey()).setParameter("key", reservationKey)
-                        .setParameter("actor", currentUser.requireId()).executeUpdate();
-                em.createNativeQuery("""
-                        INSERT INTO preplan_physical_stock_claim_allocations(command_id,stock_reservation_id,material_id,qty)
-                        VALUES(:command,:reservation,:material,:qty)
-                        """).setParameter("command", commandId).setParameter("reservation", reservation)
-                        .setParameter("material", entry.getKey()).setParameter("qty", take).executeUpdate();
-                changed = true;
-                remaining = remaining.subtract(take);
-                if (remaining.signum() == 0) break;
+
+                pool=new java.util.LinkedHashMap<>();
+                for(var leaf:leaves)pool.put((UUID)leaf[0],usable.get((UUID)leaf[0]));
+                pools.put(dimension,pool);
+            }
+            for(var leaf:pool.entrySet()) {
+                var take=remaining.min(leaf.getValue());
+                if(take.signum()<=0)continue;
+                result.add(new Allocation(material.materialLineId(),leaf.getKey(),take));
+                leaf.setValue(leaf.getValue().subtract(take));
+                remaining=remaining.subtract(take);
+                if(remaining.signum()==0)break;
             }
         }
-        return changed;
+        return List.copyOf(result);
+    }
+
+    static Map<UUID,BigDecimal> claimLimits(List<AggregateMaterialOrderContracts.GroupInput> inputs,
+            Map<UUID,MaterialAnalysisContracts.MaterialView> rows,boolean skipClaims) {
+        Map<UUID,BigDecimal> limits=new java.util.LinkedHashMap<>();
+        for(var input:inputs) {
+            if(input.orderMethod()==null||input.skipClaims(skipClaims))continue;
+            if(input.sourceRequestedQtyByMaterialLineId().isEmpty()) {
+                BigDecimal required=input.materialLineIds().stream().map(rows::get).map(row->row.requiredQty().max(nonnegative(row.sourceRequiredQty()))).reduce(BigDecimal.ZERO,BigDecimal::add);
+                BigDecimal before=input.materialLineIds().stream().map(rows::get).map(row->nonnegative(row.preparationUncoveredBeforeSharedQty())).reduce(BigDecimal.ZERO,BigDecimal::add);
+                BigDecimal ceiling=MaterialOrderQuantity.physicalClaimCeiling(input.qty(),input.quantityMode(),required,before);
+                var caps=input.materialLineIds().stream().map(rows::get).map(row->new AggregateQuantityAllocator.SourceCapacity(row.materialLineId(),0,null,nonnegative(row.preparationUncoveredBeforeSharedQty()))).toList();
+                AggregateQuantityAllocator.allocate(ceiling,caps,true).allocations().forEach(share->limits.put(share.sourceId(),share.qty()));
+            } else input.sourceRequestedQtyByMaterialLineId().forEach((id,quantity)-> {
+                var row=rows.get(id);
+                if(row==null)throw conflict("汇总来源已变化或不可见，请刷新并重新核对");
+                limits.put(id,MaterialOrderQuantity.physicalClaimCeiling(quantity,input.quantityMode(),row.requiredQty().max(nonnegative(row.sourceRequiredQty())),row.preparationUncoveredBeforeSharedQty()));
+            });
+        }
+        return limits;
     }
 
     @Transactional(readOnly = true)

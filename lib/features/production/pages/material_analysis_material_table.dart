@@ -7882,7 +7882,10 @@ abstract class _MaterialAnalysisMaterialTableState
       return;
     }
     // 如实回报：说清哪几段成了、停在哪一步，别把半截状态说成成功。
-    context.appError('下达没有全部完成：\n$summary\n未完成的行仍然勾着，可以修改后重试。');
+    context.appError(
+      '下达没有全部完成：\n$summary\n'
+      '${_aggregateTable.uncertain ? '结果未知的行保留原编号与原内容，只能查询原回执或原样重试；尚未提交的行保留原输入。' : '明确未写入的行仍然勾着，可以修改后重试。'}',
+    );
   }
 
   /// 必填指派格：空 = 实时红框(自制行这两格必填，2026-09-25 用户口径「必填的框

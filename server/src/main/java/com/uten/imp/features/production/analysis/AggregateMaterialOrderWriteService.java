@@ -172,20 +172,7 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
                 .flatMap(group->group.sources().stream()).map(source->reviewedRows.get(source.materialLineId()))
                 .filter(Objects::nonNull).toList());
         if(reviewed.groups().stream().anyMatch(group->group.blockedReason()!=null))throw conflict(reviewed.groups().stream().map(GroupPreview::blockedReason).filter(Objects::nonNull).findFirst().orElseThrow());
-        Map<UUID,BigDecimal> physicalLimits=new LinkedHashMap<>();
-        for(GroupInput input:request.groups()) {
-            if(input.orderMethod()==null||input.skipClaims(request.skipClaims()))continue;
-            if(input.sourceRequestedQtyByMaterialLineId().isEmpty()) {
-                BigDecimal required=input.materialLineIds().stream().map(reviewedRows::get).map(row->row.requiredQty().max(decimal(row.sourceRequiredQty()))).reduce(BigDecimal.ZERO,BigDecimal::add);
-                BigDecimal before=input.materialLineIds().stream().map(reviewedRows::get).map(row->decimal(row.preparationUncoveredBeforeSharedQty())).reduce(BigDecimal.ZERO,BigDecimal::add);
-                BigDecimal ceiling=MaterialOrderQuantity.physicalClaimCeiling(input.qty(),input.quantityMode(),required,before);
-                var caps=input.materialLineIds().stream().map(reviewedRows::get).map(row->new AggregateQuantityAllocator.SourceCapacity(row.materialLineId(),0,null,decimal(row.preparationUncoveredBeforeSharedQty()))).toList();
-                AggregateQuantityAllocator.allocate(ceiling,caps,true).allocations().forEach(share->physicalLimits.put(share.sourceId(),share.qty()));
-            } else input.sourceRequestedQtyByMaterialLineId().forEach((id,quantity)-> {
-                MaterialView row=reviewedRows.get(id);
-                physicalLimits.put(id,MaterialOrderQuantity.physicalClaimCeiling(quantity,input.quantityMode(),row.requiredQty().max(decimal(row.sourceRequiredQty())),row.preparationUncoveredBeforeSharedQty()));
-            });
-        }
+        Map<UUID,BigDecimal> physicalLimits=MaterialAnalysisPhysicalStockClaimService.claimLimits(request.groups(),reviewedRows,request.skipClaims());
         Map<UUID,BigDecimal> physicalBefore=physicalStockClaims==null?Map.of():physicalStockClaims.ownedByMaterial(analysisId);
         Map<UUID,BigDecimal> physicalDelta=new HashMap<>();
         if(physicalStockClaims!=null&&physicalStockClaims.claim(analysisId,physicalLimits,"AGGREGATE-PHYSICAL:"+analysisId+":"+request.idempotencyKey())) {

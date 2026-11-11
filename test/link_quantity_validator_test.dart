@@ -46,6 +46,31 @@ void main() {
     });
   });
 
+  test(
+    'exact document capacity preserves one quantum above the double integer range',
+    () {
+      const cap = '1234567890123.0001';
+      expect(
+        validateLinkQuantity(
+          cap,
+          remaining: double.parse(cap),
+          remainingText: cap,
+        ),
+        isNull,
+      );
+      expect(
+        validateLinkQuantity(
+          '1234567890123.0002',
+          remaining: double.parse(cap),
+          remainingText: cap,
+        ),
+        '本次数量最多为 $cap',
+      );
+      expect(validateExactLinkedCapacity(cap, cap), isNull);
+      expect(validateExactLinkedCapacity('1234567890123.0002', cap), isNotNull);
+    },
+  );
+
   test('formatLinkQuantity removes only unnecessary trailing zeroes', () {
     expect(formatLinkQuantity(2), '2');
     expect(formatLinkQuantity(2.5), '2.5');

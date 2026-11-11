@@ -142,6 +142,11 @@ void main() {
       notices.map((notice) => notice.message).join('\n'),
       contains('提交结果尚未确认'),
     );
+    expect(
+      notices.map((notice) => notice.message).join('\n'),
+      isNot(contains('可以修改后重试')),
+      reason: '未知的原幂等提交只能核对原回执或原样重试',
+    );
     expect(_table(tester).selectedIds, contains('PREPARATION|m-b'));
     expect(find.byKey(const ValueKey('uten-progress-cancel')), findsNothing);
     expect(tester.takeException(), isNull);

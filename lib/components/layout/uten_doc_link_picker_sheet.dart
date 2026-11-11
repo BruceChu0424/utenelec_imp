@@ -730,6 +730,9 @@ class _UtenDocLinkPickerSheetState<D, I, N>
           ? validateLinkQuantity(
               row.qty.text,
               remaining: remaining,
+              remainingText: _cfg.remainQtyText == null
+                  ? null
+                  : _cfg.remainQtyText!(it) ?? '',
               allowOverRemaining: _cfg.allowOverRemaining,
             )
           : _giftQuantityError(row);
@@ -1113,6 +1116,9 @@ class _UtenDocLinkPickerSheetState<D, I, N>
                   : validateLinkQuantity(
                       value,
                       remaining: _cfg.remainQty(row.item),
+                      remainingText: _cfg.remainQtyText == null
+                          ? null
+                          : _cfg.remainQtyText!(row.item) ?? '',
                       allowOverRemaining: _cfg.allowOverRemaining,
                     );
             }

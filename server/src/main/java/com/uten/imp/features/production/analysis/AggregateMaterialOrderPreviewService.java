@@ -53,8 +53,67 @@ public class AggregateMaterialOrderPreviewService {
         return resolve(analysisId,request,analysisService.issuePreviewView(analysisId,overlay,Map.of()));
     }
 
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private MaterialAnalysisPhysicalStockClaimService physicalStockClaims;
+
     /** Caller on the write side must obtain and validate its complete mutation footprint first. */
     public Preview resolve(UUID analysisId,PreviewRequest request,AnalysisView view) {
+        validateHeader(analysisId,request,view);
+        requireSourceScope(request.groups());
+        for(var group:request.groups()) {
+            if(group==null||group.clientGroupKey()==null||group.clientGroupKey().isBlank()||group.materialLineIds().isEmpty())throw invalid("汇总行标识或来源物料不完整");
+            validateSourceQuantities(group);
+        }
+        if(physicalStockClaims!=null) {
+            Map<UUID,MaterialView> rows=view.flatMaterials().stream().collect(Collectors.toMap(MaterialView::materialLineId,row->row));
+            for(var group:request.groups())for(var id:group.materialLineIds())
+                if(!rows.containsKey(id))throw conflict("汇总来源已变化或不可见，请刷新并重新核对");
+            var limits=MaterialAnalysisPhysicalStockClaimService.claimLimits(request.groups(),rows,false);
+            var claims=physicalStockClaims.plan(analysisId,limits,view);
+            if(!claims.isEmpty()) {
+                var overlay=MaterialAnalysisIssuePreviewOverlay.create();
+                analysisService.projectIssuePreviewBase(analysisId,overlay);
+                for(var claim:claims) {
+                    var row=rows.get(claim.materialLineId());
+                    overlay.addReservation(new MaterialAnalysisService.MaterialDimension(row.goodsId(),row.colorId(),row.unitId()),claim.warehouseId(),claim.qty());
+                    overlay.addFormalCoverage(new MaterialAnalysisService.FormalMaterialCoverage(row.materialLineId(),row.analysisLineId(),row.nodeKey(),claim.qty()));
+                }
+                var projected=analysisService.reprojectIssuePreview(analysisId,overlay);
+                var result=resolvePrepared(analysisId,request,projected);
+                // The simulated snapshot is used for source shares only. Writes derive their claim ceilings from the real pre-command facts.
+                return quantities(request,result,view,claims);
+            }
+        }
+        return quantities(request,resolvePrepared(analysisId,request,view),view,List.of());
+    }
+
+    private Preview quantities(PreviewRequest request,Preview resolved,AnalysisView original,
+            List<MaterialAnalysisPhysicalStockClaimService.Allocation> claims) {
+        Map<UUID,MaterialView> rows=original.flatMaterials().stream().collect(Collectors.toMap(MaterialView::materialLineId,row->row));
+        Map<String,GroupInput> inputs=request.groups().stream().collect(Collectors.toMap(GroupInput::clientGroupKey,row->row));
+        var groups=resolved.groups().stream().map(group->{
+            var input=inputs.get(group.clientGroupKey());
+            BigDecimal covered=input.materialLineIds().stream().map(rows::get).map(row->
+                    number(row.requiredQty()).max(number(row.sourceRequiredQty())).subtract(number(row.preparationUncoveredBeforeSharedQty())).max(BigDecimal.ZERO))
+                    .reduce(BigDecimal.ZERO,BigDecimal::add);
+            BigDecimal physical=claims.stream().filter(claim->input.materialLineIds().contains(claim.materialLineId())).map(MaterialAnalysisPhysicalStockClaimService.Allocation::qty).reduce(BigDecimal.ZERO,BigDecimal::add);
+            Map<String,String> values=new LinkedHashMap<>();
+            values.put("coverageTotalQty",number(input.qty()).toPlainString());
+            values.put("alreadyCoveredQty",covered.toPlainString());
+            values.put("physicalClaimQty",physical.toPlainString());
+            values.put("newOrderQty",group.quantityBreakdown().getOrDefault("newOrderQty",group.requestedQty().toPlainString()));
+            values.put("originalTaskQty",group.quantityBreakdown().getOrDefault("originalTaskQty",group.sources().stream().map(SourcePreview::allocatedQty).reduce(BigDecimal.ZERO,BigDecimal::add).toPlainString()));
+            values.put("publicExtraQty",group.quantityBreakdown().getOrDefault("publicExtraQty",group.publicExtraQty().toPlainString()));
+            values.put("sharedSupplyClaimQty",group.quantityBreakdown().getOrDefault("sharedSupplyClaimQty","0"));
+            values.put("reviewedIncrementalQty",group.requestedQty().toPlainString());
+            return group.withQuantityBreakdown(values);
+        }).toList();
+        var fingerprint=new ArrayList<String>();fingerprint.add(resolved.previewFingerprint());
+        for(var group:groups)group.quantityBreakdown().entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(entry->addTuple(fingerprint,group.clientGroupKey(),entry.getKey(),entry.getValue()));
+        return new Preview(resolved.analysisId(),resolved.version(),resolved.fingerprint(),CanonicalFingerprint.sha256(fingerprint),groups,original);
+    }
+
+    private Preview resolvePrepared(UUID analysisId,PreviewRequest request,AnalysisView view) {
         validateHeader(analysisId,request,view);
         requireSourceScope(request.groups());
         Map<UUID,MaterialView> materials=new HashMap<>();
@@ -111,10 +170,10 @@ public class AggregateMaterialOrderPreviewService {
                 possiblePriority.isEmpty()?Set.of():analysisService.receiptPriorityMixedAliasSources(possiblePriority));
         List<GroupPreview> result=new ArrayList<>();
         for(GroupInput originalInput:request.groups()) {
+            if(originalInput!=null)validateSourceQuantities(originalInput);
             GroupInput group=originalInput==null?null:incrementalInput(originalInput,materials);
             if(group==null||group.clientGroupKey()==null||group.clientGroupKey().isBlank()||!clientKeys.add(group.clientGroupKey()))throw invalid("汇总行标识缺失或重复");
             if(group.materialLineIds().isEmpty())throw invalid("汇总行必须包含明确的来源物料");
-            validateSourceQuantities(originalInput);
             List<MaterialView> members=new ArrayList<>();
             Map<UUID,java.util.LinkedHashSet<UUID>> originalScope=new LinkedHashMap<>();
             for(UUID id:group.materialLineIds()) {
@@ -215,6 +274,8 @@ public class AggregateMaterialOrderPreviewService {
     }
 
     private static void validateSourceQuantities(GroupInput group) {
+        if(group.qty()==null||group.qty().signum()<0||group.qty().stripTrailingZeros().scale()>4||group.qty().precision()-group.qty().scale()>14)
+            throw invalid("下单总量必须为非负数且最多四位小数");
         if(group.sourceRequestedQtyByMaterialLineId().isEmpty())return;
         if(!group.sourceRequestedQtyByMaterialLineId().keySet().equals(new HashSet<>(group.materialLineIds())))
             throw invalid("逐来源下单数量必须完整对应本次原物料行");
@@ -437,7 +498,11 @@ public class AggregateMaterialOrderPreviewService {
                 capacities.stream().map(AggregateQuantityAllocator.SourceCapacity::remainingQty).reduce(BigDecimal.ZERO,BigDecimal::add),
                 number(input.qty()),publicExtra,number(input.safetyQty()),department,worker,
                 input.teamDepartmentId(),bill,delivery,input.productNo(),rate,sourceRows,childRows,reason,existing==null?null:existing.batchId(),prior,
-                input.receiptAllocationMode());
+                input.receiptAllocationMode()).withQuantityBreakdown(Map.of(
+                        "newOrderQty",actualNewOutput.toPlainString(),
+                        "originalTaskQty",actualNewOutput.subtract(onlyAvailable?BigDecimal.ZERO:publicExtra).max(BigDecimal.ZERO).toPlainString(),
+                        "publicExtraQty",(onlyAvailable?BigDecimal.ZERO:publicExtra).toPlainString(),
+                        "sharedSupplyClaimQty",adoptableMake.toPlainString()));
     }
 
     private static AggregateQuantityAllocator.Result allocatePriority(GroupInput input,BigDecimal extra,

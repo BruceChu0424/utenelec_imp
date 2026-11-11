@@ -1,3 +1,5 @@
+import '../../../components/forms/link_quantity_validator.dart';
+import '../../../shared/forms/upstream_import_operation.dart';
 import '../../../shared/formatters/financial_amount_validation.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/employee_reference.dart';
@@ -147,6 +149,8 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
   /// 明细表 sticky 表头是否已置顶（页面滚动条门控：置顶前不显示，置顶后才显示）。
   final _gridPinned = ValueNotifier<bool>(false);
   bool _saving = false;
+  bool _importingUpstream = false;
+  bool _resolvingUpstream = false;
   bool _existingEditable = false;
   bool _loading = false;
 
@@ -584,7 +588,10 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
   /// 实物出入库单据（进仓/发料/退货/材料退）：库位号先按「该仓×货品上次入库
   /// 记住的库位」预填（2026-10-02 用户口径：之前的出入库就是记忆来源），没有
   /// 记忆或建议接口不可用时回落货品主档通用库位（选择器已返回的不再二次拉取）。
-  Future<void> _fillStockPlaces(Iterable<SubcontractGridRow> rows) async {
+  Future<void> _fillStockPlaces(
+    Iterable<SubcontractGridRow> rows, {
+    bool Function()? isCurrent,
+  }) async {
     final pending = rows
         .map((r) => r.goods?.id)
         .whereType<String>()
@@ -592,7 +599,7 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
         .toSet();
     if (pending.isEmpty) return;
     await ref.read(mn.masterNameServiceProvider).loadGoodsDetails(pending);
-    if (!mounted) return;
+    if (!mounted || !(isCurrent?.call() ?? true)) return;
     for (final r in rows) {
       final id = r.goods?.id;
       if (id != null && id.isNotEmpty) {
@@ -615,7 +622,7 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
                   (goodsId: r.goods!.id, colorId: r.colorId),
             ],
           );
-      if (!mounted) return;
+      if (!mounted || !(isCurrent?.call() ?? true)) return;
       for (final r in rows) {
         final id = r.goods?.id;
         if (id == null || id.isEmpty) continue;
@@ -632,6 +639,57 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
   /// 「从上游引入」：弹选择器，把所选 LinkedItem 映射成行追加。
   /// 表头已选委外商 → 面板锁定该委外商；表头未选 → 引入后以上游单据委外商回填。
   Future<void> _importFromUpstream() async {
+    if (_importingUpstream ||
+        _saving ||
+        _loading ||
+        !formDraftIdentityIsCurrent ||
+        (widget.id != null && !_existingEditable)) {
+      return;
+    }
+    final session = ref.read(sessionProvider.notifier);
+    final epoch = session.requestIntentEpoch;
+    final documentId = widget.id;
+    final documentType = widget.docType;
+    final supplierId = _supplierId;
+    final warehouseId = _warehouseId;
+    final originalRows = List.of(_grid.rows);
+    final operation = UpstreamImportOperation(
+      () =>
+          mounted &&
+          formDraftIdentityIsCurrent &&
+          identical(ref.read(sessionProvider.notifier), session) &&
+          session.requestIntentEpoch == epoch &&
+          widget.id == documentId &&
+          widget.docType == documentType &&
+          _supplierId == supplierId &&
+          _warehouseId == warehouseId &&
+          _grid.rows.length == originalRows.length &&
+          List.generate(
+            originalRows.length,
+            (index) => index,
+          ).every((index) => identical(_grid.rows[index], originalRows[index])),
+    );
+    setState(() => _importingUpstream = true);
+    try {
+      await _importFromUpstreamInScope(operation);
+    } catch (error) {
+      if (mounted && operation.isCurrent) {
+        context.appError('引入来源未完成，请保留原输入后重试：$error');
+      }
+    } finally {
+      operation.retire();
+      if (mounted) {
+        setState(() {
+          _importingUpstream = false;
+          _resolvingUpstream = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _importFromUpstreamInScope(
+    UpstreamImportOperation operation,
+  ) async {
     // 上游为申请单（仅 linkToApplicationItem，订货场景）时无委外商概念，
     // 不锁定也不回填（与采购订货引入申请同款）。
     final upstreamIsApplication =
@@ -645,7 +703,7 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
       _cfg,
       initialSupplierId: upstreamIsApplication ? null : _supplierId,
     );
-    if (!mounted) return;
+    if (!mounted || !operation.isCurrent) return;
     if (result == null || result.items.isEmpty) return;
     if (!upstreamIsApplication &&
         _supplierId != null &&
@@ -668,6 +726,7 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
       context.appError('来源币种、财审汇率、税率或结算方式不同，请分别开单');
       return;
     }
+    setState(() => _resolvingUpstream = true);
     final goodsIds = result.items
         .map((e) => e.goodsId)
         .where((id) => id.isNotEmpty)
@@ -677,43 +736,73 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
           .read(mn.masterNameServiceProvider)
           .loadGoodsNamesWithCodes(goodsIds);
     }
-    if (!mounted) return;
+    if (!mounted || !operation.isCurrent) return;
     final rows = <SubcontractGridRow>[];
-    for (final li in result.items) {
-      if (li.goodsId.isEmpty) continue;
-      final goods = ref
-          .read(mn.masterNameServiceProvider)
-          .goodsOptionOf(li.goodsId)!;
-      rows.add(SubcontractGridRow.fromLinked(li, goods));
-    }
-    if (_cfg.itemHasStockPlace) {
-      await _fillStockPlaces(rows);
-    }
-    // 引入前清掉占位空白行（新建态预填的无货品空行），直接显示引入项，不留顶部空行。
-    _grid.removeWhere(
-      (r) =>
-          r.goods == null &&
-          r.qty.text.trim().isEmpty &&
-          r.price.text.trim().isEmpty &&
-          r.pricing.totalAmount.text.trim().isEmpty,
-    );
-    _grid.addRows(rows);
-    if (importsCommercialSource) {
-      setState(() {
-        _sourceTerms = importedTerms;
-        _currencyId = importedTerms!.currencyId;
-        _rate.text = financeExactTrimmed(importedTerms.exchangeRate) ?? '';
-        _taxRate.text = financeExactTrimmed(importedTerms.taxRate) ?? '';
-        _settlementMethodId = importedTerms.settlementMethodId;
-        _settlementError = null;
+    var committed = false;
+    try {
+      for (final li in result.items) {
+        if (li.goodsId.isEmpty) continue;
+        final goods = ref
+            .read(mn.masterNameServiceProvider)
+            .goodsOptionOf(li.goodsId)!;
+        rows.add(SubcontractGridRow.fromLinked(li, goods));
+      }
+      if (_cfg.itemHasStockPlace) {
+        await _fillStockPlaces(rows, isCurrent: () => operation.isCurrent);
+      }
+      if (!mounted || !operation.isCurrent) {
+        return;
+      }
+      final sources = <String>{
+        for (final row in _grid.rows) ...row.upstreamItemIds,
+        for (final row in _grid.rows)
+          if (row.upstreamItemId != null) row.upstreamItemId!,
+      };
+      rows.removeWhere((row) {
+        final source = row.upstreamItemId;
+        if (source == null || sources.add(source)) return false;
+        row.dispose();
+        return true;
       });
-    }
-    // 表头未选委外商 → 以上游单据委外商回填；结算方式未选时按上游单据结算方式
-    // （进仓/退货引入订货）或供应商默认（V452）预填。
-    final sid = result.supplierId;
-    if (_supplierId == null && sid != null && sid.isNotEmpty) {
-      setState(() => _supplierId = sid);
-      unawaited(_prefillSettlementForSupplier(sid, result.settlementMethodId));
+      if (rows.isEmpty) {
+        context.appWarning('所选来源已在当前明细中，请直接核对原行');
+        return;
+      }
+      // 引入前清掉占位空白行（新建态预填的无货品空行），直接显示引入项，不留顶部空行。
+      _grid.removeWhere(
+        (r) =>
+            r.goods == null &&
+            r.qty.text.trim().isEmpty &&
+            r.price.text.trim().isEmpty &&
+            r.pricing.totalAmount.text.trim().isEmpty,
+      );
+      _grid.addRows(rows);
+      committed = true;
+      if (importsCommercialSource) {
+        setState(() {
+          _sourceTerms = importedTerms;
+          _currencyId = importedTerms!.currencyId;
+          _rate.text = financeExactTrimmed(importedTerms.exchangeRate) ?? '';
+          _taxRate.text = financeExactTrimmed(importedTerms.taxRate) ?? '';
+          _settlementMethodId = importedTerms.settlementMethodId;
+          _settlementError = null;
+        });
+      }
+      // 表头未选委外商 → 以上游单据委外商回填；结算方式未选时按上游单据结算方式
+      // （进仓/退货引入订货）或供应商默认（V452）预填。
+      final sid = result.supplierId;
+      if (_supplierId == null && sid != null && sid.isNotEmpty) {
+        setState(() => _supplierId = sid);
+        unawaited(
+          _prefillSettlementForSupplier(sid, result.settlementMethodId),
+        );
+      }
+    } finally {
+      if (!committed) {
+        for (final row in rows) {
+          row.dispose();
+        }
+      }
     }
   }
 
@@ -726,7 +815,10 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
       }
       return;
     }
-    if (_loading || _saving || (widget.id != null && !_existingEditable)) {
+    if (_loading ||
+        _saving ||
+        _importingUpstream ||
+        (widget.id != null && !_existingEditable)) {
       return;
     }
     final rows = _grid.rows;
@@ -788,10 +880,16 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
         await _grid.revealError(r, columnKey: 'qty');
         return;
       }
-      if (widget.docType != SubcontractDocType.receipt &&
-          r.maxQty != null &&
-          qty > r.maxQty! + 0.0000001) {
-        context.appError('${r.goods!.name} 的数量不能超过上游剩余量 ${r.maxQty}');
+      final sourceCapacityError =
+          widget.docType != SubcontractDocType.receipt &&
+              (r.maxQtyText != null || r.maxQty != null)
+          ? validateExactLinkedCapacity(
+              r.qty.text,
+              r.maxQtyText ?? r.maxQty.toString(),
+            )
+          : null;
+      if (sourceCapacityError != null) {
+        context.appError('${r.goods!.name}：$sourceCapacityError');
         await _grid.revealError(r, columnKey: 'qty');
         return;
       }
@@ -1103,7 +1201,9 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
                                 if (_cfg.hasUpstreamLink)
                                   UtenImportButton(
                                     label: '从上游引入',
-                                    onPressed: _importFromUpstream,
+                                    onPressed: _importingUpstream
+                                        ? null
+                                        : _importFromUpstream,
                                   ),
                               ],
                             ),
@@ -1160,6 +1260,7 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
                     ),
                   ),
             // 保存网络段的全屏加载遮罩。
+            if (_resolvingUpstream) const UtenBusyOverlay(title: '正在补全来源明细'),
             if (_saving)
               UtenBusyOverlay(
                 title: widget.id == null

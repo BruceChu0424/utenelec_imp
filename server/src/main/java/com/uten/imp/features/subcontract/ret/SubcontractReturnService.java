@@ -338,6 +338,13 @@ public class SubcontractReturnService {
                 em,
                 "SUBCONTRACT",
                 items.stream().map(SubcontractReturnItem::getReceiptItemId).toList());
+        var sourceOrders = com.uten.imp.common.finance.ProcurementReturnOrderAuthority.resolve(
+                em, "SUBCONTRACT", items.stream().map(item ->
+                        new com.uten.imp.common.finance.ProcurementReturnOrderAuthority.Source(
+                                item.getReceiptItemId(),item.getOrderItemId())).toList());
+        items.forEach(item -> item.setOrderItemId(sourceOrders.get(item.getReceiptItemId())));
+        com.uten.imp.common.finance.ProcurementTerminatedReceiptBasis.requireMutable(em,"SUBCONTRACT",
+                items.stream().map(SubcontractReturnItem::getOrderItemId).toList());
         sourceIntegrity.validateSubcontractReturn(
                 r.getSupplierId(),
                 items.stream()
@@ -610,12 +617,19 @@ public class SubcontractReturnService {
     }
 
     private ProcurementReturnHeaderAuthority.Header returnHeader(ReturnSaveRequest req) {
-        return ProcurementReturnHeaderAuthority.derive(
+        var sourceOrders = com.uten.imp.common.finance.ProcurementReturnOrderAuthority.resolve(
+                em, "SUBCONTRACT", req.getItems().stream().map(line ->
+                        new com.uten.imp.common.finance.ProcurementReturnOrderAuthority.Source(
+                                line.getReceiptItemId(),line.getOrderItemId())).toList());
+        req.getItems().forEach(line -> line.setOrderItemId(sourceOrders.get(line.getReceiptItemId())));
+        var header=ProcurementReturnHeaderAuthority.derive(
                 em,
                 "SUBCONTRACT",
                 req == null || req.getItems() == null ? List.of()
                         : req.getItems().stream()
                             .map(ReturnItemLine::getReceiptItemId).toList());
+        ProcurementReturnHeaderAuthority.requireSubmittedIdentity(header,req.getSupplierId(),req.getCurrencyId());
+        return header;
     }
 
     private void applyHeader(
@@ -653,6 +667,9 @@ public class SubcontractReturnService {
     }
 
     private List<ReturnItemDto> saveItems(SubcontractReturn r, List<ReturnItemLine> lines) {
+        sourceIntegrity.validateSubcontractReturn(r.getSupplierId(),lines.stream().map(line ->
+                LinkedDocumentIntegrityService.LinkedLine.receiptSource(line.getReceiptItemId(),line.getOrderItemId(),
+                        line.getGoodsId(),line.getColorId(),line.getUnitId(),line.getUnitRate())).toList());
         List<ReturnItemDto> out = new ArrayList<>(lines.size());
         Map<UUID, SubcontractGoodsSnapshot> receipts =
                 SubcontractGoodsSnapshot.fromReceiptItems(

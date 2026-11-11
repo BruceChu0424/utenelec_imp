@@ -1,0 +1,6 @@
+{
+  "source": "2bc2f98ba0a9f991afaa13c68e093dc6de94fe7d",
+  "compilation": "task-owned incremental overlay; final acceptance still requires clean final-SHA compilation",
+  "attempt": "budget-base-cold-1",
+  "exit": 0
+}

@@ -1,0 +1,50 @@
+{
+  "fingerprintContract": {
+    "gitSource": "SHA-256 of exact Git blob bytes (no EOL conversion)",
+    "binaryAndLog": "SHA-256 of exact filesystem bytes (no normalization)"
+  },
+  "baseline": "fdeda88b3d73b24b8691ad132caa765196b19a3d",
+  "candidate": "fdeda88b3d73b24b8691ad132caa765196b19a3d",
+  "branch": "uimp/feedback-remediate-20261110",
+  "main": "fdeda88b3d73b24b8691ad132caa765196b19a3d",
+  "wpf": {
+    "counts": {
+      "d73f86e1e": 373,
+      "45bf87fc9": 373,
+      "fdeda88b3d73b24b8691ad132caa765196b19a3d": 373,
+      "HEAD": 373
+    },
+    "protectedChanges": [],
+    "lostNotesOrEvidence": [],
+    "historyBaselinePreserved": true,
+    "historyCounts": {
+      "d73f86e1e": 498,
+      "45bf87fc9": 505,
+      "fdeda88b3d73b24b8691ad132caa765196b19a3d": 524,
+      "HEAD": 524
+    }
+  },
+  "oldAttributeFingerprints": {
+    ".gitattributes": {
+      "oldRecorded": "1c2fdfa11f279d34e4d6da100f6b8eea029f98b773f777ffde54c73c789e501d",
+      "gitBlob": "1c2fdfa11f279d34e4d6da100f6b8eea029f98b773f777ffde54c73c789e501d",
+      "oldCheckoutRaw": "7e40db0b4b432a0e8860f92e15b3119e215c7ddf56f3ccb7f9fddf47c29ccb4b",
+      "originalUnmodified": true
+    },
+    "master-header-early/.gitattributes": {
+      "oldRecorded": "2ae94554fb4ff4bfd910ff72f3006462aee3a3dbf64ba02103dfa9e624c119ac",
+      "gitBlob": "9871ac5d7f5decf5c31ae260a4292e515c9207a52c5435fffdab87fe403f8bc2",
+      "oldCheckoutRaw": "2ae94554fb4ff4bfd910ff72f3006462aee3a3dbf64ba02103dfa9e624c119ac",
+      "originalUnmodified": true
+    }
+  },
+  "migrations": {
+    "count": 1068,
+    "duplicates": []
+  },
+  "preservedAncestors": {
+    "d73f86e1e": true,
+    "45bf87fc9": true,
+    "fdeda88b3d73b24b8691ad132caa765196b19a3d": true
+  }
+}

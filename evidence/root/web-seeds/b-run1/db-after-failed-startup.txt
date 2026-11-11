@@ -1,0 +1,13 @@
+          table_name          | count 
+------------------------------+-------
+ purchase_orders              |     0
+ purchase_receipts            |     0
+ subcontract_orders           |     0
+ production_material_analyses |     0
+(4 rows)
+
+   login_account    | is_super_admin 
+--------------------+----------------
+ feedback-bootstrap | t
+(1 row)
+

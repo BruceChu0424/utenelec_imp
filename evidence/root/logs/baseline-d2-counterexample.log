@@ -1,0 +1,36 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/feedback-baseline-replay-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart
+00:00 +0: cold progressive failure cannot open print or create an export
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: false
+  Actual: <true>
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-baseline-replay-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart:331:7)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/feedback-baseline-replay-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart line 331
+The test description was:
+  cold progressive failure cannot open print or create an export
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:10 +0 -1: cold progressive failure cannot open print or create an export [E]
+  Test failed. See exception logs above.
+  The test description was: cold progressive failure cannot open print or create an export
+  
+Warning: At least one test in this suite creates an HttpClient. When running a test suite that uses
+TestWidgetsFlutterBinding, all HTTP requests will return status code 400, and no network request
+will actually be made. Any test expecting a real network connection and status code will fail.
+To test code that needs an HttpClient, provide your own HttpClient implementation to the code under
+test, so that your test can consistently provide a testable response to the code under test.
+00:10 +0 -1: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/feedback-baseline-replay-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: cold progressive failure cannot open print or create an export

@@ -1,0 +1,15 @@
+ applied_migrations | last_rank 
+--------------------+-----------
+               1070 |      1070
+(1 row)
+
+ version 
+---------
+ 1131
+(1 row)
+
+ current_database | current_user 
+------------------+--------------
+ feedback         | feedback
+(1 row)
+

@@ -1,0 +1,28 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart
+00:00 +0: cold progressive failure cannot open print or create an export
+00:08 +1: accepted complete result stays usable after a same-query failed refresh
+00:15 +2: mould actual export sends all 1626 identities with selected=false
+00:25 +3: mould actual export sends all 1626 identities with selected=true
+00:35 +4: goods actual export header has no unsupported display columns
+00:40 +5: clients actual export header has no unsupported display columns
+00:47 +6: suppliers actual export header has no unsupported display columns
+00:51 +7: accounts actual export header has no unsupported display columns
+00:55 +8: currencies actual export header has no unsupported display columns
+00:57 +9: colors actual export header has no unsupported display columns
+01:00 +10: units actual export header has no unsupported display columns
+01:03 +11: moulds actual export header has no unsupported display columns
+01:06 +12: warehouses actual export header has no unsupported display columns
+01:12 +13: settlement_methods actual export header has no unsupported display columns
+01:15 +14: goods actual page prints every authorized server page beyond 500
+01:30 +15: clients actual page prints every authorized server page beyond 500
+01:41 +16: suppliers actual page prints every authorized server page beyond 500
+01:47 +17: accounts actual page prints every authorized server page beyond 500
+01:51 +18: currencies actual page prints every authorized server page beyond 500
+01:54 +19: colors actual page prints every authorized server page beyond 500
+01:56 +20: units actual page prints every authorized server page beyond 500
+01:58 +21: moulds actual page prints every authorized server page beyond 500
+02:00 +22: warehouses actual page prints every authorized server page beyond 500
+02:01 +23: settlement_methods actual page prints every authorized server page beyond 500
+02:03 +24: a scope revision during a real shared pane print never publishes its late pages
+02:06 +25: All tests passed!

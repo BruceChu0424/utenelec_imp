@@ -1,0 +1,262 @@
+{
+  "sourceRawLog": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-20261110\\evidence\\root\\logs\\budget-cold-1.log",
+  "labels": [
+    {
+      "label": "read.production_material_analysis_materials",
+      "calls": 405,
+      "milliseconds": 3029.360100000001
+    },
+    {
+      "label": "insert.other",
+      "calls": 77,
+      "milliseconds": 1408.6408000000001
+    },
+    {
+      "label": "read.other",
+      "calls": 232,
+      "milliseconds": 751.8638
+    },
+    {
+      "label": "update.other",
+      "calls": 33,
+      "milliseconds": 426.87199999999996
+    },
+    {
+      "label": "read.preplan_supply_actions",
+      "calls": 114,
+      "milliseconds": 412.8718000000001
+    },
+    {
+      "label": "read.production_material_analysis_items",
+      "calls": 95,
+      "milliseconds": 268.7083
+    },
+    {
+      "label": "update.production_material_analysis_items",
+      "calls": 27,
+      "milliseconds": 237.76049999999998
+    },
+    {
+      "label": "update.production_material_analysis_materials",
+      "calls": 14,
+      "milliseconds": 166.20479999999998
+    },
+    {
+      "label": "bom.expansion",
+      "calls": 9,
+      "milliseconds": 164.8888
+    },
+    {
+      "label": "update.preplan_supply_actions",
+      "calls": 10,
+      "milliseconds": 160.4646
+    },
+    {
+      "label": "read.production_material_analyses",
+      "calls": 48,
+      "milliseconds": 144.44230000000002
+    },
+    {
+      "label": "insert.production_material_analysis_materials",
+      "calls": 6,
+      "milliseconds": 127.81539999999998
+    },
+    {
+      "label": "insert.preplan_supply_actions",
+      "calls": 2,
+      "milliseconds": 105.4902
+    },
+    {
+      "label": "bom.lock_footprint",
+      "calls": 11,
+      "milliseconds": 105.17150000000001
+    },
+    {
+      "label": "bom.validation",
+      "calls": 8,
+      "milliseconds": 90.7569
+    },
+    {
+      "label": "read.stock_reservations",
+      "calls": 16,
+      "milliseconds": 48.446999999999996
+    },
+    {
+      "label": "read.goods_bom_items",
+      "calls": 4,
+      "milliseconds": 36.5455
+    },
+    {
+      "label": "stock.plan_close",
+      "calls": 2,
+      "milliseconds": 20.3044
+    },
+    {
+      "label": "update.production_material_analyses",
+      "calls": 5,
+      "milliseconds": 17.5019
+    },
+    {
+      "label": "archive.mutable_origin",
+      "calls": 1,
+      "milliseconds": 10.4787
+    },
+    {
+      "label": "insert.production_material_analysis_items",
+      "calls": 1,
+      "milliseconds": 8.634
+    }
+  ],
+  "topShapes": [
+    {
+      "fingerprint": "b31d638d5fa20194",
+      "label": "read.production_material_analysis_materials",
+      "calls": 7,
+      "milliseconds": 307.6097
+    },
+    {
+      "fingerprint": "772bbed6c5ca702e",
+      "label": "read.production_material_analysis_materials",
+      "calls": 7,
+      "milliseconds": 262.7898
+    },
+    {
+      "fingerprint": "131320916153dec9",
+      "label": "insert.other",
+      "calls": 2,
+      "milliseconds": 243.0903
+    },
+    {
+      "fingerprint": "385d8553c35adcdc",
+      "label": "read.production_material_analysis_materials",
+      "calls": 8,
+      "milliseconds": 233.8646
+    },
+    {
+      "fingerprint": "e5c786d5ffd82578",
+      "label": "read.production_material_analysis_materials",
+      "calls": 12,
+      "milliseconds": 223.6525
+    },
+    {
+      "fingerprint": "81e2c3f266489de1",
+      "label": "insert.other",
+      "calls": 1,
+      "milliseconds": 191.477
+    },
+    {
+      "fingerprint": "636ef75553735041",
+      "label": "insert.other",
+      "calls": 1,
+      "milliseconds": 183.2037
+    },
+    {
+      "fingerprint": "0c1117976630652e",
+      "label": "read.other",
+      "calls": 4,
+      "milliseconds": 180.3746
+    },
+    {
+      "fingerprint": "f2f4453b83e2ce61",
+      "label": "read.preplan_supply_actions",
+      "calls": 11,
+      "milliseconds": 180.069
+    },
+    {
+      "fingerprint": "7c904eb675a85bc1",
+      "label": "insert.other",
+      "calls": 20,
+      "milliseconds": 174.6684
+    },
+    {
+      "fingerprint": "3b2efd50e8025072",
+      "label": "insert.other",
+      "calls": 2,
+      "milliseconds": 154.2631
+    },
+    {
+      "fingerprint": "cc1fcf2bae4298df",
+      "label": "insert.other",
+      "calls": 20,
+      "milliseconds": 153.7777
+    },
+    {
+      "fingerprint": "fda1ef7efe82b1b6",
+      "label": "read.production_material_analysis_materials",
+      "calls": 2,
+      "milliseconds": 144.7084
+    },
+    {
+      "fingerprint": "ffd571902519673c",
+      "label": "read.production_material_analysis_materials",
+      "calls": 7,
+      "milliseconds": 140.3357
+    },
+    {
+      "fingerprint": "974e99c83c716c8d",
+      "label": "read.production_material_analysis_materials",
+      "calls": 7,
+      "milliseconds": 127.3491
+    },
+    {
+      "fingerprint": "750acd1d55a0c1e5",
+      "label": "update.production_material_analysis_items",
+      "calls": 4,
+      "milliseconds": 117.2216
+    },
+    {
+      "fingerprint": "00deee7ca394e200",
+      "label": "insert.other",
+      "calls": 2,
+      "milliseconds": 116.9613
+    },
+    {
+      "fingerprint": "78688b4b5498dd56",
+      "label": "update.other",
+      "calls": 20,
+      "milliseconds": 112.8533
+    },
+    {
+      "fingerprint": "0ec6c7fcec5cd41e",
+      "label": "insert.preplan_supply_actions",
+      "calls": 2,
+      "milliseconds": 105.4902
+    },
+    {
+      "fingerprint": "2010a495f5176d6c",
+      "label": "read.production_material_analysis_materials",
+      "calls": 7,
+      "milliseconds": 103.0929
+    },
+    {
+      "fingerprint": "47481b6bad43ec8a",
+      "label": "read.production_material_analysis_materials",
+      "calls": 22,
+      "milliseconds": 99.9381
+    },
+    {
+      "fingerprint": "44ec4d1df6cb8c8b",
+      "label": "bom.expansion",
+      "calls": 4,
+      "milliseconds": 96.0414
+    },
+    {
+      "fingerprint": "010c01b180633e56",
+      "label": "read.production_material_analysis_materials",
+      "calls": 2,
+      "milliseconds": 94.2145
+    },
+    {
+      "fingerprint": "d95a407cbb3c2316",
+      "label": "bom.validation",
+      "calls": 8,
+      "milliseconds": 90.7569
+    },
+    {
+      "fingerprint": "0bc2b61f32a14c73",
+      "label": "update.other",
+      "calls": 1,
+      "milliseconds": 89.0162
+    }
+  ]
+}

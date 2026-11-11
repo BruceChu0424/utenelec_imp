@@ -1,0 +1,6 @@
+{
+  "attempt": "budget-base-parity-1",
+  "source": "681b588b546a67ba1a7e4126f393949f355c7c8c",
+  "exit": 0,
+  "compilation": "task-owned incremental overlay; final acceptance still requires clean final-SHA compilation"
+}

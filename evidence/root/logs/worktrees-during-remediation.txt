@@ -1,0 +1,88 @@
+worktree D:/Projects/uten_imp
+HEAD fdeda88b3d73b24b8691ad132caa765196b19a3d
+branch refs/heads/main
+
+worktree D:/Projects/uten_imp_worktrees/annotated-fixes-20261110
+HEAD 12bc07b9939a9bad7ca196a8745941fe98a6bd77
+branch refs/heads/uimp/annotated-fixes-20261110
+
+worktree D:/Projects/uten_imp_worktrees/cigreen-fix2
+HEAD a0bf29e5237790de6328a9b6988fa22ad0258719
+detached
+
+worktree D:/Projects/uten_imp_worktrees/company-feedback-20261110
+HEAD fdeda88b3d73b24b8691ad132caa765196b19a3d
+branch refs/heads/uimp/company-feedback-20261110
+
+worktree D:/Projects/uten_imp_worktrees/company-import-delta-20261110
+HEAD 3dad7c1ed07befb71909b3c874b2b9d1ac7790b1
+branch refs/heads/uimp/company-import-delta-20261110
+
+worktree D:/Projects/uten_imp_worktrees/company-material-order-20261110
+HEAD fdcda3ff0a7ef968e0efc72d101c05bd3e4bc04f
+branch refs/heads/uimp/company-material-order-20261110
+
+worktree D:/Projects/uten_imp_worktrees/company-report-kit-20261110
+HEAD 34a442e67cae642d817af92d4a0d81df83224f58
+branch refs/heads/uimp/company-report-kit-20261110
+
+worktree D:/Projects/uten_imp_worktrees/company-return-picker-20261110
+HEAD bd3ab33ce55adaf0e6a96b1e539c737ac6e6d479
+branch refs/heads/uimp/company-return-picker-20261110
+
+worktree D:/Projects/uten_imp_worktrees/feedback-audit-20261110
+HEAD fdeda88b3d73b24b8691ad132caa765196b19a3d
+branch refs/heads/uimp/feedback-audit-20261110
+
+worktree D:/Projects/uten_imp_worktrees/feedback-baseline-replay-20261110
+HEAD fdeda88b3d73b24b8691ad132caa765196b19a3d
+detached
+
+worktree D:/Projects/uten_imp_worktrees/feedback-remediate-20261110
+HEAD fdeda88b3d73b24b8691ad132caa765196b19a3d
+branch refs/heads/uimp/feedback-remediate-20261110
+
+worktree D:/Projects/uten_imp_worktrees/feedback-remediate-a-20261110
+HEAD fdeda88b3d73b24b8691ad132caa765196b19a3d
+branch refs/heads/uimp/feedback-remediate-a-20261110
+
+worktree D:/Projects/uten_imp_worktrees/feedback-remediate-b-20261110
+HEAD fdeda88b3d73b24b8691ad132caa765196b19a3d
+branch refs/heads/uimp/feedback-remediate-b-20261110
+
+worktree D:/Projects/uten_imp_worktrees/feedback-remediate-c-20261110
+HEAD fdeda88b3d73b24b8691ad132caa765196b19a3d
+branch refs/heads/uimp/feedback-remediate-c-20261110
+
+worktree D:/Projects/uten_imp_worktrees/notice-type-stack-20261110
+HEAD f2dc1e0436b1567801832f03694b58c0f3bd7de6
+branch refs/heads/uimp/notice-type-stack-20261110
+
+worktree D:/Projects/uten_imp_worktrees/notice-verify
+HEAD eda1aac1fb46db6e5414dd41e4ac9cd672cb9600
+detached
+
+worktree D:/Projects/uten_imp_worktrees/perf-root-fix-20261110
+HEAD 73c8de941d476d1799bbea7c21466300af5a6921
+branch refs/heads/uimp/perf-root-fix-20261110
+
+worktree D:/Projects/uten_imp_worktrees/permission-hang-20261110
+HEAD d73f86e1eca5db796c610045bd9f63916a2523bf
+branch refs/heads/uimp/permission-hang-20261110
+
+worktree D:/Projects/uten_imp_worktrees/screenshot-feedback-20261110
+HEAD e9713e539a97a0fca5e579ce1cab633002af960a
+branch refs/heads/uimp/screenshot-feedback-20261110
+
+worktree D:/Projects/uten_imp_worktrees/table-read-baseline-20261110
+HEAD 69e35d96bf0ddd9c8ba7992bf0a609ee9191ef98
+detached
+
+worktree D:/Projects/uten_imp_worktrees/table-read-performance-20261110
+HEAD 86dffb9dbcb52b248ade1f2b3ea4a7c72db738a2
+branch refs/heads/uimp/table-read-performance-20261110
+
+worktree D:/Projects/uten_imp_worktrees/visual-workflow-20261104
+HEAD 0c23563d419ed262f517deb51524b718e4e2077d
+branch refs/heads/uimp/visual-workflow-20261104
+

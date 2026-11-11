@@ -1,0 +1,10 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+Analyzing 2 items...                                            
+
+   info - The value of the argument is redundant because it matches the default value. Try removing the argument - test\shared\platform_tables\platform_progressive_reads_test.dart:36:17 - avoid_redundant_argument_values
+   info - The value of the argument is redundant because it matches the default value. Try removing the argument - test\shared\platform_tables\platform_progressive_reads_test.dart:37:18 - avoid_redundant_argument_values
+   info - The value of the argument is redundant because it matches the default value. Try removing the argument - test\shared\platform_tables\platform_progressive_reads_test.dart:38:18 - avoid_redundant_argument_values
+   info - The value of the argument is redundant because it matches the default value. Try removing the argument - test\shared\platform_tables\platform_progressive_reads_test.dart:57:23 - avoid_redundant_argument_values
+   info - The value of the argument is redundant because it matches the default value. Try removing the argument - test\shared\platform_tables\platform_progressive_reads_test.dart:63:28 - avoid_redundant_argument_values
+
+5 issues found. (ran in 5.3s)

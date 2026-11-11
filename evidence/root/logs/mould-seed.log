@@ -1,0 +1,19 @@
+BEGIN
+INSERT 0 2
+INSERT 0 2
+INSERT 0 4
+INSERT 0 1
+INSERT 0 1626
+DO
+COMMIT
+ synthetic_moulds |   min    |   max    |  min  |   max    
+------------------+----------+----------+-------+----------
+             1626 | AU-00001 | AU-01626 | 1.125 | 1626.125
+(1 row)
+
+     login_account     | is_super_admin | status 
+-----------------------+----------------+--------
+ feedback-mould-qa     | f              | active
+ feedback-mould-win-qa | f              | active
+(2 rows)
+

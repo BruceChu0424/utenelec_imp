@@ -1,0 +1,99 @@
+[INFO] Scanning for projects...
+[INFO] 
+[INFO] ----------------------< com.uten:uten-imp-server >----------------------
+[INFO] Building uten-imp-server 0.1.0
+[INFO]   from pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- clean:3.5.0:clean (refresh-migration-resources) @ uten-imp-server ---
+[INFO] 
+[INFO] --- resources:3.5.0:resources (default-resources) @ uten-imp-server ---
+[INFO] Copying 1 resource from ..\contracts\windows-payload-binding to ..\evidence\root\build-integrated-1\classes\contracts\windows-payload-binding
+[INFO] Copying 1 resource from ..\contracts\windows-engine-safety to ..\evidence\root\build-integrated-1\classes\contracts\windows-engine-safety
+[INFO] Copying 1086 resources from src\main\resources to ..\evidence\root\build-integrated-1\classes
+[INFO] Copying 1 resource from ..\assets\fonts to ..\evidence\root\build-integrated-1\classes\fonts
+[INFO] Copying 295 resources from ..\docs to ..\evidence\root\build-integrated-1\classes\ai-knowledge
+[INFO] 
+[INFO] --- compiler:3.15.0:compile (default-compile) @ uten-imp-server ---
+[INFO] Recompiling the module because of changed source code.
+[INFO] Compiling 3274 source files with javac [debug deprecation parameters release 21] to ..\evidence\root\build-integrated-1\classes
+[INFO] 
+[INFO] --- resources:3.5.0:testResources (default-testResources) @ uten-imp-server ---
+[INFO] Copying 75 resources from src\test\resources to ..\evidence\root\build-integrated-1\test-classes
+[INFO] 
+[INFO] --- compiler:3.15.0:testCompile (default-testCompile) @ uten-imp-server ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 2754 source files with javac [debug deprecation parameters release 21] to ..\evidence\root\build-integrated-1\test-classes
+[INFO] 
+[INFO] --- surefire:3.5.6:test (default-test) @ uten-imp-server ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running com.uten.imp.common.export.ExportSelectionBudgetTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.537 s -- in com.uten.imp.common.export.ExportSelectionBudgetTest
+[INFO] Running com.uten.imp.common.export.ExportTableProjectionServiceTest
+[INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.814 s -- in com.uten.imp.common.export.ExportTableProjectionServiceTest
+[INFO] Running com.uten.imp.common.export.MasterExportSelectionTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 2.792 s -- in com.uten.imp.common.export.MasterExportSelectionTest
+[INFO] Running com.uten.imp.common.export.PlatformWorkbookSchemaTest
+[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 5.338 s -- in com.uten.imp.common.export.PlatformWorkbookSchemaTest
+[INFO] Running com.uten.imp.common.export.XlsxSelectedRowsStreamingTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.830 s -- in com.uten.imp.common.export.XlsxSelectedRowsStreamingTest
+[INFO] Running com.uten.imp.common.importing.ImportColumnGuardTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.573 s -- in com.uten.imp.common.importing.ImportColumnGuardTest
+[INFO] Running com.uten.imp.features.finance.gl.FinanceAccountingWorkbookParserTest
+18:31:50.606 [main] WARN org.apache.poi.POIDocument -- DocumentSummaryInformation property set came back as null
+18:31:50.627 [main] WARN org.apache.poi.POIDocument -- SummaryInformation property set came back as null
+18:31:50.956 [main] WARN org.apache.poi.POIDocument -- DocumentSummaryInformation property set came back as null
+18:31:50.956 [main] WARN org.apache.poi.POIDocument -- SummaryInformation property set came back as null
+18:31:51.006 [main] WARN org.apache.poi.POIDocument -- DocumentSummaryInformation property set came back as null
+18:31:51.006 [main] WARN org.apache.poi.POIDocument -- SummaryInformation property set came back as null
+18:31:51.018 [main] WARN org.apache.poi.POIDocument -- DocumentSummaryInformation property set came back as null
+18:31:51.018 [main] WARN org.apache.poi.POIDocument -- SummaryInformation property set came back as null
+18:31:51.023 [main] WARN org.apache.poi.POIDocument -- DocumentSummaryInformation property set came back as null
+18:31:51.023 [main] WARN org.apache.poi.POIDocument -- SummaryInformation property set came back as null
+18:31:51.064 [main] WARN org.apache.poi.POIDocument -- DocumentSummaryInformation property set came back as null
+18:31:51.064 [main] WARN org.apache.poi.POIDocument -- SummaryInformation property set came back as null
+[WARNING] Tests run: 5, Failures: 0, Errors: 0, Skipped: 1, Time elapsed: 0.768 s -- in com.uten.imp.features.finance.gl.FinanceAccountingWorkbookParserTest
+[INFO] Running com.uten.imp.features.finance.gl.FinanceChartWorkbookParserTest
+[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.925 s -- in com.uten.imp.features.finance.gl.FinanceChartWorkbookParserTest
+[INFO] Running com.uten.imp.features.finance.gl.FinanceOperatingNoteParserTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.900 s -- in com.uten.imp.features.finance.gl.FinanceOperatingNoteParserTest
+[INFO] Running com.uten.imp.features.finance.gl.WorkbookColumnRemediationTest
+18:31:52.964 [main] WARN org.apache.poi.POIDocument -- DocumentSummaryInformation property set came back as null
+18:31:52.964 [main] WARN org.apache.poi.POIDocument -- SummaryInformation property set came back as null
+18:31:53.333 [main] WARN org.apache.poi.POIDocument -- DocumentSummaryInformation property set came back as null
+18:31:53.333 [main] WARN org.apache.poi.POIDocument -- SummaryInformation property set came back as null
+[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.904 s -- in com.uten.imp.features.finance.gl.WorkbookColumnRemediationTest
+[INFO] Running com.uten.imp.features.master.goods.costing.CostTitleColumnRemediationTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.308 s -- in com.uten.imp.features.master.goods.costing.CostTitleColumnRemediationTest
+[INFO] Running com.uten.imp.features.master.goods.costing.GoodsCostWorkbookParserTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.531 s -- in com.uten.imp.features.master.goods.costing.GoodsCostWorkbookParserTest
+[INFO] Running com.uten.imp.features.master.goods.importing.AdditionalSheetColumnRemediationTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.707 s -- in com.uten.imp.features.master.goods.importing.AdditionalSheetColumnRemediationTest
+[INFO] Running com.uten.imp.features.master.goods.importing.GoodsBomImportColumnContractTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.199 s -- in com.uten.imp.features.master.goods.importing.GoodsBomImportColumnContractTest
+[INFO] Running com.uten.imp.features.master.goods.importing.GoodsImportColumnContractTest
+[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.504 s -- in com.uten.imp.features.master.goods.importing.GoodsImportColumnContractTest
+[INFO] Running com.uten.imp.features.master.goods.importing.GoodsImportPlanSafetyTest
+[INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 2.080 s -- in com.uten.imp.features.master.goods.importing.GoodsImportPlanSafetyTest
+[INFO] Running com.uten.imp.features.production.dailyreport.ReportablePlanLineQuerySecurityContractTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.008 s -- in com.uten.imp.features.production.dailyreport.ReportablePlanLineQuerySecurityContractTest
+[INFO] Running com.uten.imp.features.production.execution.ProductionExecutionWorkbenchProjectionTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.093 s -- in com.uten.imp.features.production.execution.ProductionExecutionWorkbenchProjectionTest
+[INFO] Running com.uten.imp.features.reporting.export.MasterReportExportSourceTest
+18:31:58.659 [main] INFO org.hibernate.validator.internal.util.Version -- HV000001: Hibernate Validator 9.1.3.Final
+[INFO] Tests run: 17, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 3.134 s -- in com.uten.imp.features.reporting.export.MasterReportExportSourceTest
+[INFO] 
+[INFO] Results:
+[INFO] 
+[INFO] Tests run: 96, Failures: 0, Errors: 0, Skipped: 1
+[INFO] 
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD SUCCESS
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  04:36 min
+[INFO] Finished at: 2026-11-10T18:32:01-07:00
+[INFO] ------------------------------------------------------------------------

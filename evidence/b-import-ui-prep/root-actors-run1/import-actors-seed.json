@@ -1,0 +1,46 @@
+{
+  "passwordSource" : "Root private syntheticAccountPassword; no credential in seed",
+  "oldGoodsUnchanged" : true,
+  "reusableFinanceUserId" : "0b887a85-239a-4118-8d3f-246b166a7189",
+  "accounts" : {
+    "masterImport" : {
+      "userId" : "75ce9c4a-caea-42de-8ac5-a0dbb9fc6e9a",
+      "employeeId" : "412d570b-c692-440b-af6d-77083f1ba5de",
+      "permissions" : [ "goods:view", "goods:import", "goods:bom:create", "goods:bom:delete", "goods:cost:view", "goods:cost:edit" ],
+      "login" : "USR-b-masterImport-f8b75d73",
+      "isSuperAdmin" : false
+    },
+    "financeImport" : {
+      "userId" : "04bc1185-6427-4222-983a-9e46aa28815b",
+      "employeeId" : "e5b38add-1cd5-4f61-8d11-2bc92b242f8a",
+      "permissions" : [ "finance_report:view", "finance:view:all", "payment_style:edit", "finance_post:execute" ],
+      "login" : "USR-b-financeImport-f8b75d73",
+      "isSuperAdmin" : false
+    }
+  },
+  "roleMappingsUnchanged" : true,
+  "protectedCounts" : {
+    "goods_bom_items" : 47,
+    "goods_cost_imports" : 0,
+    "goods_cost_import_mappings" : 0,
+    "finance_chart_imports" : 0,
+    "finance_chart_codes" : 0,
+    "finance_expense_note_imports" : 0,
+    "finance_operating_report_notes" : 0,
+    "finance_statement_source_reviews" : 0,
+    "finance_auxiliary_items" : 0,
+    "finance_accounting_import_batches" : 0,
+    "gl_entries" : 0
+  },
+  "status" : "prep only: two ordinary identities and two new BOM prerequisites; zero import/approval/GL/mapping calls",
+  "bomPrerequisites" : {
+    "componentCode" : "K01",
+    "componentId" : "311b859f-9891-4efb-bd5b-edf8d56ed657",
+    "parentCode" : "BIMP-P-f8b75d73",
+    "bomRowsCreated" : 0,
+    "unitId" : "f8f19a41-1988-4742-b18f-96e574535d9f",
+    "parentId" : "3de8a1b0-f09b-47df-bb50-f207fb00c859"
+  },
+  "oldUsersUnchanged" : true,
+  "fixtureTag" : "f8b75d73"
+}

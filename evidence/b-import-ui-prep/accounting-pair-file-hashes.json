@@ -1,0 +1,42 @@
+[
+  {
+    "path": "D:\\Projects\\uten_imp_worktrees\\feedback-b-import-ui-prep-20261111\\evidence\\b-import-ui-prep\\accounting-pair\\legal-balances-202611.xls",
+    "sha256": "24d570462b2924fc8ed934bd81d88edfb349fa2aefa2e6e4494904c5c643ab2b",
+    "bytes": 4608
+  },
+  {
+    "path": "D:\\Projects\\uten_imp_worktrees\\feedback-b-import-ui-prep-20261111\\evidence\\b-import-ui-prep\\accounting-pair\\legal-chart-202611.xlsx",
+    "sha256": "93e2bb23403c01068a5fca88f6b94bbc80e229b510b07ae71d34be340f4a766d",
+    "bytes": 3454
+  },
+  {
+    "path": "D:\\Projects\\uten_imp_worktrees\\feedback-b-import-ui-prep-20261111\\evidence\\b-import-ui-prep\\accounting-pair\\legal-vouchers-202611.xls",
+    "sha256": "f7be309cd8162e52967a8711e2e4d83ae90a552cd092bbf97f72c8bed601dfcd",
+    "bytes": 6656
+  },
+  {
+    "path": "D:\\Projects\\uten_imp_worktrees\\feedback-b-import-ui-prep-20261111\\evidence\\b-import-ui-prep\\accounting-pair\\local-format-check.json",
+    "sha256": "3dbbdeb02db68cb09d1593173ef0154eef3e17fe4f0c02502825993cf23f5bbe",
+    "bytes": 377
+  },
+  {
+    "path": "D:\\Projects\\uten_imp_worktrees\\feedback-b-import-ui-prep-20261111\\evidence\\b-import-ui-prep\\accounting-pair-202610\\legal-balances-202610.xls",
+    "sha256": "1a2184d4f88fb27c66dba14b95b06ba37568418ab16236195697bbf9f355c176",
+    "bytes": 4608
+  },
+  {
+    "path": "D:\\Projects\\uten_imp_worktrees\\feedback-b-import-ui-prep-20261111\\evidence\\b-import-ui-prep\\accounting-pair-202610\\legal-chart-202610.xlsx",
+    "sha256": "ede074d3b536d5b2240f0b6b8a2dc45fd7739261d02810d68756bc1587d2b668",
+    "bytes": 3461
+  },
+  {
+    "path": "D:\\Projects\\uten_imp_worktrees\\feedback-b-import-ui-prep-20261111\\evidence\\b-import-ui-prep\\accounting-pair-202610\\legal-vouchers-202610.xls",
+    "sha256": "25e68f1124b30c7d7711cc4828692180552313a8530b90de9711bfa958d0e520",
+    "bytes": 6656
+  },
+  {
+    "path": "D:\\Projects\\uten_imp_worktrees\\feedback-b-import-ui-prep-20261111\\evidence\\b-import-ui-prep\\accounting-pair-202610\\local-format-check.json",
+    "sha256": "3ab9c4c682e7107a8bf12ce9f1a8faffc316a50b466f00cf11258de9339b9770",
+    "bytes": 377
+  }
+]

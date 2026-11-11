@@ -1,3 +1,4 @@
+import '../../../shared/paging/complete_output_view_mixin.dart';
 import '../repositories/flat_master_summary_gateway.dart';
 import '../../../components/layout/uten_compact_toolbar.dart';
 import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
@@ -69,7 +70,17 @@ class ColorPage extends ConsumerStatefulWidget {
 class _ColorPageState extends ConsumerState<ColorPage>
     with
         MasterInlinePageMixin<ColorPage, ColorListItem>,
-        ScopedPagedReadViewMixin<ColorPage> {
+        ScopedPagedReadViewMixin<ColorPage>,
+        CompleteOutputViewMixin<ColorPage> {
+  @override
+  Object get completeOutputQuery => [
+    ref.read(colorRepositoryProvider),
+    _keyword,
+    _filters,
+  ];
+  @override
+  bool get completeOutputHasData => _page != null;
+
   @override
   Future<void> onReadViewResumed() => _loadColors(1);
 
@@ -89,11 +100,14 @@ class _ColorPageState extends ConsumerState<ColorPage>
   }
 
   @override
+  CompleteOutputGuard get inlineOutputGuard => completeOutputGuard;
+  @override
   String get inlineEntityType => 'colors';
   @override
   bool get inlineCanEdit => _canEdit;
   @override
-  bool get inlineReadReady => _page != null && !_loading && _error == null;
+  bool get inlineReadReady =>
+      completeOutputCurrent && !_loading && _error == null;
   @override
   String inlineIdOf(ColorListItem row) => row.id;
   @override
@@ -246,16 +260,17 @@ class _ColorPageState extends ConsumerState<ColorPage>
     final repository = ref.read(colorRepositoryProvider);
     final keyword = _keyword.trim().isEmpty ? null : _keyword;
     final filters = Map<String, String?>.unmodifiable(_filters);
-    Object pagingQuery() => [
-      ref.read(colorRepositoryProvider),
-      _keyword,
-      _filters,
-    ];
+    Object pagingQuery() => completeOutputQuery;
+    final outputRead = beginCompleteOutputRead(
+      _page,
+      preserveEditorInput: inlineEdit.active,
+    );
     try {
       final result = await readScopedPage<ColorListItem>(
         page,
         query: pagingQuery(),
         currentQuery: pagingQuery,
+        outputGuard: completeOutputGuard,
         useCache: useCache,
         fetchComplete: completeFlatMasterList<ColorListItem>(
           repository,
@@ -277,6 +292,7 @@ class _ColorPageState extends ConsumerState<ColorPage>
               !_loadRequests.isCurrent(generation)) {
             return;
           }
+          if (!mayPublishCompleteOutputPrefix(outputRead)) return;
           setState(() => _page = partial);
         },
       );
@@ -285,15 +301,28 @@ class _ColorPageState extends ConsumerState<ColorPage>
           !_loadRequests.isCurrent(generation)) {
         return;
       }
+      if (!acceptCompleteOutputRead(outputRead)) return;
       setState(() {
         _page = result;
         _loading = false;
       });
     } on ApiException catch (e) {
-      if (isRetiredViewRead(e)) return;
+      if (isRetiredViewRead(e)) {
+        restoreCompleteOutputRead(outputRead, (fallback) {
+          _page = fallback;
+          _loading = false;
+        }, error: e);
+        return;
+      }
       if (!mounted ||
           !inlineAcceptsRead(inlineReadBoundary) ||
           !_loadRequests.isCurrent(generation)) {
+        return;
+      }
+      if (!restoreCompleteOutputRead(outputRead, (fallback) {
+        _page = fallback;
+        _loading = false;
+      }, error: e)) {
         return;
       }
       setState(() {
@@ -301,16 +330,34 @@ class _ColorPageState extends ConsumerState<ColorPage>
         _loading = false;
       });
     } catch (retiredReadError) {
-      if (isRetiredViewRead(retiredReadError)) return;
+      if (isRetiredViewRead(retiredReadError)) {
+        restoreCompleteOutputRead(outputRead, (fallback) {
+          _page = fallback;
+          _loading = false;
+        }, error: retiredReadError);
+        return;
+      }
       if (!mounted ||
           !inlineAcceptsRead(inlineReadBoundary) ||
           !_loadRequests.isCurrent(generation)) {
+        return;
+      }
+      if (!restoreCompleteOutputRead(outputRead, (fallback) {
+        _page = fallback;
+        _loading = false;
+      }, error: retiredReadError)) {
         return;
       }
       setState(() {
         _error = '加载颜色列表失败'; // TODO(l10n): 补 arb
         _loading = false;
       });
+    } finally {
+      // A server denial can retire the output token inside the shared reader.
+      // The current request still owns its loading state and must close it.
+      if (mounted && _loadRequests.isCurrent(generation)) {
+        setState(() => _loading = false);
+      }
     }
   }
 
@@ -413,6 +460,7 @@ class _ColorPageState extends ConsumerState<ColorPage>
         },
         onAccepted: () {
           if (!owner.isCurrent) return;
+          retireCompleteOutputAfterWrite();
           context.appSuccess('颜色已创建');
           unawaited(_loadColors(_visibleReadPage));
         },
@@ -446,6 +494,7 @@ class _ColorPageState extends ConsumerState<ColorPage>
         },
         onAccepted: () {
           if (!owner.isCurrent) return;
+          retireCompleteOutputAfterWrite();
           context.appSuccess('颜色已更新');
           unawaited(_loadColors(_visibleReadPage));
         },
@@ -503,7 +552,10 @@ class _ColorPageState extends ConsumerState<ColorPage>
         rows: _detailRows(detail),
         historyEntityType: 'colors',
         historyRecordId: detail.id,
-        onHistoryChanged: () => _loadColors(_visibleReadPage),
+        onHistoryChanged: () {
+          retireCompleteOutputAfterWrite();
+          unawaited(_loadColors(_visibleReadPage));
+        },
         dialogScopeBuilder: owner.ownDialog,
         isCurrent: () => owner.isCurrent,
         canEdit: _canEdit,
@@ -771,6 +823,7 @@ class _ColorPageState extends ConsumerState<ColorPage>
       _batchProgressOpen = false;
       _setOperationBusy(owner, false);
       if (!mounted || !owner.isCurrent || result == null) return;
+      retireCompleteOutputAfterWrite(confirmed: result.succeeded > 0);
       setState(() {
         _selectedColorIds = {
           for (final r in result.results)
@@ -893,6 +946,8 @@ class _ColorPageState extends ConsumerState<ColorPage>
 
   /// 打印预览数据：按当前筛选口径完整分页读取，列/格式化与页面表格一致。
   Future<UtenPrintTable> _printLoader() async {
+    if (!completeOutputCurrent) throw StateError('当前查询尚无完整结果，请重新加载后再输出');
+    final qualified = captureCompleteOutput();
     final repository = ref.read(colorRepositoryProvider);
     final boundary = ref.read(sensitiveReadBoundaryProvider);
     final epoch = ref.read(exportContextEpochProvider);
@@ -903,7 +958,7 @@ class _ColorPageState extends ConsumerState<ColorPage>
     final columns = List.of(_columns);
     var retired = false;
     bool current() {
-      if (retired || !mounted) return false;
+      if (retired || !mounted || !qualified()) return false;
       retired =
           version != _queryEpoch ||
           epoch != ref.read(exportContextEpochProvider) ||
@@ -955,7 +1010,10 @@ class _ColorPageState extends ConsumerState<ColorPage>
           actions: [
             MasterOperationHistoryActions(
               entityType: 'colors',
-              onChanged: _refresh,
+              onChanged: () {
+                retireCompleteOutputAfterWrite();
+                unawaited(_refresh());
+              },
             ),
             UtenRefreshButton(
               busy: _loading,
@@ -1019,8 +1077,9 @@ class _ColorPageState extends ConsumerState<ColorPage>
                             // 工具条右侧留给分页；按钮纯文字无 icon（工具条无 icon 口径）。
                             toolbarLeadingActions: [
                               UtenPrintPreviewButton(
+                                enabled: completeOutputCurrent,
+                                isCurrent: captureCompleteOutput(),
                                 title: '颜色资料', // TODO(l10n): 补 arb
-                                subtitle: '当前筛选的完整结果', // TODO(l10n): 补 arb
                                 loader: _printLoader,
                                 exportEndpoint: '/master/colors/export',
                                 exportPermission: Perm.colorExport,
@@ -1032,6 +1091,14 @@ class _ColorPageState extends ConsumerState<ColorPage>
                                 icon: null,
                               ),
                               UtenExportButton(
+                                taskRecoveryEnabled: true,
+                                enabled: completeOutputCurrent,
+                                prepareExport: () async =>
+                                    !completeOutputCurrent
+                                    ? null
+                                    : UtenExportSelection(
+                                        stillCurrent: captureCompleteOutput(),
+                                      ),
                                 endpoint: '/master/colors/export',
                                 requiredPermission: Perm.colorExport,
                                 report: '',

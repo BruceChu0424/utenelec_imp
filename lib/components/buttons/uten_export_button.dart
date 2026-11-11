@@ -75,6 +75,7 @@ class UtenExportButton extends ConsumerStatefulWidget {
     this.filename,
     this.requiredPermission,
     this.enabled = true,
+    this.taskRecoveryEnabled = false,
     this.label = '下载表格',
     this.type = UtenButtonType.tonal,
     this.size = UtenButtonSize.small,
@@ -100,6 +101,10 @@ class UtenExportButton extends ConsumerStatefulWidget {
 
   /// Whether the current result set is ready to be exported.
   final bool enabled;
+
+  /// Existing master jobs retain their frozen request and owner even when a
+  /// replacement list is incomplete. This never permits a new current export.
+  final bool taskRecoveryEnabled;
 
   /// 按钮文字（公司年长用户多，文字比纯图标易懂；默认"下载表格"，调用方可覆盖如"下载货品表"）。
   final String label;
@@ -172,32 +177,39 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
   }
 
   Future<void> _onTap() async {
-    if (!widget.enabled || !_authorized || _loading || _preparing) return;
+    if ((!widget.enabled && !widget.taskRecoveryEnabled) ||
+        !_authorized ||
+        _loading ||
+        _preparing) {
+      return;
+    }
+    final recoveryOnly = !widget.enabled;
     final operation = ++_operation;
     final actionContext = UtenAppBarActionScope.actionContextOf(context);
     final epoch = ref.read(exportContextEpochProvider);
     final api = ref.read(apiClientProvider);
     UtenExportSelection? selection;
-    bool current() =>
+    bool ownerCurrent() =>
         mounted &&
         operation == _operation &&
         epoch == ref.read(exportContextEpochProvider) &&
         identical(api, ref.read(apiClientProvider)) &&
-        widget.enabled &&
-        _authorized &&
-        (selection?.stillCurrent?.call() ?? true);
+        _authorized;
+    bool current() =>
+        ownerCurrent() &&
+        (recoveryOnly ||
+            widget.enabled && (selection?.stillCurrent?.call() ?? true));
     setState(() => _preparing = true);
     try {
       final scope = await api.captureRequestScope(isCurrent: current);
       if (!mounted || !actionContext.mounted || !current()) return;
-      final table = TableColumnProjectionScope.resolve(
-        actionContext,
-        widget.tableKey,
-      );
+      final table = recoveryOnly
+          ? null
+          : TableColumnProjectionScope.resolve(actionContext, widget.tableKey);
       final selected = Set<String>.unmodifiable(
         widget.selectedIds ?? table?.outputSelection.ids ?? const <String>{},
       );
-      selection = widget.prepareExport == null
+      selection = recoveryOnly || widget.prepareExport == null
           ? const UtenExportSelection()
           : await widget.prepareExport!();
       if (selection == null ||
@@ -211,7 +223,7 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
         builder: (_) => _ExportFileDialog(
           format: selection!.extension,
           selectedCount: selected.length,
-          showScope: widget.showOutputScope,
+          showScope: !recoveryOnly && widget.showOutputScope,
           defaultStem:
               selection.filename ??
               widget.filename ??
@@ -261,6 +273,8 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
             selectedOnly ? selected : null,
             selectedRows,
             progress,
+            recoveryOnly: recoveryOnly,
+            jobCurrent: ownerCurrent,
           );
         },
       );
@@ -295,11 +309,42 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
     AuthenticatedRequestScope scope,
     Set<String>? selectedIds,
     List<Map<String, String?>>? selectedRows,
-    UtenProgressSession progress,
-  ) async {
-    if (!mounted || !widget.enabled || !current()) return null;
+    UtenProgressSession progress, {
+    required bool recoveryOnly,
+    required bool Function() jobCurrent,
+  }) async {
+    if (!mounted || (!widget.enabled && !recoveryOnly) || !current()) {
+      return null;
+    }
     setState(() => _loading = true);
     final actionContext = UtenAppBarActionScope.actionContextOf(context);
+    if (recoveryOnly) {
+      final report = masterExportJobReport(widget.endpoint);
+      if (report == null) {
+        throw ApiException('OUTPUT_RECOVERY_UNAVAILABLE', '此入口没有可恢复的后台任务');
+      }
+      final jobs = ReportExportJobsClient(api, scope);
+      if (!await jobs.available()) {
+        throw ApiException(
+          'OUTPUT_RECOVERY_UNAVAILABLE',
+          '服务器未启用后台导出任务；本次未新建文件，原请求仍保留',
+        );
+      }
+      if (!jobCurrent()) return null;
+      final placeholder = ReportExportJobRequest.create(
+        domain: 'master',
+        report: report,
+        parameters: const {'filter': '{}'},
+      );
+      return () => _openJobDialog(
+        jobs,
+        placeholder,
+        selection,
+        choice,
+        () => false,
+        jobCurrent,
+      );
+    }
     final projection =
         widget.frozenProjection ??
         TableColumnProjectionScope.resolve(actionContext, widget.tableKey);
@@ -410,69 +455,14 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
               : null,
         );
         // 后台任务有自己的进度弹窗: 先关掉本进度弹窗再打开, 两个弹窗不叠放。
-        return () async {
-          // The task dialog owns progress now; keep the underlying action gated
-          // by _preparing without spinning an obscured button indefinitely.
-          if (mounted) setState(() => _loading = false);
-          await UtenBusyOverlay.yieldWhile(
-            () => showDialog<void>(
-              context: actionContext,
-              barrierDismissible: false,
-              builder: (_) => ReportExportJobDialog(
-                client: jobs,
-                request: request,
-                store: ReportExportPendingStore(
-                  ref.read(sharedPreferencesProvider),
-                  scope.identity,
-                  domain,
-                  taskReport,
-                  format: selection.extension,
-                ),
-                stillCurrent: current,
-                onDownload: (job, progress) async {
-                  final filename = _exportFilename(selection, choice);
-                  bool receiving() => current() && !progress.isCancelled;
-                  final saved = await jobs.downloadToFile(
-                    job.id,
-                    choice.password,
-                    filename,
-                    directory: choice.directory,
-                    stillCurrent: receiving,
-                    onReceived: (received) =>
-                        progress.bytes(received, job.bytes, status: '正在下载文件'),
-                  );
-                  if (!mounted || !receiving()) return;
-                  if (saved != null) {
-                    _announceSaved(saved, filename);
-                    return;
-                  }
-                  if (job.bytes > 32 * 1024 * 1024) {
-                    throw ApiException(
-                      'STREAMING_UNAVAILABLE',
-                      '当前浏览器不支持大文件保存，请使用桌面版下载原任务',
-                    );
-                  }
-                  final cancelToken = CancelToken();
-                  unawaited(
-                    progress.whenCancelled.then((_) => cancelToken.cancel()),
-                  );
-                  final bytes = await jobs.download(
-                    job.id,
-                    choice.password,
-                    cancelToken: cancelToken,
-                    onReceiveProgress: progress.receiving('正在下载文件'),
-                  );
-                  if (!mounted || !receiving()) return;
-                  progress.stage(
-                    '正在保存文件',
-                    detail: formatUtenBytes(bytes.length),
-                  );
-                  await _saveExport(bytes, selection, current, choice);
-                },
-              ),
-            ),
-          );
-        };
+        return () => _openJobDialog(
+          jobs,
+          request,
+          selection,
+          choice,
+          current,
+          jobCurrent,
+        );
       }
       if (selection.extension == 'pdf' &&
           domain != 'where_used' &&
@@ -547,6 +537,98 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
     return null;
   }
 
+  Future<void> _openJobDialog(
+    ReportExportJobsClient jobs,
+    ReportExportJobRequest request,
+    UtenExportSelection selection,
+    _ExportFileChoice choice,
+    bool Function() canCreateNew,
+    bool Function() jobCurrent,
+  ) async {
+    if (!mounted || !jobCurrent()) return;
+    // New preparation and synchronous output keep the full list fence. Only
+    // original task reconciliation uses its authenticated owner after the list
+    // is retired; recapture must still match the exact original identity.
+    final scope = await jobs.api.captureRequestScope(isCurrent: jobCurrent);
+    if (scope.identity != jobs.scope.identity) {
+      throw AuthenticatedRequestScope.changed();
+    }
+    if (!mounted || !jobCurrent()) return;
+    final originalTasks = ReportExportJobsClient(jobs.api, scope);
+    final actionContext = UtenAppBarActionScope.actionContextOf(context);
+
+    // The task dialog owns progress now; keep the underlying action gated
+    // by _preparing without spinning an obscured button indefinitely.
+    if (mounted) setState(() => _loading = false);
+    await UtenBusyOverlay.yieldWhile(
+      () => showDialog<void>(
+        context: actionContext,
+        barrierDismissible: false,
+        builder: (_) => ReportExportJobDialog(
+          client: originalTasks,
+          request: request,
+          store: ReportExportPendingStore(
+            ref.read(sharedPreferencesProvider),
+            scope.identity,
+            request.domain,
+            request.report,
+            format: selection.extension,
+          ),
+          stillCurrent: jobCurrent,
+          canCreateNew: canCreateNew,
+          onDownload: (job, progress) => _downloadJob(
+            originalTasks,
+            job,
+            selection,
+            choice,
+            jobCurrent,
+            progress,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _downloadJob(
+    ReportExportJobsClient jobs,
+    ReportExportJob job,
+    UtenExportSelection selection,
+    _ExportFileChoice choice,
+    bool Function() current,
+    UtenProgressSession progress,
+  ) async {
+    final filename = _exportFilename(selection, choice);
+    bool receiving() => current() && !progress.isCancelled;
+    final saved = await jobs.downloadToFile(
+      job.id,
+      choice.password,
+      filename,
+      directory: choice.directory,
+      stillCurrent: receiving,
+      onReceived: (received) =>
+          progress.bytes(received, job.bytes, status: '正在下载文件'),
+    );
+    if (!mounted || !receiving()) return;
+    if (saved != null) {
+      _announceSaved(saved, filename);
+      return;
+    }
+    if (job.bytes > 32 * 1024 * 1024) {
+      throw ApiException('STREAMING_UNAVAILABLE', '当前浏览器不支持大文件保存，请使用桌面版下载原任务');
+    }
+    final cancelToken = CancelToken();
+    unawaited(progress.whenCancelled.then((_) => cancelToken.cancel()));
+    final bytes = await jobs.download(
+      job.id,
+      choice.password,
+      cancelToken: cancelToken,
+      onReceiveProgress: progress.receiving('正在下载文件'),
+    );
+    if (!mounted || !receiving()) return;
+    progress.stage('正在保存文件', detail: formatUtenBytes(bytes.length));
+    await _saveExport(bytes, selection, current, choice);
+  }
+
   Future<void> _saveExport(
     Uint8List bytes,
     UtenExportSelection selection,
@@ -608,8 +690,19 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
       compactIcon: Icons.download_rounded,
       // 等待状态只由通用进度弹窗表达(百分比 + 进度条), 按钮不再叠转圈;
       // _loading / _preparing 仍负责防连点。
-      onPressed: widget.enabled && !_preparing && !_loading ? _onTap : null,
-      child: Text(widget.label),
+      onPressed:
+          (widget.enabled || widget.taskRecoveryEnabled) &&
+              !_preparing &&
+              !_loading
+          ? _onTap
+          : null,
+      child: Text(
+        widget.enabled
+            ? widget.label
+            : widget.taskRecoveryEnabled
+            ? '原导出任务'
+            : widget.label,
+      ),
     );
   }
 }

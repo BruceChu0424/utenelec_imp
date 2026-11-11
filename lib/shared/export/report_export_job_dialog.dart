@@ -27,12 +27,14 @@ class ReportExportJobDialog extends ConsumerStatefulWidget {
     required this.store,
     required this.stillCurrent,
     required this.onDownload,
+    this.canCreateNew,
   });
 
   final ReportExportJobsClient client;
   final ReportExportJobRequest request;
   final ReportExportPendingStore store;
   final bool Function() stillCurrent;
+  final bool Function()? canCreateNew;
 
   /// 下载已生成的文件。在通用进度弹窗里执行: 通过 [progress] 汇报字节进度,
   /// 用户点取消时 `progress.isCancelled` 为 true, 调用方应停止传输。
@@ -45,6 +47,7 @@ class ReportExportJobDialog extends ConsumerStatefulWidget {
 }
 
 class _ReportExportJobDialogState extends ConsumerState<ReportExportJobDialog> {
+  bool get _canCreateNew => _current && (widget.canCreateNew?.call() ?? true);
   Timer? _poll;
   ReportExportJobRequest? _unresolved;
   ReportExportPrecisionResume? _unresolvedPrecision;
@@ -199,23 +202,51 @@ class _ReportExportJobDialogState extends ConsumerState<ReportExportJobDialog> {
               job.format == widget.request.format,
         )
         .toList(growable: false);
-    if (_recent.isEmpty) await _create(widget.request);
+    if (_recent.isEmpty && _canCreateNew) {
+      await _create(widget.request, currentScope: true);
+    } else if (_recent.isEmpty) {
+      setState(() => _error = '当前账号没有可恢复的同类任务；重新读取完整结果后可新建导出');
+    }
   }, title: '正在恢复导出任务');
 
   Future<void> _create(
     ReportExportJobRequest request, {
     bool currentScope = false,
   }) async {
-    if (!_current) return;
+    if (!_current || currentScope && !_canCreateNew) return;
     // Retain the original request before sending. A lost receipt must never
     // turn into a fresh ID on retry, dialog reopen or application reload.
     await widget.store.save(request);
-    if (!_current) return;
+    if (!_current) {
+      if (currentScope) await widget.store.resolve(request.id);
+      return;
+    }
+    if (currentScope && !_canCreateNew) {
+      await widget.store.resolve(request.id);
+      throw ApiException(
+        'OUTPUT_RESULT_RETIRED',
+        '完整结果已退休，新任务尚未发送；请重新读取，原任务仍保留',
+      );
+    }
+    // New jobs keep the complete-result fence through identity verification
+    // and the actual HTTP command. Original retries keep their frozen owner
+    // scope and ID even after a replacement list has been retired.
+    final client = currentScope
+        ? ReportExportJobsClient(
+            widget.client.api,
+            await widget.client.api.captureRequestScope(
+              isCurrent: () => _canCreateNew,
+            ),
+          )
+        : widget.client;
+    if (client.scope.identity != widget.client.scope.identity) {
+      throw AuthenticatedRequestScope.changed();
+    }
     _unresolved = request;
     _job = null;
     _recent = const [];
     if (currentScope) _previousTask = false;
-    await _accept(await widget.client.create(request));
+    await _accept(await client.create(request));
   }
 
   Future<void> _accept(
@@ -335,6 +366,7 @@ class _ReportExportJobDialogState extends ConsumerState<ReportExportJobDialog> {
   }, title: '正在处理精度请求');
 
   Future<void> _newExport() => _perform(() async {
+    if (!_canCreateNew) return;
     final request = ReportExportJobRequest.fromJson({
       ...widget.request.json,
       'id': const Uuid().v4(),
@@ -519,7 +551,7 @@ class _ReportExportJobDialogState extends ConsumerState<ReportExportJobDialog> {
                 job?.active != true)
               UtenButton(
                 type: UtenButtonType.tonal,
-                onPressed: _busy ? null : _newExport,
+                onPressed: _busy || !_canCreateNew ? null : _newExport,
                 child: const Text('按当前筛选新建'),
               ),
           ],

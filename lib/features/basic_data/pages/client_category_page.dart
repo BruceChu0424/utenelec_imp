@@ -1,3 +1,4 @@
+import '../../../core/network/data_write_revision.dart';
 import '../../../core/formatters/exact_number_text.dart';
 import '../../../components/inputs/uten_table_cell_auto_width.dart';
 // 客户资料分类树管理页（基础资料）
@@ -497,7 +498,7 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
         ref,
         d,
         fallbackCategoryId: pane.categoryId,
-        onSaved: () => pane.reload(),
+        onSaved: () => pane.reload(confirmedWrite: true),
       ),
       detailReadOnlyHint: (d) => d.writable
           ? null
@@ -514,7 +515,7 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
                 context,
                 ref,
                 detail,
-                onSaved: () => pane.reload(),
+                onSaved: () => pane.reload(confirmedWrite: true),
               ),
             ),
           ),
@@ -599,7 +600,7 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
     await ref.read(clientRepositoryProvider).create(body);
     if (mounted && current()) {
       context.appSuccess('客户已创建');
-      await _pane?.reload();
+      await _pane?.reload(confirmedWrite: true);
     }
     return true;
   }
@@ -612,8 +613,13 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
     String id,
   ) async {
     final current = shellCaptureActionOwner();
+    final writeRevision = ref.read(dataWriteRevisionProvider);
     await context.push(RoutePath.basicinfoClientDetail(id));
-    if (mounted && current()) await pane.reload();
+    if (mounted && current()) {
+      await pane.reload(
+        confirmedWrite: ref.read(dataWriteRevisionProvider) != writeRevision,
+      );
+    }
   }
 
   Future<void> _showClientAccess(
@@ -643,7 +649,9 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
         saver: repository.updateAccess,
       ),
     );
-    if (saved != null && mounted && paneState.mounted) await pane.reload();
+    if (saved != null && mounted && paneState.mounted) {
+      await pane.reload(confirmedWrite: true);
+    }
   }
 
   Widget _clientOwnerCell(BuildContext cellContext, ClientListItem row) {
@@ -750,7 +758,9 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
           return false;
         }
       });
-      if (ok == true && mounted && submission.isCurrent) await pane.reload();
+      if (ok == true && mounted && submission.isCurrent) {
+        await pane.reload(confirmedWrite: true);
+      }
     } finally {
       submission.dispose();
     }

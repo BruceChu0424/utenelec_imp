@@ -1,3 +1,4 @@
+import '../../../core/network/data_write_revision.dart';
 // 供应商资料分类树管理页（基础资料）
 //
 // 顶层壳层（树加载/统一搜索/分类 CRUD/build 骨架）复用 CategoryPageShell，
@@ -439,7 +440,7 @@ class _SupplierCategoryPageState extends ConsumerState<SupplierCategoryPage>
         ref,
         d,
         fallbackCategoryId: pane.categoryId,
-        onSaved: () => pane.reload(),
+        onSaved: () => pane.reload(confirmedWrite: true),
       ),
     );
   }
@@ -472,7 +473,7 @@ class _SupplierCategoryPageState extends ConsumerState<SupplierCategoryPage>
         await ref.read(supplierRepositoryProvider).create(body);
         if (mounted && current()) {
           context.appSuccess('供应商已创建');
-          await pane?.reload();
+          await pane?.reload(confirmedWrite: true);
         }
         return true;
       },
@@ -485,8 +486,13 @@ class _SupplierCategoryPageState extends ConsumerState<SupplierCategoryPage>
     String id,
   ) async {
     final current = shellCaptureActionOwner();
+    final writeRevision = ref.read(dataWriteRevisionProvider);
     await context.push(RoutePath.basicinfoSupplierDetail(id));
-    if (mounted && current()) await pane.reload();
+    if (mounted && current()) {
+      await pane.reload(
+        confirmedWrite: ref.read(dataWriteRevisionProvider) != writeRevision,
+      );
+    }
   }
 
   // ---- 供应商列定义（表格列头 + 单元格取值 + 筛选键） ---------------------

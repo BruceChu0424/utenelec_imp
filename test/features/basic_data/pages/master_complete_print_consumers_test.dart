@@ -12,6 +12,7 @@ import '../../../support/uten_test_actions.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/network/read_scope_revision.dart';
 import 'package:uten_imp/features/basic_data/pages/account_workspace_page.dart';
 import 'package:uten_imp/features/basic_data/pages/client_category_page.dart';
@@ -26,6 +27,10 @@ import 'package:uten_imp/features/basic_data/pages/settlement_method_page.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_entity_detail_pane.dart';
 import 'package:uten_imp/components/buttons/uten_export_button.dart';
+import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
+import 'package:uten_imp/components/feedback/uten_context_menu.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/shared/export/report_export_job_dialog.dart';
 import 'package:uten_imp/components/print/uten_print_preview.dart';
 import 'package:uten_imp/shared/drafts/form_draft_store.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
@@ -64,6 +69,21 @@ const _permissions = {
   'stock:view',
   'settlement_method:view',
   'mould:export',
+  'mould:status',
+  'goods:export',
+  'client:export',
+  'supplier:export',
+  'account:export',
+  'currency:export',
+  'color:export',
+  'unit:export',
+  'warehouse:export',
+  'settlement_method:export',
+  'color:status',
+  'unit:status',
+  'currency:status',
+  'account:status',
+  'warehouse:status',
 };
 
 class _Session extends SessionNotifier {
@@ -86,6 +106,67 @@ class _Fixture {
       InterceptorsWrapper(
         onRequest: (request, handler) async {
           final path = request.path;
+          if (request.method == 'GET' && path == '/report-export-jobs') {
+            handler.resolve(
+              Response<dynamic>(
+                requestOptions: request,
+                statusCode: 200,
+                data: recentJobs,
+              ),
+            );
+            return;
+          }
+          if (request.method == 'GET' &&
+              recentJobs.any(
+                (job) => path == '/report-export-jobs/${job['id']}',
+              )) {
+            jobReads.add(path);
+            handler.resolve(
+              Response<dynamic>(
+                requestOptions: request,
+                statusCode: 200,
+                data: recentJobs.firstWhere(
+                  (job) => path.endsWith('/${job['id']}'),
+                ),
+              ),
+            );
+            return;
+          }
+          if (request.method == 'PATCH' && path.endsWith('/status')) {
+            writes++;
+            final id = path.split('/').reversed.skip(1).first;
+            for (final row in rows.where((row) => row['id'] == id)) {
+              row['status'] = (request.data as Map)['status'];
+              row['version'] = (row['version'] as int) + 1;
+            }
+            handler.resolve(
+              Response<dynamic>(
+                requestOptions: request,
+                statusCode: 200,
+                data: <String, dynamic>{},
+              ),
+            );
+            return;
+          }
+          if (request.method == 'POST' && path.endsWith('/batch-status')) {
+            writes++;
+            final items = (request.data as Map)['items'] as List;
+            handler.resolve(
+              Response<dynamic>(
+                requestOptions: request,
+                statusCode: 200,
+                data: {
+                  'succeeded': items.length,
+                  'failed': 0,
+                  'results': [
+                    for (final item in items)
+                      {'id': (item as Map)['id'], 'ok': true},
+                  ],
+                },
+              ),
+            );
+            return;
+          }
           if (path == '/report-export-jobs/capabilities') {
             handler.resolve(
               Response<dynamic>(
@@ -115,6 +196,24 @@ class _Fixture {
           final root = domain == 'settlement_methods'
               ? '/master/reference-methods/settlement-admin'
               : '/master/$domain';
+          if (forbidden &&
+              (path == root ||
+                  path == '$root/search' ||
+                  path == '$root/page' ||
+                  path == '$root/dict')) {
+            handler.reject(
+              DioException(
+                requestOptions: request,
+                type: DioExceptionType.badResponse,
+                response: Response<dynamic>(
+                  requestOptions: request,
+                  statusCode: 403,
+                  data: {'code': 'FORBIDDEN', 'message': '合成服务端权限已收回'},
+                ),
+              ),
+            );
+            return;
+          }
           if (path == root || path == '$root/search' || path == '$root/page') {
             final page =
                 (request.queryParameters['page'] as num?)?.toInt() ?? 1;
@@ -145,7 +244,20 @@ class _Fixture {
               'totalPages': (rows.length / size).ceil(),
             };
           } else if (path == '$root/dict') {
+            if (domain == 'warehouses' && failContinuation) {
+              handler.reject(
+                DioException(
+                  requestOptions: request,
+                  type: DioExceptionType.connectionTimeout,
+                ),
+              );
+              return;
+            }
             value = rows;
+          } else if (request.method == 'GET' &&
+              path.startsWith('$root/') &&
+              rows.any((row) => path.endsWith('/${row['id']}'))) {
+            value = rows.firstWhere((row) => path.endsWith('/${row['id']}'));
           } else if (path.endsWith('/tree') || path.endsWith('/subtree')) {
             value = path.contains('categories') ? [category] : <Object>[];
           } else if (path.contains('categories') && !path.endsWith('/facets')) {
@@ -191,6 +303,10 @@ class _Fixture {
   final calls = <({int page, int size})>[];
   Completer<void>? holdSecond;
   bool failContinuation = false;
+  bool forbidden = false;
+  int writes = 0;
+  final recentJobs = <Map<String, dynamic>>[];
+  final jobReads = <String>[];
   static const category = {
     'id': '20000000-0000-4000-8000-000000000001',
     'code': 'CAT',
@@ -235,6 +351,9 @@ class _FixtureApi extends ApiClient {
   }) => consume(_frames());
 
   Stream<Map<String, dynamic>> _frames() async* {
+    if (fixture.forbidden) {
+      throw ApiException('FORBIDDEN', '合成服务端权限已收回', httpStatus: 403);
+    }
     var offset = 0;
     while (offset < fixture.rows.length) {
       if (offset > 0) {
@@ -318,6 +437,315 @@ Future<ProviderContainer> _pump(WidgetTester tester, _Fixture fixture) async {
 }
 
 void main() {
+  for (final domain in [
+    'colors',
+    'units',
+    'warehouses',
+    'settlement_methods',
+  ]) {
+    testWidgets('$domain has no invented local business sorting', (
+      tester,
+    ) async {
+      final fixture = _Fixture(domain);
+      await _pump(tester, fixture);
+      if (domain == 'warehouses') {
+        await tester.tap(find.text('表格视图'));
+        await tester.pumpAndSettle();
+      }
+      final table = tester.widget<MasterDataTableView<dynamic>>(
+        find.byWidgetPredicate((w) => w is MasterDataTableView).first,
+      );
+      expect(table.onSortChange, isNull);
+      expect(table.columns.every((column) => !column.sortable), isTrue);
+      if (domain == 'settlement_methods') {
+        for (final key in [
+          'defaultDueDays',
+          'fixedDayOfMonth',
+          'monthsAhead',
+        ]) {
+          final column = table.columns.singleWhere(
+            (column) => column.key == key,
+          );
+          expect(column.type, 'number');
+          await tester.tap(find.text(column.label).first);
+          await tester.pumpAndSettle();
+          expect(find.text('从小到大'), findsNothing);
+          expect(find.text('从大到小'), findsNothing);
+          await tester.tapAt(const Offset(2, 2));
+          await tester.pumpAndSettle();
+        }
+      }
+    });
+  }
+  for (final domain in _domains) {
+    testWidgets('$domain server rejection retires old output irreversibly', (
+      tester,
+    ) async {
+      final fixture = _Fixture(domain);
+      await _pump(tester, fixture);
+      if (domain == 'warehouses') {
+        await tester.tap(find.text('表格视图'));
+        await tester.pumpAndSettle();
+      }
+      UtenExportButton export() =>
+          tester.widget<UtenExportButton>(find.byType(UtenExportButton).first);
+      final old = await export().prepareExport!();
+      expect(old!.stillCurrent!(), isTrue);
+      fixture.forbidden = true;
+      var reading = tester
+          .widget<UtenRefreshButton>(find.byType(UtenRefreshButton).first)
+          .onRefresh();
+      await pumpUntilCompletes(
+        tester,
+        Future<void>.value(reading),
+        reason: 'refresh must close after the authoritative response',
+      );
+      await tester.pumpAndSettle();
+      expect(export().enabled, isFalse);
+      expect(old.stillCurrent!(), isFalse);
+      fixture.forbidden = false;
+      reading = tester
+          .widget<UtenRefreshButton>(find.byType(UtenRefreshButton).first)
+          .onRefresh();
+      await pumpUntilCompletes(
+        tester,
+        Future<void>.value(reading),
+        reason: 'refresh must close after the authoritative response',
+      );
+      await tester.pumpAndSettle();
+      expect(export().enabled, isTrue);
+      expect(old.stillCurrent!(), isFalse);
+      expect(fixture.exports, isEmpty);
+    });
+  }
+  testWidgets(
+    'cold failure recovers an existing mould job and never creates the placeholder',
+    (tester) async {
+      const id = '00000000-0000-4000-8000-000000009201';
+      final fixture = _Fixture('moulds')..failContinuation = true;
+      fixture.recentJobs.add({
+        'id': id,
+        'domain': 'master',
+        'report': 'mould',
+        'format': 'xlsx',
+        'status': 'SUCCEEDED',
+        'rows': 1626,
+        'bytes': 4096,
+        'snapshotAt': '2026-11-10T00:00:00Z',
+      });
+      await _pump(tester, fixture);
+      expect(
+        tester
+            .widget<UtenExportButton>(find.byType(UtenExportButton).first)
+            .enabled,
+        isFalse,
+      );
+      await tester.tap(find.text('原导出任务'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('table-output-selected')), findsNothing);
+      await tester.tap(find.text('直接下载'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byType(ListTile).last);
+      await tester.pumpAndSettle();
+      expect(fixture.jobReads.single, endsWith(id));
+      expect(fixture.exports, isEmpty);
+      expect(
+        tester
+            .widget<UtenButton>(find.widgetWithText(UtenButton, '按当前筛选新建'))
+            .onPressed,
+        isNull,
+      );
+      expect(
+        tester
+            .widget<UtenButton>(find.widgetWithText(UtenButton, '下载文件'))
+            .onPressed,
+        isNotNull,
+      );
+    },
+  );
+  testWidgets('cold failure with no old job cannot create through recovery', (
+    tester,
+  ) async {
+    final fixture = _Fixture('moulds')..failContinuation = true;
+    await _pump(tester, fixture);
+    await tester.tap(find.text('原导出任务'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('直接下载'));
+    await tester.pumpAndSettle();
+    expect(find.byType(ReportExportJobDialog), findsOneWidget);
+    expect(fixture.exports, isEmpty);
+    expect(find.textContaining('没有可恢复的同类任务'), findsOneWidget);
+    expect(
+      tester
+          .widget<UtenButton>(find.widgetWithText(UtenButton, '按当前筛选新建'))
+          .onPressed,
+      isNull,
+    );
+  });
+  for (final domain in [
+    'colors',
+    'units',
+    'currencies',
+    'accounts',
+    'settlement_methods',
+    'warehouses',
+  ]) {
+    testWidgets('$domain cold incomplete failure cannot qualify output', (
+      tester,
+    ) async {
+      final fixture = _Fixture(domain)..failContinuation = true;
+      await _pump(tester, fixture);
+      if (domain == 'warehouses') {
+        await tester.tap(find.text('表格视图'));
+        await tester.pumpAndSettle();
+      }
+      expect(
+        tester
+            .widget<UtenExportButton>(find.byType(UtenExportButton).first)
+            .enabled,
+        isFalse,
+      );
+      expect(
+        tester
+            .widget<UtenPrintPreviewButton>(
+              find.byType(UtenPrintPreviewButton).first,
+            )
+            .enabled,
+        isFalse,
+      );
+      expect(fixture.exports, isEmpty);
+    });
+    testWidgets(
+      '$domain same-query failed refresh keeps its accepted complete rows',
+      (tester) async {
+        final fixture = _Fixture(domain);
+        await _pump(tester, fixture);
+        if (domain == 'warehouses') {
+          await tester.tap(find.text('表格视图'));
+          await tester.pumpAndSettle();
+        }
+        final table = find.byWidgetPredicate((w) => w is MasterDataTableView);
+        expect(
+          (tester.widget(table.first) as MasterDataTableView).items,
+          hasLength(601),
+        );
+        fixture.failContinuation = true;
+        final refresh = tester
+            .widget<UtenRefreshButton>(find.byType(UtenRefreshButton).first)
+            .onRefresh();
+        await tester.pumpAndSettle();
+        await refresh;
+        expect(
+          (tester.widget(table.first) as MasterDataTableView).items,
+          hasLength(601),
+        );
+        expect(
+          tester
+              .widget<UtenExportButton>(find.byType(UtenExportButton).first)
+              .enabled,
+          isTrue,
+        );
+      },
+    );
+  }
+  for (final domain in [
+    'colors',
+    'units',
+    'currencies',
+    'accounts',
+    'warehouses',
+  ]) {
+    testWidgets(
+      '$domain confirmed status write cannot reuse failed reread output',
+      (tester) async {
+        final fixture = _Fixture(domain);
+        await _pump(tester, fixture);
+        if (domain == 'warehouses') {
+          await tester.tap(find.text('表格视图'));
+          await tester.pumpAndSettle();
+        }
+        final dynamic table = tester.widget(
+          find.byWidgetPredicate((w) => w is MasterDataTableView).first,
+        );
+        Future<void>? writing;
+        fixture.failContinuation = true;
+        if (domain == 'warehouses') {
+          // Heterogeneous real page row models retain their concrete callback types.
+          // ignore: avoid_dynamic_calls
+          Function.apply(table.onSelectedIdsChanged as Function, [
+            {fixture.rows[1]['id'] as String},
+          ]);
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('批量停用'));
+        } else {
+          final menu =
+              // ignore: avoid_dynamic_calls
+              Function.apply(table.rowMenuBuilder as Function, [table.items[1]])
+                  as List<UtenContextMenuEntry>;
+          final status = menu.whereType<UtenMenuItem>().firstWhere(
+            (item) => item.label.contains('禁用') || item.label.contains('停用'),
+          );
+          writing = Future<void>.sync(status.onTap);
+        }
+        await tester.pumpAndSettle();
+        await tester.tap(
+          domain == 'accounts'
+              ? find.widgetWithText(UtenButton, '确认')
+              : find.widgetWithText(FilledButton, '确认'),
+        );
+        await tester.pumpAndSettle();
+        await writing;
+        expect(fixture.writes, 1);
+        expect(
+          tester
+              .widget<UtenExportButton>(find.byType(UtenExportButton).first)
+              .enabled,
+          isFalse,
+        );
+        expect(
+          tester
+              .widget<UtenPrintPreviewButton>(
+                find.byType(UtenPrintPreviewButton).first,
+              )
+              .enabled,
+          isFalse,
+        );
+        expect(fixture.exports, isEmpty);
+      },
+    );
+  }
+  testWidgets(
+    'a captured export scope never revives after write and a new complete read',
+    (tester) async {
+      final fixture = _Fixture('moulds');
+      await _pump(tester, fixture);
+      final controller =
+          tester.state(
+                find
+                    .byWidgetPredicate((w) => w is MasterEntityDetailPane)
+                    .first,
+              )
+              as MasterEntityPaneController;
+      final oldSelection = await tester
+          .widget<UtenExportButton>(find.byType(UtenExportButton).first)
+          .prepareExport!();
+      expect(oldSelection!.stillCurrent!(), isTrue);
+      final writing = controller.toggleStatus(controller.page!.items.first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, '确认'));
+      await tester.pumpAndSettle();
+      await writing;
+      expect(oldSelection.stillCurrent!(), isFalse);
+      expect(fixture.writes, 1);
+      expect(fixture.exports, isEmpty);
+      expect(
+        tester
+            .widget<UtenExportButton>(find.byType(UtenExportButton).first)
+            .enabled,
+        isTrue,
+      );
+    },
+  );
   testWidgets(
     'cold progressive failure cannot open print or create an export',
     (tester) async {
@@ -333,6 +761,48 @@ void main() {
       expect(print.enabled, isFalse);
       expect(fixture.exports, isEmpty);
       expect(find.text('MX-moulds-00000'), findsNothing);
+    },
+  );
+  testWidgets(
+    'confirmed status write retires output if its complete reread fails',
+    (tester) async {
+      final fixture = _Fixture('moulds');
+      await _pump(tester, fixture);
+      final controller =
+          tester.state(
+                find
+                    .byWidgetPredicate((w) => w is MasterEntityDetailPane)
+                    .first,
+              )
+              as MasterEntityPaneController;
+      expect(
+        tester
+            .widget<UtenExportButton>(find.byType(UtenExportButton).first)
+            .enabled,
+        isTrue,
+      );
+      fixture.failContinuation = true;
+      final writing = controller.toggleStatus(controller.page!.items.first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, '确认'));
+      await tester.pumpAndSettle();
+      await writing;
+      expect(fixture.writes, 1);
+      expect(
+        tester
+            .widget<UtenExportButton>(find.byType(UtenExportButton).first)
+            .enabled,
+        isFalse,
+      );
+      expect(
+        tester
+            .widget<UtenPrintPreviewButton>(
+              find.byType(UtenPrintPreviewButton).first,
+            )
+            .enabled,
+        isFalse,
+      );
+      expect(fixture.exports, isEmpty);
     },
   );
   testWidgets(

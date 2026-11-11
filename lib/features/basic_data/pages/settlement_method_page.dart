@@ -1,3 +1,5 @@
+import '../../../shared/paging/complete_output_view_mixin.dart';
+import 'dart:async';
 import '../repositories/flat_master_summary_gateway.dart';
 import '../../../components/layout/uten_compact_toolbar.dart';
 import 'package:uten_imp/components/feedback/uten_modal_bottom_sheet.dart';
@@ -65,7 +67,17 @@ class SettlementMethodPage extends ConsumerStatefulWidget {
 class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage>
     with
         MasterInlinePageMixin<SettlementMethodPage, SettlementMethodAdminItem>,
-        ScopedPagedReadViewMixin<SettlementMethodPage> {
+        ScopedPagedReadViewMixin<SettlementMethodPage>,
+        CompleteOutputViewMixin<SettlementMethodPage> {
+  @override
+  Object get completeOutputQuery => [
+    ref.read(referenceMethodRepositoryProvider),
+    _keyword,
+    _filters,
+  ];
+  @override
+  bool get completeOutputHasData => _page != null;
+
   @override
   Future<void> onReadViewResumed() => _load();
 
@@ -86,11 +98,14 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage>
   }
 
   @override
+  CompleteOutputGuard get inlineOutputGuard => completeOutputGuard;
+  @override
   String get inlineEntityType => 'reference-methods';
   @override
   bool get inlineCanEdit => _canEdit;
   @override
-  bool get inlineReadReady => _page != null && !_loading && _error == null;
+  bool get inlineReadReady =>
+      completeOutputCurrent && !_loading && _error == null;
   @override
   String inlineIdOf(SettlementMethodAdminItem row) => row.id;
   @override
@@ -203,16 +218,17 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage>
     final repository = ref.read(referenceMethodRepositoryProvider);
     final keyword = _keyword;
     final filters = Map<String, String?>.unmodifiable(_filters);
-    Object pagingQuery() => [
-      ref.read(referenceMethodRepositoryProvider),
-      _keyword,
-      _filters,
-    ];
+    Object pagingQuery() => completeOutputQuery;
+    final outputRead = beginCompleteOutputRead(
+      _page,
+      preserveEditorInput: inlineEdit.active,
+    );
     try {
       final result = await readScopedPage<SettlementMethodAdminItem>(
         page,
         query: pagingQuery(),
         currentQuery: pagingQuery,
+        outputGuard: completeOutputGuard,
         useCache: useCache,
         fetchComplete: completeFlatMasterList<SettlementMethodAdminItem>(
           repository,
@@ -238,6 +254,7 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage>
               epoch != ref.read(exportContextEpochProvider)) {
             return;
           }
+          if (!mayPublishCompleteOutputPrefix(outputRead)) return;
           setState(() {
             _page = partial;
             _items = partial.items;
@@ -250,6 +267,7 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage>
           epoch != ref.read(exportContextEpochProvider)) {
         return;
       }
+      if (!acceptCompleteOutputRead(outputRead)) return;
       setState(() {
         _page = result;
         _pageNum = result.page;
@@ -257,11 +275,25 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage>
         _loading = false;
       });
     } on ApiException catch (e) {
-      if (isRetiredViewRead(e)) return;
+      if (isRetiredViewRead(e)) {
+        restoreCompleteOutputRead(outputRead, (fallback) {
+          _page = fallback;
+          _loading = false;
+          _items = fallback?.items;
+        }, error: e);
+        return;
+      }
       if (!mounted ||
           !inlineAcceptsRead(inlineReadBoundary) ||
           !_loadRequests.isCurrent(generation) ||
           epoch != ref.read(exportContextEpochProvider)) {
+        return;
+      }
+      if (!restoreCompleteOutputRead(outputRead, (fallback) {
+        _page = fallback;
+        _loading = false;
+        _items = fallback?.items;
+      }, error: e)) {
         return;
       }
       setState(() {
@@ -276,17 +308,37 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage>
         _loading = false;
       });
     } catch (retiredReadError) {
-      if (isRetiredViewRead(retiredReadError)) return;
+      if (isRetiredViewRead(retiredReadError)) {
+        restoreCompleteOutputRead(outputRead, (fallback) {
+          _page = fallback;
+          _loading = false;
+          _items = fallback?.items;
+        }, error: retiredReadError);
+        return;
+      }
       if (!mounted ||
           !inlineAcceptsRead(inlineReadBoundary) ||
           !_loadRequests.isCurrent(generation) ||
           epoch != ref.read(exportContextEpochProvider)) {
         return;
       }
+      if (!restoreCompleteOutputRead(outputRead, (fallback) {
+        _page = fallback;
+        _loading = false;
+        _items = fallback?.items;
+      }, error: retiredReadError)) {
+        return;
+      }
       setState(() {
         _error = '加载结算方式失败';
         _loading = false;
       });
+    } finally {
+      // A server denial can retire the output token inside the shared reader.
+      // The current request still owns its loading state and must close it.
+      if (mounted && _loadRequests.isCurrent(generation)) {
+        setState(() => _loading = false);
+      }
     }
   }
 
@@ -350,6 +402,7 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage>
         .read(referenceMethodRepositoryProvider)
         .createSettlement(name, terms: _termsOf(body));
     if (mounted) {
+      retireCompleteOutputAfterWrite();
       context.appSuccess('结算方式已创建');
       await _refresh();
     }
@@ -401,7 +454,10 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage>
         'remark': m.remark ?? '',
       },
       onSubmit: (body) => _doUpdateTerms(m, body, readToken),
-      onHistoryChanged: _refresh,
+      onHistoryChanged: () {
+        retireCompleteOutputAfterWrite();
+        unawaited(_refresh());
+      },
     );
     if (context.breakpoint.isCompact) {
       showUtenModalBottomSheet<void>(
@@ -465,6 +521,7 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage>
       errorFallback: '更新失败，请稍后重试', // TODO(l10n): 补 arb
     );
     if (!ok || !mounted || !inlineAcceptsRead(token)) return false;
+    retireCompleteOutputAfterWrite();
     await _refresh();
     return true;
   }
@@ -588,6 +645,8 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage>
 
   /// 打印预览数据：按当前筛选口径拉全量，列/格式化与页面表格一致。
   Future<UtenPrintTable> _printLoader() async {
+    if (!completeOutputCurrent) throw StateError('当前查询尚无完整结果，请重新加载后再输出');
+    final qualified = captureCompleteOutput();
     final read = captureInlineRead();
     final boundary = ref.read(sensitiveReadBoundaryProvider);
     final epoch = ref.read(exportContextEpochProvider);
@@ -598,7 +657,7 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage>
     final columns = List.of(_columns);
     var retired = false;
     bool current() {
-      if (retired || !mounted) return false;
+      if (retired || !mounted || !qualified()) return false;
       retired =
           !inlineAcceptsRead(read) ||
           epoch != ref.read(exportContextEpochProvider) ||
@@ -751,7 +810,10 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage>
           actions: [
             MasterOperationHistoryActions(
               entityType: 'reference-methods',
-              onChanged: _refresh,
+              onChanged: () {
+                retireCompleteOutputAfterWrite();
+                unawaited(_refresh());
+              },
             ),
             UtenRefreshButton(
               busy: _loading,
@@ -831,8 +893,9 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage>
                         // 工具条右侧留给分页；按钮纯文字无 icon（工具条无 icon 口径）。
                         toolbarLeadingActions: [
                           UtenPrintPreviewButton(
+                            enabled: completeOutputCurrent,
+                            isCurrent: captureCompleteOutput(),
                             title: '结算方式', // TODO(l10n): 补 arb
-                            subtitle: '全部行', // TODO(l10n): 补 arb
                             loader: _printLoader,
                             exportEndpoint:
                                 '/master/reference-methods/settlement-admin/export',
@@ -845,6 +908,13 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage>
                             icon: null,
                           ),
                           UtenExportButton(
+                            taskRecoveryEnabled: true,
+                            enabled: completeOutputCurrent,
+                            prepareExport: () async => !completeOutputCurrent
+                                ? null
+                                : UtenExportSelection(
+                                    stillCurrent: captureCompleteOutput(),
+                                  ),
                             endpoint:
                                 '/master/reference-methods/settlement-admin/export',
                             requiredPermission: Perm.settlementMethodExport,

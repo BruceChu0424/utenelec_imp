@@ -10,6 +10,7 @@ import 'complete_paged_snapshot.dart';
 import 'scoped_paged_read.dart';
 import 'paged_query_identity.dart';
 import 'read_view_activity.dart';
+import 'complete_output_guard.dart';
 
 export 'complete_paged_snapshot.dart' show CompleteReadBatchPlan;
 export 'read_view_activity.dart' show isRetiredViewRead;
@@ -20,6 +21,7 @@ export 'read_view_activity.dart' show isRetiredViewRead;
 mixin ScopedPagedReadViewMixin<W extends ConsumerStatefulWidget>
     on ConsumerState<W> {
   final _scopedPageReads = <(Type, Object), _ScopedReadLifecycle>{};
+  final _scopedOutputGuards = <CompleteOutputGuard>{};
   ProviderSubscription<int>? _scopedOwnerSubscription;
   int _scopedOwner = 0;
   bool _scopedDisposed = false;
@@ -74,6 +76,9 @@ mixin ScopedPagedReadViewMixin<W extends ConsumerStatefulWidget>
   /// also available when retiring a query before a debounced load is started.
   void invalidateScopedPageReads() {
     _scopedOwner++;
+    for (final guard in _scopedOutputGuards) {
+      guard.retire();
+    }
     for (final entry in _scopedPageReads.values) {
       entry.invalidate();
     }
@@ -111,7 +116,9 @@ mixin ScopedPagedReadViewMixin<W extends ConsumerStatefulWidget>
     void Function(PagedResult<R> partial)? onProgressiveBatch,
     int maxConcurrentPages = 1,
     CompleteReadBatchPlan? plan,
+    CompleteOutputGuard? outputGuard,
   }) {
+    if (outputGuard != null) _scopedOutputGuards.add(outputGuard);
     final key = (R, slot);
     final entry =
         _scopedPageReads.putIfAbsent(key, () => _ScopedReadEntry<R>())

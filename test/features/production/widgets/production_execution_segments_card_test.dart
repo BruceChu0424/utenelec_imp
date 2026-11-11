@@ -1,3 +1,7 @@
+import 'package:uten_imp/components/data_display/uten_status_cell_color.dart';
+import 'package:uten_imp/components/data_display/uten_status_badge.dart';
+import 'package:uten_imp/features/production/widgets/production_flow_stage_cell.dart';
+import 'package:uten_imp/features/production/models/production_flow_stage.dart';
 import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -14,6 +18,72 @@ import 'package:uten_imp/features/production/widgets/production_execution_segmen
 import 'package:uten_imp/shared/auth/permissions.dart';
 
 void main() {
+  testWidgets(
+    'shared process steps defer reporting eligibility to the work order',
+    (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: ProductionFlowSteps(
+              route: ProductionFlowRoute.make,
+              activeIndex: 4,
+            ),
+          ),
+        ),
+      );
+      expect(find.text('生产中 · 按工单额度报工'), findsOneWidget);
+      expect(find.text('生产中 · 可报工'), findsNothing);
+    },
+  );
+  for (final limited in [true, false]) {
+    testWidgets(
+      'execution card keeps authoritative partial material semantics $limited',
+      (tester) async {
+        final semantics = tester.ensureSemantics();
+        try {
+          await tester.binding.setSurfaceSize(const Size(1200, 1000));
+          addTearDown(() => tester.binding.setSurfaceSize(null));
+          await tester.pumpWidget(
+            _app(
+              repository: _repository(
+                status: 'IN_PROGRESS',
+                materialDemandCount: 3,
+                fullyIssuedDemandCount: 0,
+                materialIssued: false,
+                ordinaryRemainingQty: 10000,
+                partialMaterialReportLimited: limited,
+              ),
+              permissions: const {},
+            ),
+          );
+          await tester.pumpAndSettle();
+          final label = limited ? '生产中 · 按配套限量报工' : '生产中·可继续报工';
+          final text = find.text(label);
+          expect(text, findsWidgets);
+          final color = resolveStatusBadgeColors(
+            limited ? UtenStatusBadgeType.violet : UtenStatusBadgeType.accent,
+          ).$1;
+          expect(
+            find.ancestor(
+              of: text,
+              matching: find.byWidgetPredicate(
+                (widget) =>
+                    widget is Container &&
+                    widget.decoration is BoxDecoration &&
+                    (widget.decoration as BoxDecoration).color == color,
+              ),
+            ),
+            findsWidgets,
+          );
+          expect(find.bySemanticsLabel(RegExp(label)), findsWidgets);
+          expect(tester.takeException(), isNull);
+        } finally {
+          semantics.dispose();
+        }
+      },
+    );
+  }
+
   for (final fixed in [false, true]) {
     testWidgets(
       'plan detail displays ${fixed ? "fixed supplementary output" : "current approved tolerance"}',
@@ -858,6 +928,7 @@ ProductionPlanRepository _repository({
   int materialDemandCount = 2,
   int fullyIssuedDemandCount = 2,
   bool materialIssued = true,
+  bool partialMaterialReportLimited = false,
   bool canRequestDraw = false,
   bool canSplitBatch = false,
   double reportedQty = 3,
@@ -906,6 +977,8 @@ ProductionPlanRepository _repository({
                             materialDemandCount: materialDemandCount,
                             fullyIssuedDemandCount: fullyIssuedDemandCount,
                             materialIssued: materialIssued,
+                            partialMaterialReportLimited:
+                                partialMaterialReportLimited,
                             canRequestDraw: canRequestDraw,
                             canSplitBatch: canSplitBatch,
                             reportedQty: reportedQty,
@@ -977,6 +1050,7 @@ Map<String, dynamic> _segmentJson({
   int materialDemandCount = 2,
   int fullyIssuedDemandCount = 2,
   bool materialIssued = true,
+  bool partialMaterialReportLimited = false,
   bool canRequestDraw = false,
   bool canSplitBatch = false,
   double reportedQty = 3,
@@ -1015,6 +1089,7 @@ Map<String, dynamic> _segmentJson({
   'remainingQty': remainingQty,
   'ordinaryRemainingQty': ordinaryRemainingQty,
   'status': status,
+  'partialMaterialReportLimited': partialMaterialReportLimited,
   'autoPromoteWhenReady': autoPromoteWhenReady,
   'workshopDepartmentId': 'workshop-1',
   'workshopName': '装配一车间',

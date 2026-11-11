@@ -2346,6 +2346,8 @@ class ProductionDailyReportRepository {
     String? departmentId,
     String? executionSegmentId,
     List<String> executionSegmentIds = const [],
+    String? editingReportId,
+    int? expectedReportVersion,
   }) async {
     final json = await api.get(
       '/production/daily-reports/reportable-plan-lines',
@@ -2360,6 +2362,9 @@ class ProductionDailyReportRepository {
           'executionSegmentId': executionSegmentId,
         if (executionSegmentIds.isNotEmpty)
           'executionSegmentIds': executionSegmentIds.join(','),
+        if (editingReportId != null) 'editingReportId': editingReportId,
+        if (editingReportId != null)
+          'expectedReportVersion': expectedReportVersion,
       },
     );
     return PagedResult.fromJsonResponsive(json, ReportablePlanLine.fromJson);

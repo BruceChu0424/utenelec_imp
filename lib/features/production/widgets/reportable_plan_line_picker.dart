@@ -31,6 +31,8 @@ Future<List<ReportablePlanLine>?> showReportablePlanLinePicker(
   WidgetRef ref, {
   String? departmentId,
   String? executionSegmentId,
+  String? editingReportId,
+  int? expectedReportVersion,
 }) {
   return showUtenAdaptivePanel<List<ReportablePlanLine>>(
     context: context,
@@ -40,15 +42,24 @@ Future<List<ReportablePlanLine>?> showReportablePlanLinePicker(
     builder: (_) => _ReportablePlanLineSheet(
       departmentId: departmentId,
       executionSegmentId: executionSegmentId,
+      editingReportId: editingReportId,
+      expectedReportVersion: expectedReportVersion,
     ),
   );
 }
 
 class _ReportablePlanLineSheet extends ConsumerStatefulWidget {
-  const _ReportablePlanLineSheet({this.departmentId, this.executionSegmentId});
+  const _ReportablePlanLineSheet({
+    this.departmentId,
+    this.executionSegmentId,
+    this.editingReportId,
+    this.expectedReportVersion,
+  });
 
   final String? departmentId;
   final String? executionSegmentId;
+  final String? editingReportId;
+  final int? expectedReportVersion;
 
   @override
   ConsumerState<_ReportablePlanLineSheet> createState() =>
@@ -149,16 +160,27 @@ class _ReportablePlanLineSheetState
     try {
       final result = await readScopedPage<ReportablePlanLine>(
         requestedPage,
-        query: (repository, segment, department, keyword),
+        query: (
+          repository,
+          segment,
+          department,
+          keyword,
+          widget.editingReportId,
+          widget.expectedReportVersion,
+        ),
         currentQuery: () => (
           ref.read(productionDailyReportRepositoryProvider),
           widget.executionSegmentId,
           widget.departmentId,
           _search.text.trim(),
+          widget.editingReportId,
+          widget.expectedReportVersion,
         ),
         useCache: useCache,
         fetchPage: (page) => repository.reportablePlanLines(
           executionSegmentId: segment,
+          editingReportId: widget.editingReportId,
+          expectedReportVersion: widget.expectedReportVersion,
           page: page,
           size: 100,
           keyword: keyword,
@@ -166,6 +188,8 @@ class _ReportablePlanLineSheetState
         ),
         fetchPageSized: (page, size) => repository.reportablePlanLines(
           executionSegmentId: segment,
+          editingReportId: widget.editingReportId,
+          expectedReportVersion: widget.expectedReportVersion,
           page: page,
           size: size,
           keyword: keyword,

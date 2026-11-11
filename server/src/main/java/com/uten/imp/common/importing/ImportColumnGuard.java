@@ -7,7 +7,7 @@ import java.util.function.Function;
 
 /** File-side column loss protection. Display names never authorize a business field. */
 public final class ImportColumnGuard {
-    public static final int VERSION = 2;
+    public static final int VERSION = 3;
     private ImportColumnGuard() { }
     public record Header(int index, String label, String key) { }
     public record Issue(int rowNum, String column, String message) { }

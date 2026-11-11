@@ -7,6 +7,7 @@ import '../models/paged_result.dart';
 import 'complete_read_progress.dart';
 import 'paged_read_intent.dart';
 import 'paged_query_identity.dart';
+import 'read_failure_diagnostics.dart';
 
 /// 2026-11-08 user decision: a complete read starts with a small batch so the
 /// first screen appears at once, then keeps reading in larger bounded batches
@@ -376,6 +377,14 @@ Future<PagedResult<T>> loadCompletePagedResult<T>({
       }
     }
     throw const UiWorkCancelled();
+  } on Object catch (error, stack) {
+    // One anonymous correlation ref for every real failure of a complete
+    // read (retirements stay quiet): appended to the message, kept in the
+    // exception details, and recorded with a structured stage/code.
+    Error.throwWithStackTrace(
+      annotateCompleteReadFailure(error, stack, stage: 'complete-read'),
+      stack,
+    );
   } finally {
     // finish is idempotent: a succeeded task ignores this, and every failure
     // or retirement path (UiWorkCancelled included) ends its progress here.
@@ -517,6 +526,13 @@ Future<S> loadCompleteCursorSnapshot<R, S, C>({
         identities: identities,
         cursors: cursors,
       ),
+    );
+  } on Object catch (error, stack) {
+    // Same anonymous correlation ref as the offset pipeline: cursor history
+    // failures are reported with stage/code, retirements stay quiet.
+    Error.throwWithStackTrace(
+      annotateCompleteReadFailure(error, stack, stage: 'cursor-read'),
+      stack,
     );
   } finally {
     // finish is idempotent: a succeeded task ignores this; every failure or

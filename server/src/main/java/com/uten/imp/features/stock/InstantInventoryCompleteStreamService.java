@@ -3,6 +3,7 @@ package com.uten.imp.features.stock;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uten.imp.common.readsnapshot.CompleteStreamErrors;
 import com.uten.imp.common.readsnapshot.VersionedSummaryPages;
 import com.uten.imp.common.report.ReportExportCursor;
 import com.uten.imp.common.report.ReportReadPlan;
@@ -44,6 +45,8 @@ public class InstantInventoryCompleteStreamService {
     /** 与表头筛选候选同源的即时库存新鲜度域（见类注释）。 */
     static final String READ_DOMAIN = "native-facet-instant-stock";
     private static final String CONTRACT = "instant-inventory-complete-v1";
+    private static final org.slf4j.Logger LOG =
+            org.slf4j.LoggerFactory.getLogger(InstantInventoryCompleteStreamService.class);
 
     private final StockQueryService stock;
     private final VersionedSummaryPages summaries;
@@ -120,16 +123,10 @@ public class InstantInventoryCompleteStreamService {
         } catch (UncheckedIOException disconnected) {
             throw disconnected.getCause();
         } catch (RuntimeException failure) {
-            ErrorCode code = failure instanceof ApiException api ? api.getCode()
-                    : failure instanceof org.springframework.security.access.AccessDeniedException ? ErrorCode.FORBIDDEN
-                    : failure instanceof org.springframework.transaction.TransactionTimedOutException
-                        || failure instanceof java.util.concurrent.CancellationException ? ErrorCode.PRIMARY_UNAVAILABLE
-                    : ErrorCode.INTERNAL;
-            if (code == ErrorCode.INTERNAL)
-                org.slf4j.LoggerFactory.getLogger(InstantInventoryCompleteStreamService.class)
-                        .error("Complete instant inventory read failed", failure);
-            String message = failure instanceof ApiException api ? api.getMessage() : code.getDefaultMessage();
-            try { writeFrame(response, Map.of("type", "error", "code", code.name(), "message", message)); }
+            // One anonymous correlation ref per real failure: the frame carries
+            // it in details.correlation and the server log line quotes it.
+            var frame = CompleteStreamErrors.errorFrame(LOG, "instant-inventory", failure);
+            try { writeFrame(response, frame); }
             catch (UncheckedIOException disconnected) { throw disconnected.getCause(); }
         }
     }

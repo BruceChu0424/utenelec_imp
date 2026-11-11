@@ -179,7 +179,10 @@ void main() {
       find.byKey(const ValueKey('client-goods-alias-error')),
       findsOneWidget,
     );
-    expect(find.text('网络连接失败, 请检查后重试'), findsOneWidget);
+    expect(
+      find.textContaining(RegExp(r'网络连接失败, 请检查后重试(（关联号 [0-9A-Z]{6}）)?$')),
+      findsOneWidget,
+    );
 
     await tester.tap(find.text('重试'));
     await tester.pumpAndSettle();

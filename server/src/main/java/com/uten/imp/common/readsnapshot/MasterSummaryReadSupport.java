@@ -20,6 +20,8 @@ import java.util.Objects;
 /** Complete master summaries share transport proof and validation, never business predicates or DTO calculations. */
 @Service
 public final class MasterSummaryReadSupport {
+    private static final org.slf4j.Logger LOG =
+            org.slf4j.LoggerFactory.getLogger(MasterSummaryReadSupport.class);
     /** The original fixed frame size; existing clients keep requesting it. */
     public static final int READ_BATCH_SIZE = 100;
     /**
@@ -110,14 +112,10 @@ public final class MasterSummaryReadSupport {
         } catch (UncheckedIOException disconnected) {
             throw disconnected.getCause();
         } catch (RuntimeException failure) {
-            ErrorCode code = failure instanceof ApiException api ? api.getCode()
-                    : failure instanceof org.springframework.security.access.AccessDeniedException ? ErrorCode.FORBIDDEN
-                    : failure instanceof org.springframework.transaction.TransactionTimedOutException
-                        || failure instanceof java.util.concurrent.CancellationException ? ErrorCode.PRIMARY_UNAVAILABLE : ErrorCode.INTERNAL;
-            if (code == ErrorCode.INTERNAL)
-                org.slf4j.LoggerFactory.getLogger(MasterSummaryReadSupport.class).error("Complete master summary read failed for {}", domain, failure);
-            String message = failure instanceof ApiException api ? api.getMessage() : code.getDefaultMessage();
-            try { writeFrame(response, Map.of("type", "error", "code", code.name(), "message", message)); }
+            // One anonymous correlation ref per real failure: the frame carries
+            // it in details.correlation and the server log line quotes it.
+            var frame = CompleteStreamErrors.errorFrame(LOG, domain, failure);
+            try { writeFrame(response, frame); }
             catch (UncheckedIOException disconnected) { throw disconnected.getCause(); }
         }
     }

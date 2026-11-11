@@ -168,6 +168,10 @@ class InstantInventoryCompleteStreamServiceTest {
         assertThat(frames).hasSize(1);
         assertThat(frames.get(0).get("type").asText()).isEqualTo("error");
         assertThat(frames.get(0).get("code").asText()).isEqualTo("PRIMARY_UNAVAILABLE");
+        // A real failure carries one anonymous correlation ref the client keeps
+        // in the exception details and quotes with its message.
+        assertThat(frames.get(0).path("details").path("correlation").asText())
+                .matches("[0-9A-Z]{6}");
     }
 
     @Test void onlyTheSharedProgressiveRequestSizeIsAccepted() {

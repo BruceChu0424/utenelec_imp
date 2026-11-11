@@ -195,7 +195,13 @@ void main() {
           fetchPage: (_) async => throw denied,
           isCurrent: () => epoch == 3,
         ),
-        throwsA(same(denied)),
+        // 真失败带匿名关联号后缀（read_failure_diagnostics）：原始 code 与消息
+        // 前缀原样到达，实例不再是同一个。
+        throwsA(
+          isA<ApiException>()
+              .having((error) => error.code, 'code', 'FORBIDDEN')
+              .having((error) => error.message, 'message', startsWith('revoked')),
+        ),
       );
       expect(returnedProof.isCurrent, isFalse);
       reader.dispose();

@@ -4,14 +4,12 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:uten_imp/components/data_display/master_data_table_rows_controller.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/shared/models/immutable_paged_rows.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/paging/paged_read_window_binding.dart';
 import 'package:uten_imp/shared/platform_tables/platform_table_binding.dart';
-import 'package:uten_imp/shared/platform_tables/platform_table_controller.dart';
 import 'package:uten_imp/shared/platform_tables/platform_table_layout.dart';
 import 'package:uten_imp/shared/platform_tables/platform_table_models.dart';
 import 'package:uten_imp/shared/platform_tables/platform_table_repository.dart';
@@ -28,7 +26,7 @@ class _Row {
 class _Layout extends PlatformTableLayoutNotifier {
   _Layout(super.tableKey);
   @override
-  PlatformTableLayout build() => PlatformTableLayout();
+  PlatformTableLayout build() => const PlatformTableLayout();
   @override
   void persist() {}
 }
@@ -46,7 +44,7 @@ class _CountingRepository extends PlatformTableRepository {
   Future<List<PlatformTableCapabilities>> scopes() async {
     scopeReads++;
     return const [
-      PlatformTableCapabilities(scope: 'perf', supportsValues: true),
+      PlatformTableCapabilities(scope: 'perf'),
     ];
   }
 
@@ -182,7 +180,6 @@ void main() {
     final session = PagedReadWindowSession<_Row>(isCurrent: () => true);
     const total = 3000;
     final revision = Object();
-    List<_Row>? latest;
     while (builder.length < total) {
       final end = builder.length == 0
           ? 50
@@ -202,7 +199,6 @@ void main() {
         pending: rows.length < total,
         growing: rows.length < total,
       );
-      latest = page.items;
       await tester.pumpWidget(
         _host(
           _table(rows: page.items, binding: binding, revision: revision),
@@ -341,10 +337,8 @@ void main() {
     List<MasterDataGroup<_Row>> groups() => [
       MasterDataGroup<_Row>(id: 'disabled', title: '禁用', items: groupItems),
     ];
-    var collected = 0;
     var rowPlanRows = 0;
     debugMasterTableWorkObserver = (label, count) {
-      if (label == 'collectRows') collected += count;
       if (label == 'rowPlanRows') rowPlanRows += count;
     };
     addTearDown(() => debugMasterTableWorkObserver = null);

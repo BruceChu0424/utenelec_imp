@@ -26,7 +26,7 @@ String _newReadFailureRef() => String.fromCharCodes(
 /// failure never crossed the server boundary.
 String _readFailureRefOf(Object error) {
   final attached = switch (error) {
-    ApiException api => api.details?['correlation'],
+    final ApiException api => api.details?['correlation'],
     _ => null,
   };
   return attached is String && attached.isNotEmpty

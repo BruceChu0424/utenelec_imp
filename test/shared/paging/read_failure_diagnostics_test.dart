@@ -39,8 +39,8 @@ void main() {
     Object? caught;
     try {
       await loadCompletePagedResult<int>(
-        loadPage: (page, size) async => PagedResult<int>(
-          items: const [1, 2, 3],
+        loadPage: (page, size) async => const PagedResult<int>(
+          items: [1, 2, 3],
           page: 1,
           size: 50,
           total: 10,
@@ -80,8 +80,8 @@ void main() {
       await loadCompletePagedResult<int>(
         loadPage: (page, size) async {
           live = false; // the read is retired right after its first batch
-          return PagedResult<int>(
-            items: const [1],
+          return const PagedResult<int>(
+            items: [1],
             page: 1,
             size: 1,
             total: 2,

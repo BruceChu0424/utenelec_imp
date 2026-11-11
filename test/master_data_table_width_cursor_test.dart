@@ -62,7 +62,7 @@ Widget _plainTable(
 class _Layout extends PlatformTableLayoutNotifier {
   _Layout(super.tableKey);
   @override
-  PlatformTableLayout build() => PlatformTableLayout();
+  PlatformTableLayout build() => const PlatformTableLayout();
   @override
   void persist() {}
 }
@@ -76,7 +76,7 @@ class _ValuesRepository extends PlatformTableRepository {
 
   @override
   Future<List<PlatformTableCapabilities>> scopes() async => const [
-    PlatformTableCapabilities(scope: 'perf', supportsValues: true),
+    PlatformTableCapabilities(scope: 'perf'),
   ];
 
   @override

@@ -14,12 +14,16 @@ import threading
 
 
 class NativeWindowEvidenceDriver:
-    def __init__(self, output: Path, executable: Path, source_head: str):
+    def __init__(self, output: Path, executable: Path, source_head: str, scenario: str):
         if os.name != "nt":
             raise RuntimeError("Actual window evidence requires Windows")
         self.output = output.resolve()
         self.executable = os.path.normcase(str(executable.resolve()))
         self.source_head = source_head
+        if scenario not in {"original-714", "supported-min800", "below-min714"}:
+            raise ValueError("Unknown native geometry scenario")
+        self.scenario = scenario
+        self.pinned_window: tuple[int, int] | None = None
         self.stop = threading.Event()
         self.ready = threading.Event()
         self.startup_error: Exception | None = None
@@ -118,24 +122,42 @@ class NativeWindowEvidenceDriver:
                 result = {"request": request.name, "ok": False, "sourceHead": self.source_head}
                 try:
                     data = json.loads(request.read_text(encoding="utf-8"))
-                    if set(data) != {"sourceHead", "sequence", "width", "height", "phase"} or data["sourceHead"] != self.source_head:
+                    if set(data) != {"sourceHead", "sequence", "width", "height", "phase", "scenario"} or data["sourceHead"] != self.source_head or data["scenario"] != self.scenario:
                         raise RuntimeError("Native window request left the committed test identity")
                     width, height = data["width"], data["height"]
                     if not isinstance(width, (int, float)) or not isinstance(height, (int, float)) or not 600 <= width <= 4000 or not 600 <= height <= 2160:
                         raise RuntimeError("Native window request exceeds the reviewed test geometry")
+                    narrow = 800 if self.scenario == "supported-min800" else 714
+                    if (width, height) not in {(1280, 900), (narrow, 764)}:
+                        raise RuntimeError("Native window request is not a reviewed wide/narrow geometry")
                     hwnd, pid = find_owned()
+                    identity = (int(hwnd), pid)
+                    if self.pinned_window is None:
+                        self.pinned_window = identity
+                    elif self.pinned_window != identity:
+                        raise RuntimeError("The run's owned process/HWND changed; no replacement window is resized")
                     # Same no-activation normalization as the production runner.
                     user.ShowWindow(hwnd, 4)  # SW_SHOWNOACTIVATE
                     before = geometry(hwnd)
                     scale = before["dpi"] / 96
                     outer_width = round(width * scale) + before["outerPhysicalWidth"] - before["clientPhysicalWidth"]
                     outer_height = round(height * scale) + before["outerPhysicalHeight"] - before["clientPhysicalHeight"]
-                    if not user.SetWindowPos(hwnd, None, 0, 0, outer_width, outer_height, 0x0002 | 0x0004 | 0x0010):
+                    flags = 0x0002 | 0x0004 | 0x0010
+                    below_min_stress = self.scenario == "below-min714" and width == 714
+                    if below_min_stress:
+                        # Explicit test-only programmatic geometry stress. No
+                        # product min-track handler, style or OS setting changes.
+                        flags |= 0x0400  # SWP_NOSENDCHANGING
+                    if not user.SetWindowPos(hwnd, None, 0, 0, outer_width, outer_height, flags):
                         raise ctypes.WinError(ctypes.get_last_error())
                     after = geometry(hwnd)
                     result.update(ok=True, sequence=data["sequence"], phase=data["phase"], requestedLogicalWidth=width,
                                   requestedLogicalHeight=height, processId=pid, executable=self.executable,
                                   hwnd=int(hwnd), before=before, after=after, nativeApi="user32.SetWindowPos")
+                    result.update(scenario=self.scenario, setWindowPosFlags=flags,
+                                  setWindowPosFlagNames=["SWP_NOMOVE", "SWP_NOZORDER", "SWP_NOACTIVATE"] + (["SWP_NOSENDCHANGING"] if below_min_stress else []),
+                                  belowInteractiveMinimumStress=below_min_stress,
+                                  productionMinimumPolicyChanged=False)
                 except Exception as error:
                     result.update(errorType=type(error).__name__, message=str(error))
                 destination = self.output / request.name.replace("request", "result")

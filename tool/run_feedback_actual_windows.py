@@ -15,6 +15,7 @@ parser.add_argument('--account', default='feedback-mould-win-qa')
 parser.add_argument('--returns-account', default='')
 parser.add_argument('--runtime-ready', action='store_true')
 parser.add_argument('--backend-source-head', default='')
+parser.add_argument('--window-scenario', choices=['original-714', 'supported-min800', 'below-min714'], default='original-714')
 parser.add_argument('--sdk-root', type=Path, default=Path('D:/Software/Flutter/flutter'))
 a = parser.parse_args()
 if a.backend_source_head and not re.fullmatch(r'[0-9a-f]{40}', a.backend_source_head):
@@ -73,6 +74,7 @@ defines = {
     'UTEN_FEEDBACK_RETURNS_ACCOUNT': a.returns_account,
     'UTEN_FEEDBACK_SOURCE_SHA': head,
     'UTEN_FEEDBACK_BACKEND_SOURCE_SHA': a.backend_source_head,
+    'UTEN_FEEDBACK_WINDOW_SCENARIO': a.window_scenario,
 }
 target = 'integration_test/company_feedback_actual_windows_test.dart'
 command = [*prefix]
@@ -83,7 +85,7 @@ else:
 command += ['--dart-define=' + key + '=' + value for key, value in defines.items()]
 (out / (a.stage + '-command.json')).write_text(json.dumps(command, indent=2), encoding='utf8')
 exe = root / 'build/windows/x64/runner/Debug/uten_imp.exe'
-native_window = NativeWindowEvidenceDriver(out, exe, head) if a.stage == 'run' else None
+native_window = NativeWindowEvidenceDriver(out, exe, head, a.window_scenario) if a.stage == 'run' else None
 if native_window is not None:
     native_window.start()
 try:
@@ -107,6 +109,8 @@ receipt = {
     'credentialsInCommand': False,
     'declaredBackendSourceHead': a.backend_source_head or None,
     'backendIdentityVerifiedByThisHarness': False,
+    'windowScenario': a.window_scenario,
+    'belowMinimumIsNotFormalSupport': a.window_scenario == 'below-min714',
     'firstFlutterErrorFilePresent': (out / 'first-flutter-error.json').exists(),
     'firstFlutterErrorSha256': hashlib.sha256((out / 'first-flutter-error.json').read_bytes()).hexdigest() if (out / 'first-flutter-error.json').exists() else None,
     'nativeGeometryMethod': 'owned process executable + user32.SetWindowPos' if a.stage == 'run' else None,

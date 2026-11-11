@@ -162,6 +162,7 @@ class MasterDirectoryExportPostgresTest extends AuthSessionPostgresTestSupport {
         String token="SEL"+UUID.randomUUID().toString().substring(0,8);
         Seed seed=seed("mould",token,50002);
         exporter("mould");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM moulds WHERE code LIKE ? AND NOT is_deleted",Integer.class,"MX-"+token+"-%")).isEqualTo(50002);
         List<UUID> ids=seed.ids().subList(0,50001);
         var req=new ReportExportRequest(UUID.randomUUID(),"master","mould",
                 Map.of("filter",objectMapper.writeValueAsString(Map.of("keyword",token)),"selectedIds",objectMapper.writeValueAsString(ids)),"tqty","desc",null);
@@ -295,6 +296,32 @@ class MasterDirectoryExportPostgresTest extends AuthSessionPostgresTestSupport {
         long base=Set.of("goods","mould","client","supplier").contains(report)?jdbc.queryForObject("SELECT COALESCE(MAX(code_sequence),0) FROM "+table,Long.class):0;
         UUID currency="account".equals(report)?accountCurrency():null;
         List<UUID> ids=new ArrayList<>(count);for(int index=0;index<count;index++)ids.add(UUID.randomUUID());
+        if("mould".equals(report)&&count>=10_000) {
+            long began=System.nanoTime();
+            for(int start=0;start<count;start+=1000) {
+                int offset=start,end=Math.min(start+1000,count);
+                jdbc.execute((org.springframework.jdbc.core.ConnectionCallback<Void>)connection->{
+                    var selected=connection.createArrayOf("uuid",ids.subList(offset,end).toArray(UUID[]::new));
+                    try(var statement=connection.prepareStatement("""
+                        INSERT INTO moulds(id,code,name,status,category_id,code_sequence,code_managed,tqty)
+                        SELECT source.id,?||lpad((?+source.ordinality-1)::text,6,'0'),
+                          ?||(?+source.ordinality-1)::text,'使用',?,?+source.ordinality,FALSE,
+                          CAST(?+source.ordinality-1 AS numeric)+0.125
+                        FROM unnest(CAST(? AS uuid[])) WITH ORDINALITY source(id,ordinality)
+                        """)) {
+                        statement.setString(1,"MX-"+token+"-");statement.setInt(2,offset);
+                        statement.setString(3,token+"-");statement.setInt(4,offset);
+                        statement.setObject(5,category);statement.setLong(6,base+offset);
+                        statement.setInt(7,offset);statement.setArray(8,selected);
+                        assertThat(statement.executeUpdate()).isEqualTo(end-offset);
+                    } finally {selected.free();}
+                    return null;
+                });
+            }
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM pg_trigger WHERE tgrelid='moulds'::regclass AND NOT tgisinternal AND tgenabled='D'",Integer.class)).isZero();
+            System.out.println("D3-MOULD-PREP realRows="+count+" boundedInsertRows=1000 disabledTriggers=0 seedMs="+(System.nanoTime()-began)/1000000);
+            return new Seed(List.copyOf(ids));
+        }
         String extras=switch(report){case "goods"->",category_id,code_sequence,auto_created,price,zk";
             case "client"->",category_id,owner_employee_id,code_sequence";case "supplier"->",category_id,code_sequence";case "account"->",style_id,currency_id";
             case "mould"->",category_id,code_sequence,code_managed,tqty";case "warehouse"->",parent_id,is_accountable";default->"";};

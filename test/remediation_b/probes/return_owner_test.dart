@@ -39,6 +39,7 @@ class Session extends SessionNotifier {
     ),
   );
   void switchOwner() => state = userState('B');
+  void returnToOriginalOwner() => state = userState('A');
 }
 
 class Api extends ApiClient {
@@ -82,111 +83,125 @@ class Names extends MasterNameService {
 
 void main() {
   for (final purchase in [true, false]) {
-    testWidgets(
-      'retired owner must not append a late upstream ${purchase ? 'purchase' : 'subcontract'} source',
-      (t) async {
-        await t.binding.setSurfaceSize(const Size(1800, 1150));
-        addTearDown(() => t.binding.setSurfaceSize(null));
-        SharedPreferences.setMockInitialValues({});
-        final api = Api(),
-            names = Names(api),
-            nav = GlobalKey<NavigatorState>();
-        final page = purchase
-            ? const PurchaseDocEditPage(docType: PurchaseDocType.returnDoc)
-            : const SubcontractDocEditPage(
-                docType: SubcontractDocType.returnDoc,
-              );
-        final container = ProviderContainer(
-          overrides: [
-            sessionProvider.overrideWith(Session.new),
-            formDraftStorageProvider.overrideWithValue(
-              MemoryFormDraftStorage(),
-            ),
-            apiBaseUrlProvider.overrideWithValue('https://example.invalid/api'),
-            apiClientProvider.overrideWithValue(api),
-            masterNameServiceProvider.overrideWithValue(names),
-            writeAllDocumentScope(
-              purchase
-                  ? DocumentDataScope.purchase
-                  : DocumentDataScope.subcontract,
-            ),
-          ],
-        );
-        addTearDown(container.dispose);
-        await t.pumpWidget(
-          UncontrolledProviderScope(
-            container: container,
-            child: MaterialApp(navigatorKey: nav, home: page),
-          ),
-        );
-        for (var tick = 0; tick < 12; tick++) {
-          await t.pump(const Duration(milliseconds: 80));
-        }
-        final state =
-            t.state<State>(find.byWidget(page))
-                as FormDraftMixin<ConsumerStatefulWidget>;
-        final grid = ReturnProbeGrid.capture(t, purchase);
-        grid.rows.first.qty.text = '7.125';
-        expect(state.formDraftIdentityIsCurrent, true);
-        await t.tap(find.byType(UtenImportButton));
-        for (var tick = 0; tick < 12; tick++) {
-          await t.pump(const Duration(milliseconds: 80));
-        }
-        const rows = [
-          UtenDocLinkPickedItem(
-            goodsId: 'g-A',
-            qty: 2,
-            upstreamItemId: 'approved-receipt-A',
-            unitRate: 1,
-          ),
-        ];
-        const terms = ProcurementSourceTerms(
-          currencyId: 'currency-A',
-          exchangeRate: '1',
-          taxRate: '0',
-          settlementMethodId: 'terms-A',
-        );
-        if (purchase) {
-          nav.currentState!.pop(
-            const UtenDocLinkPickResult<PurchaseDocItem>(
-              items: rows,
-              partyId: 'supplier-A',
-              sourceTerms: terms,
+    for (final returnToA in [false, true]) {
+      testWidgets(
+        'retired owner must not append a late upstream ${purchase ? 'purchase' : 'subcontract'} source ${returnToA ? 'A-B-A' : 'A-B'}',
+        (t) async {
+          await t.binding.setSurfaceSize(const Size(1800, 1150));
+          addTearDown(() => t.binding.setSurfaceSize(null));
+          SharedPreferences.setMockInitialValues({});
+          final api = Api(),
+              names = Names(api),
+              nav = GlobalKey<NavigatorState>();
+          final page = purchase
+              ? const PurchaseDocEditPage(docType: PurchaseDocType.returnDoc)
+              : const SubcontractDocEditPage(
+                  docType: SubcontractDocType.returnDoc,
+                );
+          final container = ProviderContainer(
+            overrides: [
+              sessionProvider.overrideWith(Session.new),
+              formDraftStorageProvider.overrideWithValue(
+                MemoryFormDraftStorage(),
+              ),
+              apiBaseUrlProvider.overrideWithValue(
+                'https://example.invalid/api',
+              ),
+              apiClientProvider.overrideWithValue(api),
+              masterNameServiceProvider.overrideWithValue(names),
+              writeAllDocumentScope(
+                purchase
+                    ? DocumentDataScope.purchase
+                    : DocumentDataScope.subcontract,
+              ),
+            ],
+          );
+          addTearDown(container.dispose);
+          await t.pumpWidget(
+            UncontrolledProviderScope(
+              container: container,
+              child: MaterialApp(navigatorKey: nav, home: page),
             ),
           );
-        } else {
-          nav.currentState!.pop(
-            const UtenDocLinkPickResult<SubcontractDocItem>(
-              items: rows,
-              partyId: 'supplier-A',
-              sourceTerms: terms,
+          for (var tick = 0; tick < 12; tick++) {
+            await t.pump(const Duration(milliseconds: 80));
+          }
+          final state =
+              t.state<State>(find.byWidget(page))
+                  as FormDraftMixin<ConsumerStatefulWidget>;
+          final grid = ReturnProbeGrid.capture(t, purchase);
+          grid.rows.first.qty.text = '7.125';
+          expect(state.formDraftIdentityIsCurrent, true);
+          await t.tap(find.byType(UtenImportButton));
+          for (var tick = 0; tick < 12; tick++) {
+            await t.pump(const Duration(milliseconds: 80));
+          }
+          const rows = [
+            UtenDocLinkPickedItem(
+              goodsId: 'g-A',
+              qty: 2,
+              upstreamItemId: 'approved-receipt-A',
+              unitRate: 1,
             ),
+          ];
+          const terms = ProcurementSourceTerms(
+            currencyId: 'currency-A',
+            exchangeRate: '1',
+            taxRate: '0',
+            settlementMethodId: 'terms-A',
           );
-        }
-        for (var tick = 0; tick < 12; tick++) {
-          await t.pump(const Duration(milliseconds: 80));
-        }
-        expect(names.detailEntered, true);
-        (container.read(sessionProvider.notifier) as Session).switchOwner();
-        await t.pump();
-        expect(state.formDraftIdentityIsCurrent, false);
-        names.proceed.complete();
-        for (var tick = 0; tick < 12; tick++) {
-          await t.pump(const Duration(milliseconds: 80));
-        }
-        final ids = [for (final row in grid.rows) row.upstreamItemId];
-        debugPrint(
-          'audit purchase=$purchase retired=${!state.formDraftIdentityIsCurrent} sourceIds=$ids originalInput=${grid.rows.first.qty.text}',
-        );
-        expect(
-          ids,
-          isNot(contains('approved-receipt-A')),
-          reason: 'A source returned after identity B retired the page',
-        );
-        await t.pumpWidget(const SizedBox.shrink());
-        container.dispose();
-        await t.pump();
-      },
-    );
+          if (purchase) {
+            nav.currentState!.pop(
+              const UtenDocLinkPickResult<PurchaseDocItem>(
+                items: rows,
+                partyId: 'supplier-A',
+                sourceTerms: terms,
+              ),
+            );
+          } else {
+            nav.currentState!.pop(
+              const UtenDocLinkPickResult<SubcontractDocItem>(
+                items: rows,
+                partyId: 'supplier-A',
+                sourceTerms: terms,
+              ),
+            );
+          }
+          for (var tick = 0; tick < 12; tick++) {
+            await t.pump(const Duration(milliseconds: 80));
+          }
+          expect(names.detailEntered, true);
+          (container.read(sessionProvider.notifier) as Session).switchOwner();
+          await t.pump();
+          expect(state.formDraftIdentityIsCurrent, false);
+          if (returnToA) {
+            (container.read(sessionProvider.notifier) as Session)
+                .returnToOriginalOwner();
+            await t.pump();
+            expect(
+              state.formDraftIdentityIsCurrent,
+              false,
+              reason: 'Returning to A cannot revive the retired controller',
+            );
+          }
+          names.proceed.complete();
+          for (var tick = 0; tick < 12; tick++) {
+            await t.pump(const Duration(milliseconds: 80));
+          }
+          final ids = [for (final row in grid.rows) row.upstreamItemId];
+          debugPrint(
+            'audit purchase=$purchase retired=${!state.formDraftIdentityIsCurrent} sourceIds=$ids originalInput=${grid.rows.first.qty.text}',
+          );
+          expect(
+            ids,
+            isNot(contains('approved-receipt-A')),
+            reason: 'A source returned after identity B retired the page',
+          );
+          await t.pumpWidget(const SizedBox.shrink());
+          container.dispose();
+          await t.pump();
+        },
+      );
+    }
   }
 }

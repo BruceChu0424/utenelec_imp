@@ -130,16 +130,14 @@ mixin ScopedPagedReadViewMixin<W extends ConsumerStatefulWidget>
     final owner = _scopedOwner;
     final epoch = ref.read(exportContextEpochProvider);
     final snapshot = freezePagedReadQuery(query);
-    // The complete read re-checks ownership several times per row. Nothing can
-    // change the epoch or the page's live query inside one event-loop turn —
-    // page code and provider notifications run in their own events — so one
-    // deep compare per turn answers every check of that turn, including the
-    // whole microtask cascade between two awaits. The zero timer expires the
-    // answer at the next event boundary; the live owner/disposed/mounted gates
-    // stay outside the memo so a retirement between two checks is never
-    // masked.
+    // Row-validation loops re-check ownership several times per row. Reuse
+    // their deep query check within an event turn, but never treat that memo
+    // as a publication proof: synchronous code and microtasks can still change
+    // the live query. Fetch/response and publication boundaries below force a
+    // fresh check; owner/disposed/mounted gates always stay outside the memo.
     var queryAnswerValid = false;
     var queryAnswerCurrent = false;
+    Timer? queryAnswerExpiry;
     void expireQueryAnswer() => queryAnswerValid = false;
     bool ownerCurrent() {
       final stats = debugScopedReadCheckStats;
@@ -154,25 +152,52 @@ mixin ScopedPagedReadViewMixin<W extends ConsumerStatefulWidget>
           epoch == ref.read(exportContextEpochProvider) &&
           samePagedReadQuery(snapshot, currentQuery());
       queryAnswerValid = true;
-      Timer? timer;
-      timer = Timer(Duration.zero, () {
-        _scopedAnswerTimers.remove(timer);
-        expireQueryAnswer();
-      });
-      _scopedAnswerTimers.add(timer);
+      if (queryAnswerExpiry == null) {
+        final timer = Timer(Duration.zero, () {
+          _scopedAnswerTimers.remove(queryAnswerExpiry);
+          queryAnswerExpiry = null;
+          expireQueryAnswer();
+        });
+        queryAnswerExpiry = timer;
+        _scopedAnswerTimers.add(timer);
+      }
       return queryAnswerCurrent;
     }
 
     bool current() => ownerCurrent() && (isCurrent?.call() ?? true);
-    return readViewActivity.runRead(
+    bool publicationCurrent() {
+      expireQueryAnswer();
+      return current();
+    }
+
+    Future<PagedResult<R>> checkedFetch(
+      Future<PagedResult<R>> Function() fetch,
+    ) async {
+      try {
+        final result = await fetch();
+        if (!publicationCurrent()) throw PagedReadOwnerChanged();
+        return result;
+      } finally {
+        // The reader resumes in another microtask. Its first check must not
+        // borrow the answer from the fetch completion microtask, even on error.
+        expireQueryAnswer();
+      }
+    }
+
+    final pending = readViewActivity.runRead(
       current,
       () => entry.reader
           .read(
             page,
             scope: [owner, epoch, snapshot],
-            fetchPage: fetchPage,
-            fetchPageSized: fetchPageSized,
-            fetchComplete: fetchComplete,
+            fetchPage: (page) => checkedFetch(() => fetchPage(page)),
+            fetchPageSized: fetchPageSized == null
+                ? null
+                : (page, size) =>
+                      checkedFetch(() => fetchPageSized(page, size)),
+            fetchComplete: fetchComplete == null
+                ? null
+                : () => checkedFetch(fetchComplete),
             idOf: idOf,
             isCurrent: current,
             isOwnerCurrent: ownerCurrent,
@@ -182,12 +207,20 @@ mixin ScopedPagedReadViewMixin<W extends ConsumerStatefulWidget>
             onProgressiveBatch: onProgressiveBatch == null
                 ? null
                 : (partial) {
-                    if (current()) onProgressiveBatch(partial);
+                    if (!publicationCurrent()) {
+                      throw PagedReadOwnerChanged();
+                    }
+                    try {
+                      onProgressiveBatch(partial);
+                    } finally {
+                      // A prefix consumer may synchronously change its query.
+                      expireQueryAnswer();
+                    }
                   },
             canPrefetch: () =>
                 current() && (canPrefetch?.call() ?? _scopedViewActive),
             onPrefetchError: (error) {
-              if (!current()) return;
+              if (!publicationCurrent()) return;
               if (pagedReadAccessDenied(error)) {
                 invalidateScopedPageReads();
                 _scopedOwnerChanged(error);
@@ -196,7 +229,7 @@ mixin ScopedPagedReadViewMixin<W extends ConsumerStatefulWidget>
             },
           )
           .onError((Object error, StackTrace stack) {
-            if (current() && pagedReadAccessDenied(error)) {
+            if (publicationCurrent() && pagedReadAccessDenied(error)) {
               invalidateScopedPageReads();
               _scopedOwnerChanged(error);
             }
@@ -211,6 +244,12 @@ mixin ScopedPagedReadViewMixin<W extends ConsumerStatefulWidget>
           }),
       slot: key,
     );
+    return pending.then((result) {
+      // Includes cache hits and fetchComplete. Fence the public result after
+      // the activity wrapper's awaits, before the caller can accept/output it.
+      if (!publicationCurrent()) throw const UiWorkCancelled();
+      return result;
+    });
   }
 
   @override

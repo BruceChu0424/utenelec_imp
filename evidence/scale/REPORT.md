@@ -70,6 +70,20 @@ PG 实际活动 SQL 是 `$7 @> array[m1_0.id]`，COUNT 和首读分别消耗约 
 
 原件 `predicate-probe-1/*-count-plan.json` 含完整计划、actual rows/loops/buffers；`logs/probe.log` 记录每项断言。生产唯一入口抽为 `MasterSelectionPredicate`，大集合用 Hibernate SQL expression 的标量 `= ANY`，小集合仍沿用原 IN；权限/原筛选、RR 快照、稳定排序、缺失检查、取消和请求空间预算均保留。该补丁与更严格的独立 SQL 有序摘要测试已编译，真实服务/文件复验待下一轮。
 
+另以同一集合强制 server-prepared generic plan 连续执行 10 次，逐次 COUNT=50001，`pg_prepared_statements` 确认 `generic_plans=10/custom_plans=0`，合计 954 ms。真实 `EXPLAIN ANALYZE EXECUTE` 走 UUID 主键 `Index Scan`、actual rows=50001、loops=1，执行 35.527 ms；保留 `any-force-generic-count-plan.json` 和 `logs/prepared.log`。因此修复不只依赖首次 custom plan 的大常量数组优化。诊断容器正常停止并回收，命令结果保留。
+
+## 修后提前验证（仍非最终候选签署）
+
+`selected-prep-3` 按 `1f2d140f4` 的两份生产与两份测试源码精确 javac 输出，覆盖复制到新目录的其余同 blob 编译类；这只用于提前验证运行行为，`build-provenance.txt` 明确记录，原失败 build 未修改。
+
+- 正常全部迁移至 V1131，50,002 真模具正常触发器开启，造数 117,086 ms。
+- 50,001 真选中 source 5,436 ms，其中 JDBC 1,565 ms；503 statements、最大参数 58，未扩大 SQL 参数。原慢读 42,970 ms 原件仍保留。
+- 新增真实文件成表成功：50,001 物理数据行，逐 code/精确 tqty SAX 重读，排除匹配但未选的 1 行；source + 成表 10,891 ms，重读 1,251 ms。
+- 文件 `selected-prep-3/artifacts/selected-50001-SEL68fc73cf.xlsx`，1,955,174 字节，raw SHA-256 `c6ab0652d4fae4da753c943cdd1dd3bae6e6752cae33d79d05db510521f040e3`。
+- 撤权、缺失、取消和 Scope 清理通过；Maven 1/1、0 失败/错误/跳过、exit 0。没有放宽原超时。
+
+Root 已冻结统一最终候选 `7b912287e53315228b469790ff066a9fab643e3c`；将从该 SHA 的新独立工作树正常 fresh Maven 构建，执行完整 23 例，再用该轮同源 classes 做百万行物理成表/重读。上述所有预验和 overlay 编译均不混入最终统计。
+
 最终统一候选冻结后，以 `rerun.ps1 -WorkspaceRoot <统一候选> -RunName <新唯一目录> -Kind final-unified -ExpectedRevision <冻结SHA>` 在新的编译/TMP/日志/数据库重跑；脚本拒绝源变化与重复输出目录。物理成表以 `run-physical.ps1 -WorkspaceRoot <同一候选> -ClassesDirectory <该轮独立build/classes> -Attempt <新唯一目录> -Kind final-unified -ExpectedRevision <冻结SHA>` 重跑。
 
 ## 指纹与边界

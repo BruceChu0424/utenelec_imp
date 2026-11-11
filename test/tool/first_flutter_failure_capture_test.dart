@@ -27,9 +27,14 @@ void main() {
       final directory = fresh();
       final originalHandler = FlutterError.onError;
       var forwarded = 0;
+      var firstPublications = 0;
       FlutterError.onError = (_) => forwarded++;
       final capture =
-          FirstFlutterFailureCapture(directory, sourceHead: 'a' * 40)
+          FirstFlutterFailureCapture(
+              directory,
+              sourceHead: 'a' * 40,
+              onFirstCaptured: (_) => firstPublications++,
+            )
             ..phase = 'native-narrow-before-menu'
             ..install();
       final stack = [
@@ -62,6 +67,7 @@ void main() {
         expect(file.readAsBytesSync(), bytes);
         expect(capture.count, 501);
         expect(forwarded, 501);
+        expect(firstPublications, 1);
         expect(() => capture.throwFirst(), throwsA(same(first)));
       } finally {
         capture.restore();

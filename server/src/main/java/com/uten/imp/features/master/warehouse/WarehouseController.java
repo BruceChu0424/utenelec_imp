@@ -87,7 +87,7 @@ public class WarehouseController {
 
     // ---------- 加密 Excel 导出（POST，密码走 body；过滤参数与 GET /list 一致；V717） ----------
 
-    @com.uten.imp.common.web.JsonBodyLimit(2_200_000)
+    @com.uten.imp.common.web.JsonBodyLimit(com.uten.imp.common.export.ExportSelectionBudget.MAX_BYTES)
     @PostMapping("/export")
     @PreAuthorize("hasAuthority('warehouse:export')")
     public ResponseEntity<byte[]> export(

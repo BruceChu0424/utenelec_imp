@@ -424,6 +424,9 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
   bool _listLoading = false;
   bool _displayedQueryStale = false;
   String? _listError;
+  int _acceptedQueryVersion = -1;
+  SensitiveReadBoundary? _acceptedOwner;
+  int? _acceptedReadRevision;
   List<MasterDataGroup<TItem>> _groups = const [];
   String? _groupError;
   bool _groupLoading = false;
@@ -458,6 +461,18 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
 
   bool get _queryPending =>
       _loading || widget.externalSearchPending || _displayedQueryStale;
+
+  // Progressive rows are display-only. A complete snapshot remains usable on
+  // a same-query refresh, including a transient refresh failure, until its
+  // identity, read revision or query is retired.
+  bool get _completeResultCurrent =>
+      mounted &&
+      _page != null &&
+      !_queryPending &&
+      _error == null &&
+      _acceptedQueryVersion == _queryVersion &&
+      _acceptedOwner == ref.read(sensitiveReadBoundaryProvider) &&
+      _acceptedReadRevision == ref.read(readScopeRevisionProvider);
 
   @override
   void initState() {
@@ -718,7 +733,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
 
   @override
   bool get busy =>
-      _busy || _queryPending || _error != null || _inlineEdit.active;
+      _busy || !_completeResultCurrent || _inlineEdit.active;
 
   @override
   void scrollToEnd() {
@@ -779,7 +794,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
 
   @override
   void selectIds(Iterable<String> ids) {
-    if (!mounted || _queryPending) return;
+    if (!_completeResultCurrent) return;
     setState(() => _selectedIds = Set<String>.of(ids));
   }
 
@@ -1357,7 +1372,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
     // print, batch and write entry points disabled; any failed or retired read
     // takes the progressive rows down and restores what was on screen before.
     var showedProgressive = false;
-    final beforeProgressive = _displayedQueryStale ? null : _page;
+    final beforeProgressive = _completeResultCurrent ? _page : null;
     void retireProgressive() {
       if (showedProgressive) _page = beforeProgressive;
     }
@@ -1380,6 +1395,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
           useCache: useCache,
           onProgressiveBatch: (partial) {
             if (!mounted || !requestCurrent()) return;
+            if (beforeProgressive != null) return;
             showedProgressive = true;
             setState(() {
               _page = partial;
@@ -1412,6 +1428,9 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
       if (!readerCurrent() || !_listRequests.isCurrent(generation)) return;
       setState(() {
         _page = result;
+        _acceptedQueryVersion = queryVersion;
+        _acceptedOwner = owner;
+        _acceptedReadRevision = readRevision;
         _pageNum = result.page;
         _displayedQueryStale = false;
       });
@@ -1633,7 +1652,9 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
 
   /// 完整分页取当前分类/筛选结果；保留各主档的 forPrint 资格差异。
   Future<UtenPrintTable> _printLoader() async {
-    if (_queryPending) throw StateError('查询条件已变化，请重新预览');
+    if (!_completeResultCurrent) {
+      throw StateError('当前查询尚无完整结果，请重新加载后再输出');
+    }
     final version = _queryVersion;
     final captured = _query(forPrint: true);
     final filters = Map<String, String?>.unmodifiable(captured.filters);
@@ -1647,7 +1668,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
       if (retired || !mounted) return false;
       retired =
           version != _queryVersion ||
-          _queryPending ||
+          !_completeResultCurrent ||
           boundary != ref.read(sensitiveReadBoundaryProvider) ||
           epoch != ref.read(exportContextEpochProvider);
       return !retired;
@@ -1697,11 +1718,14 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
     final filename = categoryName?.isNotEmpty == true
         ? categoryName!
         : export.title;
+    final outputQueryVersion = _queryVersion;
+    bool outputCurrent() =>
+        _completeResultCurrent && outputQueryVersion == _queryVersion;
     return [
       UtenPrintPreviewButton(
-        enabled: !_queryPending && _error == null && !_loading && !_listLoading,
+        enabled: _completeResultCurrent,
+        isCurrent: outputCurrent,
         title: export.title,
-        subtitle: '当前分类与筛选的完整结果', // TODO(l10n): 补 arb
         loader: _printLoader,
         exportEndpoint: export.endpoint,
         exportPermission: export.permission,
@@ -1714,13 +1738,12 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
       ),
       ...?_c.toolbarBeforeExportActions?.call(this),
       UtenExportButton(
-        enabled: !_queryPending && _error == null && !_loading && !_listLoading,
+        enabled: _completeResultCurrent,
         prepareExport: () async {
-          final version = _queryVersion;
+          if (!outputCurrent()) return null;
           return UtenExportSelection(
             filename: filename,
-            stillCurrent: () =>
-                mounted && version == _queryVersion && !_queryPending,
+            stillCurrent: outputCurrent,
           );
         },
         endpoint: export.endpoint,
@@ -1752,7 +1775,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
             destructive: entry.destructive,
             preserveSelectionAfterAction: entry.preserveSelectionAfterAction,
             onTap: () async {
-              if (!mounted || _queryPending || version != _queryVersion) {
+              if (!_completeResultCurrent || version != _queryVersion) {
                 return;
               }
               await entry.onTap();

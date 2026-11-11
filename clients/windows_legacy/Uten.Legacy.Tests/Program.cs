@@ -111,6 +111,13 @@ namespace Uten.Legacy.Tests
                         + "; inline preservation=" + inline + "; process=" + (Environment.Is64BitProcess ? "x64" : "x86"));
                     return 0;
                 }
+                if (args.Length == 1 && args[0] == "--complete-read-output-qualification")
+                {
+                    int outputQualification = RunUi(UiContractChecks.RunCompleteReadOutputQualification);
+                    Console.WriteLine("PASS complete read output qualification; assertions=" + outputQualification
+                        + "; process=" + (Environment.Is64BitProcess ? "x64" : "x86"));
+                    return 0;
+                }
                 if (args.Length == 1 && args[0] == "--table-output-contracts")
                 {
                     RunUi(() => {

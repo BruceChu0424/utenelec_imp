@@ -24,6 +24,9 @@ import 'package:uten_imp/features/basic_data/pages/unit_page.dart';
 import 'package:uten_imp/features/basic_data/pages/warehouse_page.dart';
 import 'package:uten_imp/features/basic_data/pages/settlement_method_page.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_entity_detail_pane.dart';
+import 'package:uten_imp/components/buttons/uten_export_button.dart';
+import 'package:uten_imp/components/print/uten_print_preview.dart';
 import 'package:uten_imp/shared/drafts/form_draft_store.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/user.dart';
@@ -122,7 +125,18 @@ class _Fixture {
                     .clamp(1, CompleteReadBatchPlan.progressive.maxBatchSize);
             calls.add((page: page, size: size));
             // Late pages: every continuation batch waits for the test.
-            if (page > 1) await holdSecond?.future;
+            if (page > 1) {
+              await holdSecond?.future;
+              if (failContinuation) {
+                handler.reject(
+                  DioException(
+                    requestOptions: request,
+                    type: DioExceptionType.connectionTimeout,
+                  ),
+                );
+                return;
+              }
+            }
             value = {
               'items': rows.skip((page - 1) * size).take(size).toList(),
               'page': page,
@@ -176,6 +190,7 @@ class _Fixture {
   late final ApiClient api;
   final calls = <({int page, int size})>[];
   Completer<void>? holdSecond;
+  bool failContinuation = false;
   static const category = {
     'id': '20000000-0000-4000-8000-000000000001',
     'code': 'CAT',
@@ -222,6 +237,10 @@ class _FixtureApi extends ApiClient {
   Stream<Map<String, dynamic>> _frames() async* {
     var offset = 0;
     while (offset < fixture.rows.length) {
+      if (offset > 0) {
+        if (fixture.failContinuation)
+          throw TimeoutException('continuation failed');
+      }
       final size = CompleteReadBatchPlan.progressive.sizeAt(offset);
       yield {
         'type': 'page',
@@ -298,6 +317,62 @@ Future<ProviderContainer> _pump(WidgetTester tester, _Fixture fixture) async {
 }
 
 void main() {
+  testWidgets(
+    'cold progressive failure cannot open print or create an export',
+    (tester) async {
+      final fixture = _Fixture('moulds')..failContinuation = true;
+      await _pump(tester, fixture);
+      final export = tester.widget<UtenExportButton>(
+        find.byType(UtenExportButton).first,
+      );
+      final print = tester.widget<UtenPrintPreviewButton>(
+        find.byType(UtenPrintPreviewButton).first,
+      );
+      expect(export.enabled, isFalse);
+      expect(print.enabled, isFalse);
+      expect(fixture.exports, isEmpty);
+      expect(find.text('MX-moulds-00000'), findsNothing);
+    },
+  );
+  testWidgets(
+    'accepted complete result stays usable after a same-query failed refresh',
+    (tester) async {
+      final fixture = _Fixture('moulds');
+      await _pump(tester, fixture);
+      expect(
+        tester
+            .widget<UtenExportButton>(find.byType(UtenExportButton).first)
+            .enabled,
+        isTrue,
+      );
+      fixture.failContinuation = true;
+      final controller =
+          tester.state(
+                find
+                    .byWidgetPredicate((w) => w is MasterEntityDetailPane)
+                    .first,
+              )
+              as MasterEntityPaneController;
+      final refresh = controller.reload();
+      await tester.pumpAndSettle();
+      await refresh;
+      expect(
+        tester
+            .widget<UtenExportButton>(find.byType(UtenExportButton).first)
+            .enabled,
+        isTrue,
+      );
+      expect(
+        tester
+            .widget<UtenPrintPreviewButton>(
+              find.byType(UtenPrintPreviewButton).first,
+            )
+            .enabled,
+        isTrue,
+      );
+      expect(controller.page!.items, hasLength(fixture.total));
+    },
+  );
   for (final selected in [false, true]) {
     testWidgets(
       'mould actual export sends all 1626 identities with selected=$selected',

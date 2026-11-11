@@ -190,7 +190,7 @@ public class ClientController {
 
     // ---------- 加密 Excel 导出 (POST: 密码、关键字与手机/电话/银行账号筛选走 body; 其余过滤/排序走 query, 与 GET /list 一致) ----------
 
-    @com.uten.imp.common.web.JsonBodyLimit(2_200_000)
+    @com.uten.imp.common.web.JsonBodyLimit(com.uten.imp.common.export.ExportSelectionBudget.MAX_BYTES)
     @PostMapping("/export")
     @PreAuthorize("hasAuthority('client:export')")
     public ResponseEntity<byte[]> export(

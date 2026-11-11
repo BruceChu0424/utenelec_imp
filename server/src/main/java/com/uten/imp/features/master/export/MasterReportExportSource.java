@@ -83,7 +83,7 @@ public class MasterReportExportSource implements MasterReportExportPort {
             case "currency" -> currencies.export((CurrencyQueryFilter)filter, request.sort(), request.order());
             case "color" -> colors.export((ColorQueryFilter)filter);
             case "unit" -> units.export((UnitQueryFilter)filter);
-            case "mould" -> moulds.export((MouldQueryFilter)filter);
+            case "mould" -> moulds.export((MouldQueryFilter)filter, request.sort(), request.order());
             case "warehouse" -> warehouses.export((WarehouseQueryFilter)filter);
             case "settlement_method" -> references.exportSettlementAdmin((SettlementMethodAdminQueryFilter)filter);
             default -> throw invalid();

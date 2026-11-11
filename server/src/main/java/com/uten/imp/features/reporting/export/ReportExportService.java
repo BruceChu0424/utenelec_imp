@@ -1,5 +1,7 @@
 package com.uten.imp.features.reporting.export;
 
+import com.uten.imp.common.export.ExportSelectionBudget;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.common.web.*;
 import com.uten.imp.application.port.MasterReportExportPort;
@@ -109,7 +111,7 @@ public class ReportExportService {
         var rowSelection=new com.uten.imp.common.export.ExportRowSelection(request.columnProjection());
         boolean largeSelection = "master".equals(request.domain()) && request.parameters().containsKey("selectedIds")
                 || "where_used".equals(request.domain()) && request.parameters().containsKey("f.selectedProductIds");
-        if(serialized.getBytes(java.nio.charset.StandardCharsets.UTF_8).length>(rowSelection.active() ? 16*1024*1024 : largeSelection ? 2200000 : 65536))
+        if(serialized.getBytes(java.nio.charset.StandardCharsets.UTF_8).length>(rowSelection.active() || largeSelection ? ExportSelectionBudget.MAX_BYTES : 65536))
             throw new ApiException(ErrorCode.VALIDATION_FAILED,"导出筛选条件过大");
         repository.lockQueue();
         var old=repository.find(request.id());

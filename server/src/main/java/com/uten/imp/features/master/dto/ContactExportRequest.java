@@ -13,7 +13,7 @@ public record ContactExportRequest(
         @Size(max = 128, message = "导出密码长度不能超过 128 位") String password,
         @Valid ContactSensitiveFilter sensitiveFilter,
         @Valid com.uten.imp.common.export.TableColumnProjection columnProjection,
-        @Size(min = 1, max = com.uten.imp.common.export.MasterExportSelection.MAX_IDS) java.util.List<java.util.UUID> selectedIds)
+        @Size(min = 1) java.util.List<java.util.UUID> selectedIds)
         implements com.uten.imp.common.export.MasterExportSelectionRequest {
 
     public ContactExportRequest(String password, ContactSensitiveFilter sensitiveFilter,

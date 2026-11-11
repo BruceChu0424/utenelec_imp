@@ -70,20 +70,18 @@ class MasterExportSelectionTest {
         }
         assertThat(MasterExportSelection.current()).isNull();
     }
-    @Test void fiftyThousandSelectedIdentitiesStayBelowThePostgresParameterLimitWithHibernatePadding(){
-        List<UUID> ids=java.util.stream.IntStream.rangeClosed(1,50000).mapToObj(i->new UUID(1,i)).toList();
-        Root<Object> root=mock(ObjectRoot.class);CriteriaQuery<?> query=mock(CriteriaQuery.class);CriteriaBuilder cb=mock(CriteriaBuilder.class);
+    @Test void largeSelectionUsesOneTypedArrayInsteadOfExpandingScalarParameters(){
+        List<UUID> ids=java.util.stream.IntStream.rangeClosed(1,50001).mapToObj(i->new UUID(1,i)).toList();
+        Root<Object> root=mock(ObjectRoot.class);CriteriaQuery<?> query=mock(CriteriaQuery.class);
+        var cb=mock(org.hibernate.query.criteria.HibernateCriteriaBuilder.class);
         Path<Object> identity=mock(ObjectPath.class);when(root.get("id")).thenReturn(identity);
-        List<UUID> actual=new ArrayList<>();var padded=new java.util.concurrent.atomic.AtomicInteger();
-        when(identity.in(anyCollection())).thenAnswer(call->{
-            Collection<UUID> chunk=call.getArgument(0);assertThat(chunk.size()).isBetween(1,1024);actual.addAll(chunk);
-            padded.addAndGet(Integer.highestOneBit(chunk.size()-1)<<1);return mock(Predicate.class);
-        });
         try(var ignored=MasterExportSelection.open(ids)){
             MasterExportSelection.<Object>intersect(null).toPredicate(root,query,cb);
         }
-        assertThat(actual).containsExactlyElementsOf(ids);assertThat(padded.get()).isEqualTo(50176).isLessThan(65535);
-        var combined=org.mockito.ArgumentCaptor.forClass(Predicate[].class);
-        verify(cb).or(combined.capture());assertThat(combined.getValue()).hasSize(49);
+        var array=org.mockito.ArgumentCaptor.forClass(UUID[].class);
+        verify(cb).value(array.capture());
+        assertThat(array.getValue()).containsExactlyElementsOf(ids);
+        verify(identity,never()).in(anyCollection());
+        verify(cb).function(eq("array_contains"),eq(Boolean.class),any(),eq(identity));
     }
 }

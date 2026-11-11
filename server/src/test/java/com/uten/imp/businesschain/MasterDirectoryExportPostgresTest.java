@@ -144,6 +144,51 @@ class MasterDirectoryExportPostgresTest extends AuthSessionPostgresTestSupport {
         assertThatThrownBy(()->source.buildSource(()->master.read(original),invalid,"master_mould"))
                 .isInstanceOf(com.uten.imp.common.web.ApiException.class).hasMessageContaining("mouldType");
     }
+    @Test void mouldTaskKeepsReverseQuantityOrderAndExactDecimalText() throws Exception {
+        String token="SORT"+UUID.randomUUID().toString().substring(0,8);
+        Seed seed=seed("mould",token,1626);
+        jdbc.update("UPDATE moulds SET tqty=1626.125-right(code,6)::numeric WHERE category_id=(SELECT category_id FROM moulds WHERE id=?)",seed.ids().getFirst());
+        exporter("mould");
+        var req=new ReportExportRequest(UUID.randomUUID(),"master","mould",
+                Map.of("filter",objectMapper.writeValueAsString(Map.of("keyword",token))),"tqty","asc",null);
+        var payload=master.read(req);
+        assertThat(payload.rows()).hasSize(1626);
+        assertThat(payload.rows().getFirst()).containsEntry("code","MX-"+token+"-001625").containsEntry("tqty","1.125");
+        var selected=new ReportExportRequest(UUID.randomUUID(),"master","mould",
+                Map.of("filter",req.parameters().get("filter"),"selectedIds",objectMapper.writeValueAsString(seed.ids().subList(1624,1626))),"tqty","asc",null);
+        assertThat(master.read(selected).rows()).extracting(row->row.get("tqty")).containsExactly("1.125","2.125");
+    }
+    @Test void fiftyThousandAndOneRealSelectedMouldsExcludeAnotherMatchingRowAndKeepOrder() throws Exception {
+        String token="SEL"+UUID.randomUUID().toString().substring(0,8);
+        Seed seed=seed("mould",token,50002);
+        exporter("mould");
+        List<UUID> ids=seed.ids().subList(0,50001);
+        var req=new ReportExportRequest(UUID.randomUUID(),"master","mould",
+                Map.of("filter",objectMapper.writeValueAsString(Map.of("keyword",token)),"selectedIds",objectMapper.writeValueAsString(ids)),"tqty","desc",null);
+        master.validate(req);
+        var rows=new AtomicInteger();
+        var measurement=ProductionJdbcMeasurement.begin();long started=System.nanoTime();
+        try(var sink=ExportPageSink.open(page->{
+            for(var row:page.rows()) assertThat(row.get("code")).isEqualTo("MX-"+token+"-%06d".formatted(50000-rows.getAndIncrement()));
+        })) {
+            assertThat(master.read(req).total()).isEqualTo(50001);
+        } finally {
+            ProductionJdbcMeasurement.end();
+        }
+        assertThat(rows).hasValue(50001);
+        assertThat(measurement.maxPreparedParameterIndex).isLessThan(100);
+        System.out.println("D3_SELECTION_READ sourceMs="+(System.nanoTime()-started)/1000000+" jdbc="+measurement.result());
+        assertThat(MasterExportSelection.current()).isNull();
+        try(var sink=ExportPageSink.open(page->{throw new java.util.concurrent.CancellationException("selection interruption");})) {
+            assertThatThrownBy(()->master.read(req)).isInstanceOf(java.util.concurrent.CancellationException.class);
+        }
+        assertThat(MasterExportSelection.current()).isNull();
+        var missing=new ArrayList<>(ids);missing.set(0,UUID.randomUUID());
+        var stale=new ReportExportRequest(UUID.randomUUID(),"master","mould",
+                Map.of("filter",req.parameters().get("filter"),"selectedIds",objectMapper.writeValueAsString(missing)),"tqty","desc",null);
+        assertThatThrownBy(()->master.read(stale)).hasMessageContaining("本次未生成文件");
+        System.out.println("D3_REAL_SELECTION selected=50001 matching=50002 excluded=1 ordered=50001 cancellation=preserved missing=rejected");
+    }
     private void assertCaller(String report)throws Exception{
         String token="MX"+UUID.randomUUID().toString().replace("-","").substring(0,10);
         Seed seed=seed(report,token,251);
@@ -252,8 +297,8 @@ class MasterDirectoryExportPostgresTest extends AuthSessionPostgresTestSupport {
         List<UUID> ids=new ArrayList<>(count);for(int index=0;index<count;index++)ids.add(UUID.randomUUID());
         String extras=switch(report){case "goods"->",category_id,code_sequence,auto_created,price,zk";
             case "client"->",category_id,owner_employee_id,code_sequence";case "supplier"->",category_id,code_sequence";case "account"->",style_id,currency_id";
-            case "mould"->",category_id,code_sequence,code_managed";case "warehouse"->",parent_id,is_accountable";default->"";};
-        int extraCount=switch(report){case "goods"->5;case "client","mould"->3;case "supplier","warehouse","account"->2;default->0;};
+            case "mould"->",category_id,code_sequence,code_managed,tqty";case "warehouse"->",parent_id,is_accountable";default->"";};
+        int extraCount=switch(report){case "goods"->5;case "mould"->4;case "client"->3;case "supplier","warehouse","account"->2;default->0;};
         String sql="INSERT INTO "+table+"(id,code,name,status"+extras+") VALUES("+String.join(",",Collections.nCopies(4+extraCount,"?"))+")";
         List<Integer> indices=java.util.stream.IntStream.range(0,count).boxed().toList();
         var write=new org.springframework.transaction.support.TransactionTemplate(context.getBean(org.springframework.transaction.PlatformTransactionManager.class));
@@ -273,7 +318,7 @@ class MasterDirectoryExportPostgresTest extends AuthSessionPostgresTestSupport {
                 case "client"->{ps.setObject(5,category);ps.setObject(6,employee);ps.setLong(7,base+index+1);}
                 case "supplier"->{ps.setObject(5,category);ps.setLong(6,base+index+1);}
                 case "account"->{ps.setObject(5,category);ps.setObject(6,currency);}
-                case "mould"->{ps.setObject(5,category);ps.setLong(6,base+index+1);ps.setBoolean(7,false);}
+                case "mould"->{ps.setObject(5,category);ps.setLong(6,base+index+1);ps.setBoolean(7,false);ps.setBigDecimal(8,BigDecimal.valueOf(index).add(new BigDecimal("0.125")));}
                 case "warehouse"->{ps.setObject(5,category);ps.setBoolean(6,true);}
                 default->{}
             }

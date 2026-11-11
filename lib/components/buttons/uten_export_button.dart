@@ -183,6 +183,7 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
         operation == _operation &&
         epoch == ref.read(exportContextEpochProvider) &&
         identical(api, ref.read(apiClientProvider)) &&
+        widget.enabled &&
         _authorized &&
         (selection?.stillCurrent?.call() ?? true);
     setState(() => _preparing = true);

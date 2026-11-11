@@ -412,10 +412,15 @@ class _UtenCollapsingHeaderScrollViewState
         // 收头部段：这一格最多滚到「刚好置顶」，余量丢弃并上门、开停顿窗。
         if (delta >= outerRoom - _epsilon) {
           _outer.jumpTo(outer.maxScrollExtent);
-          for (final position
-              in _innerController?.positions ?? const <ScrollPosition>[]) {
-            if (position.hasPixels && position.hasContentDimensions) {
-              position.jumpTo(position.minScrollExtent);
+          // The original nested presentation resets the body at this boundary.
+          // Compact/hierarchy viewports keep an already accepted body offset
+          // while their header returns and collapses again.
+          if (!widget.stableBodyViewport && _lastPresentationCompact == false) {
+            for (final position
+                in _innerController?.positions ?? const <ScrollPosition>[]) {
+              if (position.hasPixels && position.hasContentDimensions) {
+                position.jumpTo(position.minScrollExtent);
+              }
             }
           }
           _arm(direction);

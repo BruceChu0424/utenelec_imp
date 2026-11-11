@@ -319,8 +319,10 @@ void main() {
     await tester.drag(find.byTooltip('拖动调整宽度 · 双击复位'), const Offset(-1400, 0));
     await tester.pumpAndSettle();
     final tree = find.byType(UtenDepartmentTreeView);
+    // 47c96198a 起 leading 面板改为 stable width slot（PositionedDirectional
+    // 宽度槽），宽度承载者是槽位 Material，不再是外层 SizedBox。
     final panel = find
-        .ancestor(of: tree, matching: find.byType(SizedBox))
+        .ancestor(of: tree, matching: find.byType(Material))
         .first;
     expect(tester.getSize(panel).width, 160);
     const contentWidth = 160 - UtenScrollGutter.trackWidth;

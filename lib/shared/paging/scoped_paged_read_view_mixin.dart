@@ -23,9 +23,6 @@ mixin ScopedPagedReadViewMixin<W extends ConsumerStatefulWidget>
     on ConsumerState<W> {
   final _scopedPageReads = <(Type, Object), _ScopedReadLifecycle>{};
   final _scopedOutputGuards = <CompleteOutputGuard>{};
-  // Pending query-answer expiry timers of the live read closures; disposed
-  // with the view so a check in the last moment leaves no pending timer.
-  final _scopedAnswerTimers = <Timer>{};
   ProviderSubscription<int>? _scopedOwnerSubscription;
   int _scopedOwner = 0;
   bool _scopedDisposed = false;
@@ -137,7 +134,7 @@ mixin ScopedPagedReadViewMixin<W extends ConsumerStatefulWidget>
     // fresh check; owner/disposed/mounted gates always stay outside the memo.
     var queryAnswerValid = false;
     var queryAnswerCurrent = false;
-    Timer? queryAnswerExpiry;
+    bool queryAnswerExpiryScheduled = false;
     void expireQueryAnswer() => queryAnswerValid = false;
     bool ownerCurrent() {
       final stats = debugScopedReadCheckStats;
@@ -152,14 +149,15 @@ mixin ScopedPagedReadViewMixin<W extends ConsumerStatefulWidget>
           epoch == ref.read(exportContextEpochProvider) &&
           samePagedReadQuery(snapshot, currentQuery());
       queryAnswerValid = true;
-      if (queryAnswerExpiry == null) {
-        final timer = Timer(Duration.zero, () {
-          _scopedAnswerTimers.remove(queryAnswerExpiry);
-          queryAnswerExpiry = null;
+      if (!queryAnswerExpiryScheduled) {
+        // 同一事件轮内只核对一次活跃查询；用微任务过期而不是零时长 Timer——
+        // 微任务不占用计时器槽位，widget 测试收尾的 "Timer is still pending"
+        // 契约不会再把最后一次核对遗留的过期任务挂在树上（树不 dispose 也不漏）。
+        queryAnswerExpiryScheduled = true;
+        scheduleMicrotask(() {
+          queryAnswerExpiryScheduled = false;
           expireQueryAnswer();
         });
-        queryAnswerExpiry = timer;
-        _scopedAnswerTimers.add(timer);
       }
       return queryAnswerCurrent;
     }
@@ -257,10 +255,6 @@ mixin ScopedPagedReadViewMixin<W extends ConsumerStatefulWidget>
     _scopedDisposed = true;
     readViewActivity.dispose();
     _scopedOwnerSubscription?.close();
-    for (final timer in _scopedAnswerTimers) {
-      timer.cancel();
-    }
-    _scopedAnswerTimers.clear();
     for (final entry in _scopedPageReads.values) {
       entry.dispose();
     }

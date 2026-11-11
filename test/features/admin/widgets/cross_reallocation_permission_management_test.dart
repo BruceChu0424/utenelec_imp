@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/admin/models/admin_models.dart';
 import 'package:uten_imp/features/admin/repositories/admin_repository.dart';
+import 'package:uten_imp/features/admin/repositories/permission_template_repository.dart';
 import 'package:uten_imp/features/admin/widgets/admin_department_perm_view.dart';
 import 'package:uten_imp/features/admin/widgets/admin_user_detail_panel.dart';
 import 'package:uten_imp/shared/models/department_node.dart';
@@ -241,6 +242,8 @@ Widget _departmentSubject(
 ) => ProviderScope(
   overrides: [
     adminRepositoryProvider.overrideWithValue(repository),
+    permissionTemplatesProvider.overrideWith((ref) async => []),
+    permissionTemplateBindingsProvider.overrideWith((ref) async => []),
     sharedPreferencesProvider.overrideWithValue(preferences),
   ],
   child: const MaterialApp(
@@ -259,6 +262,8 @@ Widget _userSubject(
 ) => ProviderScope(
   overrides: [
     adminRepositoryProvider.overrideWithValue(repository),
+    permissionTemplatesProvider.overrideWith((ref) async => []),
+    permissionTemplateBindingsProvider.overrideWith((ref) async => []),
     sharedPreferencesProvider.overrideWithValue(preferences),
   ],
   child: const MaterialApp(

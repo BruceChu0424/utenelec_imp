@@ -6,6 +6,7 @@ import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/admin/models/admin_models.dart';
 import 'package:uten_imp/features/admin/repositories/admin_repository.dart';
+import 'package:uten_imp/features/admin/repositories/permission_template_repository.dart';
 import 'package:uten_imp/features/admin/widgets/admin_user_detail_panel.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
@@ -191,6 +192,8 @@ Future<void> _pumpPanel(
     ProviderScope(
       overrides: [
         adminRepositoryProvider.overrideWithValue(repository),
+        permissionTemplatesProvider.overrideWith((ref) async => []),
+        permissionTemplateBindingsProvider.overrideWith((ref) async => []),
         sharedPreferencesProvider.overrideWithValue(preferences),
         currentPermissionsProvider.overrideWith((ref) => actorPermissions),
       ],

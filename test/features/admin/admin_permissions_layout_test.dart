@@ -891,7 +891,8 @@ void main() {
         ApiException('SEARCH_FAILED', '搜索失败，请重试'),
       );
       await tester.pumpAndSettle();
-      expect(find.text('搜索失败，请重试'), findsOneWidget);
+      // 完整读取失败统一带匿名关联号后缀（read_failure_diagnostics）。
+      expect(find.textContaining('搜索失败，请重试'), findsOneWidget);
       expect(tester.widget<UtenButton>(selectAll).onPressed, isNull);
       await tester.tap(selectAll);
       await tester.pumpAndSettle();

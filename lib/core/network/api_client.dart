@@ -51,7 +51,9 @@ class ApiClient {
   ApiClient(
     this._dio, {
     this.streamingDownloads = false,
-    this.summaryStreamChunkIdleTimeout = apiSummaryStreamChunkIdleTimeout,
+    // 默认零预算：帧间空闲预算是真实网络属性，只在生产装配点（apiClientProvider）
+    // 显式传 apiSummaryStreamChunkIdleTimeout；即时测试夹具不挂任何计时器。
+    this.summaryStreamChunkIdleTimeout = Duration.zero,
     ApiMutationReloadSafety? reloadSafety,
     BusinessPrecisionCoordinator? precisionCoordinator,
     Object? Function(RequestOptions)? precisionIdentity,
@@ -1161,6 +1163,11 @@ final apiClientProvider = Provider<ApiClient>((ref) {
   final client = ApiClient(
     dio,
     streamingDownloads: true,
+    // 真实网络才有帧间静默期（首帧后到栅栏回放最长接近服务端 60s 完整读取预算）：
+    // 完整列表流按 75s 帧间空闲预算裁决（见 network_policy.dart）。测试夹具用即时
+    // 流，默认零预算不挂计时器，避免被退休的读取把 Future.timeout 计时器留到
+    // 测试收尾（"A Timer is still pending" 契约）。
+    summaryStreamChunkIdleTimeout: apiSummaryStreamChunkIdleTimeout,
     precisionIdentity: AuthInterceptor.retainedIdentity,
     precisionIsCurrent: (options) async =>
         ref.mounted &&

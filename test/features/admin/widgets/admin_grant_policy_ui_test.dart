@@ -13,6 +13,7 @@ import 'package:uten_imp/core/network/server_selection.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/admin/models/admin_models.dart';
 import 'package:uten_imp/features/admin/repositories/admin_repository.dart';
+import 'package:uten_imp/features/admin/repositories/permission_template_repository.dart';
 import 'package:uten_imp/features/admin/widgets/admin_baseline_perm_view.dart';
 import 'package:uten_imp/features/admin/widgets/admin_department_perm_view.dart';
 import 'package:uten_imp/features/admin/widgets/admin_user_detail_panel.dart';
@@ -242,6 +243,8 @@ void main() {
     final container = ProviderContainer(
       overrides: [
         adminRepositoryProvider.overrideWithValue(repo),
+        permissionTemplatesProvider.overrideWith((ref) async => []),
+        permissionTemplateBindingsProvider.overrideWith((ref) async => []),
         sharedPreferencesProvider.overrideWithValue(preferences),
         // 本地服务可达性探针带 60 秒周期计时器；按 Web 形态构造就不起探针。
         localServerReachableProvider.overrideWith(

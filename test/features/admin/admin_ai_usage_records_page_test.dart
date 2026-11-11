@@ -600,7 +600,9 @@ void main() {
         ApiException('FORBIDDEN', '当前账号不能读取记录', httpStatus: status),
       );
       await tester.pumpAndSettle();
-      expect(find.text('当前账号不能读取记录'), findsOneWidget);
+      // 完整读取失败统一带匿名关联号后缀（read_failure_diagnostics），
+      // 断言按前缀匹配，不钉关联号本身。
+      expect(find.textContaining('当前账号不能读取记录'), findsOneWidget);
       expect(find.text('原账号问题内容'), findsNothing);
       expect(find.byType(UtenDropdownField), findsNothing);
       expect(repository.saved, isEmpty);

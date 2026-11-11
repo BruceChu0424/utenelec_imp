@@ -1649,6 +1649,10 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   List<MasterColumnDef<T>>? _platformBaseCache;
   TableColumnProjectionController? _projection;
   bool _platformRefreshScheduled = false;
+  String? _platformSchemaSignature;
+  String? _platformLayoutSignature;
+  String? _platformMetricSignature;
+  int? _platformValuesRevision;
   bool _projectionScheduled = false;
   Object? _projectionOwner;
   final _aiSlot = AiPageSlot();
@@ -1730,8 +1734,100 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
             column.key: column.exactValueOf!(row),
       },
     );
-    _platformColumnCache = null;
-    _applyPlatformLayout();
+    _refreshPlatformPresentation();
+  }
+
+  /// Loading notifications and validated row prefixes do not change a table's
+  /// schema or personal layout. Keep these snapshots separate from the fresh
+  /// widget.columns adapter: its current closures must never be cached by key.
+  bool _refreshPlatformPresentation({bool forceLayout = false}) {
+    final definitions = _platform.definitions;
+    final schema = jsonEncode([
+      _platform.authorizationRevision,
+      _platform.capabilities?.priceVisible,
+      _serverPaged,
+      for (final definition in definitions)
+        _platform.projectionDefinition(definition),
+    ]);
+    final schemaChanged = schema != _platformSchemaSignature;
+    if (schemaChanged) {
+      _platformSchemaSignature = schema;
+      _platformColumnCache = null;
+    }
+    final columns = _columns;
+    final metrics = jsonEncode([
+      for (final column in columns)
+        [
+          column.key,
+          column.label,
+          column.type,
+          column.width,
+          column.emphasized,
+          column.cellBuilder == null,
+        ],
+    ]);
+    final metricsChanged = metrics != _platformMetricSignature;
+    if (schemaChanged || metricsChanged) {
+      _platformMetricSignature = metrics;
+      _textMeasures.clear();
+      _widthsDirty = true;
+    }
+    final binding = _platform.binding;
+    final populated = <String>[
+      if (binding?.revealPopulatedColumnKeys.isNotEmpty == true)
+        for (final column in columns)
+          if (binding!.revealPopulatedColumnKeys.contains(
+                _platform.canonicalKey(column.key),
+              ) &&
+              _items.any((row) {
+                final value = column.value(row)?.trim();
+                return value != null && value.isNotEmpty && value != '—';
+              }))
+            column.key,
+    ];
+    final layout = jsonEncode([
+      _platform.tableKey,
+      _platform.authorizationRevision,
+      _platform.queryLifecycle,
+      _platform.hasSessionQueryPreferences,
+      _platform.layout.toJson(),
+      binding?.columnAliases,
+      binding?.defaultVisibleColumnKeys,
+      binding?.defaultColumnOrder,
+      _requiredLeadingKeys,
+      _temporaryLeadingKeys,
+      populated,
+      for (final column in columns)
+        [
+          column.key,
+          column.defaultVisible,
+          column.sortable,
+          _ownsHeaderFilter(column),
+          _supportsColumnSearch(column),
+        ],
+    ]);
+    final layoutChanged = forceLayout || layout != _platformLayoutSignature;
+    if (schemaChanged || layoutChanged) {
+      _platformLayoutSignature = layout;
+      _applyPlatformLayout();
+    }
+    final valuesChanged = _platformValuesRevision != _platform.valuesRevision;
+    _platformValuesRevision = _platform.valuesRevision;
+    final extensionValuesChanged = valuesChanged && definitions.isNotEmpty;
+    if (extensionValuesChanged && !schemaChanged && !metricsChanged) {
+      // Real values can change an earlier row as well as the appended tail.
+      // Revisit strings within the existing budget, retaining measured strings,
+      // headers and manual widths. Pure system columns need no values rescan.
+      _widthGrowthPending = true;
+      _widthGrowthPool = null;
+      _widthGrowthTarget = null;
+      _widthGrowthOffset = 0;
+      _widthGrowthColumn = 0;
+    }
+    return schemaChanged ||
+        metricsChanged ||
+        layoutChanged ||
+        extensionValuesChanged;
   }
 
   void _applyPlatformLayout() {
@@ -1822,11 +1918,10 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       _platformRefreshScheduled = false;
       if (!mounted) return;
       setState(() {
-        _displayRowsSource = null;
-        _rowFacetScope = null;
-        _platformColumnCache = null;
-        _applyPlatformLayout();
-        _widthsDirty = true;
+        if (_refreshPlatformPresentation()) {
+          _displayRowsSource = null;
+          _rowFacetScope = null;
+        }
       });
       if (_fullscreen) _fsTick.value++;
       _publishProjection();
@@ -3750,7 +3845,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       _displayRowsSource = null;
       _rowFacetScope = null;
     }
-    _invalidateColumnIndexes();
+    // Column indexes follow their actual column/layout owner, independently
+    // of a replacement row prefix or a loading-only controller notification.
     // 拖拽能力被宿主摘除（如切到只读态）：就地取消进行中的拖拽。
     if (widget.rowDrag == null && _dragActive) _cancelRowDrag();
     if (!widget.enableTextSelection ||
@@ -3805,7 +3901,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       _colLinks.clear(); // 旧下标的 LayerLink 作废，按新列集合下标重建。
     } else if (oldWidget.items != widget.items ||
         oldWidget.leadingGroups != widget.leadingGroups ||
-        oldWidget.presentationRevision != widget.presentationRevision) {
+        oldWidget.presentationRevision != widget.presentationRevision ||
+        !identical(oldWidget.columns, widget.columns)) {
       // 数据变了(翻页/筛选/排序/加载更多/静默重拉)→ 帧后只补量新出现的值，
       // 超出当前宽度才加宽；已手动调整的列不动。
       // 逐批追加(同一读取会话)只续量新行：已量过的前缀不再重扫。
@@ -3867,7 +3964,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         if (mounted) _fsTick.value++;
       });
     }
-    _applyPlatformLayout();
+    if (!_sameColumnKeys(oldWidget.columns, widget.columns)) {
+      _refreshPlatformPresentation(forceLayout: true);
+    }
   }
 
   /// 全屏切换：进入时弹全屏路由（正常树让位）；全屏里再点「退出全屏」pop 该路由。

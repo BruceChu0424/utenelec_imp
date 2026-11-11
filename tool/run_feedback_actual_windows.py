@@ -5,6 +5,7 @@ the synthetic password from the explicitly supplied private runtime JSON.
 """
 from pathlib import Path
 import argparse, hashlib, importlib.util, json, os, re, subprocess as sp
+from feedback_windows_native_window import NativeWindowEvidenceDriver
 
 parser = argparse.ArgumentParser()
 parser.add_argument('stage', choices=['build', 'run'])
@@ -13,8 +14,11 @@ parser.add_argument('--runtime-config', type=Path, required=True)
 parser.add_argument('--account', default='feedback-mould-win-qa')
 parser.add_argument('--returns-account', default='')
 parser.add_argument('--runtime-ready', action='store_true')
+parser.add_argument('--backend-source-head', default='')
 parser.add_argument('--sdk-root', type=Path, default=Path('D:/Software/Flutter/flutter'))
 a = parser.parse_args()
+if a.backend_source_head and not re.fullmatch(r'[0-9a-f]{40}', a.backend_source_head):
+    parser.error('backend-source-head must be the declared complete source SHA')
 root = Path(__file__).resolve().parents[1]
 if os.name != 'nt' or not re.fullmatch(r'[a-zA-Z0-9][a-zA-Z0-9._-]{0,79}', a.run_tag):
     raise SystemExit('Windows and a bounded owned run tag are required')
@@ -67,6 +71,8 @@ defines = {
     'UTEN_FEEDBACK_RUNTIME_ROOT': str(runtime), 'UTEN_FEEDBACK_EVIDENCE_DIR': str(out),
     'UTEN_FEEDBACK_PRIVATE_CONFIG': str(config), 'UTEN_FEEDBACK_ACCOUNT': a.account,
     'UTEN_FEEDBACK_RETURNS_ACCOUNT': a.returns_account,
+    'UTEN_FEEDBACK_SOURCE_SHA': head,
+    'UTEN_FEEDBACK_BACKEND_SOURCE_SHA': a.backend_source_head,
 }
 target = 'integration_test/company_feedback_actual_windows_test.dart'
 command = [*prefix]
@@ -76,15 +82,22 @@ else:
     command += ['test', '--no-pub', '--device-id=windows', '--reporter=expanded', target]
 command += ['--dart-define=' + key + '=' + value for key, value in defines.items()]
 (out / (a.stage + '-command.json')).write_text(json.dumps(command, indent=2), encoding='utf8')
-with (out / (a.stage + '.log')).open('wb') as log:
-    result = sp.run(command, cwd=root, env=env, stdout=log, stderr=log, check=False)
+exe = root / 'build/windows/x64/runner/Debug/uten_imp.exe'
+native_window = NativeWindowEvidenceDriver(out, exe, head) if a.stage == 'run' else None
+if native_window is not None:
+    native_window.start()
+try:
+    with (out / (a.stage + '.log')).open('wb') as log:
+        result = sp.run(command, cwd=root, env=env, stdout=log, stderr=log, check=False)
+finally:
+    if native_window is not None:
+        native_window.close()
 tools.confirm_sdk_unchanged(tool_evidence)
 manifest = root / 'build/windows/x64/runner/generated-runtime/uten-runtime-profile.json'
 native = json.loads(manifest.read_text(encoding='utf-8-sig')) if manifest.exists() else None
 if result.returncode == 0:
     assert native and native['buildProfile'] == 'local_test'
     assert Path(native['acceptanceNativeLogDirectory']).resolve().is_relative_to(runtime.resolve())
-exe = root / 'build/windows/x64/runner/Debug/uten_imp.exe'
 receipt = {
     'stage': a.stage, 'sourceHead': head, 'sourceWasDirty': bool(tracked_dirty or new_source),
     'sourceHeadAfter': git('rev-parse', 'HEAD'), 'canonicalSourceDiffAfter': git('diff', 'HEAD', '--name-only'), 'exitCode': result.returncode,
@@ -92,6 +105,11 @@ receipt = {
     'sdkUnchanged': True, 'nativeProfile': native,
     'executableSha256ActualBytes': hashlib.sha256(exe.read_bytes()).hexdigest() if exe.exists() else None,
     'credentialsInCommand': False,
+    'declaredBackendSourceHead': a.backend_source_head or None,
+    'backendIdentityVerifiedByThisHarness': False,
+    'firstFlutterErrorFilePresent': (out / 'first-flutter-error.json').exists(),
+    'firstFlutterErrorSha256': hashlib.sha256((out / 'first-flutter-error.json').read_bytes()).hexdigest() if (out / 'first-flutter-error.json').exists() else None,
+    'nativeGeometryMethod': 'owned process executable + user32.SetWindowPos' if a.stage == 'run' else None,
 }
 (out / (a.stage + '-receipt.json')).write_text(json.dumps(receipt, indent=2), encoding='utf8')
 (out / (a.stage + '-private-flutter-tools.json')).write_text(json.dumps(tool_evidence, indent=2), encoding='utf8')

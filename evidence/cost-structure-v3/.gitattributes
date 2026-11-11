@@ -5,3 +5,4 @@
 originals/*.xlsx binary
 baseline/** binary
 parse-suite/reports/** binary
+completed-test-cleanup/MANIFEST.MF binary

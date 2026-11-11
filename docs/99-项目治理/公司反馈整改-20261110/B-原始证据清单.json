@@ -1,0 +1,2194 @@
+{
+  "baseline": "fdeda88b3d73b24b8691ad132caa765196b19a3d",
+  "packageCandidate": "e5680271fc6af58694f28fd26099e3017bc9d0e1",
+  "source": [
+    {
+      "path": "lib/components/forms/link_quantity_validator.dart",
+      "byteStandard": "git-blob",
+      "blobId": "261667c19a05ed52f46cd1fa657be2847113424d",
+      "sha256": "4796db06fd903eed0c2abe91508d374544b89370dbb23ed8ce22bc90876f26ab",
+      "bytes": 2943
+    },
+    {
+      "path": "lib/components/layout/uten_doc_link_picker_sheet.dart",
+      "byteStandard": "git-blob",
+      "blobId": "5474e63f60290e43a48f2eb3c3989026c81648d9",
+      "sha256": "1350e5146f0194f3be025f2e7e3c5f3bfd2c081499b166fac5c45854d54d5b02",
+      "bytes": 40182
+    },
+    {
+      "path": "lib/features/production/models/material_aggregate_order.dart",
+      "byteStandard": "git-blob",
+      "blobId": "33d46dafd07152546a54279dd5153ee61666c26d",
+      "sha256": "6b173895840959d326334ccc37b93891aaf175ac9d90334c4c8c13e782d4334e",
+      "bytes": 21208
+    },
+    {
+      "path": "lib/features/production/models/material_preparation_original_command.dart",
+      "byteStandard": "git-blob",
+      "blobId": "553b6ebc71934e4b80c8bf7a6aa61eb172b9d45d",
+      "sha256": "7980ee0cbb998856ed52acb481c43388a3630f298823e6c0c685bedd05ba29dd",
+      "bytes": 6334
+    },
+    {
+      "path": "lib/features/production/pages/material_analysis_aggregate_submission.dart",
+      "byteStandard": "git-blob",
+      "blobId": "8eae443306175aa9f9d5c92089d5a49673f4044c",
+      "sha256": "c57a15cd16000a48f59c62e1dc388d18a6c5a740f77462ebe6871e41a5e18c54",
+      "bytes": 29964
+    },
+    {
+      "path": "lib/features/production/pages/material_analysis_aggregate_table.dart",
+      "byteStandard": "git-blob",
+      "blobId": "895167e7065a950f1c623e8e8508d760ab4775e0",
+      "sha256": "6b5cc8d3c1107fa1c64c630f92732f19493e4ba8abfa1786bad34743ec04caa4",
+      "bytes": 105140
+    },
+    {
+      "path": "lib/features/production/pages/material_analysis_material_table.dart",
+      "byteStandard": "git-blob",
+      "blobId": "b90699f0a918c1fe1d194e9415b1fd0a2bddf55f",
+      "sha256": "0e32f09e2155b98c24afe38e1f2fbd21be8247a6ba86e73a292cb6fa7cbecef7",
+      "bytes": 408630
+    },
+    {
+      "path": "lib/features/production/pages/material_analysis_order_page.dart",
+      "byteStandard": "git-blob",
+      "blobId": "b520604dfeee4ad396b3664fecd6b3b4ed5dea50",
+      "sha256": "f2efdda8d667fac472309c8bcef25a2b3dbd32e8f71631905fc2fd3ddace79b2",
+      "bytes": 11770
+    },
+    {
+      "path": "lib/features/production/pages/material_analysis_original_commands.dart",
+      "byteStandard": "git-blob",
+      "blobId": "734156704f07afa9c65abb040457ec2d51a07807",
+      "sha256": "e7eae7a4634faddee343b3dc8b2bfa1ecbed00717ef4557284b53c061ba8b556",
+      "bytes": 8648
+    },
+    {
+      "path": "lib/features/production/pages/material_analysis_precision_draft.dart",
+      "byteStandard": "git-blob",
+      "blobId": "64a34ab9a02c4fcf714a33adffc5614044359403",
+      "sha256": "031e378a5565c54803bc6e621332bc17ec22761ef74d7899e3582f4e05d087b2",
+      "bytes": 23401
+    },
+    {
+      "path": "lib/features/production/pages/material_analysis_product_tasks.dart",
+      "byteStandard": "git-blob",
+      "blobId": "c60374c1341e1f1c5638a9415052e9f1be55c24f",
+      "sha256": "00302e159019cf048c17eb30264c01d734948b0690cdc9db5004c3f66c7dc7e3",
+      "bytes": 87418
+    },
+    {
+      "path": "lib/features/production/pages/material_analysis_supply_actions.dart",
+      "byteStandard": "git-blob",
+      "blobId": "54bac0c733ab211deb28aca481ad7156e233f255",
+      "sha256": "d9ebdc4fb4870306df63d07830d1368f4a2090057dbaf42bb1c368e8ab6baf16",
+      "bytes": 47245
+    },
+    {
+      "path": "lib/features/production/pages/production_material_analysis_page.dart",
+      "byteStandard": "git-blob",
+      "blobId": "8c0a28f3bf64186c960ee12993d6db5e54ecac03",
+      "sha256": "e7d0049769d00f21964f41f44bdf379b846859175fa3a9a11b8de959647d6b71",
+      "bytes": 143472
+    },
+    {
+      "path": "lib/features/production/repositories/production_repository.dart",
+      "byteStandard": "git-blob",
+      "blobId": "7825e5cb71c5ccf4ea979b4545a9f3c8ad508f75",
+      "sha256": "5ba6c9b1dd88f0181e1838481da82e2827502ba0859664acda34f78a9650517e",
+      "bytes": 90084
+    },
+    {
+      "path": "lib/features/purchase/pages/purchase_doc_edit_page.dart",
+      "byteStandard": "git-blob",
+      "blobId": "decf9e6541ba5bf3096ccad1bbab7a74e8c540dc",
+      "sha256": "3399bff48407b0b8fd7f1ef8f47db79ced5025eebb2e2010cb42513825c4a823",
+      "bytes": 77274
+    },
+    {
+      "path": "lib/features/purchase/pages/purchase_order_edit_page.dart",
+      "byteStandard": "git-blob",
+      "blobId": "818870ba7c5027ee66f3b4017fd86128ab71cae3",
+      "sha256": "6e9984f49c9cc861ead9d8790e4bbfb7099ceee69739dfb10497dda5c9e6c5a4",
+      "bytes": 106126
+    },
+    {
+      "path": "lib/features/purchase/widgets/doc_link_picker.dart",
+      "byteStandard": "git-blob",
+      "blobId": "f57ce8bc63cf3fa67af088d902f0b7963425aefc",
+      "sha256": "008f5307b449ae1d9dd3042eadbee045459071ce12677a476804f9e18bff52f2",
+      "bytes": 17749
+    },
+    {
+      "path": "lib/features/purchase/widgets/purchase_grid_columns.dart",
+      "byteStandard": "git-blob",
+      "blobId": "75c1637db6dd28460260c8c3caaf59f653896d78",
+      "sha256": "8d4ef164fab7cc48fce05d3ba3132d67ddc14fa59f6a6ed96b0a5b104d4da0b8",
+      "bytes": 41159
+    },
+    {
+      "path": "lib/features/subcontract/pages/subcontract_doc_edit_page.dart",
+      "byteStandard": "git-blob",
+      "blobId": "4363e074f7fd10de7609de635b3263e4b44796dc",
+      "sha256": "ecd75641ec1b6e704aa87c2a492f7a62656398b0c9795092a3e4179263141bec",
+      "bytes": 71871
+    },
+    {
+      "path": "lib/features/subcontract/pages/subcontract_order_edit_page.dart",
+      "byteStandard": "git-blob",
+      "blobId": "9b794c58b53c4b4b264ea948b083a5c00789b51f",
+      "sha256": "d08f0c86f379ffc1d4f9cd6f1cea5e9cea09185dda1c586db21f3739a7c3d37e",
+      "bytes": 103252
+    },
+    {
+      "path": "lib/features/subcontract/widgets/subcontract_grid_columns.dart",
+      "byteStandard": "git-blob",
+      "blobId": "5d0450628981bc006e25a9d4bd6a2a9951488b38",
+      "sha256": "89b7d9b8d35d28206d4a4abe288acd04b3b643875527752bb1e0bd5c4bc7d8a9",
+      "bytes": 38467
+    },
+    {
+      "path": "lib/features/subcontract/widgets/subcontract_link_picker.dart",
+      "byteStandard": "git-blob",
+      "blobId": "ab6aa38fa59f711329a9598ba9b3222f937b6b5c",
+      "sha256": "ed0ab280fa2b8b8deb98922aa18a522f09d01321a59dcded0f02148fcabfa4c3",
+      "bytes": 15017
+    },
+    {
+      "path": "lib/shared/drafts/form_draft.dart",
+      "byteStandard": "git-blob",
+      "blobId": "d47d71a7fd96693ad8865b408e7d5f0843ffdb29",
+      "sha256": "5561b8fdbd3c5827283e987ef8ca326a8d124ef67b31f09ddd9f0a77f85b3c4f",
+      "bytes": 16141
+    },
+    {
+      "path": "lib/shared/drafts/form_draft_mixin.dart",
+      "byteStandard": "git-blob",
+      "blobId": "218ec17aa64f7e87fc71830646f638f5f5479281",
+      "sha256": "f35a9799e08aeb89d0bde8fd1066e28fd49b8d403dba5f5526a7c773df68a232",
+      "bytes": 55278
+    },
+    {
+      "path": "lib/shared/forms/upstream_import_operation.dart",
+      "byteStandard": "git-blob",
+      "blobId": "30175d10b125498b771fea10abe1f88d3b628397",
+      "sha256": "fb785e1e07ef9748c5f88a284ee3863cc949e600db32a46883fafeefc37e959c",
+      "bytes": 450
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/common/finance/ProcurementReturnHeaderAuthority.java",
+      "byteStandard": "git-blob",
+      "blobId": "4e228e18deb5d796d40737679b38d72f30abecc9",
+      "sha256": "0a4afb7dd5d4c3fd6b792399d1bc4f60189822670824a495ccd9cd8048fec7c4",
+      "bytes": 5920
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/common/finance/ProcurementReturnOrderAuthority.java",
+      "byteStandard": "git-blob",
+      "blobId": "63a0a4a617bca31a6f2a3879ae884500074546ab",
+      "sha256": "e4ad24bba11047b762118fc528895a82dcf554992d14e8ba3a8e7af05822d67f",
+      "bytes": 2630
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/production/analysis/AggregateMaterialOrderContracts.java",
+      "byteStandard": "git-blob",
+      "blobId": "d6329be4d4f7002cdd9633e17f0df0fa993b733e",
+      "sha256": "62a4cc51cd29342161744db6f28cce137742c0bacc0ae8309d60167f44bdc1a8",
+      "bytes": 18332
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/production/analysis/AggregateMaterialOrderPreviewService.java",
+      "byteStandard": "git-blob",
+      "blobId": "c9a6a59eb05091160782835a6a6df227e3967677",
+      "sha256": "313c877de00c641359a7a035849d6577cad345e7e79b516d074e739d4aee43b8",
+      "bytes": 57318
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/production/analysis/AggregateMaterialOrderWriteService.java",
+      "byteStandard": "git-blob",
+      "blobId": "f55db4f5b332cc3b65e1174d2abbd8e05902b1cb",
+      "sha256": "c892b21706017a15a681224c551d8bad8fc410ec6ee3ae5f781d8276cc38cb3c",
+      "bytes": 116620
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/production/analysis/MaterialAnalysisPhysicalStockClaimService.java",
+      "byteStandard": "git-blob",
+      "blobId": "eb15dc57d60176377ed77c7317a8d203b1bf6e07",
+      "sha256": "22bed678a3b7c6cb6f3b3710c34278cd3eb6636af82e60438c6d982b439cc634",
+      "bytes": 14797
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/purchase/ret/PurchaseReturnService.java",
+      "byteStandard": "git-blob",
+      "blobId": "f9b4a9f0bd30d912c79c505fb9ea012904eccc81",
+      "sha256": "972125042137699cf9fa012aa6882198358972b28ab5891c82d0465cd82670d1",
+      "bytes": 55339
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/subcontract/ret/SubcontractReturnService.java",
+      "byteStandard": "git-blob",
+      "blobId": "bb29ef5243e07db5a88f526a654d87b84d9456a8",
+      "sha256": "8ad6fe1491ca045c2ed3e76fde3cc0316be28e9a509a726ffdaf02fc65023051",
+      "bytes": 51503
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/businesschain/FeedbackBWebSeedTest.java",
+      "byteStandard": "git-blob",
+      "blobId": "b7b07fa5d3238c43bb197a2b1d490050e6f625d8",
+      "sha256": "5378a0a26d58501c5a6458b5b9e69ee3a7de8a6b87c07b6c4c462384eaecdd9c",
+      "bytes": 45182
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/businesschain/OrderPreviewRemediationTest.java",
+      "byteStandard": "git-blob",
+      "blobId": "a19069815825b771b0195da6e35873d439bad302",
+      "sha256": "3ada1281e03a11d5d8581d1857ce9e5433bcd5f050bb8f2b25b1be58750094d5",
+      "bytes": 9018
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/businesschain/PurchaseReturnActualCostGlEndToEndTest.java",
+      "byteStandard": "git-blob",
+      "blobId": "f388a4784ad9b2ca1543188ed1bb0921d46fc3ff",
+      "sha256": "0624ec6e3f24a2087bb0d4c456ccbb47381d7e3341984f6b8967f6744e93e945",
+      "bytes": 34646
+    },
+    {
+      "path": "test/features/production/models/material_preparation_original_command_test.dart",
+      "byteStandard": "git-blob",
+      "blobId": "6bc5e4e92a38b9dd3dead5f12e84e70306268d13",
+      "sha256": "71beb46586645bc9cd00b330a6260cdcec22aec601873c9053d1aee1f3130ed7",
+      "bytes": 3492
+    },
+    {
+      "path": "test/features/production/pages/material_analysis_order_page_test.dart",
+      "byteStandard": "git-blob",
+      "blobId": "ea2f3791d3debcddd8426ed357647332c61a3d13",
+      "sha256": "41a67e6a0351cd477356d4cf7f7970ddd9f038bf437e9820445e196e81ab1f03",
+      "bytes": 54262
+    },
+    {
+      "path": "test/link_quantity_validator_test.dart",
+      "byteStandard": "git-blob",
+      "blobId": "c514c59110109458624d4e4a371bbcb3948e41e0",
+      "sha256": "e804c3e17e4503160212b750fc3dd181c28a0a4b936e7092b86e52c39459e613",
+      "bytes": 3110
+    },
+    {
+      "path": "test/remediation_b/probes/return_owner_test.dart",
+      "byteStandard": "git-blob",
+      "blobId": "cd679a8a631445c937d2e6d477a55d7610066827",
+      "sha256": "401422ef3c5a885ec6976bbd20cb275689b9a68f0d5746ec42c377ae3ae63937",
+      "bytes": 7534
+    },
+    {
+      "path": "test/remediation_b/probes/return_payload_test.dart",
+      "byteStandard": "git-blob",
+      "blobId": "0b7859cd83a519936f012139d7f72f35cb6db4a4",
+      "sha256": "db420dc7300648327b8fe5d0f57a2f4dd3d31ac760b6ab08f5f27ca27bad11f5",
+      "bytes": 7887
+    },
+    {
+      "path": "test/remediation_b/probes/return_precision_test.dart",
+      "byteStandard": "git-blob",
+      "blobId": "90c682fd02ca9d92e5a4e2e22bfdb117210ea5aa",
+      "sha256": "7e7c1c0fcb096598602c003222fedd6a255eef4e7a50d8e21e4b90f0f877d1ec",
+      "bytes": 6919
+    },
+    {
+      "path": "test/remediation_b/probes/return_repeat_test.dart",
+      "byteStandard": "git-blob",
+      "blobId": "e3a08b964aec84247a0dd340ae103e52efff38d3",
+      "sha256": "0490c481121b9cca4ffc2184b14e91b8386db65c9746ad8ff68159cb701f5af3",
+      "bytes": 7359
+    },
+    {
+      "path": "test/remediation_b/probes/return_source_adapter_test.dart",
+      "byteStandard": "git-blob",
+      "blobId": "a4a22b0c9be6461f237e5f59c1e60967a4dd2c0d",
+      "sha256": "60220ae8b12e942e58a8519c399ff56d8b202eaf7053f2661dcb66f0a94b247d",
+      "bytes": 7468
+    },
+    {
+      "path": "test/remediation_b/support/document_scope_capability_overrides.dart",
+      "byteStandard": "git-blob",
+      "blobId": "3876ca6674d98e53c7f34acf51bcf54675cab4d3",
+      "sha256": "a7aad850df81efb1df3b8423b595b219fc2c48250b47734d4f747948e5a2bdba",
+      "bytes": 705
+    },
+    {
+      "path": "test/remediation_b/support/memory_form_draft_storage.dart",
+      "byteStandard": "git-blob",
+      "blobId": "cfbc1f8f21a2c357e03bf1f7a02b229cc20cf7de",
+      "sha256": "3ceea440df3660160c4f6cbbb9698010d63b285e6cb657c02178b2bdc11fb9b7",
+      "bytes": 998
+    },
+    {
+      "path": "test/remediation_b/support/return_probe_grid.dart",
+      "byteStandard": "git-blob",
+      "blobId": "a08bdba5c0f609e7b5fcc7980b41655d2c5792ec",
+      "sha256": "4b9f939859473989ea80aae461e258bf140b8b49aa54ec61399b7b8b9c5483f0",
+      "bytes": 1590
+    },
+    {
+      "path": "test/shared/drafts/material_preparation_original_identity_test.dart",
+      "byteStandard": "git-blob",
+      "blobId": "21ffc67628ddb05ad7b5afdb67f0e100edf70b30",
+      "sha256": "1c438ae0e16259efb499eb732e62c7a2d8b3128a899eef706ed0c07bf0bd688e",
+      "bytes": 1974
+    },
+    {
+      "path": "tools/qa/feedback_b_seed.ps1",
+      "byteStandard": "git-blob",
+      "blobId": "171e3e35c983fe92f7ea4c430bb38e364715ba2e",
+      "sha256": "cb4f84acbe0f52f352ae63c48b4ea85d2cb295ce643255f2369aa5fc12c7fbb9",
+      "bytes": 2489
+    }
+  ],
+  "rawArtifacts": [
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\baseline-manifest.json",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "2252d39f4774f72b0abfbfa6c924966e16839b4a8550f358126dfbbe9d6b9bae",
+      "bytes": 17565
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\budget-parallel-0.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "f1b2f662800122bed0ff255693df89c4487fbdcf453d3524a42d4ec20c3d9c04",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\budget-parallel-0.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "51d14d24c54583c1d4fc0fd519e7fb74e8f0d5c57c06b0759c6bc6395d547b17",
+      "bytes": 412873
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\budget-parallel-load-start.txt",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "a66b298749e20cfbd8049b9d6853b9594c44031a99243ba56d7facb69c83ecc7",
+      "bytes": 636
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\candidate-compile-0.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\candidate-compile-0.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "db90fd9725edf8eac15b65b407fcac47305b3cd6b66ad0488e24b1211745d9b5",
+      "bytes": 2077
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\candidate-pg-0.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "f1b2f662800122bed0ff255693df89c4487fbdcf453d3524a42d4ec20c3d9c04",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\candidate-pg-0.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "90c3f16a2ae277458e3c3454b5a474137028b769ce364043a170b56a7e3881f3",
+      "bytes": 829723
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\candidate-pg-1.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "f1b2f662800122bed0ff255693df89c4487fbdcf453d3524a42d4ec20c3d9c04",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\candidate-pg-1.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "ca201764ab3954eee8f1c78803abac343d561d40768563174552eee59b44f876",
+      "bytes": 839763
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\copy-final-classes.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "467b69d0b2d290015248f26770ef7b1471a48a8f53aa126d293fc48e884249dc",
+      "bytes": 1267
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\copy-final-test-classes.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "d72198dcb2362abfe50c3a006b7641e4f5f69012efd1230074031b5304078be2",
+      "bytes": 1277
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\copy-http-close-classes.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "0512f8892cbd8b4af2109c00ee3322bcf392f4c0dc2fbb0e6457fb867c109c73",
+      "bytes": 1282
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\copy-http-close-test-classes.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "2bf453c8440e0f0cd11989ddfb48993e20a2940d49fcde6d03837886a27a5c51",
+      "bytes": 1294
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\copy-next-classes.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "991ba3834910b9a8f82ad83f3173ffffcbc94e34ec0a126baa8e7b20bcfa4939",
+      "bytes": 1266
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\copy-next-test-classes.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "f26fe65dc9222774f3e0f795e0b9071280f8efa8924cc8c5f8c411f639cff8be",
+      "bytes": 1276
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\dart-analyze-0.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "df4e26a04a444901b95afef44e4a96cfae34690fff2ad2c66389c70079cdff2b",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\dart-analyze-0.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "b3a94fd6888faab6057a14b52e5901d7fae4cfef4b136297d2f5702356bc0f84",
+      "bytes": 6294
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\dart-analyze-1.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\dart-analyze-1.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "695e2b2ebe70620915c0c4f745215fec52b789b8419ae484f54b7af4d78f725c",
+      "bytes": 947
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\dart-analyze-all-b-1.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\dart-analyze-all-b-1.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "ecaba924eddae819fc903d7a0495a6b037d5008f92304458178c88ee8a67f178",
+      "bytes": 563
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\dart-analyze-all-b.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "24ba1e99dc06b19351323aae0d7370243d586475a634b7f6ff7927fbc72cfaed",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\dart-analyze-all-b.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "ab48c3f729f47f69af60653dcebdb4d8ee444c917f80c73c5232c401f88c53d0",
+      "bytes": 3757
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\dart-analyze-final-all.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\dart-analyze-final-all.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "9e1de32669b75e0699db3396bfe1931f174070e312e57195c1ed1427afbdc113",
+      "bytes": 563
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\dart-analyze-final.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\dart-analyze-final.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "2033eb5312a160fc17d1bf0e1f4d1b9ed287a5514e64846e3de9cefeb3fdf2a6",
+      "bytes": 684
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\dart-analyze-legacy-0.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "24ba1e99dc06b19351323aae0d7370243d586475a634b7f6ff7927fbc72cfaed",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\dart-analyze-legacy-0.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "e90101b4b898319b8f7214d14785d51bdc89af6d49a827d13653a28298971cd5",
+      "bytes": 2822
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\dart-analyze-legacy-1.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\dart-analyze-legacy-1.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "9317e96c03c4633ec7baf6388a82013b22f864658d365a4819c6f41e568d64bd",
+      "bytes": 3036
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\dart-analyze-legacy-2.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\dart-analyze-legacy-2.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "b96abceb474cec08715ef0d344bc2cd234134002507d9e90b097ded1a9e15999",
+      "bytes": 691
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\dart-analyze-legacy-acceptance.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\dart-analyze-legacy-acceptance.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "6a4ac99a1bc1a509c560ae916a995c22e0bff23ba66aac37f434f231933ea443",
+      "bytes": 572
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\dart-analyze-legacy-final-1.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\dart-analyze-legacy-final-1.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "d98f75eb083f0bb50188e1a1b27fe27364cb7d47a9d5d6f6f2559f0a5328edf2",
+      "bytes": 1200
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\dart-analyze-legacy-final.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\dart-analyze-legacy-final.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "d26719841b15e96f8d14c1e80792fe3089f543bd591553878b0a2fa4a2a9a193",
+      "bytes": 1636
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\dart-analyze-original-commands-final.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\dart-analyze-original-commands-final.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "9c0e6828fdb98d336a55af7cdc5c09e2f59ec47ef100ffbca43e788ba889b312",
+      "bytes": 640
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\dart-analyze-probes-final.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\dart-analyze-probes-final.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "d932d1051a57b8e948a4c8bc58992fc1f50fbba00b217353c3449a77ab69d6f0",
+      "bytes": 46
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\dart-format-0.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "fdfcf5ce7389313ccca5f8c89c02078827df7b03740c000d8757b92859077ec7",
+      "bytes": 542
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\dart-format-1.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "94d1acefa6c0a3a78ae5ec2af5b736b7d26dae9d24ae21767d9bbe699b8a9eeb",
+      "bytes": 192
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\dart-format-2.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "c64497f0e760504068d6c34fcadf97261de4050b29fb61fed9271cb626b76ae0",
+      "bytes": 128
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\dart-format-3.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "1a73f98d73374ec9fde8abe4132bb66ffbb718f5d42ca7d697bfae4a5522b5b0",
+      "bytes": 332
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\dart-format-4.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "c3e015266d853b167226e332777083638d08385982c5287c4fb386cc7d26d185",
+      "bytes": 48
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\dart-format-5.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "104bc3bb81be63c3ead326f5b296f6693b2c1ddd1107488067daf3ddf9714359",
+      "bytes": 163
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\dart-format-6.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "810b45fe8d049515b0b53a9e8b0e959c906cd07a0faa2e9ad3d88fd4022274af",
+      "bytes": 121
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\dart-format-adapter-2.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "70c02a7e3c1f96b4e945c1aa8742efa44fda2f3572c0cdb432b2d105d2e98682",
+      "bytes": 116
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\dart-format-adapter-3.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "c751a5a119f17c4391d8b9ee94f3b4c832831c6bfa5f725139097ca4c229ee76",
+      "bytes": 47
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\dart-format-adapter-4.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "874473cd3989faa432f0ba9d13dacbbaff85e30a863efb7c383967f4ed2dd7dc",
+      "bytes": 116
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\dart-format-adapter.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "874473cd3989faa432f0ba9d13dacbbaff85e30a863efb7c383967f4ed2dd7dc",
+      "bytes": 116
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\dart-format-final-probes.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "babec8c9cd5893902c881b5db4850396d046de6fc9a3e2beaba1d5aa201d661e",
+      "bytes": 108
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\dart-format-legacy-0.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "35324569c381b0c8ab4a43a911f1d9887bc5c1044336ba57d271747ec4f24efc",
+      "bytes": 693
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\dart-format-legacy-1.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "9561f4cc525b6cf718eeda419a851801f510c0ac694774fdb8870cb6520af039",
+      "bytes": 287
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\dart-format-legacy-10.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "4d28c22b891710b52b5d420ac19c22c3a55423512d6da3175a5e5f88f74fa49b",
+      "bytes": 289
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\dart-format-legacy-2.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "3e8ed29df671e2dae7c96316db638f7ea3d23e156df85c0be271e2f92f2badae",
+      "bytes": 206
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\dart-format-legacy-3.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "dd5162ee3c552f2dfca0efff894744018057cd2830c2af6acad0ea10b583a313",
+      "bytes": 209
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\dart-format-legacy-4.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "6af0bb23aead7d8820fe9f7143a78a7a9b162f37f5e3b9236a2c5b18c4ad0db4",
+      "bytes": 209
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\dart-format-legacy-5.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "2fe462b1f879b78839279db9d1ca1dd1c0eda7dc63f25530494e16988a57f021",
+      "bytes": 526
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\dart-format-legacy-6.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "caa5fe59bbae80a7c64158709aee6609859917e467a79a3ed986246e472961d3",
+      "bytes": 367
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\dart-format-legacy-7.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "322e220be7d9769c05de55ef8e0827cd91473447998cf9bf3ea3bd4542f0d958",
+      "bytes": 290
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\dart-format-legacy-8.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "6195a44d81db2d15007576543235542d4fea58b6ab215316228794554bf2ff1b",
+      "bytes": 125
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\dart-format-legacy-9.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "f69d97314b9bab2b73ef6eb1dd1f3f26ffb131461ad581a5f3360054f5f1c42e",
+      "bytes": 284
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\dart-format-legacy-final.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "64a9a634ebcdd60507f14a312f5140f11fb95bf86d746164e41718402b8ccfab",
+      "bytes": 214
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\dart-format-legacy-probe.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "39556f3f4f91f65156ac5d2e138c8fdd9d35e9644e28acb257d1316ea97e57ce",
+      "bytes": 128
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\dart-format-legacy-store-1.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "23e4cbcd014c57c652653db5854af11d50e95e919a4df1621fd1e40905640895",
+      "bytes": 128
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\dart-format-legacy-store.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "1b22c476be79e8da290e614310cba3552430b65553491c5414f9f4b60c411612",
+      "bytes": 253
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\dart-format-material-rejection.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "71f624f91b6d41a623700bd8306934aad76ecba20954b3bc68f83fb8d8196d13",
+      "bytes": 262
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\dart-format-original-codec.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "7fa6855283718346a5e4412b94efda6ee333f628d1132d3e5dbae2602270f51a",
+      "bytes": 224
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\dart-format-probes-1.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "485a4d3d650def5e6f19c84fd3a2a6f415ae49b0b77afa8fd1c8311ee761f19a",
+      "bytes": 48
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\dart-format-probes-2.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "3cf3852fbcf9e0020355079c9590ad2f1a4e4e5297980fc52707239d322222e6",
+      "bytes": 294
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\dart-format-probes.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "7fcf7bf0e2a00cc3a6da1819d3037fa1030b996ecd9e6da17ce29ad1fc20e1bf",
+      "bytes": 356
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\dart-format-refusal-final.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "0ca2b8b657b5bdb6934dc921588ab79b77d42a489e47d006852a505eed82e96d",
+      "bytes": 47
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\dart-format-rejection-contract.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "6373885df0294515afbb9d24a9841852160abf2d4355a9f618111d982a6432eb",
+      "bytes": 98
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\dependencies.txt",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "48bb6109a8e96a7ca9ff1196e2157561fe43c3f697b90cb8264008555e588a16",
+      "bytes": 22140
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\first-run-unknown-test.dart.txt",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "3d546798b199d7116fbe68ab4264672032b9006fddd0bf70eb23fe1f268925c9",
+      "bytes": 47555
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\first-run-WebReceiptOnlyRemediationTest.java.txt",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "deba70b851268c1acbe7ba9bd89c41fc250a125d9332c71f0b869cac31f3a4e5",
+      "bytes": 32233
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\flutter-candidate-0.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "f1b2f662800122bed0ff255693df89c4487fbdcf453d3524a42d4ec20c3d9c04",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\flutter-candidate-0.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "8fe0cc553f17aca42f1591518e637158892160a80736def76e5a614cb72c3502",
+      "bytes": 25518
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\flutter-candidate-1.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\flutter-candidate-1.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "155df7c796d2e4a493244ae7f29c90c777353589bc6c3720f07f59f3005b2718",
+      "bytes": 13586
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\flutter-final-0.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\flutter-final-0.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "34053b617a301adceac646b01f9da86e562667b45244926261fa9e8ae836cbcc",
+      "bytes": 8509
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\flutter-final-probes-2.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\flutter-final-probes-2.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "ba25974d557137bcd7112beb2c389a54635418dfde2d30d5b75a954e62b2a35a",
+      "bytes": 4748
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\flutter-order-editors-0.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\flutter-order-editors-0.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "cde2c485e5d19319178bca3deeb6756c74e9392160863b31a7969f29b374a3df",
+      "bytes": 10448
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\flutter-pub-0.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\flutter-pub-0.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "3def5e186a2ff07d74a661603a61087d0ea0c734d0f7635995d6106c9c082411",
+      "bytes": 592
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\flutter-source-adapter-2.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "f1b2f662800122bed0ff255693df89c4487fbdcf453d3524a42d4ec20c3d9c04",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\flutter-source-adapter-2.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "c6d26bb5197518f129008978a8aca44a36baee5990477e3ad531ecbd7385e208",
+      "bytes": 10881
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\flutter-source-adapter-3.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "f1b2f662800122bed0ff255693df89c4487fbdcf453d3524a42d4ec20c3d9c04",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\flutter-source-adapter-3.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "9e55156439f4e22bd0f35f972cbf44072716d3fc8b99be613bcf04aaa470ef4f",
+      "bytes": 2812
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\flutter-source-adapter-4.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\flutter-source-adapter-4.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "a8824a330992cae5a74f8d3672631822fd07ae3f6b640206929bb9c98b878015",
+      "bytes": 761
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\flutter-source-adapter-baseline-a904.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "f1b2f662800122bed0ff255693df89c4487fbdcf453d3524a42d4ec20c3d9c04",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\flutter-source-adapter-baseline-a904.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "fcccd4a1eddc6dfa7982133afe527ad9e8bf33fd286b4221d2c4e30d459eea78",
+      "bytes": 4902
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\flutter-typed-adapter-1.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "f1b2f662800122bed0ff255693df89c4487fbdcf453d3524a42d4ec20c3d9c04",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\flutter-typed-adapter-1.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "0d61b7511be424aaeed6fe286fb9b14719e8a92687af75062130ed28b272571a",
+      "bytes": 28193
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\flutter-typed-probes.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "f1b2f662800122bed0ff255693df89c4487fbdcf453d3524a42d4ec20c3d9c04",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\flutter-typed-probes.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "3c8d9f7ae510c6f184d86d134e9195a46c93fc089d1acc17a8556a98c644d2df",
+      "bytes": 7722
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\http-422-bytecode.txt",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "e01b6df46391f582c05cd59b1a3a53f28dac9f7e51af3bcb20807332586f0365",
+      "bytes": 253
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\http-422-close.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\http-422-close.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "d8e1ea19ad3dfe8a7985f15721ab2b7951d6c4cd4876d564b8f0947067b00316",
+      "bytes": 412909
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\http-422-correct-javac.args",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "8a18b52e17b9b9104eb0145a035cc4e90e5685ed160d2e66be214292eea12dcf",
+      "bytes": 22644
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\http-422-correct-javac.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\http-422-correct-javac.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\http-422-final.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "f1b2f662800122bed0ff255693df89c4487fbdcf453d3524a42d4ec20c3d9c04",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\http-422-final.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "b42a7cc625800f7d62203dbd8e6960d2361502f2a4bac73135d43d2c4d917376",
+      "bytes": 414745
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\http-final-javac.args",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "8a2fa9b3dcf911b7ecd843ac35907f98b72705200b968f6a7ed460294562d59d",
+      "bytes": 22626
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\http-final-javac.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\legacy-acceptance-suite-1.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "f1b2f662800122bed0ff255693df89c4487fbdcf453d3524a42d4ec20c3d9c04",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\legacy-acceptance-suite-1.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "4fb7921ed6f6c18158eab7557bc12f2422425db3dc1a9e9434c32bc5564fc683",
+      "bytes": 33911
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\legacy-all-final-2.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\legacy-all-final-2.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "3cb1ead3840035608229efecf13c9c1052417624d7874e1b321638fe8963dc55",
+      "bytes": 33863
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\legacy-durable-recovery-0.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\legacy-durable-recovery-0.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "33e448f2e57d61f59875103758cce787bd2cddb3498a76d25d5f626772465fec",
+      "bytes": 451
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\legacy-durable-recovery-1.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\legacy-durable-recovery-1.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "0ba611102b6c8175ae4e10655f0afde9a189effeeec6cea88fdcbdf8d427f997",
+      "bytes": 451
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\legacy-exact-baseline-9c.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "f1b2f662800122bed0ff255693df89c4487fbdcf453d3524a42d4ec20c3d9c04",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\legacy-exact-baseline-9c.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "0e32838101a03cf7c82f18056770e17540dce7d4df94feb75963d442ad61d9bd",
+      "bytes": 11776
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\legacy-final-suite-0.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "f1b2f662800122bed0ff255693df89c4487fbdcf453d3524a42d4ec20c3d9c04",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\legacy-final-suite-0.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "47a06cffcc2e62141bfb2105662e288eb195757eb6123653f119f02f8ced9638",
+      "bytes": 13594
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\legacy-full-order-0.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\legacy-full-order-0.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "2207124b5ebed4fb076a43fe1d4159e613dc872145edea8050deb821d217726b",
+      "bytes": 2715
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\legacy-full-order-1.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\legacy-full-order-1.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "066fe8946d17b54fa6f15773b2891d35126e052f9a797079b64fb4bb2777a6b1",
+      "bytes": 7906
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\legacy-recovery-controls-0.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\legacy-recovery-controls-0.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "b0d1febbb608e91caa09ce9f2971e69a639d09d7c612ad2ae452f0a6727ebdc1",
+      "bytes": 565
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\legacy-unknown-baseline-0.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "f1b2f662800122bed0ff255693df89c4487fbdcf453d3524a42d4ec20c3d9c04",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\legacy-unknown-baseline-0.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "90990a6a4240480751aae806772a25f2b6a772cf944aad0bd7169b39c42fe04c",
+      "bytes": 6687
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\legacy-unknown-candidate-0.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "f1b2f662800122bed0ff255693df89c4487fbdcf453d3524a42d4ec20c3d9c04",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\legacy-unknown-candidate-0.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "b3114ad1a16d506c2c416705edb86a22a31cf40c589eaa1b815eac0af6a2e3ed",
+      "bytes": 1761
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\legacy-unknown-candidate-1.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "f1b2f662800122bed0ff255693df89c4487fbdcf453d3524a42d4ec20c3d9c04",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\legacy-unknown-candidate-1.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "0afa054c3761401d13fc7eb18bf0e6d5f2991a94d639a1c878578eee7fa5b19a",
+      "bytes": 2736
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\legacy-unknown-candidate-2.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "a730e9f4fecef62a7023b1b3b6b11312e9689ef5a5c2109737bc7e12db929948",
+      "bytes": 5
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\legacy-unknown-candidate-2.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "940f488eaff8f55977b1e0a0520b1c2c8cf95f5f4e7536d2a58be8b27790dc0b",
+      "bytes": 127
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\legacy-unknown-candidate-3.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\legacy-unknown-candidate-3.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "b77305088be6c73ed7f7c48f050ceb41a31f9fe5de3e6cbf68a54e7d4ba11dc4",
+      "bytes": 433
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\main-final-javac.args",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "1b133b08eaabab0620bc97e382c8e56966f2ea9a07a90a11f8e22849fd94bb67",
+      "bytes": 23751
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\main-javac-1.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "24ba1e99dc06b19351323aae0d7370243d586475a634b7f6ff7927fbc72cfaed",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\main-javac-1.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "f4fdd6b6470fb0b1e75a6c294b93a391dc2318ac6470857071d84aa9a09fd49b",
+      "bytes": 69
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\main-javac-2.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\main-javac-2.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\main-javac-3.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\main-javac-3.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\main-javac-4.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\main-javac-4.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\main-javac.args",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "6d4e00f35bef409abfd58d68b1d488bf6f8529f33ce4478ccd1f54c38e785190",
+      "bytes": 23600
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\main-next-javac.args",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "f7578e36d6a54def2cdc7ca031aa21fd82447d4658547a4c537758d0b9084774",
+      "bytes": 23766
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\monitor-budget.ps1",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "ce0a57dcb95230afa652e56c51c7002e3937b07bb072bac649145f6ba00eafa2",
+      "bytes": 1408
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\monitor-full.ps1",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "e9338c247a4abf2d714b58010fb930d0f3968c261675c617a8158e1fbc0a7a54",
+      "bytes": 784
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\OrderAuditAdditionalTest.java",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "339565d06c78c505195b7c424aeb056a37aa69d00f4a051316abcf4ab306a954",
+      "bytes": 5937
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\pg-activity-0.txt",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "799639d02511b9d639a8cb996b9fda623854a5e98296009b26f5d2e093885187",
+      "bytes": 124
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\pg-activity-1.txt",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "708548adda9564002311aeaba41777eaabe2a66bec482f46bb054730373acc90",
+      "bytes": 781
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\pg-full-sql-1.jsonl",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "f8aaddc91c777a96cbfead4a6761433397ce51d223881cc8e1cc3b2d15274b94",
+      "bytes": 501469
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\pg-suite-thread-0.txt",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "23e2da5064a63a4b0a138c6f7677e51e45876fcba7ff1cb107ddaf78c027f16d",
+      "bytes": 63034
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\seed-bootstrap-javac.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\seed-bootstrap-javac.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\seed-final-javac.args",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "9fc934282ed33bee07e728e2f2d12218e4e643dc3518a1b519a76967644e3ae4",
+      "bytes": 22617
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\seed-javac-0.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "f1b2f662800122bed0ff255693df89c4487fbdcf453d3524a42d4ec20c3d9c04",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\seed-javac-0.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "8034f26f70c5a7575e51bc1319e5ddf07bad2257e7b2c557325406c83929be95",
+      "bytes": 405
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\seed-javac-1.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\seed-javac-1.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\seed-javac-crypto.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\seed-javac-crypto.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\seed-javac-final.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\seed-javac-final.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\seed-javac.args",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "ca9333d797a25bc22024c0e7e23f267d4bb5644806dc46588ec5867d15efd69b",
+      "bytes": 22911
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\seed-web.ps1",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "c4bf86876382ffa3587af45d5773eee5b5ea72eb434b43fe589693fa15787001",
+      "bytes": 1239
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\shared-draft-regression-0.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\shared-draft-regression-0.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "7e9cd1ff28246e11ef9a07fc4ae9005a274f3decf4ee54bea6bdcf076b71cdd7",
+      "bytes": 25028
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\source-manifest-702d33de5.json",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "dbd372eda131ecfee7f178e662c6da699e836f7b751ad896e7dde0acd4de316a",
+      "bytes": 10460
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\tests-final-javac.args",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "aca0169c5540bf41ddbefda6f91e817d90a80b591d9033676952d918db11bf9c",
+      "bytes": 22920
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\tests-javac-2.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\tests-javac-2.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\tests-javac-3.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\tests-javac-3.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\tests-javac-4.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\tests-javac-4.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\tests-javac-5.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\tests-javac-5.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\tests-javac.args",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "1a176858aee6214b0af7371642ad8877c9351921f89f7116ab074a8f0435e25e",
+      "bytes": 22773
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\tests-next-javac.args",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "42eddd345bcfe52103d615657278359d3059fdaec41a0d581822c758264399ca",
+      "bytes": 22935
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\WebReceiptOnlyAuditTest.java",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "72350aef44970bb1341d2c8f7edd7220f12c3d75fb1df599e421413f8b31d775",
+      "bytes": 31923
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\baseline\\additional-javac.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\baseline\\additional.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "f1b2f662800122bed0ff255693df89c4487fbdcf453d3524a42d4ec20c3d9c04",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\baseline\\additional.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "6305484eae457df187735fd5266ff15e920fd65fb2da81bfc169669b417fa0cd",
+      "bytes": 414050
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\baseline\\budget-javac.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\baseline\\dependencies.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\baseline\\dependencies.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "99e532a8be4848c4a460daa4d40a1b82086aa4139f8375b158f7744f70de6769",
+      "bytes": 824
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\baseline\\dependencies.txt",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "48bb6109a8e96a7ca9ff1196e2157561fe43c3f697b90cb8264008555e588a16",
+      "bytes": 22140
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\baseline\\flutter-lock-diff.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "1a4ed8fdde026a6ea14764ad0526095ee257bddee605423cdb12f8e26dc63754",
+      "bytes": 141
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\baseline\\flutter-pinned-pub.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "3def5e186a2ff07d74a661603a61087d0ea0c734d0f7635995d6106c9c082411",
+      "bytes": 592
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\baseline\\flutter-pinned.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "f1b2f662800122bed0ff255693df89c4487fbdcf453d3524a42d4ec20c3d9c04",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\baseline\\flutter-pinned.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "70f764745885c53e07a159757212e85285587e38fec11064f9357e482c6f5a3b",
+      "bytes": 22261
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\baseline\\flutter-pub.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "af4f4fbe6dfcd636a705ea37f075569417435bd8a13454a94e570888e1396691",
+      "bytes": 5594
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\baseline\\java-preservation.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\baseline\\java-preservation.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "9f4ecf5cc5550ad9de208549eb606dedd1080e5f410317855cbac2e76340b387",
+      "bytes": 2274
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\baseline\\order-unknown-copy.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "f1b2f662800122bed0ff255693df89c4487fbdcf453d3524a42d4ec20c3d9c04",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\baseline\\order-unknown-copy.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "fc5f8c7db38d372a835450f854ce7a205389686c7fe0896542bf65f0021c76e6",
+      "bytes": 3879
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\baseline\\original-suite.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "f1b2f662800122bed0ff255693df89c4487fbdcf453d3524a42d4ec20c3d9c04",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\baseline\\original-suite.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "c35ac725c73c8041e839f7cd643ee5b098f5ab8ef934accbfae454e36acea742",
+      "bytes": 834042
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\baseline\\parallel-preservation-vm.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\baseline\\parallel-preservation-vm.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "0b38d150f8a56b800d6c04298738710eae07749ad80af4dc0bd018fc8ee422d7",
+      "bytes": 20829
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\baseline\\receipt.json",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "a11963e1b76db95e60f5bbe79642c6b388d0fcdafc713647a13afa5c13474de5",
+      "bytes": 9057
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\baseline\\repeat-budget.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\baseline\\repeat-budget.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "cecbc2137393f2f7850b3147e743a0872931946f3dfe9a8c9a6508f4d6cfc5b8",
+      "bytes": 411245
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\baseline\\return-owner-first.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "f1b2f662800122bed0ff255693df89c4487fbdcf453d3524a42d4ec20c3d9c04",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\baseline\\return-owner-first.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "8b7f88ee6815ccc2fc49f0484781671de76daef7e0e2590b6286f454a59620bf",
+      "bytes": 4015
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\baseline\\return-owner-second.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "f1b2f662800122bed0ff255693df89c4487fbdcf453d3524a42d4ec20c3d9c04",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\baseline\\return-owner-second.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "f7510c10ef86f796f8cb64f27ee9cdc46ec6995b690e4c465203247a81435630",
+      "bytes": 4371
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\baseline\\return-owner-third.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "f1b2f662800122bed0ff255693df89c4487fbdcf453d3524a42d4ec20c3d9c04",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\baseline\\return-owner-third.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "203f78560dd5c17c27281e88254df6b55ac923c0194e5e855dc8ffc83c5e369b",
+      "bytes": 4662
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\baseline\\return-payload-authorized.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "f1b2f662800122bed0ff255693df89c4487fbdcf453d3524a42d4ec20c3d9c04",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\baseline\\return-payload-authorized.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "ff1ea80021ad16dd1fc280e0c0f9cde84c9d1cbba6b28564755287497af8ea81",
+      "bytes": 8592
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\baseline\\return-payload-captured.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\baseline\\return-payload-captured.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "ec8d7c22850b2af17e5ee681af7e573bd95c1f92b85f1e20b300661ae648fa42",
+      "bytes": 875
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\baseline\\return-payload-diagnostic.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "f1b2f662800122bed0ff255693df89c4487fbdcf453d3524a42d4ec20c3d9c04",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\baseline\\return-payload-diagnostic.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "12eadb24a0b125e8c214f1a7077c030413e040b5c3a114585f15fd015d754817",
+      "bytes": 8332
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\baseline\\return-payload-final.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "f1b2f662800122bed0ff255693df89c4487fbdcf453d3524a42d4ec20c3d9c04",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\baseline\\return-payload-final.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "e333c68119f8db0ae69aa2ba1004e40450278bae185e2b6b46b117a2bb59b09c",
+      "bytes": 3208
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\baseline\\return-payload-wire.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "f1b2f662800122bed0ff255693df89c4487fbdcf453d3524a42d4ec20c3d9c04",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\baseline\\return-payload-wire.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "637ea74c3c9e00f94c09941f1c47beb5f97af6879ab587e2162e5d93529bc354",
+      "bytes": 5524
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\baseline\\return-payload.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "f1b2f662800122bed0ff255693df89c4487fbdcf453d3524a42d4ec20c3d9c04",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\baseline\\return-payload.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "6a075291664d1c18e2484d1d6fd340733f301ef4e8956c224d99739ac9eeaee3",
+      "bytes": 4877
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\baseline\\return-precision.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "f1b2f662800122bed0ff255693df89c4487fbdcf453d3524a42d4ec20c3d9c04",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\baseline\\return-precision.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "98cecc73b2e7ce95f66acc36d5712ceff9bb7d72c1a2acf97f617728c2c3b449",
+      "bytes": 4888
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\baseline\\return-repeat.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "f1b2f662800122bed0ff255693df89c4487fbdcf453d3524a42d4ec20c3d9c04",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\baseline\\return-repeat.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "d3bb9ba04da490eb6af5cc36b1bc964d8622f53a31edbf1c25b3a0bedde3f931",
+      "bytes": 4991
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\baseline\\return-source-javac.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\baseline\\return-source.exit",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "f1b2f662800122bed0ff255693df89c4487fbdcf453d3524a42d4ec20c3d9c04",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\baseline\\return-source.log",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "6d0af610820b272cfb34fd36733bec21908c972114b4b8884825cf33f728bfeb",
+      "bytes": 423565
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\reports-pg-0\\com.uten.imp.businesschain.CompanyMaterialOrderQuantityEndToEndTest.txt",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "9c5310aee22e261b638e896f6fd2c9c95afb03f192f582f0b4357e44a8ac5454",
+      "bytes": 388
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\reports-pg-0\\com.uten.imp.businesschain.OrderPreviewRemediationTest.txt",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "22e4c7c9bc906599424429fe0714016ff48f6b2c974be4d846eaa4e54465bb98",
+      "bytes": 1231
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\reports-pg-0\\com.uten.imp.businesschain.WebReceiptOnlyRemediationTest.txt",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "22f5c57a972370a41c10bce83faf73e6df54c2c114862ab24da405a0723cc78c",
+      "bytes": 366
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\reports-pg-0\\com.uten.imp.common.finance.ProcurementReturnHeaderAuthorityTest.txt",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "2530fb6d74d46d2e58c43447d0883bd985d6322e4201d915aa68f26ccb419e3a",
+      "bytes": 382
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\reports-pg-0\\com.uten.imp.features.production.analysis.AggregateMaterialOrderPreviewServiceTest.txt",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "ecd780bb53dfc08032335fc4ec05dc829509c96648b196057baf94ead6a53476",
+      "bytes": 419
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\reports-pg-0\\com.uten.imp.features.production.analysis.MaterialOrderQuantityCompatibilityTest.txt",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "d4acc1e5f69b03177e04e54dce0c4b551ce3d14b2d23d12b0cd87c4d29b8baf2",
+      "bytes": 414
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\reports-pg-0\\com.uten.imp.features.purchase.ret.PurchaseReturnAmountAuthorityTest.txt",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "f124123aba6f2563af267a0838482d855266c6e9dfe75091c5d65778ab818e34",
+      "bytes": 390
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\reports-pg-0\\com.uten.imp.features.subcontract.ret.SubcontractReturnAmountAuthorityTest.txt",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "5c1636160fa471a3d864fc2efe4044f0d927843af4d6f340d9332670bc463461",
+      "bytes": 402
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\reports-pg-0\\TEST-com.uten.imp.businesschain.CompanyMaterialOrderQuantityEndToEndTest.xml",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "ec8f5f8758e81b1c2ebad0754a2a9f768cb370ddb606c8558785e628cee06380",
+      "bytes": 462692
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\reports-pg-0\\TEST-com.uten.imp.businesschain.OrderPreviewRemediationTest.xml",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "5170fea6bb8cebc8059a1a9039f1184446c672c24c93acd679b06e67a9847a28",
+      "bytes": 63655
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\reports-pg-0\\TEST-com.uten.imp.businesschain.WebReceiptOnlyRemediationTest.xml",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "1d09763e04302bb9691947461e771e31579298bedde6835f1e12d6f1210f2f83",
+      "bytes": 459868
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\reports-pg-0\\TEST-com.uten.imp.common.finance.ProcurementReturnHeaderAuthorityTest.xml",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "a2ac3ceb6752e70530a475323d3b48fc297e46ba135107e61220777fd9f3ff20",
+      "bytes": 55227
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\reports-pg-0\\TEST-com.uten.imp.features.production.analysis.AggregateMaterialOrderPreviewServiceTest.xml",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "0b21c5e13661ebdc9a1373a59365cb3e34ace607c7f17ed71bc5a44b91c856b8",
+      "bytes": 62554
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\reports-pg-0\\TEST-com.uten.imp.features.production.analysis.MaterialOrderQuantityCompatibilityTest.xml",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "2beba46884d9bf59afba252cfd489a15d3fd3416a2870487ca5179cd941191b6",
+      "bytes": 54966
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\reports-pg-0\\TEST-com.uten.imp.features.purchase.ret.PurchaseReturnAmountAuthorityTest.xml",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "c1ec5f94936402eb106b70b6fe7a4ac8d15093a26eba17e1cb0fc7296e78ae73",
+      "bytes": 55191
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\reports-pg-0\\TEST-com.uten.imp.features.subcontract.ret.SubcontractReturnAmountAuthorityTest.xml",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "573971efe0e03b73a53538e9fca407dee9433060a59ba4f937e5321d410d1a6d",
+      "bytes": 55056
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\reports-http-422-attempt1\\com.uten.imp.businesschain.AggregateMaterialOrderEndToEndTest.txt",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "b43facc101634dfa36437d05c13bb12c497d76cc5045a21e7f9f7e04d85d1143",
+      "bytes": 376
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\reports-http-422-attempt1\\com.uten.imp.businesschain.CompanyMaterialOrderQuantityEndToEndTest.txt",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "f5b368a8e51792d75ed7bfa893c273a5dd93cdbfad068c357378bbcc9854d555",
+      "bytes": 388
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\reports-http-422-attempt1\\com.uten.imp.businesschain.OrderPreviewRemediationTest.txt",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "d6c389222799d0086cd174d2a6a3540d276cc4c42007f93544d52ac03b5ac7f4",
+      "bytes": 1231
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\reports-http-422-attempt1\\com.uten.imp.businesschain.PurchaseReturnActualCostGlEndToEndTest.txt",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "1521ccb69e9d9f013c63212a64537117de3a6ddabe495e0a0a8a17911079e287",
+      "bytes": 385
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\reports-http-422-attempt1\\com.uten.imp.common.finance.ProcurementReturnHeaderAuthorityTest.txt",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "a6d97bccad809da42c82cef8ea426092a95a293ec02053f8641727d64068a809",
+      "bytes": 382
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\reports-http-422-attempt1\\com.uten.imp.features.production.analysis.AggregateMaterialOrderPreviewServiceTest.txt",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "006d7ee5fa1dd02d2b74cf01c7a1a30bedd8b5e3ac77af80f622a0d532140a17",
+      "bytes": 419
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\reports-http-422-attempt1\\com.uten.imp.features.production.analysis.MaterialOrderQuantityCompatibilityTest.txt",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "a9fef9c5b9bc711a8d47a6611c4abf5f117e3887acb76db9cc822d159a18c6e7",
+      "bytes": 414
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\reports-http-422-attempt1\\com.uten.imp.features.purchase.ret.PurchaseReturnAmountAuthorityTest.txt",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "b3111182c2367ded82427a818ea4dc34f1f55952fa07b7d7643d1c4561e3e87f",
+      "bytes": 390
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\reports-http-422-attempt1\\com.uten.imp.features.subcontract.ret.SubcontractReturnAmountAuthorityTest.txt",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "c25656aaa4fb9cd4621f344e212dfbd85663981da6476f822d9440833b2a6e5b",
+      "bytes": 402
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\reports-http-422-attempt1\\TEST-com.uten.imp.businesschain.AggregateMaterialOrderEndToEndTest.xml",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "2cef8e7babd9dbb8dee740a3403a6ae0ffd3e6238457fda8823843508a7f9712",
+      "bytes": 473006
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\reports-http-422-attempt1\\TEST-com.uten.imp.businesschain.CompanyMaterialOrderQuantityEndToEndTest.xml",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "e1531a9e1c81583368a5f718033a78488463f53e0ffa3016956f08d22a4edf67",
+      "bytes": 59767
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\reports-http-422-attempt1\\TEST-com.uten.imp.businesschain.OrderPreviewRemediationTest.xml",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "9b59b649d5167d42686ffc4d9fc4a594c59886cdf1fdde980cbd4c630bdce83f",
+      "bytes": 464429
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\reports-http-422-attempt1\\TEST-com.uten.imp.businesschain.PurchaseReturnActualCostGlEndToEndTest.xml",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "f25b3edada518c8823c1047d173bbbd1aa4aee4a722edfcd8685ae09daa29165",
+      "bytes": 461534
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\reports-http-422-attempt1\\TEST-com.uten.imp.common.finance.ProcurementReturnHeaderAuthorityTest.xml",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "9179488c067a439d8319766962d06adebffd0a8fc84fe4a8b1cb98705ddeb253",
+      "bytes": 55196
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\reports-http-422-attempt1\\TEST-com.uten.imp.features.production.analysis.AggregateMaterialOrderPreviewServiceTest.xml",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "da1af008f50a565cb4f64f36be9e8310589243a24855093494d83473295510f2",
+      "bytes": 62521
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\reports-http-422-attempt1\\TEST-com.uten.imp.features.production.analysis.MaterialOrderQuantityCompatibilityTest.xml",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "d1d7d0d72c36583f92c00203404bf7c21b9493f09751f21a47ccc48e520742fe",
+      "bytes": 54934
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\reports-http-422-attempt1\\TEST-com.uten.imp.features.purchase.ret.PurchaseReturnAmountAuthorityTest.xml",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "fffbe5a3378b7a03b155a063ade2ef6dc114a6424e6f572dd488578b40e1eb99",
+      "bytes": 55160
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\reports-http-422-attempt1\\TEST-com.uten.imp.features.subcontract.ret.SubcontractReturnAmountAuthorityTest.xml",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "cedee709afbef182b6de06802133c356374ca82f9a8f89dd69307ffb97745fd7",
+      "bytes": 55025
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\target-http-422-close\\surefire-reports\\com.uten.imp.businesschain.OrderPreviewRemediationTest.txt",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "d1ffecb9cfc20e31670a08ff87b0f37221c03a0b03f4ba4c8fb0278bd753ffb2",
+      "bytes": 362
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\target-http-422-close\\surefire-reports\\TEST-com.uten.imp.businesschain.OrderPreviewRemediationTest.xml",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "3fcd3c41883b64ab8a6a6b60dac3fd7eb107652ee40f78dd44b75f9645253a60",
+      "bytes": 463671
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\target-final\\surefire-reports\\com.uten.imp.businesschain.AggregateMaterialOrderEndToEndTest.txt",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "b43facc101634dfa36437d05c13bb12c497d76cc5045a21e7f9f7e04d85d1143",
+      "bytes": 376
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\target-final\\surefire-reports\\com.uten.imp.businesschain.CompanyMaterialOrderQuantityEndToEndTest.txt",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "f5b368a8e51792d75ed7bfa893c273a5dd93cdbfad068c357378bbcc9854d555",
+      "bytes": 388
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\target-final\\surefire-reports\\com.uten.imp.businesschain.OrderPreviewRemediationTest.txt",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "d6c389222799d0086cd174d2a6a3540d276cc4c42007f93544d52ac03b5ac7f4",
+      "bytes": 1231
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\target-final\\surefire-reports\\com.uten.imp.businesschain.PurchaseReturnActualCostGlEndToEndTest.txt",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "1521ccb69e9d9f013c63212a64537117de3a6ddabe495e0a0a8a17911079e287",
+      "bytes": 385
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\target-final\\surefire-reports\\com.uten.imp.common.finance.ProcurementReturnHeaderAuthorityTest.txt",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "a6d97bccad809da42c82cef8ea426092a95a293ec02053f8641727d64068a809",
+      "bytes": 382
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\target-final\\surefire-reports\\com.uten.imp.features.production.analysis.AggregateMaterialOrderPreviewServiceTest.txt",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "006d7ee5fa1dd02d2b74cf01c7a1a30bedd8b5e3ac77af80f622a0d532140a17",
+      "bytes": 419
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\target-final\\surefire-reports\\com.uten.imp.features.production.analysis.MaterialOrderQuantityCompatibilityTest.txt",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "a9fef9c5b9bc711a8d47a6611c4abf5f117e3887acb76db9cc822d159a18c6e7",
+      "bytes": 414
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\target-final\\surefire-reports\\com.uten.imp.features.purchase.ret.PurchaseReturnAmountAuthorityTest.txt",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "b3111182c2367ded82427a818ea4dc34f1f55952fa07b7d7643d1c4561e3e87f",
+      "bytes": 390
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\target-final\\surefire-reports\\com.uten.imp.features.subcontract.ret.SubcontractReturnAmountAuthorityTest.txt",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "c25656aaa4fb9cd4621f344e212dfbd85663981da6476f822d9440833b2a6e5b",
+      "bytes": 402
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\target-final\\surefire-reports\\TEST-com.uten.imp.businesschain.AggregateMaterialOrderEndToEndTest.xml",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "2cef8e7babd9dbb8dee740a3403a6ae0ffd3e6238457fda8823843508a7f9712",
+      "bytes": 473006
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\target-final\\surefire-reports\\TEST-com.uten.imp.businesschain.CompanyMaterialOrderQuantityEndToEndTest.xml",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "e1531a9e1c81583368a5f718033a78488463f53e0ffa3016956f08d22a4edf67",
+      "bytes": 59767
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\target-final\\surefire-reports\\TEST-com.uten.imp.businesschain.OrderPreviewRemediationTest.xml",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "9b59b649d5167d42686ffc4d9fc4a594c59886cdf1fdde980cbd4c630bdce83f",
+      "bytes": 464429
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\target-final\\surefire-reports\\TEST-com.uten.imp.businesschain.PurchaseReturnActualCostGlEndToEndTest.xml",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "f25b3edada518c8823c1047d173bbbd1aa4aee4a722edfcd8685ae09daa29165",
+      "bytes": 461534
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\target-final\\surefire-reports\\TEST-com.uten.imp.common.finance.ProcurementReturnHeaderAuthorityTest.xml",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "9179488c067a439d8319766962d06adebffd0a8fc84fe4a8b1cb98705ddeb253",
+      "bytes": 55196
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\target-final\\surefire-reports\\TEST-com.uten.imp.features.production.analysis.AggregateMaterialOrderPreviewServiceTest.xml",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "da1af008f50a565cb4f64f36be9e8310589243a24855093494d83473295510f2",
+      "bytes": 62521
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\target-final\\surefire-reports\\TEST-com.uten.imp.features.production.analysis.MaterialOrderQuantityCompatibilityTest.xml",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "d1d7d0d72c36583f92c00203404bf7c21b9493f09751f21a47ccc48e520742fe",
+      "bytes": 54934
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\target-final\\surefire-reports\\TEST-com.uten.imp.features.purchase.ret.PurchaseReturnAmountAuthorityTest.xml",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "fffbe5a3378b7a03b155a063ade2ef6dc114a6424e6f572dd488578b40e1eb99",
+      "bytes": 55160
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\target-final\\surefire-reports\\TEST-com.uten.imp.features.subcontract.ret.SubcontractReturnAmountAuthorityTest.xml",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "cedee709afbef182b6de06802133c356374ca82f9a8f89dd69307ffb97745fd7",
+      "bytes": 55025
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\target-next\\surefire-reports\\com.uten.imp.businesschain.AggregateMaterialOrderEndToEndTest.txt",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "94902cfa4aff8c8666ef1f4881520926fa0d68e03649762412bb22ac6fb15dee",
+      "bytes": 1234
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\target-next\\surefire-reports\\TEST-com.uten.imp.businesschain.AggregateMaterialOrderEndToEndTest.xml",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "a575766a06f26f00ca0cab82f3af70e4558220f86c343798a93ab76118a7c0b2",
+      "bytes": 462650
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\legacy-lib-baseline-backup\\0.bin",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "40558b08787b41e78b73a93def4ac8da1f04cd1c8c003a80f112f16d6d91a462",
+      "bytes": 30686
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\legacy-lib-baseline-backup\\1.bin",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "5dde6d57598bd8c92d3f39dbea743063a4dfc12f8dc0522296d8cd48699a77c7",
+      "bytes": 107729
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\legacy-lib-baseline-backup\\2.bin",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "7ca7dc8958b7c59d8c70342a5e6b31709dbb40ead586d0cded34b8c8cea38c4e",
+      "bytes": 418430
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\legacy-lib-baseline-backup\\3.bin",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "4ba8ae1c120c7d8ce1e6e72e2846f23568a9f2311258260b1af166050f1ba085",
+      "bytes": 12075
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\legacy-lib-baseline-backup\\4.bin",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "ed2012d3a217407bc96bec1d635b3eb89b074d40e7a75d7b68b8a76ff4c9bc30",
+      "bytes": 24042
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\legacy-lib-baseline-backup\\5.bin",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "e11d132ce2166ad6bcf3c7cf55de08361eb4fcdf3faf7847bf477f7f1e6f7437",
+      "bytes": 89613
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\legacy-lib-baseline-backup\\6.bin",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "a82d26a19c49ba11ba8fcf9e19275000d2bc426c7f93ffe098c6eb175b46a5a3",
+      "bytes": 48397
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\legacy-lib-baseline-backup\\7.bin",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "90ce63bfaa00633eb73bf483f2eb2a681c88eaab37856cc997ab60662c0d1594",
+      "bytes": 147044
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\legacy-lib-baseline-backup\\8.bin",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "c9f72cbb66f3895d1cb7c443a466198e53bd631cd18715d1f72299b582c0cf13",
+      "bytes": 92567
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\legacy-lib-baseline-backup\\9.bin",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "c370417c098e72e91960225c9f9f0a184d40846f0914c29ed3a5774b103af9f6",
+      "bytes": 16588
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\legacy-lib-baseline-backup\\manifest.json",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "0febd0cdb0697f3e2d18e26234058e0eb7b95a39542fcd4871f634dc498d1dc8",
+      "bytes": 3369
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\adapter-baseline-backup\\0.bin",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "08757ca637e92ee051446496ddc49f4a253b7b199eb678a79d1be2ff758b9817",
+      "bytes": 18244
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\adapter-baseline-backup\\1.bin",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "551319c604cd17c9ad50de30d6921d456cd3d3114c69a3a56440509b9d5dbe51",
+      "bytes": 15412
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-b-20261110\\remediation\\b\\adapter-baseline-backup\\manifest.json",
+      "byteStandard": "raw-file-bytes",
+      "sha256": "cb081c86d73dad32901d09515fd62e10ae8e6454dc605fbd353e1c8a4ce8b991",
+      "bytes": 660
+    }
+  ],
+  "retentionNote": "Original feedback-audit/audit never modified. candidate-pg-1 full 113 count comes from its immutable log. The shared target-final OrderPreview XML was replaced by a later targeted old-bytecode failure; original full log remains. Final corrected HTTP XML is independently retained in target-http-422-close. Do not infer per-run counts by summing current target directories."
+}

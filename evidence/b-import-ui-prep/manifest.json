@@ -1,0 +1,223 @@
+{
+  "status": "prep; original C audit/files unchanged; final actual Web remains Root",
+  "sourceBase": "31b25b93841d29b026ac02dce89eb3acb852c892",
+  "capturedAtUtc": "2026-11-11T13:02:33.842767+00:00",
+  "secretValueMatches": 0,
+  "files": [
+    {
+      "file": ".gitattributes",
+      "bytes": 9,
+      "sha256": "48747480eddba024928d03be9bf83dc579e5515768647507a767e8187a85c9ab"
+    },
+    {
+      "file": ".gitignore",
+      "bytes": 72,
+      "sha256": "78535cc4879f863ae61b9edf352d4f5aae6d30d0332c66d5b3f6ada26ee9f90c"
+    },
+    {
+      "file": "accounting-pair/legal-balances-202611.xls",
+      "bytes": 4608,
+      "sha256": "24d570462b2924fc8ed934bd81d88edfb349fa2aefa2e6e4494904c5c643ab2b"
+    },
+    {
+      "file": "accounting-pair/legal-chart-202611.xlsx",
+      "bytes": 3454,
+      "sha256": "93e2bb23403c01068a5fca88f6b94bbc80e229b510b07ae71d34be340f4a766d"
+    },
+    {
+      "file": "accounting-pair/legal-vouchers-202611.xls",
+      "bytes": 6656,
+      "sha256": "f7be309cd8162e52967a8711e2e4d83ae90a552cd092bbf97f72c8bed601dfcd"
+    },
+    {
+      "file": "accounting-pair/local-format-check.json",
+      "bytes": 377,
+      "sha256": "3dbbdeb02db68cb09d1593173ef0154eef3e17fe4f0c02502825993cf23f5bbe"
+    },
+    {
+      "file": "accounting-pair-202610/legal-balances-202610.xls",
+      "bytes": 4608,
+      "sha256": "1a2184d4f88fb27c66dba14b95b06ba37568418ab16236195697bbf9f355c176"
+    },
+    {
+      "file": "accounting-pair-202610/legal-chart-202610.xlsx",
+      "bytes": 3461,
+      "sha256": "ede074d3b536d5b2240f0b6b8a2dc45fd7739261d02810d68756bc1587d2b668"
+    },
+    {
+      "file": "accounting-pair-202610/legal-vouchers-202610.xls",
+      "bytes": 6656,
+      "sha256": "25e68f1124b30c7d7711cc4828692180552313a8530b90de9711bfa958d0e520"
+    },
+    {
+      "file": "accounting-pair-202610/local-format-check.json",
+      "bytes": 377,
+      "sha256": "3ab9c4c682e7107a8bf12ce9f1a8faffc316a50b466f00cf11258de9339b9770"
+    },
+    {
+      "file": "accounting-pair-file-hashes.json",
+      "bytes": 2140,
+      "sha256": "9fde25c16eecf04999ec96c9cf3bdff1ab4192abddbe53becd41794651b59ccc"
+    },
+    {
+      "file": "capture_imports.py",
+      "bytes": 2753,
+      "sha256": "8244e92b6d295af59a59c48e0bef0968018ae01592fa5d42d34651ed62410cfd"
+    },
+    {
+      "file": "complete_new_master_profile.py",
+      "bytes": 3074,
+      "sha256": "175a15ea89e287452b9c6e86e33accdbbe5d62b78393a218a4a924d21fba42ec"
+    },
+    {
+      "file": "cutover-source-evidence.json",
+      "bytes": 10805,
+      "sha256": "e92bf44fc8e17da1c619858be8123db5d8dd4bd5b6829b4dea9ad0fce03b0305"
+    },
+    {
+      "file": "FeedbackBImportUiActorsPrepTest.java",
+      "bytes": 7139,
+      "sha256": "7422f32f2f2be7d1e01d78daeb43d942cd25def33621ad0138225e078979ed5f"
+    },
+    {
+      "file": "finalize.py",
+      "bytes": 2845,
+      "sha256": "0ccfdee68d21dff52f7d160050b7730297d568b2da80cf004358c33e9bde3a71"
+    },
+    {
+      "file": "import-actors-final.json",
+      "bytes": 2527,
+      "sha256": "7b311c25f2aa5d7c89e3966c29a15f1e9b136c834ff16a25ebb035bcdf22b7db"
+    },
+    {
+      "file": "input-files-absolute.json",
+      "bytes": 7761,
+      "sha256": "5ce080db23514d594b2d588c2c931c749956e9cff618d2ac4a49b82cec3cd177"
+    },
+    {
+      "file": "only-new-fixture-proof.json",
+      "bytes": 307,
+      "sha256": "f16a0e730c97f3e9109de0a6e7d69bf79c8a8db785cd5d07f0d29c68c6af2397"
+    },
+    {
+      "file": "pair-javac.exit",
+      "bytes": 3,
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354"
+    },
+    {
+      "file": "pair-javac.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "pair-oct-javac.exit",
+      "bytes": 3,
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354"
+    },
+    {
+      "file": "pair-oct-javac.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "pair-oct-prepare.exit",
+      "bytes": 3,
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354"
+    },
+    {
+      "file": "pair-oct-prepare.log",
+      "bytes": 603,
+      "sha256": "ce8ccc775feb116faf7d1d9f1c23df57a9a7bbc8f32044710d034df6b7974f3c"
+    },
+    {
+      "file": "pair-prepare.exit",
+      "bytes": 3,
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354"
+    },
+    {
+      "file": "pair-prepare.log",
+      "bytes": 603,
+      "sha256": "060e783cb0168355adf1a926941fdcaa03a94020e478a6c4f32c48fcd35c7bf2"
+    },
+    {
+      "file": "PrepareRootWebAccountingPair.java",
+      "bytes": 4867,
+      "sha256": "e88abf8910eb8b9a898b14fb3d648345a14a364f1bad21005bef3260b2b45eec"
+    },
+    {
+      "file": "read_preparation.py",
+      "bytes": 4429,
+      "sha256": "510ca6a238dc0ac611cf73e3e5c10a2710b3103f158a62aaf897fbfa8a9bfe10"
+    },
+    {
+      "file": "root-actors-run1/build-provenance.json",
+      "bytes": 729,
+      "sha256": "3bf916d3baff8bbf89a37f34e7f550c20a39dd7c75fe3354d5b9e796d0854554"
+    },
+    {
+      "file": "root-actors-run1/com.uten.imp.businesschain.FeedbackBImportUiActorsPrepTest.txt",
+      "bytes": 370,
+      "sha256": "d03681d74157ae8a904cefbc623181eb222776a85492cb4683a7e8de454fe604"
+    },
+    {
+      "file": "root-actors-run1/compile.exit",
+      "bytes": 1,
+      "sha256": "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9"
+    },
+    {
+      "file": "root-actors-run1/compile.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "root-actors-run1/exit.txt",
+      "bytes": 1,
+      "sha256": "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9"
+    },
+    {
+      "file": "root-actors-run1/import-actors-seed.json",
+      "bytes": 1873,
+      "sha256": "c0fbe16b87e97d259df2ccfcd6dcd995f522749f0a903af6826b31cb59e61858"
+    },
+    {
+      "file": "root-actors-run1/import-actors-seed.log",
+      "bytes": 6444,
+      "sha256": "bf0207c1037d7037f27851222e31a4f8350169b86ed11e62f837150cd52e4316"
+    },
+    {
+      "file": "root-actors-run1/TEST-com.uten.imp.businesschain.FeedbackBImportUiActorsPrepTest.xml",
+      "bytes": 59928,
+      "sha256": "d21a9843d4995dabba953c48c7b2bff6fd9d2a0f7363ea3ac6fb3060c27b47e2"
+    },
+    {
+      "file": "root-import-baseline-with-opening.json",
+      "bytes": 1561,
+      "sha256": "e57742ebd6f936906242c99b7100c3d29ece312aa5843a71c5aac8e4d5611720"
+    },
+    {
+      "file": "root-import-baseline.json",
+      "bytes": 1317,
+      "sha256": "70282eac8f5a54f96a0df28399aea4476521ae7b3dfeae918c5ed3f4efb03871"
+    },
+    {
+      "file": "root-readonly-1.json",
+      "bytes": 67897,
+      "sha256": "301bae9f49154c6aeb3771439cc9a3eacf2d12af22bd7bb285f550dacf080996"
+    },
+    {
+      "file": "root-readonly-after-actors.json",
+      "bytes": 69573,
+      "sha256": "da9defc8f69c03def3e7f8034a42c8bb4cd073c6b0af81ffd85c88cb84ee1a66"
+    },
+    {
+      "file": "run_import_actors.py",
+      "bytes": 4587,
+      "sha256": "2593d0d667fc7ec18372cdb55a05a3fae456293c68c187ab175ded0e2579f2a9"
+    },
+    {
+      "file": "UI-入口矩阵.md",
+      "bytes": 17944,
+      "sha256": "42f419ff6e47c908fa839b6949f230199c01744299d1b092a8db595b683a92fd"
+    }
+  ]
+}

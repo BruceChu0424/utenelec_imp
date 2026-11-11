@@ -1,0 +1,47 @@
+{
+  "status": "prep/read-only; SQL is not browser interaction evidence",
+  "capturedAtUtc": "2026-11-11T12:41:57.650296+00:00",
+  "fingerprints": {
+    "goods": {
+      "count": 60,
+      "content_md5": "64641aa660c365243f9aff8ebfb39efd"
+    },
+    "goods_bom_items": {
+      "count": 47,
+      "content_md5": "7ba091c0d505c22edbe1100197fc19c6"
+    },
+    "goods_cost_import_mappings": {
+      "count": 0,
+      "content_md5": "d751713988987e9331980363e24189ce"
+    },
+    "finance_chart_codes": {
+      "count": 0,
+      "content_md5": "d751713988987e9331980363e24189ce"
+    },
+    "finance_operating_report_notes": {
+      "count": 0,
+      "content_md5": "d751713988987e9331980363e24189ce"
+    },
+    "finance_auxiliary_items": {
+      "count": 0,
+      "content_md5": "d751713988987e9331980363e24189ce"
+    },
+    "gl_entries": {
+      "count": 0,
+      "content_md5": "d751713988987e9331980363e24189ce"
+    },
+    "system_posting_style_roles": {
+      "count": 16,
+      "content_md5": "03baee0bd6a91c24437f68f1c7a32f8b"
+    }
+  },
+  "receipts": {
+    "goods_import_batches": [],
+    "goods_cost_imports": [],
+    "finance_chart_imports": [],
+    "finance_expense_note_imports": [],
+    "finance_statement_source_reviews": [],
+    "finance_accounting_import_batches": [],
+    "finance_template_sources": []
+  }
+}

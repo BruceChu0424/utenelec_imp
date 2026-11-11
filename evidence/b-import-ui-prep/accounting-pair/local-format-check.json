@@ -1,0 +1,12 @@
+{
+  "voucherKey" : "BUI01|2026|11|记|BUI0001",
+  "entryCount" : 2,
+  "credit" : "100",
+  "status" : "prep: LOCAL FILE CONSTRUCTION/PARSER CHECK ONLY; no Root service/API preview, submit, approve or DB access",
+  "columnContractVersion" : 3,
+  "company" : "B网页合成验收",
+  "voucherCount" : 1,
+  "period" : "2026-11",
+  "debit" : "100",
+  "ledger" : "BUI01"
+}

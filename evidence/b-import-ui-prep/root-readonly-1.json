@@ -1,0 +1,2364 @@
+{
+  "status": "prep: read only, no import or account changes",
+  "capturedAtUtc": "2026-11-11T12:30:55.899824+00:00",
+  "ordinaryActors": [
+    {
+      "id": "0b887a85-239a-4118-8d3f-246b166a7189",
+      "login_account": "USR-b-finance-ui-a635aa02",
+      "employee_id": "73b11ea4-25fd-4fd5-ac0c-132c04514de5",
+      "is_super_admin": false,
+      "must_change_password": false,
+      "status": "active",
+      "grants": [
+        "finance:view:all",
+        "finance_post:execute",
+        "finance_report:view",
+        "payment_style:create",
+        "payment_style:edit",
+        "payment_style:view"
+      ]
+    },
+    {
+      "id": "007c35de-e02b-4564-8c56-a7137ec88ea8",
+      "login_account": "USR-b-web-definite-1f590f9e-307c-40f7-920d-b68113055e49",
+      "employee_id": "38485566-675e-4bdc-99d0-04208bed898a",
+      "is_super_admin": false,
+      "must_change_password": false,
+      "status": "active",
+      "grants": [
+        "goods:view",
+        "material_category:view",
+        "production_material_analysis:notify",
+        "production_material_analysis:over_supply",
+        "production_material_analysis:route",
+        "production_material_analysis:view",
+        "purchase_request:view",
+        "warehouse:view"
+      ]
+    },
+    {
+      "id": "7da376ef-210d-4072-bcdf-8679bc030d12",
+      "login_account": "USR-b-web-unknown-ab1da6cf-f612-4a8e-87d0-1632504a3363",
+      "employee_id": "8f118934-37d0-4a99-a9c1-bade4d8fe12c",
+      "is_super_admin": false,
+      "must_change_password": false,
+      "status": "active",
+      "grants": [
+        "goods:view",
+        "material_category:view",
+        "production_material_analysis:notify",
+        "production_material_analysis:over_supply",
+        "production_material_analysis:route",
+        "production_material_analysis:view",
+        "purchase_request:view",
+        "warehouse:view"
+      ]
+    },
+    {
+      "id": "fb542f46-fbff-4f03-9000-d471db935e05",
+      "login_account": "USR-feedback-b-approver-64a37b8f",
+      "employee_id": "55994084-3e4e-4bd2-9562-65e80ae65e0e",
+      "is_super_admin": false,
+      "must_change_password": false,
+      "status": "active",
+      "grants": [
+        "color:view",
+        "currency:view",
+        "goods:view",
+        "material_category:view",
+        "purchase:view:all",
+        "purchase_receipt:price:view",
+        "purchase_receipt:view",
+        "purchase_return:approve",
+        "purchase_return:price:view",
+        "purchase_return:view",
+        "settlement_method:view",
+        "subcontract:view:all",
+        "subcontract_receipt:price:view",
+        "subcontract_receipt:view",
+        "subcontract_return:approve",
+        "subcontract_return:price:view",
+        "subcontract_return:view",
+        "supplier:view",
+        "unit:view",
+        "warehouse:view"
+      ]
+    },
+    {
+      "id": "fa040ddd-d3a7-4ebb-bee2-c772090eb828",
+      "login_account": "USR-feedback-b-maker-64a37b8f",
+      "employee_id": "1c535dd4-b209-4519-84d7-77db7cf418ae",
+      "is_super_admin": false,
+      "must_change_password": false,
+      "status": "active",
+      "grants": [
+        "color:view",
+        "currency:view",
+        "finance:view:all",
+        "finance_post:execute",
+        "finance_report:view",
+        "goods:cost:edit",
+        "goods:cost:view",
+        "goods:import",
+        "goods:view",
+        "material_category:view",
+        "payment_style:edit",
+        "purchase:view:all",
+        "purchase_receipt:price:view",
+        "purchase_receipt:view",
+        "purchase_return:create",
+        "purchase_return:edit",
+        "purchase_return:price:view",
+        "purchase_return:view",
+        "settlement_method:view",
+        "subcontract:view:all",
+        "subcontract_receipt:price:view",
+        "subcontract_receipt:view",
+        "subcontract_return:create",
+        "subcontract_return:edit",
+        "subcontract_return:price:view",
+        "subcontract_return:view",
+        "supplier:view",
+        "unit:view",
+        "warehouse:view"
+      ]
+    },
+    {
+      "id": "6293936e-c0df-44b7-8472-0bd8b05c71b1",
+      "login_account": "USR-feedback-b-planner-64a37b8f",
+      "employee_id": "cd5d87ac-395c-4e07-b6b2-e03868f0bbd8",
+      "is_super_admin": false,
+      "must_change_password": false,
+      "status": "active",
+      "grants": [
+        "goods:view",
+        "material_category:view",
+        "production_material_analysis:notify",
+        "production_material_analysis:over_supply",
+        "production_material_analysis:view",
+        "purchase_request:view",
+        "warehouse:view"
+      ]
+    },
+    {
+      "id": "da07b2a3-a166-45ae-bcd4-227c1c92a07f",
+      "login_account": "USR-gift-finance-afe509f4-43f1-4636-a819-f4ab48dd2618",
+      "employee_id": "cb368e61-5cab-4215-b284-298974eac390",
+      "is_super_admin": false,
+      "must_change_password": false,
+      "status": "active",
+      "grants": [
+        "finance_order_approval:approve",
+        "finance_order_approval:view"
+      ]
+    },
+    {
+      "id": "afa9e58e-e127-46e5-a427-fe4330433fb8",
+      "login_account": "USR-gift-keeper-f5757297-f8bc-4034-a69b-3f9b56b31d35",
+      "employee_id": "f6458329-d1d1-40c2-b495-993d8a5d7509",
+      "is_super_admin": false,
+      "must_change_password": false,
+      "status": "active",
+      "grants": [
+        "warehouse_iqc_stock_in:confirm",
+        "warehouse_iqc_stock_in:view"
+      ]
+    },
+    {
+      "id": "ce1a58b9-1c84-445c-84b0-b9f7c48bbeb0",
+      "login_account": "USR-sc-return-keeper-d1a30fc7-896a-436a-aecc-655b43eb4534",
+      "employee_id": "73f4011f-ea63-4d8f-93ce-5d6b348dadf3",
+      "is_super_admin": false,
+      "must_change_password": false,
+      "status": "active",
+      "grants": [
+        "warehouse_iqc_stock_in:confirm",
+        "warehouse_iqc_stock_in:view"
+      ]
+    },
+    {
+      "id": "07db474d-c636-41a9-b013-0ea7be81abbb",
+      "login_account": "USR-sc-return-reviewer-ee48dc7b-d169-4b21-8682-d5cbea81bf6f",
+      "employee_id": "43d045c1-e643-422a-acb6-68e5456a91de",
+      "is_super_admin": false,
+      "must_change_password": false,
+      "status": "active",
+      "grants": [
+        "finance_order_approval:approve",
+        "finance_order_approval:view"
+      ]
+    },
+    {
+      "id": "6edd491b-ea0a-4126-8a3d-7affb945045a",
+      "login_account": "USR-web-approve-cd00f67",
+      "employee_id": "8659fa36-5e2c-4489-8506-6b89aa3a150c",
+      "is_super_admin": false,
+      "must_change_password": false,
+      "status": "active",
+      "grants": [
+        "production_daily_report:approve",
+        "production_daily_report:view",
+        "production_execution:view",
+        "production_report:export"
+      ]
+    },
+    {
+      "id": "a42454f0-e8ae-4575-b850-68069dc64eff",
+      "login_account": "USR-web-report-cd00f67",
+      "employee_id": "bf256b7d-bc66-47bd-aa03-cf4c8d51d2d8",
+      "is_super_admin": false,
+      "must_change_password": false,
+      "status": "active",
+      "grants": [
+        "color:view",
+        "goods:view",
+        "production_daily_report:create",
+        "production_daily_report:delete",
+        "production_daily_report:edit",
+        "production_daily_report:view",
+        "production_execution:start",
+        "production_execution:view",
+        "production_report:export",
+        "unit:view",
+        "warehouse:view"
+      ]
+    }
+  ],
+  "roleMappings": [
+    {
+      "role_key": "ACCOUNT_BALANCE_CLEARING",
+      "style_id": "40000000-0000-4000-8100-000000000001",
+      "usable": true,
+      "updated_at": "2026-11-11 02:33:21.174973+00:00"
+    },
+    {
+      "role_key": "AP_CONTROL",
+      "style_id": "52300000-0000-4000-8100-000000000001",
+      "usable": true,
+      "updated_at": "2026-11-11 02:33:32.875646+00:00"
+    },
+    {
+      "role_key": "AR_CONTROL",
+      "style_id": "40700000-0000-4000-8100-000000000003",
+      "usable": true,
+      "updated_at": "2026-11-11 02:33:21.542491+00:00"
+    },
+    {
+      "role_key": "BANK_FEE_EXPENSE",
+      "style_id": "0f735157-cb6b-419b-a88c-12cb3be5cbe4",
+      "usable": true,
+      "updated_at": "2026-11-11 02:33:14.664577+00:00"
+    },
+    {
+      "role_key": "CUSTOMER_ADVANCE",
+      "style_id": "37900000-0000-4000-8100-000000000001",
+      "usable": true,
+      "updated_at": "2026-11-11 02:33:19.919762+00:00"
+    },
+    {
+      "role_key": "FX_GAIN_LOSS",
+      "style_id": "b7d28df6-26f4-4aa0-a2e6-379b34606cab",
+      "usable": true,
+      "updated_at": "2026-11-11 02:33:14.664577+00:00"
+    },
+    {
+      "role_key": "INVENTORY_ASSET",
+      "style_id": "4c1a909f-52d9-4303-aab2-e987f3431592",
+      "usable": true,
+      "updated_at": "2026-11-11 12:02:43.726580+00:00"
+    },
+    {
+      "role_key": "PROCUREMENT_GRNI_PENDING",
+      "style_id": "b9a28d09-8432-4aef-adb2-39561e46f519",
+      "usable": true,
+      "updated_at": "2026-11-11 12:06:51.064211+00:00"
+    },
+    {
+      "role_key": "PROCUREMENT_RETURN_PENDING_ASSET",
+      "style_id": "9d8e8bd1-c11d-403e-8973-be134740d94f",
+      "usable": true,
+      "updated_at": "2026-11-11 12:07:40.765636+00:00"
+    },
+    {
+      "role_key": "PROCUREMENT_RETURN_VARIANCE",
+      "style_id": "a3be929d-eebf-4bb5-9e76-c0876988d2f3",
+      "usable": true,
+      "updated_at": "2026-11-11 12:08:23.676200+00:00"
+    },
+    {
+      "role_key": "SALES_COST",
+      "style_id": "00dac92d-3aaf-48c3-b1b1-914ba6597de7",
+      "usable": true,
+      "updated_at": "2026-11-11 12:10:23.364943+00:00"
+    },
+    {
+      "role_key": "SALES_REVENUE",
+      "style_id": "2c31c181-cfa3-4256-ba3d-7873ffa5e009",
+      "usable": true,
+      "updated_at": "2026-11-11 12:11:47.872141+00:00"
+    },
+    {
+      "role_key": "SUBCONTRACT_ABNORMAL_LOSS",
+      "style_id": "37600000-0000-4000-8100-000000000001",
+      "usable": true,
+      "updated_at": "2026-11-11 02:33:19.823828+00:00"
+    },
+    {
+      "role_key": "SUBCONTRACT_LOSS_RECOVERY",
+      "style_id": "37300000-0000-4000-8100-000000000002",
+      "usable": true,
+      "updated_at": "2026-11-11 02:33:19.622899+00:00"
+    },
+    {
+      "role_key": "SUPPLIER_CLAIM_RECEIVABLE",
+      "style_id": "37300000-0000-4000-8100-000000000001",
+      "usable": true,
+      "updated_at": "2026-11-11 02:33:19.622899+00:00"
+    },
+    {
+      "role_key": "SUPPLIER_PREPAYMENT_ASSET",
+      "style_id": "cdc43873-2228-49fd-b27f-c07f40aac7e4",
+      "usable": true,
+      "updated_at": "2026-11-11 12:12:07.517166+00:00"
+    }
+  ],
+  "goods": [
+    {
+      "id": "a89d0780-04c0-46ec-a559-66a00690f111",
+      "code": "A-aggregate-069273a6-6528-4bde-8843-a1fd02611f13",
+      "name": "成品A-aggregate-069273a6-6528-4bde-8843-a1fd02611f13",
+      "unit_id": "f8f19a41-1988-4742-b18f-96e574535d9f",
+      "category_id": null,
+      "owner_employee_id": null,
+      "status": "使用",
+      "app_status": null,
+      "bom_status": null
+    },
+    {
+      "id": "5e9a6656-abbb-4247-9ccd-6206a8e77f3c",
+      "code": "A-aggregate-0adfaab3-211f-4c19-be88-fe2ba9da52da",
+      "name": "成品A-aggregate-0adfaab3-211f-4c19-be88-fe2ba9da52da",
+      "unit_id": "9cc07d46-233b-4981-aa39-57c9ca9eb7a8",
+      "category_id": null,
+      "owner_employee_id": null,
+      "status": "使用",
+      "app_status": null,
+      "bom_status": null
+    },
+    {
+      "id": "50cc4f54-45dd-4388-96ba-6184b4a8f6a9",
+      "code": "A-aggregate-da9cddad-2ae5-430f-ba7d-c5f7d361a97e",
+      "name": "成品A-aggregate-da9cddad-2ae5-430f-ba7d-c5f7d361a97e",
+      "unit_id": "409c8d83-2008-4ace-a5b8-01c8df7e50d4",
+      "category_id": null,
+      "owner_employee_id": null,
+      "status": "使用",
+      "app_status": null,
+      "bom_status": null
+    },
+    {
+      "id": "d7b642c1-01a3-4398-8e90-a8a12746c3f3",
+      "code": "A-gift-f0f11c73-b246-4ed3-a1e4-2b0bf72ac563",
+      "name": "成品A-gift-f0f11c73-b246-4ed3-a1e4-2b0bf72ac563",
+      "unit_id": "9a2c1fe0-bf55-4fbc-9c34-7c0c4932eef4",
+      "category_id": null,
+      "owner_employee_id": null,
+      "status": "使用",
+      "app_status": null,
+      "bom_status": null
+    },
+    {
+      "id": "836fed8e-a1b8-47cb-8399-06238cdbbea4",
+      "code": "A-sc-return-gl-32ae9c33-157e-4ba2-a11a-d6f3f31e12cc",
+      "name": "成品A-sc-return-gl-32ae9c33-157e-4ba2-a11a-d6f3f31e12cc",
+      "unit_id": "21290138-927a-42aa-bcbf-738b5dae6286",
+      "category_id": null,
+      "owner_employee_id": null,
+      "status": "使用",
+      "app_status": null,
+      "bom_status": null
+    },
+    {
+      "id": "9ba967a1-767c-4d5d-aa5a-391391998b4d",
+      "code": "A-web-edit-cd00f67",
+      "name": "成品A-web-edit-cd00f67",
+      "unit_id": "4370bd0e-29c0-4c2e-8cc9-20efe97140ce",
+      "category_id": null,
+      "owner_employee_id": null,
+      "status": "使用",
+      "app_status": null,
+      "bom_status": null
+    },
+    {
+      "id": "fd8ade15-257b-4982-8047-578b1dbdc335",
+      "code": "A-web-full-cd00f67",
+      "name": "成品A-web-full-cd00f67",
+      "unit_id": "13d5187d-bd2f-4e08-9aa1-bfa13f8e2485",
+      "category_id": null,
+      "owner_employee_id": null,
+      "status": "使用",
+      "app_status": null,
+      "bom_status": null
+    },
+    {
+      "id": "b5b4c6d4-8151-4720-a323-b2ed81890d7a",
+      "code": "A-web-partial-cd00f67",
+      "name": "成品A-web-partial-cd00f67",
+      "unit_id": "ce545e48-347d-42a1-bc5d-c07c0bf226de",
+      "category_id": null,
+      "owner_employee_id": null,
+      "status": "使用",
+      "app_status": null,
+      "bom_status": null
+    },
+    {
+      "id": "1728ef90-b060-4886-94b8-3b48f61d5481",
+      "code": "AG-R-1728ef90-b060-4886-94b8-3b48f61d5481",
+      "name": "不同顶层0",
+      "unit_id": "9cc07d46-233b-4981-aa39-57c9ca9eb7a8",
+      "category_id": null,
+      "owner_employee_id": null,
+      "status": "使用",
+      "app_status": null,
+      "bom_status": null
+    },
+    {
+      "id": "17f78e48-11e6-440d-92cb-06f0aa19e08f",
+      "code": "AG-R-17f78e48-11e6-440d-92cb-06f0aa19e08f",
+      "name": "不同顶层2",
+      "unit_id": "409c8d83-2008-4ace-a5b8-01c8df7e50d4",
+      "category_id": null,
+      "owner_employee_id": null,
+      "status": "使用",
+      "app_status": null,
+      "bom_status": null
+    },
+    {
+      "id": "1db7422e-0bf1-4f8e-951e-4824e1a495ea",
+      "code": "AG-R-1db7422e-0bf1-4f8e-951e-4824e1a495ea",
+      "name": "不同顶层0",
+      "unit_id": "409c8d83-2008-4ace-a5b8-01c8df7e50d4",
+      "category_id": null,
+      "owner_employee_id": null,
+      "status": "使用",
+      "app_status": null,
+      "bom_status": null
+    },
+    {
+      "id": "382eed52-8d84-4116-a46f-59579fd67f75",
+      "code": "AG-R-382eed52-8d84-4116-a46f-59579fd67f75",
+      "name": "不同顶层2",
+      "unit_id": "9cc07d46-233b-4981-aa39-57c9ca9eb7a8",
+      "category_id": null,
+      "owner_employee_id": null,
+      "status": "使用",
+      "app_status": null,
+      "bom_status": null
+    },
+    {
+      "id": "530d2a7b-9e85-4809-9bd9-c4b56986620f",
+      "code": "AG-R-530d2a7b-9e85-4809-9bd9-c4b56986620f",
+      "name": "不同顶层1",
+      "unit_id": "f8f19a41-1988-4742-b18f-96e574535d9f",
+      "category_id": null,
+      "owner_employee_id": null,
+      "status": "使用",
+      "app_status": null,
+      "bom_status": null
+    },
+    {
+      "id": "56f0bbc1-22d0-4ebf-b22e-fe6d607fefdc",
+      "code": "AG-R-56f0bbc1-22d0-4ebf-b22e-fe6d607fefdc",
+      "name": "不同顶层1",
+      "unit_id": "9cc07d46-233b-4981-aa39-57c9ca9eb7a8",
+      "category_id": null,
+      "owner_employee_id": null,
+      "status": "使用",
+      "app_status": null,
+      "bom_status": null
+    },
+    {
+      "id": "a9d0346f-0738-4291-8aef-014507ff0336",
+      "code": "AG-R-a9d0346f-0738-4291-8aef-014507ff0336",
+      "name": "不同顶层0",
+      "unit_id": "f8f19a41-1988-4742-b18f-96e574535d9f",
+      "category_id": null,
+      "owner_employee_id": null,
+      "status": "使用",
+      "app_status": null,
+      "bom_status": null
+    },
+    {
+      "id": "acb2d3a9-f1af-4e2f-af14-bfb06163009a",
+      "code": "AG-R-acb2d3a9-f1af-4e2f-af14-bfb06163009a",
+      "name": "不同顶层1",
+      "unit_id": "409c8d83-2008-4ace-a5b8-01c8df7e50d4",
+      "category_id": null,
+      "owner_employee_id": null,
+      "status": "使用",
+      "app_status": null,
+      "bom_status": null
+    },
+    {
+      "id": "e68d3697-8926-4429-84a7-0dee6622701e",
+      "code": "AG-R-e68d3697-8926-4429-84a7-0dee6622701e",
+      "name": "不同顶层2",
+      "unit_id": "f8f19a41-1988-4742-b18f-96e574535d9f",
+      "category_id": null,
+      "owner_employee_id": null,
+      "status": "使用",
+      "app_status": null,
+      "bom_status": null
+    },
+    {
+      "id": "3a5605df-92d1-47b5-8abf-d72a99e4a26a",
+      "code": "B-aggregate-069273a6-6528-4bde-8843-a1fd02611f13",
+      "name": "半成品B-aggregate-069273a6-6528-4bde-8843-a1fd02611f13",
+      "unit_id": "f8f19a41-1988-4742-b18f-96e574535d9f",
+      "category_id": null,
+      "owner_employee_id": null,
+      "status": "使用",
+      "app_status": null,
+      "bom_status": null
+    },
+    {
+      "id": "1b38689a-f538-4526-b157-6ef7c823e252",
+      "code": "B-aggregate-0adfaab3-211f-4c19-be88-fe2ba9da52da",
+      "name": "半成品B-aggregate-0adfaab3-211f-4c19-be88-fe2ba9da52da",
+      "unit_id": "9cc07d46-233b-4981-aa39-57c9ca9eb7a8",
+      "category_id": null,
+      "owner_employee_id": null,
+      "status": "使用",
+      "app_status": null,
+      "bom_status": null
+    },
+    {
+      "id": "4d63939d-bd38-444c-96cd-8b944b7c3a92",
+      "code": "B-aggregate-da9cddad-2ae5-430f-ba7d-c5f7d361a97e",
+      "name": "半成品B-aggregate-da9cddad-2ae5-430f-ba7d-c5f7d361a97e",
+      "unit_id": "409c8d83-2008-4ace-a5b8-01c8df7e50d4",
+      "category_id": null,
+      "owner_employee_id": null,
+      "status": "使用",
+      "app_status": null,
+      "bom_status": null
+    },
+    {
+      "id": "754fc680-9451-4245-b601-35f796fa4013",
+      "code": "B-gift-f0f11c73-b246-4ed3-a1e4-2b0bf72ac563",
+      "name": "半成品B-gift-f0f11c73-b246-4ed3-a1e4-2b0bf72ac563",
+      "unit_id": "9a2c1fe0-bf55-4fbc-9c34-7c0c4932eef4",
+      "category_id": null,
+      "owner_employee_id": null,
+      "status": "使用",
+      "app_status": null,
+      "bom_status": null
+    },
+    {
+      "id": "48074012-778a-4ad0-a33f-c13097af08ae",
+      "code": "B-sc-return-gl-32ae9c33-157e-4ba2-a11a-d6f3f31e12cc",
+      "name": "半成品B-sc-return-gl-32ae9c33-157e-4ba2-a11a-d6f3f31e12cc",
+      "unit_id": "21290138-927a-42aa-bcbf-738b5dae6286",
+      "category_id": null,
+      "owner_employee_id": null,
+      "status": "使用",
+      "app_status": null,
+      "bom_status": null
+    },
+    {
+      "id": "14d81e20-eae5-4662-a03b-f58e6bbf84ab",
+      "code": "B-web-edit-cd00f67",
+      "name": "半成品B-web-edit-cd00f67",
+      "unit_id": "4370bd0e-29c0-4c2e-8cc9-20efe97140ce",
+      "category_id": null,
+      "owner_employee_id": null,
+      "status": "使用",
+      "app_status": null,
+      "bom_status": null
+    },
+    {
+      "id": "34495799-bbff-4480-aa71-d4b571157dfe",
+      "code": "B-web-full-cd00f67",
+      "name": "半成品B-web-full-cd00f67",
+      "unit_id": "13d5187d-bd2f-4e08-9aa1-bfa13f8e2485",
+      "category_id": null,
+      "owner_employee_id": null,
+      "status": "使用",
+      "app_status": null,
+      "bom_status": null
+    },
+    {
+      "id": "2f575765-8e7a-4a77-bcc7-1f7066062bc3",
+      "code": "B-web-partial-cd00f67",
+      "name": "半成品B-web-partial-cd00f67",
+      "unit_id": "ce545e48-347d-42a1-bc5d-c07c0bf226de",
+      "category_id": null,
+      "owner_employee_id": null,
+      "status": "使用",
+      "app_status": null,
+      "bom_status": null
+    },
+    {
+      "id": "d240a1c8-5fba-4d73-ac1a-1d9dd7f4a339",
+      "code": "C-aggregate-069273a6-6528-4bde-8843-a1fd02611f13",
+      "name": "叶子件C-aggregate-069273a6-6528-4bde-8843-a1fd02611f13",
+      "unit_id": "f8f19a41-1988-4742-b18f-96e574535d9f",
+      "category_id": null,
+      "owner_employee_id": null,
+      "status": "使用",
+      "app_status": null,
+      "bom_status": null
+    },
+    {
+      "id": "276ceccc-d1ee-4927-bbd6-e124f340c5cc",
+      "code": "C-aggregate-0adfaab3-211f-4c19-be88-fe2ba9da52da",
+      "name": "叶子件C-aggregate-0adfaab3-211f-4c19-be88-fe2ba9da52da",
+      "unit_id": "9cc07d46-233b-4981-aa39-57c9ca9eb7a8",
+      "category_id": null,
+      "owner_employee_id": null,
+      "status": "使用",
+      "app_status": null,
+      "bom_status": null
+    },
+    {
+      "id": "594fb704-b0a8-42b3-bca4-1d5842c96dc3",
+      "code": "C-aggregate-da9cddad-2ae5-430f-ba7d-c5f7d361a97e",
+      "name": "叶子件C-aggregate-da9cddad-2ae5-430f-ba7d-c5f7d361a97e",
+      "unit_id": "409c8d83-2008-4ace-a5b8-01c8df7e50d4",
+      "category_id": null,
+      "owner_employee_id": null,
+      "status": "使用",
+      "app_status": null,
+      "bom_status": null
+    },
+    {
+      "id": "cd908b92-7310-4c3e-9fe4-6c9a4f999a19",
+      "code": "C-gift-f0f11c73-b246-4ed3-a1e4-2b0bf72ac563",
+      "name": "叶子件C-gift-f0f11c73-b246-4ed3-a1e4-2b0bf72ac563",
+      "unit_id": "9a2c1fe0-bf55-4fbc-9c34-7c0c4932eef4",
+      "category_id": null,
+      "owner_employee_id": null,
+      "status": "使用",
+      "app_status": null,
+      "bom_status": null
+    },
+    {
+      "id": "7f907bd4-2e2b-49ab-94ce-b7b029c2d132",
+      "code": "C-sc-return-gl-32ae9c33-157e-4ba2-a11a-d6f3f31e12cc",
+      "name": "叶子件C-sc-return-gl-32ae9c33-157e-4ba2-a11a-d6f3f31e12cc",
+      "unit_id": "21290138-927a-42aa-bcbf-738b5dae6286",
+      "category_id": null,
+      "owner_employee_id": null,
+      "status": "使用",
+      "app_status": null,
+      "bom_status": null
+    },
+    {
+      "id": "ea684c69-67da-487b-97f0-64506a626147",
+      "code": "C-web-edit-cd00f67",
+      "name": "叶子件C-web-edit-cd00f67",
+      "unit_id": "4370bd0e-29c0-4c2e-8cc9-20efe97140ce",
+      "category_id": null,
+      "owner_employee_id": null,
+      "status": "使用",
+      "app_status": null,
+      "bom_status": null
+    },
+    {
+      "id": "65594932-739b-4afa-a0b4-5cd2ce1d9e8d",
+      "code": "C-web-full-cd00f67",
+      "name": "叶子件C-web-full-cd00f67",
+      "unit_id": "13d5187d-bd2f-4e08-9aa1-bfa13f8e2485",
+      "category_id": null,
+      "owner_employee_id": null,
+      "status": "使用",
+      "app_status": null,
+      "bom_status": null
+    },
+    {
+      "id": "3696bee7-f5b6-487e-8d50-9b41e357bd60",
+      "code": "C-web-partial-cd00f67",
+      "name": "叶子件C-web-partial-cd00f67",
+      "unit_id": "ce545e48-347d-42a1-bc5d-c07c0bf226de",
+      "category_id": null,
+      "owner_employee_id": null,
+      "status": "使用",
+      "app_status": null,
+      "bom_status": null
+    },
+    {
+      "id": "c976167e-b009-4430-9ac4-879025c23b15",
+      "code": "D-aggregate-069273a6-6528-4bde-8843-a1fd02611f13",
+      "name": "原料D-aggregate-069273a6-6528-4bde-8843-a1fd02611f13",
+      "unit_id": "f8f19a41-1988-4742-b18f-96e574535d9f",
+      "category_id": null,
+      "owner_employee_id": null,
+      "status": "使用",
+      "app_status": null,
+      "bom_status": null
+    },
+    {
+      "id": "fd684688-36c2-454e-b188-871ae45fdcd7",
+      "code": "D-aggregate-0adfaab3-211f-4c19-be88-fe2ba9da52da",
+      "name": "原料D-aggregate-0adfaab3-211f-4c19-be88-fe2ba9da52da",
+      "unit_id": "9cc07d46-233b-4981-aa39-57c9ca9eb7a8",
+      "category_id": null,
+      "owner_employee_id": null,
+      "status": "使用",
+      "app_status": null,
+      "bom_status": null
+    },
+    {
+      "id": "fbed3840-92b1-46ba-989b-5984c9ca9ef6",
+      "code": "D-aggregate-da9cddad-2ae5-430f-ba7d-c5f7d361a97e",
+      "name": "原料D-aggregate-da9cddad-2ae5-430f-ba7d-c5f7d361a97e",
+      "unit_id": "409c8d83-2008-4ace-a5b8-01c8df7e50d4",
+      "category_id": null,
+      "owner_employee_id": null,
+      "status": "使用",
+      "app_status": null,
+      "bom_status": null
+    },
+    {
+      "id": "d92478b0-73b9-494a-aba8-cfdc850a9634",
+      "code": "D-gift-f0f11c73-b246-4ed3-a1e4-2b0bf72ac563",
+      "name": "原料D-gift-f0f11c73-b246-4ed3-a1e4-2b0bf72ac563",
+      "unit_id": "9a2c1fe0-bf55-4fbc-9c34-7c0c4932eef4",
+      "category_id": null,
+      "owner_employee_id": null,
+      "status": "使用",
+      "app_status": null,
+      "bom_status": null
+    },
+    {
+      "id": "134dcf0a-8880-4e5d-b548-e9513562fbec",
+      "code": "D-sc-return-gl-32ae9c33-157e-4ba2-a11a-d6f3f31e12cc",
+      "name": "原料D-sc-return-gl-32ae9c33-157e-4ba2-a11a-d6f3f31e12cc",
+      "unit_id": "21290138-927a-42aa-bcbf-738b5dae6286",
+      "category_id": null,
+      "owner_employee_id": null,
+      "status": "使用",
+      "app_status": null,
+      "bom_status": null
+    },
+    {
+      "id": "709309ad-9271-4999-9b71-c79b39762b55",
+      "code": "D-web-edit-cd00f67",
+      "name": "原料D-web-edit-cd00f67",
+      "unit_id": "4370bd0e-29c0-4c2e-8cc9-20efe97140ce",
+      "category_id": null,
+      "owner_employee_id": null,
+      "status": "使用",
+      "app_status": null,
+      "bom_status": null
+    },
+    {
+      "id": "2f541e51-f772-41ef-8166-872717ef4649",
+      "code": "D-web-full-cd00f67",
+      "name": "原料D-web-full-cd00f67",
+      "unit_id": "13d5187d-bd2f-4e08-9aa1-bfa13f8e2485",
+      "category_id": null,
+      "owner_employee_id": null,
+      "status": "使用",
+      "app_status": null,
+      "bom_status": null
+    },
+    {
+      "id": "c03a97bc-59fc-40be-94de-dc471d073dfd",
+      "code": "D-web-partial-cd00f67",
+      "name": "原料D-web-partial-cd00f67",
+      "unit_id": "ce545e48-347d-42a1-bc5d-c07c0bf226de",
+      "category_id": null,
+      "owner_employee_id": null,
+      "status": "使用",
+      "app_status": null,
+      "bom_status": null
+    },
+    {
+      "id": "d6f0e24b-c5b8-41a4-88f7-59a88691fb09",
+      "code": "E-aggregate-069273a6-6528-4bde-8843-a1fd02611f13",
+      "name": "委外件E-aggregate-069273a6-6528-4bde-8843-a1fd02611f13",
+      "unit_id": "f8f19a41-1988-4742-b18f-96e574535d9f",
+      "category_id": null,
+      "owner_employee_id": null,
+      "status": "使用",
+      "app_status": null,
+      "bom_status": null
+    },
+    {
+      "id": "09766c21-2488-4897-a5d8-e18cbef772fb",
+      "code": "E-aggregate-0adfaab3-211f-4c19-be88-fe2ba9da52da",
+      "name": "委外件E-aggregate-0adfaab3-211f-4c19-be88-fe2ba9da52da",
+      "unit_id": "9cc07d46-233b-4981-aa39-57c9ca9eb7a8",
+      "category_id": null,
+      "owner_employee_id": null,
+      "status": "使用",
+      "app_status": null,
+      "bom_status": null
+    },
+    {
+      "id": "48e27401-0e4e-4780-9428-66e3342bec26",
+      "code": "E-aggregate-da9cddad-2ae5-430f-ba7d-c5f7d361a97e",
+      "name": "委外件E-aggregate-da9cddad-2ae5-430f-ba7d-c5f7d361a97e",
+      "unit_id": "409c8d83-2008-4ace-a5b8-01c8df7e50d4",
+      "category_id": null,
+      "owner_employee_id": null,
+      "status": "使用",
+      "app_status": null,
+      "bom_status": null
+    },
+    {
+      "id": "36cb30cf-956b-4d3d-b5d0-4a7af22c64ee",
+      "code": "E-gift-f0f11c73-b246-4ed3-a1e4-2b0bf72ac563",
+      "name": "委外件E-gift-f0f11c73-b246-4ed3-a1e4-2b0bf72ac563",
+      "unit_id": "9a2c1fe0-bf55-4fbc-9c34-7c0c4932eef4",
+      "category_id": null,
+      "owner_employee_id": null,
+      "status": "使用",
+      "app_status": null,
+      "bom_status": null
+    },
+    {
+      "id": "663c6e29-ad77-4048-81df-5834c8cb8486",
+      "code": "E-sc-return-gl-32ae9c33-157e-4ba2-a11a-d6f3f31e12cc",
+      "name": "委外件E-sc-return-gl-32ae9c33-157e-4ba2-a11a-d6f3f31e12cc",
+      "unit_id": "21290138-927a-42aa-bcbf-738b5dae6286",
+      "category_id": null,
+      "owner_employee_id": null,
+      "status": "使用",
+      "app_status": null,
+      "bom_status": null
+    },
+    {
+      "id": "a68e38ab-b13f-4cb7-8f31-f0820d85d003",
+      "code": "E-web-edit-cd00f67",
+      "name": "委外件E-web-edit-cd00f67",
+      "unit_id": "4370bd0e-29c0-4c2e-8cc9-20efe97140ce",
+      "category_id": null,
+      "owner_employee_id": null,
+      "status": "使用",
+      "app_status": null,
+      "bom_status": null
+    },
+    {
+      "id": "c352b63e-2356-49f4-900b-e9c07cab2ac9",
+      "code": "E-web-full-cd00f67",
+      "name": "委外件E-web-full-cd00f67",
+      "unit_id": "13d5187d-bd2f-4e08-9aa1-bfa13f8e2485",
+      "category_id": null,
+      "owner_employee_id": null,
+      "status": "使用",
+      "app_status": null,
+      "bom_status": null
+    },
+    {
+      "id": "f7734290-a3f1-425b-bbe2-b4a916bae1ac",
+      "code": "E-web-partial-cd00f67",
+      "name": "委外件E-web-partial-cd00f67",
+      "unit_id": "ce545e48-347d-42a1-bc5d-c07c0bf226de",
+      "category_id": null,
+      "owner_employee_id": null,
+      "status": "使用",
+      "app_status": null,
+      "bom_status": null
+    },
+    {
+      "id": "9b4a13e4-8deb-4f33-bbee-2c664566051f",
+      "code": "QA3-9b4a13e4-8deb-4f33-bbee-2c664566051f",
+      "name": "第三原料",
+      "unit_id": "ce545e48-347d-42a1-bc5d-c07c0bf226de",
+      "category_id": null,
+      "owner_employee_id": null,
+      "status": "使用",
+      "app_status": null,
+      "bom_status": null
+    },
+    {
+      "id": "d2ed846c-0c6d-4060-94f0-8fb1697a99f4",
+      "code": "SCM-E-sc-return-gl-32ae9c33-157e-4ba2-a11a-d6f3f31e12cc",
+      "name": "委外直属料-SCM-E-sc-return-gl-32ae9c33-157e-4ba2-a11a-d6f3f31e12cc",
+      "unit_id": "21290138-927a-42aa-bcbf-738b5dae6286",
+      "category_id": null,
+      "owner_employee_id": null,
+      "status": "使用",
+      "app_status": null,
+      "bom_status": null
+    },
+    {
+      "id": "1329b576-6355-4316-9620-cbcdf4882ad7",
+      "code": "WPS-M-1329b576-6355-4316-9620-cbcdf4882ad7",
+      "name": "持续生产原料",
+      "unit_id": "4370bd0e-29c0-4c2e-8cc9-20efe97140ce",
+      "category_id": null,
+      "owner_employee_id": null,
+      "status": "使用",
+      "app_status": null,
+      "bom_status": null
+    },
+    {
+      "id": "836f2ab1-61b6-4d47-82a5-a0de4c2f8f8d",
+      "code": "WPS-M-836f2ab1-61b6-4d47-82a5-a0de4c2f8f8d",
+      "name": "持续生产原料",
+      "unit_id": "ce545e48-347d-42a1-bc5d-c07c0bf226de",
+      "category_id": null,
+      "owner_employee_id": null,
+      "status": "使用",
+      "app_status": null,
+      "bom_status": null
+    },
+    {
+      "id": "bba564cc-5ddf-4f9b-b25e-031222e2d544",
+      "code": "WPS-M-bba564cc-5ddf-4f9b-b25e-031222e2d544",
+      "name": "持续生产第二原料",
+      "unit_id": "ce545e48-347d-42a1-bc5d-c07c0bf226de",
+      "category_id": null,
+      "owner_employee_id": null,
+      "status": "使用",
+      "app_status": null,
+      "bom_status": null
+    },
+    {
+      "id": "fb5badbe-cfe0-49fb-9216-3bffb9561207",
+      "code": "WPS-M-fb5badbe-cfe0-49fb-9216-3bffb9561207",
+      "name": "持续生产原料",
+      "unit_id": "13d5187d-bd2f-4e08-9aa1-bfa13f8e2485",
+      "category_id": null,
+      "owner_employee_id": null,
+      "status": "使用",
+      "app_status": null,
+      "bom_status": null
+    },
+    {
+      "id": "79f1958b-dcec-4319-b488-caed39887894",
+      "code": "WPS-P-79f1958b-dcec-4319-b488-caed39887894",
+      "name": "持续生产公共备货成品",
+      "unit_id": "4370bd0e-29c0-4c2e-8cc9-20efe97140ce",
+      "category_id": null,
+      "owner_employee_id": null,
+      "status": "使用",
+      "app_status": null,
+      "bom_status": null
+    },
+    {
+      "id": "a0e399cb-a656-4c38-9390-62b544b9cc27",
+      "code": "WPS-P-a0e399cb-a656-4c38-9390-62b544b9cc27",
+      "name": "持续生产公共备货成品",
+      "unit_id": "ce545e48-347d-42a1-bc5d-c07c0bf226de",
+      "category_id": null,
+      "owner_employee_id": null,
+      "status": "使用",
+      "app_status": null,
+      "bom_status": null
+    },
+    {
+      "id": "fb0cee48-d06d-4200-8887-fe4343c6a160",
+      "code": "WPS-P-fb0cee48-d06d-4200-8887-fe4343c6a160",
+      "name": "持续生产公共备货成品",
+      "unit_id": "13d5187d-bd2f-4e08-9aa1-bfa13f8e2485",
+      "category_id": null,
+      "owner_employee_id": null,
+      "status": "使用",
+      "app_status": null,
+      "bom_status": null
+    }
+  ],
+  "counts": [
+    {
+      "tab": "goods",
+      "count": 58
+    },
+    {
+      "tab": "goods_bom_items",
+      "count": 47
+    },
+    {
+      "tab": "gl_vouchers",
+      "count": 0
+    },
+    {
+      "tab": "finance_chart_codes",
+      "count": 0
+    },
+    {
+      "tab": "finance_operating_report_notes",
+      "count": 0
+    },
+    {
+      "tab": "finance_auxiliary_items",
+      "count": 0
+    }
+  ],
+  "files": [
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-20261110\\evidence\\imports\\baseline\\goods-extra-second-true.xlsx",
+      "sha256": "9ca9c7bf9a55a3f337439db67c0d0a859ebb33c28254d162145c7677d492a173",
+      "bytes": 3928,
+      "sheets": [
+        {
+          "xml": "xl/worksheets/sheet1.xml",
+          "physicalNonemptyCellCount": 9,
+          "cells": [
+            {
+              "ref": "A1",
+              "value": "编号",
+              "formula": null
+            },
+            {
+              "ref": "B1",
+              "value": "名称",
+              "formula": null
+            },
+            {
+              "ref": "C1",
+              "value": "类别",
+              "formula": null
+            },
+            {
+              "ref": "D1",
+              "value": "主颜色",
+              "formula": null
+            },
+            {
+              "ref": "E1",
+              "value": "单位",
+              "formula": null
+            },
+            {
+              "ref": "B2",
+              "value": "合成货品",
+              "formula": null
+            },
+            {
+              "ref": "C2",
+              "value": "成品",
+              "formula": null
+            },
+            {
+              "ref": "D2",
+              "value": "红色",
+              "formula": null
+            },
+            {
+              "ref": "E2",
+              "value": "个",
+              "formula": null
+            }
+          ]
+        },
+        {
+          "xml": "xl/worksheets/sheet2.xml",
+          "physicalNonemptyCellCount": 2,
+          "cells": [
+            {
+              "ref": "F1",
+              "value": "新增列",
+              "formula": null
+            },
+            {
+              "ref": "F2",
+              "value": "合成需核对",
+              "formula": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-20261110\\evidence\\imports\\baseline\\bom-extra-second-true.xlsx",
+      "sha256": "3bac417a02288490e380dcc9357dd32ca66b2e9f42a7fec124d3b5edbd87c4e7",
+      "bytes": 3902,
+      "sheets": [
+        {
+          "xml": "xl/worksheets/sheet1.xml",
+          "physicalNonemptyCellCount": 7,
+          "cells": [
+            {
+              "ref": "A1",
+              "value": "序号",
+              "formula": null
+            },
+            {
+              "ref": "B1",
+              "value": "物料编号",
+              "formula": null
+            },
+            {
+              "ref": "C1",
+              "value": "数量",
+              "formula": null
+            },
+            {
+              "ref": "D1",
+              "value": "物料名称",
+              "formula": null
+            },
+            {
+              "ref": "A2",
+              "value": "1",
+              "formula": null
+            },
+            {
+              "ref": "B2",
+              "value": "K01",
+              "formula": null
+            },
+            {
+              "ref": "C2",
+              "value": "1.2345",
+              "formula": null
+            }
+          ]
+        },
+        {
+          "xml": "xl/worksheets/sheet2.xml",
+          "physicalNonemptyCellCount": 2,
+          "cells": [
+            {
+              "ref": "F1",
+              "value": "自定义工序",
+              "formula": null
+            },
+            {
+              "ref": "F2",
+              "value": "需核对",
+              "formula": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-20261110\\evidence\\imports\\baseline\\chart-true.xlsx",
+      "sha256": "c6f2be97521a331cc8551b090ab7793054576b4b6c4deab3e706754e4a4c4491",
+      "bytes": 3467,
+      "sheets": [
+        {
+          "xml": "xl/worksheets/sheet1.xml",
+          "physicalNonemptyCellCount": 8,
+          "cells": [
+            {
+              "ref": "A1",
+              "value": "科目编码",
+              "formula": null
+            },
+            {
+              "ref": "B1",
+              "value": "科目名称",
+              "formula": null
+            },
+            {
+              "ref": "C1",
+              "value": "外币名称",
+              "formula": null
+            },
+            {
+              "ref": "D1",
+              "value": "追加约定",
+              "formula": null
+            },
+            {
+              "ref": "A2",
+              "value": "1001",
+              "formula": null
+            },
+            {
+              "ref": "B2",
+              "value": "库存现金",
+              "formula": null
+            },
+            {
+              "ref": "A3",
+              "value": "资产小计",
+              "formula": null
+            },
+            {
+              "ref": "D3",
+              "value": "合成保留值",
+              "formula": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-20261110\\evidence\\imports\\baseline\\note-duplicate.xlsx",
+      "sha256": "b6136e20839848a2f0d0c64f496c1cd0468ff9a817b6a0ffa0c79bbb51f67068",
+      "bytes": 3715,
+      "sheets": [
+        {
+          "xml": "xl/worksheets/sheet1.xml",
+          "physicalNonemptyCellCount": 35,
+          "cells": [
+            {
+              "ref": "A2",
+              "value": "项目分类",
+              "formula": null
+            },
+            {
+              "ref": "B2",
+              "value": "分项",
+              "formula": null
+            },
+            {
+              "ref": "C2",
+              "value": "具体项目",
+              "formula": null
+            },
+            {
+              "ref": "D2",
+              "value": "备注",
+              "formula": null
+            },
+            {
+              "ref": "E2",
+              "value": "占销售比",
+              "formula": null
+            },
+            {
+              "ref": "F2",
+              "value": "02月金额",
+              "formula": null
+            },
+            {
+              "ref": "G2",
+              "value": "占销售比",
+              "formula": null
+            },
+            {
+              "ref": "H2",
+              "value": "03月金额",
+              "formula": null
+            },
+            {
+              "ref": "I2",
+              "value": "占销售比",
+              "formula": null
+            },
+            {
+              "ref": "J2",
+              "value": "04月金额",
+              "formula": null
+            },
+            {
+              "ref": "K2",
+              "value": "占销售比",
+              "formula": null
+            },
+            {
+              "ref": "L2",
+              "value": "05月金额",
+              "formula": null
+            },
+            {
+              "ref": "M2",
+              "value": "占销售比",
+              "formula": null
+            },
+            {
+              "ref": "N2",
+              "value": "06月金额",
+              "formula": null
+            },
+            {
+              "ref": "O2",
+              "value": "占销售比",
+              "formula": null
+            },
+            {
+              "ref": "P2",
+              "value": "07月金额",
+              "formula": null
+            },
+            {
+              "ref": "Q2",
+              "value": "占销售比",
+              "formula": null
+            },
+            {
+              "ref": "R2",
+              "value": "08月金额",
+              "formula": null
+            },
+            {
+              "ref": "S2",
+              "value": "占销售比",
+              "formula": null
+            },
+            {
+              "ref": "T2",
+              "value": "09月金额",
+              "formula": null
+            },
+            {
+              "ref": "U2",
+              "value": "占销售比",
+              "formula": null
+            },
+            {
+              "ref": "V2",
+              "value": "10月金额",
+              "formula": null
+            },
+            {
+              "ref": "W2",
+              "value": "占销售比",
+              "formula": null
+            },
+            {
+              "ref": "X2",
+              "value": "11月金额",
+              "formula": null
+            },
+            {
+              "ref": "Y2",
+              "value": "占销售比",
+              "formula": null
+            },
+            {
+              "ref": "Z2",
+              "value": "12月金额",
+              "formula": null
+            },
+            {
+              "ref": "AA2",
+              "value": "占销售比",
+              "formula": null
+            },
+            {
+              "ref": "AB2",
+              "value": "1-9月平均值占销售比",
+              "formula": null
+            },
+            {
+              "ref": "AC2",
+              "value": "备注",
+              "formula": null
+            },
+            {
+              "ref": "AD2",
+              "value": "差异原因",
+              "formula": null
+            },
+            {
+              "ref": "A4",
+              "value": "材料费",
+              "formula": null
+            },
+            {
+              "ref": "B4",
+              "value": "主材",
+              "formula": null
+            },
+            {
+              "ref": "C4",
+              "value": "玻璃",
+              "formula": null
+            },
+            {
+              "ref": "D4",
+              "value": "合成需核对",
+              "formula": null
+            },
+            {
+              "ref": "AC4",
+              "value": "原系统备注",
+              "formula": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-20261110\\evidence\\imports\\baseline\\note-unknown.xlsx",
+      "sha256": "b653f42944c1a5a79375b707cdc5aa09733392952502567e9d41f2b1d983eca1",
+      "bytes": 3731,
+      "sheets": [
+        {
+          "xml": "xl/worksheets/sheet1.xml",
+          "physicalNonemptyCellCount": 35,
+          "cells": [
+            {
+              "ref": "A2",
+              "value": "项目分类",
+              "formula": null
+            },
+            {
+              "ref": "B2",
+              "value": "分项",
+              "formula": null
+            },
+            {
+              "ref": "C2",
+              "value": "具体项目",
+              "formula": null
+            },
+            {
+              "ref": "D2",
+              "value": "自定义运费",
+              "formula": null
+            },
+            {
+              "ref": "E2",
+              "value": "占销售比",
+              "formula": null
+            },
+            {
+              "ref": "F2",
+              "value": "02月金额",
+              "formula": null
+            },
+            {
+              "ref": "G2",
+              "value": "占销售比",
+              "formula": null
+            },
+            {
+              "ref": "H2",
+              "value": "03月金额",
+              "formula": null
+            },
+            {
+              "ref": "I2",
+              "value": "占销售比",
+              "formula": null
+            },
+            {
+              "ref": "J2",
+              "value": "04月金额",
+              "formula": null
+            },
+            {
+              "ref": "K2",
+              "value": "占销售比",
+              "formula": null
+            },
+            {
+              "ref": "L2",
+              "value": "05月金额",
+              "formula": null
+            },
+            {
+              "ref": "M2",
+              "value": "占销售比",
+              "formula": null
+            },
+            {
+              "ref": "N2",
+              "value": "06月金额",
+              "formula": null
+            },
+            {
+              "ref": "O2",
+              "value": "占销售比",
+              "formula": null
+            },
+            {
+              "ref": "P2",
+              "value": "07月金额",
+              "formula": null
+            },
+            {
+              "ref": "Q2",
+              "value": "占销售比",
+              "formula": null
+            },
+            {
+              "ref": "R2",
+              "value": "08月金额",
+              "formula": null
+            },
+            {
+              "ref": "S2",
+              "value": "占销售比",
+              "formula": null
+            },
+            {
+              "ref": "T2",
+              "value": "09月金额",
+              "formula": null
+            },
+            {
+              "ref": "U2",
+              "value": "占销售比",
+              "formula": null
+            },
+            {
+              "ref": "V2",
+              "value": "10月金额",
+              "formula": null
+            },
+            {
+              "ref": "W2",
+              "value": "占销售比",
+              "formula": null
+            },
+            {
+              "ref": "X2",
+              "value": "11月金额",
+              "formula": null
+            },
+            {
+              "ref": "Y2",
+              "value": "占销售比",
+              "formula": null
+            },
+            {
+              "ref": "Z2",
+              "value": "12月金额",
+              "formula": null
+            },
+            {
+              "ref": "AA2",
+              "value": "占销售比",
+              "formula": null
+            },
+            {
+              "ref": "AB2",
+              "value": "1-9月平均值占销售比",
+              "formula": null
+            },
+            {
+              "ref": "AC2",
+              "value": "备注",
+              "formula": null
+            },
+            {
+              "ref": "AD2",
+              "value": "差异原因",
+              "formula": null
+            },
+            {
+              "ref": "A4",
+              "value": "材料费",
+              "formula": null
+            },
+            {
+              "ref": "B4",
+              "value": "主材",
+              "formula": null
+            },
+            {
+              "ref": "C4",
+              "value": "玻璃",
+              "formula": null
+            },
+            {
+              "ref": "D4",
+              "value": "合成需核对",
+              "formula": null
+            },
+            {
+              "ref": "AC4",
+              "value": "原系统备注",
+              "formula": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-20261110\\evidence\\imports\\baseline\\cost-title-true.xlsx",
+      "sha256": "dbd1f7db4612a12301eec7b435a6e81e073ba1a3b9f66733e18cbc5f790a15d1",
+      "bytes": 3457,
+      "sheets": [
+        {
+          "xml": "xl/worksheets/sheet1.xml",
+          "physicalNonemptyCellCount": 11,
+          "cells": [
+            {
+              "ref": "A1",
+              "value": "材料名称",
+              "formula": null
+            },
+            {
+              "ref": "B1",
+              "value": "用量",
+              "formula": null
+            },
+            {
+              "ref": "C1",
+              "value": "单价",
+              "formula": null
+            },
+            {
+              "ref": "D1",
+              "value": "运输费",
+              "formula": null
+            },
+            {
+              "ref": "A2",
+              "value": "铜柱",
+              "formula": null
+            },
+            {
+              "ref": "B2",
+              "value": "1.0",
+              "formula": null
+            },
+            {
+              "ref": "C2",
+              "value": "2.0",
+              "formula": null
+            },
+            {
+              "ref": "A3",
+              "value": "铜钉",
+              "formula": null
+            },
+            {
+              "ref": "B3",
+              "value": "1.0",
+              "formula": null
+            },
+            {
+              "ref": "C3",
+              "value": "4.0",
+              "formula": null
+            },
+            {
+              "ref": "D3",
+              "value": "产品名称：A",
+              "formula": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-20261110\\evidence\\imports\\baseline\\voucher-empty-formula.xls",
+      "sha256": "c3400827998184e8016a049f810fc245beead4ca136e01a3f758a481a123e864",
+      "bytes": 6656
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-20261110\\evidence\\imports\\baseline\\voucher-wrong-signature.xls",
+      "sha256": "22fc64c1245d182c6b75998ad931e81fbff103f76de626161bc590936d55b548",
+      "bytes": 6656
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-20261110\\evidence\\imports\\baseline\\voucher-style.xls",
+      "sha256": "17786373f350d70238a8c2023dffd06708b1adffd69d12f45428f8de985ec9ec",
+      "bytes": 6656
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-20261110\\evidence\\imports\\web-fixtures\\goods-legal.xlsx",
+      "sha256": "fcb2b58dbba48967d80a4d9aca6c65f81f55685b106f1992226de5b47cce65b3",
+      "bytes": 3476,
+      "sheets": [
+        {
+          "xml": "xl/worksheets/sheet1.xml",
+          "physicalNonemptyCellCount": 9,
+          "cells": [
+            {
+              "ref": "A1",
+              "value": "编号",
+              "formula": null
+            },
+            {
+              "ref": "B1",
+              "value": "名称",
+              "formula": null
+            },
+            {
+              "ref": "C1",
+              "value": "类别",
+              "formula": null
+            },
+            {
+              "ref": "D1",
+              "value": "主颜色",
+              "formula": null
+            },
+            {
+              "ref": "E1",
+              "value": "单位",
+              "formula": null
+            },
+            {
+              "ref": "B2",
+              "value": "合成货品",
+              "formula": null
+            },
+            {
+              "ref": "C2",
+              "value": "成品",
+              "formula": null
+            },
+            {
+              "ref": "D2",
+              "value": "红色",
+              "formula": null
+            },
+            {
+              "ref": "E2",
+              "value": "个",
+              "formula": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-20261110\\evidence\\imports\\web-fixtures\\bom-legal.xlsx",
+      "sha256": "b35c3f0e70959be7bcdcea3a1e2f345a6a86eae8ef1983386b6bcd67a7aef158",
+      "bytes": 3450,
+      "sheets": [
+        {
+          "xml": "xl/worksheets/sheet1.xml",
+          "physicalNonemptyCellCount": 7,
+          "cells": [
+            {
+              "ref": "A1",
+              "value": "序号",
+              "formula": null
+            },
+            {
+              "ref": "B1",
+              "value": "物料编号",
+              "formula": null
+            },
+            {
+              "ref": "C1",
+              "value": "数量",
+              "formula": null
+            },
+            {
+              "ref": "D1",
+              "value": "物料名称",
+              "formula": null
+            },
+            {
+              "ref": "A2",
+              "value": "1",
+              "formula": null
+            },
+            {
+              "ref": "B2",
+              "value": "K01",
+              "formula": null
+            },
+            {
+              "ref": "C2",
+              "value": "1.2345",
+              "formula": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-20261110\\evidence\\imports\\web-fixtures\\chart-legal.xlsx",
+      "sha256": "fe845a947f3337f0a2ea857ba8a4ce5910991098656f2e138d3b317bc2815bbb",
+      "bytes": 3480,
+      "sheets": [
+        {
+          "xml": "xl/worksheets/sheet1.xml",
+          "physicalNonemptyCellCount": 6,
+          "cells": [
+            {
+              "ref": "A1",
+              "value": "科目编码",
+              "formula": null
+            },
+            {
+              "ref": "B1",
+              "value": "科目名称",
+              "formula": null
+            },
+            {
+              "ref": "C1",
+              "value": "外币名称",
+              "formula": null
+            },
+            {
+              "ref": "A2",
+              "value": "100199991",
+              "formula": null
+            },
+            {
+              "ref": "B2",
+              "value": "合成导入现金核查",
+              "formula": null
+            },
+            {
+              "ref": "A3",
+              "value": "资产小计",
+              "formula": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-20261110\\evidence\\imports\\web-fixtures\\note-legal.xlsx",
+      "sha256": "c663fb09be673525dc0be3ced24f81b935ac3d2aa1a2cc0ab25ea888cb532049",
+      "bytes": 3742,
+      "sheets": [
+        {
+          "xml": "xl/worksheets/sheet1.xml",
+          "physicalNonemptyCellCount": 35,
+          "cells": [
+            {
+              "ref": "A2",
+              "value": "项目分类",
+              "formula": null
+            },
+            {
+              "ref": "B2",
+              "value": "分项",
+              "formula": null
+            },
+            {
+              "ref": "C2",
+              "value": "具体项目",
+              "formula": null
+            },
+            {
+              "ref": "D2",
+              "value": "01月金额",
+              "formula": null
+            },
+            {
+              "ref": "E2",
+              "value": "占销售比",
+              "formula": null
+            },
+            {
+              "ref": "F2",
+              "value": "02月金额",
+              "formula": null
+            },
+            {
+              "ref": "G2",
+              "value": "占销售比",
+              "formula": null
+            },
+            {
+              "ref": "H2",
+              "value": "03月金额",
+              "formula": null
+            },
+            {
+              "ref": "I2",
+              "value": "占销售比",
+              "formula": null
+            },
+            {
+              "ref": "J2",
+              "value": "04月金额",
+              "formula": null
+            },
+            {
+              "ref": "K2",
+              "value": "占销售比",
+              "formula": null
+            },
+            {
+              "ref": "L2",
+              "value": "05月金额",
+              "formula": null
+            },
+            {
+              "ref": "M2",
+              "value": "占销售比",
+              "formula": null
+            },
+            {
+              "ref": "N2",
+              "value": "06月金额",
+              "formula": null
+            },
+            {
+              "ref": "O2",
+              "value": "占销售比",
+              "formula": null
+            },
+            {
+              "ref": "P2",
+              "value": "07月金额",
+              "formula": null
+            },
+            {
+              "ref": "Q2",
+              "value": "占销售比",
+              "formula": null
+            },
+            {
+              "ref": "R2",
+              "value": "08月金额",
+              "formula": null
+            },
+            {
+              "ref": "S2",
+              "value": "占销售比",
+              "formula": null
+            },
+            {
+              "ref": "T2",
+              "value": "09月金额",
+              "formula": null
+            },
+            {
+              "ref": "U2",
+              "value": "占销售比",
+              "formula": null
+            },
+            {
+              "ref": "V2",
+              "value": "10月金额",
+              "formula": null
+            },
+            {
+              "ref": "W2",
+              "value": "占销售比",
+              "formula": null
+            },
+            {
+              "ref": "X2",
+              "value": "11月金额",
+              "formula": null
+            },
+            {
+              "ref": "Y2",
+              "value": "占销售比",
+              "formula": null
+            },
+            {
+              "ref": "Z2",
+              "value": "12月金额",
+              "formula": null
+            },
+            {
+              "ref": "AA2",
+              "value": "占销售比",
+              "formula": null
+            },
+            {
+              "ref": "AB2",
+              "value": "1-9月平均值占销售比",
+              "formula": null
+            },
+            {
+              "ref": "AC2",
+              "value": "备注",
+              "formula": null
+            },
+            {
+              "ref": "AD2",
+              "value": "差异原因",
+              "formula": null
+            },
+            {
+              "ref": "A4",
+              "value": "材料费",
+              "formula": null
+            },
+            {
+              "ref": "B4",
+              "value": "主材",
+              "formula": null
+            },
+            {
+              "ref": "C4",
+              "value": "玻璃",
+              "formula": null
+            },
+            {
+              "ref": "D4",
+              "value": "合成需核对",
+              "formula": null
+            },
+            {
+              "ref": "AC4",
+              "value": "本地真实网页导入核验备注",
+              "formula": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-20261110\\evidence\\imports\\web-fixtures\\cost-legal.xlsx",
+      "sha256": "ce775b43bc4dbb23da240db81cbff4027299d088483d48636c30ed89c02a852b",
+      "bytes": 3446,
+      "sheets": [
+        {
+          "xml": "xl/worksheets/sheet1.xml",
+          "physicalNonemptyCellCount": 9,
+          "cells": [
+            {
+              "ref": "A1",
+              "value": "材料名称",
+              "formula": null
+            },
+            {
+              "ref": "B1",
+              "value": "用量",
+              "formula": null
+            },
+            {
+              "ref": "C1",
+              "value": "单价",
+              "formula": null
+            },
+            {
+              "ref": "A2",
+              "value": "铜柱",
+              "formula": null
+            },
+            {
+              "ref": "B2",
+              "value": "1.0",
+              "formula": null
+            },
+            {
+              "ref": "C2",
+              "value": "2.0",
+              "formula": null
+            },
+            {
+              "ref": "A3",
+              "value": "铜钉",
+              "formula": null
+            },
+            {
+              "ref": "B3",
+              "value": "1.0",
+              "formula": null
+            },
+            {
+              "ref": "C3",
+              "value": "4.0",
+              "formula": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-20261110\\evidence\\imports\\old-auxiliary.xlsx",
+      "sha256": "3d13079b04ff41c897f62d4bd6e95d0ac217af346c0d803a63a25e3dd7439884",
+      "bytes": 3627,
+      "sheets": [
+        {
+          "xml": "xl/worksheets/sheet1.xml",
+          "physicalNonemptyCellCount": 28,
+          "cells": [
+            {
+              "ref": "A3",
+              "value": "科目编码",
+              "formula": null
+            },
+            {
+              "ref": "B3",
+              "value": "科目名称",
+              "formula": null
+            },
+            {
+              "ref": "C3",
+              "value": "客户编号",
+              "formula": null
+            },
+            {
+              "ref": "D3",
+              "value": "客户名称",
+              "formula": null
+            },
+            {
+              "ref": "E3",
+              "value": "方向",
+              "formula": null
+            },
+            {
+              "ref": "F3",
+              "value": "期初借方余额",
+              "formula": null
+            },
+            {
+              "ref": "G3",
+              "value": "期初贷方余额",
+              "formula": null
+            },
+            {
+              "ref": "H3",
+              "value": "期初余额金额",
+              "formula": null
+            },
+            {
+              "ref": "I3",
+              "value": "本期借方金额",
+              "formula": null
+            },
+            {
+              "ref": "J3",
+              "value": "本期贷方金额",
+              "formula": null
+            },
+            {
+              "ref": "K3",
+              "value": "期末借方余额",
+              "formula": null
+            },
+            {
+              "ref": "L3",
+              "value": "期末贷方余额",
+              "formula": null
+            },
+            {
+              "ref": "M3",
+              "value": "方向20",
+              "formula": null
+            },
+            {
+              "ref": "N3",
+              "value": "期末余额金额",
+              "formula": null
+            },
+            {
+              "ref": "A4",
+              "value": "112201",
+              "formula": null
+            },
+            {
+              "ref": "B4",
+              "value": "匿名原科目",
+              "formula": null
+            },
+            {
+              "ref": "C4",
+              "value": "00099",
+              "formula": null
+            },
+            {
+              "ref": "D4",
+              "value": "匿名原客户",
+              "formula": null
+            },
+            {
+              "ref": "E4",
+              "value": "借",
+              "formula": null
+            },
+            {
+              "ref": "F4",
+              "value": "10.0",
+              "formula": null
+            },
+            {
+              "ref": "G4",
+              "value": "0.0",
+              "formula": null
+            },
+            {
+              "ref": "H4",
+              "value": "10.0",
+              "formula": null
+            },
+            {
+              "ref": "I4",
+              "value": "0.0",
+              "formula": null
+            },
+            {
+              "ref": "J4",
+              "value": "0.0",
+              "formula": null
+            },
+            {
+              "ref": "K4",
+              "value": "10.0",
+              "formula": null
+            },
+            {
+              "ref": "L4",
+              "value": "0.0",
+              "formula": null
+            },
+            {
+              "ref": "M4",
+              "value": "借",
+              "formula": null
+            },
+            {
+              "ref": "N4",
+              "value": "10.0",
+              "formula": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-20261110\\evidence\\imports\\auxiliary-extra-current.xlsx",
+      "sha256": "5f637234a567ad1ea6746214b38bbc458dfd217580fa6fb2c4d09f164cccd108",
+      "bytes": 3667,
+      "sheets": [
+        {
+          "xml": "xl/worksheets/sheet1.xml",
+          "physicalNonemptyCellCount": 30,
+          "cells": [
+            {
+              "ref": "A3",
+              "value": "科目编码",
+              "formula": null
+            },
+            {
+              "ref": "B3",
+              "value": "科目名称",
+              "formula": null
+            },
+            {
+              "ref": "C3",
+              "value": "客户编号",
+              "formula": null
+            },
+            {
+              "ref": "D3",
+              "value": "客户名称",
+              "formula": null
+            },
+            {
+              "ref": "E3",
+              "value": "方向",
+              "formula": null
+            },
+            {
+              "ref": "F3",
+              "value": "期初借方余额",
+              "formula": null
+            },
+            {
+              "ref": "G3",
+              "value": "期初贷方余额",
+              "formula": null
+            },
+            {
+              "ref": "H3",
+              "value": "期初余额金额",
+              "formula": null
+            },
+            {
+              "ref": "I3",
+              "value": "本期借方金额",
+              "formula": null
+            },
+            {
+              "ref": "J3",
+              "value": "本期贷方金额",
+              "formula": null
+            },
+            {
+              "ref": "K3",
+              "value": "期末借方余额",
+              "formula": null
+            },
+            {
+              "ref": "L3",
+              "value": "期末贷方余额",
+              "formula": null
+            },
+            {
+              "ref": "M3",
+              "value": "方向20",
+              "formula": null
+            },
+            {
+              "ref": "N3",
+              "value": "期末余额金额",
+              "formula": null
+            },
+            {
+              "ref": "O3",
+              "value": "未知运费",
+              "formula": null
+            },
+            {
+              "ref": "A4",
+              "value": "112201",
+              "formula": null
+            },
+            {
+              "ref": "B4",
+              "value": "匿名原科目",
+              "formula": null
+            },
+            {
+              "ref": "C4",
+              "value": "00099",
+              "formula": null
+            },
+            {
+              "ref": "D4",
+              "value": "匿名原客户",
+              "formula": null
+            },
+            {
+              "ref": "E4",
+              "value": "借",
+              "formula": null
+            },
+            {
+              "ref": "F4",
+              "value": "10.0",
+              "formula": null
+            },
+            {
+              "ref": "G4",
+              "value": "0.0",
+              "formula": null
+            },
+            {
+              "ref": "H4",
+              "value": "10.0",
+              "formula": null
+            },
+            {
+              "ref": "I4",
+              "value": "0.0",
+              "formula": null
+            },
+            {
+              "ref": "J4",
+              "value": "0.0",
+              "formula": null
+            },
+            {
+              "ref": "K4",
+              "value": "10.0",
+              "formula": null
+            },
+            {
+              "ref": "L4",
+              "value": "0.0",
+              "formula": null
+            },
+            {
+              "ref": "M4",
+              "value": "借",
+              "formula": null
+            },
+            {
+              "ref": "N4",
+              "value": "10.0",
+              "formula": null
+            },
+            {
+              "ref": "O4",
+              "value": "不能忽略",
+              "formula": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-20261110\\evidence\\imports\\old-vouchers.xls",
+      "sha256": "3ae74146e60976ef89cdf16acfe890aefc43d870a9068402b3bb9a3bec2f13e4",
+      "bytes": 7680
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-20261110\\evidence\\imports\\old-balances.xls",
+      "sha256": "ee28c136d8f5c8311616e068975bbbbf300e9e3ed365ddcc285d2939d74b477e",
+      "bytes": 5120
+    }
+  ]
+}

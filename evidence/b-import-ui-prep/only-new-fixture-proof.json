@@ -1,0 +1,11 @@
+{
+  "status": "prep; no file upload/detect/apply/approve/GL",
+  "checks": {
+    "oldGoodsSelectedFieldsUnchanged": true,
+    "oldActorsAndGrantsUnchanged": true,
+    "mappedRolesUnchanged": true,
+    "onlyTwoNewActors": true,
+    "onlyTwoNecessaryNewGoods": true,
+    "noBomGlChartNoteAuxWrites": true
+  }
+}

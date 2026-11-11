@@ -1,0 +1,23 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+Analyzing 16 items...                                           
+
+   info - Statements in an if should be enclosed in a block. Try wrapping the statement in a block - lib\features\basic_data\pages\account_workspace_page.dart:452:9 - curly_braces_in_flow_control_structures
+   info - Statements in an if should be enclosed in a block. Try wrapping the statement in a block - lib\features\basic_data\pages\account_workspace_page.dart:474:9 - curly_braces_in_flow_control_structures
+   info - Statements in an if should be enclosed in a block. Try wrapping the statement in a block - lib\features\basic_data\pages\client_category_page.dart:619:7 - curly_braces_in_flow_control_structures
+   info - Statements in an if should be enclosed in a block. Try wrapping the statement in a block - lib\features\basic_data\pages\color_page.dart:326:9 - curly_braces_in_flow_control_structures
+   info - Statements in an if should be enclosed in a block. Try wrapping the statement in a block - lib\features\basic_data\pages\color_page.dart:348:9 - curly_braces_in_flow_control_structures
+   info - Statements in an if should be enclosed in a block. Try wrapping the statement in a block - lib\features\basic_data\pages\currency_page.dart:344:9 - curly_braces_in_flow_control_structures
+   info - Statements in an if should be enclosed in a block. Try wrapping the statement in a block - lib\features\basic_data\pages\currency_page.dart:366:9 - curly_braces_in_flow_control_structures
+   info - Statements in an if should be enclosed in a block. Try wrapping the statement in a block - lib\features\basic_data\pages\mould_category_page.dart:933:17 - curly_braces_in_flow_control_structures
+   info - Statements in an if should be enclosed in a block. Try wrapping the statement in a block - lib\features\basic_data\pages\settlement_method_page.dart:297:9 - curly_braces_in_flow_control_structures
+   info - Statements in an if should be enclosed in a block. Try wrapping the statement in a block - lib\features\basic_data\pages\settlement_method_page.dart:329:9 - curly_braces_in_flow_control_structures
+   info - Statements in an if should be enclosed in a block. Try wrapping the statement in a block - lib\features\basic_data\pages\supplier_category_page.dart:492:7 - curly_braces_in_flow_control_structures
+   info - Statements in an if should be enclosed in a block. Try wrapping the statement in a block - lib\features\basic_data\pages\unit_page.dart:319:9 - curly_braces_in_flow_control_structures
+   info - Statements in an if should be enclosed in a block. Try wrapping the statement in a block - lib\features\basic_data\pages\unit_page.dart:341:9 - curly_braces_in_flow_control_structures
+   info - Statements in an if should be enclosed in a block. Try wrapping the statement in a block - lib\features\basic_data\pages\warehouse_page.dart:307:9 - curly_braces_in_flow_control_structures
+   info - Statements in an if should be enclosed in a block. Try wrapping the statement in a block - lib\features\basic_data\pages\warehouse_page.dart:321:9 - curly_braces_in_flow_control_structures
+   info - Statements in an if should be enclosed in a block. Try wrapping the statement in a block - lib\features\basic_data\widgets\master_entity_detail_pane.dart:1404:9 - curly_braces_in_flow_control_structures
+   info - Statements in an if should be enclosed in a block. Try wrapping the statement in a block - lib\features\basic_data\widgets\master_entity_detail_pane.dart:1457:9 - curly_braces_in_flow_control_structures
+warning - Unused import: 'package:flutter/widgets.dart'. Try removing the import directive - lib\shared\paging\complete_output_view_mixin.dart:1:8 - unused_import
+
+18 issues found. (ran in 5.8s)

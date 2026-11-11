@@ -1,0 +1,5 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart
+00:00 +0: confirmed status write retires output if its complete reread fails
+00:12 +1: accepted complete result stays usable after a same-query failed refresh
+00:17 +2: All tests passed!

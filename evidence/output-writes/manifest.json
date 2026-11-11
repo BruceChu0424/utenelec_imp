@@ -5,13 +5,13 @@
   "files": [
     {
       "path": ".gitattributes",
-      "bytes": 105,
-      "sha256": "208d90eab4f8e457872e02e6d828a82e652d57c4549d7406627fa3a63745304a"
+      "bytes": 101,
+      "sha256": "2d0bef1a40b1ba8bf3e7bbd4704c964e32a7e94713ee175aaa011dba33e853eb"
     },
     {
       "path": ".gitignore",
-      "bytes": 24,
-      "sha256": "84ad99c7bc33d357231ba5993a007270b81c489585b114ea093bead59a5b0ead"
+      "bytes": 22,
+      "sha256": "441c3bdee121329716daffecd3d77cd8290d03760871100fbc8dc3184fc46a11"
     },
     {
       "path": "logs/private-flutter-analyze-recovery.log",
@@ -335,8 +335,8 @@
     },
     {
       "path": "private_flutter.py",
-      "bytes": 1626,
-      "sha256": "0b8277e6234cf3538f6999a87148b11ab6a81442c7f75aff119706ea489a7eca"
+      "bytes": 1592,
+      "sha256": "93a7b440a50d910a8a2bf34fdff8599c06a0f36fa254762aa4f7c319deeba13f"
     },
     {
       "path": "REPORT.md",
@@ -547,5 +547,6 @@
       "sdk_unchanged": true,
       "result_line": "10:26 +0 -6: Some tests failed."
     }
-  ]
+  ],
+  "fingerprint_content": "reviewed Git index bytes; binary raw logs and execution receipts equal original working bytes"
 }

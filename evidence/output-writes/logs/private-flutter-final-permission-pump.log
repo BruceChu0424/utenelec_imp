@@ -1,0 +1,25 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart
+test/features/basic_data/pages/master_complete_print_consumers_test.dart:497:40: Error: The argument type 'FutureOr<void>' can't be assigned to the parameter type 'Future<void>'.
+ - 'Future' is from 'dart:async'.
+      await pumpUntilCompletes(tester, reading, reason: 'refresh must close after the authoritative response');
+                                       ^
+test/features/basic_data/pages/master_complete_print_consumers_test.dart:505:40: Error: The argument type 'FutureOr<void>' can't be assigned to the parameter type 'Future<void>'.
+ - 'Future' is from 'dart:async'.
+      await pumpUntilCompletes(tester, reading, reason: 'refresh must close after the authoritative response');
+                                       ^
+00:00 +0 -1: loading D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart [E]
+  Failed to load "D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart":
+  Compilation failed for testPath=D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: test/features/basic_data/pages/master_complete_print_consumers_test.dart:497:40: Error: The argument type 'FutureOr<void>' can't be assigned to the parameter type 'Future<void>'.
+   - 'Future' is from 'dart:async'.
+        await pumpUntilCompletes(tester, reading, reason: 'refresh must close after the authoritative response');
+                                         ^
+  test/features/basic_data/pages/master_complete_print_consumers_test.dart:505:40: Error: The argument type 'FutureOr<void>' can't be assigned to the parameter type 'Future<void>'.
+   - 'Future' is from 'dart:async'.
+        await pumpUntilCompletes(tester, reading, reason: 'refresh must close after the authoritative response');
+                                         ^
+  .
+00:00 +0 -1: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: loading D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart

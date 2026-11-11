@@ -1,0 +1,39 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart
+lib/features/basic_data/pages/account_workspace_page.dart:1585:21: Error: The method 'unawaited' isn't defined for the type '_AccountPageState'.
+ - '_AccountPageState' is from 'package:uten_imp/features/basic_data/pages/account_workspace_page.dart' ('lib/features/basic_data/pages/account_workspace_page.dart').
+Try correcting the name to the name of an existing method, or defining a method named 'unawaited'.
+                    unawaited(_refresh());
+                    ^^^^^^^^^
+lib/features/basic_data/pages/settlement_method_page.dart:450:9: Error: The method 'unawaited' isn't defined for the type '_SettlementMethodPageState'.
+ - '_SettlementMethodPageState' is from 'package:uten_imp/features/basic_data/pages/settlement_method_page.dart' ('lib/features/basic_data/pages/settlement_method_page.dart').
+Try correcting the name to the name of an existing method, or defining a method named 'unawaited'.
+        unawaited(_refresh());
+        ^^^^^^^^^
+lib/features/basic_data/pages/settlement_method_page.dart:806:17: Error: The method 'unawaited' isn't defined for the type '_SettlementMethodPageState'.
+ - '_SettlementMethodPageState' is from 'package:uten_imp/features/basic_data/pages/settlement_method_page.dart' ('lib/features/basic_data/pages/settlement_method_page.dart').
+Try correcting the name to the name of an existing method, or defining a method named 'unawaited'.
+                unawaited(_refresh());
+                ^^^^^^^^^
+00:00 +0 -1: loading D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart [E]
+  Failed to load "D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart":
+  Compilation failed for testPath=D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: lib/features/basic_data/pages/account_workspace_page.dart:1585:21: Error: The method 'unawaited' isn't defined for the type '_AccountPageState'.
+   - '_AccountPageState' is from 'package:uten_imp/features/basic_data/pages/account_workspace_page.dart' ('lib/features/basic_data/pages/account_workspace_page.dart').
+  Try correcting the name to the name of an existing method, or defining a method named 'unawaited'.
+                      unawaited(_refresh());
+                      ^^^^^^^^^
+  lib/features/basic_data/pages/settlement_method_page.dart:450:9: Error: The method 'unawaited' isn't defined for the type '_SettlementMethodPageState'.
+   - '_SettlementMethodPageState' is from 'package:uten_imp/features/basic_data/pages/settlement_method_page.dart' ('lib/features/basic_data/pages/settlement_method_page.dart').
+  Try correcting the name to the name of an existing method, or defining a method named 'unawaited'.
+          unawaited(_refresh());
+          ^^^^^^^^^
+  lib/features/basic_data/pages/settlement_method_page.dart:806:17: Error: The method 'unawaited' isn't defined for the type '_SettlementMethodPageState'.
+   - '_SettlementMethodPageState' is from 'package:uten_imp/features/basic_data/pages/settlement_method_page.dart' ('lib/features/basic_data/pages/settlement_method_page.dart').
+  Try correcting the name to the name of an existing method, or defining a method named 'unawaited'.
+                  unawaited(_refresh());
+                  ^^^^^^^^^
+  .
+00:00 +0 -1: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: loading D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart

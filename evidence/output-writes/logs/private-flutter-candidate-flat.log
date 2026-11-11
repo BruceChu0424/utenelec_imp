@@ -1,0 +1,27 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart
+lib/features/basic_data/pages/color_page.dart:548:18: Error: Can't return a value from a void function.
+          return _loadColors(_visibleReadPage);
+                 ^
+lib/features/basic_data/pages/currency_page.dart:588:18: Error: Can't return a value from a void function.
+          return _loadCurrencies(_visibleReadPage);
+                 ^
+lib/features/basic_data/pages/unit_page.dart:540:18: Error: Can't return a value from a void function.
+          return _loadUnits(_visibleReadPage);
+                 ^
+00:00 +0 -1: loading D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart [E]
+  Failed to load "D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart":
+  Compilation failed for testPath=D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: lib/features/basic_data/pages/color_page.dart:548:18: Error: Can't return a value from a void function.
+            return _loadColors(_visibleReadPage);
+                   ^
+  lib/features/basic_data/pages/currency_page.dart:588:18: Error: Can't return a value from a void function.
+            return _loadCurrencies(_visibleReadPage);
+                   ^
+  lib/features/basic_data/pages/unit_page.dart:540:18: Error: Can't return a value from a void function.
+            return _loadUnits(_visibleReadPage);
+                   ^
+  .
+00:00 +0 -1: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: loading D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart

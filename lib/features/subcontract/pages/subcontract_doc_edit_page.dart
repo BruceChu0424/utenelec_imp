@@ -674,7 +674,7 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
       await _importFromUpstreamInScope(operation);
     } catch (error) {
       if (mounted && operation.isCurrent) {
-        context.appError('引入来源未完成，请保留原输入后重试：$error');
+        context.appApiError(error, fallback: '引入来源未完成，请保留原输入后重试');
       }
     } finally {
       operation.retire();

@@ -133,13 +133,12 @@ String? _remainQtyText(
     case SubcontractDocType.materialIssue:
       // 材料退/损耗←发料：默认量 = 供应商处结存（发出−回厂已消费−已退−已损耗，
       // V304 口径；已消费部分不可能再退/再损耗）。老数据无结存字段时回落旧口径。
-      return it.counterText('supplierEnding') != null
-          ? it.counterText('supplierEnding')
-          : financeExactSumTexts([
-              q,
-              negative(it.counterText('returnedQty')),
-              negative(it.counterText('wastedQty')),
-            ]);
+      return it.counterText('supplierEnding') ??
+          financeExactSumTexts([
+            q,
+            negative(it.counterText('returnedQty')),
+            negative(it.counterText('wastedQty')),
+          ]);
     default:
       return q;
   }

@@ -98,12 +98,16 @@ class FeedbackBWebSeedTest {
         }
         var output=new LinkedHashMap<String,Object>();
         output.put("legacyProgram",legacy);
+        output.put("billDate",BusinessTime.today().toString());
+        output.put("businessTimeZone",BusinessTime.ZONE.getId());
+        output.put("createdAtUtc",java.time.Instant.now().toString());
         F f=fixture();
         UUID purchaseReceipt=receipt(f,"10","0");receipts.approve(purchaseReceipt);passAndStock(f,purchaseReceipt);
         UUID purchaseSource=receipts.detail(purchaseReceipt).getItems().getFirst().getId();
         var purchase=new LinkedHashMap<String,Object>();
         purchase.put("receiptId",purchaseReceipt);purchase.put("receiptItemId",purchaseSource);
         purchase.put("receiptNo",receipts.detail(purchaseReceipt).getBillNo());
+        purchase.put("billDate",receipts.detail(purchaseReceipt).getBillDate().toString());
         purchase.put("orderItemId",f.orderItem());purchase.put("supplierId",f.w().supplierId());
         purchase.put("warehouseId",f.w().warehouseId());purchase.put("goodsId",f.w().goodsD());
         purchase.put("sourceQty","10");
@@ -144,6 +148,7 @@ class FeedbackBWebSeedTest {
         var subcontract=new LinkedHashMap<String,Object>();
         subcontract.put("receiptId",receiptId);subcontract.put("receiptItemId",subcontractReceipts.detail(receiptId).getItems().getFirst().getId());
         subcontract.put("receiptNo",subcontractReceipts.detail(receiptId).getBillNo());
+        subcontract.put("billDate",subcontractReceipts.detail(receiptId).getBillDate().toString());
         subcontract.put("orderItemId",orderItem);subcontract.put("supplierId",w.supplierId());
         subcontract.put("warehouseId",w.warehouseId());subcontract.put("goodsId",w.goodsE());
         subcontract.put("sourceQty","10");
@@ -180,6 +185,15 @@ class FeedbackBWebSeedTest {
                 "materialLineId",row.materialLineId(),"requiredQty",row.requiredQty().toPlainString(),"planningUncoveredQty",row.planningUncoveredQty().toPlainString())).toList();
         output.put("materialOrder",Map.of("analysisId",ordering.analysis(),"analysisNo",detail.analysisNo(),"goodsId",ordering.material(),"warehouseId",ordering.world().warehouseId(),"rows",rows));
         output.put("planner",Map.of("userId",planner,"login",login(planner)));
+        var periodCheck=new org.springframework.transaction.support.TransactionTemplate(
+                beans.getBean(org.springframework.transaction.PlatformTransactionManager.class));
+        periodCheck.setReadOnly(true);
+        periodCheck.executeWithoutResult(status->{
+            var guard=beans.getBean(com.uten.imp.features.finance.payables.SupplierClosedPeriodGuard.class);
+            guard.requireOpenReadOnly(f.w().supplierId(),f.currency(),BusinessTime.today(),"网页整改采购退货验收种子");
+            guard.requireOpenReadOnly(w.supplierId(),currency,BusinessTime.today(),"网页整改委外退货验收种子");
+        });
+        output.put("supplierPeriodReadOnlyChecks","PASS at billDate; real runtime must recheck at approval");
         String file=System.getenv("UTEN_REMEDIATION_B_SEED_OUTPUT");
         if(file==null||file.isBlank())throw new IllegalStateException("Explicit seed output path required");
         var path=java.nio.file.Path.of(file);java.nio.file.Files.createDirectories(path.getParent());

@@ -22,6 +22,7 @@ Future<void> main() async {
   final dio = _client();
   Future<void> check(String name, Future<void> Function() action) async {
     await _caseEvent(name, 'start');
+    _expectSeq = 0;
     try {
       await action();
       results.add({'name': name, 'passed': true});
@@ -579,8 +580,15 @@ Future<DioException> _error(Future<dynamic> operation) => operation.then(
 );
 
 void _expect(bool value) {
-  if (!value) throw StateError('Browser transport assertion failed');
+  // 序号随所在用例从 1 递增：失败时报告用例内第几条断言，定位真实断言，
+  // 不猜环境差异。check() 每轮开始时清零。
+  _expectSeq++;
+  if (!value) {
+    throw StateError('Browser transport assertion #$_expectSeq failed');
+  }
 }
+
+var _expectSeq = 0;
 
 bool _containsBytes(List<int> bytes, List<int> expected) {
   for (var start = 0; start <= bytes.length - expected.length; start++) {

@@ -109,6 +109,44 @@ class InstantInventoryCompleteStreamServiceTest {
         return frames;
     }
 
+    /** 2026-11-10 (G): a slow consumer must not spend the data RR transaction's
+     * budget. readWithProof closes the data transaction and its publication
+     * fence before returning, so only the first frame (the ~1s first screen)
+     * may touch the response inside the reader; the other seven page frames
+     * and the complete frame must leave after readWithProof returned. */
+    @Test void onlyTheFirstFrameLeavesDuringTheDataTransactionTheRestReplayAfterTheFence() throws Exception {
+        serve(1050);
+        var dataTransactionClosed = new java.util.concurrent.atomic.AtomicBoolean(false);
+        org.mockito.Mockito.doAnswer(call -> {
+            call.getArgument(1, Runnable.class).run();
+            call.getArgument(2, BiFunction.class).apply(proof, (Runnable) () -> { });
+            dataTransactionClosed.set(true);
+            return proof.snapshot(1050L);
+        }).when(pages).readWithProof(any(), any(), any());
+        var flushes = new java.util.concurrent.CopyOnWriteArrayList<String>();
+        var payload = new java.io.ByteArrayOutputStream();
+        var response = org.mockito.Mockito.mock(jakarta.servlet.http.HttpServletResponse.class);
+        when(response.getOutputStream()).thenReturn(new jakarta.servlet.ServletOutputStream() {
+            @Override public boolean isReady() { return true; }
+            @Override public void setWriteListener(jakarta.servlet.WriteListener listener) { }
+            @Override public void write(int value) { payload.write(value); }
+        });
+        org.mockito.Mockito.doAnswer(call -> {
+            flushes.add(dataTransactionClosed.get() ? "after" : "during");
+            return null;
+        }).when(response).flushBuffer();
+        service.stream(request(1000, null), null, response);
+        // 1050 rows on the progressive plan: 50, 50, 100, 200, 200, 200, 200, 50,
+        // then the complete frame — every flush after the first is post-fence.
+        assertThat(flushes).containsExactly(
+                "during", "after", "after", "after", "after", "after", "after", "after", "after");
+        var frames = new ArrayList<JsonNode>();
+        for (String line : payload.toString().lines().toList()) frames.add(json.readTree(line));
+        assertThat(frames).hasSize(9);
+        assertThat(frames.getLast().path("type").asText()).isEqualTo("complete");
+        assertThat(frames.getLast().path("total").asLong()).isEqualTo(1050);
+    }
+
     @Test void oneSnapshotFramesTheSharedPlanAndEndsComplete() throws Exception {
         serve(1050);
         var response = new MockHttpServletResponse();

@@ -39,6 +39,11 @@ import java.util.Map;
  *     续批 {@link ReportReadPlan#ROWS_ONLY} 只取行，计数沿用首批在快照内算出的精确值。</li>
  * <li>业务谓词、排序与合计口径仍是 {@link StockQueryService} 唯一维护入口。</li>
  * </ul>
+ *
+ * <p>2026-11-10（G）：首帧在数据事务内直发保住约一秒首屏；其余帧在事务内物化到
+ * {@code CompleteStreamStaging} 有界暂存（内存上限+临时文件），事务与发布栅栏关闭后
+ * 再按客户端速度回放——慢消费者不再消耗 60 秒事务预算、不再占着 RR 快照与数据库连接
+ * 等待输出。帧形状与逐帧 flush 次序不变，三端契约零改动。
  */
 @Service
 public class InstantInventoryCompleteStreamService {
@@ -79,7 +84,7 @@ public class InstantInventoryCompleteStreamService {
         response.setCharacterEncoding("UTF-8");
         response.setHeader("Cache-Control", "no-store");
         response.setHeader("X-Accel-Buffering", "no");
-        try {
+        try (var staged = com.uten.imp.common.readsnapshot.CompleteStreamStaging.open(json)) {
             var accepted = summaries.readWithProof(request,
                     () -> CurrentAuthorityGuard.requireAll("stock:view"),
                     (proof, checkpoint) -> {
@@ -112,11 +117,18 @@ public class InstantInventoryCompleteStreamService {
                                     throw incomplete();
                                 }
                                 seen += expected;
-                                writeFrame(response, Map.of("type", "page", "value", proof.snapshot(value)));
+                                // 2026-11-10 (G): only the first frame leaves during the data
+                                // RR transaction (the ~1s first screen); later frames are
+                                // staged so a slow consumer cannot spend the transaction
+                                // budget, and replay after the publication fence.
+                                var frame = Map.of("type", "page", "value", proof.snapshot(value));
+                                if (first) writeFrame(response, frame);
+                                else staged.stage(frame);
                                 if (seen == total) return total;
                             }
                         }
                     });
+            staged.replayTo(response);
             writeFrame(response, Map.of("type", "complete", "total", accepted.value(),
                     "readScopeVersion", accepted.readScopeVersion(),
                     "readSnapshotRevision", accepted.readSnapshotRevision(), "readDataVersion", accepted.readDataVersion()));

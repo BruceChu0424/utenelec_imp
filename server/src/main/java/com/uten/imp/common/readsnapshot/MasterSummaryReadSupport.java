@@ -87,11 +87,16 @@ public final class MasterSummaryReadSupport {
         response.setCharacterEncoding("UTF-8");
         response.setHeader("Cache-Control", "no-store");
         response.setHeader("X-Accel-Buffering", "no");
-        try {
+        try (var staged = CompleteStreamStaging.open(json)) {
             var accepted = summaries.readWithProof(request, authorize, (proof, checkpoint) -> {
                 response.setHeader("X-Uten-Read-Scope-Version", proof.readScopeVersion());
                 try (var cursor = BoundedMasterReadSource.open(entityManager, checkpoint, ignored -> { })) {
                     long seen = 0, expected = -1;
+                    // 2026-11-10 (G): only the first frame leaves during the data RR
+                    // transaction (the ~1s first screen); later frames are staged so a
+                    // slow consumer cannot spend the transaction budget, and replay
+                    // after the publication fence at the client's own speed.
+                    boolean firstFrame = true;
                     while (true) {
                         checkpoint.run();
                         int size = plan.sizeAt(seen), page = plan.pageAt(seen);
@@ -100,12 +105,15 @@ public final class MasterSummaryReadSupport {
                         else if (expected != value.total()) throw incomplete();
                         seen = Math.addExact(seen, value.items().size());
                         if (seen > expected || value.items().isEmpty() && seen < expected) throw incomplete();
-                        writeFrame(response, Map.of("type", "page", "value", proof.snapshot(value)));
+                        var frame = Map.of("type", "page", "value", proof.snapshot(value));
+                        if (firstFrame) { writeFrame(response, frame); firstFrame = false; }
+                        else staged.stage(frame);
                         cursor.clearBatch();
                         if (seen == expected) return expected;
                     }
                 }
             });
+            staged.replayTo(response);
             writeFrame(response, Map.of("type", "complete", "total", accepted.value(),
                     "readScopeVersion", accepted.readScopeVersion(),
                     "readSnapshotRevision", accepted.readSnapshotRevision(), "readDataVersion", accepted.readDataVersion()));

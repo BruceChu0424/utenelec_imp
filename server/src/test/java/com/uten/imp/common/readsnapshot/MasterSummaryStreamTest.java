@@ -113,6 +113,63 @@ class MasterSummaryStreamTest {
         assertThat(BoundedMasterReadSource.<Integer,String>lookup("labels",List.of(7),keys -> Map.of())).isEmpty();
     }
 
+    /** 2026-11-10 (G): a slow consumer must not spend the data RR transaction's
+     * budget. readWithProof closes the data transaction and its publication
+     * fence before returning, so only the first frame (the ~1s first screen)
+     * may touch the response inside the reader; every later page frame and the
+     * complete frame must leave after readWithProof returned. */
+    @Test void onlyTheFirstFrameLeavesDuringTheDataTransactionTheRestReplayAfterTheFence() throws Exception {
+        var dataTransactionClosed = new java.util.concurrent.atomic.AtomicBoolean(false);
+        doAnswer(call->{
+            call.getArgument(1,Runnable.class).run();
+            call.getArgument(2,BiFunction.class).apply(proof,(Runnable)()->{});
+            dataTransactionClosed.set(true);
+            return proof.snapshot(350L);
+        }).when(pages).readWithProof(any(),any(),any());
+        var flushes=new java.util.concurrent.CopyOnWriteArrayList<String>();
+        var payload=new java.io.ByteArrayOutputStream();
+        var response=mock(jakarta.servlet.http.HttpServletResponse.class);
+        when(response.getOutputStream()).thenReturn(new ServletOutputStream() {
+            @Override public boolean isReady(){return true;}
+            @Override public void setWriteListener(WriteListener listener){ }
+            @Override public void write(int value){payload.write(value);}
+        });
+        doAnswer(call->{flushes.add(dataTransactionClosed.get()?"after":"during");return null;})
+                .when(response).flushBuffer();
+        summaries.stream("goods-master-list","master_goods","goods:view",query,null,
+                (filter,page,size,sort,order)->page(page,size,350),response);
+        // 350 rows in 100-row frames: frames 2-4 and the complete frame replay
+        // only after the transaction and fence closed, at the client's own speed.
+        assertThat(flushes).containsExactly("during","after","after","after","after");
+        var frames=new ArrayList<com.fasterxml.jackson.databind.JsonNode>();
+        for(String line:payload.toString().lines().toList()) frames.add(json.readTree(line));
+        assertThat(frames).hasSize(5);
+        assertThat(frames.getLast().path("type").asText()).isEqualTo("complete");
+        assertThat(frames.getLast().path("total").asLong()).isEqualTo(350);
+    }
+
+    /** The scan is decoupled from the consumer: a disconnect that only shows up
+     * during the replay cannot cancel batches that the data transaction already
+     * read; it still fails the response with the original cause. */
+    @Test void aDisconnectDuringReplayHasAlreadyScannedEveryBatchAndThrowsTheCause() throws Exception {
+        // The first frame (bytes plus its framing newline) leaves whole; the
+        // disconnect only shows up on the next write, i.e. during the replay.
+        var firstFrameFlushed=new java.util.concurrent.atomic.AtomicBoolean(false);
+        var response=mock(jakarta.servlet.http.HttpServletResponse.class);
+        when(response.getOutputStream()).thenReturn(new ServletOutputStream() {
+            @Override public boolean isReady(){return true;}
+            @Override public void setWriteListener(WriteListener listener){ }
+            @Override public void write(int value)throws IOException {
+                if(firstFrameFlushed.get())throw new IOException("fixture disconnect during replay");
+            }
+        });
+        doAnswer(call->{firstFrameFlushed.set(true);return null;}).when(response).flushBuffer();
+        assertThatThrownBy(()->summaries.stream("goods-master-list","master_goods","goods:view",query,null,
+                (filter,page,size,sort,order)->page(page,size,350),response))
+                .isInstanceOf(IOException.class).hasMessage("fixture disconnect during replay");
+        assertThat(loads).hasValue(4);
+    }
+
     @Test void finalCommittedDriftRetiresEveryProvisionalFrameAndNeverPublishesCompletion() throws Exception {
         doAnswer(call->{
             call.getArgument(2,BiFunction.class).apply(proof,(Runnable)()->{});
@@ -122,10 +179,14 @@ class MasterSummaryStreamTest {
         summaries.stream("goods-master-list","master_goods","goods:view",query,null,
                 (filter,page,size,sort,order)->page(page,size,201),response);
         var frames=frames(response);
-        assertThat(frames).hasSize(4);
-        assertThat(frames.getLast().get("type").asText()).isEqualTo("error");
-        assertThat(frames.getLast().get("code").asText()).isEqualTo("SNAPSHOT_CHANGED");
-        assertThat(frames.stream().anyMatch(frame->frame.get("type").asText().equals("complete"))).isFalse();
+        // 2026-11-10 (G): only the first provisional frame escaped before the
+        // fence; the staged frames are discarded unread and the error frame
+        // retires everything the client did see. No completion is published.
+        assertThat(frames).hasSize(2);
+        assertThat(frames.getFirst().path("type").asText()).isEqualTo("page");
+        assertThat(frames.getLast().path("type").asText()).isEqualTo("error");
+        assertThat(frames.getLast().path("code").asText()).isEqualTo("SNAPSHOT_CHANGED");
+        assertThat(frames.stream().anyMatch(frame->frame.path("type").asText().equals("complete"))).isFalse();
     }
 
     @Test void shortOrChangedBatchStopsInsteadOfForgingACompleteList() throws Exception {

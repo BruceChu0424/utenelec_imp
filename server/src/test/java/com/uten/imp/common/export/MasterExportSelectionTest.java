@@ -75,6 +75,12 @@ class MasterExportSelectionTest {
         Root<Object> root=mock(ObjectRoot.class);CriteriaQuery<?> query=mock(CriteriaQuery.class);
         var cb=mock(org.hibernate.query.criteria.HibernateCriteriaBuilder.class);
         Path<Object> identity=mock(ObjectPath.class);when(root.get("id")).thenReturn(identity);
+        // b538aba56 2026-11-10: membership renders as id = ANY(constant uuid[]) so
+        // PostgreSQL hashes the array at plan time; array_contains (@>) re-scanned
+        // the selected array per candidate row. The pinned invariant is unchanged:
+        // one typed array bind, no scalar expansion, identity still narrowed.
+        var bound=mock(org.hibernate.query.criteria.JpaExpression.class);
+        when(cb.value(any(UUID[].class))).thenAnswer(call->bound);
         try(var ignored=MasterExportSelection.open(ids)){
             MasterExportSelection.<Object>intersect(null).toPredicate(root,query,cb);
         }
@@ -82,6 +88,6 @@ class MasterExportSelectionTest {
         verify(cb).value(array.capture());
         assertThat(array.getValue()).containsExactlyElementsOf(ids);
         verify(identity,never()).in(anyCollection());
-        verify(cb).function(eq("array_contains"),eq(Boolean.class),any(),eq(identity));
+        verify(cb).sql(eq("? = ANY(?)"),eq(Boolean.class),eq(identity),same(bound));
     }
 }

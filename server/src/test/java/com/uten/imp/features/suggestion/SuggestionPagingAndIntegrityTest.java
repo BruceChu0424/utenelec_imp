@@ -1,6 +1,7 @@
 package com.uten.imp.features.suggestion;
 
 import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.web.Pageables;
 import com.uten.imp.features.notice.HrNoticeService;
 import com.uten.imp.features.org.employee.EmployeeRepository;
 import com.uten.imp.features.suggestion.dto.SuggestionReplyRequest;
@@ -147,7 +148,8 @@ class SuggestionPagingAndIntegrityTest {
         assertThrows(ApiException.class, () -> service.list(null, null, "unknown", 1, 20));
         assertThrows(ApiException.class, () -> service.list(null, null, null, 0, 20));
         assertThrows(ApiException.class, () -> service.list(null, null, null, 1, 0));
-        assertThrows(ApiException.class, () -> service.list(null, null, null, 1, 201));
+        // 2026-11-09 合同：单页上限 200→1000（Pageables.MAX_PAGE_SIZE），上限以内合法、超上限拒绝。
+        assertThrows(ApiException.class, () -> service.list(null, null, null, 1, Pageables.MAX_PAGE_SIZE + 1));
     }
 
     @Test

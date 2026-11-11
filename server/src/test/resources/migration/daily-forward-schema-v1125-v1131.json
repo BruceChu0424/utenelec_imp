@@ -1,0 +1,90 @@
+{
+ "reviewedRange": "V1125..V1131",
+ "tables": {
+  "production_material_full_kit_proofs": {
+   "migration": "V1129__partial_material_reporting_capacity.sql",
+   "declaration": "CREATE TABLE production_material_full_kit_proofs (\n id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n execution_segment_id UUID NOT NULL REFERENCES production_execution_segments(id),\n planned_qty NUMERIC NOT NULL CHECK(planned_qty>0),\n rules_version INTEGER NOT NULL CHECK(rules_version=1),\n source_stock_order BIGINT NOT NULL,\n ledger_order BIGINT NOT NULL UNIQUE,\n created_transaction xid8 NOT NULL DEFAULT pg_current_xact_id(),\n created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp()\n);",
+   "sourceSha256": "4aeb741b79982f37699f0ea08b6601c6449f39d4fe9b10dbbc07df884be09859"
+  },
+  "production_material_full_kit_proof_items": {
+   "migration": "V1129__partial_material_reporting_capacity.sql",
+   "declaration": "CREATE TABLE production_material_full_kit_proof_items (\n proof_id UUID NOT NULL REFERENCES production_material_full_kit_proofs(id),\n demand_id UUID NOT NULL REFERENCES production_material_demands(id),\n supported_qty NUMERIC NOT NULL CHECK(supported_qty>=0),\n identity_snapshot JSONB NOT NULL,\n PRIMARY KEY(proof_id,demand_id)\n);",
+   "sourceSha256": "4aeb741b79982f37699f0ea08b6601c6449f39d4fe9b10dbbc07df884be09859"
+  }
+ },
+ "indexes": {
+  "production_material_full_kit_proofs_pkey": {
+   "migration": "V1129__partial_material_reporting_capacity.sql",
+   "declaration": "id UUID PRIMARY KEY DEFAULT gen_random_uuid()",
+   "kind": "CREATE TABLE implicit unique index",
+   "table": "production_material_full_kit_proofs",
+   "definition": "CREATE UNIQUE INDEX production_material_full_kit_proofs_pkey ON public.production_material_full_kit_proofs USING btree (id)",
+   "sourceSha256": "4aeb741b79982f37699f0ea08b6601c6449f39d4fe9b10dbbc07df884be09859"
+  },
+  "production_material_full_kit_proofs_ledger_order_key": {
+   "migration": "V1129__partial_material_reporting_capacity.sql",
+   "declaration": "ledger_order BIGINT NOT NULL UNIQUE",
+   "kind": "CREATE TABLE implicit unique index",
+   "table": "production_material_full_kit_proofs",
+   "definition": "CREATE UNIQUE INDEX production_material_full_kit_proofs_ledger_order_key ON public.production_material_full_kit_proofs USING btree (ledger_order)",
+   "sourceSha256": "4aeb741b79982f37699f0ea08b6601c6449f39d4fe9b10dbbc07df884be09859"
+  },
+  "idx_material_full_kit_proof_segment": {
+   "migration": "V1129__partial_material_reporting_capacity.sql",
+   "declaration": "CREATE INDEX idx_material_full_kit_proof_segment ON production_material_full_kit_proofs(execution_segment_id,ledger_order DESC);",
+   "kind": "CREATE INDEX",
+   "table": "production_material_full_kit_proofs",
+   "definition": "CREATE INDEX idx_material_full_kit_proof_segment ON public.production_material_full_kit_proofs USING btree (execution_segment_id, ledger_order DESC)",
+   "sourceSha256": "4aeb741b79982f37699f0ea08b6601c6449f39d4fe9b10dbbc07df884be09859"
+  },
+  "production_material_full_kit_proof_items_pkey": {
+   "migration": "V1129__partial_material_reporting_capacity.sql",
+   "declaration": "PRIMARY KEY(proof_id,demand_id)",
+   "kind": "CREATE TABLE implicit unique index",
+   "table": "production_material_full_kit_proof_items",
+   "definition": "CREATE UNIQUE INDEX production_material_full_kit_proof_items_pkey ON public.production_material_full_kit_proof_items USING btree (proof_id, demand_id)",
+   "sourceSha256": "4aeb741b79982f37699f0ea08b6601c6449f39d4fe9b10dbbc07df884be09859"
+  },
+  "uq_material_stock_posting_ledger_order": {
+   "migration": "V1129__partial_material_reporting_capacity.sql",
+   "declaration": "CREATE UNIQUE INDEX uq_material_stock_posting_ledger_order\n    ON production_material_stock_postings(ledger_order) WHERE ledger_order IS NOT NULL;",
+   "kind": "CREATE UNIQUE INDEX",
+   "table": "production_material_stock_postings",
+   "definition": "CREATE UNIQUE INDEX uq_material_stock_posting_ledger_order ON public.production_material_stock_postings USING btree (ledger_order) WHERE (ledger_order IS NOT NULL)",
+   "sourceSha256": "4aeb741b79982f37699f0ea08b6601c6449f39d4fe9b10dbbc07df884be09859"
+  },
+  "idx_material_issue_reverse_proof": {
+   "migration": "V1129__partial_material_reporting_capacity.sql",
+   "declaration": "CREATE INDEX idx_material_issue_reverse_proof ON production_material_stock_postings(demand_id,ledger_order)\n WHERE posting_type='ISSUE_REVERSE' AND ledger_order IS NOT NULL;",
+   "kind": "CREATE INDEX",
+   "table": "production_material_stock_postings",
+   "definition": "CREATE INDEX idx_material_issue_reverse_proof ON public.production_material_stock_postings USING btree (demand_id, ledger_order) WHERE ((posting_type = 'ISSUE_REVERSE'::text) AND (ledger_order IS NOT NULL))",
+   "sourceSha256": "4aeb741b79982f37699f0ea08b6601c6449f39d4fe9b10dbbc07df884be09859"
+  },
+  "idx_material_unordered_issue_proof": {
+   "migration": "V1129__partial_material_reporting_capacity.sql",
+   "declaration": "CREATE INDEX idx_material_unordered_issue_proof ON production_material_stock_postings(demand_id,event_id)\n WHERE posting_type='ISSUE' AND ledger_order IS NULL;",
+   "kind": "CREATE INDEX",
+   "table": "production_material_stock_postings",
+   "definition": "CREATE INDEX idx_material_unordered_issue_proof ON public.production_material_stock_postings USING btree (demand_id, event_id) WHERE ((posting_type = 'ISSUE'::text) AND (ledger_order IS NULL))",
+   "sourceSha256": "4aeb741b79982f37699f0ea08b6601c6449f39d4fe9b10dbbc07df884be09859"
+  },
+  "idx_material_posting_demand_order": {
+   "migration": "V1129__partial_material_reporting_capacity.sql",
+   "declaration": "CREATE INDEX idx_material_posting_demand_order ON production_material_stock_postings(demand_id,ledger_order DESC)\n WHERE ledger_order IS NOT NULL;",
+   "kind": "CREATE INDEX",
+   "table": "production_material_stock_postings",
+   "definition": "CREATE INDEX idx_material_posting_demand_order ON public.production_material_stock_postings USING btree (demand_id, ledger_order DESC) WHERE (ledger_order IS NOT NULL)",
+   "sourceSha256": "4aeb741b79982f37699f0ea08b6601c6449f39d4fe9b10dbbc07df884be09859"
+  },
+  "idx_material_full_kit_proof_source": {
+   "migration": "V1130__verify_legacy_material_basis_and_linear_proof_sweep.sql",
+   "declaration": "CREATE INDEX idx_material_full_kit_proof_source\n ON production_material_full_kit_proofs(execution_segment_id,source_stock_order,rules_version,planned_qty);",
+   "kind": "CREATE INDEX",
+   "table": "production_material_full_kit_proofs",
+   "definition": "CREATE INDEX idx_material_full_kit_proof_source ON public.production_material_full_kit_proofs USING btree (execution_segment_id, source_stock_order, rules_version, planned_qty)",
+   "sourceSha256": "a75dd318289a4974d9938591d599825091569dc4da47bdb084e298dd76a0e54c"
+  }
+ },
+ "removedIndexes": {}
+}

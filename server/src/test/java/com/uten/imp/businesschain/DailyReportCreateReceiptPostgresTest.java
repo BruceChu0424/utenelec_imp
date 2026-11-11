@@ -230,7 +230,36 @@ class DailyReportCreateReceiptPostgresTest {
         // remain omitted. The resolver must not resolve today's master data.
         assertNotNull(c.request().getBillDate()); assertNull(c.request().getItems().getFirst().getDefectQty());
         UUID product=c.request().getItems().getFirst().getGoodsId();
-        db.update("UPDATE goods SET is_deleted=TRUE WHERE id=?",product);
+        // V1128 (aa646f7cf, 2026-11-10 用户口径「新建货品可删除，货品应用后不可删除」): 已提交
+        // 日报的货品带终身首次使用事实，只能停用不能删除；先钉住这一点。
+        var usedDelete=assertThrows(org.springframework.dao.DataIntegrityViolationException.class,
+                ()->db.update("UPDATE goods SET is_deleted=TRUE WHERE id=?",product));
+        assertTrue(usedDelete.getMostSpecificCause().getMessage().contains("货品已用于业务或库存记录"),
+                usedDelete.getMessage());
+        // 「当前货品缺失」对已落地日报行不再可达；用只登记命令回执、不落业务行的合成场景
+        // 钉住同一保护：解析只认冻结证明，从不读取当前主档。
+        UUID missingGoods=UUID.randomUUID(),missingReport=UUID.randomUUID();
+        db.update("insert into goods(id, code, name, source_type, status, unit_id, unit_legacy_id, price, code_sequence) "
+                + "values (?, ?, '未落地缺失货品', '采购', '使用', ?, ?, 100, "
+                + "(select coalesce(max(code_sequence), 0) + 1 from goods))",
+                missingGoods,"MG-"+missingGoods,c.world().unitId(),c.world().unitLegacy());
+        DailyReportSaveRequest missingMaster=json.readValue(c.originalBody(),DailyReportSaveRequest.class);
+        missingMaster.setIdempotencyKey("missing-master-"+UUID.randomUUID());
+        missingMaster.getItems().getFirst().setGoodsId(missingGoods);
+        byte[] missingBody=json.writeValueAsBytes(missingMaster);
+        String missingHash=ReflectionTestUtils.invokeMethod(ProductionDailyReportService.class,"createRequestHash",missingMaster);
+        String missingFull=ReflectionTestUtils.invokeMethod(ProductionDailyReportService.class,"createFullPayloadHash",missingMaster);
+        db.update("INSERT INTO production_daily_reports(id,bill_no,bill_date,maker_id) VALUES(?,?,?,?)",
+                missingReport,numbers.nextNumber(com.uten.imp.common.docnumber.DocNumberPrefix.PRODUCTION_DAILY_REPORT),
+                missingMaster.getBillDate(),c.world().employeeId());
+        db.update("INSERT INTO production_daily_report_commands(actor_user_id,idempotency_key,request_hash,report_id,created_by,command_kind,create_payload_version,create_payload_hash) "
+                + "VALUES(?,?,?,?,?,'CREATE',1,?)",
+                c.world().superAdminUserId(),missingMaster.getIdempotencyKey(),missingHash,missingReport,
+                c.world().superAdminUserId(),missingFull);
+        var missingBefore=facts(missingReport);
+        assertEquals(1,db.update("UPDATE goods SET is_deleted=TRUE WHERE id=?",missingGoods),"未用新货品保持可删");
+        assertEquals("COMMITTED",resolveBody(missingBody,reader(c),200).path("status").asText());
+        assertEquals(missingBefore,facts(missingReport));
         c.request().getItems().getFirst().setDefectQty(BigDecimal.ZERO); // canonical absent=zero contract
         var simulated=auth(c.world().superAdminUserId(),c.world().employeeId(),
                 Set.of("production_daily_report:view"),UUID.randomUUID());

@@ -281,7 +281,13 @@ class GoodsOperationHistoryAccountPostgresTest {
     }
 
     @Test void categoryCascadeRequiresWriteScopeForGoodsAndReadScopeForReintroducedComponents() {
-        UUID category=category("cascade category"),parent=goodsIn(category,b.employee(),"owned cascade parent"),component=goods(c.employee(),"private cascade component"),edge=bom(parent,component);
+        // V1128 (2026-11-10 用户口径「新建货品可删除，货品应用后不可删除」): a parent with its own
+        // BOM edge now carries a permanent usage fact, so a cascade can no longer soft delete it.
+        // The staged cascade therefore deletes an edge-free goods in the category, and the
+        // reintroduced-component scope stays covered by the retired edge of a separate parent
+        // (undo reintroduces it, so the component's owner must stay visible).
+        UUID category=category("cascade category"),parent=goodsIn(category,b.employee(),"owned cascade parent");
+        UUID holder=goods(b.employee(),"edge holder"),component=goods(c.employee(),"private cascade component"),edge=bom(holder,component);
         UUID operation=command("/api/master/material-categories/"+category,"DELETE",()->{
             execute("UPDATE goods_bom_items SET is_deleted=true,deleted_at=now() WHERE id=:id",edge);
             execute("UPDATE goods SET is_deleted=true,deleted_at=now(),version=version+1 WHERE id=:id",parent);

@@ -5,6 +5,7 @@ import com.uten.imp.application.port.MasterReferenceValidationPort;
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.web.Pageables;
 import com.uten.imp.features.master.client.ClientAccessPolicy;
 import com.uten.imp.security.OwnerVisibility;
 import org.junit.jupiter.api.*;
@@ -133,7 +134,8 @@ class GoodsPriceHistoryTablePostgresTest {
         for(String key:List.of("unitPrice DESC; DROP TABLE goods","comparable","unknown"))assertThatThrownBy(()->table.table(query(Kind.PURCHASE,1,10,key,true,Map.of()))).isInstanceOf(ApiException.class);
         assertThatThrownBy(()->table.table(query(Kind.PURCHASE,1,10,null,false,Map.of("sourceNo) OR TRUE;--","x")))).isInstanceOf(ApiException.class);
         assertThatThrownBy(()->table.table(query(Kind.PURCHASE,1,10,null,false,Map.of("unitPrice","NaN")))).isInstanceOf(ApiException.class);
-        assertThatThrownBy(()->table.table(query(Kind.PURCHASE,1,201,null,false,Map.of()))).isInstanceOf(ApiException.class);
+        // 2026-11-09 合同：单页上限 200→1000（Pageables.MAX_PAGE_SIZE），超上限仍拒绝、不产生无界页。
+        assertThatThrownBy(()->table.table(query(Kind.PURCHASE,1,Pageables.MAX_PAGE_SIZE+1,null,false,Map.of()))).isInstanceOf(ApiException.class);
         assertThatThrownBy(()->table.table(new TableQuery(context(Kind.PURCHASE),null,BusinessTime.today().plusDays(1),1,50,null,null,Map.of()))).isInstanceOf(ApiException.class);
         doThrow(new ApiException(ErrorCode.FORBIDDEN,"revoked")).when(access).requireHistory(Kind.PURCHASE);clearInvocations(named);
         assertThatThrownBy(()->table.table(query(Kind.PURCHASE,1,10,null,false,Map.of()))).hasMessageContaining("revoked");verifyNoInteractions(named);

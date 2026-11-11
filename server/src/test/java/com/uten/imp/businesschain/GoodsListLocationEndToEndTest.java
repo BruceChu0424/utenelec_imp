@@ -78,12 +78,14 @@ class GoodsListLocationEndToEndTest {
     }
     @AfterEach void after(){ProductionJdbcMeasurement.end();SecurityContextHolder.clearContext();}
 
-    @Test void twoHundredFiftySevenRowsUseOneBomProjectionPerPageAndAnInheritedPrefixCopyLocatesOnTheFirstPage() {
-        // 2026-11-08 上限 200：257=200+57 与旧 157=100+57 同构——首页整页夹到上限、次页 57 行部分页。
+    @Test void capPlusFiftySevenRowsUseOneBomProjectionPerPageAndAnInheritedPrefixCopyLocatesOnTheFirstPage() {
+        // 2026-11-09 上限 1000（200→1000 用户确认）：1057=1000+57 与旧 257=200+57、157=100+57 同构——
+        // 首页整页夹到上限、次页 57 行部分页。
+        int total=com.uten.imp.common.web.Pageables.MAX_PAGE_SIZE+57;
         String prefix="L"+tag.substring(0,6);
         UUID root=category(null,"定位继承根"+tag,prefix),leaf=category(root,"塑胶件"+tag,null);
         List<UUID> original=new ArrayList<>();
-        for(int index=0;index<257;index++)original.add(seed(leaf,"ZX"+tag+String.format("%03d",index),"原货品"+index,null));
+        for(int index=0;index<total;index++)original.add(seed(leaf,"ZX"+tag+String.format("%04d",index),"原货品"+index,null));
         UUID partCategory=category(null,"组件"+tag,null);
         UUID activePart=seed(partCategory,"CP"+tag,"在用组件",null);
         UUID disabledPart=seed(partCategory,"DP"+tag,"停用组件",null);
@@ -93,7 +95,7 @@ class GoodsListLocationEndToEndTest {
         GoodsQueryFilter query=filter(Map.of("categoryId",leaf));
         var small=ProductionJdbcMeasurement.begin();goods.list(query,1,1,null,null);ProductionJdbcMeasurement.end();
         var large=ProductionJdbcMeasurement.begin();var page=goods.list(query,1,com.uten.imp.common.web.Pageables.MAX_PAGE_SIZE*5,null,null);ProductionJdbcMeasurement.end();
-        assertEquals(com.uten.imp.common.web.Pageables.MAX_PAGE_SIZE,page.getItems().size());assertEquals(257,page.getTotal());
+        assertEquals(com.uten.imp.common.web.Pageables.MAX_PAGE_SIZE,page.getItems().size());assertEquals(total,page.getTotal());
         assertEquals(1,bomReads(small));assertEquals(1,bomReads(large),"BOM presence must be one batch read, not one read per goods row");
         assertTrue(page.getItems().get(0).isHasBom());
         assertFalse(page.getItems().get(1).isHasBom(),"A deleted BOM edge is not a current BOM");
@@ -118,7 +120,7 @@ class GoodsListLocationEndToEndTest {
         var copy=goods.create(request);
         assertEquals(prefix+"01",copy.getCode());
         var located=goods.locate(query,copy.getId(),100,null,null);
-        assertEquals(new GoodsPageLocation(true,1,0),located,"A generated inherited prefix can sort before all 257 old codes");
+        assertEquals(new GoodsPageLocation(true,1,0),located,"A generated inherited prefix can sort before all the seeded old codes");
         assertEquals(copy.getId(),goods.list(query,located.page(),100,null,null).getItems().get(located.rowIndex()).getId());
         for(UUID id:List.of(original.get(0),original.get(99),original.get(156)))assertLocation(query,id,100,null,null);
         db.update("UPDATE goods SET status='禁用' WHERE id=?",original.get(0));

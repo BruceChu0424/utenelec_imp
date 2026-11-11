@@ -27,19 +27,25 @@ class PermissionChainReachabilityContractTest {
     // V886 deliberately adds no department/user grant. Reusing the retired plan action would
     // hide the feature; assigning a department merely to satisfy this test would invent authority.
     // 值 = 该码允许出现的全部已启用设置面(逐面点名，多一个面就红)。
-    private static final Map<String, Set<String>> EXPLICIT_CONFIGURATION_ACTIONS = Map.of(
-            "production_material_analysis:forward_rd", Set.of("production.material-analysis"),
+    private static final Map<String, Set<String>> EXPLICIT_CONFIGURATION_ACTIONS = Map.ofEntries(
+            Map.entry("production_material_analysis:forward_rd", Set.of("production.material-analysis")),
             // V978 requires a named manager to be configured through the reviewed permission flow.
             // It must not silently grant sales or finance staff the newly introduced approval stage.
             // V1000 起原「订单审核」面的全部授权项同时进入统一审批中心(approvals.center)。
-            "sales_quote_manager:confirm", Set.of("sales.manager-review", "approvals.center"),
-            "sales_quote_manager:reject", Set.of("sales.manager-review", "approvals.center"),
-            "sales_quote_manager:reverse", Set.of("sales.manager-review", "approvals.center"),
-            "sales_order_manager:confirm", Set.of("sales.manager-review", "approvals.center"),
-            "sales_order_manager:reject", Set.of("sales.manager-review", "approvals.center"),
-            "sales_order_manager:reverse", Set.of("sales.manager-review", "approvals.center"),
+            Map.entry("sales_quote_manager:confirm", Set.of("sales.manager-review", "approvals.center")),
+            Map.entry("sales_quote_manager:reject", Set.of("sales.manager-review", "approvals.center")),
+            Map.entry("sales_quote_manager:reverse", Set.of("sales.manager-review", "approvals.center")),
+            Map.entry("sales_order_manager:confirm", Set.of("sales.manager-review", "approvals.center")),
+            Map.entry("sales_order_manager:reject", Set.of("sales.manager-review", "approvals.center")),
+            Map.entry("sales_order_manager:reverse", Set.of("sales.manager-review", "approvals.center")),
             // V999_11 财务申请新码: 零默认授权，只经 finance.applications 设置面按需授出。
-            "finance_application:apply", Set.of("finance.applications"));
+            Map.entry("finance_application:apply", Set.of("finance.applications")),
+            // V1127 自助申请码对齐 NORMAL 后刻意保持 baseline 关闭、零默认部门授权：
+            // 是否全员开通由管理员在全员基础包/部门矩阵自行勾选，只经 common.applications 设置面授出。
+            Map.entry("application:apply", Set.of("common.applications")),
+            Map.entry("application:apply:travel", Set.of("common.applications")),
+            Map.entry("application:apply:payment", Set.of("common.applications")),
+            Map.entry("application:apply:prepayment", Set.of("common.applications")));
     // V1000 报销四级审批码: 刻意零默认授权(由管理员在设置面按需授给部门或具体人)，策略
     // BULK_EXCLUDED(不可批量授)且高风险，同时暴露在人事/财务/审批中心三个已启用设置面，
     // 不满足上面单面 NORMAL 的形状；单独登记并钉死零默认授权、策略与受审面清单，

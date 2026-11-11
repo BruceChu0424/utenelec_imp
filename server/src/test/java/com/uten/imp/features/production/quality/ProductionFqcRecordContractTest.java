@@ -73,11 +73,11 @@ class ProductionFqcRecordContractTest {
     @Test
     void filtersFailClosedAndKeepCanonicalPaging() {
         var filter = ProductionFqcRecordQueryService.normalizeFilter(
-                " cancelled ", "  SCRB  ", null, null, null, null, null, 0, 500);
+                " cancelled ", "  SCRB  ", null, null, null, null, null, 0, Pageables.MAX_PAGE_SIZE + 500);
         assertThat(filter.decision()).isEqualTo("CANCELLED");
         assertThat(filter.keyword()).isEqualTo("scrb");
         assertThat(filter.page()).isEqualTo(1);
-        // 500 超上限：按 2026-11-08 合同夹到 Pageables.MAX_PAGE_SIZE。
+        // 超上限输入：按 2026-11-09 合同（单页上限 200→1000）夹到 Pageables.MAX_PAGE_SIZE。
         assertThat(filter.size()).isEqualTo(Pageables.MAX_PAGE_SIZE);
 
         assertThatThrownBy(() ->

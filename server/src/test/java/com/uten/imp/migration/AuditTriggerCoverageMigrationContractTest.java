@@ -1015,6 +1015,10 @@ class AuditTriggerCoverageMigrationContractTest {
             new NoneGroup("stock_claim_storage_projection",
                     "V993 预留在实际仓位的剩余量由不可变流转事件维护，可按原预留与事件重建；不是人工主档或第二份库存归属，调拨单和预留决定继续保留 FULL 审计",
                     Set.of("stock_reservation_storage_positions")),
+            new NoneGroup("material_full_kit_proofs",
+                    "V1129 齐套检查点证明及其明细是物料过账（FULL 审计）派生的计算投影：由所有权守卫与 V1130/V1131 的只前进扫描维护，"
+                            + "冲销只抵扣对应区间信用、历史 NULL 位不回填、不改旧证据；人工操作与过账事实已由原表审计，不复制为第二份行审计",
+                    Set.of("production_material_full_kit_proofs", "production_material_full_kit_proof_items")),
             new NoneGroup("read_authorization_version_lineage",
                     "V939 服务端固定域与读取范围版本谱系；原授权及归属变更仍按权威源表审计，附属事务版本事件和域字典由不可变触发器永久保留，不复制为第二份通用行审计",
                     Set.of("read_scope_domains", "read_scope_change_events")),

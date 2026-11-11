@@ -1,6 +1,7 @@
 package com.uten.imp.features.sales.order;
 
 import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.web.Pageables;
 import com.uten.imp.features.sales.SalesDocumentAccessPolicy;
 import com.uten.imp.features.sales.order.dto.ShippableLineFilter;
 import com.uten.imp.security.DocumentAccessPolicy.NativeReadScope;
@@ -37,17 +38,19 @@ class SalesOrderShippablePageTest {
     @Test void countAndRowsUseTheSameLiteralSearchClientAndSourcePredicateWithBoundedLongOffset() {
         scope(); Query count = query(), rows = query(); UUID client = UUID.randomUUID();
         when(em.createNativeQuery(anyString())).thenReturn(count, rows);
-        when(count.getSingleResult()).thenReturn(205L);
+        // 2026-11-09 合同：单次页上限 200→1000（Pageables.MAX_PAGE_SIZE）；
+        // 总数与请求 size 都取超上限值，验证夹到上限后第 2 页仍是长 offset。
+        when(count.getSingleResult()).thenReturn((long) Pageables.MAX_PAGE_SIZE + 5);
         when(rows.getResultList()).thenReturn(Collections.singletonList(row(writer)));
         when(accessPolicy.hasAuthority("sales_shipment:create")).thenReturn(true);
         when(accessPolicy.canWrite(writer, scope)).thenReturn(true);
 
-        var result = service.shippableLinesPage(new ShippableLineFilter("螺丝 A%_B", client), 2, 1000);
+        var result = service.shippableLinesPage(new ShippableLineFilter("螺丝 A%_B", client), 2, Pageables.MAX_PAGE_SIZE * 2);
 
-        assertThat(result.getPage()).isEqualTo(2); assertThat(result.getSize()).isEqualTo(200);
-        assertThat(result.getTotal()).isEqualTo(205); assertThat(result.getTotalPages()).isEqualTo(2);
+        assertThat(result.getPage()).isEqualTo(2); assertThat(result.getSize()).isEqualTo(Pageables.MAX_PAGE_SIZE);
+        assertThat(result.getTotal()).isEqualTo((long) Pageables.MAX_PAGE_SIZE + 5); assertThat(result.getTotalPages()).isEqualTo(2);
         assertThat(result.getItems().getFirst().price()).isNull();
-        verify(rows).setParameter("shippableLimit", 200); verify(rows).setParameter("shippableOffset", 200L);
+        verify(rows).setParameter("shippableLimit", Pageables.MAX_PAGE_SIZE); verify(rows).setParameter("shippableOffset", (long) Pageables.MAX_PAGE_SIZE);
         for (Query query : List.of(count, rows)) {
             verify(query).setParameter("salesOwners", Set.of(writer, readOnly));
             verify(query).setParameter("shippableClientId", client);

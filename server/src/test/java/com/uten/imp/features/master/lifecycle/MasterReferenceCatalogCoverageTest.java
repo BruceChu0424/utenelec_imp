@@ -262,7 +262,12 @@ class MasterReferenceCatalogCoverageTest {
                 "goods_cost_commands.result", // command receipt is covered by the saved sheet and frozen snapshot
                 "production_material_return_receiving_confirmations.line_weights", // return-line UUID -> weight; goods identity is retained on the referenced return item
                 "production_material_increment_reversals.draw_item_quantities", // stock draw-line UUID -> quantity; the immutable demand and draw items retain goods identity
-                "production_material_analysis_items.delivery_plan_snapshot"); // DeliveryPlan contains BOM-edge UUID paths, modes and a fingerprint, never goods UUIDs; item.goods_id and expanded material rows retain the goods identity
+                "production_material_analysis_items.delivery_plan_snapshot", // DeliveryPlan contains BOM-edge UUID paths, modes and a fingerprint, never goods UUIDs; item.goods_id and expanded material rows retain the goods identity
+                // V1129 full-kit proof drift check: the snapshot only freezes the identity of its
+                // referenced demand (tracked goods_id and consumption_snapshot on production_material_demands)
+                // and segment (tracked product_goods_id on production_execution_segments); it introduces no
+                // goods UUID that those relational sources do not already track for life.
+                "production_material_full_kit_proof_items.identity_snapshot");
         List<String> unclassifiedJson = new ArrayList<>();
         try (Connection connection = connection(); var statement = connection.createStatement(); var rows = statement.executeQuery("""
                 SELECT c.relname,a.attname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace

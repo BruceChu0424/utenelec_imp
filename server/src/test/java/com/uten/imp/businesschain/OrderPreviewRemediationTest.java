@@ -13,6 +13,8 @@ import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 @org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc(print=org.springframework.boot.webmvc.test.autoconfigure.MockMvcPrint.NONE)
+// JUnit 环境条件不继承：子类必须自带 UTEN_RUN_DB_TESTS 门，否则快速 CI 会误起数据库夹具。
+@org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class OrderPreviewRemediationTest extends CompanyMaterialOrderQuantityEndToEndTest {
     @org.springframework.beans.factory.annotation.Autowired org.springframework.test.web.servlet.MockMvc http;
     @org.springframework.beans.factory.annotation.Autowired tools.jackson.databind.ObjectMapper json;

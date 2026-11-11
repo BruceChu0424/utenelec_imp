@@ -3,6 +3,7 @@ package com.uten.imp.features.production.report;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.common.web.Pageables;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
 import org.junit.jupiter.api.Test;
@@ -245,10 +246,12 @@ class ProductionWhereUsedQueryServiceTest {
         }));
         when(em.createNativeQuery(anyString())).thenReturn(pageQuery);
 
-        var result = service().searchWhereUsedMaterials("  ", categoryId.toString(), -3, 500);
+        // 2026-11-09 合同：单次页上限 200→1000（Pageables.MAX_PAGE_SIZE），超上限请求夹到共享上限。
+        var result = service().searchWhereUsedMaterials(
+                "  ", categoryId.toString(), -3, Pageables.MAX_PAGE_SIZE + 300);
 
         assertThat(result.getPage()).isEqualTo(1);
-        assertThat(result.getSize()).isEqualTo(200);
+        assertThat(result.getSize()).isEqualTo(Pageables.MAX_PAGE_SIZE);
         assertThat(result.getItems()).singleElement().satisfies(item -> {
             assertThat(item.autoCreated()).isTrue();
             assertThat(item.deleted()).isTrue();
@@ -258,7 +261,7 @@ class ProductionWhereUsedQueryServiceTest {
             assertThat(item.series()).isNull();
         });
         verify(pageQuery).setParameter("categoryId", categoryId);
-        verify(pageQuery).setParameter("__limit", 200);
+        verify(pageQuery).setParameter("__limit", Pageables.MAX_PAGE_SIZE);
         verify(pageQuery).setParameter("__offset", 0L);
         verify(pageQuery, never()).setParameter(org.mockito.ArgumentMatchers.eq("materialKeyword"), any());
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
@@ -421,6 +424,21 @@ class ProductionWhereUsedQueryServiceTest {
         assertThat(unsupported.getCode()).isEqualTo(ErrorCode.VALIDATION_FAILED);
         assertThat(reverseRange.getCode()).isEqualTo(ErrorCode.VALIDATION_FAILED);
         verifyNoInteractions(em);
+    }
+
+    @Test
+    void whereUsedClampsOversizePagesToTheUnifiedPageCap() {
+        Query dataQuery = chainableQuery();
+        when(dataQuery.getResultList()).thenReturn(List.of());
+        when(em.createNativeQuery(anyString())).thenReturn(dataQuery);
+
+        // 2026-11-09 合同：单次页上限统一 1000，where-used 表格与材料搜索同口径。
+        ReportTableResponse result = service().whereUsed(
+                UUID.randomUUID(), "current", null, null, 1, Pageables.MAX_PAGE_SIZE + 300, null, null);
+
+        assertThat(result.size()).isEqualTo(Pageables.MAX_PAGE_SIZE);
+        verify(dataQuery).setParameter("__limit", Pageables.MAX_PAGE_SIZE);
+        verify(dataQuery).setParameter("__offset", 0L);
     }
 
     @Test

@@ -114,7 +114,8 @@ class ProcurementFinanceApprovalBatchValidationTest {
                         "vendor%", "vendor%", "vendor%",
                         "a%", "a%", "a%",
                         30,
-                        30
+                        // 有界长 offset 合同：OFFSET 以 long 传参，避免 (page-1)*size 溢出 int。
+                        30L
                 }));
     }
 

@@ -3,6 +3,7 @@ package com.uten.imp.features.production.analysis;
 import com.uten.imp.common.validation.RequestLimits;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.web.Pageables;
 import com.uten.imp.features.production.ProductionDocumentAccessPolicy;
 import com.uten.imp.security.DocumentAccessPolicy;
 import com.uten.imp.security.OwnerVisibility;
@@ -569,11 +570,13 @@ class MaterialAnalysisServiceBehaviorTest {
             return statement.startsWith("SELECT COUNT(*)") ? count : data;
         });
 
+        // 2026-11-09 合同：单次页上限 200→1000（Pageables.MAX_PAGE_SIZE），超上限请求夹到共享上限；
+        // 总数 2 仍把第 99 页收敛回首页。
         var page = service.list(
-                " so-2026 ", " active ", " sales_order_item ", 99, 1000);
+                " so-2026 ", " active ", " sales_order_item ", 99, Pageables.MAX_PAGE_SIZE + 200);
 
         assertThat(page.getPage()).isEqualTo(1);
-        assertThat(page.getSize()).isEqualTo(200);
+        assertThat(page.getSize()).isEqualTo(Pageables.MAX_PAGE_SIZE);
         assertThat(page.getTotal()).isEqualTo(2);
         assertThat(page.getItems()).singleElement().satisfies(item -> {
             assertThat(item.analysisId()).isEqualTo(analysisId);

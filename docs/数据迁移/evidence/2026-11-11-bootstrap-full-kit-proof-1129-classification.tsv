@@ -1,0 +1,3 @@
+table	bootstrap_policy	audit_policy	source_migration	purpose
+production_material_full_kit_proof_items	EMPTY	NONE	V1129	证明明细按区间冲抵对应物料的过账信用，由所有权守卫与只前进扫描维护，不能当种子
+production_material_full_kit_proofs	EMPTY	NONE	V1129	齐套检查点证明是物料过账(FULL 审计)派生的计算投影，人工事实已由原表审计，不能当种子

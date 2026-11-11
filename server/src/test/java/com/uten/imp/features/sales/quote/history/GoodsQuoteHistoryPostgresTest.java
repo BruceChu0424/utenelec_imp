@@ -56,7 +56,9 @@ class GoodsQuoteHistoryPostgresTest {
             assertThat(row.orderId()).isEqualTo(order);
             assertThat(row.orderNo()).isEqualTo("XD-HISTORY");
         });
-        assertThat(service.list(goods, -1, 1000).getSize()).isEqualTo(200);
+        // e43df0c34 (2026-11-09, user-approved): the shared bounded page ceiling rose
+        // from 200 to Pageables.MAX_PAGE_SIZE=1000; an absurd size still clamps to it.
+        assertThat(service.list(goods, -1, 1000).getSize()).isEqualTo(1000);
         assertThat(service.list(UUID.randomUUID(), 1, 20).getItems()).isEmpty();
     }
 

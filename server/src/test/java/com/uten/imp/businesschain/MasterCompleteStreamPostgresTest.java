@@ -103,8 +103,10 @@ class MasterCompleteStreamPostgresTest extends AuthSessionPostgresTestSupport {
 
     @Test void invalidInternalSizeFailsClearlyAndUnauthorizedCompleteReadsStayDenied()throws Exception {
         String token=adminToken();
+        // 2026-11-09 合同后 1000 是合法的渐进内部批量（PROGRESSIVE_REQUEST_SIZE）；
+        // 内部 size 只接受固定 200 或渐进 1000，其余值（含超上限）必须清晰失败。
         var result=mvc.perform(json(post("/api/master/goods/summaries").param("complete","true").accept("application/x-ndjson"),
-                Map.of("filter",Map.of(),"page",1,"size",1000),token)).andReturn();
+                Map.of("filter",Map.of(),"page",1,"size",Pageables.MAX_PAGE_SIZE+1),token)).andReturn();
         assertThat(result.getResponse().getStatus()).isEqualTo(422);
         var denied=mvc.perform(json(post("/api/master/accounts/summaries").param("complete","true").accept("application/x-ndjson"),
                 Map.of("filter",Map.of(),"page",1,"size",100),null)).andReturn();

@@ -1,0 +1,12 @@
+{
+  "definite" : {
+    "analysisId" : "9e85b95b-3ee2-4073-b167-045af6e949d1",
+    "ordinaryPlanner" : "32120ace-3396-4282-8a7a-297218c2bdb3",
+    "seedFile" : "D:\\Projects\\uten_imp_worktrees\\feedback-b-final-prep-20261111\\evidence\\b-final-prep\\order-fixtures-own-1\\definite-seed.json"
+  },
+  "unknown" : {
+    "analysisId" : "e5f8025a-d44a-4211-ba82-29614d920eb1",
+    "ordinaryPlanner" : "0ac40cab-0cc6-40f0-9455-53c0a57a4bc2",
+    "seedFile" : "D:\\Projects\\uten_imp_worktrees\\feedback-b-final-prep-20261111\\evidence\\b-final-prep\\order-fixtures-own-1\\unknown-seed.json"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "reviewedProductSource": "6ee00bbba4e76d7f34cc6734b1f7e66a10754c7f",
+  "actualExecutionHeadStart": "9785290715e8e098f44eb8466bf559d093be5aa6",
+  "actualExecutionHeadEnd": "9785290715e8e098f44eb8466bf559d093be5aa6",
+  "productDiff": [],
+  "originalProbeByteIdentical": true,
+  "exit": 0,
+  "passed": 5,
+  "failed": 0,
+  "skipped": 0,
+  "metric": {
+    "rows": 600,
+    "ownerChecks": 3641,
+    "deepCompares": 7,
+    "loopChecks": 1211
+  },
+  "unchangedOtherEntryBlobs": {
+    "lib/features/basic_data/widgets/master_data_table_view.dart": "d41f07f2595df3aa6f5dda734e3aeb4bc50a91af",
+    "lib/shared/platform_tables/platform_table_controller.dart": "84523f9bc4c1bc234bf3745e325db962ba8385a2"
+  },
+  "classification": "independent Flutter VM/public API regression and existing budget; not true Web or PostgreSQL"
+}

@@ -1,0 +1,52 @@
+{
+  "purchaseBefore" : {
+    "id" : "1edc1ea0-24ec-490c-8822-0d45f5faa056",
+    "maker_id" : "2728c386-3bbf-4022-befd-7cd38ec89f71",
+    "created_by" : "9298c55d-1e17-41c0-9ea5-3038eff5e323",
+    "status" : 0,
+    "item_id" : "75e166fb-f5dd-4f73-ba36-cb33c7219b70",
+    "receipt_item_id" : "98ba9d22-3b4c-4a66-a898-4275ef2e913a",
+    "order_item_id" : null,
+    "qty" : 1,
+    "price" : null
+  },
+  "subcontractBefore" : {
+    "id" : "387014d7-bb34-42b8-9be7-7f008b7b317f",
+    "maker_id" : "f3ca6da5-3db2-4444-8874-dea19295a388",
+    "created_by" : "a2434b04-11f4-48d6-966a-ad2b990d5c66",
+    "status" : 0,
+    "item_id" : "b7604f5a-480a-42fd-9244-12a2aaac6cf9",
+    "receipt_item_id" : "ea7cd2a8-979b-475f-84cc-75de6701f19b",
+    "order_item_id" : null,
+    "qty" : 1,
+    "price" : null
+  },
+  "purchaseAfter" : {
+    "id" : "1edc1ea0-24ec-490c-8822-0d45f5faa056",
+    "maker_id" : "2728c386-3bbf-4022-befd-7cd38ec89f71",
+    "approver_id" : "b129446c-381a-4c1a-8724-80a64020b91c",
+    "status" : 1,
+    "total_local" : 10.0000,
+    "item_id" : "75e166fb-f5dd-4f73-ba36-cb33c7219b70",
+    "receipt_item_id" : "98ba9d22-3b4c-4a66-a898-4275ef2e913a",
+    "order_item_id" : "a7b37798-f56e-4abf-8844-f8791ac65131",
+    "qty" : 1,
+    "price" : 10
+  },
+  "subcontractAfter" : {
+    "id" : "387014d7-bb34-42b8-9be7-7f008b7b317f",
+    "maker_id" : "f3ca6da5-3db2-4444-8874-dea19295a388",
+    "approver_id" : "b129446c-381a-4c1a-8724-80a64020b91c",
+    "status" : 1,
+    "total_local" : 50.0000,
+    "item_id" : "b7604f5a-480a-42fd-9244-12a2aaac6cf9",
+    "receipt_item_id" : "ea7cd2a8-979b-475f-84cc-75de6701f19b",
+    "order_item_id" : "8189f001-da17-411c-83df-cccebd190dd8",
+    "qty" : 1,
+    "price" : 50
+  },
+  "status" : "prep: actual old public saves, candidate public ordinary approvals, stock/AP/GL assertions passed; not Web acceptance",
+  "approverUserId" : "3d4e38f0-8049-4fe7-868e-156af6e61e95",
+  "ordinaryPostingUserId" : "3206d65e-a1f9-4a49-91ee-27e3f6f8dcb8",
+  "period" : "2026-11"
+}

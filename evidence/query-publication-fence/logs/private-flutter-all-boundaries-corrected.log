@@ -1,0 +1,18 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/feedback-query-fence-20261111/test/shared/paging/scoped_query_publication_fence_test.dart
+00:00 +0: D:/Projects/uten_imp_worktrees/feedback-query-fence-20261111/test/shared/paging/scoped_query_publication_fence_test.dart: same event immediate result unchanged
+00:00 +1: D:/Projects/uten_imp_worktrees/feedback-query-fence-20261111/test/shared/paging/scoped_owner_check_budget_test.dart: one complete read answers every ownership re-check of a synchronous segment with a single query compare
+00:00 +2: D:/Projects/uten_imp_worktrees/feedback-query-fence-20261111/test/shared/paging/scoped_owner_check_budget_test.dart: one complete read answers every ownership re-check of a synchronous segment with a single query compare
+00:00 +3: D:/Projects/uten_imp_worktrees/feedback-query-fence-20261111/test/shared/paging/scoped_owner_check_budget_test.dart: one complete read answers every ownership re-check of a synchronous segment with a single query compare
+00:00 +4: D:/Projects/uten_imp_worktrees/feedback-query-fence-20261111/test/shared/paging/scoped_owner_check_budget_test.dart: one complete read answers every ownership re-check of a synchronous segment with a single query compare
+00:00 +5: D:/Projects/uten_imp_worktrees/feedback-query-fence-20261111/test/shared/paging/scoped_owner_check_budget_test.dart: one complete read answers every ownership re-check of a synchronous segment with a single query compare
+00:00 +6: D:/Projects/uten_imp_worktrees/feedback-query-fence-20261111/test/shared/paging/scoped_owner_check_budget_test.dart: one complete read answers every ownership re-check of a synchronous segment with a single query compare
+00:00 +7: D:/Projects/uten_imp_worktrees/feedback-query-fence-20261111/test/shared/paging/scoped_owner_check_budget_test.dart: one complete read answers every ownership re-check of a synchronous segment with a single query compare
+00:00 +8: D:/Projects/uten_imp_worktrees/feedback-query-fence-20261111/test/shared/paging/scoped_owner_check_budget_test.dart: one complete read answers every ownership re-check of a synchronous segment with a single query compare
+00:00 +9: D:/Projects/uten_imp_worktrees/feedback-query-fence-20261111/test/shared/paging/scoped_owner_check_budget_test.dart: one complete read answers every ownership re-check of a synchronous segment with a single query compare
+scoped owner check budget: rows=600 re-checks=3641 compares=7 loop checks=1211
+00:00 +10: D:/Projects/uten_imp_worktrees/feedback-query-fence-20261111/test/shared/paging/scoped_query_publication_fence_test.dart: unchanged query publishes a prefix and reuses its accepted complete cache
+00:00 +11: D:/Projects/uten_imp_worktrees/feedback-query-fence-20261111/test/shared/paging/scoped_owner_check_budget_test.dart: a mid-read query change still retires the old flight and the fresh read completes
+00:00 +12: D:/Projects/uten_imp_worktrees/feedback-query-fence-20261111/test/shared/paging/scoped_owner_check_budget_test.dart: a mid-read query change still retires the old flight and the fresh read completes
+00:00 +13: D:/Projects/uten_imp_worktrees/feedback-query-fence-20261111/test/shared/paging/scoped_query_publication_fence_test.dart: same-turn 403 ownership querySwitched=true
+00:00 +14: All tests passed!

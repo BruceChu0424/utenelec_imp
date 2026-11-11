@@ -29,9 +29,9 @@ class WorkbookColumnRemediationTest {
         assertThat(FinanceAccountingWorkbookParser.parse("VOUCHERS","voucher.xls",file("voucher-style.xls")).issues()).isEmpty();
     }
     @Test void everyEarlierServerSafetyVersionIsRetired() {
-        for(int version:List.of(0,1,3,Integer.MAX_VALUE))assertThatThrownBy(()->ImportColumnGuard.requireValidated(version))
+        for(int version:List.of(0,1,2,ImportColumnGuard.VERSION+1,Integer.MAX_VALUE))assertThatThrownBy(()->ImportColumnGuard.requireValidated(version))
                 .isInstanceOf(ApiException.class).hasMessageContaining("重新生成文件");
-        assertThatCode(()->ImportColumnGuard.requireValidated(2)).doesNotThrowAnyException();
+        assertThatCode(()->ImportColumnGuard.requireValidated(ImportColumnGuard.VERSION)).doesNotThrowAnyException();
     }
     @Test void originalCompanyPunctuationDoesNotInvalidateAnOtherwiseMatchingSignature() throws Exception {
         try(var book=new org.apache.poi.hssf.usermodel.HSSFWorkbook(new java.io.ByteArrayInputStream(file("voucher-style.xls")));var out=new java.io.ByteArrayOutputStream()) {

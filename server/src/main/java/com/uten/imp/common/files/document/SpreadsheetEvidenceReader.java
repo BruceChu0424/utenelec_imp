@@ -11,7 +11,7 @@ import java.util.List;
 /** Bounded cached-value/formula evidence. No formula evaluator, external I/O, macros or hidden inputs. */
 public final class SpreadsheetEvidenceReader {
     private SpreadsheetEvidenceReader() {}
-    public record Value(String address, String text, String formula, boolean externalReference) {}
+    public record Value(String address, String text, String formula, boolean externalReference, boolean literalText) {}
     public record Row(int number, List<Value> cells) {}
     public record Sheet(String name, List<Row> rows) {}
     public record Workbook(List<Sheet> sheets, int externalReferenceCount) {}
@@ -46,7 +46,7 @@ public final class SpreadsheetEvidenceReader {
                             if (value.isBlank() && formula == null) continue;
                             boolean linked = formula != null && (formula.contains("[") || formula.matches("(?i).*(WEBSERVICE|HYPERLINK|RTD|DDE).*"));
                             if (linked) external++;
-                            values.add(new Value(cell.getAddress().formatAsString(), value, formula, linked));
+                            values.add(new Value(cell.getAddress().formatAsString(), value, formula, linked, cell.getCellType() == CellType.STRING));
                         }
                         if (!values.isEmpty()) rows.add(new Row(row.getRowNum() + 1, List.copyOf(values)));
                     }

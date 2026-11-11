@@ -1,1 +1,1 @@
-Future<void> prepareAcceptanceRuntime() async {}
+Future<void> prepareAcceptanceRuntime({String? rootPath}) async {}

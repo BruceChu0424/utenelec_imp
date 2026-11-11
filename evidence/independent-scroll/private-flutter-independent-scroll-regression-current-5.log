@@ -1,0 +1,63 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/feedback-scroll-independent-20261111/test/independent/scroll_offset_retention_regression_test.dart
+00:00 +0: observe width-wide-to-compact nonzero inner through header wheel
+SCROLL-FACT {"case":"width-wide-to-compact","initialInner":950.0,"initialOuter":96.0,"transitionInner":950.0,"transitionOuter":0.0,"afterSmallInner":950.0,"afterSmallOuter":24.0,"afterBoundaryInner":0.0,"afterBoundaryOuter":96.0,"outerMax":96.0}
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: a numeric value within <0.01> of <950.0>
+  Actual: <0.0>
+   Which:  differs by <950.0>
+after a retained compact transition, header collapse must keep the original body row coordinate
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-scroll-independent-20261111/test/independent/scroll_offset_retention_regression_test.dart:91:7)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/feedback-scroll-independent-20261111/test/independent/scroll_offset_retention_regression_test.dart line 91
+The test description was:
+  observe width-wide-to-compact nonzero inner through header wheel
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:01 +0 -1: observe width-wide-to-compact nonzero inner through header wheel [E]
+  Test failed. See exception logs above.
+  The test description was: observe width-wide-to-compact nonzero inner through header wheel
+  
+00:01 +0 -1: observe height-tall-to-short nonzero inner through header wheel
+SCROLL-FACT {"case":"height-tall-to-short","initialInner":950.0,"initialOuter":96.0,"transitionInner":950.0,"transitionOuter":0.0,"afterSmallInner":950.0,"afterSmallOuter":24.0,"afterBoundaryInner":0.0,"afterBoundaryOuter":66.0,"outerMax":66.0}
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: a numeric value within <0.01> of <950.0>
+  Actual: <0.0>
+   Which:  differs by <950.0>
+after a retained compact transition, header collapse must keep the original body row coordinate
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-scroll-independent-20261111/test/independent/scroll_offset_retention_regression_test.dart:91:7)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/feedback-scroll-independent-20261111/test/independent/scroll_offset_retention_regression_test.dart line 91
+The test description was:
+  observe height-tall-to-short nonzero inner through header wheel
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:01 +0 -2: observe height-tall-to-short nonzero inner through header wheel [E]
+  Test failed. See exception logs above.
+  The test description was: observe height-tall-to-short nonzero inner through header wheel
+  
+00:01 +0 -2: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/feedback-scroll-independent-20261111/test/independent/scroll_offset_retention_regression_test.dart: observe height-tall-to-short nonzero inner through header wheel
+  D:/Projects/uten_imp_worktrees/feedback-scroll-independent-20261111/test/independent/scroll_offset_retention_regression_test.dart: observe width-wide-to-compact nonzero inner through header wheel

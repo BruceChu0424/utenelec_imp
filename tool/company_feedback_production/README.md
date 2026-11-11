@@ -10,7 +10,7 @@
 - `projection_mutation.py --root <候选工作树> --output <全新目录> --build-dir <隔离Maven输出> --deps <jar清单> --runtime-config <本地私有JSON>` 在真实查询中验证两种相反岗位，另编译一个仅交换布尔表达式的类路径覆盖，要求业务断言失败，再恢复正确查询通过。产品源文件不被修改。
 - `seed_browser.py` 使用同样的 `--root/--output/--build-dir/--deps/--runtime-config` 参数。先完成最终源码迁移，再运行它；`--compile-only` 仅编译、不连接数据库。输出普通报工编辑岗、独立审批岗、三材料各领 5000/计划 10000 的工单、草稿 300/配套 500 的工单和合法齐套工单，以及可打开的页面 ID。密码只取私有配置的 `syntheticAccountPassword`，不写证据 JSON 或命令参数。
 
-私有配置包含 `jdbcUrl`（只支持 `jdbc:postgresql://127.0.0.1:...`）、`username`、`password`；浏览器造数另需 `syntheticAccountPassword`、`jwtSecret`、`hmacKey` 和 `pgpMasterKey`，与最终运行后端保持一致；动态属性在 Spring 初始化前覆盖夹具常量，验证时不回显秘密。私有配置不进 Git。源码 Java 夹具复用正式业务服务造单，不关闭触发器、不补造历史序号或检查点。
+私有配置包含 `jdbcUrl`（只支持 `jdbc:postgresql://127.0.0.1:...`）、`username`、`password`；浏览器造数另需与运行程序一致的 `bootstrapLogin`、`bootstrapPassword` 以及 `syntheticAccountPassword`、`jwtSecret`、`hmacKey` 和 `pgpMasterKey`，与最终运行后端保持一致；动态属性在 Spring 初始化前覆盖夹具常量，验证时不回显秘密。私有配置不进 Git。源码 Java 夹具复用正式业务服务造单，不关闭触发器、不补造历史序号或检查点。
 
 `legacy_approved_read_only.sql` 仅作历史不确定记录的只读核查入口。缺乏证据不等于旧产量虚假；不得按查询结果自动红冲或改写旧账。核实原计划、需求与物料身份、发退料、实耗、品质/入库和成本/财务下游后，再由具备相应权限的现场岗位按原业务逆向流程决定处置。
 

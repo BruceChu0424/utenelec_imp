@@ -6,6 +6,8 @@ import static org.junit.jupiter.api.Assertions.*;
 class FeedbackBrowserSeedFixture extends FeedbackLegacyMaterialUpgradeFixture {
  @org.springframework.beans.factory.annotation.Autowired org.springframework.core.env.Environment runtimeEnvironment;
  @Test void seed() throws Exception {
+  assertTrue(Objects.equals(System.getenv("AUDIT_BOOTSTRAP_LOGIN"),runtimeEnvironment.getProperty("uten.bootstrap.admin-login")),"Seed bootstrap identity differs from the runtime");
+  assertTrue(Objects.equals(System.getenv("AUDIT_BOOTSTRAP_PASSWORD"),runtimeEnvironment.getProperty("uten.bootstrap.admin-password")),"Seed bootstrap configuration differs from the runtime");
   assertTrue(Objects.equals(System.getenv("AUDIT_JWT_SECRET"),runtimeEnvironment.getProperty("uten.jwt.secret")),"Seed JWT configuration differs from the runtime");
   assertTrue(Objects.equals(System.getenv("AUDIT_HMAC_KEY"),runtimeEnvironment.getProperty("uten.crypto.hmac-key")),"Seed HMAC configuration differs from the runtime");
   assertTrue(Objects.equals(System.getenv("AUDIT_PGP_MASTER_KEY"),runtimeEnvironment.getProperty("uten.crypto.pgp-master-key")),"Seed PGP configuration differs from the runtime");

@@ -161,7 +161,9 @@ namespace Uten.Legacy.Core
             MutationJsonNode proof;
             if (request.Action == MutationAction.UnitExportSubmit && values.TryGetValue("request", out proof) && proof.Value != null)
             {
-                if (!SameSubmit(SubmitObject(MutationJsonTree.Parse(request.BodyJson, UnitExportBudget.RequestBytes, false, 4096, false, true).Object), proof.Object)) throw new FormatException();
+                // SameSubmit validates both objects. Do not parse and validate
+                // the same large selectedIds string a second time here.
+                if (!SameSubmit(MutationJsonTree.Parse(request.BodyJson, UnitExportBudget.RequestBytes, false, 4096, false, true).Object, proof.Object)) throw new FormatException();
                 result.HasCreationRequestProof = true;
             }
             return result;

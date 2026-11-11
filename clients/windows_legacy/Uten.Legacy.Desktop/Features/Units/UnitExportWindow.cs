@@ -232,7 +232,10 @@ namespace Uten.Legacy.Desktop.Features.Units
                 pendingSelected = request.HasExportSelection;
                 pendingBody = body; pendingJobId = jobId; pendingLocalId = request.RequestId;
                 highlightedId = jobId;
-                var result = await session.MutateAsync(request, lifetime.Token);
+                // A fast transport may complete synchronously. The original
+                // body/proof validation and durable journal still run off the
+                // dispatcher, with the same frozen owner and command.
+                var result = await Task.Run(() => session.MutateAsync(request, lifetime.Token), lifetime.Token);
                 if (!Current) return;
                 if (result.Outcome == MutationOutcome.Confirmed)
                 {
@@ -266,7 +269,7 @@ namespace Uten.Legacy.Desktop.Features.Units
             {
                 using (UtenBusyDialog.Show(this, "正在只读核对原任务"))
                 {
-                var result = await session.ReconcileUnitExportAsync(requestId, mutationOwner, lifetime.Token);
+                var result = await Task.Run(() => session.ReconcileUnitExportAsync(requestId, mutationOwner, lifetime.Token), lifetime.Token);
                 if (!Current) return;
                 if (result.Outcome == MutationOutcome.Confirmed)
                 {

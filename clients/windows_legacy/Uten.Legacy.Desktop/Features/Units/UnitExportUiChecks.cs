@@ -32,8 +32,10 @@ namespace Uten.Legacy.Desktop.Features.Units
                 fixture.LoseSubmitReply = true;
                 var window = fixture.Open(new UnitQuery(keyword:"large-frozen-scope"), ids, count + 1);
                 Pump(() => Button(window,"生成当前筛选").IsEnabled);
-                int ticks = 0; var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(10) };
-                timer.Tick += (sender,args) => ticks++; timer.Start();
+                int ticks = 0; long lastTick=0, maximumGap=0;
+                var heartbeat=System.Diagnostics.Stopwatch.StartNew();
+                var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(10) };
+                timer.Tick += (sender,args) => { long now=heartbeat.ElapsedMilliseconds; maximumGap=Math.Max(maximumGap,now-lastTick);lastTick=now;ticks++; }; timer.Start();
                 var elapsed = System.Diagnostics.Stopwatch.StartNew();
                 try
                 {
@@ -47,7 +49,8 @@ namespace Uten.Legacy.Desktop.Features.Units
                     fixture.Picker.Cancel = true;
                     Click(Button(window,"下载Excel")); Pump(() => fixture.Picker.Calls == 1 && Button(window,"下载Excel").IsEnabled);
                     if (fixture.Downloads != 0 || File.Exists(fixture.Output)) throw new InvalidOperationException("Cancelled large native picker generated a download");
-                    Console.WriteLine("PASS WPF actual UnitExportWindow selected="+count+"; dispatcherTicks="+ticks+"; elapsedMs="+elapsed.ElapsedMilliseconds+"; original unknown->GET; cancelled save; controlled HTTP, not PG/Win7");
+                    if (maximumGap>1000)throw new InvalidOperationException("Large native export blocked the UI dispatcher for "+maximumGap+"ms");
+                    Console.WriteLine("PASS WPF actual UnitExportWindow selected="+count+"; dispatcherTicks="+ticks+"; maximumDispatcherGapMs="+maximumGap+"; elapsedMs="+elapsed.ElapsedMilliseconds+"; original unknown->GET; cancelled save; controlled HTTP, not PG/Win7");
                     checks += 4;
                 }
                 finally { timer.Stop(); window.Close(); }

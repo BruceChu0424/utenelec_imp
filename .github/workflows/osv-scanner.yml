@@ -41,7 +41,7 @@ jobs:
         working-directory: server
         run: mvn --batch-mode --no-transfer-progress -DskipTests verify
 
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: osv-inputs
           include-hidden-files: true
@@ -103,7 +103,7 @@ jobs:
 
       - name: Preserve OSV JSON and SARIF
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: OSV Scanner SARIF file
           path: |

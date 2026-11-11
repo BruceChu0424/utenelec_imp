@@ -102,7 +102,7 @@ jobs:
 
       - name: Upload one exact unsigned website candidate
         id: upload
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: uten-website-unsigned-${{ github.sha }}
           path: ${{ runner.temp }}/website-unsigned.tar
@@ -295,7 +295,7 @@ jobs:
           "$oss" cp --force --endpoint "$OSS_ENDPOINT" "$root/channel.sig" "oss://$OSS_BUCKET/website/channels/candidate.sig"
 
       - name: Preserve signed website publication as short-lived audit artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: uten-website-signed-${{ github.sha }}
           path: ${{ runner.temp }}/candidate

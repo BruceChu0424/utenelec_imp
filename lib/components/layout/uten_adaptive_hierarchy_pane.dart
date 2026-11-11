@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import '../buttons/uten_close_button.dart';
 import 'package:flutter/services.dart';
 
-import '../../core/responsive/breakpoint.dart';
 import '../../core/responsive/compact_presentation.dart';
 import '../../core/theme/uten_tokens.dart';
 import 'uten_compact_toolbar.dart';
@@ -75,21 +74,27 @@ class _AdaptiveHierarchyPaneState extends State<UtenAdaptiveHierarchyPane> {
 
   Widget _buildCompactContent(Widget trailing) {
     final compact = UtenCompactPresentation.iconSearchOf(context);
-    final directory = OutlinedButton(
-      key: widget.openButtonKey,
-      focusNode: _triggerFocus,
-      onPressed: () => setState(() => _open = true),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              widget.selectedLabel ?? '选择${widget.noun}',
-              softWrap: true,
-            ),
+    final directory = UtenPageEdgePadding.pane(
+      padding: EdgeInsets.all(compact ? 0 : 8),
+      child: OutlinedButton(
+        key: widget.openButtonKey,
+        focusNode: _triggerFocus,
+        onPressed: () => setState(() => _open = true),
+        child: Padding(
+          padding: EdgeInsets.symmetric(vertical: compact ? 0 : 6),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  widget.selectedLabel ?? '选择${widget.noun}',
+                  softWrap: true,
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Icon(Icons.account_tree_rounded, size: 20),
+            ],
           ),
-          const SizedBox(width: 8),
-          const Icon(Icons.account_tree_rounded, size: 20),
-        ],
+        ),
       ),
     );
     final header = Visibility(
@@ -98,78 +103,55 @@ class _AdaptiveHierarchyPaneState extends State<UtenAdaptiveHierarchyPane> {
       maintainAnimation: true,
       child: KeyedSubtree(
         key: _compactHeaderKey,
-        child: compact
-            ? Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Row(
-                  children: [
-                    Expanded(child: directory),
-                    if (widget.compactHeader != null) ...[
-                      const SizedBox(width: 8),
-                      ConstrainedBox(
-                        constraints: BoxConstraints(
-                          maxWidth:
-                              UtenControlMetrics.minimumHitExtent(context) * 3,
-                        ),
-                        child: utenCompactToolbarChild(
-                          context,
-                          widget.compactHeader!,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              )
-            : Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  ?widget.compactHeader,
-                  UtenPageEdgePadding.pane(
-                    padding: const EdgeInsets.all(8),
-                    child: OutlinedButton(
-                      key: widget.openButtonKey,
-                      focusNode: _triggerFocus,
-                      onPressed: () => setState(() => _open = true),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 6),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                widget.selectedLabel ?? '选择${widget.noun}',
-                                softWrap: true,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            const Icon(Icons.account_tree_rounded, size: 20),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
+        child: Padding(
+          padding: EdgeInsets.symmetric(vertical: compact ? 4 : 0),
+          child: Flex(
+            direction: compact ? Axis.horizontal : Axis.vertical,
+            verticalDirection: compact
+                ? VerticalDirection.down
+                : VerticalDirection.up,
+            crossAxisAlignment: compact
+                ? CrossAxisAlignment.center
+                : CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(
+                flex: compact ? 1 : 0,
+                fit: FlexFit.tight,
+                child: directory,
               ),
+              Visibility(
+                visible: widget.compactHeader != null,
+                maintainState: true,
+                child: SizedBox(
+                  width: compact ? 8 : 0,
+                  height: compact ? 0 : 8,
+                ),
+              ),
+              Flexible(
+                flex: 0,
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: compact
+                        ? UtenControlMetrics.minimumHitExtent(context) * 3
+                        : double.infinity,
+                  ),
+                  child: utenCompactToolbarChild(
+                    context,
+                    widget.compactHeader ?? const SizedBox.shrink(),
+                    preserveWrapperState: true,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        if (constraints.maxHeight < UtenBreakpoints.mediumStart) {
-          // Reuse the existing compact contract: header and directory entry
-          // can scroll away, while results keep their own usable body extent
-          // and independent primary controller (including when offstage).
-          return UtenCollapsingHeaderScrollView(
-            collapsingHeader: header,
-            body: trailing,
-          );
-        }
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            header,
-            Expanded(child: trailing),
-          ],
-        );
-      },
+    return UtenCollapsingHeaderScrollView(
+      stableBodyViewport: true,
+      collapsingHeader: header,
+      body: trailing,
     );
   }
 

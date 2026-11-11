@@ -96,6 +96,7 @@ class UtenCollapsingHeaderScrollView extends StatefulWidget {
     this.compactBreakpoint = UtenBreakpoints.mediumStart,
     this.compactHeightBreakpoint = UtenBreakpoints.mediumStart,
     this.compactBodyMinHeight = 360,
+    this.stableBodyViewport = false,
   }) : assert(
          pinnedHeader == null || pinnedHeaderExtent != null,
          'UtenCollapsingHeaderScrollView: pinnedHeaderExtent 必须随 pinnedHeader 一起提供。',
@@ -104,6 +105,11 @@ class UtenCollapsingHeaderScrollView extends StatefulWidget {
   /// 滚动主体。须含一个拾取 PrimaryScrollController 的竖向可滚动件
   /// （MasterDataTableView(primary:true) 或 ListView(primary:true)）。
   final Widget body;
+
+  /// Retained hierarchy panes keep one viewport/controller topology across
+  /// height changes. Tall panes fill the remainder; short panes scroll the
+  /// header away while retaining a usable body extent.
+  final bool stableBodyViewport;
 
   /// 随滚动收起/拉回的顶部内容（如分类信息卡）。为空则只有 body。
   final Widget? collapsingHeader;
@@ -555,6 +561,7 @@ class _UtenCollapsingHeaderScrollViewState
             // 滚轮直接被表内 Scrollable 吃掉——先滚表内、头部永不收起，大字号把
             // 桌面端压进紧凑分支后用户口径「表格不会滑到顶」即此。
             _compactMode =
+                widget.stableBodyViewport ||
                 canFallBack && (smallViewport || _squeezedViewport == viewport);
             final header = widget.collapsingHeader == null
                 ? null
@@ -579,6 +586,10 @@ class _UtenCollapsingHeaderScrollViewState
                 bodyMinHeight: widget.compactBodyMinHeight,
                 innerController: _bodyController,
                 body: bodySurface,
+                stableBodyViewport: widget.stableBodyViewport,
+                fillViewportRemainder:
+                    widget.stableBodyViewport &&
+                    constraints.maxHeight >= widget.compactHeightBreakpoint,
               );
             } else {
               final body = canFallBack
@@ -925,12 +936,16 @@ class _CompactPageScroll extends StatefulWidget {
     this.pinnedHeader,
     this.pinnedHeaderExtent,
     this.controller,
+    this.stableBodyViewport = false,
+    this.fillViewportRemainder = false,
   });
 
   final double viewportHeight;
   final GlobalKey viewportKey;
   final Widget body;
   final double bodyMinHeight;
+  final bool stableBodyViewport;
+  final bool fillViewportRemainder;
 
   final ScrollController innerController;
   final Widget? collapsingHeader;
@@ -975,15 +990,34 @@ class _CompactPageScrollState extends State<_CompactPageScroll> {
               child: PrimaryScrollController.none(child: widget.pinnedHeader!),
             ),
           ),
-        SliverToBoxAdapter(
-          child: SizedBox(
-            height: bodyHeight,
-            child: PrimaryScrollController(
-              controller: widget.innerController,
-              child: widget.body,
+        if (widget.stableBodyViewport)
+          SliverLayoutBuilder(
+            builder: (context, constraints) => SliverToBoxAdapter(
+              child: SizedBox(
+                height: widget.fillViewportRemainder
+                    ? math.max(
+                        widget.bodyMinHeight,
+                        constraints.viewportMainAxisExtent -
+                            constraints.precedingScrollExtent,
+                      )
+                    : bodyHeight,
+                child: PrimaryScrollController(
+                  controller: widget.innerController,
+                  child: widget.body,
+                ),
+              ),
+            ),
+          )
+        else
+          SliverToBoxAdapter(
+            child: SizedBox(
+              height: bodyHeight,
+              child: PrimaryScrollController(
+                controller: widget.innerController,
+                child: widget.body,
+              ),
             ),
           ),
-        ),
         if (!compactPresentation && capsuleOcclusion > 0)
           SliverPadding(padding: EdgeInsets.only(bottom: capsuleOcclusion)),
       ],

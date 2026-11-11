@@ -4,9 +4,10 @@
   "rawFiles": [
     {
       "path": ".gitattributes",
-      "bytes": 76,
-      "sha256": "13dc861a42feeec455ace64fbbc2afe83d29091ca1c45deb8608eb5b8cb0d87e",
-      "byteSource": "raw-file"
+      "bytes": 71,
+      "sha256": "9d8d94473fbb329aa4f48c3c5367931da70e44c2995665d7d869966e14d24ae4",
+      "byteSource": "git-blob",
+      "blob": "cebc28a710856d920f12a56c31e1d3247d05aa51"
     },
     {
       "path": "c-fixture-original-bytes.dart",
@@ -18,7 +19,8 @@
       "path": "c-fixture-source-snapshot.dart",
       "bytes": 44674,
       "sha256": "72a474eec000392734028adbceaf4d93cd2bcc5bc9181db4a0fb8b98495e638a",
-      "byteSource": "raw-file"
+      "byteSource": "git-blob",
+      "blob": "62f5efac77a5c093c552a8a40e1631f1621c60c7"
     },
     {
       "path": "private-flutter-independent-correct-threshold-11.json",
@@ -96,55 +98,64 @@
       "path": "probe-v1-top-layoutbuilder.dart",
       "bytes": 5228,
       "sha256": "a9281c2cb2d62666cfbb956d920cd0a4b4fb1324fefe49d304c31ad3cd8f8bdd",
-      "byteSource": "raw-file"
+      "byteSource": "git-blob",
+      "blob": "cc2455e51a914909ac4c1e58cae2a63479912e31"
     },
     {
       "path": "probe-v3-bare-align.dart",
       "bytes": 5310,
       "sha256": "8336db4063c77b535a5d494318e5c4850a67f738e7116e8980cfcff77e5a757c",
-      "byteSource": "raw-file"
+      "byteSource": "git-blob",
+      "blob": "cde96fc8069956c07668d68754323bdc2b103d5d"
     },
     {
       "path": "probe-v5-before-threshold-correction.dart",
       "bytes": 7211,
       "sha256": "60dd1ff915349a3ad9fbea16f2ea1eb5e4b5813c2210265ba5a31461d35ade72",
-      "byteSource": "raw-file"
+      "byteSource": "git-blob",
+      "blob": "804256ed1e6c344a8316131e576a6b69ed8f7cc4"
     },
     {
       "path": "probes/independent_full_mould_probe_test.dart",
       "bytes": 22494,
       "sha256": "1dea8b41891ab7aaf2577739dedf7712d1da3b1312f66dcce65c23bc29c58db8",
-      "byteSource": "raw-file"
+      "byteSource": "git-blob",
+      "blob": "a36d6527da19a3a230f55cbdd69982444d551331"
     },
     {
       "path": "probes/independent_mould_host_probe_test.dart",
       "bytes": 22496,
       "sha256": "6f60cf87f76201eac3361dd7508a2561dde6a000fa88e0eaf23298473e34660f",
-      "byteSource": "raw-file"
+      "byteSource": "git-blob",
+      "blob": "c860a68445d1ecf062bc00bbf20f1ace1ac2f435"
     },
     {
       "path": "probes/minimal_split_tooltip_reparent_test.dart",
       "bytes": 3264,
       "sha256": "07d1173756584fb0714ea699b3f760f5769543bba75b5c11a50b6130fd332074",
-      "byteSource": "raw-file"
+      "byteSource": "git-blob",
+      "blob": "6725cc9747bba8456c2ad5c76a2aab16ee461f18"
     },
     {
       "path": "probes/retained_tooltip_resize_test.dart",
       "bytes": 7242,
       "sha256": "2051c5f407a8fb53fff08ec512807f1fc5d2451f655687fd7aec97dd9d149664",
-      "byteSource": "raw-file"
+      "byteSource": "git-blob",
+      "blob": "291e8fe6be5233148cea19da8b0768ee3e7217e7"
     },
     {
       "path": "probes/tree_tooltip_reparent_test.dart",
       "bytes": 2407,
       "sha256": "0672bfa24159364ce71bd4193ce47ba5d55ebcbe5f7ed983ea85dcb85f8c1f23",
-      "byteSource": "raw-file"
+      "byteSource": "git-blob",
+      "blob": "739251066bd7bc46eeb6cac53e10aa9bbdd962f0"
     },
     {
       "path": "REPORT.md",
-      "bytes": 3729,
-      "sha256": "5d1a05b12c00d1c50d7d2caf333afb9822e61bd75150b0200a38ceaabc843ea6",
-      "byteSource": "raw-file"
+      "bytes": 3699,
+      "sha256": "dfe56e53d648248e9848b01d5327307ebf10ffefb5e4f84b4953bd6642507a10",
+      "byteSource": "git-blob",
+      "blob": "8c67288197941e256db92a7e8e17522d39120dff"
     },
     {
       "path": "sdk-overlay-mechanism.json",
@@ -156,7 +167,9 @@
       "path": "tree-probe-before-threshold-correction.dart",
       "bytes": 2323,
       "sha256": "24fea1b653a0163afb10b7cad13bd4b9cd13ef2f0c2caab2e1f12bb5495a5b4f",
-      "byteSource": "raw-file"
+      "byteSource": "git-blob",
+      "blob": "5005937aa9766f9422104265b32f9bec32267a74"
     }
-  ]
+  ],
+  "sourceByteContract": "source copies, report and attributes use exact committed Git blob bytes; original fixture snapshot, logs and JSON use raw file bytes"
 }

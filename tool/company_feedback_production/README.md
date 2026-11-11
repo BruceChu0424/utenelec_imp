@@ -4,6 +4,8 @@
 
 所有数据库、Maven 输出、TMP、端口和证据目录必须独立。原审查目录只读保留；每轮使用新的 `--output`。这些脚本仅面向明确指定的本地回环 PostgreSQL，不连接公司库，不合并、推送、部署或打包。
 
+- `run_final_a.py --root <最终独立工作树> --candidate <完整SHA> --output <新目录>` 默认只输出计划；Root 冻结后追加 `--execute` 才新编译并顺序运行原15类209项、owning26子集、DirectLot两例、旧程序编译、proof、双起点12副本和真实SQL投影变异。只接受同一干净HEAD、新隔离输出和自己创建的PG，不读取Root运行配置。详见 `docs/99-项目治理/公司网页反馈整改-20261110/A-最终后端整组执行入口-20261111.md`。
+- `attest_candidate.py --root <工作树> --candidate <SHA> --output <新JSON>` 逐文件列出候选与7b的main/test/migration/contracts/pom/tools Git blob；不把源码比对当运行class证明，不更名旧通过来源。
 - `compile_legacy.py --root <候选工作树> --output <全新目录>` 从 Git `86dffb9db` 干净编译 V1128 原业务程序，输出 `legacy-build`。
 - `proof_probe.py --root <候选工作树> --output <全新目录>` 重演原 V1129 缩量反例，然后应用 V1130/V1131，并测量 513/1025/2049 个检查点及原始 EXPLAIN。使用一次性隔离容器，不修改旧证据。
 - `upgrade_probe.py --root <候选工作树> --output <全新目录> --build-dir <候选隔离Maven输出> --legacy-build <V1128的legacy-build> --deps <依赖jar清单>` 公开造原单和两个修前草稿，保全原库及 dump，分别从 V1128 与已真实迁至 V1129 两个起点独立复制创建、编辑、审核数据库，V1129 起点迁候选前保留 dump；另用原 V1128 公开保存三材料各发 5000/计划 10000/产量 6000 草稿，再用独立副本验证两个起点的候选、新建、编辑和审核拒绝（12个候选副本；6次1129 staging；加旧库准备共19次单项launcher，分栏记数）。候选必须包含 V1130/V1131，输出目录需要同时包含 `classes`、`test-classes`；依赖清单是 Maven test scope 的分号分隔 jar 路径，不得混入旧产物目录。

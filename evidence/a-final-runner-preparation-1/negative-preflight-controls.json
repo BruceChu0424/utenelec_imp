@@ -1,0 +1,16 @@
+[
+  {
+    "case": "wrong-candidate",
+    "exitCode": 1,
+    "rejected": true,
+    "executeFlag": false,
+    "databaseStarted": false
+  },
+  {
+    "case": "existing-output",
+    "exitCode": 1,
+    "rejected": true,
+    "executeFlag": false,
+    "databaseStarted": false
+  }
+]

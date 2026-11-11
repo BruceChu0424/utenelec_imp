@@ -1,0 +1,23 @@
+{
+  "mainMergeVerified": "ebd4abf1e1e1dcc8448e374692f03dc5ce28b522",
+  "productMerge": "6e50f2158868e390cb1dda8b253231be2956f9e8",
+  "parallelNoticeMergePreserved": "6cfdcd4c52ee88e52b224f16c81febd4d16c9c7f",
+  "handoffDocumentCommit": "fc5baa620d000210b683a5d8c2a934cfb4d0aad1",
+  "runtimeGitScopesSameAsChecked08af": [
+    "lib",
+    "server/src/main",
+    "server/pom.xml",
+    "clients/windows_legacy/Uten.Legacy.Core",
+    "clients/windows_legacy/Uten.Legacy.App",
+    "windows/runner",
+    "pubspec.yaml",
+    "pubspec.lock"
+  ],
+  "noMergeInProgress": true,
+  "parallelWorkingLockRawUnchanged": "eab3fb182a286e0de53c4791db39fe6c808678caa642cbeb1f01abcc1a0965de",
+  "uncommittedMain": " M pubspec.lock\n?? tmp/\n",
+  "rootServicesIntentionallyStopped": true,
+  "privateBackupReceipt": "evidence/root/handoff/runtime-stop-and-backup.json",
+  "finalUnifiedBusinessAcceptanceCompleted": false,
+  "userRequestedNextTaskHandoff": true
+}

@@ -65,8 +65,11 @@ void main() {
       'companyName': '另一家公司',
     });
     expect(a, isNot(equals(changed)), reason: '库恢复复用版本号换内容必须不相等');
-    expect(a.forServer('https://a.test'), isNot(equals(a.forServer('https://b.test'))),
-        reason: '来源栅栏参与值身份');
+    expect(
+      a.forServer('https://a.test'),
+      isNot(equals(a.forServer('https://b.test'))),
+      reason: '来源栅栏参与值身份',
+    );
   });
 
   test('主题构建器值键缓存: 同值品牌(新实例)→同一 ThemeData 实例', () {
@@ -74,8 +77,11 @@ void main() {
     final b = PlatformBranding.fromJson(_payload);
     final light1 = buildLightTheme(branding: a);
     final light2 = buildLightTheme(branding: b);
-    expect(identical(light1, light2), isTrue,
-        reason: '无关根重建拿到同一实例,MaterialApp 才不会重放主题过渡');
+    expect(
+      identical(light1, light2),
+      isTrue,
+      reason: '无关根重建拿到同一实例,MaterialApp 才不会重放主题过渡',
+    );
     final dark1 = buildDarkTheme(branding: a);
     final dark2 = buildDarkTheme(branding: b);
     expect(identical(dark1, dark2), isTrue);
@@ -83,10 +89,16 @@ void main() {
       ..._payload,
       'primaryColor': '#B91C1C',
     });
-    expect(identical(light1, buildLightTheme(branding: changed)), isFalse,
-        reason: '品牌真变化必须重建主题');
-    expect(identical(light1, buildLightTheme(branding: a)), isTrue,
-        reason: '换回原值恢复缓存命中');
+    expect(
+      identical(light1, buildLightTheme(branding: changed)),
+      isFalse,
+      reason: '品牌真变化必须重建主题',
+    );
+    expect(
+      identical(light1, buildLightTheme(branding: a)),
+      isTrue,
+      reason: '换回原值恢复缓存命中',
+    );
   });
 
   test('主题值键缓存按平台隔离: 密度与转场平台相关, 换平台不得复用他平台实例', () {
@@ -98,12 +110,18 @@ void main() {
     debugDefaultTargetPlatformOverride = TargetPlatform.android;
     final androidLight = buildLightTheme(branding: branding);
     final androidDark = buildDarkTheme(branding: branding);
-    expect(identical(windowsLight, androidLight), isFalse,
-        reason: '同品牌值在不同目标平台必须各建各的(adaptivePlatformDensity/转场平台相关)');
+    expect(
+      identical(windowsLight, androidLight),
+      isFalse,
+      reason: '同品牌值在不同目标平台必须各建各的(adaptivePlatformDensity/转场平台相关)',
+    );
     expect(identical(windowsDark, androidDark), isFalse);
     debugDefaultTargetPlatformOverride = TargetPlatform.windows;
-    expect(identical(buildLightTheme(branding: branding), windowsLight), isTrue,
-        reason: '回到原平台恢复缓存命中');
+    expect(
+      identical(buildLightTheme(branding: branding), windowsLight),
+      isTrue,
+      reason: '回到原平台恢复缓存命中',
+    );
     expect(identical(buildDarkTheme(branding: branding), windowsDark), isTrue);
   });
 
@@ -140,9 +158,13 @@ void main() {
     container.invalidate(platformBrandingProvider);
     await container.read(platformBrandingProvider.future);
     await container.pump();
-    expect(notified, 2,
-        reason: '等载荷轮询周期不得向下游重发布——否则全应用主题重放、'
-            '表格重读平台 values 并重启列宽测量');
+    expect(
+      notified,
+      2,
+      reason:
+          '等载荷轮询周期不得向下游重发布——否则全应用主题重放、'
+          '表格重读平台 values 并重启列宽测量',
+    );
     expect(buildLightTheme(branding: latest), same(lightFirst));
   });
 }

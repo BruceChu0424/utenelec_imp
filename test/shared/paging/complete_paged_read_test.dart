@@ -154,9 +154,9 @@ void main() {
           final result = await loadCompletePagedResult<int>(
             isCurrent: () => true,
             idOf: (row) => row,
-        loadPage: (page, size) async {
-          // 50 first, then aligned growth to the bounded shared maximum.
-          expect(size, CompleteReadBatchPlan.progressive.sizeAt(offset));
+            loadPage: (page, size) async {
+              // 50 first, then aligned growth to the bounded shared maximum.
+              expect(size, CompleteReadBatchPlan.progressive.sizeAt(offset));
               expect((page - 1) * size, offset);
               batches++;
               final rows = (count - offset).clamp(0, size);
@@ -175,8 +175,11 @@ void main() {
           expect((result.items.first, result.items.last), (0, count - 1));
           // The batch count follows the shared plan itself (2026-11-09: max 1000).
           var expectedBatches = 0;
-          for (var o = 0; o < count;
-              o += CompleteReadBatchPlan.progressive.sizeAt(o)) {
+          for (
+            var o = 0;
+            o < count;
+            o += CompleteReadBatchPlan.progressive.sizeAt(o)
+          ) {
             expectedBatches++;
           }
           expect(batches, expectedBatches);

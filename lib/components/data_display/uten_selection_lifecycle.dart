@@ -622,6 +622,7 @@ class _SelectionForwarder with Selectable {
     }
     return _cachedRootTransform!;
   }
+
   @override
   Size get size => _active ? source.size : Size.zero;
   @override

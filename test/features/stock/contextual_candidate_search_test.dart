@@ -196,7 +196,10 @@ void main() {
     await tester.pumpAndSettle();
     expect(api.last('/stock/instant-inventory/summaries')['series'], 'M3');
     await _chooseInventoryCategory(tester, '成品');
-    expect(api.last('/stock/instant-inventory/summaries')['categoryId'], 'finished');
+    expect(
+      api.last('/stock/instant-inventory/summaries')['categoryId'],
+      'finished',
+    );
     expect(_inventory(tester).items.map((r) => r.goodsId), ['r']);
     await _chooseInventoryCategory(tester, '成品');
     expect(_inventory(tester).items.map((r) => r.goodsId), ['a', 'r']);

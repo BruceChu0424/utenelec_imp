@@ -26,49 +26,51 @@ Future<List<Map<String, Object?>>> _records(_RecordingStore store) async {
   await AppDiagnostics.log?.flush();
   return [
     for (final line in store.lines.join().split('\n'))
-      if (line.trim().isNotEmpty)
-        jsonDecode(line) as Map<String, Object?>,
+      if (line.trim().isNotEmpty) jsonDecode(line) as Map<String, Object?>,
   ];
 }
 
 void main() {
-  test('a real protocol failure carries one correlation ref end to end', () async {
-    final store = _RecordingStore();
-    AppDiagnostics.log = DiagnosticLog(store);
-    addTearDown(() => AppDiagnostics.log = null);
-    Object? caught;
-    try {
-      await loadCompletePagedResult<int>(
-        loadPage: (page, size) async => const PagedResult<int>(
-          items: [1, 2, 3],
-          page: 1,
-          size: 50,
-          total: 10,
-          totalPages: 1,
-        ),
-        isCurrent: () => true,
-      );
-    } catch (error) {
-      caught = error;
-    }
-    final failure = caught;
-    expect(failure, isA<ApiException>());
-    final api = failure as ApiException;
-    expect(api.code, 'INVALID_PAGINATION');
-    // The ref rides the user-facing message and the exception details.
-    final refMatch = RegExp(r'（关联号 ([0-9A-Z]{6})）$').firstMatch(api.message);
-    expect(refMatch, isNotNull, reason: api.message);
-    final ref = refMatch!.group(1)!;
-    expect(api.details?['diagnosticRef'], ref);
-    // One structured diagnostic record, anonymous: stage/code/ref only.
-    final records = await _records(store);
-    final read = records.where((r) => r['event'] == 'read.failed').toList();
-    expect(read, hasLength(1));
-    expect(read.single['stage'], 'complete-read');
-    expect(read.single['code'], 'INVALID_PAGINATION');
-    expect(read.single['ref'], ref);
-    expect(read.single.keys, isNot(contains('message')));
-  });
+  test(
+    'a real protocol failure carries one correlation ref end to end',
+    () async {
+      final store = _RecordingStore();
+      AppDiagnostics.log = DiagnosticLog(store);
+      addTearDown(() => AppDiagnostics.log = null);
+      Object? caught;
+      try {
+        await loadCompletePagedResult<int>(
+          loadPage: (page, size) async => const PagedResult<int>(
+            items: [1, 2, 3],
+            page: 1,
+            size: 50,
+            total: 10,
+            totalPages: 1,
+          ),
+          isCurrent: () => true,
+        );
+      } catch (error) {
+        caught = error;
+      }
+      final failure = caught;
+      expect(failure, isA<ApiException>());
+      final api = failure as ApiException;
+      expect(api.code, 'INVALID_PAGINATION');
+      // The ref rides the user-facing message and the exception details.
+      final refMatch = RegExp(r'（关联号 ([0-9A-Z]{6})）$').firstMatch(api.message);
+      expect(refMatch, isNotNull, reason: api.message);
+      final ref = refMatch!.group(1)!;
+      expect(api.details?['diagnosticRef'], ref);
+      // One structured diagnostic record, anonymous: stage/code/ref only.
+      final records = await _records(store);
+      final read = records.where((r) => r['event'] == 'read.failed').toList();
+      expect(read, hasLength(1));
+      expect(read.single['stage'], 'complete-read');
+      expect(read.single['code'], 'INVALID_PAGINATION');
+      expect(read.single['ref'], ref);
+      expect(read.single.keys, isNot(contains('message')));
+    },
+  );
 
   test('a retirement stays quiet: no ref, no diagnostic record', () async {
     final store = _RecordingStore();
@@ -102,13 +104,17 @@ void main() {
     final store = _RecordingStore();
     AppDiagnostics.log = DiagnosticLog(store);
     addTearDown(() => AppDiagnostics.log = null);
-    final annotated = annotateCompleteReadFailure(
-      ApiException('SNAPSHOT_CHANGED', '数据已变化', details: {
-        'correlation': 'SRV42X',
-      }),
-      StackTrace.current,
-      stage: 'cursor-read',
-    ) as ApiException;
+    final annotated =
+        annotateCompleteReadFailure(
+              ApiException(
+                'SNAPSHOT_CHANGED',
+                '数据已变化',
+                details: {'correlation': 'SRV42X'},
+              ),
+              StackTrace.current,
+              stage: 'cursor-read',
+            )
+            as ApiException;
     expect(annotated.message, endsWith('（关联号 SRV42X）'));
     expect(annotated.details?['diagnosticRef'], 'SRV42X');
     final records = await _records(store);

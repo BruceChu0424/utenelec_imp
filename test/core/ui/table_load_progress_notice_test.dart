@@ -298,11 +298,8 @@ void main() {
       await tester.pumpWidget(host());
       final handle = await appearWithBatch(tester, loaded: 30, total: 300);
       expect(tester.takeException(), isNull, reason: '窄视口不得布局溢出');
-      final text = tester.widget<Text>(
-        find.textContaining('正在加载数据：10%'),
-      );
-      final percent =
-          ((text.textSpan as TextSpan).children!.last) as TextSpan;
+      final text = tester.widget<Text>(find.textContaining('正在加载数据：10%'));
+      final percent = ((text.textSpan as TextSpan).children!.last) as TextSpan;
       handle.finish(succeeded: true);
       await tester.pump();
       await tester.pump(

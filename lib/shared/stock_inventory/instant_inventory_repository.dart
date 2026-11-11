@@ -157,20 +157,21 @@ class InstantInventoryRepository {
               ? progressive.publish
               : null;
           try {
-            final result = await readVersionedSummarySnapshot<InstantInventoryRow>(
-              isCurrent: () => owner.isCurrent,
-              decode: InstantInventoryRow.fromJson,
-              idOf: (row) => row.readIdentity,
-              plan: CompleteReadBatchPlan.progressive,
-              loadPage: stream.page,
-              onProgressiveBatch: publish == null
-                  ? null
-                  : (partial) {
-                      if (owner.isCurrent) {
-                        publish(partial as PagedResult<Object?>);
-                      }
-                    },
-            );
+            final result =
+                await readVersionedSummarySnapshot<InstantInventoryRow>(
+                  isCurrent: () => owner.isCurrent,
+                  decode: InstantInventoryRow.fromJson,
+                  idOf: (row) => row.readIdentity,
+                  plan: CompleteReadBatchPlan.progressive,
+                  loadPage: stream.page,
+                  onProgressiveBatch: publish == null
+                      ? null
+                      : (partial) {
+                          if (owner.isCurrent) {
+                            publish(partial as PagedResult<Object?>);
+                          }
+                        },
+                );
             return result.page;
           } finally {
             await stream.close();

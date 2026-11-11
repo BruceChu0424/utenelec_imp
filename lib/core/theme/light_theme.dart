@@ -8,7 +8,8 @@
 // - 输入框透明背景 + 焦点态品牌色边框
 // - 文字用 slate 三档建立层级
 
-import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
+import 'package:flutter/foundation.dart'
+    show defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 

@@ -7,7 +7,8 @@
 // - 主色青绿（在深色下深绿会糊，改用青绿作为 primary 提亮）
 // - 文字用三档 slate 反相色
 
-import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
+import 'package:flutter/foundation.dart'
+    show defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 

@@ -124,9 +124,9 @@ class _ValuesRepository extends PlatformTableRepository {
 Widget _platformHost(Widget child, _ValuesRepository repo) => ProviderScope(
   overrides: [
     platformTableRepositoryProvider.overrideWithValue(repo),
-    platformTableLayoutProvider('perf.width').overrideWith(
-      () => _Layout('perf.width'),
-    ),
+    platformTableLayoutProvider(
+      'perf.width',
+    ).overrideWith(() => _Layout('perf.width')),
   ],
   child: MaterialApp(home: Scaffold(body: child)),
 );
@@ -138,6 +138,7 @@ void main() {
       calls++;
       return row.value;
     }
+
     // 4500 个唯一值: 量宽去重集超过 4000 上限被清空过,游标仍是唯一正确性依据。
     final rows = List.generate(4500, (i) => _Row('id-$i', '唯一值$i'));
     await tester.pumpWidget(_plainTable(rows, measure));
@@ -162,13 +163,17 @@ void main() {
       calls++;
       return row.value;
     }
+
     final base = List.generate(10, (i) => _Row('id-$i', '值$i'));
     await tester.pumpWidget(_plainTable(base, measure));
     await tester.pumpAndSettle();
     expect(calls, 10);
 
     // 追加: 前缀锚点校验通过,只取值新增行。
-    final appended = [...base, for (var i = 10; i < 20; i++) _Row('id-$i', '值$i')];
+    final appended = [
+      ...base,
+      for (var i = 10; i < 20; i++) _Row('id-$i', '值$i'),
+    ];
     await tester.pumpWidget(_plainTable(appended, measure));
     await tester.pumpAndSettle();
     expect(calls, 20, reason: '追加只访问 10 个新增格');
@@ -179,11 +184,7 @@ void main() {
     await tester.pumpWidget(_plainTable(reslung, measure));
     await tester.pumpAndSettle();
     expect(calls, 40, reason: '前缀漂移重走全部行');
-    expect(
-      debugMasterTableMeasureTextCount,
-      beforeShapes,
-      reason: '已知值串不重新排版',
-    );
+    expect(debugMasterTableMeasureTextCount, beforeShapes, reason: '已知值串不重新排版');
   });
 
   testWidgets('平台扩展值逐批到达: 业务列取值恒等于行数, 平台值全部量到', (tester) async {
@@ -240,7 +241,9 @@ void main() {
         pending: end < total,
         growing: end < total,
       );
-      await tester.pumpWidget(_platformHost(tableFor(page.items, revision), repo));
+      await tester.pumpWidget(
+        _platformHost(tableFor(page.items, revision), repo),
+      );
       for (var i = 0; i < 20 && repo.inFlight > 0; i++) {
         await tester.pump(const Duration(milliseconds: 100));
       }
@@ -252,10 +255,6 @@ void main() {
     }
     await tester.pumpAndSettle();
     expect(repo.served.length, total, reason: '每行扩展值都送达');
-    expect(
-      businessCalls,
-      total,
-      reason: '平台值到达只重走平台列: 业务列每格恰好取值一次,不随批数放大',
-    );
+    expect(businessCalls, total, reason: '平台值到达只重走平台列: 业务列每格恰好取值一次,不随批数放大');
   });
 }

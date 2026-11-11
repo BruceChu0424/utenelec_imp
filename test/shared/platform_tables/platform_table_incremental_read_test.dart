@@ -43,9 +43,7 @@ class _CountingRepository extends PlatformTableRepository {
   @override
   Future<List<PlatformTableCapabilities>> scopes() async {
     scopeReads++;
-    return const [
-      PlatformTableCapabilities(scope: 'perf'),
-    ];
+    return const [PlatformTableCapabilities(scope: 'perf')];
   }
 
   @override
@@ -70,9 +68,7 @@ class _CountingRepository extends PlatformTableRepository {
       inFlight--;
     }
     served.addAll(ids);
-    return [
-      for (final id in ids) PlatformRowValues(recordId: id, version: 1),
-    ];
+    return [for (final id in ids) PlatformRowValues(recordId: id, version: 1)];
   }
 }
 
@@ -81,18 +77,16 @@ const _columns = [
 ];
 String? _value(_Row row) => row.value;
 
-Widget _host(
-  Widget child, {
-  required _CountingRepository repo,
-}) => ProviderScope(
-  overrides: [
-    platformTableRepositoryProvider.overrideWithValue(repo),
-    platformTableLayoutProvider('perf.table').overrideWith(
-      () => _Layout('perf.table'),
-    ),
-  ],
-  child: MaterialApp(home: Scaffold(body: child)),
-);
+Widget _host(Widget child, {required _CountingRepository repo}) =>
+    ProviderScope(
+      overrides: [
+        platformTableRepositoryProvider.overrideWithValue(repo),
+        platformTableLayoutProvider(
+          'perf.table',
+        ).overrideWith(() => _Layout('perf.table')),
+      ],
+      child: MaterialApp(home: Scaffold(body: child)),
+    );
 
 Widget _table({
   required List<_Row> rows,
@@ -149,14 +143,19 @@ Map<String, Object> _metrics(_CountingRepository repo, int recordIdCalls) {
   }
   final counts = <String, int>{};
   for (final batch in repo.batches) {
-    final key = batch.length == 200 ? batch.first : 'n${batch.length}:${batch.first}';
+    final key = batch.length == 200
+        ? batch.first
+        : 'n${batch.length}:${batch.first}';
     counts[key] = (counts[key] ?? 0) + 1;
   }
   final firstBatch = repo.batches.isEmpty ? null : repo.batches.first;
   final firstRepeats = firstBatch == null
       ? 0
       : repo.batches
-            .where((b) => b.length == firstBatch.length && b.first == firstBatch.first)
+            .where(
+              (b) =>
+                  b.length == firstBatch.length && b.first == firstBatch.first,
+            )
             .length;
   return {
     'requests': repo.batches.length,
@@ -212,14 +211,26 @@ void main() {
     // ignore: avoid_print
     print('perfMetrics $metrics');
     expect(repo.served, containsAll(['id-0', 'id-${total - 1}']));
-    expect(metrics['idsRequested'], metrics['uniqueIds'],
-        reason: 'progressive growth must request each record id exactly once');
-    expect(metrics['peakInFlight'], 1,
-        reason: 'one reader per table; a retired pass must cancel transport');
-    expect(metrics['scopeReads'], 1,
-        reason: 'scope metadata is shared and read once');
-    expect(metrics['firstBatchRepeats'], 1,
-        reason: 'a longer prefix never restarts the read from record zero');
+    expect(
+      metrics['idsRequested'],
+      metrics['uniqueIds'],
+      reason: 'progressive growth must request each record id exactly once',
+    );
+    expect(
+      metrics['peakInFlight'],
+      1,
+      reason: 'one reader per table; a retired pass must cancel transport',
+    );
+    expect(
+      metrics['scopeReads'],
+      1,
+      reason: 'scope metadata is shared and read once',
+    );
+    expect(
+      metrics['firstBatchRepeats'],
+      1,
+      reason: 'a longer prefix never restarts the read from record zero',
+    );
   });
 
   testWidgets('parent rebuilds on a stable list do not re-read record ids', (
@@ -267,8 +278,11 @@ void main() {
     final metrics = _metrics(repo, recordIdCalls);
     // ignore: avoid_print
     print('perfMetrics $metrics before=$before');
-    expect(metrics['idsRequested'], metrics['uniqueIds'],
-        reason: 'selection rebuilds must not re-read any record id');
+    expect(
+      metrics['idsRequested'],
+      metrics['uniqueIds'],
+      reason: 'selection rebuilds must not re-read any record id',
+    );
     expect(metrics['peakInFlight'], 1);
   });
 
@@ -319,8 +333,11 @@ void main() {
     final metrics = _metrics(repo, recordIdCalls);
     // ignore: avoid_print
     print('perfMetrics $metrics beforeRequests=$before');
-    expect(metrics['idsRequested'], metrics['uniqueIds'],
-        reason: 'a rebuilt group list with the same items re-reads nothing');
+    expect(
+      metrics['idsRequested'],
+      metrics['uniqueIds'],
+      reason: 'a rebuilt group list with the same items re-reads nothing',
+    );
     expect(metrics['uniqueIds'], total + 200);
     expect(metrics['peakInFlight'], 1);
   });

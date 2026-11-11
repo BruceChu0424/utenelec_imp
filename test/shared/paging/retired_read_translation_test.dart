@@ -100,10 +100,7 @@ void main() {
     expect(ownerChanged, isA<StateError>(), reason: '既有 throwsStateError 合同不变');
     expect(isRetiredViewRead(ownerChanged), isTrue);
     expect(isRetiredViewRead(const UiWorkCancelled()), isTrue);
-    expect(
-      isRetiredViewRead(ApiException('REQUEST_STALE', '读取已取消')),
-      isTrue,
-    );
+    expect(isRetiredViewRead(ApiException('REQUEST_STALE', '读取已取消')), isTrue);
     expect(isRetiredViewRead(ApiException('BOOM', '真失败')), isFalse);
     expect(isRetiredViewRead(StateError('其它')), isFalse);
   });
@@ -143,8 +140,7 @@ void main() {
       ),
     );
     await tester.pump(const Duration(milliseconds: 120));
-    expect(genuine.single, isA<ApiException>(),
-        reason: '当前请求的真失败原样上抛,不吞不错报');
+    expect(genuine.single, isA<ApiException>(), reason: '当前请求的真失败原样上抛,不吞不错报');
     expect((genuine.single as ApiException).code, 'BOOM');
     expect(tester.takeException(), isNull);
   });
@@ -199,8 +195,7 @@ void main() {
     for (var i = 0; i < 8; i++) {
       await tester.pump(const Duration(milliseconds: 100));
     }
-    expect(find.text('正在按新条件读取'), findsOneWidget,
-        reason: '切仓/换筛选的退休过渡态不是失败');
+    expect(find.text('正在按新条件读取'), findsOneWidget, reason: '切仓/换筛选的退休过渡态不是失败');
     expect(find.text('数据加载失败'), findsNothing);
     expect(find.text('重试'), findsNothing, reason: '过渡态不需要重试入口');
 

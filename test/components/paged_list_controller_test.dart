@@ -158,7 +158,10 @@ void main() {
         );
         expect(c.page!.items, fails ? ['accepted'] : ['fresh']);
         // 真失败带匿名关联号后缀（read_failure_diagnostics）。
-        expect(c.refreshError, fails ? matches(r'offline（关联号 [0-9A-Z]{6}）') : isNull);
+        expect(
+          c.refreshError,
+          fails ? matches(r'offline（关联号 [0-9A-Z]{6}）') : isNull,
+        );
         expect(c.error, isNull);
         expect(c.loading, isFalse);
         expect(c.refreshing, isFalse);

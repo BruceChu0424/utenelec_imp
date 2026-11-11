@@ -437,7 +437,9 @@ Future<void> showUtenPrintPreview({
             selectedCount: selection.count,
           )
         : UtenTableOutputScope.all;
-    if (outputScope == null || !context.mounted || !(isCurrent?.call() ?? true)) {
+    if (outputScope == null ||
+        !context.mounted ||
+        !(isCurrent?.call() ?? true)) {
       return;
     }
     if (container != null &&

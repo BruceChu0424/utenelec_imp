@@ -50,10 +50,7 @@ void main() {
     (tester) async {
       await tester.binding.setSurfaceSize(const Size(800, 600));
       addTearDown(() => tester.binding.setSurfaceSize(null));
-      final rows = [
-        _MutableRow('未提交', 'row-a'),
-        _MutableRow('未提交', 'row-b'),
-      ];
+      final rows = [_MutableRow('未提交', 'row-a'), _MutableRow('未提交', 'row-b')];
       // Fresh wrapper list each rebuild, same instances in the same order —
       // exactly what `.where(...).toList()` / `List.unmodifiable(...)` hosts do.
       await tester.pumpWidget(host(List.unmodifiable(rows)));

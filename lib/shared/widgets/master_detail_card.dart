@@ -57,6 +57,7 @@ class MasterDetailCard extends StatelessWidget {
   });
 
   final String title;
+
   /// Kept for existing callers; displayed beside the title through the shared
   /// accessible hint control, without a separate explanatory subtitle row.
   final String subtitle;

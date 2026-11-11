@@ -496,96 +496,103 @@ class _TableLoadProgressCardState extends State<TableLoadProgressCard>
             child: Semantics(
               container: true,
               label: _semanticLabel(view),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: _kNoticeMaxCardWidth),
-              child: Material(
-                color: track,
-                elevation: 4,
-                shadowColor: theme.colorScheme.shadow.withValues(alpha: 0.18),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(UtenRadius.card),
-                  side: BorderSide(color: border),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(
+                  maxWidth: _kNoticeMaxCardWidth,
                 ),
-                clipBehavior: Clip.antiAlias,
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    final scale = _noticeScale(constraints.maxWidth);
-                    return Stack(
-                      children: [
-                        Positioned.fill(
-                          child: AnimatedBuilder(
-                            animation: _fill,
-                            builder: (context, _) {
-                              final value = _fillTween
-                                  .transform(_fill.value)
-                                  .clamp(0.0, 1.0);
-                              if (value <= 0) return const SizedBox.shrink();
-                              return FractionallySizedBox(
-                                key: const ValueKey('load-notice-fill'),
-                                alignment: Alignment.centerLeft,
-                                widthFactor: value,
-                                child: const _LoadNoticeFill(),
-                              );
-                            },
+                child: Material(
+                  color: track,
+                  elevation: 4,
+                  shadowColor: theme.colorScheme.shadow.withValues(alpha: 0.18),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(UtenRadius.card),
+                    side: BorderSide(color: border),
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final scale = _noticeScale(constraints.maxWidth);
+                      return Stack(
+                        children: [
+                          Positioned.fill(
+                            child: AnimatedBuilder(
+                              animation: _fill,
+                              builder: (context, _) {
+                                final value = _fillTween
+                                    .transform(_fill.value)
+                                    .clamp(0.0, 1.0);
+                                if (value <= 0) return const SizedBox.shrink();
+                                return FractionallySizedBox(
+                                  key: const ValueKey('load-notice-fill'),
+                                  alignment: Alignment.centerLeft,
+                                  widthFactor: value,
+                                  child: const _LoadNoticeFill(),
+                                );
+                              },
+                            ),
                           ),
-                        ),
-                        if (indeterminate)
-                          AnimatedBuilder(
-                            animation: _sweep,
-                            builder: (context, _) {
-                              final band = constraints.maxWidth * 0.42;
-                              return Positioned(
-                                left:
-                                    -band +
-                                    _sweep.value *
-                                        (constraints.maxWidth + band),
-                                top: 0,
-                                bottom: 0,
-                                width: band,
-                                child: const _LoadNoticeSweepBand(
-                                  key: ValueKey('load-notice-sweep'),
-                                ),
-                              );
-                            },
-                          ),
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 11, 10, 11),
-                          // 定高内容行：图标 + 关闭按钮撑起卡片高度。文字用
-                          // Positioned.fill + Center 悬在整个内容层上：
-                          // 相对整卡真居中（图标列与关闭钮宽度不对称也不偏），
-                          // 且 Text 按自身宽度收紧命中盒，不挡右侧关闭按钮。
-                          child: Stack(
-                            children: [
-                              Row(
-                                children: [
-                                  _StatusIcon(view: view, scale: scale),
-                                  const SizedBox(width: 14),
-                                  const Expanded(child: SizedBox.shrink()),
-                                  const SizedBox(width: 8),
-                                  UtenCloseButton(
-                                    onPressed: widget.controller.dismissCurrent,
-                                    tooltip: '关闭加载提示',
-                                    showTooltip: hasOverlay,
-                                    // 命中带随卡宽同档缩放（48 → 44/40）；
-                                    // 触控设备仍由内部规则保底 48。
-                                    desktopHitExtent: (48 * scale).roundToDouble(),
+                          if (indeterminate)
+                            AnimatedBuilder(
+                              animation: _sweep,
+                              builder: (context, _) {
+                                final band = constraints.maxWidth * 0.42;
+                                return Positioned(
+                                  left:
+                                      -band +
+                                      _sweep.value *
+                                          (constraints.maxWidth + band),
+                                  top: 0,
+                                  bottom: 0,
+                                  width: band,
+                                  child: const _LoadNoticeSweepBand(
+                                    key: ValueKey('load-notice-sweep'),
                                   ),
-                                ],
-                              ),
-                              Positioned.fill(
-                                child: Center(
-                                  child: _ProgressText(view: view, scale: scale),
+                                );
+                              },
+                            ),
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 11, 10, 11),
+                            // 定高内容行：图标 + 关闭按钮撑起卡片高度。文字用
+                            // Positioned.fill + Center 悬在整个内容层上：
+                            // 相对整卡真居中（图标列与关闭钮宽度不对称也不偏），
+                            // 且 Text 按自身宽度收紧命中盒，不挡右侧关闭按钮。
+                            child: Stack(
+                              children: [
+                                Row(
+                                  children: [
+                                    _StatusIcon(view: view, scale: scale),
+                                    const SizedBox(width: 14),
+                                    const Expanded(child: SizedBox.shrink()),
+                                    const SizedBox(width: 8),
+                                    UtenCloseButton(
+                                      onPressed:
+                                          widget.controller.dismissCurrent,
+                                      tooltip: '关闭加载提示',
+                                      showTooltip: hasOverlay,
+                                      // 命中带随卡宽同档缩放（48 → 44/40）；
+                                      // 触控设备仍由内部规则保底 48。
+                                      desktopHitExtent: (48 * scale)
+                                          .roundToDouble(),
+                                    ),
+                                  ],
                                 ),
-                              ),
-                            ],
+                                Positioned.fill(
+                                  child: Center(
+                                    child: _ProgressText(
+                                      view: view,
+                                      scale: scale,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                      ],
-                    );
-                  },
+                        ],
+                      );
+                    },
+                  ),
                 ),
               ),
-            ),
             ),
           ),
         ),

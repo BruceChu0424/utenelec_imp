@@ -200,7 +200,11 @@ void main() {
         throwsA(
           isA<ApiException>()
               .having((error) => error.code, 'code', 'FORBIDDEN')
-              .having((error) => error.message, 'message', startsWith('revoked')),
+              .having(
+                (error) => error.message,
+                'message',
+                startsWith('revoked'),
+              ),
         ),
       );
       expect(returnedProof.isCurrent, isFalse);

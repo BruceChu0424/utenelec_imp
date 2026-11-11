@@ -275,7 +275,7 @@ void main() {
     'complete approval list appends every row beyond the old 200-row cap',
     (tester) async {
       final repository = _FakeWorkflowRepo([
-          for (var index = 0; index < 1450; index++)
+        for (var index = 0; index < 1450; index++)
           _task(
             caseId: 'case-$index',
             orderId: 'order-$index',

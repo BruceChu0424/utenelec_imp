@@ -63,7 +63,10 @@ class _ViewState extends ConsumerState<_View>
   Widget build(BuildContext context) => const SizedBox();
 }
 
-Future<GlobalKey<_ViewState>> _mount(WidgetTester tester, _Source source) async {
+Future<GlobalKey<_ViewState>> _mount(
+  WidgetTester tester,
+  _Source source,
+) async {
   final container = ProviderContainer(
     overrides: [exportContextEpochProvider.overrideWith(_Epoch.new)],
   );
@@ -72,7 +75,9 @@ Future<GlobalKey<_ViewState>> _mount(WidgetTester tester, _Source source) async 
   await tester.pumpWidget(
     UncontrolledProviderScope(
       container: container,
-      child: MaterialApp(home: _View(key: key, source: source)),
+      child: MaterialApp(
+        home: _View(key: key, source: source),
+      ),
     ),
   );
   return key;

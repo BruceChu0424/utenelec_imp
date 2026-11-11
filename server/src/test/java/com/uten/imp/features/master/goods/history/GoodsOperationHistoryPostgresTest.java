@@ -234,11 +234,13 @@ class GoodsOperationHistoryPostgresTest {
     }
 
     @Test void deletionUndoRestoresTheExactGoodsAndBomIdsAndRedoDeletesOnlyThoseRowsAgain() {
-        UUID parent=goods("parent"),component=goods("component"),edge=UUID.randomUUID();
-        inTx(()->{
-            em.createNativeQuery("INSERT INTO goods_bom_items(id,goods_id,component_goods_id,qty) VALUES(:id,:parent,:component,2)")
-                    .setParameter("id",edge).setParameter("parent",parent).setParameter("component",component).executeUpdate();return null;
-        });
+        // V1128 (aa646f7cf, 2026-11-10 用户口径「新建货品可删除，货品应用后不可删除」): any goods
+        // with a BOM edge carries a permanent first-use fact, and trg_goods_guard_used_
+        // identity_soft_delete refuses its soft delete. The staged batch delete therefore
+        // keeps the replayed rows apart: an unused parent (still legally deletable) plus
+        // an edge of a different parent. Exact-id undo/redo replay semantics are unchanged.
+        UUID parent=goods("unused parent"),holder=goods("edge holder"),component=goods("component"),edge=UUID.randomUUID();
+        inTx(()->{bom(edge,holder,component);return null;});
         UUID op=inTx(()->{
             provenance("/api/master/goods/batch-delete","POST");
             update("UPDATE goods_bom_items SET is_deleted=true,deleted_at=now() WHERE id=:id",edge);

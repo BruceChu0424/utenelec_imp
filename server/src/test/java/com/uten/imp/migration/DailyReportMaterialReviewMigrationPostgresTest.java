@@ -475,6 +475,10 @@ class DailyReportMaterialReviewMigrationPostgresTest {
         // V1115..V1119): the registry table and its primary key are the entire
         // table/index delta; the other four migrations only add functions/triggers.
         applyReviewedDeclarations(expectedTables, expectedIndexes, "V1120..V1124", 1, 1, 0);
+        // V1125..V1131 (the 2026-11-10/11 merged block): V1125-V1128 and V1131 add
+        // only columns, functions and triggers; V1129/V1130 add the immutable
+        // full-kit proof tables, their keys and the reviewed posting/proof indexes.
+        applyReviewedDeclarations(expectedTables, expectedIndexes, "V1125..V1131", 2, 9, 0);
         List<String> actualTables = tables();
         TreeMap<String,String> actualIndexes = catalogMap(indexes());
         if (!expectedTables.stream().toList().equals(actualTables) || !expectedIndexes.equals(actualIndexes)) {

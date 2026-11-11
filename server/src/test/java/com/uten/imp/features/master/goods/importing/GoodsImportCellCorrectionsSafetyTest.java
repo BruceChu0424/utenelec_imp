@@ -307,7 +307,10 @@ class GoodsImportCellCorrectionsSafetyTest {
             var blank = sheet.createRow(6);
             for (int index = 0; index < 8; index++) blank.createCell(index).setCellValue(" \t ");
             sheet.createRow(7);
-            sheet.createRow(8).createCell(8).setCellValue("仅未识别说明列有内容，不是业务行");
+            // 「文件说明」列保持整列空：c7218e709 起，未识别表头一旦有内容整个文件
+            // 在列守卫处拒绝(GoodsImportColumnContractTest 已钉住该口径)，不再出现
+            // 「只有未识别说明列有内容」的数据行；空列本身兼容，行 9 仍是空行。
+            sheet.createRow(8);
             sheet.createRow(9).createCell(6).setCellValue(0);
             sheet.createRow(10).createCell(7).setCellValue(false);
             sheet.createRow(11).createCell(1).setCellErrorValue(org.apache.poi.ss.usermodel.FormulaError.REF.getCode());

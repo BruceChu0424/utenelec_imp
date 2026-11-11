@@ -3,6 +3,7 @@ package com.uten.imp.common.validation;
 import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.GlobalExceptionHandler;
+import com.uten.imp.common.web.Pageables;
 import com.uten.imp.features.org.employee.EmployeeVehiclePhoneService;
 import com.uten.imp.features.org.employee.Employee;
 import com.uten.imp.features.org.employee.EmployeeController;
@@ -174,7 +175,9 @@ class ContainerCascadeHttpValidationTest {
     void permissionWorkspaceQueryBoundsUseTheSameMvcValidationPath() throws Exception {
         var service = mock(PagePermissionWorkspaceService.class);
         var mvc = http(new PagePermissionWorkspaceController(service));
-        for (String query : List.of("page=0", "size=201", "search=" + "x".repeat(101))) {
+        // 2026-11-09 合同：单页上限 200→1000（Pageables.MAX_PAGE_SIZE），超上限仍走 MVC 422 校验路径。
+        for (String query : List.of("page=0", "size=" + (Pageables.MAX_PAGE_SIZE + 1),
+                "search=" + "x".repeat(101))) {
             mvc.perform(get("/api/department-staff-permissions/staff?surfaceKey=basic.goods&" + query))
                     .andExpect(status().isUnprocessableContent())
                     .andExpect(jsonPath("$.code").value(ErrorCode.VALIDATION_FAILED.name()));

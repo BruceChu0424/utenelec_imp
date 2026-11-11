@@ -122,27 +122,43 @@ class MasterDataIntegrityEndToEndTest {
     }
 
     @Test
-    void deletingAParentSoftDeletesItsOwnBomRowsInTheSameTransaction() {
+    void deletingAUsedParentIsRefusedAndItsOwnBomRowsStayIntactWhileUnusedGoodsStayDeletable() {
+        // V1128 (aa646f7cf, 2026-11-10 用户口径「新建货品可删除，货品应用后不可删除」): 自带
+        // BOM 边的父件也有终身首次使用事实，只能停用不能删除，原「删父件连带失效自己的
+        // BOM 行」分支对已应用货品不再可达；改为钉住拒删后一切原样，且未用新货品照常可删。
         var w = world("del-parent");
         assertEquals(2, activeBomRows(w.goodsA()));
-        lifecycle.delete(MasterEntityKind.GOODS, w.goodsA());
-        assertTrue(deleted(w.goodsA()));
-        assertEquals(0, activeBomRows(w.goodsA()), "父件自己的组装清单随之失效");
-        // A 没了之后 E 不再被任何有效 BOM 引用，可以删。
-        lifecycle.delete(MasterEntityKind.GOODS, w.goodsE());
-        assertTrue(deleted(w.goodsE()));
+        ApiException usedParent = assertThrows(ApiException.class,
+                () -> lifecycle.delete(MasterEntityKind.GOODS, w.goodsA()));
+        assertThat(usedParent.getMessage()).contains("已用于业务或库存记录").contains("请改用停用");
+        assertFalse(deleted(w.goodsA()));
+        assertEquals(2, activeBomRows(w.goodsA()), "拒删时父件自己的组装清单原样保留");
+        // E 也带着 A→E 的首次使用事实：同样是已应用身份，只能停用。
+        ApiException usedComponent = assertThrows(ApiException.class,
+                () -> lifecycle.delete(MasterEntityKind.GOODS, w.goodsE()));
+        assertThat(usedComponent.getMessage()).contains("已用于业务或库存记录");
+        assertFalse(deleted(w.goodsE()));
+        // 未用新货品（无任何 BOM/业务引用）保持原软删除通道，守卫不得误伤。
+        UUID spare = UUID.randomUUID();
+        fixture.insertGoods(spare, "SP-" + spare, "未用备件", "采购", w.unitId(), w.unitLegacy());
+        lifecycle.delete(MasterEntityKind.GOODS, spare);
+        assertTrue(deleted(spare), "未用新货品仍可删除");
     }
 
     // ---- 2) 同批删除的不动点 ---------------------------------------------------------
 
     @Test
-    void batchDeletingParentAndComponentTogetherSucceedsButABlockedParentKeepsItsComponent() {
+    void batchDeletingUsedParentAndComponentTogetherIsRefusedAndABlockedParentStillKeepsItsComponent() {
+        // V1128 (2026-11-10 用户口径「新建货品可删除，货品应用后不可删除」): A、B 都带终身
+        // 首次使用事实，即使父件与组件同批删除也整体拒绝；同批不动点保护对未结案单据照旧。
         var w = world("batch-fix");
         MasterBatchResult together = lifecycle.batchDelete(MasterEntityKind.GOODS,
                 items(w.goodsA(), w.goodsB()));
-        assertEquals(2, together.succeeded(), together.toString());
-        assertTrue(deleted(w.goodsA()) && deleted(w.goodsB()));
-        assertEquals(0, activeBomRows(w.goodsB()));
+        assertEquals(0, together.succeeded(), together.toString());
+        assertThat(together.results().get(0).reason()).contains("已用于业务或库存记录").contains("请改用停用");
+        assertThat(together.results().get(1).reason()).contains("已用于业务或库存记录");
+        assertFalse(deleted(w.goodsA()) || deleted(w.goodsB()));
+        assertEquals(2, activeBomRows(w.goodsB()), "拒绝时子件自己的 BOM 同样不动");
 
         var v = world("batch-open");
         UUID order = salesOrders.create(fixture.orderRequest(v, v.goodsA(), "3", "100")).getId();
@@ -487,20 +503,34 @@ class MasterDataIntegrityEndToEndTest {
         assertEquals(originalBefore, goodsAndBomSnapshot(w.goodsA()), "复制只读取来源，保留来源全部主档与BOM字段");
         assertEquals(1, categories.deletePreview(copiedCategory).getGoodsCount());
 
-        categories.delete(copiedCategory);
-
-        assertTrue(deleted(copied));
-        assertEquals(0, activeBomRows(copied));
-        assertEquals(sourceEdges.size(), db.queryForObject(
+        // V1128 (2026-11-10 用户口径「新建货品可删除，货品应用后不可删除」): 副本带自己的 BOM
+        // 边即已应用身份，分类级联整体拒绝；来源、副本与共享组件全部原样保留，一个分类都不删。
+        ApiException refused = assertThrows(ApiException.class, () -> categories.delete(copiedCategory));
+        assertThat(refused.getMessage())
+                .contains("分类「独立副本分类").contains("还在被使用，没有删除任何数据")
+                .contains("已用于业务或库存记录").contains("请改用停用");
+        assertFalse(deleted(copied));
+        assertEquals(sourceEdges.size(), activeBomItemIds(copied).size());
+        assertEquals(0, db.queryForObject(
                 "SELECT count(*) FROM goods_bom_items WHERE goods_id = ? AND is_deleted", Integer.class, copied));
-        assertEquals(originalBefore, goodsAndBomSnapshot(w.goodsA()), "删副本分类不得改来源UUID、来源组装行或其内容");
-        assertFalse(deleted(w.goodsB()) || deleted(w.goodsE()), "共享的真实组件不是副本分类的删除范围");
-        assertEquals(Boolean.TRUE, db.queryForObject("SELECT is_deleted FROM material_categories WHERE id = ?", Boolean.class, copiedCategory));
+        assertEquals(originalBefore, goodsAndBomSnapshot(w.goodsA()), "拒删副本分类不得改来源UUID、来源组装行或其内容");
+        assertFalse(deleted(w.goodsB()) || deleted(w.goodsE()), "共享的真实组件不受副本分类的删除尝试影响");
+        assertEquals(Boolean.FALSE, db.queryForObject("SELECT is_deleted FROM material_categories WHERE id = ?", Boolean.class, copiedCategory));
         assertEquals(Boolean.FALSE, db.queryForObject("SELECT is_deleted FROM material_categories WHERE id = ?", Boolean.class, originalCategory));
+        // 未用新货品的分类级联删除通道保持可用（无 BOM/业务引用的货品仍可删）。
+        UUID spareCategory = deletionCategory("未用货品分类");
+        UUID spare = UUID.randomUUID();
+        fixture.insertGoods(spare, "SP-" + spare, "未用级联货品", "采购", w.unitId(), w.unitLegacy());
+        db.update("UPDATE goods SET category_id = ? WHERE id = ?", spareCategory, spare);
+        categories.delete(spareCategory);
+        assertTrue(deleted(spare));
+        assertEquals(Boolean.TRUE, db.queryForObject("SELECT is_deleted FROM material_categories WHERE id = ?", Boolean.class, spareCategory));
     }
 
     @Test
-    void deletingANewCategoryCorrectlyDeletesTheOriginalGoodsMovedIntoItAndOnlyItsOwnBom() {
+    void deletingANewCategoryHoldingAUsedGoodsIsRefusedAndAnUnusedGoodsStillCascades() {
+        // V1128 (2026-11-10 用户口径「新建货品可删除，货品应用后不可删除」): 移入新分类的货品
+        // 自带 BOM 边即已应用身份，分类级联整体拒绝、一条不删；未用货品的级联删除照旧。
         var w = world("move-category");
         UUID oldCategory = deletionCategory("移动前分类");
         UUID newCategory = deletionCategory("移动后分类");
@@ -512,16 +542,27 @@ class MasterDataIntegrityEndToEndTest {
         assertThat(activeBomItemIds(w.goodsA())).containsExactlyInAnyOrderElementsOf(originalEdges);
         assertEquals(1, categories.deletePreview(newCategory).getGoodsCount());
 
-        categories.delete(newCategory);
+        ApiException refused = assertThrows(ApiException.class, () -> categories.delete(newCategory));
+        assertThat(refused.getMessage())
+                .contains("分类「移动后分类").contains("还在被使用，没有删除任何数据")
+                .contains("已用于业务或库存记录").contains("请改用停用");
 
-        assertTrue(deleted(w.goodsA()), "真正移动保持原UUID，删除现分类连带删除该货品是正确语义");
-        assertEquals(0, activeBomRows(w.goodsA()));
+        assertFalse(deleted(w.goodsA()), "真正移动保持原UUID，被拒后货品原样保留");
+        assertThat(activeBomItemIds(w.goodsA())).containsExactlyInAnyOrderElementsOf(originalEdges);
         assertThat(db.queryForList("SELECT id FROM goods_bom_items WHERE goods_id = ? AND is_deleted",
-                UUID.class, w.goodsA())).containsExactlyInAnyOrderElementsOf(originalEdges);
-        assertEquals(componentBefore, goodsAndBomSnapshot(w.goodsB()), "子组件自身的资料与下一层BOM不随父件分类删除");
+                UUID.class, w.goodsA())).isEmpty();
+        assertEquals(componentBefore, goodsAndBomSnapshot(w.goodsB()), "拒删分类不改子组件自身的资料与下一层BOM");
         assertFalse(deleted(w.goodsB()) || deleted(w.goodsE()));
-        assertEquals(Boolean.TRUE, db.queryForObject("SELECT is_deleted FROM material_categories WHERE id = ?", Boolean.class, newCategory));
+        assertEquals(Boolean.FALSE, db.queryForObject("SELECT is_deleted FROM material_categories WHERE id = ?", Boolean.class, newCategory));
         assertEquals(Boolean.FALSE, db.queryForObject("SELECT is_deleted FROM material_categories WHERE id = ?", Boolean.class, oldCategory));
+
+        UUID spareCategory = deletionCategory("未用移动分类");
+        UUID spare = UUID.randomUUID();
+        fixture.insertGoods(spare, "SP-" + spare, "未用移动货品", "采购", w.unitId(), w.unitLegacy());
+        db.update("UPDATE goods SET category_id = ? WHERE id = ?", spareCategory, spare);
+        categories.delete(spareCategory);
+        assertTrue(deleted(spare), "未用货品的分类级联删除仍可用");
+        assertEquals(Boolean.TRUE, db.queryForObject("SELECT is_deleted FROM material_categories WHERE id = ?", Boolean.class, spareCategory));
     }
 
     // ---- 8) 评审点名的在办业务(第二轮)：草稿退货、未收完的应收、草稿采购退货 --------------------
@@ -548,8 +589,12 @@ class MasterDataIntegrityEndToEndTest {
         assertThat(returnBlocks.getMessage()).contains("还有未审核的退货单").contains(returnNo)
                 .contains("请先处理完这些退货单");
         db.update("UPDATE sales_returns SET is_deleted = TRUE, deleted_at = now() WHERE id = ?", salesReturn);
-        lifecycle.delete(MasterEntityKind.GOODS, goods);
-        assertTrue(deleted(goods), "草稿退货撤掉之后照常可删");
+        // V1128 (2026-11-10 用户口径「新建货品可删除，货品应用后不可删除」): 退货行已经留下
+        // 终身首次使用事实，草稿退货撤掉后货品仍只能停用，不能删除；历史记录和原始身份保留。
+        ApiException permanentUse = assertThrows(ApiException.class,
+                () -> lifecycle.delete(MasterEntityKind.GOODS, goods));
+        assertThat(permanentUse.getMessage()).contains("已用于业务或库存记录").contains("请改用停用");
+        assertFalse(deleted(goods), "已应用货品保留原始身份，改用停用");
 
         // (b) Open receivables require confirmation; hiding must retain the exact ledger and party identity.
         UUID ledger = UUID.randomUUID();

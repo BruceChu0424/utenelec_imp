@@ -179,12 +179,13 @@ class WorkshopContinuousSupplyEndToEndTest {
         assertEquals("IN_PROGRESS", status(c.segment()), "补投不改变工单状态");
 
         // 父件报工：只到 40 套子件就只能报 40 个。
-        // V707 起持续任务报工上限按计划量计(100), 已投物料的约束由保存时校验。
-        assertEquals(0, new BigDecimal("100").compareTo(maxReportQty(c)));
+        // V1129 起持续任务报工上限按可验证物料余量计(已投 40 − 未清账已报)，不再按计划量虚报；
+        // 领齐(100)后物料不再另设上限，回到计划量口径。
+        assertEquals(0, new BigDecimal("40").compareTo(maxReportQty(c)));
         reportParent(c, "30", false);
         ApiException over = assertThrows(ApiException.class, () -> reportParent(c, "20", false));
-        assertTrue(over.getMessage().contains("最多可报") || over.getMessage().contains("本次清账超过准确原领料未耗用数量"), over.getMessage());
-        // 超报的拒绝发生在审核段, 会留下未审草稿占住需求份; 清掉草稿再继续后续场景。
+        assertTrue(over.getMessage().contains("物料配套可报数量 10"), over.getMessage());
+        // V1129 起超报在保存/草稿段即被拒绝, 不再留下未审草稿; 清理仅防御历史脏草稿。
         fixture.loginAs(c.world().superAdminUserId());
         db.queryForList("""
                         SELECT report.id FROM production_daily_reports report
@@ -256,8 +257,9 @@ class WorkshopContinuousSupplyEndToEndTest {
                 new SegmentTransitionRequest(version(c.segment()), "cs-mixed-go-" + c.segment()));
         assertEquals("IN_PROGRESS", started.status());
         // 开工那一刻料架上的 50 已经投进去了：报工上限就是 50，多报一个都不行。
+        // V1129 起该上限直接由可验证物料余量(50)给出；仓库子件虽已领 100，瓶颈仍在直送子件 50。
         qty("50", issued(parentDemand(c)));
-        assertEquals(0, new BigDecimal("100").compareTo(maxReportQty(c)));
+        assertEquals(0, new BigDecimal("50").compareTo(maxReportQty(c)));
         reportParent(c, "50", false);
 
         // 后续直送继续补投，上限随之抬到 100。
@@ -489,7 +491,7 @@ class WorkshopContinuousSupplyEndToEndTest {
         qty("30", reserved(parentDemand(c)));
         qty("30", issued(parentDemand(c)));
         qty("0", balance(lineSide, c.child()));
-        assertEquals(0, new BigDecimal("100").compareTo(maxReportQty(c)), "开工时就把线边仓已到的 30 投进去了(报工上限按计划量计)");
+        assertEquals(0, new BigDecimal("30").compareTo(maxReportQty(c)), "开工时就把线边仓已到的 30 投进去了(报工上限按可验证物料余量计)");
 
         // 之后的直送继续逐笔补投，同一需求另起一行正式预留(上一行已出库消耗)。
         transfer(c, "20", false);

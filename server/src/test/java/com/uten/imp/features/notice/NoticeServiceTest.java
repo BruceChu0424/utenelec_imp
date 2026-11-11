@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.web.Pageables;
 import com.uten.imp.features.admin.systemsetting.SystemSettingKey;
 import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
 import com.uten.imp.features.notice.NoticeAcknowledgmentRepository.NoticeAcknowledgerRow;
@@ -274,7 +275,9 @@ class NoticeServiceTest {
         when(stateRepository.findByIdUserIdAndIdNoticeIdIn(
                 eq(userId), any())).thenReturn(List.of());
 
-        NoticeService.ArrivalPage page = service.arrivals(null, null, 500);
+        // 2026-11-09 合同：到达流单页上限随 Pageables.MAX_PAGE_SIZE 200→1000；
+        // 超上限的请求夹到上限，再取 limit+1 判 hasMore。
+        NoticeService.ArrivalPage page = service.arrivals(null, null, Pageables.MAX_PAGE_SIZE + 500);
 
         assertEquals(1, page.items().size());
         assertEquals(unread.getPublishedAt(), page.cursorPublishedAt());
@@ -284,7 +287,7 @@ class NoticeServiceTest {
                 ArgumentCaptor.forClass(Pageable.class);
         verify(noticeRepository).findVisibleArrivalsAfter(
                 eq(userId), eq(Instant.EPOCH), eq(zeroId), any(), pageable.capture());
-        assertEquals(201, pageable.getValue().getPageSize());
+        assertEquals(Pageables.MAX_PAGE_SIZE + 1, pageable.getValue().getPageSize());
     }
 
     @Test
@@ -1204,19 +1207,21 @@ class NoticeServiceTest {
     }
 
     @Test
-    void listBlessingsRetainsALegalNativeLongOffsetAndItsTwoHundredRowMaximum() {
+    void listBlessingsRetainsALegalNativeLongOffsetAndItsBoundedRowMaximum() {
         UUID noticeId = UUID.randomUUID();
         stubVisibleBroadcast(noticeId);
-        long offset = (long) Integer.MAX_VALUE * 200;
+        // 2026-11-09 合同：单次页上限 200→1000（Pageables.MAX_PAGE_SIZE），长 offset 随共享上限推导。
+        int cap = Pageables.MAX_PAGE_SIZE;
+        long offset = (long) Integer.MAX_VALUE * cap;
         when(blessRepo.countByNoticeId(noticeId)).thenReturn(offset + 1);
-        when(blessRepo.findPage(noticeId, 200, offset)).thenReturn(List.of(
+        when(blessRepo.findPage(noticeId, cap, offset)).thenReturn(List.of(
                 blessingRow(UUID.randomUUID(), "原顺序", "保留长offset", userId)));
 
         NoticeService.BlessingPage result = service.listBlessings(noticeId, Integer.MAX_VALUE, Integer.MAX_VALUE);
 
         assertEquals(offset + 1, result.count());
         assertEquals(1, result.items().size());
-        verify(blessRepo).findPage(noticeId, 200, offset);
+        verify(blessRepo).findPage(noticeId, cap, offset);
     }
 
     @Test

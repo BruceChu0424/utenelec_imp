@@ -79,7 +79,11 @@ class NativeSqlOffsetPostgresTest {
                 default -> throw new IllegalArgumentException(reader);
             };
             assertThat(result.getPage()).isEqualTo(Integer.MAX_VALUE);
-            assertThat(result.getSize()).isEqualTo(200);
+            // 2026-11-09 合同：共享页上限 200→1000（CompleteReadBatchPlan.MAX_BATCH_SIZE），
+            // schedule/quote/order 三个队列随共享上限；委外领料保留自己的 200 独立页帽
+            // （见 NativeSqlOffsetTest.subcontractDrawRetainsItsSeparateTwoHundredRowMaximumAndLongOffset）。
+            assertThat(result.getSize()).isEqualTo(
+                    "subcontract-draw".equals(reader) ? 200 : CompleteReadBatchPlan.MAX_BATCH_SIZE);
             assertThat(result.getItems()).isEmpty();
         }
     }

@@ -158,8 +158,8 @@ class AiUsageDashboardPostgresTest {
             });
             assertThat(dashboard.peoplePage(window, 99, 100).getTotal()).isEqualTo(501);
             assertThat(dashboard.peoplePage(window, 99, 100).getItems()).isEmpty();
-            // 2026-11-08 合同：500 超上限夹到 Pageables.MAX_PAGE_SIZE，不再回到旧 100。
-            assertThat(dashboard.peoplePage(window, 1, 500).getSize())
+            // 2026-11-09 合同：单页上限 200→1000（Pageables.MAX_PAGE_SIZE），超上限夹到共享上限，不再回到旧 100。
+            assertThat(dashboard.peoplePage(window, 1, Pageables.MAX_PAGE_SIZE + 500).getSize())
                     .isEqualTo(Pageables.MAX_PAGE_SIZE);
             assertThat(dashboard.dashboard(window, false).people()).isEmpty();
             assertThat(dashboard.dashboard(window).people()).hasSize(500);

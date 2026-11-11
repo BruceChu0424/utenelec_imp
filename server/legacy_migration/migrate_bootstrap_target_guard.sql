@@ -392,6 +392,11 @@ BEGIN
         ('production_material_demands','EMPTY'),
         ('production_material_discovery_lines','EMPTY'),
         ('production_material_discovery_requests','EMPTY'),
+        -- V1129 齐套检查点证明及其明细由物料过账派生(过账本身 FULL 审计且必须为空)，
+        -- 全新目标库不得带任何证明行；证明表不复制第二份行审计(NONE)。
+        -- Exact supplemental evidence: docs/数据迁移/evidence/2026-11-11-bootstrap-full-kit-proof-1129-classification.tsv.
+        ('production_material_full_kit_proof_items','EMPTY'),
+        ('production_material_full_kit_proofs','EMPTY'),
         ('production_material_increment_decisions','EMPTY'),
         ('production_material_increment_requests','EMPTY'),
         ('production_material_increment_reversals','EMPTY'),

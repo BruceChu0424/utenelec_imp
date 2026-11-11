@@ -130,14 +130,24 @@ class GoodsBomImportMergeServiceTest {
         verify(paste).mergeImported(any(), anySet(), eq(Map.of()));
     }
 
-    @Test void numericScaleAndReadOnlyCustomerColumnsDoNotCreateDifferences() throws Exception {
-        byte[] file = file(new String[]{"序号", "物料编号", "数量", "客户型号", "客户货品名称", "真实使用数量"},
-                new String[][]{{"1", "C1", "1.0", "不写入主档", "不写入主档", "999"}});
+    @Test void numericScaleAndReadOnlyExportColumnsDoNotCreateDifferences() throws Exception {
+        // c7218e709 2026-11-10: populated columns unknown to the BOM format are
+        // rejected (column-loss protection) instead of silently ignored, so the
+        // goods-import customer labels (客户型号/客户货品名称) can no longer ride
+        // along unrecognized. Recognized read-only export columns (学习来源/真实使用
+        // 数量) and numeric scale still never create differences.
+        byte[] file = file(new String[]{"序号", "物料编号", "数量", "学习来源", "真实使用数量"},
+                new String[][]{{"1", "C1", "1.0", "系统学习", "999"}});
         var report = detect(file);
         assertEquals(0, report.reviewRows().size());
         assertEquals(1, report.unchangedRows());
         assertEquals(1, merge(file, Set.of()).unchangedCount());
         verify(paste, never()).mergeImported(any(), anySet(), anyMap());
+        byte[] customer = file(new String[]{"序号", "物料编号", "数量", "客户型号", "客户货品名称"},
+                new String[][]{{"1", "C1", "1", "不写入主档", "不写入主档"}});
+        assertTrue(detect(customer).errors().stream().anyMatch(error -> error.message().contains("不支持")),
+                detect(customer).errors().toString());
+        assertNull(detect(customer).stateFingerprint());
     }
 
     @Test void ignoringExistingConflictStillImportsNewComponents() throws Exception {

@@ -31,7 +31,16 @@ class SelectedExportIdsTest {
                 .mapToObj(index->new UUID(1,index)).toList();
         String input=ids.stream().map(id->"\""+id+"\"").collect(java.util.stream.Collectors.joining(",","[","]"));
         assertEquals(ids,SelectedExportIds.parse(input));
-        assertThrows(ApiException.class,()->SelectedExportIds.parse(input.substring(0,input.length()-1)
-                +",\""+new UUID(1,50001)+"\"]"));
+        // 1b37eb1b7 2026-11-10: the fixed 50,000 identity cap was replaced by the
+        // shared request-space budget (完整导出不按固定行数截断). 50,001 is legal
+        // (see ExportSelectionBudgetTest); selections beyond the byte budget are
+        // still rejected whole, never truncated to a prefix.
+        assertEquals(ids.size()+1,SelectedExportIds.parse(input.substring(0,input.length()-1)
+                +",\""+new UUID(1,50001)+"\"]").size());
+        int overBudget=MasterExportSelection.MAX_JSON_BYTES/39+1;
+        String oversized=java.util.stream.IntStream.rangeClosed(1,overBudget)
+                .mapToObj(index->"\""+new UUID(2,index)+"\"")
+                .collect(java.util.stream.Collectors.joining(",","[","]"));
+        assertThrows(ApiException.class,()->SelectedExportIds.parse(oversized));
     }
 }

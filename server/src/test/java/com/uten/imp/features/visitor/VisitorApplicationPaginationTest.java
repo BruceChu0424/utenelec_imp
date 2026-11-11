@@ -69,11 +69,11 @@ class VisitorApplicationPaginationTest {
         when(currentUser.id()).thenReturn(Optional.of(visitorId));
         stubPage(501);
 
-        var response = applicationService.listMine("approved", 0, 999);
+        var response = applicationService.listMine("approved", 0, 1001);
 
         Pageable pageable = capturedPageable();
         assertEquals(0, pageable.getPageNumber());
-        // 999 超上限：按 2026-11-08 合同夹到 Pageables.MAX_PAGE_SIZE。
+        // 1001 超上限：按 2026-11-09 合同（上限 1000）夹到 Pageables.MAX_PAGE_SIZE。
         assertEquals(Pageables.MAX_PAGE_SIZE, pageable.getPageSize());
         assertEquals(List.of("createdAt", "id"),
                 pageable.getSort().stream().map(Sort.Order::getProperty).toList());
@@ -262,9 +262,12 @@ class VisitorApplicationPaginationTest {
 
     private void stubPage(long total) {
         VisitorApplication application = new VisitorApplication();
+        // Spring Data 5（Boot 4.1 依赖升级随本批合并）改变了 PageImpl 语义：内容非空且不足
+        // 一页时按「末页」把 total 收缩成 offset+行数。桩要表达「首页只回 1 行、总数另有
+        // 501」，页大小须与内容行数一致，否则 total 被静默改写（实证见 2026-11-11 探针）。
         Page<VisitorApplication> page = new PageImpl<>(
                 total == 0 ? List.of() : List.of(application),
-                PageRequest.of(0, Pageables.MAX_PAGE_SIZE),
+                PageRequest.of(0, total == 0 ? Pageables.MAX_PAGE_SIZE : 1),
                 total);
         when(repository.findAll(
                 any(Specification.class),

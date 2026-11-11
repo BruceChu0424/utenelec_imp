@@ -146,7 +146,12 @@ class SchemaIndexHygieneContractTest {
             Map.entry("stock_value_production_cost_revisions.restores_revision_id",
                     "成本任务恢复版本前驱，只按主键读取"),
             Map.entry("stock_value_production_cost_tasks.restores_task_id",
-                    "成本任务恢复前驱，只按主键读取"));
+                    "成本任务恢复前驱，只按主键读取"),
+            // V1129 齐套证明明细按证明读取(主键 proof_id 前缀)；守卫触发器、V1130/V1131
+            // 只前进扫描和 fn_capture_execution_full_material_kit 都从证明/工位出发，
+            // 没有任何按 demand_id 回查证明明细的查询，需求行也不做硬删除。
+            Map.entry("production_material_full_kit_proof_items.demand_id",
+                    "齐套证明明细只按证明(主键前缀 proof_id)读取，明细不可变且只追加，没有按需求回查的查询"));
 
     /**
      * 等值探针「列 = 货品」用得上的领头索引(别名 i 为 pg_index、a 为领头列)：不带表达式，且不带条件或条件

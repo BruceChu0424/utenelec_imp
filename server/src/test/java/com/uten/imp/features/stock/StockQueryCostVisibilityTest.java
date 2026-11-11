@@ -158,10 +158,12 @@ class StockQueryCostVisibilityTest {
     }
 
     /**
-     * 即时库存 SELECT 的无搜索、无期间条件行。计量/期间投影后追加落仓占用与未占用量。
+     * 即时库存 SELECT 的无搜索、无期间条件行。计量三元组后是期间五列
+     * （期间入/出/结存/台账金额/成本单价，2026-11 起成本单价为第 5 列），
+     * 再后是 category_id 与落仓占用/未占用量。
      */
     private static Object[] instantRow(BigDecimal costAmount) {
-        Object[] row = new Object[51];
+        Object[] row = new Object[52];
         Object[] head = {
                 UUID.randomUUID(), UUID.randomUUID(), "五金", "M1", "C1", "螺丝", "S1",
                 "银色", "件", "外购", new BigDecimal("2.5"), new BigDecimal("10"),
@@ -173,8 +175,9 @@ class StockQueryCostVisibilityTest {
         row[39] = BigDecimal.ZERO;
         row[41] = Boolean.FALSE;
         row[43] = Boolean.TRUE;
-        row[49] = BigDecimal.TEN;
-        row[50] = BigDecimal.ZERO;
+        row[49] = UUID.randomUUID();
+        row[50] = BigDecimal.TEN;
+        row[51] = BigDecimal.ZERO;
         return row;
     }
 

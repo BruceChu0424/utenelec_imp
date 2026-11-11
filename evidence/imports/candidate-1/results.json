@@ -1,0 +1,55 @@
+{
+  "counts": {
+    "tests": 66,
+    "failures": 3,
+    "errors": 5,
+    "skipped": 1
+  },
+  "problems": [
+    {
+      "method": "com.uten.imp.common.importing.ImportColumnGuardTest#absentOrFutureValidationFactsCannotAuthorizeAPersistedPreview",
+      "kind": "failure",
+      "message": "\nExpecting code to raise a throwable."
+    },
+    {
+      "method": "com.uten.imp.features.finance.gl.FinanceAccountingWorkbookParserTest#privateSuppliedFilesAreReadOnlyOptionalEvidence",
+      "kind": "skipped",
+      "message": "Environment variable [UTEN_FINANCE_SOURCE_DIR] does not exist"
+    },
+    {
+      "method": "com.uten.imp.features.master.goods.costing.GoodsCostImportRemappingPostgresTest#failureAfterReceiptInsertRollsBackTheEntireApply",
+      "kind": "failure",
+      "message": "\nExpecting throwable message:\n  \"旧检测缺少当前列映射安全校验。请保留旧批次，重新生成文件并重新检测通过后再导入；仅改文件名不会改变内容标识。原来源和回执保留\"\nto contain:\n  \"计算失败\"\nbut did not.\n\nThrowable that failed the check:\n\ncom.uten.imp.common.web.ApiException: 旧检测缺少当前列映射安全校验。请保留旧批次，重新生成文件并重新检测通过后再导入；仅改文件名不会改变内容标识。原来源和回执保留\n at com.uten.imp.common.importing.ImportColumnGuard.requireValidated(ImportColumnGuard.java:16)\n at com.uten.imp.features.master.goods.costing.GoodsCostImportService.apply(GoodsCostImportService.java:89)\n at com.uten.imp.features.mas"
+    },
+    {
+      "method": "com.uten.imp.features.master.goods.costing.GoodsCostImportRemappingPostgresTest#repeatedApplyAndChangingFileDoNotAccumulateImportedFees",
+      "kind": "error",
+      "message": "旧检测缺少当前列映射安全校验。请保留旧批次，重新生成文件并重新检测通过后再导入；仅改文件名不会改变内容标识。原来源和回执保留"
+    },
+    {
+      "method": "com.uten.imp.features.master.goods.costing.GoodsCostImportRemappingPostgresTest#feeToSkipAndFeeToMaterialRemoveOnlyThePreviousImportFee",
+      "kind": "error",
+      "message": "旧检测缺少当前列映射安全校验。请保留旧批次，重新生成文件并重新检测通过后再导入；仅改文件名不会改变内容标识。原来源和回执保留"
+    },
+    {
+      "method": "com.uten.imp.features.master.goods.costing.GoodsCostImportRemappingPostgresTest#materialToSkipRestoresPreexistingManualPriceAndKeepsUnrelatedQuantityEdit",
+      "kind": "error",
+      "message": "旧检测缺少当前列映射安全校验。请保留旧批次，重新生成文件并重新检测通过后再导入；仅改文件名不会改变内容标识。原来源和回执保留"
+    },
+    {
+      "method": "com.uten.imp.features.master.goods.costing.GoodsCostImportRemappingPostgresTest#oldReceiptCustomerScopeIsRecheckedBeforeRestoringItsValues",
+      "kind": "error",
+      "message": "旧检测缺少当前列映射安全校验。请保留旧批次，重新生成文件并重新检测通过后再导入；仅改文件名不会改变内容标识。原来源和回执保留"
+    },
+    {
+      "method": "com.uten.imp.features.master.goods.costing.GoodsCostImportRemappingPostgresTest#changedOwnedPriceConflictsWithoutRemovingManualEditsOrInsertingAReceipt",
+      "kind": "error",
+      "message": "旧检测缺少当前列映射安全校验。请保留旧批次，重新生成文件并重新检测通过后再导入；仅改文件名不会改变内容标识。原来源和回执保留"
+    },
+    {
+      "method": "com.uten.imp.features.master.goods.importing.AdditionalSheetColumnRemediationTest#exactSecondSheetAttacksCannotIssueAPlanOrReachAnyBomCommitMode",
+      "kind": "failure",
+      "message": "\nExpecting throwable message:\n  \"缺少有效的导入检测记录，请重新检测文件后提交（旧版客户端请先升级）\"\nto contain:\n  \"第一张表\"\nbut did not.\n\nThrowable that failed the check:\n\ncom.uten.imp.common.web.ApiException: 缺少有效的导入检测记录，请重新检测文件后提交（旧版客户端请先升级）\n at com.uten.imp.features.master.goods.importing.GoodsBomImportService.commit(GoodsBomImportService.java:315)\n at com.uten.imp.features.master.goods.importing.AdditionalSheetColumnRemediationTest.lambda$exactSecondSheetAttacksCannotIssueAPlanOrReachAnyBomCommitMode$3(AdditionalSheetColumnRe"
+    }
+  ]
+}

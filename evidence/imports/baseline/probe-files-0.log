@@ -1,0 +1,6 @@
+chart_extra_on_subtotal=false rows=1 issues=1 serverVersion=1
+chart_extra_on_subtotal=true rows=1 issues=0 serverVersion=1
+note_inner_header=备注 rows=1 issues=0 chooses=原系统备注 serverVersion=1
+note_inner_header=自定义运费 rows=1 issues=0 chooses=原系统备注 serverVersion=1
+cost_data_contains_title=false rejected=第1行表头：列「运输费」含数据，当前导入不支持该列（含自定义列）；请删除该列或明确映射后重新检测，不能直接忽略
+cost_data_contains_title=true accepted blocks=1 rows=1 serverVersion=1

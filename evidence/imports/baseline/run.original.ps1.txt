@@ -1,0 +1,11 @@
+$ErrorActionPreference='Stop'
+Set-Location 'D:\Projects\uten_imp_worktrees\feedback-audit-20261110\server'
+$base='D:\Projects\uten_imp_worktrees\feedback-audit-20261110\audit\import-export'
+$env:TEMP = "$base\tmp"
+$env:TMP = $env:TEMP
+$env:UTEN_RUN_DB_TESTS='true'
+$env:MAVEN_OPTS="-Xmx2304m -Djava.io.tmpdir=$env:TEMP"
+$tests='MasterDirectoryExportPostgresTest#allTenActualCallersPreserveTheirOriginalRowsFiltersMasksAndExportOnlyPermission+expandedSettlementAndWarehouseHeadersExportTheirAuthoritativeValues+mouldWorkbookKeepsAll1626RowsAndExactSelectedScopeWithoutTheDisplayPlaceholder+configuredGoodsOwnerPolicyIsResolvedPerBatchRatherThanForEveryExportedRow,FinanceExpenseAnalysisPostgresTest#legacyNotePreviewsCannotWriteAndConfirmedNotesReplayAfterPeriodLocks,GoodsCostImportRemappingPostgresTest#missingOrZeroColumnValidationCannotApplyOrRewriteItsImmutablePreview,FinanceChartImportPostgresTest#historicalChartPreviewCannotWriteOrRewriteItsSourceAndAnotherOwnerCannotUseIt,FinanceAccountingContinuationPostgresTest,FinanceAuxiliaryPostgresTest#externalAuxiliaryImportStagesDraftsAndComparisonsWithoutPostingSourceAmounts,ImportColumnGuardTest,PlatformWorkbookSchemaTest,XlsxCompleteSourceTest,XlsxSelectedRowsStreamingTest,XlsxTableProjectionPrecisionTest,WorkbookDownloadServiceTest,MasterExportSelectionTest,GoodsCostWorkbookParserTest,GoodsBomImportColumnContractTest,GoodsImportColumnContractTest,GoodsImportPlanSafetyTest,FinanceOperatingNoteParserTest,FinanceChartWorkbookParserTest,FinanceAccountingWorkbookParserTest,FinanceAuxiliaryWorkbookParserTest,ExportTableProjectionServiceTest,CompleteResultExportTest'
+& mvn.cmd -B -ntp "-Duten.build.directory=$base\build" "-Dtest=$tests" "-Duten.test.tmpdir=$env:TEMP" "-Duten.test.jvm.heap.args=-Xmx3g" "-Dmaven.test.failure.ignore=false" "-Dsurefire.failIfNoSpecifiedTests=true" "-DforkCount=1" "-DreuseForks=true" test > "$base\maven.log" 2>&1
+$LASTEXITCODE | Set-Content "$base\maven-exit.txt"
+exit $LASTEXITCODE

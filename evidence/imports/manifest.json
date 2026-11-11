@@ -1,0 +1,858 @@
+{
+  "baseline": "fdeda88b3d73b24b8691ad132caa765196b19a3d",
+  "productCommit": "43116cb7fff9288b4f43ec1c87b4ef38f8e582fb",
+  "finalIntegrationCandidate": "Owned by root acceptance report; this manifest does not claim final integration acceptance",
+  "overlap": "Run groups overlap and must not be added",
+  "sourceFingerprints": [
+    {
+      "path": "server/src/main/java/com/uten/imp/common/files/document/SpreadsheetImportVisibility.java",
+      "bytePolicy": "Git blob bytes",
+      "sha256": "b8f59dbc7248f860ca0944510a08ff58d1e022e5d11eaf70dd371516aff03ab0",
+      "bytes": 2256
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/common/importing/ImportColumnGuard.java",
+      "bytePolicy": "Git blob bytes",
+      "sha256": "1e01505d26030a1004955db0224d0a2fe0fbee1b471b8315b1c9cee417e1479f",
+      "bytes": 7016
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/common/importing/PlatformWorkbookSchema.java",
+      "bytePolicy": "Git blob bytes",
+      "sha256": "01a133e5fb670e5699b63cba3b1b96e887749152ef073e7efab5d42028d5058e",
+      "bytes": 7020
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/gl/FinanceAccountingWorkbookParser.java",
+      "bytePolicy": "Git blob bytes",
+      "sha256": "7b2763f603f1c6bc78c7169cbb56492698266c13f3f785c93a9f4f511b72e607",
+      "bytes": 16636
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/gl/FinanceChartContracts.java",
+      "bytePolicy": "Git blob bytes",
+      "sha256": "42407c513c6e006ac08eddb9444744055fed2de2f10925802f20a9f747a3d4ba",
+      "bytes": 4539
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/gl/FinanceChartWorkbookParser.java",
+      "bytePolicy": "Git blob bytes",
+      "sha256": "78df775f9b0beb1c0b4235fb7e17814b7cf29eabd1e270ffdcd9d26ba43e7300",
+      "bytes": 4398
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/gl/FinanceExpenseAnalysisContracts.java",
+      "bytePolicy": "Git blob bytes",
+      "sha256": "4866ef5818f98bb424a7b50a9b5a2715483d9db032f22bbe4fe89f3d4f39a24d",
+      "bytes": 1920
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/gl/FinanceOperatingNoteParser.java",
+      "bytePolicy": "Git blob bytes",
+      "sha256": "b33c43a9abd2bac20c6e32dc03e3e451b3cf058e115c1f0b72311a9bea82bf58",
+      "bytes": 5275
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/statement/FinanceAuxiliaryImportService.java",
+      "bytePolicy": "Git blob bytes",
+      "sha256": "c1ea59d61667d1ffbd92b61c1e1fcf531e0000b22888918680baf2e31f2b7fe9",
+      "bytes": 20835
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/statement/FinancialAuxiliarySourceReadAdapter.java",
+      "bytePolicy": "Git blob bytes",
+      "sha256": "fa3423fd1dc721e8bf33dc7b8e33f9c219f4b11a488bdb3b8df9dccfe7ffed5e",
+      "bytes": 2900
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/master/goods/costing/GoodsCostImportContracts.java",
+      "bytePolicy": "Git blob bytes",
+      "sha256": "73fefcd469a9dbae684cae543d684882efad00f2a941426f3ac7aa261e461ec3",
+      "bytes": 1464
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/master/goods/costing/GoodsCostWorkbookParser.java",
+      "bytePolicy": "Git blob bytes",
+      "sha256": "6ee3dda814ca23cab4d7818d7b72105e15d7ba5d2c55a26bb02c40d49b0bc143",
+      "bytes": 9375
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/master/goods/importing/GoodsImportWorkbookSecurity.java",
+      "bytePolicy": "Git blob bytes",
+      "sha256": "1365c3ccd107ad7154ae548247d3f43b4f5e1d36c7687fc7900d70e88368f6fb",
+      "bytes": 8802
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/common/export/PlatformWorkbookSchemaTest.java",
+      "bytePolicy": "Git blob bytes",
+      "sha256": "97b3840c76657b1be93f1b732b88daad6e7793017ce683f81d29fa803e593b75",
+      "bytes": 7786
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/common/importing/ImportColumnGuardTest.java",
+      "bytePolicy": "Git blob bytes",
+      "sha256": "a5cc6fb8124da518be64656b5b4c21ddd20a7fe69b1ac2ec976d105d7721536d",
+      "bytes": 2390
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/finance/gl/FinanceExpenseAnalysisPostgresTest.java",
+      "bytePolicy": "Git blob bytes",
+      "sha256": "72416004cb352d7d2a308ffe99eefe73c5864e259cccce8836da28a2ccd903a8",
+      "bytes": 31527
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/finance/gl/WorkbookColumnRemediationTest.java",
+      "bytePolicy": "Git blob bytes",
+      "sha256": "4c41fb730f83077cb6078b371fe385d7f7be32f0921d9a28e5acfd785b9e32aa",
+      "bytes": 4135
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/master/goods/costing/CostTitleColumnRemediationTest.java",
+      "bytePolicy": "Git blob bytes",
+      "sha256": "f124456250a2186ffe3fe8b2f7e82aa7f4e041c10952c0372124de02518d7815",
+      "bytes": 1872
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/master/goods/costing/GoodsCostImportRemappingPostgresTest.java",
+      "bytePolicy": "Git blob bytes",
+      "sha256": "b99b35179f4db2e94f6a921781c4c67b629c2da529452b7db3fabfc9c4c946f3",
+      "bytes": 14442
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/master/goods/importing/AdditionalSheetColumnRemediationTest.java",
+      "bytePolicy": "Git blob bytes",
+      "sha256": "014def37544ca2cda4ae3b1e5542b12a50ab5587b57dd498b73933d751b19cb2",
+      "bytes": 3320
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/master/goods/importing/GoodsImportHistoryPostgresTest.java",
+      "bytePolicy": "Git blob bytes",
+      "sha256": "9f8e2f4ab512937ce5277ae658e5e80b958c70608a668cac8b34473c79187941",
+      "bytes": 82191
+    },
+    {
+      "path": "server/src/test/resources/import-column-remediation/bom-extra-second-true.xlsx",
+      "bytePolicy": "Git blob bytes",
+      "sha256": "3bac417a02288490e380dcc9357dd32ca66b2e9f42a7fec124d3b5edbd87c4e7",
+      "bytes": 3902
+    },
+    {
+      "path": "server/src/test/resources/import-column-remediation/chart-false.xlsx",
+      "bytePolicy": "Git blob bytes",
+      "sha256": "ca696d0e59c9655d5f8fbe29be2a19347a5ce342c17013a67e3c527225d1e2b5",
+      "bytes": 3467
+    },
+    {
+      "path": "server/src/test/resources/import-column-remediation/chart-true.xlsx",
+      "bytePolicy": "Git blob bytes",
+      "sha256": "c6f2be97521a331cc8551b090ab7793054576b4b6c4deab3e706754e4a4c4491",
+      "bytes": 3467
+    },
+    {
+      "path": "server/src/test/resources/import-column-remediation/cost-title-false.xlsx",
+      "bytePolicy": "Git blob bytes",
+      "sha256": "9f09fb08a10bd77bca68fbb48c4ec0871e15647da767aad5ab15265bb73d5d39",
+      "bytes": 3452
+    },
+    {
+      "path": "server/src/test/resources/import-column-remediation/cost-title-true.xlsx",
+      "bytePolicy": "Git blob bytes",
+      "sha256": "dbd1f7db4612a12301eec7b435a6e81e073ba1a3b9f66733e18cbc5f790a15d1",
+      "bytes": 3457
+    },
+    {
+      "path": "server/src/test/resources/import-column-remediation/goods-extra-second-true.xlsx",
+      "bytePolicy": "Git blob bytes",
+      "sha256": "9ca9c7bf9a55a3f337439db67c0d0a859ebb33c28254d162145c7677d492a173",
+      "bytes": 3928
+    },
+    {
+      "path": "server/src/test/resources/import-column-remediation/note-duplicate.xlsx",
+      "bytePolicy": "Git blob bytes",
+      "sha256": "b6136e20839848a2f0d0c64f496c1cd0468ff9a817b6a0ffa0c79bbb51f67068",
+      "bytes": 3715
+    },
+    {
+      "path": "server/src/test/resources/import-column-remediation/note-unknown.xlsx",
+      "bytePolicy": "Git blob bytes",
+      "sha256": "d88e11b4df0f14b855c02fd2ac6db6b38f8289497895eb22c2b167a1280a2ffd",
+      "bytes": 3731
+    },
+    {
+      "path": "server/src/test/resources/import-column-remediation/voucher-empty-formula.xls",
+      "bytePolicy": "Git blob bytes",
+      "sha256": "e67b2b8e07462eb3d41f9a904450ec98372389224fac26c29e0b59cf5fd1516a",
+      "bytes": 6656
+    },
+    {
+      "path": "server/src/test/resources/import-column-remediation/voucher-style.xls",
+      "bytePolicy": "Git blob bytes",
+      "sha256": "67ae3e81630e95d9281d9c811ea854575ecf4d78359af01929e1dabb9045af2e",
+      "bytes": 6656
+    },
+    {
+      "path": "server/src/test/resources/import-column-remediation/voucher-wrong-signature.xls",
+      "bytePolicy": "Git blob bytes",
+      "sha256": "5b3ce7f4d9db6b828ec50cbf151733ab85ea3715af8ce46186e6cda7c869c312",
+      "bytes": 6656
+    }
+  ],
+  "runs": {
+    "parsers": {
+      "source": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\candidate-2\\parsers.log",
+      "counts": {
+        "found": 59,
+        "successful": 58,
+        "failed": 0,
+        "skipped": 1,
+        "aborted": 0
+      },
+      "completeSummaryPresent": true
+    },
+    "db": {
+      "source": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\candidate-2\\db.log",
+      "counts": {
+        "found": 32,
+        "successful": 31,
+        "failed": 1,
+        "skipped": 0,
+        "aborted": 0
+      },
+      "completeSummaryPresent": true
+    },
+    "goods": {
+      "source": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\candidate-2\\goods.log",
+      "counts": {
+        "found": 36,
+        "successful": 35,
+        "failed": 1,
+        "skipped": 0,
+        "aborted": 0
+      },
+      "completeSummaryPresent": true
+    },
+    "cost": {
+      "source": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\candidate-2\\cost.log",
+      "counts": {
+        "found": 7,
+        "successful": 7,
+        "failed": 0,
+        "skipped": 0,
+        "aborted": 0
+      },
+      "completeSummaryPresent": true
+    },
+    "legacy": {
+      "source": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\candidate-2\\legacy.log",
+      "counts": {
+        "found": 31,
+        "successful": 31,
+        "failed": 0,
+        "skipped": 0,
+        "aborted": 0
+      },
+      "completeSummaryPresent": true
+    },
+    "initialMaven": {
+      "counts": {
+        "tests": 66,
+        "failures": 3,
+        "errors": 5,
+        "skipped": 1,
+        "successful": 57
+      },
+      "preserved": true,
+      "scope": "initial compile before final safety-version fixture corrections; not current acceptance"
+    }
+  },
+  "rawFiles": [
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\auxiliary-extra-current.xlsx",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "5f637234a567ad1ea6746214b38bbc458dfd217580fa6fb2c4d09f164cccd108",
+      "bytes": 3667
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\baseline\\bom-extra-second-false.xlsx",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "679407249ed8bc258a8599e74635fedc6822e2e115c7582b1e54568f3f05b6bb",
+      "bytes": 3460
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\baseline\\bom-extra-second-true.xlsx",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "3bac417a02288490e380dcc9357dd32ca66b2e9f42a7fec124d3b5edbd87c4e7",
+      "bytes": 3902
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\baseline\\chart-false.xlsx",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "0484bf67a875b4e7f1b4ad864d21ce95de46fc8237ec722cf8303ee33a99e7c5",
+      "bytes": 3466
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\baseline\\chart-true.xlsx",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "c6f2be97521a331cc8551b090ab7793054576b4b6c4deab3e706754e4a4c4491",
+      "bytes": 3467
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\baseline\\compile-bom.log",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\baseline\\compile-extra.log",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\baseline\\compile-files.log",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\baseline\\cost-title-false.xlsx",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "b1d8500f1c29271f6cdcce97fd131b81b72d1bff24954f458a1e51bd5d70718d",
+      "bytes": 3452
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\baseline\\cost-title-true.xlsx",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "dbd1f7db4612a12301eec7b435a6e81e073ba1a3b9f66733e18cbc5f790a15d1",
+      "bytes": 3457
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\baseline\\full-1048600.xlsx",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "8207118d9c6b483330b817f8b4e34a9c1a7f7d5701ae36efb35fc8b8e63e0727",
+      "bytes": 8530989
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\baseline\\goods-extra-second-false.xlsx",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "edb10609cfd8d7628d8a995858bb2f75bbd4212ccfed1053a17e17dbe99252bd",
+      "bytes": 3488
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\baseline\\goods-extra-second-true.xlsx",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "9ca9c7bf9a55a3f337439db67c0d0a859ebb33c28254d162145c7677d492a173",
+      "bytes": 3928
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\baseline\\mould-desc.xlsx",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "4b5a0341a00550ed2a3428cac9a2b880aacfd6875e0eef8540850a47ff73ed69",
+      "bytes": 3933
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\baseline\\note-duplicate.xlsx",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "b6136e20839848a2f0d0c64f496c1cd0468ff9a817b6a0ffa0c79bbb51f67068",
+      "bytes": 3715
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\baseline\\note-unknown.xlsx",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "b653f42944c1a5a79375b707cdc5aa09733392952502567e9d41f2b1d983eca1",
+      "bytes": 3731
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\baseline\\probe-bom-0.exit",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\baseline\\probe-bom-0.log",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "a15e24c997acc0ee43ff93cf2835196309c15ed783f49c8dec3cc52c61b45bb3",
+      "bytes": 126
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\baseline\\probe-extra-0.exit",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\baseline\\probe-extra-0.log",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "f4280a5dd8739770b532029be7e96d37d669f8cf928b6d0e6d4a7c066b73b37b",
+      "bytes": 21382
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\baseline\\probe-files-0.exit",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\baseline\\probe-files-0.log",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "816859c3752c61e3a2a1289808688d7280dd9c535f864eaac7ec6a2df64094b8",
+      "bytes": 575
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\baseline\\probe-files-1.exit",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\baseline\\probe-files-1.log",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "91412971f1fb80bf0ecddd4ed0d9ed1d1d530ec3460a661886a6a0d01282db90",
+      "bytes": 164
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\baseline\\voucher-empty-formula.xls",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "c3400827998184e8016a049f810fc245beead4ca136e01a3f758a481a123e864",
+      "bytes": 6656
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\baseline\\voucher-style.xls",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "17786373f350d70238a8c2023dffd06708b1adffd69d12f45428f8de985ec9ec",
+      "bytes": 6656
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\baseline\\voucher-unknown-value.xls",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "c6278aaea08fab6f05dbd0624941d3431b42305015431052b3a51e30d50075ab",
+      "bytes": 6656
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\baseline\\voucher-wrong-signature.xls",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "22fc64c1245d182c6b75998ad931e81fbff103f76de626161bc590936d55b548",
+      "bytes": 6656
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\candidate-1\\maven.log",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "8e5f57e93f0bb830045c496fe073c28ca287ef66c8c2a80d46a0929fa6c08920",
+      "bytes": 1293985
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\candidate-2\\cost.exit",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\candidate-2\\cost.log",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "d58f4047c1c6402399c4e86df5a9539ccbf5d1b2cfcb75403853791be084f119",
+      "bytes": 334175
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\candidate-2\\db-before-current-fixture.exit",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "f1b2f662800122bed0ff255693df89c4487fbdcf453d3524a42d4ec20c3d9c04",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\candidate-2\\db-before-current-fixture.log",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "91cb3a0d65615acadd542bc0370454881b5e3f1536ce713b8e1f3bcbd4d61b8d",
+      "bytes": 1161672
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\candidate-2\\db.exit",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "f1b2f662800122bed0ff255693df89c4487fbdcf453d3524a42d4ec20c3d9c04",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\candidate-2\\db.log",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "91cb3a0d65615acadd542bc0370454881b5e3f1536ce713b8e1f3bcbd4d61b8d",
+      "bytes": 1161672
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\candidate-2\\goods-before-legacy-fixture.exit",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "f1b2f662800122bed0ff255693df89c4487fbdcf453d3524a42d4ec20c3d9c04",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\candidate-2\\goods-before-legacy-fixture.log",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "2588674d24a24cdf140198255d87ec8675ab329d7446cb812a1ac2c32f3223dd",
+      "bytes": 668085
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\candidate-2\\goods.exit",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "f1b2f662800122bed0ff255693df89c4487fbdcf453d3524a42d4ec20c3d9c04",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\candidate-2\\goods.log",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "2588674d24a24cdf140198255d87ec8675ab329d7446cb812a1ac2c32f3223dd",
+      "bytes": 668085
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\candidate-2\\legacy.exit",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\candidate-2\\legacy.log",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "d1c3d28980cb44c571626f09bd7cef05a4ab97d23bfc291d755a1ecf256abed0",
+      "bytes": 667648
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\candidate-2\\main-compile.log",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\candidate-2\\parsers-attempt1.exit",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "f1b2f662800122bed0ff255693df89c4487fbdcf453d3524a42d4ec20c3d9c04",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\candidate-2\\parsers-attempt1.log",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "44721de1236902080a3f78bbb48c51b9b6c37152740562b6e75d847290dddaee",
+      "bytes": 12071
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\candidate-2\\parsers-attempt2.exit",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "f1b2f662800122bed0ff255693df89c4487fbdcf453d3524a42d4ec20c3d9c04",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\candidate-2\\parsers-attempt2.log",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "1b0ab8fa6bbbb1f6db8a7662d21b9c89d63670509df725c90e114f2648cd8761",
+      "bytes": 11646
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\candidate-2\\parsers-before-signature-control.log",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "907218b151d9b72ebcb8305f7095026f505894c7aad6b5a7d639f3f064b49dd1",
+      "bytes": 2153
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\candidate-2\\parsers.exit",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\candidate-2\\parsers.log",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "114881553de46c0c4a112d7c95c4d92bc77a7f3966f6658e6068599db8ece9b8",
+      "bytes": 2373
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\candidate-2\\spring-db.log",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "32966055ab77fdcbcc649eeeb832fc4944fb282694ff41fea1d83a80d8be6922",
+      "bytes": 772083
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\candidate-2\\test-compile-current.exit",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\candidate-2\\test-compile-current.log",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\candidate-2\\test-compile.log",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\imports-before-v2.dump",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "120f2ad263a1304e641302b7daf23b809be550298e9b7a086a4884f58fb463f6",
+      "bytes": 12832379
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\normal-compile-attempt1.log",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "96a9475a138fb40168a638d0bd7002a9777b34f081288ad23705942e6320a40c",
+      "bytes": 638
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\normal-compile.log",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\normal.log",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\old-auxiliary.xlsx",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "3d13079b04ff41c897f62d4bd6e95d0ac217af346c0d803a63a25e3dd7439884",
+      "bytes": 3627
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\old-balances.xls",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "ee28c136d8f5c8311616e068975bbbbf300e9e3ed365ddcc285d2939d74b477e",
+      "bytes": 5120
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\old-valid-notes.xlsx",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "9369216bf5122fae78d94a72e99f0ae091ba204ce46208c0f1f7c75b27586f25",
+      "bytes": 3749
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\old-vouchers.xls",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "3ae74146e60976ef89cdf16acfe890aefc43d870a9068402b3bb9a3bec2f13e4",
+      "bytes": 7680
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\proof-queries.exit",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\proof-queries.log",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "edf2695a67c46364c6864dfd08003bded630c14bae4e4b01240b5c1f7647db96",
+      "bytes": 4921
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\setup-mutated-copies\\bom-extra-second-true.xlsx",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "b35c3f0e70959be7bcdcea3a1e2f345a6a86eae8ef1983386b6bcd67a7aef158",
+      "bytes": 3450
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\setup-mutated-copies\\chart-true.xlsx",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "fe845a947f3337f0a2ea857ba8a4ce5910991098656f2e138d3b317bc2815bbb",
+      "bytes": 3480
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\setup-mutated-copies\\cost-title-true.xlsx",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "ce775b43bc4dbb23da240db81cbff4027299d088483d48636c30ed89c02a852b",
+      "bytes": 3446
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\setup-mutated-copies\\goods-extra-second-true.xlsx",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "c9b0841a4c777c078c9804a617f62e3b1037f1891e932e76f98323a32cf2660d",
+      "bytes": 3476
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\setup-mutated-copies\\note-duplicate.xlsx",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "c663fb09be673525dc0be3ced24f81b935ac3d2aa1a2cc0ab25ea888cb532049",
+      "bytes": 3742
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\upgrade-files-compile.log",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\upgrade-files-spring.log",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "8532521439ba1959c1bc3e5f73561d5d78d6a211afbbe76b2a6dfe739f155e7f",
+      "bytes": 6260
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\upgrade-files.exit",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\upgrade-files.log",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "19e650cdc8f79b38a24560381bbc8660937203ca17f44395146a7488fe986b62",
+      "bytes": 7217
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\upgrade-seed-compile-attempt1.log",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "33ad6901d4b4542dfe275f12df344523a4f6e890098163e6166448e589d17ed5",
+      "bytes": 789
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\upgrade-seed-compile.log",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\upgrade-seed-resume-compile.log",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\upgrade-seed-resume-spring.log",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "0ece3d67ef49fa401af859153b9e61d949de76e7c91346522b2fa4a8b57d691d",
+      "bytes": 7267
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\upgrade-seed-resume.exit",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\upgrade-seed-resume.log",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "50dd7256cf403b6a98adf88a1bde41c849111d062e0a4feceed982207a05fdf6",
+      "bytes": 8180
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\upgrade-seed-retry-compile.log",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\upgrade-seed-retry-spring.log",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "8ced05636a56e795f63eb9ba6206c429113d9111eebde76841ec13c1141cdede",
+      "bytes": 6697
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\upgrade-seed-retry.exit",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "f1b2f662800122bed0ff255693df89c4487fbdcf453d3524a42d4ec20c3d9c04",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\upgrade-seed-retry.log",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "d4ee9536e1de90c9fd4a2e0e2988f4cdf6ee57c08b9804be0a2ac76cb1693772",
+      "bytes": 7543
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\upgrade-seed-spring.log",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "411dc036a710fe826667c6c7cfb0748e1af4108869bc21be975a94f7b8a75737",
+      "bytes": 383197
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\upgrade-seed.exit",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "f1b2f662800122bed0ff255693df89c4487fbdcf453d3524a42d4ec20c3d9c04",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\upgrade-seed.log",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "9982f80f2553ae24c2de2bcf2877f40936f706c6ba888b9aefde2839811cbbf4",
+      "bytes": 409273
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\upgrade-verify-2-compile.log",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\upgrade-verify-2-spring.log",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "9ef99d7f2be4f7e2c7c044fb482c24562bc4c7414720c3190f91c0483fa8d3b5",
+      "bytes": 6263
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\upgrade-verify-2.exit",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\upgrade-verify-2.log",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "3b3821459f564bce632fb73e4342c594bcc74e0344723b581df308613bd72ed8",
+      "bytes": 7189
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\upgrade-verify-compile.log",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\upgrade-verify-spring.log",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "6483ff8c8fa59b9368745a07b3a44edbc208c7f3cacea9fb25a01576539bdfdd",
+      "bytes": 6261
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\upgrade-verify.exit",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "f1b2f662800122bed0ff255693df89c4487fbdcf453d3524a42d4ec20c3d9c04",
+      "bytes": 3
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\upgrade-verify.log",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "59e4fb434a0b2821ff558003b0930ca07c3a6e0c196cbbe083503e14598e32f4",
+      "bytes": 9579
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\web-fixtures\\bom-legal.xlsx",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "b35c3f0e70959be7bcdcea3a1e2f345a6a86eae8ef1983386b6bcd67a7aef158",
+      "bytes": 3450
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\web-fixtures\\chart-legal.xlsx",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "fe845a947f3337f0a2ea857ba8a4ce5910991098656f2e138d3b317bc2815bbb",
+      "bytes": 3480
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\web-fixtures\\cost-legal.xlsx",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "ce775b43bc4dbb23da240db81cbff4027299d088483d48636c30ed89c02a852b",
+      "bytes": 3446
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\web-fixtures\\goods-legal.xlsx",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "fcb2b58dbba48967d80a4d9aca6c65f81f55685b106f1992226de5b47cce65b3",
+      "bytes": 3476
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\evidence\\imports\\web-fixtures\\note-legal.xlsx",
+      "bytePolicy": "actual raw binary bytes",
+      "sha256": "c663fb09be673525dc0be3ced24f81b935ac3d2aa1a2cc0ab25ea888cb532049",
+      "bytes": 3742
+    }
+  ]
+}

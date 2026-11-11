@@ -1,0 +1,7 @@
+D:\Projects\uten_imp_worktrees\feedback-remediate-c-20261110\evidence\imports\ImportVersionUpgradeAudit.java:85: ����: ��assertThat�����ò���ȷ
+                var replay=notes.applyNotes(new FinanceExpenseAnalysisContracts.ImportApply(id.apply("appliedNotes")));assertThat(json.valueToTree(replay)).isEqualTo(record.path("appliedReceipt"));
+                                                                                                                       ^
+  Assertions �еķ��� assertThat(IntPredicate) �� Assertions �еķ��� <T>assertThat(Predicate<T>) ��ƥ��
+  ����, T�����ͱ���:
+    T��չ���ڷ��� <T>assertThat(Predicate<T>)��������Object
+1 ������

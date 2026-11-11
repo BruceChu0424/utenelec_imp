@@ -1,0 +1,187 @@
+{
+  "sourceCommit": "9eccf1850cd9f5806342c4136f8777ca6d3f425b",
+  "scope": "C1-C2 import column remediation",
+  "nativeImplementation": "No native workbook detect/commit/apply entry exists for these seven import types; shared summary path recognition remains unchanged.",
+  "targetDevice": "Win7 physical devices not tested",
+  "protectedFieldsUnchanged": true,
+  "workItems": [
+    {
+      "id": "W7-BIZ-025",
+      "status": "in_progress",
+      "owner": "待认领",
+      "definitionOfDone": [
+        "核实本页有效入口、路由/别名/内嵌/退役分类，以及静态发现之外的所有实际动作。",
+        "逐一对照 owning Flutter UI/公共组件及后端DTO/权限/动作合同；缺失接口单独登记必要增量，不能猜测。",
+        "原生WPF实现全部适用读取、筛选/排序/分页、详情/导航与业务动作，不能只做菜单或只读代替写流程。",
+        "源码发现的动作线索须逐项核实：confirm、create、delete、edit、post（仅静态线索，不等于完整动作清单）。",
+        "若源有新增/编辑/审核/批量/附件/导入导出/打印/历史，逐项迁移，保留币种/单位/来源/归属及精度/未知语义。",
+        "权限/数据集/读范围、草稿、版本/幂等、未知提交、取消/断网/重启/升级行为有合同及恢复证据。",
+        "复用同源Uten圆角/控件/字体/间距，完成键盘/IME/缩放/状态/焦点与现版本实际对照。",
+        "当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。",
+        "更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。"
+      ],
+      "dependencies": [
+        "W7-GOV-005",
+        "W7-GOV-006",
+        "W7-CORE-011",
+        "W7-CORE-012",
+        "W7-CORE-013",
+        "W7-CORE-014",
+        "W7-UI-001"
+      ],
+      "nativeTargets": [
+        "clients/windows_legacy/Uten.Legacy.Desktop/Features/Goods/GoodsWorkspaceView.cs"
+      ],
+      "sources": [
+        "lib/features/basic_data/pages/goods_detail_page.dart"
+      ]
+    },
+    {
+      "id": "W7-BIZ-216",
+      "status": "todo",
+      "owner": "待认领",
+      "definitionOfDone": [
+        "核实本页有效入口、路由/别名/内嵌/退役分类，以及静态发现之外的所有实际动作。",
+        "逐一对照 owning Flutter UI/公共组件及后端DTO/权限/动作合同；缺失接口单独登记必要增量，不能猜测。",
+        "原生WPF实现全部适用读取、筛选/排序/分页、详情/导航与业务动作，不能只做菜单或只读代替写流程。",
+        "源码发现的动作线索须逐项核实：cancel、confirm、copy、edit、import、remove、update（仅静态线索，不等于完整动作清单）。",
+        "若源有新增/编辑/审核/批量/附件/导入导出/打印/历史，逐项迁移，保留币种/单位/来源/归属及精度/未知语义。",
+        "权限/数据集/读范围、草稿、版本/幂等、未知提交、取消/断网/重启/升级行为有合同及恢复证据。",
+        "复用同源Uten圆角/控件/字体/间距，完成键盘/IME/缩放/状态/焦点与现版本实际对照。",
+        "当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。",
+        "更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。"
+      ],
+      "dependencies": [
+        "W7-GOV-005",
+        "W7-GOV-006",
+        "W7-CORE-011",
+        "W7-CORE-012",
+        "W7-CORE-013",
+        "W7-CORE-014",
+        "W7-UI-001"
+      ],
+      "nativeTargets": [],
+      "sources": [
+        "lib/features/basic_data/pages/goods_import_preview_page.dart"
+      ]
+    },
+    {
+      "id": "W7-BIZ-028",
+      "status": "todo",
+      "owner": "待认领",
+      "definitionOfDone": [
+        "核实本页有效入口、路由/别名/内嵌/退役分类，以及静态发现之外的所有实际动作。",
+        "逐一对照 owning Flutter UI/公共组件及后端DTO/权限/动作合同；缺失接口单独登记必要增量，不能猜测。",
+        "原生WPF实现全部适用读取、筛选/排序/分页、详情/导航与业务动作，不能只做菜单或只读代替写流程。",
+        "源码发现的动作线索须逐项核实：copy、finish、import、remove（仅静态线索，不等于完整动作清单）。",
+        "若源有新增/编辑/审核/批量/附件/导入导出/打印/历史，逐项迁移，保留币种/单位/来源/归属及精度/未知语义。",
+        "权限/数据集/读范围、草稿、版本/幂等、未知提交、取消/断网/重启/升级行为有合同及恢复证据。",
+        "复用同源Uten圆角/控件/字体/间距，完成键盘/IME/缩放/状态/焦点与现版本实际对照。",
+        "当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。",
+        "更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。"
+      ],
+      "dependencies": [
+        "W7-GOV-005",
+        "W7-GOV-006",
+        "W7-CORE-011",
+        "W7-CORE-012",
+        "W7-CORE-013",
+        "W7-CORE-014",
+        "W7-UI-001"
+      ],
+      "nativeTargets": [],
+      "sources": [
+        "lib/features/basic_data/pages/import_review_page.dart"
+      ]
+    },
+    {
+      "id": "W7-BIZ-066",
+      "status": "todo",
+      "owner": "待认领",
+      "definitionOfDone": [
+        "核实本页有效入口、路由/别名/内嵌/退役分类，以及静态发现之外的所有实际动作。",
+        "逐一对照 owning Flutter UI/公共组件及后端DTO/权限/动作合同；缺失接口单独登记必要增量，不能猜测。",
+        "原生WPF实现全部适用读取、筛选/排序/分页、详情/导航与业务动作，不能只做菜单或只读代替写流程。",
+        "源码发现的动作线索须逐项核实：audit、copy（仅静态线索，不等于完整动作清单）。",
+        "若源有新增/编辑/审核/批量/附件/导入导出/打印/历史，逐项迁移，保留币种/单位/来源/归属及精度/未知语义。",
+        "权限/数据集/读范围、草稿、版本/幂等、未知提交、取消/断网/重启/升级行为有合同及恢复证据。",
+        "复用同源Uten圆角/控件/字体/间距，完成键盘/IME/缩放/状态/焦点与现版本实际对照。",
+        "当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。",
+        "更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。"
+      ],
+      "dependencies": [
+        "W7-GOV-005",
+        "W7-GOV-006",
+        "W7-CORE-011",
+        "W7-CORE-012",
+        "W7-CORE-013",
+        "W7-CORE-014",
+        "W7-UI-001"
+      ],
+      "nativeTargets": [],
+      "sources": [
+        "lib/features/finance/pages/finance_hub_page.dart"
+      ]
+    },
+    {
+      "id": "W7-BIZ-072",
+      "status": "todo",
+      "owner": "待认领",
+      "definitionOfDone": [
+        "核实本页有效入口、路由/别名/内嵌/退役分类，以及静态发现之外的所有实际动作。",
+        "逐一对照 owning Flutter UI/公共组件及后端DTO/权限/动作合同；缺失接口单独登记必要增量，不能猜测。",
+        "原生WPF实现全部适用读取、筛选/排序/分页、详情/导航与业务动作，不能只做菜单或只读代替写流程。",
+        "源码发现的动作线索须逐项核实：export、post、print、remove、update（仅静态线索，不等于完整动作清单）。",
+        "若源有新增/编辑/审核/批量/附件/导入导出/打印/历史，逐项迁移，保留币种/单位/来源/归属及精度/未知语义。",
+        "权限/数据集/读范围、草稿、版本/幂等、未知提交、取消/断网/重启/升级行为有合同及恢复证据。",
+        "复用同源Uten圆角/控件/字体/间距，完成键盘/IME/缩放/状态/焦点与现版本实际对照。",
+        "当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。",
+        "更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。"
+      ],
+      "dependencies": [
+        "W7-GOV-005",
+        "W7-GOV-006",
+        "W7-CORE-011",
+        "W7-CORE-012",
+        "W7-CORE-013",
+        "W7-CORE-014",
+        "W7-UI-001"
+      ],
+      "nativeTargets": [],
+      "sources": [
+        "lib/features/finance/pages/finance_report_table_page.dart"
+      ]
+    },
+    {
+      "id": "W7-BIZ-026",
+      "status": "in_progress",
+      "owner": "待认领",
+      "definitionOfDone": [
+        "核实本页有效入口、路由/别名/内嵌/退役分类，以及静态发现之外的所有实际动作。",
+        "逐一对照 owning Flutter UI/公共组件及后端DTO/权限/动作合同；缺失接口单独登记必要增量，不能猜测。",
+        "原生WPF实现全部适用读取、筛选/排序/分页、详情/导航与业务动作，不能只做菜单或只读代替写流程。",
+        "源码发现的动作线索须逐项核实：finish、import、restore（仅静态线索，不等于完整动作清单）。",
+        "若源有新增/编辑/审核/批量/附件/导入导出/打印/历史，逐项迁移，保留币种/单位/来源/归属及精度/未知语义。",
+        "权限/数据集/读范围、草稿、版本/幂等、未知提交、取消/断网/重启/升级行为有合同及恢复证据。",
+        "复用同源Uten圆角/控件/字体/间距，完成键盘/IME/缩放/状态/焦点与现版本实际对照。",
+        "当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。",
+        "更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。"
+      ],
+      "dependencies": [
+        "W7-GOV-005",
+        "W7-GOV-006",
+        "W7-CORE-011",
+        "W7-CORE-012",
+        "W7-CORE-013",
+        "W7-CORE-014",
+        "W7-UI-001"
+      ],
+      "nativeTargets": [],
+      "sources": [
+        "lib/features/basic_data/pages/goods_import_problems_page.dart"
+      ]
+    }
+  ],
+  "comparedBaseline": "fdeda88b3d73b24b8691ad132caa765196b19a3d",
+  "comparisonScope": "Only the six applicable work items in this file; whole-project 373 item conservation is owned by root integration audit."
+}

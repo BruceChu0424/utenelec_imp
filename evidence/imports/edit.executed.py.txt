@@ -1,0 +1,65 @@
+from pathlib import Path
+base=Path('server/src/main/java/com/uten/imp')
+p=base/'common/importing/ImportColumnGuard.java';s=p.read_text();s=s.replace('public static final int VERSION = 1;','public static final int VERSION = 2;');s=s.replace('row.index0() > headerRow','row.index0() != headerRow').replace('row.getRowNum()>headerRow','row.getRowNum()!=headerRow');p.write_text(s)
+for name,old in [
+ ('features/finance/gl/FinanceChartContracts.java','rows,issues,applied,1)'),
+ ('features/finance/gl/FinanceExpenseAnalysisContracts.java','rows,issues,applied,1)'),
+ ('features/master/goods/costing/GoodsCostImportContracts.java','blocks,warnings,1)'),
+ ('features/finance/gl/FinanceAccountingWorkbookParser.java','issues,headers,1)'),
+ ('features/finance/statement/FinanceAuxiliaryImportService.java','columns,currencyMappingFingerprint,1)')]:
+ p=base/name;s=p.read_text();assert old in s,(name,old);s=s.replace(old,old[:-2]+'com.uten.imp.common.importing.ImportColumnGuard.VERSION)');p.write_text(s)
+p=base/'features/master/goods/costing/GoodsCostWorkbookParser.java';s=p.read_text();needle='''                if (title != null) {
+                    requireColumns''';repl='''                if (title != null) {
+                    // A title is one literal cell on its own row. A material row
+                    // containing this phrase in an extra column is still data.
+                    long filled = row.cells().stream().filter(c -> !c.text().isBlank() || c.formula() != null).count();
+                    if (filled != 1 || !title.matches("^产品名称[：:].+"))
+                        throw new ApiException(ErrorCode.VALIDATION_FAILED, sheet.name() + "!第" + row.number()
+                                + "行混有产品标题和明细数据，请分行保留，不能跳过本行");
+                    requireColumns''';assert needle in s;s=s.replace(needle,repl);s=s.replace('''                if (key == null) continue;''','''                if (key == null) {
+                    if (row.cells().stream().anyMatch(c -> !c.text().isBlank() || c.formula() != null))
+                        throw new ApiException(ErrorCode.VALIDATION_FAILED, sheet.name() + "!第" + row.number()
+                                + "行未属于已识别的成本区块，请保留材料表头或独立产品标题后重新检测");
+                    continue;
+                }''');s=s.replace('''                if (rowName.isBlank()) continue;''','''                if (rowName.isBlank()) {
+                    if (row.cells().stream().anyMatch(c -> !c.text().isBlank() || c.formula() != null))
+                        throw new ApiException(ErrorCode.VALIDATION_FAILED, sheet.name() + "!第" + row.number() + "行有数据但材料名称为空，不能忽略");
+                    continue;
+                }''');p.write_text(s)
+p=base/'features/finance/gl/FinanceChartWorkbookParser.java';s=p.read_text();a=s.index('        // Literal extra values');b=s.index('        Set<String> currencyLabels',a);s=s[:a]+'''        for(var issue:extraColumns)issues.add(new Issue(issue.rowNum(),issue.column(),issue.message()));
+'''+s[b:];p.write_text(s)
+p=base/'features/finance/gl/FinanceOperatingNoteParser.java';s=p.read_text();needle='''        Map<String,List<FinanceExpenseTemplateCatalog.OperatingRow>> identities=new HashMap<>();''';repl='''        // Only these original read-only month/ratio columns may be ignored.
+        // A replacement or duplicate inside the fixed width is not a month amount.
+        for(int col=0;col<headers.size();col++) {
+            String actual=text(sheet,header,col);
+            boolean valid=col==27 ? actual.matches("1-(?:[1-9]|1[0-2])月平均值占销售比") : actual.equals(headers.get(col).label());
+            if(!valid)throw invalid("原表第"+(col+1)+"列「"+actual+"」不是原字段「"+headers.get(col).label()+"」，请保留原月份及只读金额表头，不能忽略或按同名字段导入");
+        }
+        Map<String,List<FinanceExpenseTemplateCatalog.OperatingRow>> identities=new HashMap<>();''';assert needle in s;s=s.replace(needle,repl);p.write_text(s)
+p=base/'features/finance/gl/FinanceAccountingWorkbookParser.java';s=p.read_text().replace('case "VOUCHERS"->vouchers(sheet)','case "VOUCHERS"->vouchers(sheet,bytes)').replace('private static Parsed vouchers(DocumentGrid.Sheet sheet)','private static Parsed vouchers(DocumentGrid.Sheet sheet,byte[] bytes)');needle='''        List<Issue> issues=new ArrayList<>();Map<String,List<Entry>> grouped''';repl='''        var signature=Pattern.compile("^凭证输出[：:]([^：:]+)[：:]([^：:]+)[：:]([^：:]+)[：:]([0-9]{4})$").matcher(text(header,82));
+        if(!signature.matches())throw invalid("原凭证第83列输出签名缺损或格式不符，请从原账套重新导出");
+        String signatureLedger=signature.group(2),signatureCompany=signature.group(3);int signatureYear=Integer.parseInt(signature.group(4));
+        List<Issue> issues=new ArrayList<>();
+        for(var issue:com.uten.imp.common.importing.ImportColumnGuard.inspectExtraColumns(bytes,sheet,header.index0(),83))
+            issues.add(new Issue(issue.rowNum(),issue.column(),issue.message()));
+        Map<String,List<Entry>> grouped''';assert needle in s;s=s.replace(needle,repl);needle='''                BigDecimal debit=number(row,6)''';repl='''                if(!ledger.equals(signatureLedger)||!text(row,49).equals(signatureCompany)||year!=signatureYear)
+                    throw invalid("原凭证分录的账套、核算单位或年度与输出签名不一致");
+                BigDecimal debit=number(row,6)''';assert needle in s;s=s.replace(needle,repl);p.write_text(s)
+p=base/'features/master/goods/importing/GoodsImportWorkbookSecurity.java';s=p.read_text();needle='''        Sheet first = workbook.getSheetAt(0);''';repl='''        com.uten.imp.common.importing.ImportColumnGuard.requireSingleContentSheet(workbook);
+        Sheet first = workbook.getSheetAt(0);''';assert needle in s;s=s.replace(needle,repl);p.write_text(s)
+p=base/'common/importing/ImportColumnGuard.java';s=p.read_text();needle='''    private static boolean hasContent(Cell cell) {''';repl='''    /** First-sheet importers must not silently discard another sheet, including empty-cache formulas. */
+    public static void requireSingleContentSheet(Workbook workbook) {
+        for (int index=0;index<workbook.getNumberOfSheets();index++) {
+            Sheet sheet=workbook.getSheetAt(index);
+            for(Row row:sheet) for(Cell cell:row) if(hasContent(cell)) {
+                String location=sheet.getSheetName()+"!"+cell.getAddress().formatAsString();
+                if(index>0)throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED,
+                        location+"含数据或公式；此入口仅导入第一张表，请核对后拆分文件，不能忽略其他工作表");
+                if(workbook.isSheetHidden(index)||workbook.isSheetVeryHidden(index)||row.getZeroHeight()||sheet.isColumnHidden(cell.getColumnIndex()))
+                    throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED,
+                            location+"含隐藏数据，请先核对原文件后重新检测");
+            }
+        }
+    }
+
+    private static boolean hasContent(Cell cell) {''';assert needle in s;s=s.replace(needle,repl);p.write_text(s)

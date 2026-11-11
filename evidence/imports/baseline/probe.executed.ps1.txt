@@ -1,0 +1,43 @@
+param([ValidateSet('files','db','extra','bom','selected','staged','precise')]$group='files')
+$ErrorActionPreference='Stop'
+$dir='D:/Projects/uten_imp_worktrees/feedback-remediate-c-20261110/evidence/imports/baseline'
+Set-Location 'D:/Projects/uten_imp_worktrees/feedback-remediate-c-20261110/server'
+$xml=[xml](Get-Content -LiteralPath 'D:\Projects\uten_imp_worktrees\feedback-audit-20261110\docs\99-项目治理\evidence\import-delta-20261110\surefire-reports\TEST-com.uten.imp.common.importing.ImportColumnGuardTest.xml' -Raw)
+# Only Maven dependency jars from the frozen POM, never compiled outputs of another worktree.
+$jars=(($xml.testsuite.properties.property | Where-Object name -eq 'java.class.path').value -split ';') | Where-Object {$_ -like '*.jar' -and $_ -like '*\.m2\repository\*'}
+foreach($dep in $jars){if(!(Test-Path $dep)){throw "Missing dependency $dep"}}
+$dest=Join-Path $dir "probes-$group"
+$tmp=Join-Path $dir "tmp-$group"
+New-Item -ItemType Directory -Force $dest,$tmp | Out-Null
+$env:TMP=$tmp
+$env:TEMP=$tmp
+$env:UTEN_RUN_DB_TESTS='true'
+$cp=( @($dest,"D:/Projects/uten_imp_worktrees/feedback-audit-20261110/audit/import-export/build/test-classes","D:/Projects/uten_imp_worktrees/feedback-audit-20261110/audit/import-export/build/classes") + $jars ) -join ';'
+$agent=($jars | Where-Object {$_ -like '*\mockito-core-*.jar'} | Select-Object -First 1)
+$compilerArgs="$dest/javac.args"
+$runtimeArgs="$dest/java.args"
+$src=if($group -eq 'files') { @('WorkbookAudit.java','GoodsSheetsAudit.java') } elseif($group -eq 'extra') { @('ExtraAudit.java') } elseif($group -eq 'bom') { @('BomAudit.java') } elseif($group -eq 'selected') { @('SelectionAudit.java') } elseif($group -in @('staged','precise')) { @('ExportAudit.java','StagedExportAudit.java','StagedSuite.java') } else { @('ExportAudit.java','DbSuite.java') }
+(@('-encoding','UTF-8','-proc:none','-classpath','"'+($cp -replace '\\','/')+'"','-d','"'+($dest -replace '\\','/')+'"') + ($src | ForEach-Object {'"'+((Join-Path $dir $_) -replace '\\','/')+'"'}) ) | Set-Content $compilerArgs -Encoding utf8NoBOM
+# Each arg is its own line. Preserve classpath and absolute source names as quoted arguments.
+$cpJava='"'+($cp -replace '\\','/')+'"'
+$destJava='"'+($dest -replace '\\','/')+'"'
+@('-encoding','UTF-8','-proc:none','-classpath',$cpJava,'-d',$destJava) + @($src | ForEach-Object {'"'+((Join-Path $dir $_) -replace '\\','/')+'"'}) | Set-Content $compilerArgs -Encoding utf8NoBOM
+& javac "@$compilerArgs" *> "$dir/compile-$group.log"
+if($LASTEXITCODE){exit $LASTEXITCODE}
+$props=@('-ea','-Dfile.encoding=UTF-8','-Dstdout.encoding=UTF-8','-Dstderr.encoding=UTF-8','-Xshare:off','-Xmx2304m',('"-javaagent:'+($agent -replace '\\','/')+'"'),('"-Djava.io.tmpdir='+($tmp -replace '\\','/')+'"'),('"-Dlogging.file.name='+($dir -replace '\\','/')+'/db-probes-spring.log"'),('"-Daudit.dir='+($dir -replace '\\','/')+'"'),('"-Duten.storage.local-dir='+($tmp -replace '\\','/')+'/storage"'),'-classpath',$cpJava)
+$main=if($group -eq 'files') {@('com.uten.imp.features.finance.gl.WorkbookAudit','com.uten.imp.features.master.goods.importing.GoodsSheetsAudit')}elseif($group -eq 'extra') {@('com.uten.imp.features.finance.gl.ExtraAudit')}elseif($group -eq 'bom') {@('com.uten.imp.features.master.goods.importing.BomAudit')}elseif($group -eq 'selected') {@('audit.SelectionAudit')}elseif($group -in @('staged','precise')) {@('com.uten.imp.businesschain.StagedSuite')}else{@('com.uten.imp.businesschain.DbSuite')}
+$i=0
+foreach($c in $main){
+ $props+@($c) | Set-Content $runtimeArgs -Encoding utf8NoBOM
+ & java "@$runtimeArgs" *> "$dir/probe-$group-$i.log"
+ $code=$LASTEXITCODE
+ $code | Set-Content "$dir/probe-$group-$i.exit"
+ if($code){exit $code}
+ $i++
+}
+
+
+
+
+
+

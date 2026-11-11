@@ -1,0 +1,1 @@
+{"kind":"transport module verification only; not Web business acceptance","status":"PASS","bytesCompared":262144,"upstreamCalls":1,"metadataOnly":true,"requestBytesAndSyntheticHeaderUnchanged":true,"pausedBytesObserved":65289,"boundedPausedBufferUnder128KiB":true}

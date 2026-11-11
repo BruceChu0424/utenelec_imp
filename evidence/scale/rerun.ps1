@@ -1,12 +1,15 @@
 param([Parameter(Mandatory)][string]$WorkspaceRoot,
       [Parameter(Mandatory)][ValidatePattern('^[A-Za-z0-9_-]+$')][string]$RunName,
-      [ValidateSet('preverification','final-unified')][string]$Kind='preverification')
+      [ValidateSet('preverification','final-unified')][string]$Kind='preverification',
+      [string]$ExpectedRevision)
 $ErrorActionPreference='Stop'
 $workspace=[IO.Path]::GetFullPath($WorkspaceRoot)
 $out=Join-Path $PSScriptRoot "runs/$RunName"
 if(Test-Path -LiteralPath $out){throw 'Keep previous evidence; choose a fresh run name.'}
 New-Item -ItemType Directory -Force "$out/tmp","$out/logs","$out/artifacts" | Out-Null
 $sourceStart=(git -C $workspace rev-parse HEAD)
+if($Kind-eq'final-unified' -and !$ExpectedRevision){throw 'Final unified replay requires the parent-frozen revision.'}
+if($ExpectedRevision -and $sourceStart-ne(git -C $workspace rev-parse $ExpectedRevision)){throw 'Workspace HEAD differs from the parent-frozen revision.'}
 $dirty=@(git -C $workspace diff --name-only HEAD -- server/src server/pom.xml)
 $untracked=@(git -C $workspace ls-files --others --exclude-standard -- server/src)
 if($dirty.Count -or $untracked.Count){throw 'Freeze the actual server source before this candidate replay.'}
@@ -20,6 +23,7 @@ $selector='MasterDirectoryExportPostgresTest#mouldTaskKeepsReverseQuantityOrderA
 $maven=$LASTEXITCODE;$maven|Set-Content -LiteralPath "$out/logs/maven.exit"
 if(Test-Path -LiteralPath "$out/build/surefire-reports"){Copy-Item -LiteralPath "$out/build/surefire-reports" -Destination "$out/reports" -Recurse}
 $sourceEnd=(git -C $workspace rev-parse HEAD)
-@{sourceStart=$sourceStart;sourceEnd=$sourceEnd;kind=$Kind;exit=$maven;sourceUnchanged=($sourceStart-eq$sourceEnd)}|ConvertTo-Json|Set-Content -LiteralPath "$out/source-end.json" -Encoding utf8NoBOM
+@{sourceStart=$sourceStart;sourceEnd=$sourceEnd;kind=$Kind;exit=$maven;sourceUnchanged=($sourceStart-eq$sourceEnd);dirtySourceAfter=@(git -C $workspace diff --name-only HEAD -- server/src server/pom.xml)}|ConvertTo-Json|Set-Content -LiteralPath "$out/source-end.json" -Encoding utf8NoBOM
 if($sourceStart-ne$sourceEnd){throw 'Source changed during the replay; keep this run but do not claim final unified acceptance.'}
+if(@(git -C $workspace diff --name-only HEAD -- server/src server/pom.xml).Count){throw 'Server working files changed during the replay; preserve this attempt without signing acceptance.'}
 exit $maven

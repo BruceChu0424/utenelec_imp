@@ -1,0 +1,14 @@
+CapturedAt=2026-11-10T21:41:11.2415816-07:00 Own independent PostgreSQL container af70317fa8c4ffa71912a40726c84eac0fa6524f8b029d1d151f45a21cb4e103
+                    datname                    | state  | wait_event_type | wait_event |                                        query                                        
+-----------------------------------------------+--------+-----------------+------------+-------------------------------------------------------------------------------------
+ auth_session_b3b55089fb9c4476859a0ade5f9379d0 | idle   | Client          | ClientRead | COMMIT
+ auth_session_b3b55089fb9c4476859a0ade5f9379d0 | active |                 |            | INSERT INTO moulds(id,code,name,status,category_id,code_sequence,code_managed,tqty)+
+                                               |        |                 |            | SELECT source.id,$1||lpad(($2+source.ordinality-1)::text,6,'0'),                   +
+                                               |        |                 |            |   $3||($4+source.ordinality-1)::text,'使用',$5,$6+source.ordinality,FALSE,         +
+                                               |        |                 |            |   CAST($7+source.ordinality-1 AS numeric)+0.125                                    +
+                                               |        |                 |            | FROM unnest(CAST($8 AS uuid[])) WITH ORDINALITY source(id,ordinality)              +
+                                               |        |                 |            | 
+ auth_session_b3b55089fb9c4476859a0ade5f9379d0 | idle   | Client          | ClientRead | COMMIT
+ auth_session_b3b55089fb9c4476859a0ade5f9379d0 | idle   | Client          | ClientRead |  SET idle_in_transaction_session_timeout = '120s'
+(4 rows)
+

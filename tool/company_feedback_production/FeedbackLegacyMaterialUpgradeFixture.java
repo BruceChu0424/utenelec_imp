@@ -27,6 +27,8 @@ class FeedbackLegacyMaterialUpgradeFixture {
    String port=System.getenv("AUDIT_KIT_PG_PORT");assertTrue(port.matches("[1-9][0-9]+"));
    FixtureDatabaseProperties.bindSameRole(registry,()->System.getenv().getOrDefault("AUDIT_KIT_JDBC","jdbc:postgresql://127.0.0.1:"+port+"/"+System.getenv().getOrDefault("AUDIT_KIT_DATABASE","audit_kit")),()->System.getenv().getOrDefault("AUDIT_KIT_USERNAME","postgres"),()->System.getenv().getOrDefault("AUDIT_KIT_PASSWORD","fixture-only"));
    if(System.getenv("AUDIT_KIT_TARGET")!=null) registry.add("spring.flyway.target",()->System.getenv("AUDIT_KIT_TARGET"));
+   if(System.getenv("AUDIT_BOOTSTRAP_LOGIN")!=null) registry.add("uten.bootstrap.admin-login",()->System.getenv("AUDIT_BOOTSTRAP_LOGIN"));
+   if(System.getenv("AUDIT_BOOTSTRAP_PASSWORD")!=null) registry.add("uten.bootstrap.admin-password",()->System.getenv("AUDIT_BOOTSTRAP_PASSWORD"));
    if(System.getenv("AUDIT_JWT_SECRET")!=null) registry.add("uten.jwt.secret",()->System.getenv("AUDIT_JWT_SECRET"));
    if(System.getenv("AUDIT_HMAC_KEY")!=null) registry.add("uten.crypto.hmac-key",()->System.getenv("AUDIT_HMAC_KEY"));
    if(System.getenv("AUDIT_PGP_MASTER_KEY")!=null) registry.add("uten.crypto.pgp-master-key",()->System.getenv("AUDIT_PGP_MASTER_KEY"));

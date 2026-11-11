@@ -14,7 +14,7 @@ from three_material_fixture import write_three_material_fixture
 fixture=write_three_material_fixture(root,out)
 cp=';'.join(str(x.resolve()) for x in [classes,a.build_dir/'test-classes',a.build_dir/'classes'])+';'+deps
 env=dict(os.environ,TMP=str(tmp),TEMP=str(tmp),UTEN_RUN_DB_TESTS='true',AUDIT_LEGACY_DIR=str(out),AUDIT_KIT_PG_PORT=port,AUDIT_KIT_JDBC=url,AUDIT_KIT_USERNAME=config['username'],AUDIT_KIT_PASSWORD=config['password'],AUDIT_BROWSER_PASSWORD=config['syntheticAccountPassword'])
-for field,key in [('jwtSecret','AUDIT_JWT_SECRET'),('hmacKey','AUDIT_HMAC_KEY'),('pgpMasterKey','AUDIT_PGP_MASTER_KEY')]:
+for field,key in [('bootstrapLogin','AUDIT_BOOTSTRAP_LOGIN'),('bootstrapPassword','AUDIT_BOOTSTRAP_PASSWORD'),('jwtSecret','AUDIT_JWT_SECRET'),('hmacKey','AUDIT_HMAC_KEY'),('pgpMasterKey','AUDIT_PGP_MASTER_KEY')]:
  if config.get(field):env[key]=config[field]
  elif not a.compile_only:raise SystemExit('Private runtime config requires '+field+'; no database writes were made')
 def run(cmd,args,label):

@@ -18,6 +18,9 @@ $env:UTEN_REMEDIATION_B_JDBC_URL=$JdbcUrl
 $env:UTEN_REMEDIATION_B_DB_USER=$DatabaseUser
 $env:UTEN_REMEDIATION_B_DB_PASSWORD=$config.password
 $env:UTEN_REMEDIATION_B_ACCOUNT_PASSWORD=$config.syntheticAccountPassword
+$env:UTEN_REMEDIATION_B_JWT_SECRET=$config.jwtSecret
+$env:UTEN_REMEDIATION_B_HMAC_KEY=$config.hmacKey
+$env:UTEN_REMEDIATION_B_PGP_MASTER_KEY=$config.pgpMasterKey
 $env:UTEN_REMEDIATION_B_SEED_OUTPUT=$OutputPath
 $env:UTEN_REMEDIATION_B_INCLUDE_LEGACY_DRAFTS=if($LegacyDrafts){'true'}else{'false'}
 $env:UTEN_RUN_DB_TESTS='true'
@@ -29,6 +32,6 @@ try {
   $result=$LASTEXITCODE
   $result | Set-Content "$evidence/seed-web.exit"
 } finally {
-  Remove-Item Env:UTEN_REMEDIATION_B_DB_PASSWORD,Env:UTEN_REMEDIATION_B_ACCOUNT_PASSWORD -ErrorAction SilentlyContinue
+  Remove-Item Env:UTEN_REMEDIATION_B_DB_PASSWORD,Env:UTEN_REMEDIATION_B_ACCOUNT_PASSWORD,Env:UTEN_REMEDIATION_B_JWT_SECRET,Env:UTEN_REMEDIATION_B_HMAC_KEY,Env:UTEN_REMEDIATION_B_PGP_MASTER_KEY -ErrorAction SilentlyContinue
 }
 exit $result

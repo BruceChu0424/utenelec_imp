@@ -39,9 +39,6 @@ import static org.assertj.core.api.Assertions.*;
 @SpringBootTest(properties={"spring.profiles.active=dev","uten.audit.retention.enabled=false",
     "uten.reporting.materialized-view-refresh.enabled=false","uten.production.readiness-reconcile.enabled=false",
     "uten.features.goods-owner-scope-enabled=false","uten.storage.uploads-enabled=false",
-    "uten.jwt.secret=gift-regression-isolated-jwt-key-0123456789-abcdef", // gitleaks:allow synthetic cryptographic key for this isolated JUnit SpringBootTest.
-    "uten.crypto.pgp-master-key=gift-regression-isolated-pgp-key-0123456789-abcdef", // gitleaks:allow synthetic cryptographic key for this isolated JUnit SpringBootTest.
-    "uten.crypto.hmac-key=gift-regression-isolated-hmac-key-0123456789-abcdef",
     "uten.bootstrap.admin-login=gift-regression-bootstrap","uten.bootstrap.admin-password=GiftRegressionAdmin-1!"})
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 @DirtiesContext(classMode=DirtiesContext.ClassMode.AFTER_CLASS)
@@ -58,6 +55,13 @@ class FeedbackBWebSeedTest {
             throw new IllegalStateException("An explicit isolated loopback feedback/remediation database is required");
         FixtureDatabaseProperties.bindSameRole(registry,()->url,
                 ()->System.getenv("UTEN_REMEDIATION_B_DB_USER"),()->System.getenv("UTEN_REMEDIATION_B_DB_PASSWORD"));
+        for(var entry:Map.of("uten.jwt.secret","UTEN_REMEDIATION_B_JWT_SECRET",
+                "uten.crypto.hmac-key","UTEN_REMEDIATION_B_HMAC_KEY",
+                "uten.crypto.pgp-master-key","UTEN_REMEDIATION_B_PGP_MASTER_KEY").entrySet()) {
+            String value=System.getenv(entry.getValue());
+            if(value==null||value.length()<32)throw new IllegalStateException("Explicit shared runtime crypto configuration required: "+entry.getKey());
+            registry.add(entry.getKey(),()->value);
+        }
     }
     public static class Cleanup extends AbstractTestExecutionListener {
         @Override public int getOrder(){return new DirtiesContextTestExecutionListener().getOrder()-1;}
@@ -85,9 +89,15 @@ class FeedbackBWebSeedTest {
     @AfterEach void clear(){SecurityContextHolder.clearContext();}
 
     @Autowired org.springframework.security.crypto.password.PasswordEncoder passwords;
+    @Autowired org.springframework.core.env.Environment seedEnvironment;
     @Autowired com.uten.imp.features.production.analysis.MaterialAnalysisService analyses;
 
     @Test void seedOrdinaryWebReturnAndOrderScenarios() throws Exception {
+        for(var entry:Map.of("uten.jwt.secret","UTEN_REMEDIATION_B_JWT_SECRET",
+                "uten.crypto.hmac-key","UTEN_REMEDIATION_B_HMAC_KEY",
+                "uten.crypto.pgp-master-key","UTEN_REMEDIATION_B_PGP_MASTER_KEY").entrySet())
+            if(!Objects.equals(System.getenv(entry.getValue()),seedEnvironment.getProperty(entry.getKey())))
+                throw new IllegalStateException("Seed/runtime crypto configuration mismatch: "+entry.getKey());
         String password=System.getenv("UTEN_REMEDIATION_B_ACCOUNT_PASSWORD");
         if(password==null||password.length()<12)throw new IllegalStateException("Synthetic web account password is required");
         boolean legacy="true".equals(System.getenv("UTEN_REMEDIATION_B_INCLUDE_LEGACY_DRAFTS"));
@@ -163,7 +173,8 @@ class FeedbackBWebSeedTest {
         output.put("subcontract",subcontract);
         String suffix=UUID.randomUUID().toString().substring(0,8);
         var common=List.of("goods:view","material_category:view","supplier:view","warehouse:view","unit:view","color:view","currency:view","settlement_method:view",
-                "purchase_receipt:view","subcontract_receipt:view","purchase:view:all","subcontract:view:all");
+                "purchase_receipt:view","subcontract_receipt:view","purchase:view:all","subcontract:view:all",
+                "purchase_receipt:price:view","subcontract_receipt:price:view","purchase_return:price:view","subcontract_return:price:view");
         var makerPerms=new ArrayList<>(common);makerPerms.addAll(List.of("purchase_return:view","purchase_return:create","purchase_return:edit","subcontract_return:view","subcontract_return:create","subcontract_return:edit"));
         var approverPerms=new ArrayList<>(common);approverPerms.addAll(List.of("purchase_return:view","purchase_return:approve","subcontract_return:view","subcontract_return:approve"));
         harness.loginAs(f.w().superAdminUserId());

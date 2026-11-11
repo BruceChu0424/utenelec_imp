@@ -45,7 +45,7 @@ class OrderPreviewRemediationTest extends CompanyMaterialOrderQuantityEndToEndTe
                     .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf())
                     .contentType("application/json").content(json.writeValueAsString(request))).andReturn().getResponse();
             System.out.println("REMEDIATION incomplete source HTTP="+response.getStatus()+" "+response.getContentAsString(java.nio.charset.StandardCharsets.UTF_8));
-            assertEquals(400,response.getStatus());
+            assertEquals(com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED.getHttpStatus(),response.getStatus());
             assertTrue(response.getContentAsString(java.nio.charset.StandardCharsets.UTF_8).contains("逐来源下单数量必须完整对应本次原物料行"));
             assertEquals(before,db.queryForObject("SELECT count(*) FROM preplan_aggregate_batches WHERE analysis_id=?",Long.class,c.analysis()));
         } finally { SecurityContextHolder.getContext().setAuthentication(actor); }

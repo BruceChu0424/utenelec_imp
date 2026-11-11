@@ -158,7 +158,8 @@ class MasterDirectoryExportPostgresTest extends AuthSessionPostgresTestSupport {
                 Map.of("filter",req.parameters().get("filter"),"selectedIds",objectMapper.writeValueAsString(seed.ids().subList(1624,1626))),"tqty","asc",null);
         assertThat(master.read(selected).rows()).extracting(row->row.get("tqty")).containsExactly("1.125","2.125");
     }
-    @Test void fiftyThousandAndOneRealSelectedMouldsExcludeAnotherMatchingRowAndKeepOrder() throws Exception {
+    @Test void fiftyThousandAndOneRealSelectedMouldsExcludeAnotherMatchingRowAndKeepOrder(
+            @org.junit.jupiter.api.io.TempDir java.nio.file.Path directory) throws Exception {
         String token="SEL"+UUID.randomUUID().toString().substring(0,8);
         Seed seed=seed("mould",token,50002);
         exporter("mould");
@@ -170,7 +171,11 @@ class MasterDirectoryExportPostgresTest extends AuthSessionPostgresTestSupport {
         var rows=new AtomicInteger();
         var measurement=ProductionJdbcMeasurement.begin();long started=System.nanoTime();
         try(var sink=ExportPageSink.open(page->{
-            for(var row:page.rows()) assertThat(row.get("code")).isEqualTo("MX-"+token+"-%06d".formatted(50000-rows.getAndIncrement()));
+            for(var row:page.rows()) {
+                int original=50000-rows.getAndIncrement();
+                assertThat(row.get("code")).isEqualTo("MX-"+token+"-%06d".formatted(original));
+                assertThat(row.get("tqty")).isEqualTo(new BigDecimal(original).add(new BigDecimal("0.125")).toPlainString());
+            }
         })) {
             assertThat(master.read(req).total()).isEqualTo(50001);
         } finally {
@@ -189,6 +194,53 @@ class MasterDirectoryExportPostgresTest extends AuthSessionPostgresTestSupport {
                 Map.of("filter",req.parameters().get("filter"),"selectedIds",objectMapper.writeValueAsString(missing)),"tqty","desc",null);
         assertThatThrownBy(()->master.read(stale)).hasMessageContaining("本次未生成文件");
         System.out.println("D3_REAL_SELECTION selected=50001 matching=50002 excluded=1 ordered=50001 cancellation=preserved missing=rejected");
+        long writeStart=System.nanoTime();
+        var workbook=context.getBean(XlsxExportService.class).buildSource(()->master.read(req),null,"master_mould");
+        long sourceAndWriteMs=(System.nanoTime()-writeStart)/1_000_000;
+        assertThat(workbook.payload().total()).isEqualTo(50001);
+        String evidence=System.getProperty("uten.export.evidence.directory");
+        java.nio.file.Path archive=evidence==null?directory:java.nio.file.Path.of(evidence);
+        java.nio.file.Files.createDirectories(archive);
+        java.nio.file.Path file=archive.resolve("selected-50001-"+token+".xlsx");
+        java.nio.file.Files.write(file,workbook.bytes(),java.nio.file.StandardOpenOption.CREATE_NEW);
+        long rereadStart=System.nanoTime();
+        assertSelectedMouldWorkbook(file,token);
+        assertThat(MasterExportSelection.current()).isNull();
+        System.out.println("D3_SELECTED_XLSX realDatabaseMatches=50002 realSelected=50001 physicalDataRows=50001 excluded=1 exactQuantityRows=50001 sourceAndWriteMs="+sourceAndWriteMs+
+                " rereadMs="+(System.nanoTime()-rereadStart)/1_000_000+" bytes="+java.nio.file.Files.size(file)+
+                " sha256="+HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(workbook.bytes()))+" file="+file.toAbsolutePath());
+    }
+    private static void assertSelectedMouldWorkbook(java.nio.file.Path file,String token)throws Exception {
+        var rows=new AtomicInteger();
+        try(var zip=new java.util.zip.ZipFile(file.toFile())) {
+            assertThat(zip.getEntry("xl/worksheets/sheet2.xml")).isNull();
+            var factory=javax.xml.parsers.SAXParserFactory.newInstance();
+            factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl",true);
+            var handler=new org.xml.sax.helpers.DefaultHandler() {
+                int row,column;StringBuilder value;boolean code,quantity;
+                public void startElement(String uri,String local,String tag,org.xml.sax.Attributes attributes) {
+                    if(tag.equals("row")){row=Integer.parseInt(attributes.getValue("r"));code=false;quantity=false;}
+                    if(tag.equals("c")){column=new org.apache.poi.ss.util.CellReference(attributes.getValue("r")).getCol();value=new StringBuilder();}
+                }
+                public void characters(char[] chars,int begin,int length){if(value!=null)value.append(chars,begin,length);}
+                public void endElement(String uri,String local,String tag) {
+                    if(tag.equals("c")) {
+                        if(row==1) {
+                            if(column==0)assertThat(value.toString()).isEqualTo("模具编号");
+                            if(column==3)assertThat(value.toString()).isEqualTo("套数");
+                        } else {
+                            int original=50000-rows.get();
+                            if(column==0){assertThat(value.toString()).isEqualTo("MX-"+token+"-%06d".formatted(original));code=true;}
+                            if(column==3){assertThat(value.toString()).isEqualTo(new BigDecimal(original).add(new BigDecimal("0.125")).toPlainString());quantity=true;}
+                        }
+                        value=null;
+                    }
+                    if(tag.equals("row")&&row>1){assertThat(code).isTrue();assertThat(quantity).isTrue();rows.incrementAndGet();}
+                }
+            };
+            try(var input=zip.getInputStream(zip.getEntry("xl/worksheets/sheet1.xml"))){factory.newSAXParser().parse(input,handler);}
+        }
+        assertThat(rows).hasValue(50001);
     }
     private void assertCaller(String report)throws Exception{
         String token="MX"+UUID.randomUUID().toString().replace("-","").substring(0,10);

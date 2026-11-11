@@ -237,7 +237,7 @@ Future<void> _wideNarrowMouldMenu(WidgetTester tester) async {
     const narrowWidth = _windowScenario == 'supported-min800' ? 800.0 : 714.0;
     await _resizeNativeWindow(
       tester,
-      Size(narrowWidth, 764),
+      const Size(narrowWidth, 764),
       'mould-$_windowScenario-before-operation',
     );
     await _screen(tester, 'mould-narrow-before-menu');

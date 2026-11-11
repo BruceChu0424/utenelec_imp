@@ -415,8 +415,7 @@ class _UtenCollapsingHeaderScrollViewState
           // The original nested presentation resets the body at this boundary.
           // Compact/hierarchy viewports keep an already accepted body offset
           // while their header returns and collapses again.
-          if (!widget.stableBodyViewport &&
-              _lastPresentationCompact == false) {
+          if (!widget.stableBodyViewport && _lastPresentationCompact == false) {
             for (final position
                 in _innerController?.positions ?? const <ScrollPosition>[]) {
               if (position.hasPixels && position.hasContentDimensions) {

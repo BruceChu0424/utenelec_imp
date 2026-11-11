@@ -131,8 +131,7 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
                 admissionHeader=analysis.headerSnapshot(analysisId);
                 admissionClaimable=commands.sharedClaimableFingerprint(analysisId);
                 MaterialAnalysisIssuePreviewOverlay preOverlay=MaterialAnalysisIssuePreviewOverlay.create();
-                analysis.projectIssuePreviewBase(analysisId,preOverlay);
-                preReviewed=previews.resolve(analysisId,request.previewRequest(),analysis.issuePreviewView(analysisId,preOverlay,Map.of()));
+                preReviewed=previews.resolve(analysisId,request.previewRequest(),analysis.baseIssuePreviewView(analysisId,preOverlay));
             } catch(ApiException rejectedByOpenState) { preReviewed=null; }
         }
         var guard=commands.lockAnalysisWithClaimableShared(analysisId);
@@ -161,8 +160,7 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
         if(admissionCurrent) reviewed=preReviewed;
         else {
             MaterialAnalysisIssuePreviewOverlay overlay=MaterialAnalysisIssuePreviewOverlay.create();
-            analysis.projectIssuePreviewBase(analysisId,overlay);
-            reviewed=previews.resolve(analysisId,request.previewRequest(),analysis.issuePreviewView(analysisId,overlay,Map.of()));
+            reviewed=previews.resolve(analysisId,request.previewRequest(),analysis.baseIssuePreviewView(analysisId,overlay));
         }
         if(!Objects.equals(reviewed.previewFingerprint(),request.previewFingerprint()))throw conflict("汇总来源、已下达或可用供给已变化，请重新核对");
         // ADR-143 §二.3：缺 BOM 的委外件先转研发(独立事务立即提交，随后的 409 不撤销)，再拒绝本次汇总下达。

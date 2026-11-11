@@ -5714,6 +5714,12 @@ public class MaterialAnalysisService {
         projectPreview(analysisId, previewableHeader(analysisId).warehouseId(), Map.of(), overlay, true);
     }
 
+    /** Fresh base only: no selected output, claim or reservation has been added between projection and view. */
+    AnalysisView baseIssuePreviewView(UUID analysisId, MaterialAnalysisIssuePreviewOverlay overlay) {
+        projectIssuePreviewBase(analysisId,overlay);
+        return detailInternal(analysisId,false,overlay);
+    }
+
     /** 真实下达建锚点/补让料配额之后、建计划之前的那次刷新(不含本批计划与层级填数)。 */
     AnalysisView reprojectIssuePreview(UUID analysisId, MaterialAnalysisIssuePreviewOverlay overlay) {
         projectPreview(analysisId, previewableHeader(analysisId).warehouseId(), Map.of(), overlay, false);

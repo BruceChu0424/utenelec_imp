@@ -923,6 +923,28 @@ class AggregateMaterialOrderEndToEndTest {
         }
     }
 
+    @Test void freshBaseProjectionMatchesTheOriginalSecondPassForNestedAnchorsAndRealStock() throws Exception {
+        Case c=createWithChild("5",2);
+        assertFreshBaseParity(c,"fresh nested sources");
+        writer.submit(c.analysis(),command(c,List.of(input(c,c.common(),"MAKE","10",false))));
+        assertFreshBaseParity(c,"existing MAKE_COMPONENT anchors and aliases");
+        receive(c,c.material(),"3");
+        assertFreshBaseParity(c,"real stock changed since the stored analysis");
+    }
+
+    private void assertFreshBaseParity(Case c,String state) throws Exception {
+        var read=new org.springframework.transaction.support.TransactionTemplate(beans.getBean(org.springframework.transaction.PlatformTransactionManager.class));
+        read.setReadOnly(true);read.setIsolationLevel(org.springframework.transaction.TransactionDefinition.ISOLATION_REPEATABLE_READ);
+        var overlayType=Class.forName("com.uten.imp.features.production.analysis.MaterialAnalysisIssuePreviewOverlay");
+        read.executeWithoutResult(status->{
+            Object overlay=ReflectionTestUtils.invokeMethod(overlayType,"forReadPreview",c.analysis());
+            AnalysisView one=ReflectionTestUtils.invokeMethod(analyses,"baseIssuePreviewView",c.analysis(),overlay);
+            AnalysisView two=ReflectionTestUtils.invokeMethod(analyses,"issuePreviewView",c.analysis(),overlay,Map.of());
+            var json=beans.getBean(com.fasterxml.jackson.databind.ObjectMapper.class);
+            assertEquals(json.valueToTree(two),json.valueToTree(one),state+": every original view field must match, not just the requested quantity");
+        });
+    }
+
     /** R7 budget: one real aggregate submit of 20 distinct material lines plus their
      *  shared MAKE parent. The parent's subtree intersects every leaf, so the leaves
      *  follow the dependent path; this is the user-visible "batch order from the

@@ -49,8 +49,7 @@ public class AggregateMaterialOrderPreviewService {
         analysisService.requireCurrent(header,request.version(),request.fingerprint());
         if(!Objects.equals(header.warehouseId(),request.warehouseId()))throw conflict("分析仓库已变化，请刷新后重新核对");
         MaterialAnalysisIssuePreviewOverlay overlay=MaterialAnalysisIssuePreviewOverlay.forReadPreview(analysisId);
-        analysisService.projectIssuePreviewBase(analysisId,overlay);
-        return resolve(analysisId,request,analysisService.issuePreviewView(analysisId,overlay,Map.of()));
+        return resolve(analysisId,request,analysisService.baseIssuePreviewView(analysisId,overlay));
     }
 
     @org.springframework.beans.factory.annotation.Autowired(required=false)

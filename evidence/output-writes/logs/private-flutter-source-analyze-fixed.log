@@ -1,0 +1,6 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+Analyzing 20 items...                                           
+
+   info - Statements in an if should be enclosed in a block. Try wrapping the statement in a block - test\features\basic_data\pages\master_complete_print_consumers_test.dart:355:7 - curly_braces_in_flow_control_structures
+
+1 issue found. (ran in 17.1s)

@@ -1,0 +1,96 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/account_workspace_batch_test.dart
+00:00 +0: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/account_workspace_batch_test.dart: concurrent clean stale callbacks open one confirmation and write one batch
+00:03 +0 ~1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/account_workspace_batch_test.dart: concurrent clean stale callbacks open one confirmation and write one batch
+00:03 +0 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/account_workspace_batch_test.dart: concurrent clean stale callbacks open one confirmation and write one batch
+00:08 +1 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_page_paste_test.dart: 组件goods:bom:create授权不能绕过编辑权限显示批量维护入口
+00:08 +2 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_page_paste_test.dart: 组件goods:bom:create授权不能绕过编辑权限显示批量维护入口
+00:10 +3 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_detail_return_test.dart: header return search=false restores mouse double-click and row menu
+00:11 +4 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_detail_return_test.dart: header return search=false restores mouse double-click and row menu
+00:14 +5 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_detail_return_test.dart: header return search=false restores mouse double-click and row menu
+00:14 +6 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_detail_return_test.dart: header return search=false restores mouse double-click and row menu
+00:15 +7 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_detail_return_test.dart: header return search=false restores mouse double-click and row menu
+00:17 +8 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_detail_return_test.dart: header return search=false restores mouse double-click and row menu
+00:17 +9 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_detail_return_test.dart: header return search=false restores mouse double-click and row menu
+00:17 +9 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/unit_inline_busy_once_test.dart: pending unit inline save has one root busy card and semantic node desktop
+UNIT-BUSY desktop frames=60 maxActions=1 maxHosts=1 maxRootCards=1 maxSemanticNodes=1
+00:17 +10 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_detail_return_test.dart: header return search=false restores mouse double-click and row menu
+00:17 +11 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_detail_return_test.dart: header return search=false restores mouse double-click and row menu
+00:18 +12 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_detail_return_test.dart: header return search=false restores mouse double-click and row menu
+00:18 +13 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_detail_return_test.dart: header return search=false restores mouse double-click and row menu
+00:19 +14 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_detail_return_test.dart: header return search=false restores mouse double-click and row menu
+00:20 +15 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_detail_return_test.dart: header return search=false restores mouse double-click and row menu
+00:20 +16 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_detail_return_test.dart: header return search=false restores mouse double-click and row menu
+00:20 +17 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_detail_return_test.dart: header return search=false restores mouse double-click and row menu
+00:21 +18 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_detail_return_test.dart: header return search=false restores mouse double-click and row menu
+00:21 +19 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_detail_return_test.dart: header return search=false restores mouse double-click and row menu
+00:21 +20 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_detail_return_test.dart: header return search=false restores mouse double-click and row menu
+00:22 +20 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/unit_inline_busy_once_test.dart: pending unit inline save has one root busy card and semantic node compact-large
+UNIT-BUSY compact-large frames=60 maxActions=1 maxHosts=1 maxRootCards=1 maxSemanticNodes=1
+00:22 +21 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_detail_return_test.dart: header return search=false restores mouse double-click and row menu
+00:22 +22 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_detail_return_test.dart: header return search=false restores mouse double-click and row menu
+00:22 +23 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_detail_return_test.dart: header return search=false restores mouse double-click and row menu
+00:22 +24 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_detail_return_test.dart: header return search=false restores mouse double-click and row menu
+00:22 +25 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_detail_return_test.dart: header return search=false restores mouse double-click and row menu
+00:23 +26 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_page_column_permissions_test.dart: 导入入口独立于导出权限且快速重复点击只打开一次
+00:23 +27 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_page_column_permissions_test.dart: 导入入口独立于导出权限且快速重复点击只打开一次
+00:24 +28 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_page_paste_test.dart: 已有单品整份覆盖使用新预览且明确顶层清单语义
+00:24 +29 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_page_paste_test.dart: 已有单品整份覆盖使用新预览且明确顶层清单语义
+00:24 +30 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/unit_inline_busy_once_test.dart: pending unit inline save has one root busy card and semantic node fullscreen
+00:25 +31 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/unit_inline_busy_once_test.dart: pending unit inline save has one root busy card and semantic node fullscreen
+UNIT-BUSY fullscreen frames=60 maxActions=1 maxHosts=1 maxRootCards=1 maxSemanticNodes=1
+00:25 +32 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/warehouse_page_layout_test.dart: double-clicking stock opens the selected warehouse ledger with the same color scope
+00:26 +33 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/warehouse_page_layout_test.dart: double-clicking stock opens the selected warehouse ledger with the same color scope
+00:26 +34 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_detail_return_test.dart: go return search=false restores mouse double-click and row menu
+00:27 +35 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_detail_return_test.dart: go return search=false restores mouse double-click and row menu
+00:27 +36 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_detail_return_test.dart: go return search=false restores mouse double-click and row menu
+00:27 +37 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_detail_return_test.dart: go return search=false restores mouse double-click and row menu
+00:28 +38 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_detail_return_test.dart: go return search=false restores mouse double-click and row menu
+00:29 +39 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_detail_return_test.dart: go return search=false restores mouse double-click and row menu
+00:29 +40 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_detail_return_test.dart: go return search=false restores mouse double-click and row menu
+00:29 +41 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_detail_return_test.dart: go return search=false restores mouse double-click and row menu
+00:29 +42 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_detail_return_test.dart: go return search=false restores mouse double-click and row menu
+00:30 +43 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_detail_return_test.dart: go return search=false restores mouse double-click and row menu
+00:30 +44 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_detail_return_test.dart: go return search=false restores mouse double-click and row menu
+00:30 +45 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/account_workspace_batch_test.dart: 403 stops later native requests and retains all unprocessed selections
+00:31 +46 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/client_category_page_refresh_test.dart: legacy client Credit is labeled and disabled while floor stays separate
+00:32 +47 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/client_category_page_refresh_test.dart: legacy client Credit is labeled and disabled while floor stays separate
+00:33 +48 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/client_category_page_refresh_test.dart: legacy client Credit is labeled and disabled while floor stays separate
+00:34 +49 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/warehouse_page_layout_test.dart: warehouse inline mode shares lazy editors at Size(1440.0, 900.0) while inventory remains read only
+00:34 +50 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_detail_return_test.dart: platform return search=false restores mouse double-click and row menu
+00:35 +51 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_detail_return_test.dart: platform return search=false restores mouse double-click and row menu
+00:35 +52 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_detail_return_test.dart: platform return search=false restores mouse double-click and row menu
+00:36 +53 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_detail_return_test.dart: platform return search=false restores mouse double-click and row menu
+00:37 +54 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_page_paste_test.dart: 有价格编辑权的货品复制保留服务端完整价格原文
+00:38 +55 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_page_paste_test.dart: 有价格编辑权的货品复制保留服务端完整价格原文
+00:38 +56 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/warehouse_page_layout_test.dart: warehouse inline mode shares lazy editors at Size(390.0, 844.0) while inventory remains read only
+00:38 +57 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/account_workspace_batch_test.dart: continuous rows keep selections while refresh and filters clear them
+00:39 +58 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/account_workspace_batch_test.dart: continuous rows keep selections while refresh and filters clear them
+00:40 +59 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/client_category_page_refresh_test.dart: 新增客户弹窗填写外文名称后随创建请求提交
+00:40 +60 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_detail_return_test.dart: platform return search=true restores mouse double-click and row menu
+00:41 +61 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_detail_return_test.dart: platform return search=true restores mouse double-click and row menu
+00:42 +62 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_detail_return_test.dart: platform return search=true restores mouse double-click and row menu
+00:43 +63 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_detail_return_test.dart: platform return search=true restores mouse double-click and row menu
+00:43 +64 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_detail_return_test.dart: platform return search=true restores mouse double-click and row menu
+00:45 +65 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_detail_return_test.dart: platform return search=true restores mouse double-click and row menu
+00:45 +66 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_detail_return_test.dart: platform return search=true restores mouse double-click and row menu
+00:46 +67 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_page_paste_test.dart: 复制货品无成本查看权限时省略来源委外损耗比例
+00:47 +68 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_page_column_permissions_test.dart: 货品页面创建个人模具关联列，刷新同步且撤回权限立即清除展示值
+00:47 +69 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_page_column_permissions_test.dart: 货品页面创建个人模具关联列，刷新同步且撤回权限立即清除展示值
+00:49 +70 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_page_column_permissions_test.dart: 货品页面创建个人模具关联列，刷新同步且撤回权限立即清除展示值
+00:50 +71 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_page_column_permissions_test.dart: 货品页面创建个人模具关联列，刷新同步且撤回权限立即清除展示值
+00:51 +72 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_page_paste_test.dart: 空分类没有新增权限时粘贴禁用
+00:51 +73 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_page_column_permissions_test.dart: goods edit permission enables adding a real master_goods column
+00:52 +74 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_page_column_permissions_test.dart: goods edit permission enables adding a real master_goods column
+00:54 +75 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_page_column_permissions_test.dart: goods edit permission enables adding a real master_goods column
+00:54 +76 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_page_paste_test.dart: 批量粘贴非法份数不创建货品或组件且取消丢弃输入
+00:56 +77 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_page_paste_test.dart: 批量粘贴非法份数不创建货品或组件且取消丢弃输入
+00:57 +78 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_page_column_permissions_test.dart: view and create only cannot add or create table columns
+00:57 +79 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_page_paste_test.dart: 157条分类中粘贴按实际编号位置定位，不假定副本在末页
+01:01 +80 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_page_paste_test.dart: 157条分类中粘贴按实际编号位置定位，不假定副本在末页
+01:01 +81 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_page_paste_test.dart: 粘贴后保留完整分类结果并定位新副本
+01:03 +82 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_page_paste_test.dart: 批量粘贴后完整结果自动定位超出视口的最后副本
+01:07 +83 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_page_paste_test.dart: 完整分类结果默认选中所有成功副本且不包含原右键行
+01:13 +84 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_page_paste_test.dart: 批量粘贴中途创建失败时只选中成功副本并保留逐条失败提示
+01:15 +85 ~2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/product_category_page_paste_test.dart: 组件粘贴被服务端拒绝时结果弹窗逐行列出哪一行什么问题
+01:17 +86 ~2: All tests passed!

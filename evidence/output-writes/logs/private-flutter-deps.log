@@ -1,0 +1,11 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+Resolving dependencies...
+Downloading packages...
+! desktop_drop 0.8.4+uten.1 from path third_party\desktop_drop (overridden)
+! device_info_plus 11.5.0+uten.1 from path third_party\device_info_plus (overridden)
+  jni 1.1.0 (1.1.1 available)
+  qr 3.0.2 (3.0.3 available)
+! riverpod 3.4.3+uten.1 from path third_party\riverpod (overridden)
+Got dependencies!
+2 packages have newer versions incompatible with dependency constraints.
+Try `flutter pub outdated` for more information.

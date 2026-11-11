@@ -1,0 +1,159 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/widgets/master_entity_inline_edit_test.dart
+00:00 +0: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/widgets/master_entity_inline_edit_test.dart: (setUpAll)
+00:00 +0: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/widgets/master_entity_inline_edit_test.dart: cancel a real filter destination preserves the complete list editor and its raw draft
+00:04 +1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/widgets/master_entity_inline_edit_test.dart: cancel a real filter destination preserves the complete list editor and its raw draft
+00:04 +2: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/widgets/master_entity_inline_edit_test.dart: cancel a real filter destination preserves the complete list editor and its raw draft
+00:04 +3: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/widgets/master_entity_inline_edit_test.dart: cancel a real filter destination preserves the complete list editor and its raw draft
+00:05 +4: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/widgets/master_entity_inline_edit_test.dart: cancel a real filter destination preserves the complete list editor and its raw draft
+00:06 +5: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/widgets/master_entity_inline_edit_test.dart: cancel a real filter destination preserves the complete list editor and its raw draft
+00:06 +6: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: colors cold incomplete failure cannot qualify output
+00:06 +7: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: colors cold incomplete failure cannot qualify output
+00:06 +8: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: colors cold incomplete failure cannot qualify output
+00:07 +9: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: colors cold incomplete failure cannot qualify output
+00:07 +10: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/color_inline_edit_test.dart: a permission boundary change discards the old pending list
+00:07 +11: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/color_inline_edit_test.dart: a permission boundary change discards the old pending list
+00:07 +12: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/color_inline_edit_test.dart: a permission boundary change discards the old pending list
+00:08 +13: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/color_inline_edit_test.dart: a permission boundary change discards the old pending list
+00:08 +14: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/color_inline_edit_test.dart: a permission boundary change discards the old pending list
+00:08 +15: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/color_inline_edit_test.dart: a permission boundary change discards the old pending list
+00:09 +16: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/color_inline_edit_test.dart: a permission boundary change discards the old pending list
+00:09 +17: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/color_inline_edit_test.dart: a permission boundary change discards the old pending list
+00:09 +18: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/color_inline_edit_test.dart: a permission boundary change discards the old pending list
+00:10 +19: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/color_inline_edit_test.dart: a permission boundary change discards the old pending list
+00:10 +20: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/settlement_method_filter_race_test.dart: old result cannot replace cleared status
+00:10 +21: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/settlement_method_filter_race_test.dart: old result cannot replace cleared status
+00:10 +22: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/settlement_method_filter_race_test.dart: old result cannot replace cleared status
+00:10 +23: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/settlement_method_filter_race_test.dart: old result cannot replace cleared status
+00:10 +24: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/settlement_method_filter_race_test.dart: old result cannot replace cleared status
+00:11 +25: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/settlement_method_filter_race_test.dart: old result cannot replace cleared status
+00:11 +26: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/settlement_method_filter_race_test.dart: old result cannot replace cleared status
+00:11 +27: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/settlement_method_filter_race_test.dart: old result cannot replace cleared status
+00:12 +28: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/settlement_method_filter_race_test.dart: old result cannot replace cleared status
+00:13 +29: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/settlement_method_filter_race_test.dart: old result cannot replace cleared status
+00:13 +30: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/settlement_method_filter_race_test.dart: old result cannot replace cleared status
+00:13 +31: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/settlement_method_filter_race_test.dart: old result cannot replace cleared status
+00:13 +32: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/warehouse_page_single_main_test.dart: 单条仓库删除在读取与写入期间分别显示共享等待弹窗
+00:13 +33: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/warehouse_page_single_main_test.dart: 单条仓库删除在读取与写入期间分别显示共享等待弹窗
+00:14 +34: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/warehouse_page_single_main_test.dart: 单条仓库删除在读取与写入期间分别显示共享等待弹窗
+00:14 +35: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/warehouse_page_single_main_test.dart: 单条仓库删除在读取与写入期间分别显示共享等待弹窗
+00:14 +36: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/warehouse_page_single_main_test.dart: 单条仓库删除在读取与写入期间分别显示共享等待弹窗
+00:14 +37: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/warehouse_page_single_main_test.dart: 单条仓库删除在读取与写入期间分别显示共享等待弹窗
+00:15 +38: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/warehouse_page_single_main_test.dart: 单条仓库删除在读取与写入期间分别显示共享等待弹窗
+00:15 +38: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/widgets/master_entity_inline_edit_test.dart: committed rows are not retried when refresh fails, remaining drafts resume after a successful read
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: exactly 2 matching candidates
+  Actual: _WidgetPredicateWidgetFinder:<Found 0 widgets with widget matching predicate: []>
+   Which: means none were found but some were expected
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/widgets/master_entity_inline_edit_test.dart:628:7)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/widgets/master_entity_inline_edit_test.dart line 628
+The test description was:
+  committed rows are not retried when refresh fails, remaining drafts resume after a successful read
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:15 +38 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/warehouse_page_single_main_test.dart: 单条仓库删除在读取与写入期间分别显示共享等待弹窗
+00:15 +38 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/widgets/master_entity_inline_edit_test.dart: committed rows are not retried when refresh fails, remaining drafts resume after a successful read [E]
+  Test failed. See exception logs above.
+  The test description was: committed rows are not retried when refresh fails, remaining drafts resume after a successful read
+  
+00:15 +39 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/warehouse_page_single_main_test.dart: 单条仓库删除在读取与写入期间分别显示共享等待弹窗
+00:16 +40 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/warehouse_page_single_main_test.dart: 单条仓库删除在读取与写入期间分别显示共享等待弹窗
+00:16 +41 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/widgets/master_entity_detail_pane_test.dart: reveal uses the complete local result and only refreshes when the identity is missing
+00:16 +42 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/widgets/master_entity_detail_pane_test.dart: reveal uses the complete local result and only refreshes when the identity is missing
+00:16 +43 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/widgets/master_entity_detail_pane_test.dart: reveal uses the complete local result and only refreshes when the identity is missing
+00:17 +44 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/warehouse_page_single_main_test.dart: 仓库表格全选只选择普通仓，批量删除取消零写入
+00:17 +45 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/warehouse_page_single_main_test.dart: 仓库表格全选只选择普通仓，批量删除取消零写入
+00:18 +46 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/warehouse_page_single_main_test.dart: 仓库表格全选只选择普通仓，批量删除取消零写入
+00:18 +47 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/warehouse_page_single_main_test.dart: 仓库表格全选只选择普通仓，批量删除取消零写入
+00:18 +48 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/warehouse_page_single_main_test.dart: 仓库表格全选只选择普通仓，批量删除取消零写入
+00:18 +49 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/warehouse_page_single_main_test.dart: 仓库表格全选只选择普通仓，批量删除取消零写入
+00:19 +50 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/widgets/master_entity_detail_pane_test.dart: 共享主档详情读取显示等待，范围变化后丢弃旧详情
+00:19 +51 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/widgets/master_entity_detail_pane_test.dart: 共享主档详情读取显示等待，范围变化后丢弃旧详情
+00:19 +52 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/widgets/master_entity_inline_edit_test.dart: goods discard asks once and continuing preserves the draft before explicit discard
+00:20 +53 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/warehouse_page_single_main_test.dart: 窄屏仓库表格的多选操作可见且不溢出
+00:20 +54 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: settlement_methods same-query failed refresh keeps its accepted complete rows
+00:20 +55 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: settlement_methods same-query failed refresh keeps its accepted complete rows
+00:21 +56 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/widgets/master_entity_inline_edit_test.dart: goods discard after a partial save keeps committed rows and drops only remaining drafts
+00:21 +57 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/warehouse_page_single_main_test.dart: 仓库批量写入期间展示共享遮罩并防止重复提交
+00:21 +58 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/warehouse_page_single_main_test.dart: 仓库批量写入期间展示共享遮罩并防止重复提交
+00:21 +59 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/warehouse_page_single_main_test.dart: 仓库批量写入期间展示共享遮罩并防止重复提交
+00:21 +60 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/warehouse_page_single_main_test.dart: 仓库批量写入期间展示共享遮罩并防止重复提交
+00:22 +61 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/warehouse_page_single_main_test.dart: 仓库批量写入期间展示共享遮罩并防止重复提交
+00:22 +62 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/warehouse_page_single_main_test.dart: 仓库批量写入期间展示共享遮罩并防止重复提交
+00:22 +63 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: warehouses same-query failed refresh keeps its accepted complete rows
+00:22 +64 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: warehouses same-query failed refresh keeps its accepted complete rows
+00:23 +65 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: warehouses same-query failed refresh keeps its accepted complete rows
+00:23 +66 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: warehouses same-query failed refresh keeps its accepted complete rows
+00:24 +67 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: warehouses same-query failed refresh keeps its accepted complete rows
+00:24 +68 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/warehouse_page_single_main_test.dart: 仓库批量逐项展示失败，成功移出选择而失败保留
+00:24 +69 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/widgets/master_entity_detail_pane_test.dart: 批量禁用 100 条只发 1 次请求，带上每行版本，不逐条拉详情
+00:24 +70 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/widgets/master_entity_detail_pane_test.dart: 批量禁用 100 条只发 1 次请求，带上每行版本，不逐条拉详情
+00:25 +71 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/warehouse_page_single_main_test.dart: 确认窗口期间撤销仓库权限不会继续执行批量写入
+00:26 +72 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: confirmed status write retires output if its complete reread fails
+00:26 +73 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: confirmed status write retires output if its complete reread fails
+00:27 +74 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/warehouse_page_single_main_test.dart: 仓库旧身份的批量结果弹窗立即关闭且旧关闭回调无效
+00:27 +75 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/widgets/master_entity_detail_pane_test.dart: 关联资料仍然删除只确认服务端标记行，保留原版本和其它失败
+00:28 +76 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: accepted complete result stays usable after a same-query failed refresh
+00:29 +77 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: accepted complete result stays usable after a same-query failed refresh
+00:29 +78 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: accepted complete result stays usable after a same-query failed refresh
+00:29 +79 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/widgets/master_entity_detail_pane_test.dart: 500项关联资料连续点击确认保留完整目标且不重复提交
+00:30 +80 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: mould actual export sends all 1626 identities with selected=false
+00:31 +81 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: mould actual export sends all 1626 identities with selected=false
+00:32 +82 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: mould actual export sends all 1626 identities with selected=false
+00:32 +83 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: mould actual export sends all 1626 identities with selected=false
+00:32 +84 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/warehouse_page_single_main_test.dart: 新增仓库可填写备注并提交正式字段
+00:32 +85 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/warehouse_page_single_main_test.dart: 新增仓库可填写备注并提交正式字段
+00:32 +86 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: mould actual export sends all 1626 identities with selected=true
+00:33 +87 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: mould actual export sends all 1626 identities with selected=true
+00:33 +88 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: mould actual export sends all 1626 identities with selected=true
+00:33 +89 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: mould actual export sends all 1626 identities with selected=true
+00:34 +90 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: mould actual export sends all 1626 identities with selected=true
+00:35 +91 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: mould actual export sends all 1626 identities with selected=true
+00:35 +92 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/warehouse_page_single_main_test.dart: 车间内料仓只读：详情说明由车间内料仓管理，没有编辑、停用、删除
+00:36 +93 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: goods actual export header has no unsupported display columns
+00:37 +94 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: goods actual export header has no unsupported display columns
+00:37 +95 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/warehouse_page_single_main_test.dart: 仓库(14年版)行内新增始终固定主仓，不创建第三层
+00:38 +96 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: clients actual export header has no unsupported display columns
+00:38 +97 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: clients actual export header has no unsupported display columns
+00:39 +98 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/warehouse_page_single_main_test.dart: 未选中的子仓行内删除确认和请求使用该行仓库
+00:39 +99 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: suppliers actual export header has no unsupported display columns
+00:40 +100 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: suppliers actual export header has no unsupported display columns
+00:40 +101 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/warehouse_page_single_main_test.dart: 权限撤销后移除行按钮，旧回调与迟到详情不能打开编辑或删除
+00:40 +102 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: accounts actual export header has no unsupported display columns
+00:41 +103 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/warehouse_page_single_main_test.dart: 同一编辑模式切换多个仓库保留草稿并逐仓提交各自原值
+00:41 +104 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: currencies actual export header has no unsupported display columns
+00:41 +105 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/warehouse_page_single_main_test.dart: 取消编辑和刷新共用未保存确认，继续编辑保留草稿而放弃不写资料
+00:42 +106 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: colors actual export header has no unsupported display columns
+00:42 +107 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/warehouse_page_single_main_test.dart: 原值冲突保留编辑内容和未保存计数，重试仍使用同一原值
+00:43 +108 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: units actual export header has no unsupported display columns
+00:43 +109 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/warehouse_page_single_main_test.dart: 编辑权限撤销清除草稿并使已捕获的保存回调失效
+00:43 +110 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: moulds actual export header has no unsupported display columns
+00:44 +111 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: moulds actual export header has no unsupported display columns
+00:44 +112 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: warehouses actual export header has no unsupported display columns
+00:45 +113 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: settlement_methods actual export header has no unsupported display columns
+00:45 +114 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: goods actual page prints every authorized server page beyond 500
+00:47 +115 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: clients actual page prints every authorized server page beyond 500
+00:50 +116 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: suppliers actual page prints every authorized server page beyond 500
+00:51 +117 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: accounts actual page prints every authorized server page beyond 500
+00:52 +118 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: currencies actual page prints every authorized server page beyond 500
+00:53 +119 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: colors actual page prints every authorized server page beyond 500
+00:55 +120 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: units actual page prints every authorized server page beyond 500
+00:55 +121 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: moulds actual page prints every authorized server page beyond 500
+00:57 +122 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: warehouses actual page prints every authorized server page beyond 500
+00:57 +123 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: settlement_methods actual page prints every authorized server page beyond 500
+00:59 +124 -1: D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: a scope revision during a real shared pane print never publishes its late pages
+01:00 +125 -1: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/widgets/master_entity_inline_edit_test.dart: committed rows are not retried when refresh fails, remaining drafts resume after a successful read

@@ -1,0 +1,134 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart
+00:00 +0: colors confirmed status write cannot reuse failed reread output
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following _TypeError was thrown running a test:
+type '(ColorListItem) => List<UtenContextMenuEntry>' is not a subtype of type '((dynamic) =>
+List<UtenContextMenuEntry>)?'
+
+When the exception was thrown, this was the stack:
+#0      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart:472:28)
+<asynchronous suspension>
+#1      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#2      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+The test description was:
+  colors confirmed status write cannot reuse failed reread output
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:06 +0 -1: colors confirmed status write cannot reuse failed reread output [E]
+  Test failed. See exception logs above.
+  The test description was: colors confirmed status write cannot reuse failed reread output
+  
+Warning: At least one test in this suite creates an HttpClient. When running a test suite that uses
+TestWidgetsFlutterBinding, all HTTP requests will return status code 400, and no network request
+will actually be made. Any test expecting a real network connection and status code will fail.
+To test code that needs an HttpClient, provide your own HttpClient implementation to the code under
+test, so that your test can consistently provide a testable response to the code under test.
+00:06 +0 -1: units confirmed status write cannot reuse failed reread output
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following _TypeError was thrown running a test:
+type '(UnitListItem) => List<UtenContextMenuEntry>' is not a subtype of type '((dynamic) =>
+List<UtenContextMenuEntry>)?'
+
+When the exception was thrown, this was the stack:
+#0      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart:472:28)
+<asynchronous suspension>
+#1      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#2      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+The test description was:
+  units confirmed status write cannot reuse failed reread output
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:11 +0 -2: units confirmed status write cannot reuse failed reread output [E]
+  Test failed. See exception logs above.
+  The test description was: units confirmed status write cannot reuse failed reread output
+  
+00:11 +0 -2: currencies confirmed status write cannot reuse failed reread output
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following _TypeError was thrown running a test:
+type '(CurrencyListItem) => List<UtenContextMenuEntry>' is not a subtype of type '((dynamic) =>
+List<UtenContextMenuEntry>)?'
+
+When the exception was thrown, this was the stack:
+#0      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart:472:28)
+<asynchronous suspension>
+#1      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#2      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+The test description was:
+  currencies confirmed status write cannot reuse failed reread output
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:15 +0 -3: currencies confirmed status write cannot reuse failed reread output [E]
+  Test failed. See exception logs above.
+  The test description was: currencies confirmed status write cannot reuse failed reread output
+  
+00:15 +0 -3: accounts confirmed status write cannot reuse failed reread output
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following _TypeError was thrown running a test:
+type '(AccountListItem) => List<UtenContextMenuEntry>' is not a subtype of type '((dynamic) =>
+List<UtenContextMenuEntry>)?'
+
+When the exception was thrown, this was the stack:
+#0      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart:472:28)
+<asynchronous suspension>
+#1      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#2      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+The test description was:
+  accounts confirmed status write cannot reuse failed reread output
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:20 +0 -4: accounts confirmed status write cannot reuse failed reread output [E]
+  Test failed. See exception logs above.
+  The test description was: accounts confirmed status write cannot reuse failed reread output
+  
+00:20 +0 -4: warehouses confirmed status write cannot reuse failed reread output
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following _TypeError was thrown running a test:
+Null check operator used on a null value
+
+When the exception was thrown, this was the stack:
+#0      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart:472:42)
+<asynchronous suspension>
+#1      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#2      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+The test description was:
+  warehouses confirmed status write cannot reuse failed reread output
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:26 +0 -5: warehouses confirmed status write cannot reuse failed reread output [E]
+  Test failed. See exception logs above.
+  The test description was: warehouses confirmed status write cannot reuse failed reread output
+  
+00:26 +0 -5: an old export confirmation never revives after write and a new complete read
+10:26 +0 -6: an old export confirmation never revives after write and a new complete read [E]
+  TimeoutException after 0:10:00.000000: Test timed out after 10 minutes.
+  dart:isolate  _RawReceivePort._handleMessage
+  
+10:26 +0 -6: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: accounts confirmed status write cannot reuse failed reread output
+  D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: an old export confirmation never revives after write and a new complete read
+  D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: colors confirmed status write cannot reuse failed reread output
+  D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: currencies confirmed status write cannot reuse failed reread output
+  ... and 2 more

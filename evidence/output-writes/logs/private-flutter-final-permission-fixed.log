@@ -1,0 +1,13 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart
+00:00 +0: goods server rejection retires old output irreversibly
+00:06 +1: clients server rejection retires old output irreversibly
+00:09 +2: suppliers server rejection retires old output irreversibly
+00:12 +3: accounts server rejection retires old output irreversibly
+00:13 +4: currencies server rejection retires old output irreversibly
+00:15 +5: colors server rejection retires old output irreversibly
+00:17 +6: units server rejection retires old output irreversibly
+00:18 +7: moulds server rejection retires old output irreversibly
+00:21 +8: warehouses server rejection retires old output irreversibly
+00:23 +9: settlement_methods server rejection retires old output irreversibly
+00:25 +10: All tests passed!

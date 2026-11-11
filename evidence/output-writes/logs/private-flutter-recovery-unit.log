@@ -1,0 +1,6 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/shared/export/report_export_job_waiting_test.dart
+00:00 +0: recovery without a complete query never auto creates a task
+00:01 +1: recovery downloads the original completed job while current creation is blocked
+00:01 +2: recovery retries only the frozen original ID and intent without a new complete query
+00:02 +3: All tests passed!

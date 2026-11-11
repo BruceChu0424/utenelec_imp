@@ -1,0 +1,9 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+Analyzing 4 items...                                            
+
+   info - Statements in an if should be enclosed in a block. Try wrapping the statement in a block - lib\components\buttons\uten_export_button.dart:184:7 - curly_braces_in_flow_control_structures
+   info - Statements in an if should be enclosed in a block. Try wrapping the statement in a block - lib\components\buttons\uten_export_button.dart:316:7 - curly_braces_in_flow_control_structures
+   info - Statements in an if should be enclosed in a block. Try wrapping the statement in a block - lib\components\buttons\uten_export_button.dart:322:9 - curly_braces_in_flow_control_structures
+   info - Statements in an if should be enclosed in a block. Try wrapping the statement in a block - lib\components\buttons\uten_export_button.dart:325:9 - curly_braces_in_flow_control_structures
+
+4 issues found. (ran in 6.8s)

@@ -304,6 +304,27 @@ void main() {
         final logDirectory = AppDiagnostics.log?.store.directory;
         expect(logDirectory, isNotNull);
         expect(canonical(logDirectory!), startsWith(owner));
+        final pathReceipt =
+            jsonDecode(
+                  await File(
+                    '${support.path}/localtest-runtime-receipt.json',
+                  ).readAsString(),
+                )
+                as Map<String, dynamic>;
+        for (final key in [
+          'applicationSupport',
+          'applicationCache',
+          'temporaryCache',
+          'exportDirectory',
+          'nativeLogs',
+          'preferencesAndSecureStoreRoot',
+        ]) {
+          expect(
+            canonical(pathReceipt[key] as String),
+            startsWith(owner),
+            reason: 'Actual runtime path: $key',
+          );
+        }
         container = ProviderScope.containerOf(
           tester.element(find.byType(UtenApp)),
           listen: false,
@@ -363,6 +384,14 @@ void main() {
           'server-sorted-moulds',
         );
         expect(_mould(tester).items.first.tqty, 1.125);
+        expect(
+          _mould(tester).items.map((row) => row.id).toSet(),
+          hasLength(1626),
+        );
+        expect(_mould(tester).items.map((row) => row.code).toList(), [
+          for (var number = 1626; number >= 1; number--)
+            'AU-${number.toString().padLeft(5, '0')}',
+        ]);
         await _screen(tester, 'mould-tqty-ascending');
         await _tap(tester, find.text('预览打印'));
         await _wait(

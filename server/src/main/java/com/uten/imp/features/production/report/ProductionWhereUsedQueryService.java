@@ -417,7 +417,8 @@ public class ProductionWhereUsedQueryService {
                 .filter(column -> !column.key().startsWith("__"))
                 .toList();
         int safePage = Math.max(1, page);
-        int safeSize = Math.min(Math.max(1, size), 200);
+        // 2026-11-09 合同：单次页上限统一 1000（Pageables.MAX_PAGE_SIZE），与同文件 searchWhereUsedMaterials 一致。
+        int safeSize = Math.min(Math.max(1, size), Pageables.MAX_PAGE_SIZE);
         Map<String, Object> meta = !includeMetadata?Map.of():materialGoodsId == null
                 ? emptyMeta(normalizedSource, dateFrom, dateTo)
                 : unattributedDemandMeta(materialGoodsId, normalizedSource, dateFrom, dateTo);

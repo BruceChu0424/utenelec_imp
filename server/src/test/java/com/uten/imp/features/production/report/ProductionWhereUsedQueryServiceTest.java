@@ -427,6 +427,21 @@ class ProductionWhereUsedQueryServiceTest {
     }
 
     @Test
+    void whereUsedClampsOversizePagesToTheUnifiedPageCap() {
+        Query dataQuery = chainableQuery();
+        when(dataQuery.getResultList()).thenReturn(List.of());
+        when(em.createNativeQuery(anyString())).thenReturn(dataQuery);
+
+        // 2026-11-09 合同：单次页上限统一 1000，where-used 表格与材料搜索同口径。
+        ReportTableResponse result = service().whereUsed(
+                UUID.randomUUID(), "current", null, null, 1, Pageables.MAX_PAGE_SIZE + 300, null, null);
+
+        assertThat(result.size()).isEqualTo(Pageables.MAX_PAGE_SIZE);
+        verify(dataQuery).setParameter("__limit", Pageables.MAX_PAGE_SIZE);
+        verify(dataQuery).setParameter("__offset", 0L);
+    }
+
+    @Test
     void currentSourceSkipsTheHistoricalUnattributedDemandMetadataQuery() {
         Query dataQuery = chainableQuery();
         when(dataQuery.getResultList()).thenReturn(List.of());

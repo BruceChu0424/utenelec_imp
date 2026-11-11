@@ -51,10 +51,10 @@ class ServerStatusProbeTest {
     @Test void idlePoolReallyHasZeroActiveWithoutClaimingThereAreNoDatabaseConnections() throws Exception {
         var meters=new SimpleMeterRegistry();
         var active=meters.gauge("hikaricp.connections.active",Tags.of("pool","main"),new AtomicInteger(0));
-        // 注册即生效：max/idle/pending 仪表只被探测读取，局部句柄从未使用。
-        meters.gauge("hikaricp.connections.max",Tags.of("pool","main"),new AtomicInteger(20));
-        meters.gauge("hikaricp.connections.idle",Tags.of("pool","main"),new AtomicInteger(5));
-        meters.gauge("hikaricp.connections.pending",Tags.of("pool","main"),new AtomicInteger(0));
+        // Micrometer gauge 只弱持状态对象；局部句柄保留到采样之后，末尾统一读一次防 GC 清引用后读数漂移。
+        var maximum=meters.gauge("hikaricp.connections.max",Tags.of("pool","main"),new AtomicInteger(20));
+        var idle=meters.gauge("hikaricp.connections.idle",Tags.of("pool","main"),new AtomicInteger(5));
+        var pending=meters.gauge("hikaricp.connections.pending",Tags.of("pool","main"),new AtomicInteger(0));
         var pool=probe(meters).connectionPool();
         assertThat(pool.value()).isZero();
         assertThat(pool.status()).isEqualTo("NORMAL");
@@ -65,6 +65,9 @@ class ServerStatusProbeTest {
         assertThat(pool.detail()).contains("采样瞬间","不代表数据库没有连接");
         active.set(19);
         assertThat(probe(meters).connectionPool().status()).isEqualTo("CRITICAL");
+        assertThat(maximum.get()).isEqualTo(20);
+        assertThat(idle.get()).isEqualTo(5);
+        assertThat(pending.get()).isZero();
     }
 
     @Test void missingOrMismatchedActivePoolMetricsNeverBecomeHealthyZero() throws Exception {

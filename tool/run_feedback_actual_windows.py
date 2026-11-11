@@ -41,8 +41,8 @@ tracked_dirty = git('diff', 'HEAD', '--name-only')
 new_source = git('ls-files', '--others', '--exclude-standard', '--', 'lib', 'windows', 'tool', 'test', 'integration_test')
 if a.stage == 'run' and (tracked_dirty or new_source or not a.runtime_ready):
     raise SystemExit('Run requires committed source and explicit runtime-ready coordination')
-if a.stage == 'run' and (runtime / 'UTEN Local Test/shared_preferences.json').exists():
-    raise SystemExit('Use a fresh runtime root; previous credentials/drafts are retained')
+if a.stage == 'run' and any(runtime.iterdir()):
+    raise SystemExit('Use a fresh runtime root; previous logs, credentials and drafts are retained')
 
 sdk = a.sdk_root.resolve(strict=True)
 dart = sdk / 'bin/cache/dart-sdk/bin/dart.exe'

@@ -15,6 +15,7 @@ namespace Uten.Legacy.Core
         private readonly Action validateOwner;
         private int dispatched;
         private int wireStarted;
+        internal bool IsUnitExport { get { return SessionCoordinator.IsUnitExportMutation(command.Action); } }
         internal int MaximumRequestBytes { get { return command.MaximumBodyBytes; } }
         internal MutationWirePermit(MutationRequest command, bool wireSignalRequired, Action validateOwner)
         { this.command = command; this.wireSignalRequired = wireSignalRequired; this.validateOwner = validateOwner; }

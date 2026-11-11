@@ -1,3 +1,4 @@
+import '../../../shared/paging/complete_output_view_mixin.dart';
 import '../../../core/l10n/localized_text.dart';
 // 仓库资料管理页(基础资料)。
 //
@@ -94,14 +95,24 @@ class WarehousePage extends ConsumerStatefulWidget {
 }
 
 class _WarehousePageState extends ConsumerState<WarehousePage>
-    with MasterInlinePageMixin<WarehousePage, WarehouseDetail> {
+    with
+        MasterInlinePageMixin<WarehousePage, WarehouseDetail>,
+        CompleteOutputViewMixin<WarehousePage> {
+  @override
+  Object get completeOutputQuery => [ref.read(warehouseRepositoryProvider)];
+  @override
+  Object get completeOutputActionQuery => [_exportQuery, _tableBatchEpoch];
+  @override
+  bool get completeOutputHasData => _warehouses != null;
+  @override
+  CompleteOutputGuard get inlineOutputGuard => completeOutputGuard;
   @override
   String get inlineEntityType => 'warehouses';
   @override
   bool get inlineCanEdit => _canEdit;
   @override
   bool get inlineReadReady =>
-      _warehouses != null &&
+      completeOutputCurrent &&
       !_loading &&
       !_detailLoading &&
       !_tableBatchBusy &&
@@ -253,6 +264,10 @@ class _WarehousePageState extends ConsumerState<WarehousePage>
   Future<void> _loadWarehouses() async {
     final boundary = captureInlineRead();
     final generation = _loadRequests.begin();
+    final outputRead = beginCompleteOutputRead(
+      _warehouses,
+      preserveEditorInput: inlineEdit.active,
+    );
     setState(() {
       _loading = true;
       _error = null;
@@ -263,6 +278,7 @@ class _WarehousePageState extends ConsumerState<WarehousePage>
           !_loadRequests.isCurrent(generation)) {
         return;
       }
+      if (!acceptCompleteOutputRead(outputRead)) return;
       setState(() {
         _warehouses = result;
         final selectable = {
@@ -284,6 +300,12 @@ class _WarehousePageState extends ConsumerState<WarehousePage>
           !_loadRequests.isCurrent(generation)) {
         return;
       }
+      if (!restoreCompleteOutputRead(outputRead, (fallback) {
+        _warehouses = fallback;
+        _loading = false;
+      }, error: e)) {
+        return;
+      }
       setState(() {
         _error = e.message;
         _loading = false;
@@ -291,6 +313,12 @@ class _WarehousePageState extends ConsumerState<WarehousePage>
     } catch (_) {
       if (!inlineAcceptsRead(boundary) ||
           !_loadRequests.isCurrent(generation)) {
+        return;
+      }
+      if (!restoreCompleteOutputRead(outputRead, (fallback) {
+        _warehouses = fallback;
+        _loading = false;
+      })) {
         return;
       }
       setState(() {
@@ -362,6 +390,7 @@ class _WarehousePageState extends ConsumerState<WarehousePage>
       ),
     );
     if (saved == null || !mounted || !current()) return;
+    retireCompleteOutputAfterWrite();
     final l10n = AppLocalizations.of(context);
     final warnings = [
       for (final keeper in saved)
@@ -378,7 +407,7 @@ class _WarehousePageState extends ConsumerState<WarehousePage>
         force: true,
       );
     }
-    await _loadKeepers();
+    await Future.wait([_loadWarehouses(), _loadKeepers()]);
   }
 
   // 目录筛选同时用于打印与导出的服务端查询参数。
@@ -586,6 +615,7 @@ class _WarehousePageState extends ConsumerState<WarehousePage>
         },
         onAccepted: () {
           if (!owner.isCurrent) return;
+          retireCompleteOutputAfterWrite();
           context.appSuccess('仓库已创建');
           unawaited(_loadWarehouses());
         },
@@ -661,6 +691,7 @@ class _WarehousePageState extends ConsumerState<WarehousePage>
       isCurrent: current,
     );
     if (ok && current()) {
+      retireCompleteOutputAfterWrite();
       await _loadWarehouses();
       if (mounted && _selectedId == d.id) await _showDetail(d.id);
     }
@@ -716,6 +747,7 @@ class _WarehousePageState extends ConsumerState<WarehousePage>
       isCurrent: current,
     );
     if (!deleted || !current()) return;
+    retireCompleteOutputAfterWrite();
     await _loadWarehouses();
   }
 
@@ -783,6 +815,8 @@ class _WarehousePageState extends ConsumerState<WarehousePage>
 
   /// 打印预览数据：按当前筛选口径完整分页读取，列/格式化与页面表格一致。
   Future<UtenPrintTable> _printLoader() async {
+    if (!completeOutputCurrent) throw StateError('当前查询尚无完整结果，请重新加载后再输出');
+    final qualified = captureCompleteOutput();
     final repository = ref.read(warehouseRepositoryProvider);
     final boundary = ref.read(sensitiveReadBoundaryProvider);
     final epoch = ref.read(exportContextEpochProvider);
@@ -793,7 +827,7 @@ class _WarehousePageState extends ConsumerState<WarehousePage>
     final columns = List.of(_columns);
     var retired = false;
     bool current() {
-      if (retired || !mounted) return false;
+      if (retired || !mounted || !qualified()) return false;
       retired =
           version != _tableBatchEpoch ||
           epoch != ref.read(exportContextEpochProvider) ||
@@ -1405,6 +1439,7 @@ class _WarehousePageState extends ConsumerState<WarehousePage>
         },
       );
       if (!mounted || !current() || result == null) return;
+      retireCompleteOutputAfterWrite(confirmed: result.succeeded > 0);
       setState(() {
         _tableBatchWriting = false;
         _selectedWarehouseIds = _selectedWarehouseIds.difference({
@@ -1686,12 +1721,19 @@ class _WarehousePageState extends ConsumerState<WarehousePage>
                 child: MasterOperationHistoryActions(
                   entityType: 'warehouses',
                   recordId: _tableView ? null : _selectedId,
-                  onChanged: _refresh,
+                  onChanged: () {
+                    retireCompleteOutputAfterWrite();
+                    unawaited(_refresh());
+                  },
                 ),
               ),
             ),
             UtenPrintPreviewButton(
-              enabled: !inlineEdit.active && !_tableBatchBusy,
+              enabled:
+                  completeOutputCurrent &&
+                  !inlineEdit.active &&
+                  !_tableBatchBusy,
+              isCurrent: captureCompleteOutput(),
               title: l10n.warehouseMasterTitle,
               loader: _printLoader,
               exportEndpoint: '/master/warehouses/export',
@@ -1702,7 +1744,14 @@ class _WarehousePageState extends ConsumerState<WarehousePage>
               icon: null,
             ),
             UtenExportButton(
-              enabled: !inlineEdit.active && !_tableBatchBusy,
+              taskRecoveryEnabled: true,
+              enabled:
+                  completeOutputCurrent &&
+                  !inlineEdit.active &&
+                  !_tableBatchBusy,
+              prepareExport: () async => !completeOutputCurrent
+                  ? null
+                  : UtenExportSelection(stillCurrent: captureCompleteOutput()),
               endpoint: '/master/warehouses/export',
               requiredPermission: Perm.warehouseExport,
               report: '',

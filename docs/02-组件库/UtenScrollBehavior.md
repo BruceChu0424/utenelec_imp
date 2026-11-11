@@ -28,6 +28,8 @@ UtenScrollbarOwnerScope(
 
 所有权只跳过匹配控制器；嵌套的独立滚动区域继续获得自己的滚动条。共用单据包装见 [UtenGridPageScrollbar](UtenGridPageScrollbar.md)。表格通过自己的直接控制器识别跳过自动条，单元格内独立视口仍委托默认行为。
 
+页面外缘共享滚动条由 `UtenPageScrollbarHost` 选择当前合资格视口；菜单/模态面板期间不可达的 rail 不绘制、不命中、不提供滚动动作。其语义 gate 保留独立边界和显式子节点，避免手势/箭头节点混入页面兄弟合并组，在资格恢复时正确重新发布；不清除正文输入的语义 ID，不关闭 Semantics。相关回归见 `test/components/uten_page_scrollbar_host_test.dart` 与完整 MainShell 菜单/列设置前序测试。
+
 ## 输入与回归
 
 滚轮窗口位移由 `UtenDisplayZoomPointerEvents` 统一换算一次。输入消费须回执一次；绑定层补齐框架滚动条漏发的消费回执，并保留边界及不可滚动视图的原生默认处理。

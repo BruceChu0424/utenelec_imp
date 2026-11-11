@@ -32,6 +32,7 @@ public class FinancialAuxiliarySourceReadAdapter implements FinancialAuxiliarySo
         List<Row> detail=source.rows().stream().map(row->new Row(row.sourceRow(),row.accountCode(),row.accountName(),row.partyCode(),row.partyName(),
                 row.openingDebit(),row.openingCredit(),row.debit(),row.credit(),row.closingDebit(),row.closingCredit(),row.currencyId(),row.currencyChartVersion())).toList();
         return new Source(sourceId,(UUID)stored.get("actor_id"),source.receivable()?"CUSTOMER":"SUPPLIER",source.sourceSystem(),source.currencyId(),
-                source.dateFrom(),source.dateTo(),source.sha256(),source.issues().isEmpty()&&source.rows().stream().allMatch(row->row.currencyId()!=null),detail);
+                source.dateFrom(),source.dateTo(),source.sha256(),source.columnContractVersion()==com.uten.imp.common.importing.ImportColumnGuard.VERSION
+                        &&source.issues().isEmpty()&&source.rows().stream().allMatch(row->row.currencyId()!=null),detail);
     }
 }

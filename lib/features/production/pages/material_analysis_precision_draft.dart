@@ -37,7 +37,8 @@ class _MaterialPrecisionDraftState
   bool get formDraftBusy => widget.controller.saving;
   @override
   bool get formDraftCanReplaySubmission =>
-      widget.controller._submittedRequest != null;
+      widget.controller._submittedRequest != null ||
+      widget.controller.legacyCommand != null;
   @override
   String? get formDraftResumeId =>
       widget.controller.owner.widget.preparationDraftId;
@@ -128,7 +129,12 @@ class _MaterialPrecisionDraftState
     if (!current || formDraftRestorationBlocked) {
       throw StateError('原草稿或身份尚未核对，请保留输入');
     }
-    return runFormDraftSubmission(send);
+    final priorUnknown = widget.controller.uncertain;
+    return runFormDraftSubmission(
+      send,
+      isDefiniteRejection: (failure) =>
+          !priorUnknown && isDefiniteFreshFormDraftRejection(failure),
+    );
   }
 
   @override
@@ -161,6 +167,7 @@ extension _MaterialPrecisionDraftOwner on _MaterialAggregateTableController {
     if (precisionOwnerScope != scope) {
       if (drafts.isNotEmpty ||
           _submittedRequest != null ||
+          legacyCommand != null ||
           owner._tableUserTypedQty.isNotEmpty ||
           owner._preparationOrderMethodByGroup.isNotEmpty) {
         return const Material(
@@ -283,10 +290,14 @@ extension _MaterialPrecisionDraftOwner on _MaterialAggregateTableController {
   }
 
   Set<String> get precisionInputKeys => {
+    ...owner._selectedMaterialGroupKeys,
+    ...?legacyCommand?.rowLabels.keys,
     for (final draft in drafts.values)
       for (final path in draft.paths.values) path.groupKey,
   };
   Set<String> get precisionInputLines => {
+    ...?legacyCommand?.lineIds,
+    ...owner._tableUserTypedQty.keys,
     for (final draft in drafts.values) ...draft.paths.keys,
   };
   Map<String, dynamic> capturePrecisionDraft(String analysisId) => {
@@ -334,8 +345,10 @@ extension _MaterialPrecisionDraftOwner on _MaterialAggregateTableController {
           },
         },
     ],
-    'uncertain': uncertain,
-    if (uncertain) formDraftUnknownSubmissionKey: true,
+    'uncertain': uncertain || legacyCommand != null,
+    if (uncertain || legacyCommand != null) formDraftUnknownSubmissionKey: true,
+    if (legacyCommand != null)
+      'legacyOriginalCommand': legacyCommand!.toDraft(),
     if (_submittedRequest != null) ...{
       'submittedAnalysisId': _submittedRequest!.analysisId,
       'submittedPreviewFingerprint': _submittedFingerprint,
@@ -373,6 +386,14 @@ extension _MaterialPrecisionDraftOwner on _MaterialAggregateTableController {
     'currentOrder': {
       for (final e in owner._tableOrderQtyControllers.entries)
         if (precisionInputKeys.contains(e.key)) e.key: e.value.text,
+    },
+    'orderSeeds': {
+      for (final key in precisionInputKeys)
+        key: owner._tableSeededQtyTexts['ORDER|$key'],
+    },
+    'appendSeeds': {
+      for (final key in precisionInputKeys)
+        key: owner._tableSeededQtyTexts['APPEND|$key'],
     },
     'currentAppend': {
       for (final e in owner._tableAppendQtyControllers.entries)
@@ -458,7 +479,16 @@ extension _MaterialPrecisionDraftOwner on _MaterialAggregateTableController {
         throw const FormatException('原提交内容不能原样恢复，请保留草稿并只读核对');
       }
     }
-    if (data['uncertain'] == true && frozen == null) {
+    final legacy = data['legacyOriginalCommand'] is Map
+        ? MaterialPreparationOriginalCommand.fromDraft(
+            Map<String, dynamic>.from(data['legacyOriginalCommand'] as Map),
+          )
+        : null;
+    if (legacy != null &&
+        (legacy.analysisId != data['analysisId'] || frozen != null)) {
+      throw const FormatException('原下单请求身份不唯一，请保留票据');
+    }
+    if (data['uncertain'] == true && frozen == null && legacy == null) {
       throw const FormatException('原未知请求缺失，不能创建替代请求');
     }
     if (!current()) throw StateError('原草稿身份已变化');
@@ -504,7 +534,11 @@ extension _MaterialPrecisionDraftOwner on _MaterialAggregateTableController {
       _submittedRequest = frozen;
       _submittedFingerprint = fingerprint;
       _submittedSessionScope = frozen == null ? null : owner._sessionScopeKey();
-      uncertain = data['uncertain'] == true;
+      _aggregateUnknown = data['uncertain'] == true && legacy == null;
+      legacyCommand = legacy;
+      legacyCommandScope = legacy == null ? null : owner._sessionScopeKey();
+      _legacyUnknown = legacy != null;
+      legacyDispatchStarted = legacy != null;
       owner._warehouseId = data['warehouseId'] as String?;
       owner._billDate = DateTime.parse(data['billDate'] as String);
       owner._deliveryDate = data['deliveryDate'] == null
@@ -555,10 +589,28 @@ extension _MaterialPrecisionDraftOwner on _MaterialAggregateTableController {
         }
       }
       for (final e in (data['currentOrder'] as Map? ?? {}).entries) {
-        owner._tableOrderQtyControllers[e.key]?.text = e.value.toString();
+        final key = e.key.toString();
+        owner._tableOrderQtyControllers
+            .putIfAbsent(key, () => TextEditingController())
+            .text = e.value
+            .toString();
+        final seeds = data['orderSeeds'] as Map?;
+        owner._tableSeededQtyTexts['ORDER|$key'] =
+            (seeds?[key] as String?) ??
+            owner._tableSeededQtyTexts['ORDER|$key'] ??
+            '';
       }
       for (final e in (data['currentAppend'] as Map? ?? {}).entries) {
-        owner._tableAppendQtyControllers[e.key]?.text = e.value.toString();
+        final key = e.key.toString();
+        owner._tableAppendQtyControllers
+            .putIfAbsent(key, () => TextEditingController())
+            .text = e.value
+            .toString();
+        final seeds = data['appendSeeds'] as Map?;
+        owner._tableSeededQtyTexts['APPEND|$key'] =
+            (seeds?[key] as String?) ??
+            owner._tableSeededQtyTexts['APPEND|$key'] ??
+            '';
       }
       if (!uncertain) {
         for (final draft in drafts.values) {

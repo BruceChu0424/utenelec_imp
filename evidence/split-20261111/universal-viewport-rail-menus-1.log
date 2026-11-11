@@ -1,0 +1,60 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/features/basic_data/pages/master_menu_column_settings_probe_test.dart
+00:00 +0: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/features/basic_data/pages/master_menu_column_settings_probe_test.dart: column settings prelude full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:03 +1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/features/basic_data/pages/master_menu_column_settings_probe_test.dart: column settings prelude full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:03 +2: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/features/basic_data/pages/master_menu_column_settings_probe_test.dart: column settings prelude full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:03 +3: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/features/basic_data/pages/master_menu_column_settings_probe_test.dart: column settings prelude full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:03 +4: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/features/basic_data/pages/master_menu_column_settings_probe_test.dart: column settings prelude full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:03 +5: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/features/basic_data/pages/master_menu_column_settings_probe_test.dart: column settings prelude full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:03 +6: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/features/basic_data/pages/master_menu_column_settings_probe_test.dart: column settings prelude full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:03 +7: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/features/basic_data/pages/master_menu_column_settings_probe_test.dart: column settings prelude full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:03 +8: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/features/basic_data/pages/master_menu_column_settings_probe_test.dart: column settings prelude full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:03 +9: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/features/basic_data/pages/master_menu_column_settings_probe_test.dart: column settings prelude full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:04 +10: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/features/basic_data/pages/master_menu_column_settings_probe_test.dart: column settings prelude full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:04 +11: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/features/basic_data/pages/master_menu_column_settings_probe_test.dart: column settings prelude full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:04 +12: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/features/basic_data/pages/master_menu_column_settings_probe_test.dart: column settings prelude full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:04 +13: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/features/basic_data/pages/master_menu_column_settings_probe_test.dart: column settings prelude full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:04 +14: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/features/basic_data/pages/master_menu_column_settings_probe_test.dart: column settings prelude full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:04 +15: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/features/basic_data/pages/master_menu_column_settings_probe_test.dart: column settings prelude full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:05 +16: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/features/basic_data/pages/master_menu_column_settings_probe_test.dart: column settings prelude full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+MENU-SEMANTICS requested=false actual=true timing=mount
+00:08 +16: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+MENU-SEMANTICS requested=false actual=true timing=mount
+00:09 +17: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:09 +18: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/features/basic_data/pages/master_menu_column_settings_probe_test.dart: column settings prelude full App wide narrow actual ellipsis scheduler hover=true semantics=false timing=mount
+MENU-SEMANTICS requested=false actual=true timing=mount
+00:12 +18: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=true semantics=false timing=mount
+MENU-SEMANTICS requested=false actual=true timing=mount
+00:13 +19: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=true semantics=false timing=mount
+00:13 +20: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/features/basic_data/pages/master_menu_column_settings_probe_test.dart: column settings prelude full App wide narrow actual ellipsis scheduler hover=false semantics=true timing=mount
+MENU-SEMANTICS requested=true actual=true timing=mount
+00:15 +20: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=true timing=mount
+MENU-SEMANTICS requested=true actual=true timing=mount
+00:15 +21: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=true timing=mount
+00:15 +22: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/features/basic_data/pages/master_menu_column_settings_probe_test.dart: column settings prelude full App wide narrow actual ellipsis scheduler hover=true semantics=true timing=mount
+00:17 +22: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=true semantics=true timing=mount
+MENU-SEMANTICS requested=true actual=true timing=mount
+00:17 +22: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/features/basic_data/pages/master_menu_column_settings_probe_test.dart: column settings prelude full App wide narrow actual ellipsis scheduler hover=true semantics=true timing=mount
+MENU-SEMANTICS requested=true actual=true timing=mount
+00:18 +23: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/features/basic_data/pages/master_menu_column_settings_probe_test.dart: column settings prelude full App wide narrow actual ellipsis scheduler hover=true semantics=true timing=mount
+00:18 +24: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=beforeMenu
+MENU-SEMANTICS requested=false actual=true timing=beforeMenu
+00:20 +24: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/features/basic_data/pages/master_menu_column_settings_probe_test.dart: column settings prelude full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=beforeMenu
+MENU-SEMANTICS requested=false actual=true timing=beforeMenu
+00:20 +25: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/features/basic_data/pages/master_menu_column_settings_probe_test.dart: column settings prelude full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=beforeMenu
+00:21 +26: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=true semantics=false timing=beforeMenu
+MENU-SEMANTICS requested=false actual=true timing=beforeMenu
+00:23 +26: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/features/basic_data/pages/master_menu_column_settings_probe_test.dart: column settings prelude full App wide narrow actual ellipsis scheduler hover=true semantics=false timing=beforeMenu
+MENU-SEMANTICS requested=false actual=true timing=beforeMenu
+00:23 +27: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/features/basic_data/pages/master_menu_column_settings_probe_test.dart: column settings prelude full App wide narrow actual ellipsis scheduler hover=true semantics=false timing=beforeMenu
+00:23 +28: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=true timing=beforeMenu
+MENU-SEMANTICS requested=true actual=true timing=beforeMenu
+00:25 +28: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/features/basic_data/pages/master_menu_column_settings_probe_test.dart: column settings prelude full App wide narrow actual ellipsis scheduler hover=false semantics=true timing=beforeMenu
+MENU-SEMANTICS requested=true actual=true timing=beforeMenu
+00:25 +29: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/features/basic_data/pages/master_menu_column_settings_probe_test.dart: column settings prelude full App wide narrow actual ellipsis scheduler hover=false semantics=true timing=beforeMenu
+00:25 +30: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=true semantics=true timing=beforeMenu
+MENU-SEMANTICS requested=true actual=true timing=beforeMenu
+00:27 +30: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/features/basic_data/pages/master_menu_column_settings_probe_test.dart: column settings prelude full App wide narrow actual ellipsis scheduler hover=true semantics=true timing=beforeMenu
+MENU-SEMANTICS requested=true actual=true timing=beforeMenu
+00:28 +31: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/features/basic_data/pages/master_menu_column_settings_probe_test.dart: column settings prelude full App wide narrow actual ellipsis scheduler hover=true semantics=true timing=beforeMenu
+00:28 +32: All tests passed!

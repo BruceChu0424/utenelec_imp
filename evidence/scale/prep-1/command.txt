@@ -1,0 +1,8 @@
+PREVERIFICATION: source c4b84f5465de1e6fcb4617a847f523383d07da64
+Own worktree D:/Projects/uten_imp_worktrees/feedback-scale-verify-20261110
+Working directory server
+Environment: UTEN_RUN_DB_TESTS=true; MAVEN_OPTS=-Xmx1800m -Djava.io.tmpdir=<run>/tmp; TMP/TEMP=<run>/tmp
+mvn.cmd -o -B -ntp -Duten.build.directory=<run>/build -Duten.test.tmpdir=<run>/tmp -Duten.test.jvm.heap.args=-Xmx3g -Duten.test.context.cache.maxSize=1 -DforkCount=1 -DreuseForks=true -Dtest=MasterDirectoryExportPostgresTest#mouldTaskKeepsReverseQuantityOrderAndExactDecimalText+fiftyThousandAndOneRealSelectedMouldsExcludeAnotherMatchingRowAndKeepOrder,CompleteExportScalePostgresTest#hundredThousandAuthoritativeRowsMatchIndependentSqlOrderAndExactAmounts test
+run=D:/Projects/uten_imp_worktrees/feedback-scale-verify-20261110/evidence/scale/prep-1
+All stdout/stderr kept in logs/maven.log; actual exit in logs/maven.exit. Surefire original reports copied into reports-scale/ before supplemental invocation.
+Supplemental: same already compiled source/build, surefire:test with ExportSelectionBudgetTest,ExportRowSelectionTest,MasterExportSelectionAspectTest,ReportExportQueuePostgresTest#cancellationRetainsTheWorkerSlotUntilAcknowledgedAndCannotPublish+taskIdentityRequestAndExpiryHistoryRemainImmutable+rollbackDoesNotLeaveAPartiallySubmittedTask+workerKeepsOneRealSnapshotAcrossPagesAndDownloadRechecksAuthorization

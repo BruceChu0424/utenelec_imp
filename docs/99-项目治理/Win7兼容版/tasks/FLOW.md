@@ -287,9 +287,9 @@
 1. 筛选与列投影、密码、完整快照、大文件/真实打印、取消/重复/权限撤销。
 2. 记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。
 
-证据：尚未登记，不得推定通过。
+证据：`clients/windows_legacy/progress/evidence/feedback-final-a-and-native-output-plan-20261110.json`。
 
-接续/限制：按依赖与DoD继续，完成后登记证据。
+接续/限制：2026-11-10 输出链补充来源：D3单位大选中原票据、输出专属16MiB请求与64MiB保全预算的本机证据位于 docs/99-项目治理/公司网页反馈整改-20261110/D3-WPF大选中导出与原票据恢复.md。统一候选SHA复跑、真实PG/文件与Win7目标机仍分栏待验；本次只追加来源，不改变status、owner、DoD、dependencies、nativeTargets，不宣称全业务或正式分发完成。。
 
 ## W7-FLOW-018
 

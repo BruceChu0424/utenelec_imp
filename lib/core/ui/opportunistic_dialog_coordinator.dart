@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Existing business/security reminders have priority over optional suggestions.
@@ -16,16 +17,17 @@ class OpportunisticDialogCoordinator extends ChangeNotifier {
   final _blockers = <Object>{};
   DialogOpportunity? _opportunity;
   bool _disposed = false;
+  late final _notifications = _FrameSafeDialogNotification(notifyListeners);
   bool get blocked => _blockers.isNotEmpty;
 
   DialogPriorityReservation prioritize() {
     final token = Object();
     _blockers.add(token);
     _opportunity?.interrupt();
-    notifyListeners();
+    _notifications.schedule();
     return DialogPriorityReservation._(() {
       if (_disposed) return;
-      if (_blockers.remove(token)) notifyListeners();
+      if (_blockers.remove(token)) _notifications.schedule();
     });
   }
 
@@ -44,6 +46,7 @@ class OpportunisticDialogCoordinator extends ChangeNotifier {
     _disposed = true;
     _opportunity?.interrupt();
     _blockers.clear();
+    _notifications.dispose();
     super.dispose();
   }
 }
@@ -63,31 +66,74 @@ class DialogOpportunity extends ChangeNotifier {
   VoidCallback? _release;
   bool interrupted = false;
   bool _disposed = false;
+  late final _notifications = _FrameSafeDialogNotification(notifyListeners);
+  final _registrations = <VoidCallback, List<Object>>{};
   @override
   void addListener(VoidCallback listener) {
     super.addListener(listener);
+    final registration = Object();
+    (_registrations[listener] ??= []).add(registration);
     // A priority check can win after push() but before the optional route's
     // widget has installed its listener. Replay cancellation to that exact route.
-    if (interrupted) {
+    if (interrupted && !_notifications.queued) {
       scheduleMicrotask(() {
-        if (!_disposed) listener();
+        if (!_disposed &&
+            (_registrations[listener]?.contains(registration) ?? false)) {
+          listener();
+        }
       });
     }
+  }
+
+  @override
+  void removeListener(VoidCallback listener) {
+    super.removeListener(listener);
+    final registrations = _registrations[listener];
+    if (registrations == null) return;
+    registrations.removeAt(0);
+    if (registrations.isEmpty) _registrations.remove(listener);
   }
 
   void interrupt() {
     if (_disposed || interrupted) return;
     interrupted = true;
-    notifyListeners();
+    _notifications.schedule();
   }
 
   @override
   void dispose() {
     if (_disposed) return;
     _disposed = true;
+    _notifications.dispose();
+    _registrations.clear();
     final callback = _release;
     _release = null;
     callback?.call();
     super.dispose();
   }
+}
+
+/// Keep ordinary notifications synchronous, while initState/dispose callers
+/// during build/layout publish UI effects only after that frame's tree update.
+class _FrameSafeDialogNotification {
+  _FrameSafeDialogNotification(this._notify);
+  final VoidCallback _notify;
+  bool queued = false;
+  bool _disposed = false;
+
+  void schedule() {
+    if (_disposed || queued) return;
+    if (SchedulerBinding.instance.schedulerPhase !=
+        SchedulerPhase.persistentCallbacks) {
+      _notify();
+      return;
+    }
+    queued = true;
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      queued = false;
+      if (!_disposed) _notify();
+    });
+  }
+
+  void dispose() => _disposed = true;
 }

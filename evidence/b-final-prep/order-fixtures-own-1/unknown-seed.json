@@ -1,0 +1,64 @@
+{
+  "legacyProgram" : true,
+  "billDate" : "2026-11-11",
+  "businessTimeZone" : "Asia/Shanghai",
+  "createdAtUtc" : "2026-11-11T07:36:23.185357300Z",
+  "purchase" : {
+    "receiptId" : "74213c9d-cc48-46b9-ba3c-31f1d224ac8a",
+    "receiptItemId" : "98ba9d22-3b4c-4a66-a898-4275ef2e913a",
+    "receiptNo" : "CJ20261111000001",
+    "billDate" : "2026-11-11",
+    "orderItemId" : "a7b37798-f56e-4abf-8844-f8791ac65131",
+    "supplierId" : "6a594fa2-b18e-4fdd-a7d4-2049f3a88e32",
+    "warehouseId" : "49362cc7-64a2-4b1c-84ad-8dae253a48c0",
+    "goodsId" : "e5c943bf-c8a6-49af-a010-c1bd3b2dcd88",
+    "sourceQty" : "10",
+    "legacyDraftId" : "1edc1ea0-24ec-490c-8822-0d45f5faa056"
+  },
+  "subcontract" : {
+    "receiptId" : "0f1f7415-3a08-4949-9c3b-4bf1bc4ab2a4",
+    "receiptItemId" : "ea7cd2a8-979b-475f-84cc-75de6701f19b",
+    "receiptNo" : "EJ20261111000001",
+    "billDate" : "2026-11-11",
+    "orderItemId" : "8189f001-da17-411c-83df-cccebd190dd8",
+    "supplierId" : "341ac57f-803f-4871-aa2c-f62dac21c140",
+    "warehouseId" : "8919a5c2-0f5c-442c-8e3e-152a56ae7c01",
+    "goodsId" : "66f5dc49-3c2d-4e84-86d4-c375f2a9c0c8",
+    "sourceQty" : "10",
+    "legacyDraftId" : "387014d7-bb34-42b8-9be7-7f008b7b317f"
+  },
+  "maker" : {
+    "login" : "USR-feedback-b-maker-b731ce16",
+    "userId" : "d9f86e3e-ddf5-470b-88ff-374c303cffda"
+  },
+  "approver" : {
+    "login" : "USR-feedback-b-approver-b731ce16",
+    "userId" : "3d4e38f0-8049-4fe7-868e-156af6e61e95"
+  },
+  "materialOrder" : {
+    "warehouseId" : "ab71e864-719f-4e42-8458-ce8f9e3ca8e0",
+    "analysisId" : "e5f8025a-d44a-4211-ba82-29614d920eb1",
+    "rows" : [ {
+      "planningUncoveredQty" : "50.0000",
+      "requiredQty" : "50.0000",
+      "materialLineId" : "a1cc5271-5e76-4d15-aea0-f7c0f49ee657"
+    }, {
+      "planningUncoveredQty" : "50.0000",
+      "requiredQty" : "50.0000",
+      "materialLineId" : "7e717adc-514b-43dd-8a21-6128b4a8fda7"
+    }, {
+      "planningUncoveredQty" : "50.0000",
+      "requiredQty" : "50.0000",
+      "materialLineId" : "ecfcee5a-740e-4a60-bfa2-47028b0a5e67"
+    } ],
+    "analysisNo" : "WL20261111000003",
+    "goodsId" : "ad1fa416-83fe-4ae3-8720-a50fca0a98e7"
+  },
+  "planner" : {
+    "login" : "USR-b-web-unknown-5cdd7ef8-ae3b-4c66-aeb2-ee61a2865e59",
+    "userId" : "0ac40cab-0cc6-40f0-9455-53c0a57a4bc2"
+  },
+  "supplierPeriodReadOnlyChecks" : "PASS at billDate; real runtime must recheck at approval",
+  "status" : "prep; independent actual Web fixture, no UI actions yet",
+  "scenario" : "unknown"
+}

@@ -1,0 +1,8 @@
+logs/** binary
+*.json binary
+*.dart.txt binary
+native/logs/** binary
+native/*.log binary
+native/*.json binary
+native/*.dart.txt binary
+native/*.patch binary

@@ -1,0 +1,6 @@
+Changed lib/features/basic_data/widgets/master_entity_detail_pane.dart
+Changed test/remediation_b/probes/return_owner_test.dart
+Changed test/remediation_b/probes/return_payload_test.dart
+Changed test/remediation_b/probes/return_precision_test.dart
+Changed test/remediation_b/probes/return_repeat_test.dart
+Formatted 33 files (5 changed) in 3.19 seconds.

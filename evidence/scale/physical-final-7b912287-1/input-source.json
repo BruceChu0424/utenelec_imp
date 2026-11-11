@@ -1,0 +1,15 @@
+{
+  "source": "7b912287e53315228b469790ff066a9fab643e3c",
+  "helpers": {
+    "evidence/scale/PhysicalXlsxScale.java": {
+      "sha256GitBlob": "9b113c26f2296248764c89c8b08e0b0f61cc8418ec430ab2d9cce933a73c3e74",
+      "actualHelperRawMatchesCandidateBlob": true
+    },
+    "evidence/scale/run-physical.ps1": {
+      "sha256GitBlob": "798c0743ae6239f3d8df5e81cb050bc0d6beae197cc731aabe813954e6b2f42e",
+      "actualHelperRawMatchesCandidateBlob": true
+    }
+  },
+  "dependencyPOMBlob": "53c807826360e70a0928e3bfae56ef27d8f2dff8",
+  "dependencyClasspathReusedOnlyBecausePOMBlobIdentical": true
+}

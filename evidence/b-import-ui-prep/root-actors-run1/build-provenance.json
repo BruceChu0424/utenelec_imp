@@ -1,0 +1,15 @@
+{
+  "kind": "prep; reused read-only Root eba5 program main bytes, only fixture overlay compiled",
+  "sourceBuild": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-20261110\\evidence\\root\\b-ui-prep-eba5-build",
+  "privateBuild": "D:\\Projects\\uten_imp_worktrees\\feedback-b-import-ui-prep-20261111\\evidence\\b-import-ui-prep\\build-root-actors-run1",
+  "sourceHeadObserved": "31b25b93841d29b026ac02dce89eb3acb852c892",
+  "copiedAtUtc": "2026-11-11T12:37:10.727368+00:00",
+  "originalMain": {
+    "files": 8142,
+    "sha256": "f9c1c6448a1a5c67367e76306e79708c4faaf7130f438a40c77ae7d2f27d710b"
+  },
+  "copiedMain": {
+    "files": 8142,
+    "sha256": "f9c1c6448a1a5c67367e76306e79708c4faaf7130f438a40c77ae7d2f27d710b"
+  }
+}

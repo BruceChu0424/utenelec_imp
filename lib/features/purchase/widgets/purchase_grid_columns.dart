@@ -86,6 +86,7 @@ class PurchaseGridRow extends EditableGridRow
   final bool supportsTotalInput;
   late final LinePricingController pricing;
   double? maxQty;
+  String? maxQtyText;
   final ValueNotifier<GoodsOption?> goodsNotifier = ValueNotifier<GoodsOption?>(
     null,
   );
@@ -251,6 +252,7 @@ class PurchaseGridRow extends EditableGridRow
           ..goods = goods
           ..upstreamItemId = li.upstreamItemId
           ..maxQty = li.maxQty
+          ..maxQtyText = li.maxQtyText
           ..colorId = li.colorId
           ..unitId = li.unitId
           ..unitRate = li.unitRate
@@ -262,8 +264,9 @@ class PurchaseGridRow extends EditableGridRow
     r.qty.text = financeExactTrimmed(li.qtyText ?? li.qty.toString()) ?? '';
     r.giftQty.text = li.giftQtyText ?? '0';
     r.maxGiftQtyText = li.maxGiftQtyText;
-    if (li.price != null) {
-      r.price.text = financeExactTrimmed(li.price.toString()) ?? '';
+    if (li.priceText != null || li.price != null) {
+      r.price.text =
+          financeExactTrimmed(li.priceText ?? li.price.toString()) ?? '';
     }
     return r;
   }
@@ -359,6 +362,7 @@ class PurchaseGridRow extends EditableGridRow
     'supplierId': supplierId,
     'sourceLocked': sourceLocked,
     'maxQty': maxQty,
+    'maxQtyText': maxQtyText,
     'overReceiptPrefillConsumed': overReceiptPrefillConsumed,
     'upstreamItemIds': [...upstreamItemIds],
     'commercial': exportCommercialDraft(),
@@ -405,6 +409,7 @@ class PurchaseGridRow extends EditableGridRow
     restoreDraftTextValues(row._draftTextControllers, draftMap(data['text']));
     row.restoreExtraColumns(data['extraColumns']);
     row.maxQty = (data['maxQty'] as num?)?.toDouble();
+    row.maxQtyText = data['maxQtyText'] as String?;
     row.overReceiptPrefillConsumed = data['overReceiptPrefillConsumed'] == true;
     row.upstreamItemIds = draftStrings(data['upstreamItemIds']);
     row.sourceDocs = draftMaps(

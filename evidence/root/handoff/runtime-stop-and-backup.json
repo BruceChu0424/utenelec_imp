@@ -1,0 +1,36 @@
+{
+  "kind": "user requested local merge and handoff; no further acceptance run",
+  "capturedAtUtc": "2026-11-11T13:35:01.744218+00:00",
+  "sourceHead": "08af9d259111aeb692daafc2a357cdce20368f40",
+  "dump": {
+    "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-20261110\\evidence\\root\\private\\handoff-20261111-stop-1\\feedback-full.dump",
+    "bytes": 13727325,
+    "rawSha256": "312f578cfd33adb0f745cf775ec4cfe506808edfced70bfc7901b0595d83b6b9",
+    "format": "full PostgreSQL custom archive; pg_restore --list verified; not restored",
+    "private": true
+  },
+  "processes": [
+    {
+      "pid": 6612,
+      "state": "stopped after exact task command ownership check"
+    },
+    {
+      "pid": 30284,
+      "state": "stopped after exact task command ownership check"
+    },
+    {
+      "pid": 33468,
+      "state": "already exited"
+    },
+    {
+      "pid": 34992,
+      "state": "already exited"
+    }
+  ],
+  "container": "uten-feedback-final-20261110",
+  "containerRunning": false,
+  "containerExitCode": 0,
+  "volumesRemoved": false,
+  "companyOrMain8080RuntimeTouched": false,
+  "reason": "explicit user handoff; intentional stops are not test failures"
+}

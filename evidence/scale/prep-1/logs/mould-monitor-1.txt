@@ -1,0 +1,15 @@
+                    datname                    | state  | wait_event_type | wait_event |     elapsed     |                                     query_shape                                     
+-----------------------------------------------+--------+-----------------+------------+-----------------+-------------------------------------------------------------------------------------
+ auth_session_b5f7e06dd8d240b4a1816b8062c7b042 | idle   | Client          | ClientRead | 00:00:03.838618 | COMMIT
+ auth_session_b5f7e06dd8d240b4a1816b8062c7b042 | active |                 |            | 00:00:01.054801 | INSERT INTO moulds(id,code,name,status,category_id,code_sequence,code_managed,tqty)+
+                                               |        |                 |            |                 | SELECT source.id,$1||lpad(($2+source.ordinality-1)::text,6,'0'),                   +
+                                               |        |                 |            |                 |   $3||($4+source.ordi
+ auth_session_b5f7e06dd8d240b4a1816b8062c7b042 | idle   | Client          | ClientRead | 00:00:00.930714 | WITH candidate AS (                                                                +
+                                               |        |                 |            |                 |     SELECT id                                                                      +
+                                               |        |                 |            |                 |     FROM attachment_upload_sessions                                                +
+                                               |        |                 |            |                 |     WHERE (status = 'PENDING' AND expires_at <= now())                             +
+                                               |        |                 |            |                 |        OR (status = 'SCANNING'                                                     +
+                                               |        |                 |            |                 |            AND
+ auth_session_b5f7e06dd8d240b4a1816b8062c7b042 | idle   | Client          | ClientRead | 00:00:00.924468 | COMMIT
+(4 rows)
+

@@ -1,0 +1,7 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/minimal_split_tooltip_reparent_test.dart
+00:00 +0: minimal leading closed Tooltip survives real split boundary
+00:00 +1: minimal leading visible Tooltip survives real split boundary
+00:00 +2: minimal trailing closed Tooltip survives real split boundary
+00:00 +3: minimal trailing visible Tooltip survives real split boundary
+00:00 +4: All tests passed!

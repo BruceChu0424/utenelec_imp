@@ -269,14 +269,9 @@ class _UtenSplitViewState extends State<UtenSplitView> {
                     widget.minTrailingWidth +
                     UtenSplitView.gutterWidth,
               ),
-          splitBuilder: (leading, trailing) => Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              SizedBox(width: width, child: leading),
-              _buildGutter(context),
-              Expanded(child: trailing),
-            ],
-          ),
+          leadingWidth: width,
+          separator: _buildGutter(context),
+          separatorWidth: UtenSplitView.gutterWidth,
         );
       },
     );

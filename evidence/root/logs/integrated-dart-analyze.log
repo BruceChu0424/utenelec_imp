@@ -1,0 +1,78 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+Analyzing 33 items...                                           
+
+   info - Statements in an if should be enclosed in a block. Try wrapping the statement in a block - lib\components\print\uten_print_preview.dart:410:5 - curly_braces_in_flow_control_structures
+   info - Statements in an if should be enclosed in a block. Try wrapping the statement in a block - lib\components\print\uten_print_preview.dart:440:7 - curly_braces_in_flow_control_structures
+   info - Statements in an if should be enclosed in a block. Try wrapping the statement in a block - lib\components\print\uten_print_preview.dart:829:7 - curly_braces_in_flow_control_structures
+   info - Use the null-aware marker '?' rather than a null check via an 'if'. Try using '?' - lib\features\production\repositories\production_repository.dart:2365:9 - use_null_aware_elements
+   info - Use the '??' operator rather than '?:' when testing for 'null'. Try rewriting the code to use '??' - lib\features\subcontract\widgets\subcontract_link_picker.dart:136:14 - prefer_if_null_operators
+   info - Statements in an if should be enclosed in a block. Try wrapping the statement in a block - test\features\basic_data\pages\master_complete_print_consumers_test.dart:242:11 - curly_braces_in_flow_control_structures
+   info - Method invocation or property access on a 'dynamic' target. Try giving the target a type - test\features\production\pages\production_daily_report_partial_quantity_cases.dart:63:14 - avoid_dynamic_calls
+   info - Use interpolation to compose strings and values. Try using string interpolation to build the composite string - test\remediation_b\probes\return_owner_test.dart:87:7 - prefer_interpolation_to_compose_strings
+   info - Method invocation or property access on a 'dynamic' target. Try giving the target a type - test\remediation_b\probes\return_owner_test.dart:140:9 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target. Try giving the target a type - test\remediation_b\probes\return_owner_test.dart:140:9 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target. Try giving the target a type - test\remediation_b\probes\return_owner_test.dart:140:9 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target. Try giving the target a type - test\remediation_b\probes\return_owner_test.dart:140:9 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target. Try giving the target a type - test\remediation_b\probes\return_owner_test.dart:141:16 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target. Try giving the target a type - test\remediation_b\probes\return_owner_test.dart:183:16 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target. Try giving the target a type - test\remediation_b\probes\return_owner_test.dart:188:40 - avoid_dynamic_calls
+  error - The type 'dynamic' used in the 'for' loop must implement 'Iterable' - test\remediation_b\probes\return_owner_test.dart:188:40 - for_in_of_invalid_type
+   info - Method invocation or property access on a 'dynamic' target. Try giving the target a type - test\remediation_b\probes\return_owner_test.dart:188:51 - avoid_dynamic_calls
+   info - Don't invoke 'print' in production code. Try using a logging framework - test\remediation_b\probes\return_owner_test.dart:189:9 - avoid_print
+   info - Method invocation or property access on a 'dynamic' target. Try giving the target a type - test\remediation_b\probes\return_owner_test.dart:190:48 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target. Try giving the target a type - test\remediation_b\probes\return_owner_test.dart:190:48 - avoid_dynamic_calls
+  error - A negation operand must have a static type of 'bool'. Try changing the operand to the '!' operator - test\remediation_b\probes\return_owner_test.dart:190:48 - non_bool_negation_expression
+   info - Method invocation or property access on a 'dynamic' target. Try giving the target a type - test\remediation_b\probes\return_owner_test.dart:190:113 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target. Try giving the target a type - test\remediation_b\probes\return_owner_test.dart:190:113 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target. Try giving the target a type - test\remediation_b\probes\return_owner_test.dart:190:113 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target. Try giving the target a type - test\remediation_b\probes\return_owner_test.dart:190:113 - avoid_dynamic_calls
+warning - Unused import: 'package:uten_imp/core/ui/app_notification.dart'. Try removing the import directive - test\remediation_b\probes\return_payload_test.dart:1:8 - unused_import
+   info - Use interpolation to compose strings and values. Try using string interpolation to build the composite string - test\remediation_b\probes\return_payload_test.dart:112:7 - prefer_interpolation_to_compose_strings
+warning - The value of the local variable 'grid' isn't used. Try removing the variable or using it - test\remediation_b\probes\return_payload_test.dart:154:23 - unused_local_variable
+   info - Method invocation or property access on a 'dynamic' target. Try giving the target a type - test\remediation_b\probes\return_payload_test.dart:165:48 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target. Try giving the target a type - test\remediation_b\probes\return_payload_test.dart:167:15 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target. Try giving the target a type - test\remediation_b\probes\return_payload_test.dart:168:16 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target. Try giving the target a type - test\remediation_b\probes\return_payload_test.dart:215:16 - avoid_dynamic_calls
+   info - Don't invoke 'print' in production code. Try using a logging framework - test\remediation_b\probes\return_payload_test.dart:227:9 - avoid_print
+   info - Use interpolation to compose strings and values. Try using string interpolation to build the composite string - test\remediation_b\probes\return_precision_test.dart:87:7 - prefer_interpolation_to_compose_strings
+   info - Method invocation or property access on a 'dynamic' target. Try giving the target a type - test\remediation_b\probes\return_precision_test.dart:140:9 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target. Try giving the target a type - test\remediation_b\probes\return_precision_test.dart:140:9 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target. Try giving the target a type - test\remediation_b\probes\return_precision_test.dart:140:9 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target. Try giving the target a type - test\remediation_b\probes\return_precision_test.dart:140:9 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target. Try giving the target a type - test\remediation_b\probes\return_precision_test.dart:141:16 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target. Try giving the target a type - test\remediation_b\probes\return_precision_test.dart:189:16 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target. Try giving the target a type - test\remediation_b\probes\return_precision_test.dart:194:21 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target. Try giving the target a type - test\remediation_b\probes\return_precision_test.dart:194:21 - avoid_dynamic_calls
+   info - Don't invoke 'print' in production code. Try using a logging framework - test\remediation_b\probes\return_precision_test.dart:195:9 - avoid_print
+   info - Method invocation or property access on a 'dynamic' target. Try giving the target a type - test\remediation_b\probes\return_precision_test.dart:196:91 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target. Try giving the target a type - test\remediation_b\probes\return_precision_test.dart:196:91 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target. Try giving the target a type - test\remediation_b\probes\return_precision_test.dart:196:113 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target. Try giving the target a type - test\remediation_b\probes\return_precision_test.dart:196:113 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target. Try giving the target a type - test\remediation_b\probes\return_precision_test.dart:196:145 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target. Try giving the target a type - test\remediation_b\probes\return_precision_test.dart:196:145 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target. Try giving the target a type - test\remediation_b\probes\return_precision_test.dart:196:145 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target. Try giving the target a type - test\remediation_b\probes\return_precision_test.dart:196:145 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target. Try giving the target a type - test\remediation_b\probes\return_precision_test.dart:198:17 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target. Try giving the target a type - test\remediation_b\probes\return_precision_test.dart:198:17 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target. Try giving the target a type - test\remediation_b\probes\return_precision_test.dart:198:31 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target. Try giving the target a type - test\remediation_b\probes\return_precision_test.dart:198:31 - avoid_dynamic_calls
+   info - Use interpolation to compose strings and values. Try using string interpolation to build the composite string - test\remediation_b\probes\return_repeat_test.dart:88:7 - prefer_interpolation_to_compose_strings
+   info - Method invocation or property access on a 'dynamic' target. Try giving the target a type - test\remediation_b\probes\return_repeat_test.dart:141:9 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target. Try giving the target a type - test\remediation_b\probes\return_repeat_test.dart:141:9 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target. Try giving the target a type - test\remediation_b\probes\return_repeat_test.dart:141:9 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target. Try giving the target a type - test\remediation_b\probes\return_repeat_test.dart:141:9 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target. Try giving the target a type - test\remediation_b\probes\return_repeat_test.dart:142:16 - avoid_dynamic_calls
+   info - Don't invoke 'print' in production code. Try using a logging framework - test\remediation_b\probes\return_repeat_test.dart:183:9 - avoid_print
+   info - Method invocation or property access on a 'dynamic' target. Try giving the target a type - test\remediation_b\probes\return_repeat_test.dart:203:40 - avoid_dynamic_calls
+  error - The type 'dynamic' used in the 'for' loop must implement 'Iterable' - test\remediation_b\probes\return_repeat_test.dart:203:40 - for_in_of_invalid_type
+   info - Method invocation or property access on a 'dynamic' target. Try giving the target a type - test\remediation_b\probes\return_repeat_test.dart:203:51 - avoid_dynamic_calls
+   info - Don't invoke 'print' in production code. Try using a logging framework - test\remediation_b\probes\return_repeat_test.dart:204:9 - avoid_print
+   info - Method invocation or property access on a 'dynamic' target. Try giving the target a type - test\remediation_b\probes\return_repeat_test.dart:205:48 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target. Try giving the target a type - test\remediation_b\probes\return_repeat_test.dart:205:48 - avoid_dynamic_calls
+  error - A negation operand must have a static type of 'bool'. Try changing the operand to the '!' operator - test\remediation_b\probes\return_repeat_test.dart:205:48 - non_bool_negation_expression
+   info - Method invocation or property access on a 'dynamic' target. Try giving the target a type - test\remediation_b\probes\return_repeat_test.dart:205:113 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target. Try giving the target a type - test\remediation_b\probes\return_repeat_test.dart:205:113 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target. Try giving the target a type - test\remediation_b\probes\return_repeat_test.dart:205:113 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target. Try giving the target a type - test\remediation_b\probes\return_repeat_test.dart:205:113 - avoid_dynamic_calls
+
+73 issues found. (ran in 61.8s)

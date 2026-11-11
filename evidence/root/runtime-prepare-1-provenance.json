@@ -1,0 +1,19 @@
+{
+  "kind": "preparation runtime; not final acceptance",
+  "capturedAtUtc": "2026-11-11T03:15:59.559238+00:00",
+  "launchSourceObserved": "2bc2f98ba0a9f991afaa13c68e093dc6de94fe7d",
+  "currentHead": "42b7bf76ffb18bd89dae332f9be08b30fc1a696a",
+  "backendSourceUnchangedSinceLaunch": true,
+  "sourceGitObjects": {
+    "server/src/main/java": "0c2df35c7565d79517c3ecbc32f9323521cdedf3",
+    "server/src/main/resources": "a5736a1ee58b2dffad7559a189913a385eb7b189",
+    "server/pom.xml": "53c807826360e70a0928e3bfae56ef27d8f2dff8"
+  },
+  "applicationPidFromOwnStartupLog": 59440,
+  "backendPort": 28630,
+  "database": "127.0.0.1:26630/feedback",
+  "compiledDirectory": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-20261110\\evidence\\root\\runtime-maven-prepare-1\\classes",
+  "compiledClassAndSqlFiles": 7824,
+  "compiledFingerprint": "38da413204ff30c9cfc129a94f3091d3a02aa7038102e3ed5f3811f9dea72ae9",
+  "compiledFingerprintBytes": "sorted relative path UTF-8 + NUL + raw SHA-256 per actual class/SQL file"
+}

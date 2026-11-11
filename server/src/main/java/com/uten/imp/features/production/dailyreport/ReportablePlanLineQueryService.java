@@ -51,6 +51,7 @@ public class ReportablePlanLineQueryService {
                   AND item.is_deleted = FALSE
                   AND report.is_deleted = FALSE
                   AND report.status IN (0, 1)
+                  AND (/*EDIT_REPORT*/ IS NULL OR report.id <> /*EDIT_REPORT*/)
                 GROUP BY item.execution_segment_id
             ), allocation_progress AS (
                 SELECT item.execution_segment_sales_allocation_id,
@@ -67,6 +68,7 @@ public class ReportablePlanLineQueryService {
                   AND item.is_deleted = FALSE
                   AND report.is_deleted = FALSE
                   AND report.status IN (0, 1)
+                  AND (/*EDIT_REPORT*/ IS NULL OR report.id <> /*EDIT_REPORT*/)
                 GROUP BY item.execution_segment_sales_allocation_id
             ), reportable AS (
                 SELECT
@@ -80,7 +82,7 @@ public class ReportablePlanLineQueryService {
                     segment.lock_version AS execution_segment_version,
                     segment.allowed_overproduction_rate,
                     trunc(segment.planned_qty*(1+segment.allowed_overproduction_rate),4) AS overproduction_limit_qty,
-                    fn_execution_actual_surplus_available(segment.id,NULL) AS remaining_actual_surplus_qty,
+                    fn_execution_actual_surplus_available(segment.id,/*EDIT_REPORT*/) AS remaining_actual_surplus_qty,
                     fn_actual_supplement_pending_qty(segment.id,NULL) AS pending_supplement_qty,
                     l.order_item_id,
                     p.bill_no AS plan_no,
@@ -277,7 +279,7 @@ public class ReportablePlanLineQueryService {
                 ) recovery ON TRUE
                 LEFT JOIN LATERAL (
                     SELECT CASE WHEN recovery.authorization_id IS NULL
-                        THEN fn_execution_partial_material_report_room(segment.id, NULL)
+                        THEN fn_execution_partial_material_report_room(segment.id, /*EDIT_REPORT*/)
                         ELSE NULL END AS remaining_qty
                 ) material_limit ON TRUE
                 LEFT JOIN plan_order_item_links l
@@ -401,6 +403,16 @@ public class ReportablePlanLineQueryService {
             String keyword,
             UUID departmentId,
             List<UUID> executionSegmentIds) {
+        return list(requestedPage, requestedSize, keyword, departmentId,
+                executionSegmentIds, null, null);
+    }
+
+    /** Only the server-validated current editable draft may release its old occupancy. */
+    @Transactional(readOnly = true)
+    public PageResponse<ReportablePlanLine> list(
+            int requestedPage, int requestedSize, String keyword, UUID departmentId,
+            List<UUID> executionSegmentIds, UUID editingReportId, Long expectedReportVersion) {
+        validateEditingDraft(editingReportId, expectedReportVersion);
         LinkedHashSet<UUID> exactIds = new LinkedHashSet<>();
         if (executionSegmentIds != null) {
             executionSegmentIds.stream()
@@ -443,7 +455,9 @@ public class ReportablePlanLineQueryService {
             ownerArgs.add(employeeId);
         }
         String scopedSql = BASE_SQL.replace(
-                "/*OWNER_SCOPE*/", ownerPredicate);
+                "/*OWNER_SCOPE*/", ownerPredicate)
+                .replace("/*EDIT_REPORT*/", editingReportId == null
+                        ? "NULL::uuid" : "'" + editingReportId + "'::uuid");
 
         String normalized = KeywordSearch.phrase(keyword);
         List<Object> args = new ArrayList<>(ownerArgs);
@@ -548,9 +562,36 @@ public class ReportablePlanLineQueryService {
                         rs.getBigDecimal("material_report_qty")),
                 dataArgs.toArray());
 
+        // A lifecycle or item edit during this read retires the candidate result.
+        validateEditingDraft(editingReportId, expectedReportVersion);
         int totalPages = total == 0 ? 0 : (int) ((total + size - 1) / size);
         return new PageResponse<>(items, page, size, total, totalPages);
     }
+
+    private void validateEditingDraft(UUID reportId, Long expectedVersion) {
+        if (reportId == null) {
+            if (expectedVersion != null) throw new com.uten.imp.common.web.ApiException(
+                    com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED, "草稿版本必须与原日报编号一起提交");
+            return;
+        }
+        if (!access.hasAuthority("production_daily_report:edit")) {
+            throw new com.uten.imp.common.web.ApiException(
+                    com.uten.imp.common.web.ErrorCode.FORBIDDEN, "没有生产日报编辑权限");
+        }
+        var drafts = jdbc.query("SELECT maker_id,status,row_version FROM production_daily_reports WHERE id=? AND NOT is_deleted",
+                (rs, index) -> new EditableDraft(rs.getObject("maker_id", UUID.class),
+                        rs.getInt("status"), rs.getLong("row_version")), reportId);
+        if (drafts.size() != 1) throw new com.uten.imp.common.web.ApiException(
+                com.uten.imp.common.web.ErrorCode.NOT_FOUND, "生产日报单不存在");
+        var draft = drafts.getFirst();
+        access.requireReadable(draft.owner(), "生产日报单不存在");
+        access.requireWritable(draft.owner(), "只能操作本人负责的生产日报");
+        ProductionDailyReportService.requireExpectedVersion(expectedVersion, draft.version());
+        if (draft.status() != 0) throw new com.uten.imp.common.web.ApiException(
+                com.uten.imp.common.web.ErrorCode.CONFLICT, "原日报已不再是可编辑草稿，请刷新核对");
+    }
+
+    private record EditableDraft(UUID owner, int status, long version) { }
 
     /**
      * Exact execution assignment is an independent object scope from plan

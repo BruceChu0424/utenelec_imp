@@ -1,0 +1,9 @@
+/old-v2-build/
+/*-classes/
+/*-tmp/
+/tmp/
+/parse-suite/build/
+/parse-suite/tmp/
+*.dump
+/completed-test-cleanup/*.class
+/completed-test-cleanup/*.jar

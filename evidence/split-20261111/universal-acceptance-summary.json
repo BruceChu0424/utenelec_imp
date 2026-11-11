@@ -1,0 +1,36 @@
+{
+  "testedSource": "07d3be3a019fe753a06f0242a00ae2770728668c",
+  "productCommit": "0b5ee106233af53487b00d48f5160cc09c9b9afe",
+  "signalContractTestCommit": "07d3be3a019fe753a06f0242a00ae2770728668c",
+  "regression": {
+    "files": 33,
+    "passed": 209,
+    "failed": 0,
+    "originalOptionalScreenshotSkipped": 1,
+    "exitCode": 0,
+    "receipt": "candidate-07d-full-33-exit.json"
+  },
+  "analysis": {
+    "files": 12,
+    "issues": 0,
+    "exitCode": 0,
+    "receipt": "candidate-07d-analyze-12-exit.json"
+  },
+  "directCallerFileCount": 90,
+  "controlledWidgetTransport": true,
+  "realWebAccepted": false,
+  "realWindowsAccepted": false,
+  "finalGlobalAcceptance": false,
+  "original235FullMainShellFirstFailure": "frozen-true-shell-235-baseline.log",
+  "originalColumnSettingsPreludeFirstFailure": "all-viewport-column-settings-2.log",
+  "orphanRailNodeDump": "menu-semantics-render-diagnostic-1.log",
+  "revertedPortalExperiment": "prototype-stable-portal-still-semantics-red.log",
+  "preservedFinalFirstExpansionFailures": {
+    "source": "0b5ee106233af53487b00d48f5160cc09c9b9afe",
+    "passed": 205,
+    "failed": 4,
+    "skipped": 1,
+    "cause": "old fixture required a null rail delegate / concrete NestedScrollView; all numeric signal values preserved and fresh 6/6 passed after adapting this one structure check"
+  },
+  "sdkProtectedInputsUnchanged": true
+}

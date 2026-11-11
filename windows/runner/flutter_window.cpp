@@ -26,7 +26,13 @@ bool FlutterWindow::OnCreate() {
   }
 
   RECT frame = GetClientArea();
+#if defined(_DEBUG) && UTEN_LOCAL_TEST_BUILD && defined(UTEN_FEEDBACK_NATIVE_LOG_DIRECTORY_W)
+  // A reviewed, build-owned acceptance root protects existing installed logs.
+  // Formal builds and every Release configuration retain their normal paths.
+  StartNativeDiagnostics(GetHandle(), UTEN_FEEDBACK_NATIVE_LOG_DIRECTORY_W);
+#else
   StartNativeDiagnostics(GetHandle());
+#endif
 
   // The size here must match the window dimensions to avoid unnecessary surface
   // creation / destruction in the startup path.

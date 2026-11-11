@@ -1,0 +1,5 @@
+05:48:52.692 [main] WARN org.apache.poi.POIDocument -- DocumentSummaryInformation property set came back as null
+05:48:52.694 [main] WARN org.apache.poi.POIDocument -- SummaryInformation property set came back as null
+05:48:52.733 [main] WARN org.apache.poi.POIDocument -- DocumentSummaryInformation property set came back as null
+05:48:52.733 [main] WARN org.apache.poi.POIDocument -- SummaryInformation property set came back as null
+LOCAL_ONLY pair ready: 83 literal columns, 11 literal balance columns, two directory rows, zero openings, one operating voucher, debit=credit=100; ROOT_UNTOUCHED

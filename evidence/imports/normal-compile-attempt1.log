@@ -1,0 +1,9 @@
+D:\Projects\uten_imp_worktrees\feedback-remediate-c-20261110\evidence\imports\NormalWorkbooks.java:4: ����: �����org.apache.poi.ss.usermodel������
+import org.apache.poi.ss.usermodel.*;
+^
+D:\Projects\uten_imp_worktrees\feedback-remediate-c-20261110\evidence\imports\NormalWorkbooks.java:10: ����: �Ҳ�������
+            try(var book=WorkbookFactory.create(base.resolve("baseline").resolve(source).toFile());var out=new ByteArrayOutputStream()) {
+                         ^
+  ����:   ���� WorkbookFactory
+  λ��: �� NormalWorkbooks
+2 ������

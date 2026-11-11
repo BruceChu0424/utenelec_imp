@@ -1,0 +1,241 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/feedback-independent-review-20261111/test/independent/minimal_split_tooltip_reparent_test.dart
+00:00 +0: minimal leading closed Tooltip survives real split boundary
+00:00 +1: minimal leading visible Tooltip survives real split boundary
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: null
+  Actual: FlutterError:<A _RenderLayoutBuilder was mutated in _RenderLayoutBuilder.performLayout.
+          The RenderObject was mutated when none of its ancestors is actively performing layout.
+          The RenderObject being mutated was:
+            _RenderLayoutBuilder#1cec8
+          The RenderObject that was mutating the said _RenderLayoutBuilder was:
+            _RenderLayoutBuilder#56cb3 relayoutBoundary=up4>
+a retained Tooltip must not reactivate an unrelated deferred render child during parent
+LayoutBuilder layout
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-independent-review-20261111/test/independent/minimal_split_tooltip_reparent_test.dart:70:9)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/feedback-independent-review-20261111/test/independent/minimal_split_tooltip_reparent_test.dart line 70
+The test description was:
+  minimal leading visible Tooltip survives real split boundary
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:01 +1 -1: minimal leading visible Tooltip survives real split boundary [E]
+  Test failed. See exception logs above.
+  The test description was: minimal leading visible Tooltip survives real split boundary
+  
+00:01 +1 -1: minimal trailing closed Tooltip survives real split boundary
+00:01 +2 -1: minimal trailing visible Tooltip survives real split boundary
+══╡ EXCEPTION CAUGHT BY WIDGETS LIBRARY ╞═══════════════════════════════════════════════════════════
+The following assertion was thrown building Expanded(flex: 1):
+A _RenderLayoutBuilder was mutated in _RenderLayoutBuilder.performLayout.
+The RenderObject was mutated when none of its ancestors is actively performing layout.
+The RenderObject being mutated was:
+  _RenderLayoutBuilder#03b1a
+The RenderObject that was mutating the said _RenderLayoutBuilder was:
+  _RenderLayoutBuilder#9f147
+
+The relevant error-causing widget was:
+  Expanded
+  Expanded:file:///D:/Projects/uten_imp_worktrees/feedback-independent-review-20261111/lib/components/layout/uten_adaptive_hierarchy_pane.dart:160:13
+
+When the exception was thrown, this was the stack:
+#0      RenderObject._debugCanPerformMutations.<anonymous closure> (package:flutter/src/rendering/object.dart:2364:9)
+#1      RenderObject._debugCanPerformMutations (package:flutter/src/rendering/object.dart:2428:6)
+#2      RenderObject.markNeedsLayout (package:flutter/src/rendering/object.dart:2661:12)
+#3      RenderBox.markNeedsLayout (package:flutter/src/rendering/box.dart:2860:11)
+#4      RenderObject.attach (package:flutter/src/rendering/object.dart:2487:7)
+#5      RenderObjectWithChildMixin.attach (package:flutter/src/rendering/object.dart:4224:11)
+#6      RenderObjectWithChildMixin.attach (package:flutter/src/rendering/object.dart:4225:13)
+#7      RenderObject.adoptChild (package:flutter/src/rendering/object.dart:2181:13)
+#8      _RenderTheater._addDeferredChild (package:flutter/src/widgets/overlay.dart:1312:5)
+#9      _OverlayEntryLocation._activate (package:flutter/src/widgets/overlay.dart:2217:14)
+#10     _OverlayPortalElement.activate (package:flutter/src/widgets/overlay.dart:2426:55)
+#11     Element._activateRecursively (package:flutter/src/widgets/framework.dart:4736:13)
+#12     ComponentElement.visitChildren (package:flutter/src/widgets/framework.dart:5871:14)
+#13     Element._activateRecursively (package:flutter/src/widgets/framework.dart:4738:13)
+#14     ComponentElement.visitChildren (package:flutter/src/widgets/framework.dart:5871:14)
+#15     Element._activateRecursively (package:flutter/src/widgets/framework.dart:4738:13)
+#16     ComponentElement.visitChildren (package:flutter/src/widgets/framework.dart:5871:14)
+#17     Element._activateRecursively (package:flutter/src/widgets/framework.dart:4738:13)
+#18     MultiChildRenderObjectElement.visitChildren (package:flutter/src/widgets/framework.dart:7223:16)
+#19     Element._activateRecursively (package:flutter/src/widgets/framework.dart:4738:13)
+#20     SingleChildRenderObjectElement.visitChildren (package:flutter/src/widgets/framework.dart:7101:14)
+#21     Element._activateRecursively (package:flutter/src/widgets/framework.dart:4738:13)
+#22     ComponentElement.visitChildren (package:flutter/src/widgets/framework.dart:5871:14)
+#23     Element._activateRecursively (package:flutter/src/widgets/framework.dart:4738:13)
+#24     Element._activateWithParent (package:flutter/src/widgets/framework.dart:4729:5)
+...     Normal element mounting (7 frames)
+#31     Element.inflateWidget (package:flutter/src/widgets/framework.dart:4587:20)
+#32     MultiChildRenderObjectElement.inflateWidget (package:flutter/src/widgets/framework.dart:7264:36)
+#33     MultiChildRenderObjectElement.mount (package:flutter/src/widgets/framework.dart:7279:32)
+#34     Element.inflateWidget (package:flutter/src/widgets/framework.dart:4587:20)
+#35     Element.updateChild (package:flutter/src/widgets/framework.dart:4059:18)
+#36     _LayoutBuilderElement._rebuildWithConstraints.updateChildCallback (package:flutter/src/widgets/layout_builder.dart:247:18)
+#37     BuildOwner.buildScope (package:flutter/src/widgets/framework.dart:3101:19)
+#38     _LayoutBuilderElement._rebuildWithConstraints (package:flutter/src/widgets/layout_builder.dart:270:12)
+#39     RenderAbstractLayoutBuilderMixin.layoutCallback (package:flutter/src/widgets/layout_builder.dart:333:38)
+#40     RenderObjectWithLayoutCallbackMixin.runLayoutCallback.<anonymous closure> (package:flutter/src/rendering/object.dart:4302:33)
+#41     RenderObject.invokeLayoutCallback.<anonymous closure> (package:flutter/src/rendering/object.dart:3026:17)
+#42     PipelineOwner._enableMutationsToDirtySubtrees (package:flutter/src/rendering/object.dart:1223:15)
+#43     RenderObject.invokeLayoutCallback (package:flutter/src/rendering/object.dart:3025:14)
+#44     RenderObjectWithLayoutCallbackMixin.runLayoutCallback (package:flutter/src/rendering/object.dart:4302:5)
+#45     _RenderLayoutBuilder.performLayout (package:flutter/src/widgets/layout_builder.dart:447:5)
+#46     RenderObject.layout (package:flutter/src/rendering/object.dart:2907:7)
+#47     RenderProxyBoxMixin.performLayout (package:flutter/src/rendering/proxy_box.dart:118:18)
+#48     RenderOffstage.performLayout (package:flutter/src/rendering/proxy_box.dart:3923:13)
+#49     RenderObject.layout (package:flutter/src/rendering/object.dart:2907:7)
+#50     RenderStack.layoutPositionedChild (package:flutter/src/rendering/stack.dart:551:11)
+#51     RenderStack.performLayout (package:flutter/src/rendering/stack.dart:693:13)
+#52     RenderObject.layout (package:flutter/src/rendering/object.dart:2907:7)
+#53     RenderProxyBoxMixin.performLayout (package:flutter/src/rendering/proxy_box.dart:118:18)
+#54     RenderObject.layout (package:flutter/src/rendering/object.dart:2907:7)
+#55     RenderConstrainedBox.performLayout (package:flutter/src/rendering/proxy_box.dart:296:14)
+#56     RenderObject.layout (package:flutter/src/rendering/object.dart:2907:7)
+#57     RenderConstrainedBox.performLayout (package:flutter/src/rendering/proxy_box.dart:296:14)
+#58     RenderObject.layout (package:flutter/src/rendering/object.dart:2907:7)
+#59     RenderPositionedBox.performLayout (package:flutter/src/rendering/shifted_box.dart:484:14)
+#60     RenderObject.layout (package:flutter/src/rendering/object.dart:2907:7)
+#61     RenderPadding.performLayout (package:flutter/src/rendering/shifted_box.dart:262:12)
+#62     RenderObject.layout (package:flutter/src/rendering/object.dart:2907:7)
+#63     RenderConstrainedBox.performLayout (package:flutter/src/rendering/proxy_box.dart:296:14)
+#64     RenderObject.layout (package:flutter/src/rendering/object.dart:2907:7)
+#65     _RenderLayoutBuilder.performLayout (package:flutter/src/widgets/layout_builder.dart:449:14)
+#66     RenderObject.layout (package:flutter/src/rendering/object.dart:2907:7)
+#67     _RenderLayoutBuilder.performLayout (package:flutter/src/widgets/layout_builder.dart:449:14)
+#68     RenderObject.layout (package:flutter/src/rendering/object.dart:2907:7)
+#69     RenderConstrainedBox.performLayout (package:flutter/src/rendering/proxy_box.dart:296:14)
+#70     RenderObject.layout (package:flutter/src/rendering/object.dart:2907:7)
+#71     RenderPositionedBox.performLayout (package:flutter/src/rendering/shifted_box.dart:484:14)
+#72     RenderObject.layout (package:flutter/src/rendering/object.dart:2907:7)
+#73     MultiChildLayoutDelegate.layoutChild (package:flutter/src/rendering/custom_layout.dart:180:12)
+#74     _ScaffoldLayout.performLayout (package:flutter/src/material/scaffold.dart:1113:7)
+#75     MultiChildLayoutDelegate._callPerformLayout (package:flutter/src/rendering/custom_layout.dart:246:7)
+#76     RenderCustomMultiChildLayoutBox.performLayout (package:flutter/src/rendering/custom_layout.dart:417:14)
+#77     RenderObject._layoutWithoutResize (package:flutter/src/rendering/object.dart:2755:7)
+#78     PipelineOwner.flushLayout (package:flutter/src/rendering/object.dart:1174:18)
+#79     PipelineOwner.flushLayout (package:flutter/src/rendering/object.dart:1187:15)
+#80     AutomatedTestWidgetsFlutterBinding.drawFrame (package:flutter_test/src/binding.dart:2433:27)
+#81     RendererBinding._handlePersistentFrameCallback (package:flutter/src/rendering/binding.dart:509:5)
+#82     SchedulerBinding._invokeFrameCallback (package:flutter/src/scheduler/binding.dart:1430:15)
+#83     SchedulerBinding.handleDrawFrame (package:flutter/src/scheduler/binding.dart:1345:9)
+#84     AutomatedTestWidgetsFlutterBinding.pump.<anonymous closure> (package:flutter_test/src/binding.dart:2260:9)
+#87     TestAsyncUtils.guard (package:flutter_test/src/test_async_utils.dart:74:41)
+#88     AutomatedTestWidgetsFlutterBinding.pump (package:flutter_test/src/binding.dart:2249:27)
+#89     WidgetTester.pumpAndSettle.<anonymous closure> (package:flutter_test/src/widget_tester.dart:719:23)
+#92     TestAsyncUtils.guard (package:flutter_test/src/test_async_utils.dart:74:41)
+#93     WidgetTester.pumpAndSettle (package:flutter_test/src/widget_tester.dart:712:27)
+#94     main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-independent-review-20261111/test/independent/minimal_split_tooltip_reparent_test.dart:67:22)
+<asynchronous suspension>
+#95     testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#96     TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided 5 frames from dart:async and package:stack_trace)
+
+════════════════════════════════════════════════════════════════════════════════════════════════════
+══╡ EXCEPTION CAUGHT BY SCHEDULER LIBRARY ╞═════════════════════════════════════════════════════════
+The following assertion was thrown during a scheduler callback:
+'package:flutter/src/rendering/object.dart': Failed assertion: line 3675 pos 12: 'attached': is not
+true.
+
+Either the assertion indicates an error in the framework itself, or we should provide substantially
+more information in this error message to help you determine and fix the underlying cause.
+In either case, please report this assertion by filing a bug on GitHub:
+  https://github.com/flutter/flutter/issues/new?template=02_bug.yml
+
+When the exception was thrown, this was the stack:
+#2      RenderObject.getTransformTo (package:flutter/src/rendering/object.dart:3675:12)
+#3      RenderBox.localToGlobal (package:flutter/src/rendering/box.dart:3092:39)
+#4      RenderEditable._snapToPhysicalPixel (package:flutter/src/rendering/editable.dart:2342:33)
+#5      RenderEditable.getLocalRectForCaret (package:flutter/src/rendering/editable.dart:1862:28)
+#6      EditableTextState._updateComposingRectIfNeeded (package:flutter/src/widgets/editable_text.dart:5004:38)
+#7      EditableTextState._schedulePeriodicPostFrameCallbacks (package:flutter/src/widgets/editable_text.dart:4907:5)
+#8      SchedulerBinding._invokeFrameCallback (package:flutter/src/scheduler/binding.dart:1430:15)
+#9      SchedulerBinding.handleDrawFrame (package:flutter/src/scheduler/binding.dart:1357:11)
+#10     AutomatedTestWidgetsFlutterBinding.pump.<anonymous closure> (package:flutter_test/src/binding.dart:2260:9)
+#13     TestAsyncUtils.guard (package:flutter_test/src/test_async_utils.dart:74:41)
+#14     AutomatedTestWidgetsFlutterBinding.pump (package:flutter_test/src/binding.dart:2249:27)
+#15     WidgetTester.pumpAndSettle.<anonymous closure> (package:flutter_test/src/widget_tester.dart:719:23)
+#18     TestAsyncUtils.guard (package:flutter_test/src/test_async_utils.dart:74:41)
+#19     WidgetTester.pumpAndSettle (package:flutter_test/src/widget_tester.dart:712:27)
+#20     main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-independent-review-20261111/test/independent/minimal_split_tooltip_reparent_test.dart:67:22)
+<asynchronous suspension>
+#21     testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#22     TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided 7 frames from class _AssertionError, dart:async, and package:stack_trace)
+════════════════════════════════════════════════════════════════════════════════════════════════════
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: null
+  Actual: 'Multiple exceptions (2) were detected during the running of the current test, and at
+least one was unexpected.'
+a retained Tooltip must not reactivate an unrelated deferred render child during parent
+LayoutBuilder layout
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-independent-review-20261111/test/independent/minimal_split_tooltip_reparent_test.dart:70:9)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/feedback-independent-review-20261111/test/independent/minimal_split_tooltip_reparent_test.dart line 70
+The test description was:
+  minimal trailing visible Tooltip survives real split boundary
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:01 +2 -2: minimal trailing visible Tooltip survives real split boundary [E]
+  Test failed. See exception logs above.
+  The test description was: minimal trailing visible Tooltip survives real split boundary
+  
+══╡ EXCEPTION CAUGHT BY WIDGETS LIBRARY ╞═══════════════════════════════════════════════════════════
+The following assertion was thrown while dispatching notifications for
+WidgetsBindingObserver.didChangeMetrics:
+Looking up a deactivated widget's ancestor is unsafe.
+At this point the state of the widget's element tree is no longer stable.
+To safely refer to a widget's ancestor in its dispose() method, save a reference to the ancestor by
+calling dependOnInheritedWidgetOfExactType() in the widget's didChangeDependencies() method.
+
+When the exception was thrown, this was the stack:
+#0      Element._debugCheckStateIsActiveForAncestorLookup.<anonymous closure> (package:flutter/src/widgets/framework.dart:5049:9)
+#1      Element._debugCheckStateIsActiveForAncestorLookup (package:flutter/src/widgets/framework.dart:5063:6)
+#2      Element.dependOnInheritedWidgetOfExactType (package:flutter/src/widgets/framework.dart:5082:12)
+#3      LookupBoundary.dependOnInheritedWidgetOfExactType (package:flutter/src/widgets/lookup_boundary.dart:99:13)
+#4      View.maybeOf (package:flutter/src/widgets/view.dart:137:27)
+#5      View.of (package:flutter/src/widgets/view.dart:158:33)
+#6      EditableTextState.didChangeMetrics (package:flutter/src/widgets/editable_text.dart:4545:38)
+#7      WidgetsBinding.handleMetricsChanged (package:flutter/src/widgets/binding.dart:926:18)
+#8      TestPlatformDispatcher._handleMetricsChanged (package:flutter_test/src/window.dart:215:24)
+#9      TestDisplay.resetDevicePixelRatio (package:flutter_test/src/window.dart:1355:43)
+#10     TestFlutterView.resetDevicePixelRatio (package:flutter_test/src/window.dart:1056:14)
+#12     Invoker.runTearDowns.<anonymous closure>.<anonymous closure> (package:test_api/src/backend/invoker.dart:296:18)
+#13     Invoker._waitForOutstandingCallbacks.<anonymous closure> (package:test_api/src/backend/invoker.dart:318:17)
+#18     Invoker._waitForOutstandingCallbacks (package:test_api/src/backend/invoker.dart:314:5)
+#19     Invoker.runTearDowns.<anonymous closure> (package:test_api/src/backend/invoker.dart:295:9)
+<asynchronous suspension>
+#20     Invoker._waitForOutstandingCallbacks.<anonymous closure> (package:test_api/src/backend/invoker.dart:318:9)
+<asynchronous suspension>
+(elided 5 frames from dart:async)
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:01 +2 -2: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/feedback-independent-review-20261111/test/independent/minimal_split_tooltip_reparent_test.dart: minimal leading visible Tooltip survives real split boundary
+  D:/Projects/uten_imp_worktrees/feedback-independent-review-20261111/test/independent/minimal_split_tooltip_reparent_test.dart: minimal trailing visible Tooltip survives real split boundary

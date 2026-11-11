@@ -1,0 +1,13 @@
+*.log binary
+*.exit binary
+*.json binary
+*.xml binary
+*.dumpstream binary
+*.args binary
+*.txt binary
+*.xlsx binary
+*.ps1 text eol=lf
+*.py text eol=lf
+*.md text eol=lf
+.gitignore text eol=lf
+.gitattributes text eol=lf

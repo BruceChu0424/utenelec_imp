@@ -1,0 +1,20 @@
+{
+  "status": "prep; final integrated Web not run by B",
+  "capturedAtUtc": "2026-11-11T07:54:37.867854+00:00",
+  "candidate": "6e1bfd38a5b6f8db1ce565abcd9216ec8b2919e2",
+  "mainObserved": "d5200b6bf68aae203542c3828ddc0d6498be2870",
+  "branch": "uimp/feedback-b-final-prep-20261111",
+  "sourceGitObjects": {
+    "server/src/main/java": "4b5f209b161042e75ffb1fb83b499c211b9393b1",
+    "server/src/main/resources": "a5736a1ee58b2dffad7559a189913a385eb7b189",
+    "server/pom.xml": "53c807826360e70a0928e3bfae56ef27d8f2dff8"
+  },
+  "compiledCurrent": {
+    "files": 8140,
+    "sha256": "43ad645ef31b314fcf9a75df288d1b00cebaeedf8ac467e6b817f4b29bd4fa15",
+    "algorithm": "sorted relative UTF-8 path + NUL + raw file SHA-256"
+  },
+  "isolatedPg": "127.0.0.1:26633; bremediation (original first run) and bremediation_retry (restored old dump then successful upgrade)",
+  "rootLiveDatabase": "read-only RR snapshots only; no login/ACL/seed/schema/server changes",
+  "oldDumpSha256": "8bd30213423f079219a36ad7edf3814828090d0ee6e6731ad393793dbf6b1df1"
+}

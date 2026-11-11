@@ -1,0 +1,5 @@
+
+  Uten.Legacy.Core -> D:\Projects\uten_imp_worktrees\feedback-remediate-20261110\evidence\root\native\baseline-x64\Uten.Legacy.Core.dll
+  Uten.Legacy.Desktop -> D:\Projects\uten_imp_worktrees\feedback-remediate-20261110\evidence\root\native\baseline-x64\Uten.Legacy.Desktop.exe
+  Uten.Legacy.Updater -> D:\Projects\uten_imp_worktrees\feedback-remediate-20261110\evidence\root\native\baseline-x64\Uten.Legacy.Updater.exe
+D:\Projects\uten_imp_worktrees\feedback-remediate-20261110\clients\windows_legacy\Uten.Legacy.Tests\Program.cs(116,25): error CS0136: 无法在此范围中声明名为“checks”的局部变量或参数，因为该名称在封闭局部范围中用于定义局部变量或参数 [D:\Projects\uten_imp_worktrees\feedback-remediate-20261110\clients\windows_legacy\Uten.Legacy.Tests\Uten.Legacy.Tests.csproj]

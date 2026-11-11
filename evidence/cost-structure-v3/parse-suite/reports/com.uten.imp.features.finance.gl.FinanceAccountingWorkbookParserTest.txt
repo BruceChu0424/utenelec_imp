@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.uten.imp.features.finance.gl.FinanceAccountingWorkbookParserTest
+-------------------------------------------------------------------------------
+Tests run: 5, Failures: 0, Errors: 0, Skipped: 1, Time elapsed: 0.441 s -- in com.uten.imp.features.finance.gl.FinanceAccountingWorkbookParserTest

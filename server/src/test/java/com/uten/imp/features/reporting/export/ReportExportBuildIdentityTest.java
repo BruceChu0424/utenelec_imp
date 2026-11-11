@@ -3,6 +3,23 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 class ReportExportBuildIdentityTest {
     @org.junit.jupiter.api.io.TempDir java.nio.file.Path directory;
+    @Test void aReadyApplicationHasAlreadyFrozenItsBuildBeforeAnyExportCommand() throws Exception {
+        var classes=java.nio.file.Files.createDirectories(directory.resolve("ready/com/uten/imp"));
+        var version=classes.resolve("Version.class");
+        java.nio.file.Files.write(version,new byte[]{1,2,3});
+        try(var loader=new java.net.URLClassLoader(new java.net.URL[]{directory.resolve("ready").toUri().toURL()},null);
+            var context=new org.springframework.context.annotation.AnnotationConfigApplicationContext()) {
+            var identity=new ReportExportBuildIdentity(loader);
+            String readyBytes=new ReportExportBuildIdentity(loader).revision();
+            context.registerBean(ReportExportBuildIdentity.class,() -> identity);
+            context.refresh();
+            // A request after readiness cannot discover a different build or
+            // perform the original resource walk under its transaction lock.
+            java.nio.file.Files.write(version,new byte[]{4,5,6});
+            assertEquals(readyBytes,identity.revision());
+            assertNotEquals(readyBytes,new ReportExportBuildIdentity(loader).revision());
+        }
+    }
     @Test void theActualRuntimeResourceSetHasOneStableCredentialFreeFingerprint() {
         var identity=new ReportExportBuildIdentity();
         String first=identity.revision();

@@ -1,0 +1,159 @@
+{
+  "status": "prep: new ordinary finance actor and unassigned synthetic accounts; not Web acceptance",
+  "sourceBase": "55d74b716acf49e8b6d81024f062cdebe46e518b",
+  "mainObserved": "d5200b6bf68aae203542c3828ddc0d6498be2870",
+  "capturedAtUtc": "2026-11-11T11:54:54.721465+00:00",
+  "secretValueMatchCount": 0,
+  "files": [
+    {
+      "file": ".gitattributes",
+      "bytes": 9,
+      "sha256": "48747480eddba024928d03be9bf83dc579e5515768647507a767e8187a85c9ab"
+    },
+    {
+      "file": ".gitignore",
+      "bytes": 72,
+      "sha256": "78535cc4879f863ae61b9edf352d4f5aae6d30d0332c66d5b3f6ada26ee9f90c"
+    },
+    {
+      "file": "compare_finance.py",
+      "bytes": 1887,
+      "sha256": "d81b0d0bb047923bd82fbb541fee0d15a3bfd50de6ec638977fd80a5585d0448"
+    },
+    {
+      "file": "compile-deprecation-detail.log",
+      "bytes": 594,
+      "sha256": "135578140e90e040b191fbd519cda62d663c7d8d3ad2f190dc230f41ff977105"
+    },
+    {
+      "file": "FeedbackBFinanceUiPrepTest.java",
+      "bytes": 9920,
+      "sha256": "a4ef152850ef1c23bc0fd406dffadf9dc8122641543693da5c0514f5df9374ce"
+    },
+    {
+      "file": "finalize.py",
+      "bytes": 1691,
+      "sha256": "6f57a8ef0a5244e7ee142600c49598f0ff6785182e7a9f9d3718f631bbd4117e"
+    },
+    {
+      "file": "README.md",
+      "bytes": 6356,
+      "sha256": "e683a538cfb611af6e289784ba67895d06426499143418cd04d08da7dddba4c1"
+    },
+    {
+      "file": "root-after-rolledback-run1.json",
+      "bytes": 20943,
+      "sha256": "bf533bfd46180227bbab253d832047d880652d94b61e8f0b8b167f9e06cd6098"
+    },
+    {
+      "file": "root-after-run2.json",
+      "bytes": 24744,
+      "sha256": "b387cd0a89fc215e44c38aa6bd0d7e8a10e05b033b322803dbdd84686df7c15b"
+    },
+    {
+      "file": "root-before-1.json",
+      "bytes": 20943,
+      "sha256": "8a61cff268cbd66dda9e94bf210e57d6c130f4aa85d8c534f4aa2efd5c2f80b8"
+    },
+    {
+      "file": "root-finance-run1/build-provenance.json",
+      "bytes": 726,
+      "sha256": "168e123c624585fd0eff78e3deddc775e3f8ab3a4457cb2ce3028c269d708627"
+    },
+    {
+      "file": "root-finance-run1/com.uten.imp.businesschain.FeedbackBFinanceUiPrepTest.txt",
+      "bytes": 2416,
+      "sha256": "eb08425c895e6e839601133cf4091745f8d80241faddf7f66ba814aad85b026a"
+    },
+    {
+      "file": "root-finance-run1/compile.exit",
+      "bytes": 1,
+      "sha256": "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9"
+    },
+    {
+      "file": "root-finance-run1/compile.log",
+      "bytes": 207,
+      "sha256": "adc5f6b36625712daceabcf107fd1f9264d07e3d0d9b6ea7d0cd4806680b593f"
+    },
+    {
+      "file": "root-finance-run1/exit.txt",
+      "bytes": 1,
+      "sha256": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b"
+    },
+    {
+      "file": "root-finance-run1/finance-seed.log",
+      "bytes": 9278,
+      "sha256": "6dc2707e67beb7a1ea4297da0596c548037a480495b654e778ec9aeeea0e724b"
+    },
+    {
+      "file": "root-finance-run1/TEST-com.uten.imp.businesschain.FeedbackBFinanceUiPrepTest.xml",
+      "bytes": 61683,
+      "sha256": "139e0ff0e3a36740d4f76e68b337838265be6ad2fa963dddd46625837219326f"
+    },
+    {
+      "file": "root-finance-run2/build-provenance.json",
+      "bytes": 726,
+      "sha256": "8d99e8696b49baa513166eabc48c9e19fd8f9eecfa52611460d547539a0c21d3"
+    },
+    {
+      "file": "root-finance-run2/com.uten.imp.businesschain.FeedbackBFinanceUiPrepTest.txt",
+      "bytes": 360,
+      "sha256": "a0a17a35767c0ad7ff74aabf1c582ddcb3edc21b37bcbaf5bf2f713425e9b37e"
+    },
+    {
+      "file": "root-finance-run2/compile.exit",
+      "bytes": 1,
+      "sha256": "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9"
+    },
+    {
+      "file": "root-finance-run2/compile.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "root-finance-run2/exit.txt",
+      "bytes": 1,
+      "sha256": "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9"
+    },
+    {
+      "file": "root-finance-run2/finance-seed.json",
+      "bytes": 8750,
+      "sha256": "de8075fd20bfb5cf36f7a1b9c5059ee8aedb87ec3772a83af89f84439b3ff615"
+    },
+    {
+      "file": "root-finance-run2/finance-seed.log",
+      "bytes": 6395,
+      "sha256": "d614e6f1b36caab6076542563baa3556f90b3925d1e1568b4bb3d4d2431474af"
+    },
+    {
+      "file": "root-finance-run2/TEST-com.uten.imp.businesschain.FeedbackBFinanceUiPrepTest.xml",
+      "bytes": 59836,
+      "sha256": "45c953baa71126807d0f1793d4b5a88697921b87aff04e87e3f0ecc56ca1c7f1"
+    },
+    {
+      "file": "run1-rollback-proof.json",
+      "bytes": 198,
+      "sha256": "b6f1e8c8c0c2b4a067e06776894016a6cb840ab0b433e441df2e78062a56a668"
+    },
+    {
+      "file": "run2-only-new-fixture-owner-proof.json",
+      "bytes": 403,
+      "sha256": "731276b188178094558b7e9eb6df97ea86c03bc0a1be0559b121f360dafda884"
+    },
+    {
+      "file": "run2-only-new-fixture-proof.json",
+      "bytes": 356,
+      "sha256": "cd4423c4b269e8f1d4e0240d9379915463e80f8451c8847ac97cbad0fe4706bf"
+    },
+    {
+      "file": "run_finance_prep.py",
+      "bytes": 4554,
+      "sha256": "1654a72457f93f67c4eab794940164e1c3dd94f2106d10996f90b2cbcba1ee14"
+    },
+    {
+      "file": "snapshot_finance.py",
+      "bytes": 2579,
+      "sha256": "9ea332598c086db70fa340dba10a46d700fd15067506ac03180e4808b3f68d27"
+    }
+  ]
+}

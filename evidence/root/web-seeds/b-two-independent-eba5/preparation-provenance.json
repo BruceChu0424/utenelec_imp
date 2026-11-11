@@ -1,0 +1,18 @@
+{
+  "kind": "synthetic fixture preparation; not actual Web business acceptance",
+  "invocationSourceRevision": "eba5d3a9a",
+  "mainCompiledSourceRevision": "47c96198ae10ab21a4f2d6d63b206e721214458c",
+  "sourceBuild": "runtime-maven-layout47-durable-1/classes",
+  "independentCopiedBuild": "b-ui-prep-eba5-build",
+  "liveBuildWasNotCompiledInto": true,
+  "normalSurefireCounts": {
+    "tests": 1,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "xmlRawSha256": "8408a81fd02d6329dc2c726b5104fa4e6d7be40de9645b3ceea1befcaa7426e0",
+  "metadataClarification": "createdAtUtc inherited inside the two seed JSON files is the original base B world creation time, not the new isolated analysis seed time; actual new run finishes in retained public-service.log at 2026-11-11T04:30:29-07:00",
+  "businessUiNotYetExecuted": true,
+  "knownSecretBearerJwtScan": "0 matches"
+}

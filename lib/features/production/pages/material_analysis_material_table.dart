@@ -114,6 +114,8 @@ final class _MaterialTableRow {
 abstract class _MaterialAnalysisMaterialTableState
     extends _MaterialAnalysisBorrowState {
   late final _aggregateTable = _MaterialAggregateTableController(this);
+  @override
+  _MaterialAggregateTableController get _preparationCommands => _aggregateTable;
   late final _draftBudget = _MaterialPreparationDraftBudgetController(this);
   final Set<String> _tableLastReseedRoots = {};
   final Map<String, MaterialPreparationOrderMethod>
@@ -6478,7 +6480,7 @@ abstract class _MaterialAnalysisMaterialTableState
     String? suffixText,
     ValueChanged<String>? onTyped,
     ValueChanged<BuildContext>? onFinished,
-  }) => !_canNotify && !_canGenerate
+  }) => (!_canNotify && !_canGenerate) || _aggregateTable.uncertain
       ? ValueListenableBuilder<TextEditingValue>(
           valueListenable: controller,
           builder: (_, value, _) => Text(
@@ -7071,6 +7073,11 @@ abstract class _MaterialAnalysisMaterialTableState
     List<_MaterialGroup> groups, {
     required bool fromShortagePage,
   }) async {
+    if (_aggregateTable.hasLegacyUnknown) {
+      return _aggregateTable.retryLegacyOriginal();
+    }
+    _aggregateTable.legacyConfirmedRows.clear();
+    _aggregateTable.legacyRejectedRows.clear();
     if (_bomAggregateByMaterial && !fromShortagePage) {
       // 2026-10-07 用户口径「汇总视图顶层也能下单」：本批只要勾了顶层产品行，
       // 就与按产品视图共用同一套编排（一次确认；根行先经 issue-plans/notify
@@ -7325,7 +7332,7 @@ abstract class _MaterialAnalysisMaterialTableState
                     '下达车间(第 $level 层，${workshop.length} 行'
                     '${merged > 0 ? '，其中 $merged 张并入原计划' : ''})',
                 ok: ok,
-                note: ok ? null : haltNote,
+                note: ok ? null : _aggregateTable.error ?? haltNote,
               ));
               if (!ok) {
                 halted = true;
@@ -7356,7 +7363,7 @@ abstract class _MaterialAnalysisMaterialTableState
               steps.add((
                 label: '下达委外(第 $level 层，${subcontract.length} 行)',
                 ok: ok,
-                note: ok ? null : haltNote,
+                note: ok ? null : _aggregateTable.error ?? haltNote,
               ));
               if (!ok) {
                 halted = true;
@@ -7388,7 +7395,7 @@ abstract class _MaterialAnalysisMaterialTableState
               steps.add((
                 label: '下达采购(${buy.length} 行)',
                 ok: ok,
-                note: ok ? null : haltNote,
+                note: ok ? null : _aggregateTable.error ?? haltNote,
               ));
               if (ok) {
                 settle(buy);
@@ -7470,7 +7477,14 @@ abstract class _MaterialAnalysisMaterialTableState
       _tableTransferableInScope = null;
       _requestCompanionReads(const [_CompanionRead.transferableIn]);
     });
-    _reportMaterialTableSubmit(steps, blocked);
+    _reportMaterialTableSubmit(
+      steps,
+      blocked,
+      rowLabels: {
+        for (final group in pending.keys) group.key: _tableGroupLabel(group),
+      },
+      completedRows: {...done, ..._aggregateTable.legacyConfirmedRows.keys},
+    );
     final allOk = steps.isNotEmpty && steps.every((step) => step.ok);
     // 下达成功事实与整轮结果分开：根计划或聚合内部前层已经落地时，后层失败
     // 仍须核对剩余子料和催办。完全失败则不触发；失败通知、输入和返回值保留。
@@ -7855,8 +7869,10 @@ abstract class _MaterialAnalysisMaterialTableState
 
   void _reportMaterialTableSubmit(
     List<({String label, bool ok, String? note})> steps,
-    List<String> blocked,
-  ) {
+    List<String> blocked, {
+    Map<String, String> rowLabels = const {},
+    Set<String> completedRows = const {},
+  }) {
     if (steps.isEmpty) return;
     final failed = steps.where((step) => !step.ok).toList();
     final summary = steps
@@ -7881,8 +7897,27 @@ abstract class _MaterialAnalysisMaterialTableState
       );
       return;
     }
+    final unknownRows = _aggregateTable.unknownCommandRows;
+    String outcome(String key) {
+      final confirmed = completedRows.contains(key);
+      if (unknownRows.contains(key)) {
+        return confirmed ? '部分已确认；原请求仍有未知结果，只能原样核对' : '结果未知，只能按原内容重试核对';
+      }
+      final rejected = _aggregateTable.legacyRejectedRows[key];
+      if (rejected != null) {
+        return '${confirmed ? '部分已确认；' : ''}当前请求明确未写入：$rejected；可修改后重试';
+      }
+      return confirmed ? '已办理' : '尚未提交，原输入已保留，可修改后重试';
+    }
+
+    final outcomes = rowLabels.entries
+        .map((entry) => '· ${entry.value}：${outcome(entry.key)}')
+        .join('\n');
     // 如实回报：说清哪几段成了、停在哪一步，别把半截状态说成成功。
-    context.appError('下达没有全部完成：\n$summary\n未完成的行仍然勾着，可以修改后重试。');
+    context.appError(
+      '下达没有全部完成：\n$summary\n$outcomes\n'
+      '${_aggregateTable.uncertain ? '结果未知的行保留原编号与原内容，只能查询原回执或原样重试；尚未提交的行保留原输入。' : '明确未写入的行仍然勾着，可以修改后重试。'}',
+    );
   }
 
   /// 必填指派格：空 = 实时红框(自制行这两格必填，2026-09-25 用户口径「必填的框

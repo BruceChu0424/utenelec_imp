@@ -11,7 +11,7 @@ public final class FinanceChartContracts {
     public record Issue(int sourceRow,String field,String message) { }
     public record Preview(UUID importId,String sourceName,String sha256,List<SourceRow> rows,List<Issue> issues,
                           boolean applied,int columnContractVersion) {
-        public Preview(UUID importId,String sourceName,String sha256,List<SourceRow> rows,List<Issue> issues,boolean applied){this(importId,sourceName,sha256,rows,issues,applied,1);}
+        public Preview(UUID importId,String sourceName,String sha256,List<SourceRow> rows,List<Issue> issues,boolean applied){this(importId,sourceName,sha256,rows,issues,applied,com.uten.imp.common.importing.ImportColumnGuard.VERSION);}
     }
     public record Apply(UUID importId) { }
     public record Repreview(UUID requestId) implements com.uten.imp.features.finance.FinanceOperationJournal.OriginalBodyCommand { }

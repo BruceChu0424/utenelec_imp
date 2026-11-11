@@ -60,14 +60,17 @@ class _ReminderSession extends ConsumerStatefulWidget {
 
 class _ReminderState extends ConsumerState<_ReminderSession> {
   late final Object? _owner;
-  late final OpportunisticDialogCoordinator _dialogs;
+  late OpportunisticDialogCoordinator _dialogs;
   DialogOpportunity? _opportunity;
   Timer? _timer;
   bool _busy = false;
+  bool _attached = true;
+  int _attachmentRevision = 0;
   final _acknowledged = <String>{};
   final _snoozed = <String, DateTime>{};
   bool get _current =>
       mounted &&
+      _attached &&
       _owner != null &&
       _owner == ref.read(serverOperationsOwnerProvider) &&
       ref.read(serverUpdateReminderEligibleProvider);
@@ -78,6 +81,25 @@ class _ReminderState extends ConsumerState<_ReminderSession> {
   void initState() {
     super.initState();
     _owner = ref.read(serverOperationsOwnerProvider);
+    _dialogs = ref.read(opportunisticDialogCoordinatorProvider);
+    _dialogs.addListener(_priorityChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _queue());
+  }
+
+  @override
+  void deactivate() {
+    _attached = false;
+    _attachmentRevision++;
+    _timer?.cancel();
+    _dialogs.removeListener(_priorityChanged);
+    _opportunity?.interrupt();
+    super.deactivate();
+  }
+
+  @override
+  void activate() {
+    super.activate();
+    _attached = true;
     _dialogs = ref.read(opportunisticDialogCoordinatorProvider);
     _dialogs.addListener(_priorityChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) => _queue());
@@ -97,6 +119,7 @@ class _ReminderState extends ConsumerState<_ReminderSession> {
 
   @override
   void dispose() {
+    _attached = false;
     _timer?.cancel();
     _dialogs.removeListener(_priorityChanged);
     _opportunity?.interrupt();
@@ -112,6 +135,7 @@ class _ReminderState extends ConsumerState<_ReminderSession> {
 
   Future<void> _check() async {
     if (!_active || _busy) return;
+    final revision = _attachmentRevision;
     if (_dialogs.blocked || ModalRoute.of(context)?.isCurrent != true) {
       _queue(const Duration(seconds: 5));
       return;
@@ -123,6 +147,7 @@ class _ReminderState extends ConsumerState<_ReminderSession> {
           .read(serverOperationsRepositoryProvider)
           .status();
       if (!mounted ||
+          revision != _attachmentRevision ||
           !_active ||
           !status.available ||
           !status.canUpdate ||
@@ -175,11 +200,15 @@ class _ReminderState extends ConsumerState<_ReminderSession> {
         interruptSignal: opportunity,
         barrierDismissible: true,
       );
-      if (!_active || opportunity.interrupted) return;
+      if (revision != _attachmentRevision ||
+          !_active ||
+          opportunity.interrupted) {
+        return;
+      }
       if (open == true) {
         _acknowledged.add(key);
         await preferences.setString(key, 'ack');
-        if (!mounted || !_active) return;
+        if (!mounted || revision != _attachmentRevision || !_active) return;
         unawaited(GoRouter.of(context).push(RouteName.adminServerOperations));
       } else {
         final next = clock.now().toUtc().add(const Duration(minutes: 15));
@@ -194,7 +223,11 @@ class _ReminderState extends ConsumerState<_ReminderSession> {
       _busy = false;
       // Host-local status only; unchanged badge counts may conceal a newer
       // checked version, so do not depend exclusively on a count transition.
-      _queue(const Duration(seconds: 60));
+      _queue(
+        revision == _attachmentRevision
+            ? const Duration(seconds: 60)
+            : const Duration(milliseconds: 800),
+      );
     }
   }
 

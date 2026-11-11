@@ -21,6 +21,59 @@ namespace Uten.Legacy.Desktop.Features.Units
 {
     public static class UnitExportUiChecks
     {
+        public static int RunLargeSelectionUi()
+        {
+            if (Application.Current == null) { var app = new App(); app.InitializeComponent(); app.ShutdownMode = ShutdownMode.OnExplicitShutdown; }
+            int checks = 0;
+            foreach (int count in new[] { 1001, 50001 })
+            using (var fixture = new Fixture())
+            {
+                var ids = Enumerable.Range(1,count).Select(number => new Guid(number,0,0,new byte[8]).ToString("D")).ToArray();
+                fixture.LoseSubmitReply = true;
+                var window = fixture.Open(new UnitQuery(keyword:"large-frozen-scope"), ids, count + 1);
+                Pump(() => Button(window,"生成当前筛选").IsEnabled);
+                int ticks = 0; long lastTick=0, maximumGap=0;
+                var heartbeat=System.Diagnostics.Stopwatch.StartNew();
+                var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(10) };
+                timer.Tick += (sender,args) => { long now=heartbeat.ElapsedMilliseconds; maximumGap=Math.Max(maximumGap,now-lastTick);lastTick=now;ticks++; }; timer.Start();
+                var elapsed = System.Diagnostics.Stopwatch.StartNew();
+                try
+                {
+                    Click(Button(window,"生成当前筛选")); Pump(() => Button(window,"核对原任务").IsEnabled);
+                    var body = fixture.OriginalBody;
+                    var selected = new JavaScriptSerializer { MaxJsonLength = UnitExportBudget.RequestBytes }
+                        .Deserialize<string[]>((string)((Dictionary<string,object>)Parse(body)["parameters"])["selectedIds"]);
+                    if (!ids.SequenceEqual(selected) || fixture.Creates != 1 || ticks < 2) throw new InvalidOperationException("Large native UI lost selection, duplicated write or blocked dispatcher");
+                    Click(Button(window,"核对原任务")); Pump(() => Button(window,"下载Excel").IsEnabled);
+                    if (fixture.Creates != 1 || fixture.OriginalBody != body) throw new InvalidOperationException("Large original UI reconciliation changed or replayed creation");
+                    fixture.Picker.Cancel = true;
+                    Click(Button(window,"下载Excel")); Pump(() => fixture.Picker.Calls == 1 && Button(window,"下载Excel").IsEnabled);
+                    if (fixture.Downloads != 0 || File.Exists(fixture.Output)) throw new InvalidOperationException("Cancelled large native picker generated a download");
+                    if (maximumGap>1000)throw new InvalidOperationException("Large native export blocked the UI dispatcher for "+maximumGap+"ms");
+                    Console.WriteLine("PASS WPF actual UnitExportWindow selected="+count+"; dispatcherTicks="+ticks+"; maximumDispatcherGapMs="+maximumGap+"; elapsedMs="+elapsed.ElapsedMilliseconds+"; original unknown->GET; cancelled save; controlled HTTP, not PG/Win7");
+                    checks += 4;
+                }
+                finally { timer.Stop(); window.Close(); }
+            }
+            return checks;
+        }
+        public static int RunLargeSelectionBuilder()
+        {
+            int checks=0;var failures=new List<int>();
+            foreach(int count in new[]{1000,1001,50001})
+            {
+                try {
+                    var ids=Enumerable.Range(1,count).Select(number=>new Guid(number,0,0,new byte[8]).ToString("D")).ToArray();
+                    string body=UnitExportService.CreateBody(Guid.NewGuid().ToString("D"),new UnitQuery(keyword:"bounded-output"),UnitColumnProjection.Default,ids);
+                    var json=new JavaScriptSerializer{MaxJsonLength=16*1024*1024};var fields=json.Deserialize<Dictionary<string,object>>(body);var parameters=(Dictionary<string,object>)fields["parameters"];
+                    var actual=json.Deserialize<string[]>((string)parameters["selectedIds"]);
+                    if(!ids.SequenceEqual(actual)||!((string)parameters["filter"]).Contains("bounded-output"))throw new InvalidOperationException("Selected output scope changed");
+                    checks++;Console.WriteLine("PASS native unit output builder; selected="+count+"; bytes="+Encoding.UTF8.GetByteCount(body)+"; not a database export");
+                } catch(Exception error) { Console.WriteLine("FAIL native unit output builder; selected="+count+"; type="+error.GetType().Name+"; code="+(error as ApiException)?.Code);failures.Add(count); }
+            }
+            if(failures.Count!=0)throw new InvalidOperationException("Native selected output builder failed for "+String.Join(",",failures));
+            return checks;
+        }
         public static int Run()
         {
             var before = SynchronizationContext.Current;
@@ -287,7 +340,7 @@ namespace Uten.Legacy.Desktop.Features.Units
             timer.Start(); try { Dispatcher.PushFrame(frame); } finally { timer.Stop(); }
             if (!complete()) throw new InvalidOperationException("Unit export native fixture timed out.");
         }
-        private static Dictionary<string, object> Parse(string json) => (Dictionary<string, object>)new JavaScriptSerializer { MaxJsonLength = 65536 }.DeserializeObject(json);
+        private static Dictionary<string, object> Parse(string json) => (Dictionary<string, object>)new JavaScriptSerializer { MaxJsonLength = UnitExportBudget.RequestBytes }.DeserializeObject(json);
         private sealed class Picker : IWorkbookSavePicker
         {
             internal int Calls; internal string Output; internal bool Cancel;
@@ -344,7 +397,7 @@ namespace Uten.Legacy.Desktop.Features.Units
                     if (LoseSubmitReply) { LoseSubmitReply = false; throw new HttpRequestException("fixture lost after accepted create"); }
                     return Json(Job("PENDING"));
                 }
-                if (path == "/api/report-export-jobs") return Json(JobId == null ? "[]" : "[" + Job("SUCCEEDED") + "]");
+                if (path == "/api/report-export-jobs") return Json(JobId == null ? "[]" : "[" + Job("SUCCEEDED", false) + "]");
                 if (path.EndsWith("/download-authorization")) { Authorizations++; return Json("{\"authorized\":true}"); }
                 if (path.EndsWith("/download") || path == "/api/master/units/export")
                 {
@@ -357,13 +410,13 @@ namespace Uten.Legacy.Desktop.Features.Units
                 if (path == "/api/report-export-jobs/" + JobId) return Json(Job("SUCCEEDED"));
                 throw new InvalidOperationException("Unexpected private export UI fixture route.");
             }
-            private string Job(string status)
+            private string Job(string status, bool includeRequest = true)
             {
                 var value = new Dictionary<string, object> { ["id"] = JobId, ["domain"] = "master", ["report"] = "unit", ["format"] = "xlsx",
                     ["status"] = status, ["cancelRequested"] = status == "CANCELLED", ["rows"] = 12, ["bytes"] = Workbook.Length,
                     ["snapshotAt"] = "2026-10-28T10:00:00Z", ["createdAt"] = "2026-10-28T10:00:00Z", ["finishedAt"] = null, ["error"] = null };
-                if (IncludeProof) value["request"] = Parse(OriginalBody);
-                return new JavaScriptSerializer().Serialize(value);
+                if (IncludeProof && includeRequest) value["request"] = Parse(OriginalBody);
+                return new JavaScriptSerializer { MaxJsonLength = UnitExportBudget.JobReplyBytes }.Serialize(value);
             }
             public void Dispose() { Session.Dispose(); State.Dispose(); }
         }

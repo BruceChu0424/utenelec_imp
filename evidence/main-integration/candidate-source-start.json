@@ -1,0 +1,201 @@
+{
+  "capturedAt": "2026-11-11T07:32:05.594427+00:00",
+  "head": "4d45dc9b6c291e9d8e9121b48017b69030fd1f4c",
+  "mergeHead": "d5200b6bf68aae203542c3828ddc0d6498be2870",
+  "indexTree": "6f99c47ffa3e42a7251138e0c0c1d902bea4ebfd",
+  "mainReference": "d5200b6bf68aae203542c3828ddc0d6498be2870",
+  "paths": {
+    "lib/components/data_display/uten_selection_lifecycle.dart": {
+      "sha256": "b2117c3d30ef984a721698ed4e063e6afb8eb693df8521f58a254c3abaac659b",
+      "indexBlob": "195573373aeb09038b118e46a694a131b7a7b89b"
+    },
+    "lib/components/data_display/uten_table_read_status.dart": {
+      "sha256": "9064eb292b9a6faa104ce5a5c4941dc41c8e7a2dcfeced282187ff091ed56dda",
+      "indexBlob": "e1c3444ff17d8fb6f515408a9bc46983f53af400"
+    },
+    "lib/components/layout/uten_editable_grid.dart": {
+      "sha256": "5d92141cc8eceb985aef69749899ad75c60409fc557d01081d1303088081a139",
+      "indexBlob": "176cad72e8b3ac7e11387a6c0338608d84289318"
+    },
+    "lib/core/diagnostics/diagnostic_record.dart": {
+      "sha256": "efd6f0b4aeb626141609c1072e98d606a4d1498b925eb17f0d1b683d45d72c7d",
+      "indexBlob": "1d423b718ef9f8f309192d74281e4350c1156e8a"
+    },
+    "lib/core/l10n/table_read_status_text.dart": {
+      "sha256": "742e6c0cb59fed67114757baa87e55cb772c6f44486bc4f61d424b283758fbae",
+      "indexBlob": "240713ab11f7b4964e54faefb6e8291109608c66"
+    },
+    "lib/core/network/api_client.dart": {
+      "sha256": "e2551fb38e16463d18a4844b66f769072b64863bff71d739f664290d2549473c",
+      "indexBlob": "4cf04342c0e618af5c50459d2922649fa828d4ca"
+    },
+    "lib/core/network/network_policy.dart": {
+      "sha256": "3f0f6ef7aed81ca1d9d855e11fda09c2ed8bd09d24ecc3c05fda5042cf95194e",
+      "indexBlob": "4f6d7f6f6a9717c65200ec3644875a80aa4eb596"
+    },
+    "lib/core/theme/dark_theme.dart": {
+      "sha256": "a9d477774fadd3cb4af0470ff5cfad444679f956c14ed1237e6c6271a10dca60",
+      "indexBlob": "cbce5c5d85c48c66bfa0551a7ab0172bf588484a"
+    },
+    "lib/core/theme/light_theme.dart": {
+      "sha256": "c1e364bfefad02f85fcdd1df106a6f0774d0c25a8af56e45487fcf03bb9ddddf",
+      "indexBlob": "b0d3f159a58cd5ce236c0da71e9e5c2fa2c004cb"
+    },
+    "lib/features/basic_data/widgets/master_data_table_view.dart": {
+      "sha256": "ff41ce358748e509dbfd3daae36b7eefd44d88e70dab84c07196003927b32e45",
+      "indexBlob": "d41f07f2595df3aa6f5dda734e3aeb4bc50a91af"
+    },
+    "lib/features/stock/pages/instant_inventory_page.dart": {
+      "sha256": "ef0a648c0e07f0398c7c327a1fa308c324eb3fa2043297bae96e73fc3be1c907",
+      "indexBlob": "6d37922cb92513300590062a8a166a10b0abc9a5"
+    },
+    "lib/shared/paging/complete_paged_snapshot.dart": {
+      "sha256": "8673ab2715cb86d194180e81ab77ae941ea183062478bd55c424c520bb1434eb",
+      "indexBlob": "f2911abfbd8d406cc2fc690f41491243546b7fd0"
+    },
+    "lib/shared/paging/paged_query_identity.dart": {
+      "sha256": "523e17871b79aaf8551a38357c5918860e26d1ebcca1bfdff8f92e195f21614f",
+      "indexBlob": "4e4d4c1de6d55012329402c82d6596d85a5ceedd"
+    },
+    "lib/shared/paging/read_failure_diagnostics.dart": {
+      "sha256": "1f73601f974e9592f641bd75849abe9b7dfd26f1a0ad7ab7e6c9b91c63d3876c",
+      "indexBlob": "c316f7323ff3bd50651b30a81e9ac3d23b4d12f2"
+    },
+    "lib/shared/paging/read_view_activity.dart": {
+      "sha256": "bbc2cadb7dbb4150a5babc1defad5824b44a2eb750f2e25f0bf8c2d442b4c15d",
+      "indexBlob": "41dc91e594ffe40d350620e00b47a71a60ebad00"
+    },
+    "lib/shared/paging/scoped_paged_read.dart": {
+      "sha256": "da5f9f48983c092523d9e28b4a21deabacd4cf9053035c82aa089cef943f9560",
+      "indexBlob": "8736c65c650f7983682abe4119cac201cc05a3de"
+    },
+    "lib/shared/paging/scoped_paged_read_view_mixin.dart": {
+      "sha256": "7ec28087aac585abe82371644023703c1614b5dd5c4790c690f0561d875c51c8",
+      "indexBlob": "c95f7d66c4eb2eef01c7ca8b3d8ff37b5ed016ac"
+    },
+    "lib/shared/platform_branding/platform_branding.dart": {
+      "sha256": "76a0dc877a58b3f2afeeda5d9d1b8bb27446bada467c89a5367ad081ce5a078f",
+      "indexBlob": "54e9749ab29d7191c764a442729b4ee2a76cd0a1"
+    },
+    "lib/shared/platform_tables/platform_table_binding.dart": {
+      "sha256": "945a1aa54150096d2331bb3a80793274d8237709c13830fef2467c2408a3ca04",
+      "indexBlob": "3ddecefa2694d5f74da90b3ee4ab74fbb0f8357e"
+    },
+    "lib/shared/platform_tables/platform_table_controller.dart": {
+      "sha256": "1e623eaf106957667db605a4ee848330ddd43714a6013b69c10f76247b8e1653",
+      "indexBlob": "84523f9bc4c1bc234bf3745e325db962ba8385a2"
+    },
+    "server/src/main/java/com/uten/imp/common/readsnapshot/CompleteStreamErrors.java": {
+      "sha256": "6bb0a448f93a961aad4c79583893ef5c684b946e7a313f9e6589d54e46e988c2",
+      "indexBlob": "ef578d44ef16d1635d4c606c2ea8110a2ba1aaed"
+    },
+    "server/src/main/java/com/uten/imp/common/readsnapshot/CompleteStreamStaging.java": {
+      "sha256": "aeb0268e2bfd529f6a6c553b46b76f4e5ddc453055a83dda712645ec7398f95e",
+      "indexBlob": "eaa186661d50909266523ca064dc858a4f5c67ff"
+    },
+    "server/src/main/java/com/uten/imp/common/readsnapshot/MasterSummaryReadSupport.java": {
+      "sha256": "706b41c53c3097cf769126b7086851eb3f5240c6cfddb489606206b2ac11f5b6",
+      "indexBlob": "5da3e97d1f8458638833cdbca282c48597c0f648"
+    },
+    "server/src/main/java/com/uten/imp/features/stock/InstantInventoryCompleteStreamService.java": {
+      "sha256": "4b7fad71cb4f171bd2de454c053295b2a2efe532f394bdd3c4833a1d9dd943d2",
+      "indexBlob": "a5bdab0e4a1c07fb60902fec34e9be56db4481c8"
+    },
+    "server/src/test/java/com/uten/imp/common/readsnapshot/CompleteStreamCompressionTomcatTest.java": {
+      "sha256": "2f7e9cb68bb57badd8f5a96c52e54c2906d9f75a6ac097f22e7642cf3666dd99",
+      "indexBlob": "032f46fa99ed0f19c35ad375df11a131b7f9ff1b"
+    },
+    "server/src/test/java/com/uten/imp/common/readsnapshot/CompleteStreamStagingTest.java": {
+      "sha256": "8d09008355c485759a7d1d392e9d3327475297dbfe821f2b1a786f805145d64c",
+      "indexBlob": "6717c4928ca2055d1e25413c0583e806a98f6ad3"
+    },
+    "server/src/test/java/com/uten/imp/common/readsnapshot/MasterSummaryStreamTest.java": {
+      "sha256": "5b00fc72700e244f3d6ecd9b5b87f8f5078ca675bc0ffd8b16ab0b9195190c8c",
+      "indexBlob": "ed6a2d9854ce6855100015458f3efca84c3efee1"
+    },
+    "server/src/test/java/com/uten/imp/features/stock/InstantInventoryCompleteStreamServiceTest.java": {
+      "sha256": "befb069e577fe4521fdaebb5db3ac9a25c677b1b041d33bb3162df432044a253",
+      "indexBlob": "22f6912b29a5ee630af2ccf206c900802d7adf57"
+    },
+    "test/components/inputs/uten_employee_picker_paging_test.dart": {
+      "sha256": "5c231a6de027918f01a732bfaae0f589438a83808823a4698f67d74961f825fd",
+      "indexBlob": "a4df3844fa66eff40c18bf7bb598cef5c2953720"
+    },
+    "test/components/paged_list_controller_test.dart": {
+      "sha256": "1b4fd46977022a40b82e5725b7376f4cd85ad39b76ff83f6568142a96d3c41dc",
+      "indexBlob": "2cf2d228485ca762118a11f620676918d21522db"
+    },
+    "test/core/network/summary_stream_test.dart": {
+      "sha256": "f9af7958a122a0f745ec4d90191e9606e2d5ce3905eeed6d01c3a5489f365d39",
+      "indexBlob": "50b9e50029402ab5f731a85ab4b5d192bc059e17"
+    },
+    "test/features/basic_data/pages/account_workspace_batch_test.dart": {
+      "sha256": "489b7953ee0b9dd39c16de00baf1534d105896212a30e30dd1d68cb2f9e46dbc",
+      "indexBlob": "a9d1e44560a2ae670dee09a750537ab99eefeb1e"
+    },
+    "test/features/basic_data/pages/master_inline_create_pages_test.dart": {
+      "sha256": "e3fb939fddcd0afe010d3ae398d4e6fd5f5ee1d6cd043117c1cd18a251918cea",
+      "indexBlob": "1010367566b788b8b9d6ef1b718486ec494e2b4b"
+    },
+    "test/features/basic_data/pages/product_category_page_column_permissions_test.dart": {
+      "sha256": "6f1b46ee08e86478cb90d5fe4fcbec124a5819ba9b903927c77d030de9b21d0a",
+      "indexBlob": "c1e2fdf1135d75f54ad4bafaae3b78faeffd6bff"
+    },
+    "test/features/basic_data/pages/unit_inline_busy_once_test.dart": {
+      "sha256": "36207d3dfdc75287c206d06671ada3949f551fc8ceb15a3ca52daa8034735416",
+      "indexBlob": "d429bfb72a743ebab3efbbd0b8b7ba0e3f32041e"
+    },
+    "test/features/basic_data/widgets/client_goods_alias_tab_test.dart": {
+      "sha256": "fb2a4ba99df3539aa926b3760ecc829019b542a555d7e8dc736348bfc2779986",
+      "indexBlob": "d65b7690de1b05b1e6fd7a35841153e16b24de1a"
+    },
+    "test/master_data_table_mutable_row_refresh_test.dart": {
+      "sha256": "047078c778856ec197c972514bd9e500cbee33f3de1eca25ee14ebc6efd79094",
+      "indexBlob": "7206ab28e2d8807ddfc9fc09bb9da18ff5bcbd94"
+    },
+    "test/master_data_table_view_read_window_refresh_test.dart": {
+      "sha256": "e8e76b6ac7c41545282b5d281a3c2b12b6f9391e140b9cd9301727239a5aef30",
+      "indexBlob": "6503a2b7ce2dd861fa22f819bd8e9c5bd35b8130"
+    },
+    "test/master_data_table_width_cursor_test.dart": {
+      "sha256": "b2ed15064ea51b2e2c95915bf4e8ff4493c6656c1834f0aa65507b50bc8e4706",
+      "indexBlob": "5a38a5ae328ca8e0b956efcbd1250674e9466f98"
+    },
+    "test/shared/paging/complete_paged_read_test.dart": {
+      "sha256": "a972890cf749bc36d0b466c17ac5b77cde5578fd685666ae196c44d16c03afb8",
+      "indexBlob": "ab6fdefcd1c13ce1c6cbabd91f0b92401921be23"
+    },
+    "test/shared/paging/read_failure_diagnostics_test.dart": {
+      "sha256": "223cd56384bf61359116b2126c323e425ef2f851180d92c94458e964401ddeab",
+      "indexBlob": "38b93d8394ff2de4f0b3124fdcfbcc05882b2642"
+    },
+    "test/shared/paging/retired_read_translation_test.dart": {
+      "sha256": "a4ba013e543d9169ffa14453c9229e0d85cba519310fce3d7c69686674890dea",
+      "indexBlob": "08d30c2263daa33ee0a17be3716dd834d5c884dc"
+    },
+    "test/shared/paging/scoped_owner_check_budget_test.dart": {
+      "sha256": "a9fdc172ca9592e07be82fbc31e2007e4de45d09709cc235d26dcb2d1e33694e",
+      "indexBlob": "22914dc293b2117e3fef4b440a623e2879b7ec86"
+    },
+    "test/shared/paging/scoped_paged_refresh_owner_test.dart": {
+      "sha256": "a0435798910379a8da675fdc98d2824646826bd33ecbe34050b9c18895e700dd",
+      "indexBlob": "851c67577ca3650d6a32e98e8f1ee0ecb43a5d6e"
+    },
+    "test/shared/paging/versioned_summary_pipeline_test.dart": {
+      "sha256": "9deb8587ee9a333fb65f9613104f17510dfa79d9593cfc453928b0c3d74b142e",
+      "indexBlob": "04d7309e9759976ce22460f4337f701f33102a21"
+    },
+    "test/shared/platform_branding/platform_branding_value_semantics_test.dart": {
+      "sha256": "c730ab9ddec1f6f081abcb1c48cd32fab11d869b4af88776fca72b5e72dfaf00",
+      "indexBlob": "63f6f8c9c76b1f62277deef840f22b1e5116b74b"
+    },
+    "test/shared/platform_tables/platform_table_incremental_read_test.dart": {
+      "sha256": "e2ac026cc67905bd1cadec5bf50a706225bc024d87c3f24b6d95d2f0885b3c26",
+      "indexBlob": "49a2fea5bda8e364186ca0c44fb757484709a700"
+    },
+    "test/support/table_read_status.dart": {
+      "sha256": "a2b72bcfdff54b12117b7370c24c285ec401b2d8e649f37c11ec0eddf0d1bce7",
+      "indexBlob": "33362efcddfa7bb850e42006b79c728cb19ef2d8"
+    }
+  }
+}

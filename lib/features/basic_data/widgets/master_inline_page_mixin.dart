@@ -11,6 +11,7 @@ import '../../../shared/auth/sensitive_write.dart';
 import '../repositories/master_inline_edit_repository.dart';
 import 'master_data_table_view.dart';
 import 'master_inline_edit.dart';
+import '../../../shared/paging/complete_output_guard.dart';
 
 typedef MasterInlineReadToken = (SensitiveReadBoundary, int);
 
@@ -23,6 +24,7 @@ mixin MasterInlinePageMixin<W extends ConsumerStatefulWidget, T>
   String get inlineEntityType;
   bool get inlineCanEdit;
   bool get inlineReadReady;
+  CompleteOutputGuard? get inlineOutputGuard => null;
   MasterInlineCreateConfig? get inlineCreation => null;
   Future<void> inlineReload();
   Future<void> inlineReloadAfterBoundary() => inlineReload();
@@ -105,6 +107,7 @@ mixin MasterInlinePageMixin<W extends ConsumerStatefulWidget, T>
               },
               afterSave: () async {
                 if (!mounted) return;
+                inlineOutputGuard?.retireAfterConfirmedWrite();
                 await config.afterSave?.call();
                 await inlineReload();
                 if (mounted && !inlineReadReady) {
@@ -154,6 +157,7 @@ mixin MasterInlinePageMixin<W extends ConsumerStatefulWidget, T>
           .save(inlineEntityType, id, changes: patch, expected: expected),
     );
     if (inlineAcceptsRead(boundary)) {
+      inlineOutputGuard?.retireAfterConfirmedWrite();
       await inlineReload();
     }
   }

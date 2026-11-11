@@ -1,0 +1,53 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/shared/platform_tables/platform_progressive_reads_test.dart
+00:00 +0: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/shared/platform_tables/platform_progressive_reads_test.dart: progressive records serialize current reads and retain persisted cells with no selected definitions
+00:01 +1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/shared/platform_tables/platform_table_widgets_test.dart: master custom TEXT columns use their declared type even when named status
+00:02 +2: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/shared/platform_tables/platform_table_widgets_test.dart: master custom TEXT columns use their declared type even when named status
+00:03 +3: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/shared/platform_tables/platform_table_widgets_test.dart: master custom TEXT columns use their declared type even when named status
+00:03 +4: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/shared/platform_tables/platform_table_widgets_test.dart: master custom TEXT columns use their declared type even when named status
+00:03 +5: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/shared/platform_tables/platform_table_widgets_test.dart: master custom TEXT columns use their declared type even when named status
+00:03 +6: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/shared/platform_tables/platform_table_recovery_test.dart: foreign record ids cannot replace any prior inline-table values
+00:03 +7: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/shared/platform_tables/platform_table_widgets_test.dart: editable custom TEXT columns use their declared type even when named status
+00:03 +8: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/shared/platform_tables/platform_table_widgets_test.dart: editable custom TEXT columns use their declared type even when named status
+00:03 +9: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/shared/platform_tables/platform_table_widgets_test.dart: editable custom TEXT columns use their declared type even when named status
+00:03 +10: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/shared/platform_tables/platform_table_widgets_test.dart: editable custom TEXT columns use their declared type even when named status
+00:03 +11: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/shared/platform_tables/platform_table_widgets_test.dart: editable custom TEXT columns use their declared type even when named status
+00:03 +12: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/shared/platform_tables/platform_table_widgets_test.dart: editable custom TEXT columns use their declared type even when named status
+00:03 +13: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/shared/platform_tables/platform_table_recovery_test.dart: zh master retries an incomplete successful response without replacing base input
+00:04 +14: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/shared/platform_tables/platform_table_recovery_test.dart: zh master retries an incomplete successful response without replacing base input
+00:04 +15: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/shared/platform_tables/platform_table_recovery_test.dart: zh master retries an incomplete successful response without replacing base input
+00:04 +16: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/shared/platform_tables/platform_table_recovery_test.dart: zh master retries an incomplete successful response without replacing base input
+00:04 +17: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/shared/platform_tables/platform_table_recovery_test.dart: zh master retries an incomplete successful response without replacing base input
+00:04 +18: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/shared/platform_tables/platform_table_recovery_test.dart: zh master retries an incomplete successful response without replacing base input
+00:04 +19: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/shared/platform_tables/platform_table_recovery_test.dart: zh master retries an incomplete successful response without replacing base input
+00:04 +20: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/shared/platform_tables/platform_table_recovery_test.dart: zh master retries an incomplete successful response without replacing base input
+00:05 +21: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/shared/platform_tables/platform_table_recovery_test.dart: zh master retries an incomplete successful response without replacing base input
+00:05 +22: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/shared/platform_tables/platform_table_widgets_test.dart: editable grid deletes an owned custom header with confirmation and preserves system columns
+00:06 +23: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/shared/platform_tables/platform_table_recovery_test.dart: zh master shows the cause and recovers without replacing base input
+00:06 +24: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/shared/platform_tables/platform_table_recovery_test.dart: zh master shows the cause and recovers without replacing base input
+00:06 +25: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/shared/platform_tables/platform_table_widgets_test.dart: permission revocation masks staged cells without losing input
+00:06 +26: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/shared/platform_tables/platform_table_recovery_test.dart: zh grid retries an incomplete successful response without replacing base input
+00:06 +27: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/shared/platform_tables/platform_table_recovery_test.dart: zh grid retries an incomplete successful response without replacing base input
+00:06 +28: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/shared/platform_tables/platform_table_recovery_test.dart: zh grid retries an incomplete successful response without replacing base input
+00:06 +29: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/shared/platform_tables/platform_table_recovery_test.dart: zh grid retries an incomplete successful response without replacing base input
+00:06 +30: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/shared/platform_tables/platform_table_widgets_test.dart: default review only restores existing hidden columns for a writable account
+00:07 +31: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/shared/platform_tables/platform_table_recovery_test.dart: zh grid shows the cause and recovers without replacing base input
+00:07 +32: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/shared/platform_tables/platform_table_widgets_test.dart: historical review with explicit opt-in only restores existing hidden columns for a writable account
+00:07 +33: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/shared/platform_tables/platform_table_recovery_test.dart: en master retries an incomplete successful response without replacing base input
+00:07 +34: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/shared/platform_tables/platform_table_recovery_test.dart: en master retries an incomplete successful response without replacing base input
+00:07 +35: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/shared/platform_tables/platform_table_widgets_test.dart: new grid explicitly enables column creation and staged input
+00:08 +36: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/shared/platform_tables/platform_table_widgets_test.dart: new grid explicitly enables column creation and staged input
+00:08 +37: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/shared/platform_tables/platform_table_widgets_test.dart: new grid explicitly enables column creation and staged input
+00:08 +38: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/shared/platform_tables/platform_table_recovery_test.dart: en grid shows the cause and recovers without replacing base input
+00:09 +39: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/shared/platform_tables/platform_table_recovery_test.dart: en grid shows the cause and recovers without replacing base input
+00:09 +40: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/shared/platform_tables/platform_table_widgets_test.dart: master table reads persisted fields and saves a complete CAS payload
+00:09 +41: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/shared/platform_tables/platform_table_recovery_test.dart: ko master retries an incomplete successful response without replacing base input
+00:09 +42: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/shared/platform_tables/platform_table_widgets_test.dart: new editable row stages fields in the document without PUT
+00:09 +43: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/shared/platform_tables/platform_table_recovery_test.dart: ko master shows the cause and recovers without replacing base input
+00:09 +44: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/shared/platform_tables/platform_table_recovery_test.dart: ko master shows the cause and recovers without replacing base input
+00:09 +45: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/shared/platform_tables/platform_table_widgets_test.dart: selected calculation is captured on new document rows without PUT
+00:10 +46: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/shared/platform_tables/platform_table_recovery_test.dart: ko grid retries an incomplete successful response without replacing base input
+00:10 +47: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/shared/platform_tables/platform_table_recovery_test.dart: ko grid retries an incomplete successful response without replacing base input
+00:10 +48: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/shared/platform_tables/platform_table_recovery_test.dart: ko grid shows the cause and recovers without replacing base input
+00:10 +49: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/shared/platform_tables/platform_table_recovery_test.dart: a later batch failure preserves the complete prior snapshot and dirty drafts; lost access masks it
+00:10 +50: All tests passed!

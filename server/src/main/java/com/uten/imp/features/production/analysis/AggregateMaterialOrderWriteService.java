@@ -131,8 +131,7 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
                 admissionHeader=analysis.headerSnapshot(analysisId);
                 admissionClaimable=commands.sharedClaimableFingerprint(analysisId);
                 MaterialAnalysisIssuePreviewOverlay preOverlay=MaterialAnalysisIssuePreviewOverlay.create();
-                analysis.projectIssuePreviewBase(analysisId,preOverlay);
-                preReviewed=previews.resolve(analysisId,request.previewRequest(),analysis.issuePreviewView(analysisId,preOverlay,Map.of()));
+                preReviewed=previews.resolve(analysisId,request.previewRequest(),analysis.baseIssuePreviewView(analysisId,preOverlay));
             } catch(ApiException rejectedByOpenState) { preReviewed=null; }
         }
         var guard=commands.lockAnalysisWithClaimableShared(analysisId);
@@ -161,8 +160,7 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
         if(admissionCurrent) reviewed=preReviewed;
         else {
             MaterialAnalysisIssuePreviewOverlay overlay=MaterialAnalysisIssuePreviewOverlay.create();
-            analysis.projectIssuePreviewBase(analysisId,overlay);
-            reviewed=previews.resolve(analysisId,request.previewRequest(),analysis.issuePreviewView(analysisId,overlay,Map.of()));
+            reviewed=previews.resolve(analysisId,request.previewRequest(),analysis.baseIssuePreviewView(analysisId,overlay));
         }
         if(!Objects.equals(reviewed.previewFingerprint(),request.previewFingerprint()))throw conflict("汇总来源、已下达或可用供给已变化，请重新核对");
         // ADR-143 §二.3：缺 BOM 的委外件先转研发(独立事务立即提交，随后的 409 不撤销)，再拒绝本次汇总下达。
@@ -172,20 +170,7 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
                 .flatMap(group->group.sources().stream()).map(source->reviewedRows.get(source.materialLineId()))
                 .filter(Objects::nonNull).toList());
         if(reviewed.groups().stream().anyMatch(group->group.blockedReason()!=null))throw conflict(reviewed.groups().stream().map(GroupPreview::blockedReason).filter(Objects::nonNull).findFirst().orElseThrow());
-        Map<UUID,BigDecimal> physicalLimits=new LinkedHashMap<>();
-        for(GroupInput input:request.groups()) {
-            if(input.orderMethod()==null||input.skipClaims(request.skipClaims()))continue;
-            if(input.sourceRequestedQtyByMaterialLineId().isEmpty()) {
-                BigDecimal required=input.materialLineIds().stream().map(reviewedRows::get).map(row->row.requiredQty().max(decimal(row.sourceRequiredQty()))).reduce(BigDecimal.ZERO,BigDecimal::add);
-                BigDecimal before=input.materialLineIds().stream().map(reviewedRows::get).map(row->decimal(row.preparationUncoveredBeforeSharedQty())).reduce(BigDecimal.ZERO,BigDecimal::add);
-                BigDecimal ceiling=MaterialOrderQuantity.physicalClaimCeiling(input.qty(),input.quantityMode(),required,before);
-                var caps=input.materialLineIds().stream().map(reviewedRows::get).map(row->new AggregateQuantityAllocator.SourceCapacity(row.materialLineId(),0,null,decimal(row.preparationUncoveredBeforeSharedQty()))).toList();
-                AggregateQuantityAllocator.allocate(ceiling,caps,true).allocations().forEach(share->physicalLimits.put(share.sourceId(),share.qty()));
-            } else input.sourceRequestedQtyByMaterialLineId().forEach((id,quantity)-> {
-                MaterialView row=reviewedRows.get(id);
-                physicalLimits.put(id,MaterialOrderQuantity.physicalClaimCeiling(quantity,input.quantityMode(),row.requiredQty().max(decimal(row.sourceRequiredQty())),row.preparationUncoveredBeforeSharedQty()));
-            });
-        }
+        Map<UUID,BigDecimal> physicalLimits=MaterialAnalysisPhysicalStockClaimService.claimLimits(request.groups(),reviewedRows,request.skipClaims());
         Map<UUID,BigDecimal> physicalBefore=physicalStockClaims==null?Map.of():physicalStockClaims.ownedByMaterial(analysisId);
         Map<UUID,BigDecimal> physicalDelta=new HashMap<>();
         if(physicalStockClaims!=null&&physicalStockClaims.claim(analysisId,physicalLimits,"AGGREGATE-PHYSICAL:"+analysisId+":"+request.idempotencyKey())) {
@@ -324,7 +309,7 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
             var plan=commands.issueAggregateAnchor(analysisId,batch.id(),batch.anchor(),group,input.allowedOverproductionRate(),
                     request.warehouseId(),request.approveNow(),stepKey(request.idempotencyKey(),group.clientGroupKey(),"PLAN"));
             em.flush();em.clear();
-            analysis.refreshWithAnchorGrowth(analysisId);
+            nextSnapshot=analysis.refreshWithAnchorGrowthView(analysisId);
             results.add(new BatchResult(batch.id(),group.clientGroupKey(),group.route(),"PRODUCTION_PLAN",plan.planId(),plan.planNo(),plan.planId(),batch.anchor(),group.requestedQty(),group.publicExtraQty(),group.sources(),plan));
         }
         List<MaterialIdentityBridge> bridges=materialBridges(results.stream().filter(result->result.batchId()!=null&&result.anchorAnalysisItemId()!=null).map(BatchResult::batchId).distinct().toList());

@@ -1,0 +1,49 @@
+{
+  "id": "E-FEEDBACK-FINAL-A-NATIVE-OUTPUT-PLAN-20261110",
+  "classification": "metadata and final-candidate plan only; not final acceptance",
+  "finalCandidateSha": null,
+  "sourceBase": "42b7bf76ffb18bd89dae332f9be08b30fc1a696a",
+  "protectedTaskCount": 373,
+  "protectedFields": [
+    "id",
+    "status",
+    "owner",
+    "definitionOfDone",
+    "dependencies",
+    "nativeTargets"
+  ],
+  "protectedBeforeSha256": "96847f8c0b1c8d0a75a4426526f687dd044651429ba84c7aa23ac11595d32c74",
+  "protectedAfterSha256": "96847f8c0b1c8d0a75a4426526f687dd044651429ba84c7aa23ac11595d32c74",
+  "unmigratedWpfProduction": [
+    "W7-BIZ-102",
+    "W7-BIZ-110",
+    "W7-BIZ-115"
+  ],
+  "unmigratedWpfMould": [
+    "W7-BIZ-031"
+  ],
+  "existingNativeOutputScope": [
+    "W7-CORE-018",
+    "W7-CORE-019",
+    "W7-BIZ-037",
+    "W7-FLOW-017"
+  ],
+  "finalAcceptance": false,
+  "win7TargetAcceptance": false,
+  "formalPackaging": false,
+  "companyDeployment": false,
+  "evidenceLocations": {
+    "finalPlan": "docs/99-项目治理/公司网页反馈整改-20261110/A-最终统一候选复跑计划.md",
+    "nativeOutputReport": "docs/99-项目治理/公司网页反馈整改-20261110/D3-WPF大选中导出与原票据恢复.md",
+    "productionPriorEvidence": "D:/Projects/uten_imp_worktrees/feedback-remediate-a-20261110/tmp/feedback-a-20261110",
+    "nativePriorEvidence": "D:/Projects/uten_imp_worktrees/feedback-wpf-export-20261110/evidence/wpf-export-native-committed-2",
+    "windowsHarness": "integration_test/company_feedback_actual_windows_test.dart"
+  },
+  "sourceInventoryProposal": [
+    "Integrate all final source including C cost v3 and native output before inventory regeneration.",
+    "In an independent worktree save original registry/history and compare all 373 task IDs, status, owner, definitionOfDone, dependencies and nativeTargets before/after.",
+    "Run business_inventory.py --write; progress_tracker.py sync; business_inventory.py --check; progress_tracker.py check.",
+    "Only derived source metadata/rendered documents may change; never init, set status, reset history or replace concurrent notes/evidence.",
+    "Review and commit inventory synchronization before freezing the final acceptance SHA. Final tests never mutate the frozen source inventory."
+  ]
+}

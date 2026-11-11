@@ -30,7 +30,7 @@ namespace Uten.Legacy.Desktop.Features.Units
         }
         public static bool RequiresSelection(string body)
         {
-            var root=UnitJson.Object(UnitJson.Parse(body));object raw;
+            var root=UnitJson.Object(new JavaScriptSerializer { MaxJsonLength = UnitExportBudget.RequestBytes }.DeserializeObject(body));object raw;
             return root.TryGetValue("parameters",out raw) && raw != null && UnitJson.Object(raw).ContainsKey("selectedIds");
         }
         public void RequireSelectionSupport()
@@ -50,7 +50,7 @@ namespace Uten.Legacy.Desktop.Features.Units
         public async Task<UnitReadSnapshot<MutationExportJob>> GetAsync(string id, CancellationToken token)
         {
             id = Id(id); Demand(); var owner = new UnitReadOwner(session);
-            string json = await session.GetAsync("/report-export-jobs/" + id, token).ConfigureAwait(false); Require(owner);
+            string json = await session.GetUnitExportJobJsonAsync(id, token).ConfigureAwait(false); Require(owner);
             var job = SessionCoordinator.ParseUnitExportJob(json, id); Require(owner);
             return new UnitReadSnapshot<MutationExportJob>(job, owner, "/report-export-jobs/" + id);
         }
@@ -87,12 +87,12 @@ namespace Uten.Legacy.Desktop.Features.Units
                 else filter.Add(pair.Key, pair.Value.Value);
             }
             if (nulls.Count != 0) filter.Add("nullFields", nulls.OrderBy(value => value, StringComparer.Ordinal).ToArray());
-            var json = new JavaScriptSerializer { MaxJsonLength = 65536 };
+            var json = new JavaScriptSerializer { MaxJsonLength = UnitExportBudget.RequestBytes };
             var parameters = new Dictionary<string, string> { ["filter"] = json.Serialize(filter) };
             if (selectedIds != null)
             {
-                if (selectedIds.Count == 0 || selectedIds.Count > 1000 || selectedIds.Distinct(StringComparer.Ordinal).Count() != selectedIds.Count)
-                    throw new ApiException("EXPORT_SELECTION_INVALID", "本机导出任务最多选择1000项；更多资料请按分类或筛选导出全部。");
+                if (selectedIds.Count == 0 || selectedIds.Distinct(StringComparer.Ordinal).Count() != selectedIds.Count)
+                    throw new ApiException("EXPORT_SELECTION_INVALID", "所选资料编号必须完整且不重复。");
                 parameters.Add("selectedIds", json.Serialize(selectedIds.Select(Id).ToArray()));
             }
             string body = json.Serialize(new Dictionary<string, object> {
@@ -100,7 +100,7 @@ namespace Uten.Legacy.Desktop.Features.Units
                 ["parameters"] = parameters,
                 ["sort"] = null, ["order"] = null,
                 ["columnProjection"] = projection == null ? null : json.DeserializeObject(projection.ToJson()) });
-            if (System.Text.Encoding.UTF8.GetByteCount(body) > 65536)
+            if (System.Text.Encoding.UTF8.GetByteCount(body) > UnitExportBudget.RequestBytes)
                 throw new ApiException("EXPORT_SELECTION_INVALID", "所选资料与筛选条件超出本机任务记录容量，请缩小选择或导出当前筛选全部资料。");
             return body;
         }

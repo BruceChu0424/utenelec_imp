@@ -1,0 +1,16 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart
+00:00 +0: colors confirmed status write cannot reuse failed reread output
+00:05 +1: units confirmed status write cannot reuse failed reread output
+00:07 +2: currencies confirmed status write cannot reuse failed reread output
+00:09 +3: accounts confirmed status write cannot reuse failed reread output
+00:12 +4: warehouses confirmed status write cannot reuse failed reread output
+00:16 +5: a captured export scope never revives after write and a new complete read
+10:16 +5 -1: a captured export scope never revives after write and a new complete read [E]
+  TimeoutException after 0:10:00.000000: Test timed out after 10 minutes.
+  dart:isolate  _RawReceivePort._handleMessage
+  
+10:16 +5 -1: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: a captured export scope never revives after write and a new complete read

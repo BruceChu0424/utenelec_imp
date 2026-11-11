@@ -939,6 +939,17 @@ class _PageScrollbarRailGateRender extends RenderProxyBox {
       canPaint() && super.hitTest(result, position: position);
 
   @override
+  void describeSemanticsConfiguration(SemanticsConfiguration config) {
+    super.describeSemanticsConfiguration(config);
+    // The rail can leave/re-enter reachability without leaving the render tree
+    // (for example while a menu owns the route). Keep its gesture/arrow nodes
+    // in one group so they cannot remain attached to a page sibling merge.
+    config
+      ..isSemanticBoundary = true
+      ..explicitChildNodes = true;
+  }
+
+  @override
   void visitChildrenForSemantics(RenderObjectVisitor visitor) {
     if (canPaint()) super.visitChildrenForSemantics(visitor);
   }

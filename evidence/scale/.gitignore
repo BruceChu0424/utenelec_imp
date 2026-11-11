@@ -1,0 +1,7 @@
+**/build/
+**/tmp/
+**/probes/
+**/artifacts/
+/cp-build/
+/deps-cp.txt
+!**/*.log

@@ -1,0 +1,15 @@
+PASS large unit export request/DPAPI interruption/original receipt; selected=1000; requestBytes=41240; actualCreations=1; not real database IDs
+PASS large unit export request/DPAPI interruption/original receipt; selected=1001; requestBytes=41281; actualCreations=1; not real database IDs
+PASS large unit export request/DPAPI interruption/original receipt; selected=50001; requestBytes=2050281; actualCreations=1; not real database IDs
+PASS large unit export request/DPAPI interruption/original receipt; selected=50001; requestBytes=2100281; actualCreations=1; not real database IDs
+PASS large changed proof/current View/Recent2MiB/ordinary response2MiB isolation; selected=50001
+PASS existing mutations.dpapi original export ticket is read and settled in original document
+PASS exact16MiB/>16MiB output bytes,32MiB retained budget,64MiB receipt reservation and original ordinary-write bounds; quota refusal before second send
+PASS explicit legacy selected export/read/owned HTTP request budget; selected=1001; synthetic workbook, not PG export
+PASS explicit legacy selected export/read/owned HTTP request budget; selected=50001; synthetic workbook, not PG export
+PASS native unit output builder; selected=1000; bytes=41458; not a database export
+PASS native unit output builder; selected=1001; bytes=41499; not a database export
+PASS native unit output builder; selected=50001; bytes=2050499; not a database export
+PASS WPF actual UnitExportWindow selected=1001; dispatcherTicks=17; maximumDispatcherGapMs=45; elapsedMs=283; original unknown->GET; cancelled save; controlled HTTP, not PG/Win7
+PASS WPF actual UnitExportWindow selected=50001; dispatcherTicks=648; maximumDispatcherGapMs=110; elapsedMs=10602; original unknown->GET; cancelled save; controlled HTTP, not PG/Win7
+PASS large selected output original body/DPAPI/receipt; controlled transport, not PostgreSQL; process=x86

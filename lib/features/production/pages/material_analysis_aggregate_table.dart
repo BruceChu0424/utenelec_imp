@@ -23,7 +23,16 @@ final class _MaterialAggregateTableController {
   String? _flightSignature;
   int _previewGeneration = 0;
   int _revision = 0;
-  bool saving = false, uncertain = false;
+  bool saving = false;
+  bool _aggregateUnknown = false, _legacyUnknown = false;
+  bool legacyDispatchStarted = false, legacyUiBusy = false;
+  bool get uncertain => _aggregateUnknown || _legacyUnknown;
+  set uncertain(bool value) => _aggregateUnknown = value;
+  MaterialPreparationOriginalCommand? legacyCommand;
+  String? legacyCommandScope;
+  final legacyConfirmedRows = <String, String>{};
+  final legacyRejectedRows = <String, String>{};
+  bool get hasLegacyUnknown => legacyCommand != null && _legacyUnknown;
   String? error;
   MaterialAggregateOrderRequest? _previewRequest, _submittedRequest;
   MaterialAggregateOrderPreview? _preview;
@@ -47,7 +56,7 @@ final class _MaterialAggregateTableController {
     });
   }
 
-  bool get hasDrafts => drafts.isNotEmpty;
+  bool get hasDrafts => drafts.isNotEmpty || legacyCommand != null;
   bool ownsLine(String lineId) => _draftByLine.containsKey(lineId);
   bool isProductFlow(String lineId) =>
       drafts[_draftByLine[lineId]]?.productFlow == true;
@@ -69,7 +78,15 @@ final class _MaterialAggregateTableController {
   Widget lockedText(String value) =>
       Tooltip(message: '本次数量已保留，可继续下单核对结果；需要改数时先撤销未提交草稿。', child: Text(value));
 
-  Widget? toolbarAction() => drafts.isEmpty
+  Widget? toolbarAction() => hasLegacyUnknown
+      ? UtenButton(
+          key: const Key('material-legacy-retry-original'),
+          onPressed: saving || owner._busy || legacyUiBusy
+              ? null
+              : () => unawaited(retryLegacyOriginal()),
+          child: const Text('按原内容重试核对'),
+        )
+      : drafts.isEmpty
       ? null
       : Wrap(
           spacing: 8,
@@ -187,10 +204,31 @@ final class _MaterialAggregateTableController {
         return materialQuantityUnits(text) < materialQuantityUnits(floor);
       },
     );
+    final reviewed =
+        drafts[aggregate.key]?.previewGroups ??
+        const <MaterialAggregateOrderGroupPreview>[];
+    final quantityFacts = reviewed
+        .where((group) => group.quantityBreakdown.isNotEmpty)
+        .map((group) {
+          final facts = group.quantityBreakdown;
+          return '覆盖总量 ${facts['coverageTotalQty']}；已覆盖 ${facts['alreadyCoveredQty']}；'
+              '本次现货认领 ${facts['physicalClaimQty']}；其他现有供给认领 ${facts['sharedSupplyClaimQty'] ?? '0'}；'
+              '新增下单 ${facts['newOrderQty']}；'
+              '原任务份额 ${facts['originalTaskQty']}；公共备货 ${facts['publicExtraQty']}';
+        })
+        .join('\n');
+    final reviewedField = quantityFacts.isEmpty
+        ? field
+        : Row(
+            children: [
+              Expanded(child: field),
+              UtenFieldHintIcon(info: quantityFacts, dense: true),
+            ],
+          );
     // 高度跟随输入格自然高度（2026-10-08 紧凑规格统一后不再钉 40，避免格内
     // 留白与主表数量格行高不一致）。
     return append
-        ? field
+        ? reviewedField
         : UtenEditorTooltip(
             message: floor == 'NaN'
                 ? '来源缺少可核对的精确数量，请刷新后重试。'
@@ -200,7 +238,7 @@ final class _MaterialAggregateTableController {
                       '超出需求的部分单独作为公共备货，实际归属以提交前预览为准。'
                 : '填多少下多少。超出需求的部分单独作为公共备货，'
                       '实际归属以提交前预览为准。',
-            child: field,
+            child: reviewedField,
           );
   }
 
@@ -213,6 +251,9 @@ final class _MaterialAggregateTableController {
     _submittedRequest = null;
     _submittedFingerprint = null;
     uncertain = false;
+    _legacyUnknown = false;
+    legacyCommand = null;
+    legacyCommandScope = null;
     drafts.clear();
     _draftByLine.clear();
     for (final controller in editors.values) {
@@ -1153,7 +1194,14 @@ final class _MaterialAggregateTableController {
       }
       final expectedByDraft = <String, BigInt>{};
       for (final input in request.groups) {
-        final amount = _previewIncrementalUnits(input, materials);
+        final serverGroup = preview.groups
+            .where((group) => group.clientGroupKey == input.clientGroupKey)
+            .firstOrNull;
+        final reviewed =
+            serverGroup?.quantityBreakdown['reviewedIncrementalQty'];
+        final amount = reviewed == null
+            ? _previewIncrementalUnits(input, materials)
+            : materialQuantityUnits(reviewed);
         expectedByDraft.update(
           draftKeyOf(input.clientGroupKey),
           (value) => value + amount,
@@ -1576,11 +1624,7 @@ final class _MaterialAggregateTableController {
         return false;
       }
       final rejected =
-          !priorUnknown &&
-          failure is ApiException &&
-          failure.httpStatus != null &&
-          failure.httpStatus! >= 400 &&
-          failure.httpStatus! < 500;
+          !priorUnknown && isDefiniteFreshFormDraftRejection(failure);
       owner._mutateAggregateTable(() {
         uncertain = !rejected;
         if (!rejected) {
@@ -1589,7 +1633,7 @@ final class _MaterialAggregateTableController {
           _submittedSessionScope = sessionScope;
         }
         error = rejected
-            ? failure.message
+            ? productionErrorMessage(failure, fallback: '本次下单未写入，请修正后重试')
             : '${productionErrorMessage(failure, fallback: '服务器没有返回确定的结果')}；'
                   '提交结果尚未确认，请保留本次总量并使用相同内容重试核对';
         if (rejected) {

@@ -1,0 +1,33 @@
+{
+  "reviewedProductSource": "08af9d259111aeb692daafc2a357cdce20368f40",
+  "actualExecutionHeadStart": "50c873a286df47a070828297d56b201d2aea80e0",
+  "actualExecutionHeadEnd": "50c873a286df47a070828297d56b201d2aea80e0",
+  "productDelta": [],
+  "allFourHelperFilesByteUnchanged": true,
+  "originalPublicTestBlobsUnchanged": {
+    "test/uten_collapsing_header_mode_transition_test.dart": "f8526aacc4fc661c62900265488de5ff215c146e",
+    "test/uten_collapsing_header_scroll_view_test.dart": "4685925e117ed0863c7e1cc7e14f3d9e0f6003d2",
+    "test/uten_collapsing_header_touch_test.dart": "979ef84762234c7c4c21dc8b4dfd00c0ae74790b",
+    "test/uten_collapsing_header_primary_isolation_test.dart": "162ce3a47ddedcd20f7715b08cccb33f439da9a3",
+    "test/uten_collapsing_header_semantics_transition_test.dart": "d3e496b82db9a41c4c74f96fbe7030f9cfd656e4"
+  },
+  "correctCompactAndExternalRegressions": {
+    "passed": 3,
+    "failed": 0
+  },
+  "pairedDefaultAndHierarchyFactCases": {
+    "passed": 8,
+    "failed": 0,
+    "all11BehaviorFactsExactlyMatch14e": true
+  },
+  "publicScrollNumericModeTouchIsolationSemantics": {
+    "passed": 18,
+    "failed": 0,
+    "skipped": 0
+  },
+  "exitCodes": [
+    0,
+    0
+  ],
+  "classification": "independent Flutter VM scroll positions and actual pointer wheel/controller behavior; not Root Web/PG or target device"
+}

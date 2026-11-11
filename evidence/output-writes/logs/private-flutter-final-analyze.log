@@ -1,0 +1,17 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+Analyzing 20 items...                                           
+
+   info - Statements in an if should be enclosed in a block. Try wrapping the statement in a block - lib\components\buttons\uten_export_button.dart:184:7 - curly_braces_in_flow_control_structures
+   info - Statements in an if should be enclosed in a block. Try wrapping the statement in a block - lib\components\buttons\uten_export_button.dart:316:7 - curly_braces_in_flow_control_structures
+   info - Statements in an if should be enclosed in a block. Try wrapping the statement in a block - lib\components\buttons\uten_export_button.dart:322:9 - curly_braces_in_flow_control_structures
+   info - Statements in an if should be enclosed in a block. Try wrapping the statement in a block - lib\components\buttons\uten_export_button.dart:325:9 - curly_braces_in_flow_control_structures
+   info - Statements in an if should be enclosed in a block. Try wrapping the statement in a block - lib\features\basic_data\widgets\master_entity_detail_pane.dart:1406:9 - curly_braces_in_flow_control_structures
+   info - Statements in an if should be enclosed in a block. Try wrapping the statement in a block - lib\features\basic_data\widgets\master_entity_detail_pane.dart:1459:9 - curly_braces_in_flow_control_structures
+warning - The generic type 'MasterDataTableView<dynamic>' should have explicit type arguments but doesn't. Use explicit type arguments for 'MasterDataTableView<dynamic>' - test\features\basic_data\pages\master_complete_print_consumers_test.dart:432:35 - strict_raw_type
+   info - Method invocation or property access on a 'dynamic' target. Try giving the target a type - test\features\basic_data\pages\master_complete_print_consumers_test.dart:609:26 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target. Try giving the target a type - test\features\basic_data\pages\master_complete_print_consumers_test.dart:616:30 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target. Try giving the target a type - test\features\basic_data\pages\master_complete_print_consumers_test.dart:616:65 - avoid_dynamic_calls
+   info - Method invocation or property access on a 'dynamic' target. Try giving the target a type - test\features\basic_data\pages\master_complete_print_consumers_test.dart:616:65 - avoid_dynamic_calls
+   info - Statements in an if should be enclosed in a block. Try wrapping the statement in a block - test\shared\export\report_export_job_waiting_test.dart:96:7 - curly_braces_in_flow_control_structures
+
+12 issues found. (ran in 16.4s)

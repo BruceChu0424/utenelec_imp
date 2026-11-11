@@ -1,0 +1,96 @@
+{
+  "product": "49fe8d2a2ec69860e7eb63fd282d461cd976fe26",
+  "fingerprint_content": "reviewed Git index bytes; raw logs and receipts equal original bytes",
+  "files": [
+    {
+      "path": ".gitattributes",
+      "bytes": 101,
+      "sha256": "2d0bef1a40b1ba8bf3e7bbd4704c964e32a7e94713ee175aaa011dba33e853eb"
+    },
+    {
+      "path": ".gitignore",
+      "bytes": 22,
+      "sha256": "441c3bdee121329716daffecd3d77cd8290d03760871100fbc8dc3184fc46a11"
+    },
+    {
+      "path": "logs/private-flutter-analyze.log",
+      "bytes": 199,
+      "sha256": "ba44e465ae7674aa37f9e49b9c7b345a7bc4197fe7e6ef2eb4268999b0fb84b2"
+    },
+    {
+      "path": "logs/private-flutter-baseline-frames.log",
+      "bytes": 3004,
+      "sha256": "d6dfe46512ec8406c2fd9820cf4c211d93b26c4392de8d31efea5752e025ad8f"
+    },
+    {
+      "path": "logs/private-flutter-baseline.log",
+      "bytes": 6847,
+      "sha256": "4b8b61dc4eaf112a50b6b8397c7f787792a4921b14b45ea0f93d30346103d505"
+    },
+    {
+      "path": "logs/private-flutter-candidate.log",
+      "bytes": 565,
+      "sha256": "324b8d9554d7b79a7cdc0918eac18da44da86d88b1eb074e5d572d6f97bc3f63"
+    },
+    {
+      "path": "logs/private-flutter-deps.log",
+      "bytes": 581,
+      "sha256": "1dfbfff886b449f8e1898a129668b735c02e508f744ebf3a2f10dc9716a2bd11"
+    },
+    {
+      "path": "logs/private-flutter-regression.log",
+      "bytes": 28615,
+      "sha256": "3a80a1c7e97701f7012bd9a654c77e6be199f77464dce3550f5a206994e1e7f8"
+    },
+    {
+      "path": "private-flutter-analyze.json",
+      "bytes": 3296,
+      "sha256": "8c62f84fcc1bcc6a0c8d2f2f972a3f2afe71d35c5a3efc427d5d129d9f9ccde3"
+    },
+    {
+      "path": "private-flutter-baseline-frames.json",
+      "bytes": 3192,
+      "sha256": "00f11824396bef598680e5a2e0e58ed64ddb234bf28f59d91396708af99fd7eb"
+    },
+    {
+      "path": "private-flutter-baseline.json",
+      "bytes": 3146,
+      "sha256": "6881a19aa0554d9f28c9311d8b2071b35ea6f4954ee1a3f92ef7b3f2a7178629"
+    },
+    {
+      "path": "private-flutter-candidate.json",
+      "bytes": 3256,
+      "sha256": "2570594dc4eba7ebcc9ee276240a25f0a3b53ff26105c6df9557d39518ab6bf8"
+    },
+    {
+      "path": "private-flutter-deps.json",
+      "bytes": 2983,
+      "sha256": "8a31573133fd7f4a7d0ee9720c133189c11dd7c1ff0c228d3873bd29e58d6900"
+    },
+    {
+      "path": "private-flutter-regression.json",
+      "bytes": 5680,
+      "sha256": "f22f78e393aed7a322c7791e716885967cababe93757b194be5b533b8d967c92"
+    },
+    {
+      "path": "private_flutter.py",
+      "bytes": 1591,
+      "sha256": "5202f778977152404c8f73292c496e7cdfd85966bbf811c1c66a1eb078ff09ef"
+    },
+    {
+      "path": "REPORT.md",
+      "bytes": 4643,
+      "sha256": "01cac022a3d5b1fdba978a6587ace0943de89a13b2cce1c79d790d29e3775d13"
+    },
+    {
+      "path": "rerun.ps1",
+      "bytes": 2034,
+      "sha256": "41454ad2cea7713a941e5fa11f207377c229c9363b1a16d04cf10d919cecfda4"
+    },
+    {
+      "path": "source-fingerprints.json",
+      "bytes": 915,
+      "sha256": "57daeefa0aaea9d708f4eeb4092e92108a3621b1d2a7487eebe134e78009fe08"
+    }
+  ]
+}

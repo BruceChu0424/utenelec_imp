@@ -1,0 +1,80 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/minimal_split_tooltip_reparent_test.dart
+00:00 +0: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/minimal_split_tooltip_reparent_test.dart: minimal leading closed Tooltip survives real split boundary
+00:01 +1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/minimal_hierarchy_height_tooltip_test.dart: compact header closed tooltip survives real height boundary
+00:02 +2: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/minimal_compact_header_width_test.dart: retained compact header closed tooltip survives icon width
+00:02 +3: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/minimal_compact_header_width_test.dart: retained compact header closed tooltip survives icon width
+00:02 +4: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/minimal_compact_header_width_test.dart: retained compact header closed tooltip survives icon width
+00:02 +5: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/minimal_compact_header_width_test.dart: retained compact header closed tooltip survives icon width
+00:02 +6: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/minimal_compact_header_width_test.dart: retained compact header closed tooltip survives icon width
+00:02 +7: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/minimal_compact_header_width_test.dart: retained compact header closed tooltip survives icon width
+00:02 +8: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/minimal_compact_header_width_test.dart: retained compact header closed tooltip survives icon width
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: TextRange:<TextRange(start: 0, end: 2)>
+  Actual: TextRange:<TextRange(start: -1, end: -1)>
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/minimal_compact_header_width_test.dart:61:9)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/minimal_compact_header_width_test.dart line 61
+The test description was:
+  retained compact header closed tooltip survives icon width
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:03 +8 -1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/minimal_compact_header_width_test.dart: retained compact header closed tooltip survives icon width [E]
+  Test failed. See exception logs above.
+  The test description was: retained compact header closed tooltip survives icon width
+  
+00:03 +8 -1: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/minimal_compact_header_width_test.dart: retained compact header visible tooltip survives icon width
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: TextRange:<TextRange(start: 0, end: 2)>
+  Actual: TextRange:<TextRange(start: -1, end: -1)>
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/minimal_compact_header_width_test.dart:61:9)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/minimal_compact_header_width_test.dart line 61
+The test description was:
+  retained compact header visible tooltip survives icon width
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:03 +8 -2: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/minimal_compact_header_width_test.dart: retained compact header visible tooltip survives icon width [E]
+  Test failed. See exception logs above.
+  The test description was: retained compact header visible tooltip survives icon width
+  
+00:08 +8 -2: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_split_view_test.dart: 初始宽度 = initialLeadingWidth(默认 300)
+00:09 +9 -2: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_split_view_controlled_width_test.dart: late preference restoration cannot replace a controlled width
+00:09 +10 -2: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_split_view_controlled_width_test.dart: late preference restoration cannot replace a controlled width
+00:09 +11 -2: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_split_view_controlled_width_test.dart: late preference restoration cannot replace a controlled width
+00:10 +12 -2: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_split_view_controlled_width_test.dart: late preference restoration cannot replace a controlled width
+00:10 +13 -2: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/shared/widgets/uten_hierarchy_short_viewport_test.dart: 179px tree scrolls all controls and selectable nodes; error=false
+00:10 +14 -2: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/shared/widgets/uten_hierarchy_short_viewport_test.dart: 179px tree scrolls all controls and selectable nodes; error=false
+00:10 +15 -2: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/shared/widgets/uten_hierarchy_short_viewport_test.dart: 179px tree scrolls all controls and selectable nodes; error=false
+00:11 +16 -2: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/shared/widgets/uten_hierarchy_short_viewport_test.dart: 179px tree scrolls all controls and selectable nodes; error=false
+00:11 +17 -2: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/uten_split_view_test.dart: 长分类缩窄偏好重挂保留，双击清除偏好并恢复自然宽
+00:11 +18 -2: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/shared/widgets/uten_hierarchy_short_viewport_test.dart: 179px tree scrolls all controls and selectable nodes; error=true
+00:11 +18 ~1 -2: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/shared/widgets/uten_hierarchy_short_viewport_test.dart: 179px tree scrolls all controls and selectable nodes; error=true
+00:11 +19 ~1 -2: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/shared/widgets/uten_hierarchy_short_viewport_test.dart: normal height pins the header and short-height transitions retain focus and expansion
+00:13 +20 ~1 -2: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/shared/widgets/uten_hierarchy_short_viewport_test.dart: short compact pane keeps header, directory and results reachable while offstage trees remain safe
+00:13 +21 ~1 -2: D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/shared/widgets/uten_hierarchy_short_viewport_test.dart: compact height transitions retain header IME focus and the mounted result list
+00:14 +22 ~1 -2: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/minimal_compact_header_width_test.dart: retained compact header closed tooltip survives icon width
+  D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/minimal_compact_header_width_test.dart: retained compact header visible tooltip survives icon width

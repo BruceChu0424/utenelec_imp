@@ -1,0 +1,7 @@
+evidence\b-finance-prep\FeedbackBFinanceUiPrepTest.java:44: ����: [deprecation] JsonNode�е�asText()�ѹ�ʱ
+        UUID maker=UUID.fromString(source.path("maker").path("userId").asText());
+                                                                      ^
+evidence\b-finance-prep\FeedbackBFinanceUiPrepTest.java:45: ����: [deprecation] JsonNode�е�asText()�ѹ�ʱ
+        UUID approver=UUID.fromString(source.path("approver").path("userId").asText());
+                                                                            ^
+2 ������

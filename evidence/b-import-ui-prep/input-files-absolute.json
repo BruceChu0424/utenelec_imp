@@ -1,0 +1,162 @@
+[
+  {
+    "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-20261110\\evidence\\c-final\\final-7b912287-files-auxiliary-extra-current.xlsx",
+    "bytes": 3667,
+    "sha256": "3717db97474cdfce62a58da5cb99d9304b66fa312900ce966fab26a331b58218"
+  },
+  {
+    "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-20261110\\evidence\\imports\\auxiliary-extra-current.xlsx",
+    "bytes": 3667,
+    "sha256": "5f637234a567ad1ea6746214b38bbc458dfd217580fa6fb2c4d09f164cccd108"
+  },
+  {
+    "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-20261110\\evidence\\imports\\baseline\\bom-extra-second-false.xlsx",
+    "bytes": 3460,
+    "sha256": "679407249ed8bc258a8599e74635fedc6822e2e115c7582b1e54568f3f05b6bb"
+  },
+  {
+    "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-20261110\\evidence\\imports\\baseline\\bom-extra-second-true.xlsx",
+    "bytes": 3902,
+    "sha256": "3bac417a02288490e380dcc9357dd32ca66b2e9f42a7fec124d3b5edbd87c4e7"
+  },
+  {
+    "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-20261110\\evidence\\imports\\baseline\\chart-false.xlsx",
+    "bytes": 3466,
+    "sha256": "0484bf67a875b4e7f1b4ad864d21ce95de46fc8237ec722cf8303ee33a99e7c5"
+  },
+  {
+    "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-20261110\\evidence\\imports\\baseline\\chart-true.xlsx",
+    "bytes": 3467,
+    "sha256": "c6f2be97521a331cc8551b090ab7793054576b4b6c4deab3e706754e4a4c4491"
+  },
+  {
+    "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-20261110\\evidence\\imports\\baseline\\cost-title-false.xlsx",
+    "bytes": 3452,
+    "sha256": "b1d8500f1c29271f6cdcce97fd131b81b72d1bff24954f458a1e51bd5d70718d"
+  },
+  {
+    "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-20261110\\evidence\\imports\\baseline\\cost-title-true.xlsx",
+    "bytes": 3457,
+    "sha256": "dbd1f7db4612a12301eec7b435a6e81e073ba1a3b9f66733e18cbc5f790a15d1"
+  },
+  {
+    "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-20261110\\evidence\\imports\\baseline\\goods-extra-second-false.xlsx",
+    "bytes": 3488,
+    "sha256": "edb10609cfd8d7628d8a995858bb2f75bbd4212ccfed1053a17e17dbe99252bd"
+  },
+  {
+    "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-20261110\\evidence\\imports\\baseline\\goods-extra-second-true.xlsx",
+    "bytes": 3928,
+    "sha256": "9ca9c7bf9a55a3f337439db67c0d0a859ebb33c28254d162145c7677d492a173"
+  },
+  {
+    "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-20261110\\evidence\\imports\\baseline\\mould-desc.xlsx",
+    "bytes": 3933,
+    "sha256": "4b5a0341a00550ed2a3428cac9a2b880aacfd6875e0eef8540850a47ff73ed69"
+  },
+  {
+    "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-20261110\\evidence\\imports\\baseline\\note-duplicate.xlsx",
+    "bytes": 3715,
+    "sha256": "b6136e20839848a2f0d0c64f496c1cd0468ff9a817b6a0ffa0c79bbb51f67068"
+  },
+  {
+    "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-20261110\\evidence\\imports\\baseline\\note-unknown.xlsx",
+    "bytes": 3731,
+    "sha256": "b653f42944c1a5a79375b707cdc5aa09733392952502567e9d41f2b1d983eca1"
+  },
+  {
+    "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-20261110\\evidence\\imports\\baseline\\voucher-empty-formula.xls",
+    "bytes": 6656,
+    "sha256": "c3400827998184e8016a049f810fc245beead4ca136e01a3f758a481a123e864"
+  },
+  {
+    "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-20261110\\evidence\\imports\\baseline\\voucher-style.xls",
+    "bytes": 6656,
+    "sha256": "17786373f350d70238a8c2023dffd06708b1adffd69d12f45428f8de985ec9ec"
+  },
+  {
+    "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-20261110\\evidence\\imports\\baseline\\voucher-unknown-value.xls",
+    "bytes": 6656,
+    "sha256": "c6278aaea08fab6f05dbd0624941d3431b42305015431052b3a51e30d50075ab"
+  },
+  {
+    "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-20261110\\evidence\\imports\\baseline\\voucher-wrong-signature.xls",
+    "bytes": 6656,
+    "sha256": "22fc64c1245d182c6b75998ad931e81fbff103f76de626161bc590936d55b548"
+  },
+  {
+    "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-20261110\\evidence\\imports\\old-auxiliary.xlsx",
+    "bytes": 3627,
+    "sha256": "3d13079b04ff41c897f62d4bd6e95d0ac217af346c0d803a63a25e3dd7439884"
+  },
+  {
+    "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-20261110\\evidence\\imports\\old-balances.xls",
+    "bytes": 5120,
+    "sha256": "ee28c136d8f5c8311616e068975bbbbf300e9e3ed365ddcc285d2939d74b477e"
+  },
+  {
+    "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-20261110\\evidence\\imports\\old-valid-notes.xlsx",
+    "bytes": 3749,
+    "sha256": "9369216bf5122fae78d94a72e99f0ae091ba204ce46208c0f1f7c75b27586f25"
+  },
+  {
+    "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-20261110\\evidence\\imports\\old-vouchers.xls",
+    "bytes": 7680,
+    "sha256": "3ae74146e60976ef89cdf16acfe890aefc43d870a9068402b3bb9a3bec2f13e4"
+  },
+  {
+    "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-20261110\\evidence\\imports\\web-fixtures\\bom-legal.xlsx",
+    "bytes": 3450,
+    "sha256": "b35c3f0e70959be7bcdcea3a1e2f345a6a86eae8ef1983386b6bcd67a7aef158"
+  },
+  {
+    "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-20261110\\evidence\\imports\\web-fixtures\\chart-legal.xlsx",
+    "bytes": 3480,
+    "sha256": "fe845a947f3337f0a2ea857ba8a4ce5910991098656f2e138d3b317bc2815bbb"
+  },
+  {
+    "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-20261110\\evidence\\imports\\web-fixtures\\cost-legal.xlsx",
+    "bytes": 3446,
+    "sha256": "ce775b43bc4dbb23da240db81cbff4027299d088483d48636c30ed89c02a852b"
+  },
+  {
+    "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-20261110\\evidence\\imports\\web-fixtures\\goods-legal.xlsx",
+    "bytes": 3476,
+    "sha256": "fcb2b58dbba48967d80a4d9aca6c65f81f55685b106f1992226de5b47cce65b3"
+  },
+  {
+    "path": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-20261110\\evidence\\imports\\web-fixtures\\note-legal.xlsx",
+    "bytes": 3742,
+    "sha256": "c663fb09be673525dc0be3ced24f81b935ac3d2aa1a2cc0ab25ea888cb532049"
+  },
+  {
+    "path": "D:\\Projects\\uten_imp_worktrees\\feedback-b-import-ui-prep-20261111\\evidence\\b-import-ui-prep\\accounting-pair\\legal-balances-202611.xls",
+    "bytes": 4608,
+    "sha256": "24d570462b2924fc8ed934bd81d88edfb349fa2aefa2e6e4494904c5c643ab2b"
+  },
+  {
+    "path": "D:\\Projects\\uten_imp_worktrees\\feedback-b-import-ui-prep-20261111\\evidence\\b-import-ui-prep\\accounting-pair\\legal-chart-202611.xlsx",
+    "bytes": 3454,
+    "sha256": "93e2bb23403c01068a5fca88f6b94bbc80e229b510b07ae71d34be340f4a766d"
+  },
+  {
+    "path": "D:\\Projects\\uten_imp_worktrees\\feedback-b-import-ui-prep-20261111\\evidence\\b-import-ui-prep\\accounting-pair\\legal-vouchers-202611.xls",
+    "bytes": 6656,
+    "sha256": "f7be309cd8162e52967a8711e2e4d83ae90a552cd092bbf97f72c8bed601dfcd"
+  },
+  {
+    "path": "D:\\Projects\\uten_imp_worktrees\\feedback-b-import-ui-prep-20261111\\evidence\\b-import-ui-prep\\accounting-pair-202610\\legal-balances-202610.xls",
+    "bytes": 4608,
+    "sha256": "1a2184d4f88fb27c66dba14b95b06ba37568418ab16236195697bbf9f355c176"
+  },
+  {
+    "path": "D:\\Projects\\uten_imp_worktrees\\feedback-b-import-ui-prep-20261111\\evidence\\b-import-ui-prep\\accounting-pair-202610\\legal-chart-202610.xlsx",
+    "bytes": 3461,
+    "sha256": "ede074d3b536d5b2240f0b6b8a2dc45fd7739261d02810d68756bc1587d2b668"
+  },
+  {
+    "path": "D:\\Projects\\uten_imp_worktrees\\feedback-b-import-ui-prep-20261111\\evidence\\b-import-ui-prep\\accounting-pair-202610\\legal-vouchers-202610.xls",
+    "bytes": 6656,
+    "sha256": "25e68f1124b30c7d7711cc4828692180552313a8530b90de9711bfa958d0e520"
+  }
+]

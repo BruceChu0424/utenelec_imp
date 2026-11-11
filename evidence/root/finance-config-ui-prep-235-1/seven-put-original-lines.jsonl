@@ -1,0 +1,7 @@
+{"path":"/api/finance/posting-style-roles/INVENTORY_ASSET","method":"PUT","status":200,"ms":92,"faultInjected":false}
+{"path":"/api/finance/posting-style-roles/PROCUREMENT_GRNI_PENDING","method":"PUT","status":200,"ms":58,"faultInjected":false}
+{"path":"/api/finance/posting-style-roles/PROCUREMENT_RETURN_PENDING_ASSET","method":"PUT","status":200,"ms":44,"faultInjected":false}
+{"path":"/api/finance/posting-style-roles/PROCUREMENT_RETURN_VARIANCE","method":"PUT","status":200,"ms":219,"faultInjected":false}
+{"path":"/api/finance/posting-style-roles/SALES_COST","method":"PUT","status":200,"ms":59,"faultInjected":false}
+{"path":"/api/finance/posting-style-roles/SALES_REVENUE","method":"PUT","status":200,"ms":178,"faultInjected":false}
+{"path":"/api/finance/posting-style-roles/SUPPLIER_PREPAYMENT_ASSET","method":"PUT","status":200,"ms":62,"faultInjected":false}

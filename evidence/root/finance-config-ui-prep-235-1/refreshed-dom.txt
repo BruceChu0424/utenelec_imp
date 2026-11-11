@@ -1,0 +1,24 @@
+- generic: 系统科目用途
+- button "为尚未配置的用途选择对应类别的独立科目。已配置用途保留原科目。"
+- button "刷新 刷新" [active]:
+  - text: 刷新
+  - generic: 刷新
+- button "关闭"
+- generic: 上线账户余额核对差额的权益清算科目；只能由不可变余额调整批次使用 已配置：账户余额调整清算
+- generic: 采购立账与付款的应付账款科目 已配置：应付账款控制
+- generic: 销售立账与收款的应收账款科目 已配置：应收账款控制
+- generic: 收款手续费科目 已配置：手续费
+- generic: 客户预收现金负债；只有显式转销才可借记并冲减正式应收 已配置：客户预收款
+- generic: 收付款汇兑损益科目 已配置：汇兑损益
+- generic: 采购立账与成本结转的库存商品科目 已配置：B验收合成-INVENTORY_ASSET-a635aa02
+- generic: 收货已入账、尚待对账确认的供应商暂估债务 已配置：B验收合成-PROCUREMENT_GRNI_PENDING-a635aa02
+- generic: 实物已退回、尚待确认供应商贷项的应收资产 已配置：B验收合成-PROCUREMENT_RETURN_PENDING_ASSET-a635aa02
+- generic: 采购与委外退货商业贷项和库存实际成本差额，正数损失负数收益 已配置：B验收合成-PROCUREMENT_RETURN_VARIANCE-a635aa02
+- generic: 销售成本结转科目 已配置：B验收合成-SALES_COST-a635aa02
+- generic: 销售立账的销售收入科目 已配置：B验收合成-SALES_REVENUE-a635aa02
+- generic: 超过合同允许损耗的委外材料账面损失；不得与供应商赔偿或应付抵销净额记账 已配置：委外超耗异常损失
+- generic: 已确认委外异常损失赔偿的追回科目 已配置：委外异常损失追回
+- generic: 供应商赔偿、索赔和现金追回的其它应收控制科目 已配置：供应商索赔应收
+- generic: 供应商实际预付资产；须财务明确对应科目 已配置：B验收合成-SUPPLIER_PREPAYMENT_ASSET-a635aa02
+- button "向上滚动" [disabled]
+- button "向下滚动"

@@ -1,0 +1,14 @@
+{
+  "productBase": "178e5a295091b4e817676e6fe0e224b2765fd5ae",
+  "diagnosticOnly": true,
+  "files": {
+    "main.dart": "f649f527c1189b0e260f40b7c83a8b92b6d6f2582f909f6d03f8309abf2ad991",
+    "browser_focus.dart": "bb5f37fc7bc0290af98ae4a10fea4093ff3e09be3eeeebbcc1c7b98958101881",
+    "instrumentation-formatted.patch": "8b76a54cc6922a40a5873bf8cc91bc23f5bf362f33f21c8f5cd95681f8e8260e"
+  },
+  "noBusinessBackend": true,
+  "runtime": "real UtenWidgetsFlutterBinding, UtenApp/MainShell, synthetic repositories, dark theme",
+  "geometry": "1280x900; drawer520; account5/liability3; long labels intended two lines",
+  "viewFocusAndDomOnlyMetadata": true,
+  "browserControlledBy": "Root only"
+}

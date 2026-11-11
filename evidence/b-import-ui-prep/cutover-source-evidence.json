@@ -1,0 +1,109 @@
+{
+  "status": "prep source review; no Root approval executed",
+  "decision": "use complete October source month before November native GL; November source coverage would explicitly reject November native generation",
+  "sources": [
+    {
+      "source": "D:\\Projects\\uten_imp_worktrees\\feedback-b-import-ui-prep-20261111\\server\\src\\main\\java\\com\\uten\\imp\\features\\finance\\gl\\GlPostingService.java",
+      "gitBlob": "cb19c3efdfc77d5727e930e9f9deb1c0d5d17d6a",
+      "lineStart": 89,
+      "lineEnd": 96,
+      "lines": [
+        "",
+        "    private int generatePeriod(String period) {",
+        "        ActualInventoryCostGlProjection.lock(em);",
+        "        PaymentStyleHierarchyLock.lock(em);",
+        "        lockAutoProjectionPeriod(period);",
+        "        if(nativePostingAccounts!=null)nativePostingAccounts.requireNoImportedPeriod(YearMonth.parse(period).atDay(1));",
+        "        assertNoConfirmedExpenseVouchers(period);",
+        "        assertRequiredSystemPostingRoles(period);"
+      ]
+    },
+    {
+      "source": "D:\\Projects\\uten_imp_worktrees\\feedback-b-import-ui-prep-20261111\\server\\src\\main\\java\\com\\uten\\imp\\features\\finance\\gl\\NativeFinancialPostingAccountService.java",
+      "gitBlob": "c5b0667a69176d6993cc267e91485b26ae4dcf3d",
+      "lineStart": 405,
+      "lineEnd": 416,
+      "lines": [
+        "",
+        "    /** Import approval owns an original complete month. Native generation must never silently book it a second time. */",
+        "    @Override @Transactional(propagation=Propagation.MANDATORY,readOnly=true)",
+        "    public void requireNoImportedPeriod(LocalDate day){",
+        "        if(Boolean.TRUE.equals(db.queryForObject(\"\"\"",
+        "            SELECT EXISTS(SELECT 1 FROM finance_accounting_period_coverage c JOIN finance_accounting_import_batches b ON b.id=c.import_batch_id",
+        "              WHERE b.status='POSTED' AND b.reversed_at IS NULL AND c.source_kind='ORIGINAL_BALANCE_AND_COMPLETE_JOURNALS'",
+        "                AND c.period=to_char(?::date,'YYYY-MM'))",
+        "            \"\"\",Boolean.class,day)))throw conflict(\"该月份已按原账套完整凭证接续，不能重新生成或重复立原生往来；请使用未接续的新业务期间或走受审更正\");",
+        "    }",
+        "",
+        "    @Override @Transactional(propagation=Propagation.MANDATORY,readOnly=true)"
+      ]
+    },
+    {
+      "source": "D:\\Projects\\uten_imp_worktrees\\feedback-b-import-ui-prep-20261111\\server\\src\\main\\java\\com\\uten\\imp\\features\\finance\\gl\\FinanceAccountingImportService.java",
+      "gitBlob": "e64ca85651c8f4c6bc63fcdcd0af204883d0949e",
+      "lineStart": 103,
+      "lineEnd": 136,
+      "lines": [
+        "        if(vouchers.result()!=null){operationResult(id,\"APPROVE\",request,vouchers.result());return decode(vouchers.result(),Result.class);}",
+        "        requireReview(vouchers,request);if(vouchers.submittedBy().equals(current.requireId()))throw conflict(\"提交人与复核人必须是不同账号\");",
+        "        var balances=stored(vouchers.paired(),true);var reviewed=decode(vouchers.review(),Reviewed.class);",
+        "        if(!balances.status().equals(\"SUBMITTED\")||!Objects.equals(balances.paired(),id))throw conflict(\"成对余额批次状态已变化\");",
+        "        var plan=prepare(vouchers,balances,reviewed.request(),vouchers.submittedBy());",
+        "        if(!json.valueToTree(plan).equals(json.valueToTree(reviewed.plan())))throw conflict(\"提交后科目、辅助身份或源资料已变化，请退回重新核对\");",
+        "        String period=YearMonth.of(plan.year(),plan.month()).toString();periodLock(period);periodLock(YearMonth.from(plan.effectiveFrom().minusDays(1)).toString());",
+        "        db.execute(\"LOCK TABLE gl_entries IN SHARE ROW EXCLUSIVE MODE\");",
+        "        // Existing native, legacy or other-import entries are not proof of non-duplication.",
+        "        if(reviewed.request().appendPeriod())validateAppend(plan,vouchers,balances,reviewed.request());",
+        "        else if(db.queryForObject(\"SELECT count(*) FROM gl_entries WHERE NOT is_deleted\",Long.class)!=0",
+        "                ||db.queryForObject(\"SELECT count(*) FROM finance_gl_opening_baselines b JOIN finance_accounting_import_batches batch ON batch.id=b.import_batch_id WHERE batch.status='POSTED' AND batch.reversed_at IS NULL\",Long.class)!=0)",
+        "            throw conflict(\"该账套已存在总账或有效期初基准，不能再次首次接续；后续月份请选择继续导入并核对期初\");",
+        "        var ids=new ArrayList<UUID>();int entries=0;",
+        "        for(var journal:plan.journals()) {",
+        "            if(journal.lines().isEmpty()||reviewed.request().appendPeriod()&&journal.purpose().equals(\"OPENING\"))continue;",
+        "            UUID voucherId=UUID.randomUUID();ids.add(voucherId);String sourceNo=\"SRC-\"+id+\"-\"+journal.number();",
+        "            db.update(\"INSERT INTO gl_vouchers(id,voucher_no,period,voucher_date,source,source_type,source_doc_id,remark,status,created_by,updated_by) VALUES(?,?,?,?, 'IMPORT','FINANCIAL_SOURCE',?,?,1,?,?)\",voucherId,sourceNo,YearMonth.from(journal.date()).toString(),journal.date(),id,request.reason().strip(),current.requireId(),current.requireId());",
+        "            int lineNo=0;",
+        "            for(var line:journal.lines()){UUID entryId=UUID.randomUUID();",
+        "                db.update(\"INSERT INTO gl_entries(id,voucher_id,line_no,style_id,direction,amount,entry_date,period,source_doc_type,source_doc_id,source_bill_no,summary,created_by,updated_by) VALUES(?,?,?,?,?,?,?,?, 'FINANCIAL_SOURCE',?,?,?,?,?)\",",
+        "                        entryId,voucherId,++lineNo,line.styleId(),line.direction(),line.amount(),journal.date(),YearMonth.from(journal.date()).toString(),id,journal.number(),line.summary(),current.requireId(),current.requireId());",
+        "                allocation(entryId,line);entries++;",
+        "                if(journal.purpose().equals(\"OPENING\")&&line.auxiliary()!=null)openingEvidence(balances,line,entryId,plan.effectiveFrom(),vouchers.submittedBy());",
+        "            }",
+        "            db.update(\"INSERT INTO finance_gl_voucher_evidence(voucher_id,import_batch_id,purpose,source_system,source_ledger,source_year,source_period,source_voucher_type,source_voucher_no,source_voucher_id,source_sha256,source_snapshot,submitted_by,approved_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?::jsonb,?,?)\",",
+        "                    voucherId,id,journal.purpose(),vouchers.system(),plan.ledger(),plan.year(),plan.month(),journal.type(),journal.number(),journal.sourceId(),journal.purpose().equals(\"OPENING\")?balances.hash():vouchers.hash(),encode(journal),vouchers.submittedBy(),current.requireId());",
+        "        }",
+        "        for(var zero:plan.zeroOpenings())openingEvidence(balances,new Line(zero.accountCode(),null,zero.currencyId(),1,BigDecimal.ZERO,zero.originalNet(),zero.exchangeRate(),zero.auxiliary(),zero.accountName(),zero.accountName(),zero.sourceRow(),\"ZERO:\"+zero.sourceRow(),\"原辅助期初为零\",Map.of(\"sha256\",zero.sha256(),\"auxiliarySourceId\",zero.sourceImportId().toString(),\"sourceReference\",Objects.toString(zero.sourceReference(),\"\")),zero.originalCurrencyId()),null,plan.effectiveFrom(),vouchers.submittedBy());",
+        "        var result=new Result(id,balances.id(),\"POSTED\",List.copyOf(ids),entries);String encoded=encode(result);",
+        "        for(var item:List.of(vouchers,balances))db.update(\"UPDATE finance_accounting_import_batches SET status='POSTED',result=?::jsonb,approved_by=?,approved_at=now(),row_version=row_version+1 WHERE id=?\",encoded,current.requireId(),item.id());",
+        "        if(!reviewed.request().appendPeriod())db.update(\"INSERT INTO finance_gl_opening_baselines(effective_from,import_batch_id,source_sha256,verified_by) VALUES(?,?,?,?)\",plan.effectiveFrom(),id,balances.hash(),current.requireId());",
+        "        db.update(\"INSERT INTO finance_gl_period_versions(period) VALUES(?) ON CONFLICT DO NOTHING\",period);",
+        "        db.update(\"INSERT INTO finance_accounting_period_coverage(period,entries_revision,source_kind,import_batch_id,source_sha256,verified_by) SELECT period,revision,'ORIGINAL_BALANCE_AND_COMPLETE_JOURNALS',?,?,? FROM finance_gl_period_versions WHERE period=? ON CONFLICT(period) DO UPDATE SET entries_revision=EXCLUDED.entries_revision,source_kind=EXCLUDED.source_kind,import_batch_id=EXCLUDED.import_batch_id,source_sha256=EXCLUDED.source_sha256,verified_by=EXCLUDED.verified_by,verified_at=now()\",id,vouchers.hash(),current.requireId(),period);"
+      ]
+    },
+    {
+      "source": "D:\\Projects\\uten_imp_worktrees\\feedback-b-import-ui-prep-20261111\\server\\src\\main\\java\\com\\uten\\imp\\features\\finance\\gl\\FinanceAccountingImportService.java",
+      "gitBlob": "e64ca85651c8f4c6bc63fcdcd0af204883d0949e",
+      "lineStart": 180,
+      "lineEnd": 184,
+      "lines": [
+        "        Map<String,Ref> refs=new HashMap<>();Map<String,Line> detailScope=new LinkedHashMap<>();Map<String,List<Line>> openingByCode=new HashMap<>();var zeros=new ArrayList<ZeroOpening>();",
+        "        var auxiliarySourceIds=request.auxiliarySourceIds()==null?List.<UUID>of():request.auxiliarySourceIds();",
+        "        if(auxiliarySourceIds.size()>20||new HashSet<>(auxiliarySourceIds).size()!=auxiliarySourceIds.size())throw invalid(\"辅助期初来源最多20份，不能重复选择\");",
+        "        LocalDate from=LocalDate.of(first.year(),first.month(),1);var month=YearMonth.from(from);",
+        "        for(UUID sourceId:auxiliarySourceIds) {"
+      ]
+    },
+    {
+      "source": "D:\\Projects\\uten_imp_worktrees\\feedback-b-import-ui-prep-20261111\\server\\src\\main\\java\\com\\uten\\imp\\features\\finance\\gl\\FinanceAccountingImportService.java",
+      "gitBlob": "e64ca85651c8f4c6bc63fcdcd0af204883d0949e",
+      "lineStart": 297,
+      "lineEnd": 300,
+      "lines": [
+        "        auxiliary.validateForPosting(zeros.stream().map(zero->new Selection(zero.accountCode(),zero.auxiliary().auxiliaryId(),zero.currencyId())).toList());",
+        "        for(var journal:journals)if(journal.lines().stream().map(line->line.amount().multiply(BigDecimal.valueOf(line.direction()))).reduce(BigDecimal.ZERO,BigDecimal::add).signum()!=0)throw invalid(\"接续凭证借贷不平，未补差\");",
+        "        return new Plan(from,first.ledger(),first.company(),first.year(),first.month(),List.copyOf(journals),List.copyOf(zeros),List.copyOf(request.accounts()),List.copyOf(auxiliarySourceIds));",
+        "    }"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "baseline": "42b7bf76ffb18bd89dae332f9be08b30fc1a696a",
+  "controller_dependency": "c60a2b5fc5be34ba18c05639a9e41b7b42789c0c",
+  "product": "49fe8d2a2ec69860e7eb63fd282d461cd976fe26",
+  "files": [
+    {
+      "path": "lib/features/basic_data/widgets/master_data_table_view.dart",
+      "before": {
+        "blob": "126e68e7e1afbd643393fafea620f65d8be670a1",
+        "sha256": "65068d91c092c75bb1045ed59bf9974f5fa37480418a0b026aa8ef406d867075"
+      },
+      "after": {
+        "blob": "1e175e32cf4a8fc75d545a0697d5e29f3f323132",
+        "sha256": "535a98d45eac6257ec4c0426e41be44693fd0ee2d9d9a7206ea8635cd91b7799"
+      }
+    },
+    {
+      "path": "test/master_data_table_view_platform_refresh_test.dart",
+      "before": null,
+      "after": {
+        "blob": "9ee2e44294e8c60c7128c67ea37f6d5ccb31aca5",
+        "sha256": "f45bbf45624efaa7c7f0c3e03e62971b9f6523f4d43cffe4d3465961a2198a97"
+      }
+    }
+  ]
+}

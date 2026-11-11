@@ -1,0 +1,77 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/feedback-posting-dropdown-20261111/test/features/finance/posting_style_role_full_app_probe_test.dart
+00:00 +0: real App posting drawer mouse options=3 semantics
+POSTING-MOUNT reads=2 panels=1 dropdowns=1 scheduled=true progress=1
+POSTING-MOUNT labels=[系统科目用途, 系统科目用途, 保存用途]
+POSTING-PROGRESS-OWNER [SizedBox, ExcludeSemantics, Center, Positioned, Stack, Semantics, UtenAppBarActionProgress, DefaultTextStyle, Builder, Padding, ConstrainedBox, Listener, RawGestureDetector, GestureDetector, Semantics, DefaultSelectionStyle, Builder, MouseRegion, Semantics, _FocusInheritedScope, Focus, _ActionsScope, Actions, _ParentInkResponseProvider]
+POSTING-POINTER input=mouse options=3 reads=2 writes=0 value=account1
+00:02 +1: real App posting drawer keyboard options=3 semantics
+POSTING-MOUNT reads=2 panels=1 dropdowns=1 scheduled=true progress=1
+POSTING-MOUNT labels=[系统科目用途, 系统科目用途, 保存用途]
+POSTING-PROGRESS-OWNER [SizedBox, ExcludeSemantics, Center, Positioned, Stack, Semantics, UtenAppBarActionProgress, DefaultTextStyle, Builder, Padding, ConstrainedBox, Listener, RawGestureDetector, GestureDetector, Semantics, DefaultSelectionStyle, Builder, MouseRegion, Semantics, _FocusInheritedScope, Focus, _ActionsScope, Actions, _ParentInkResponseProvider]
+POSTING-POINTER input=keyboard options=3 reads=2 writes=0 value=null
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: 'account1'
+  Actual: <null>
+   Which: not an <Instance of 'String'>
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-posting-dropdown-20261111/test/features/finance/posting_style_role_full_app_probe_test.dart:331:13)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/feedback-posting-dropdown-20261111/test/features/finance/posting_style_role_full_app_probe_test.dart line 331
+The test description was:
+  real App posting drawer keyboard options=3 semantics
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:03 +1 -1: real App posting drawer keyboard options=3 semantics [E]
+  Test failed. See exception logs above.
+  The test description was: real App posting drawer keyboard options=3 semantics
+  
+00:03 +1 -1: real App posting drawer mouse options=5 semantics
+POSTING-MOUNT reads=2 panels=1 dropdowns=1 scheduled=true progress=1
+POSTING-MOUNT labels=[系统科目用途, 系统科目用途, 保存用途]
+POSTING-PROGRESS-OWNER [SizedBox, ExcludeSemantics, Center, Positioned, Stack, Semantics, UtenAppBarActionProgress, DefaultTextStyle, Builder, Padding, ConstrainedBox, Listener, RawGestureDetector, GestureDetector, Semantics, DefaultSelectionStyle, Builder, MouseRegion, Semantics, _FocusInheritedScope, Focus, _ActionsScope, Actions, _ParentInkResponseProvider]
+POSTING-POINTER input=mouse options=5 reads=2 writes=0 value=account1
+00:03 +2 -1: real App posting drawer keyboard options=5 semantics
+POSTING-MOUNT reads=2 panels=1 dropdowns=1 scheduled=true progress=1
+POSTING-MOUNT labels=[系统科目用途, 系统科目用途, 保存用途]
+POSTING-PROGRESS-OWNER [SizedBox, ExcludeSemantics, Center, Positioned, Stack, Semantics, UtenAppBarActionProgress, DefaultTextStyle, Builder, Padding, ConstrainedBox, Listener, RawGestureDetector, GestureDetector, Semantics, DefaultSelectionStyle, Builder, MouseRegion, Semantics, _FocusInheritedScope, Focus, _ActionsScope, Actions, _ParentInkResponseProvider]
+POSTING-POINTER input=keyboard options=5 reads=2 writes=0 value=null
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: 'account1'
+  Actual: <null>
+   Which: not an <Instance of 'String'>
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-posting-dropdown-20261111/test/features/finance/posting_style_role_full_app_probe_test.dart:331:13)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/feedback-posting-dropdown-20261111/test/features/finance/posting_style_role_full_app_probe_test.dart line 331
+The test description was:
+  real App posting drawer keyboard options=5 semantics
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:04 +2 -2: real App posting drawer keyboard options=5 semantics [E]
+  Test failed. See exception logs above.
+  The test description was: real App posting drawer keyboard options=5 semantics
+  
+00:04 +2 -2: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/feedback-posting-dropdown-20261111/test/features/finance/posting_style_role_full_app_probe_test.dart: real App posting drawer keyboard options=3 semantics
+  D:/Projects/uten_imp_worktrees/feedback-posting-dropdown-20261111/test/features/finance/posting_style_role_full_app_probe_test.dart: real App posting drawer keyboard options=5 semantics

@@ -1,0 +1,35 @@
+{
+  "firstReadOnlyAttempt": "Git quoted a Unicode path; prefix guard rejected before any cherry-pick. Corrected to NUL-delimited Git paths.",
+  "reviewed": [
+    {
+      "commit": "19f816f87",
+      "files": 33,
+      "productSourceChanges": []
+    },
+    {
+      "commit": "dd20169a6",
+      "files": 8,
+      "productSourceChanges": []
+    },
+    {
+      "commit": "66a8174ed1667613d4b8ea53d4dd60bc76d92e1b",
+      "files": 14,
+      "productSourceChanges": []
+    },
+    {
+      "commit": "689cb6cba6adedd4bed5db36ad740adb15cff4b9",
+      "files": 44,
+      "productSourceChanges": []
+    },
+    {
+      "commit": "25cb7b540cfc08345997f2503486914b29622253",
+      "files": 54,
+      "productSourceChanges": []
+    },
+    {
+      "commit": "2eeb54b2ce89cd48a8f5ebc33582ec39137b7288",
+      "files": 23,
+      "productSourceChanges": []
+    }
+  ]
+}

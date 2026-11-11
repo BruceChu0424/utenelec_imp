@@ -20,6 +20,13 @@ final class FinanceOperatingNoteParser {
         }
         if(header<0)throw invalid("未找到原表头：项目分类、分项、具体项目");
         for(int col:List.of(28,29))if(!text(sheet,header,col).equals(headers.get(col).label()))throw invalid("原表第"+(col+1)+"列应为"+headers.get(col).label());
+        // Only these original read-only month/ratio columns may be ignored.
+        // A replacement or duplicate inside the fixed width is not a month amount.
+        for(int col=0;col<headers.size();col++) {
+            String actual=text(sheet,header,col);
+            boolean valid=col==27 ? actual.matches("1-(?:[1-9]|1[0-2])月平均值占销售比") : actual.equals(headers.get(col).label());
+            if(!valid)throw invalid("原表第"+(col+1)+"列「"+actual+"」不是原字段「"+headers.get(col).label()+"」，请保留原月份及只读金额表头，不能忽略或按同名字段导入");
+        }
         Map<String,List<FinanceExpenseTemplateCatalog.OperatingRow>> identities=new HashMap<>();
         for(var row:FinanceExpenseTemplateCatalog.operatingRows())identities.computeIfAbsent(identity(row.category(),row.sub(),row.item()),k->new ArrayList<>()).add(row);
         List<NoteImportRow> rows=new ArrayList<>();List<ImportIssue> issues=new ArrayList<>();Set<String> keys=new HashSet<>();

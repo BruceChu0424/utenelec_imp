@@ -1,0 +1,12 @@
+{
+  "productBase": "178e5a295091b4e817676e6fe0e224b2765fd5ae",
+  "diagnosticOnly": true,
+  "productFilesModifiedOnlyForTrace": [
+    "lib/components/inputs/uten_dropdown_field.dart",
+    "lib/components/feedback/uten_overlay_lifecycle.dart"
+  ],
+  "fixtureSha256": "d99b142f7f0a454e884a4ccce3915f4f26ea9874314c592145e6f9ce0884abc5",
+  "instrumentationSha256": "f368230f2fc2b63d8ec59e5c3857e175b1a29c6d600bb42e6cb5a27b97cc65de",
+  "browserControlledBy": "Root only",
+  "rootDataOrCredentialsUsed": false
+}

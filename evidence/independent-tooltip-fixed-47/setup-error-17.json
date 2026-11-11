@@ -1,0 +1,6 @@
+{
+  "setup": "merge refused to overwrite original untracked probe; original preserved",
+  "actualHead": "25793fb005066fc51fedda31072d827262363e9b",
+  "requestedProductSource": "47c96198ae10ab21a4f2d6d63b206e721214458c",
+  "validation": "not reached; this run is not candidate fix evidence"
+}

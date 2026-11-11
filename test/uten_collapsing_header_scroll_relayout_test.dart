@@ -186,7 +186,7 @@ void main() {
         lessThanOrEqualTo(4),
         reason: '收头部第 ${i + 1} 格不该整树重建表体(只允许新露出的行)',
       );
-      expect(_bodyLayouts, 1, reason: 'body 只按新高度布局一次');
+      expect(_bodyLayouts, 0, reason: '稳定视口移动头部时不再改变body高度或重排body');
     }
     expect(outer.offset, _headerHeight);
     // 放头部：表内回顶后再 3 格(先吃空行程再放、100、100)。修前每格 25-31 个重建。

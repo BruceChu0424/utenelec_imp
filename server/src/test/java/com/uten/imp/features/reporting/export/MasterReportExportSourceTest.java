@@ -64,7 +64,7 @@ class MasterReportExportSourceTest {
         doAnswer(capture).when(currencies).export(any(),any(),any());
         doAnswer(capture).when(colors).export(any());
         doAnswer(capture).when(units).export(any());
-        doAnswer(capture).when(moulds).export(any());
+        doAnswer(capture).when(moulds).export(any(),any(),any());
         doAnswer(capture).when(warehouses).export(any());
         doAnswer(capture).when(references).exportSettlementAdmin(any());
     }
@@ -148,8 +148,14 @@ class MasterReportExportSourceTest {
         doAnswer(call->{
             assertThat(com.uten.imp.common.export.MasterExportSelection.current()).containsExactly(id);
             throw new IllegalStateException("fixture cancellation");
-        }).when(moulds).export(any());
+        }).when(moulds).export(any(),any(),any());
         assertThatThrownBy(()->source.read(selected)).hasMessage("fixture cancellation");
         assertThat(com.uten.imp.common.export.MasterExportSelection.current()).isNull();
+    }
+    @Test void mouldTaskPassesItsOriginalSortAndOrderToTheAuthoritativeSource(){
+        exporter("mould");
+        var request=new ReportExportRequest(UUID.randomUUID(),"master","mould",Map.of("filter","{}"),"tqty","asc",null);
+        assertThat(source.read(request)).isSameAs(payload);
+        verify(moulds).export(any(),eq("tqty"),eq("asc"));
     }
 }

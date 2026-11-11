@@ -6,22 +6,70 @@ import 'uten_page_layout.dart';
 /// A collapsed toolbar control owns its own hit target. Remove the old field's
 /// outer layout wrappers so its former width/insets do not survive as whitespace.
 /// Input state and business callbacks remain on the original control widget.
-Widget utenCompactToolbarChild(BuildContext context, Widget source) {
-  if (!UtenCompactPresentation.iconSearchOf(context)) return source;
+Widget utenCompactToolbarChild(
+  BuildContext context,
+  Widget source, {
+  bool preserveWrapperState = false,
+}) {
+  final compact = UtenCompactPresentation.iconSearchOf(context);
+  if (!compact && !preserveWrapperState) return source;
+  Widget inner(Widget child) => utenCompactToolbarChild(
+    context,
+    child,
+    preserveWrapperState: preserveWrapperState,
+  );
   if (source is Padding && source.child != null) {
-    return utenCompactToolbarChild(context, source.child!);
+    return preserveWrapperState
+        ? Padding(
+            key: source.key,
+            padding: compact ? EdgeInsets.zero : source.padding,
+            child: inner(source.child!),
+          )
+        : inner(source.child!);
   }
   if (source is Align && source.child != null) {
-    return utenCompactToolbarChild(context, source.child!);
+    return preserveWrapperState
+        ? Align(
+            key: source.key,
+            alignment: source.alignment,
+            widthFactor: compact ? 1 : source.widthFactor,
+            heightFactor: compact ? 1 : source.heightFactor,
+            child: inner(source.child!),
+          )
+        : inner(source.child!);
   }
   if (source is SizedBox && source.child != null) {
-    return utenCompactToolbarChild(context, source.child!);
+    return preserveWrapperState
+        ? SizedBox(
+            key: source.key,
+            width: compact ? null : source.width,
+            height: compact ? null : source.height,
+            child: inner(source.child!),
+          )
+        : inner(source.child!);
   }
   if (source is Column && source.children.length == 1) {
-    return utenCompactToolbarChild(context, source.children.single);
+    return preserveWrapperState
+        ? Column(
+            key: source.key,
+            mainAxisAlignment: source.mainAxisAlignment,
+            mainAxisSize: compact ? MainAxisSize.min : source.mainAxisSize,
+            crossAxisAlignment: source.crossAxisAlignment,
+            textDirection: source.textDirection,
+            verticalDirection: source.verticalDirection,
+            textBaseline: source.textBaseline,
+            spacing: source.spacing,
+            children: [inner(source.children.single)],
+          )
+        : inner(source.children.single);
   }
   if (source is UtenPageEdgePadding && source.child != null) {
-    return utenCompactToolbarChild(context, source.child!);
+    return preserveWrapperState
+        ? source.copyWith(
+            padding: compact ? EdgeInsets.zero : source.padding,
+            child: inner(source.child!),
+          )
+        : inner(source.child!);
   }
   return source;
 }

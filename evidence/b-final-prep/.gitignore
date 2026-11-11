@@ -1,0 +1,9 @@
+/private/
+/build-*/
+/tmp/
+**/tmp/
+*.class
+*.jar
+__pycache__/
+!*.log
+!**/*.log

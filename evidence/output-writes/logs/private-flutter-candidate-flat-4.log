@@ -1,0 +1,17 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart
+00:00 +0: colors cold incomplete failure cannot qualify output
+00:01 +1: colors same-query failed refresh keeps its accepted complete rows
+00:02 +2: units cold incomplete failure cannot qualify output
+00:02 +3: units same-query failed refresh keeps its accepted complete rows
+00:02 +4: currencies cold incomplete failure cannot qualify output
+00:03 +5: currencies same-query failed refresh keeps its accepted complete rows
+00:03 +6: accounts cold incomplete failure cannot qualify output
+00:03 +7: accounts same-query failed refresh keeps its accepted complete rows
+00:04 +8: settlement_methods cold incomplete failure cannot qualify output
+00:04 +9: settlement_methods same-query failed refresh keeps its accepted complete rows
+00:05 +10: warehouses cold incomplete failure cannot qualify output
+00:05 +11: warehouses same-query failed refresh keeps its accepted complete rows
+00:06 +12: confirmed status write retires output if its complete reread fails
+00:07 +13: accepted complete result stays usable after a same-query failed refresh
+00:08 +14: All tests passed!

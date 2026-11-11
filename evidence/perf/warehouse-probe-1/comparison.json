@@ -1,0 +1,28 @@
+{
+  "canonicalOrder": "warehouse_code,warehouse_id,goods_id,color_id NULLS FIRST,unit_id; original SQL leaves dimension ties unordered",
+  "fieldsPerRow": 14,
+  "rows": 2112,
+  "exactOrderedRawJsonEqual": true,
+  "rawSha256": "426f7b5960ab22031dfc716a746e7a6cacf55afdf4d8555f114bed30d282d6ab",
+  "bytes": 1053890,
+  "plans": {
+    "baseline": {
+      "planningMs": 47.142,
+      "executionMs": 117.194,
+      "rows": 2112
+    },
+    "proposed": {
+      "planningMs": 80.395,
+      "executionMs": 103.27,
+      "rows": 2112
+    }
+  },
+  "numericSums": {
+    "on_hand_qty": "0",
+    "reserved_qty": "0",
+    "available_qty": "0",
+    "own_qty": "0",
+    "min_qty": "0",
+    "open_qty": "0"
+  }
+}

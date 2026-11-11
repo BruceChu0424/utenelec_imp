@@ -1,0 +1,22 @@
+{
+  "kind": "final-unified",
+  "sourceStart": "7b912287e53315228b469790ff066a9fab643e3c",
+  "sourceEnd": "7b912287e53315228b469790ff066a9fab643e3c",
+  "main": "fdeda88b3d73b24b8691ad132caa765196b19a3d",
+  "capturedAtUtc": "2026-11-11T05:08:58.730155+00:00",
+  "sourceGitObjects": {
+    "server/src/main/java": "ba72a84bec39e128dc860adfece1a333bb448d5c",
+    "server/src/main/resources": "a5736a1ee58b2dffad7559a189913a385eb7b189",
+    "server/pom.xml": "53c807826360e70a0928e3bfae56ef27d8f2dff8"
+  },
+  "backendPort": 28630,
+  "database": "127.0.0.1:26630/feedback",
+  "pidObservedInOwnStartupLog": 49984,
+  "compiledDirectory": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-20261110\\evidence\\root\\runtime-maven-final-7b912-1\\classes",
+  "compiledClassAndSqlFiles": 7825,
+  "compiledFingerprint": "34654f2db70994ec443d4222137d0fca017473c31613033f39a4195e07939e6c",
+  "fingerprintBytes": "sorted relative path UTF-8 + NUL + raw SHA-256 per actual class/SQL file",
+  "normalFreshMavenOutput": true,
+  "inPlaceCompilationAfterStartup": false,
+  "buildFingerprintStartupMs": 13495
+}

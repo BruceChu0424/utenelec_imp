@@ -1,0 +1,79 @@
+[
+  {
+    "original": "D:\\Projects\\uten_imp_worktrees\\feedback-audit-20261110\\audit\\import-export\\bom-extra-second-true.xlsx",
+    "regressionFixture": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\server\\src\\test\\resources\\import-column-remediation\\bom-extra-second-true.xlsx",
+    "sha256": "3bac417a02288490e380dcc9357dd32ca66b2e9f42a7fec124d3b5edbd87c4e7",
+    "fingerprintBytes": "raw binary bytes",
+    "length": 3902
+  },
+  {
+    "original": "D:\\Projects\\uten_imp_worktrees\\feedback-audit-20261110\\audit\\import-export\\chart-false.xlsx",
+    "regressionFixture": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\server\\src\\test\\resources\\import-column-remediation\\chart-false.xlsx",
+    "sha256": "ca696d0e59c9655d5f8fbe29be2a19347a5ce342c17013a67e3c527225d1e2b5",
+    "fingerprintBytes": "raw binary bytes",
+    "length": 3467
+  },
+  {
+    "original": "D:\\Projects\\uten_imp_worktrees\\feedback-audit-20261110\\audit\\import-export\\chart-true.xlsx",
+    "regressionFixture": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\server\\src\\test\\resources\\import-column-remediation\\chart-true.xlsx",
+    "sha256": "c6f2be97521a331cc8551b090ab7793054576b4b6c4deab3e706754e4a4c4491",
+    "fingerprintBytes": "raw binary bytes",
+    "length": 3467
+  },
+  {
+    "original": "D:\\Projects\\uten_imp_worktrees\\feedback-audit-20261110\\audit\\import-export\\cost-title-false.xlsx",
+    "regressionFixture": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\server\\src\\test\\resources\\import-column-remediation\\cost-title-false.xlsx",
+    "sha256": "9f09fb08a10bd77bca68fbb48c4ec0871e15647da767aad5ab15265bb73d5d39",
+    "fingerprintBytes": "raw binary bytes",
+    "length": 3452
+  },
+  {
+    "original": "D:\\Projects\\uten_imp_worktrees\\feedback-audit-20261110\\audit\\import-export\\cost-title-true.xlsx",
+    "regressionFixture": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\server\\src\\test\\resources\\import-column-remediation\\cost-title-true.xlsx",
+    "sha256": "dbd1f7db4612a12301eec7b435a6e81e073ba1a3b9f66733e18cbc5f790a15d1",
+    "fingerprintBytes": "raw binary bytes",
+    "length": 3457
+  },
+  {
+    "original": "D:\\Projects\\uten_imp_worktrees\\feedback-audit-20261110\\audit\\import-export\\goods-extra-second-true.xlsx",
+    "regressionFixture": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\server\\src\\test\\resources\\import-column-remediation\\goods-extra-second-true.xlsx",
+    "sha256": "9ca9c7bf9a55a3f337439db67c0d0a859ebb33c28254d162145c7677d492a173",
+    "fingerprintBytes": "raw binary bytes",
+    "length": 3928
+  },
+  {
+    "original": "D:\\Projects\\uten_imp_worktrees\\feedback-audit-20261110\\audit\\import-export\\note-duplicate.xlsx",
+    "regressionFixture": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\server\\src\\test\\resources\\import-column-remediation\\note-duplicate.xlsx",
+    "sha256": "b6136e20839848a2f0d0c64f496c1cd0468ff9a817b6a0ffa0c79bbb51f67068",
+    "fingerprintBytes": "raw binary bytes",
+    "length": 3715
+  },
+  {
+    "original": "D:\\Projects\\uten_imp_worktrees\\feedback-audit-20261110\\audit\\import-export\\note-unknown.xlsx",
+    "regressionFixture": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\server\\src\\test\\resources\\import-column-remediation\\note-unknown.xlsx",
+    "sha256": "d88e11b4df0f14b855c02fd2ac6db6b38f8289497895eb22c2b167a1280a2ffd",
+    "fingerprintBytes": "raw binary bytes",
+    "length": 3731
+  },
+  {
+    "original": "D:\\Projects\\uten_imp_worktrees\\feedback-audit-20261110\\audit\\import-export\\voucher-empty-formula.xls",
+    "regressionFixture": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\server\\src\\test\\resources\\import-column-remediation\\voucher-empty-formula.xls",
+    "sha256": "e67b2b8e07462eb3d41f9a904450ec98372389224fac26c29e0b59cf5fd1516a",
+    "fingerprintBytes": "raw binary bytes",
+    "length": 6656
+  },
+  {
+    "original": "D:\\Projects\\uten_imp_worktrees\\feedback-audit-20261110\\audit\\import-export\\voucher-style.xls",
+    "regressionFixture": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\server\\src\\test\\resources\\import-column-remediation\\voucher-style.xls",
+    "sha256": "67ae3e81630e95d9281d9c811ea854575ecf4d78359af01929e1dabb9045af2e",
+    "fingerprintBytes": "raw binary bytes",
+    "length": 6656
+  },
+  {
+    "original": "D:\\Projects\\uten_imp_worktrees\\feedback-audit-20261110\\audit\\import-export\\voucher-wrong-signature.xls",
+    "regressionFixture": "D:\\Projects\\uten_imp_worktrees\\feedback-remediate-c-20261110\\server\\src\\test\\resources\\import-column-remediation\\voucher-wrong-signature.xls",
+    "sha256": "5b3ce7f4d9db6b828ec50cbf151733ab85ea3715af8ce46186e6cda7c869c312",
+    "fingerprintBytes": "raw binary bytes",
+    "length": 6656
+  }
+]

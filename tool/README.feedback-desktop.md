@@ -1,0 +1,19 @@
+# 真实 Windows / 本地 HTTP 反馈验收
+
+默认使用 `frontend-design` 并沿用 Uten 组件/主题。本入口只改测试与隔离设施；通过生产 `bootstrapUtenApp`、router、provider、repository 和真实 `SessionNotifier.login` 访问本地 Spring/PostgreSQL。Windows engine、Flutter VM、合成 API 和真实 Web 分栏，不能互相冒充。
+
+先等统一候选后端/普通合成账号就绪。`run_feedback_actual_windows.py build --run-tag <新标识> --runtime-config <私有runtime.json>` 只编译，不启动客户端。`run` 使用同参数并须显式 `--runtime-ready`；它拒绝未提交源代码、已运行过的私有 prefs 根或已存在的同阶段证据。不把密码写进 define/命令/日志，测试运行时仅从指定私有 JSON 读取 `syntheticAccountPassword`。账号通过 `--account`，可选两类退货账号通过 `--returns-account` 配置；应使用独立普通账号避免替换其它正在验收的登录会话。
+
+每轮目录为本工作树 `evidence/<run-tag>/private/windows-runtime`，所有旧轮保留。真实 Windows DPAPI `.dat` 使用 `PathProviderPlatform` 指定根；真实 SharedPreferencesWindows/AsyncWindows 自带独立 `PathProviderWindows`，必须在第一次读取前同样指定该根，并检查真实插件已注册，绝不读已安装 Uten/Local Test 的 prefs、凭据或草稿。两种真实 JSON 后端及 fail-closed 合同见 `test/tool/windows_acceptance_preferences_test.dart`；默认旧 finance 接受入口路径字符串保留，纠正原来的隔离缺口。四个测试平台依赖仅将现有锁定 transitives 声明为 direct dev，版本、哈希与其它 lock 内容保留。
+
+原生诊断在 Dart 启动前开启，所以另使用既有 `StartNativeDiagnostics(test_directory)`。生成工具只接受 LocalTest、现存的绝对私有 evidence 根；C++ 使用还同时要求 `_DEBUG` 和 `UTEN_LOCAL_TEST_BUILD`。普通正式构建及任何 Release 配置保持原日志规则，不接受业务输入或普通运行参数改目录。该测试 hook 与源码一并审查/整合，不临时改 runner 冒充同一 SHA。临时文件、生成头、manifest、截图、客户端原生/HTTP `.log` 均有本轮独立路径；不安装或正式打包，不改 SDK。
+
+当前 smoke 覆盖完整1626模具、列头套数升序（首行AU-01626/1.125）、完整纸面预览、预览内及普通导出弹窗取消，并从真实客户端诊断日志核对冷读/排序到达 HTTP、取消后0个导出作业创建。可选普通 maker 对采购/委外退货真实页面各打开/取消货品选择器3次，保留7.125。只点击取消不生成文件，实际下载/入账链由统一 Web 验收承接。
+
+完整模具读取后还执行真实原生客户区1280×900→类别“全部模具”鼠标Tooltip实际可见→保持鼠标位置缩至714×764→无异常才点真实“表格操作”菜单并关闭→回1280×900。驱动以Win32进程完整可执行路径锁定本工作树Debug应用，使用user32.SetWindowPos调整真实窗口；Dart检查原生回执和实际Flutter view几何，不写tester.view尺寸、不改生产最小窗口策略。714是程序化的客户区测试宽度（生产交互最小拖动宽度不因此改变）。每次请求/实际PID、尺寸、DPI和引擎几何均保留本轮证据。
+
+测试启动前安装首次FlutterError捕获，并在生产诊断接链后再接链。首次原始exception/details.stack同步写入`first-flutter-error.json/.txt`，含当前阶段及真实源码SHA，后续错误风暴不能覆盖；全部通知继续到原handler，测试按首次错误失败。`--backend-source-head <40位SHA>`只记录Root声明的后端来源，独立注明本harness没有验证后端编译产物身份，不能把诊断混版本视为最终同版通过。实际run必须等Root明确runtime-ready并锁win账号/Root库写；build阶段不会启动客户端。
+
+几何分栏使用`--window-scenario`：默认`original-714`保留原714强断言；已观察生产交互min800把它钳到800，该失败是测试前置未达到，不能冒充Flutter产品错。`supported-min800`以真实800强核并按实际inline/menu执行操作；`below-min714`是另一个显式授权的隔离压力场景，仅对本轮精确exe/PID/HWND的714请求使用`SWP_NOSENDCHANGING`，不改生产WM_GETMINMAXINFO、窗口style、SDK或OS设置，原生/引擎714仍强核，且明确不表示714正式支持。两场景必须不同新run-tag，原失败不删。菜单用同一个mouse gesture真实指针种类点击，保持首错捕获与原等待门槛。
+
+路径/原runtime合同准备轮10/10、定向 Dart 分析0问题。准备期 Debug编译不等于真实 HTTP验收；最终必须在统一冻结 SHA重新构建/实跑，检查 `run-receipt.json`、`result.json`、截图和原始日志。私有配置和存储文件不得提交。

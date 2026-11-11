@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.uten.imp.common.export.PlatformWorkbookSchemaTest
+-------------------------------------------------------------------------------
+Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 5.338 s -- in com.uten.imp.common.export.PlatformWorkbookSchemaTest

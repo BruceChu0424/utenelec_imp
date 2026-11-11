@@ -105,7 +105,7 @@ class ProductionFlowSteps extends StatelessWidget {
     '计划待审核',
     '等待物料',
     '物料齐套 · 可开工',
-    '生产中 · 可报工',
+    '生产中 · 按工单额度报工',
     '已完工',
   ];
   static const List<String> _buySteps = [

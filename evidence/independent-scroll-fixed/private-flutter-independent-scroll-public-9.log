@@ -1,0 +1,21 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/feedback-scroll-independent-20261111/test/uten_collapsing_header_mode_transition_test.dart
+00:00 +0: D:/Projects/uten_imp_worktrees/feedback-scroll-independent-20261111/test/uten_collapsing_header_mode_transition_test.dart: compact/nested transitions retain table, row, IME and wheel offset (1.0)
+00:01 +1: D:/Projects/uten_imp_worktrees/feedback-scroll-independent-20261111/test/uten_collapsing_header_mode_transition_test.dart: compact/nested transitions retain table, row, IME and wheel offset (1.0)
+00:01 +2: D:/Projects/uten_imp_worktrees/feedback-scroll-independent-20261111/test/uten_collapsing_header_mode_transition_test.dart: compact/nested transitions retain table, row, IME and wheel offset (1.0)
+00:01 +3: D:/Projects/uten_imp_worktrees/feedback-scroll-independent-20261111/test/uten_collapsing_header_mode_transition_test.dart: compact/nested transitions retain table, row, IME and wheel offset (1.0)
+00:01 +4: D:/Projects/uten_imp_worktrees/feedback-scroll-independent-20261111/test/uten_collapsing_header_mode_transition_test.dart: compact/nested transitions retain table, row, IME and wheel offset (1.0)
+00:02 +5: D:/Projects/uten_imp_worktrees/feedback-scroll-independent-20261111/test/uten_collapsing_header_mode_transition_test.dart: compact/nested transitions retain table, row, IME and wheel offset (1.0)
+00:02 +6: D:/Projects/uten_imp_worktrees/feedback-scroll-independent-20261111/test/uten_collapsing_header_semantics_transition_test.dart: plain keyed content retains IME and semantics through squeezed mode changes
+00:02 +7: D:/Projects/uten_imp_worktrees/feedback-scroll-independent-20261111/test/uten_collapsing_header_semantics_transition_test.dart: plain keyed content retains IME and semantics through squeezed mode changes
+00:02 +8: D:/Projects/uten_imp_worktrees/feedback-scroll-independent-20261111/test/uten_collapsing_header_touch_test.dart: touch from table collapses header before rows Size(390.0, 844.0) count 100
+00:02 +9: D:/Projects/uten_imp_worktrees/feedback-scroll-independent-20261111/test/uten_collapsing_header_primary_isolation_test.dart: header primary=null stays independent with ordinary keys across modes
+00:02 +10: D:/Projects/uten_imp_worktrees/feedback-scroll-independent-20261111/test/uten_collapsing_header_mode_transition_test.dart: compact/nested transitions retain table, row, IME and wheel offset (2.0)
+00:02 +11: D:/Projects/uten_imp_worktrees/feedback-scroll-independent-20261111/test/uten_collapsing_header_mode_transition_test.dart: compact/nested transitions retain table, row, IME and wheel offset (2.0)
+00:02 +12: D:/Projects/uten_imp_worktrees/feedback-scroll-independent-20261111/test/uten_collapsing_header_mode_transition_test.dart: compact/nested transitions retain table, row, IME and wheel offset (2.0)
+00:02 +13: D:/Projects/uten_imp_worktrees/feedback-scroll-independent-20261111/test/uten_collapsing_header_touch_test.dart: touch momentum crosses the pin boundary and reverses in order
+00:02 +14: D:/Projects/uten_imp_worktrees/feedback-scroll-independent-20261111/test/uten_collapsing_header_mode_transition_test.dart: primary master fullscreen returns to the coordinator safely
+00:03 +15: D:/Projects/uten_imp_worktrees/feedback-scroll-independent-20261111/test/uten_collapsing_header_mode_transition_test.dart: primary fullscreen retains live cell text, selection and controller (1.0)
+00:03 +16: D:/Projects/uten_imp_worktrees/feedback-scroll-independent-20261111/test/uten_collapsing_header_mode_transition_test.dart: primary fullscreen retains live cell text, selection and controller (2.0)
+00:03 +17: D:/Projects/uten_imp_worktrees/feedback-scroll-independent-20261111/test/uten_collapsing_header_mode_transition_test.dart: explicit primary borrower reattaches a foreign position safely
+00:04 +18: All tests passed!

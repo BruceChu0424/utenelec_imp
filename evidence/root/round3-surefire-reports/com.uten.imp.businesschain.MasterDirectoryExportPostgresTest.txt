@@ -1,0 +1,28 @@
+-------------------------------------------------------------------------------
+Test set: com.uten.imp.businesschain.MasterDirectoryExportPostgresTest
+-------------------------------------------------------------------------------
+Tests run: 2, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 1312 s <<< FAILURE! -- in com.uten.imp.businesschain.MasterDirectoryExportPostgresTest
+com.uten.imp.businesschain.MasterDirectoryExportPostgresTest.fiftyThousandAndOneRealSelectedMouldsExcludeAnotherMatchingRowAndKeepOrder -- Time elapsed: 775.6 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+
+expected: "MX-SELf609bc49-050000"
+ but was: "MX-SELf609bc49-000000"
+	at com.uten.imp.businesschain.MasterDirectoryExportPostgresTest.lambda$fiftyThousandAndOneRealSelectedMouldsExcludeAnotherMatchingRowAndKeepOrder$5(MasterDirectoryExportPostgresTest.java:171)
+	at com.uten.imp.common.export.MasterExportSource.exportEntities(MasterExportSource.java:78)
+	at com.uten.imp.features.master.mould.MouldService.export(MouldService.java:190)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at org.springframework.aop.support.AopUtils.invokeJoinpointUsingReflection(AopUtils.java:359)
+	at org.springframework.aop.framework.ReflectiveMethodInvocation.invokeJoinpoint(ReflectiveMethodInvocation.java:190)
+	at org.springframework.aop.framework.ReflectiveMethodInvocation.proceed(ReflectiveMethodInvocation.java:158)
+	at org.springframework.transaction.interceptor.TransactionInterceptor$1.proceedWithInvocation(TransactionInterceptor.java:133)
+	at org.springframework.transaction.interceptor.TransactionAspectSupport.invokeWithinTransaction(TransactionAspectSupport.java:371)
+	at org.springframework.transaction.interceptor.TransactionInterceptor.invoke(TransactionInterceptor.java:130)
+	at org.springframework.aop.framework.ReflectiveMethodInvocation.proceed(ReflectiveMethodInvocation.java:179)
+	at com.uten.imp.application.concurrency.FulfillmentSourceConflictRetryInterceptor.invoke(FulfillmentSourceConflictRetryInterceptor.java:119)
+	at org.springframework.aop.framework.ReflectiveMethodInvocation.proceed(ReflectiveMethodInvocation.java:179)
+	at org.springframework.aop.framework.CglibAopProxy$DynamicAdvisedInterceptor.intercept(CglibAopProxy.java:719)
+	at com.uten.imp.features.master.mould.MouldService$$SpringCGLIB$$0.export(<generated>)
+	at com.uten.imp.features.master.export.MasterReportExportSource.read(MasterReportExportSource.java:86)
+	at com.uten.imp.businesschain.MasterDirectoryExportPostgresTest.fiftyThousandAndOneRealSelectedMouldsExcludeAnotherMatchingRowAndKeepOrder(MasterDirectoryExportPostgresTest.java:173)
+

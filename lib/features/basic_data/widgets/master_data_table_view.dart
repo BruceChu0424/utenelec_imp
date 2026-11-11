@@ -926,11 +926,11 @@ class MasterDataTableView<T> extends StatefulWidget {
   /// 不渲染翻页条、不用 Expanded 撑满，表体按内容收缩。
   final bool embedded;
 
-  /// 联动折叠模式：true 时表体竖向 ListView 改用 primary（拾取祖先 NestedScrollView
+  /// 联动折叠模式：true 时表体竖向 ListView 改用 primary（拾取共享宿主
   /// 注入的 PrimaryScrollController），参与「顶部折叠 → 表格内滚」联动；shrinkWrap 关、
   /// physics 改 AlwaysScrollable、_BodyFlex 改 tight。仅用于包在
   /// [UtenCollapsingHeaderScrollView]（或等价 NestedScrollView）body 里的列表页表格；
-  /// 不能与 [embedded] 同用（embedded 无 NestedScrollView 祖先）。
+  /// 不能与 [embedded] 同用（embedded 使用本地滚动容器）。
   final bool primary;
 
   /// Bounded data-workbench mode: fill the available body height and keep the
@@ -1513,13 +1513,12 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         }
       }
       // 2026-10-02 用户口径「点分类/筛选后分类栏不得消失」：表体随翻页/换筛选
-      // 回顶时，联动页（UtenCollapsingHeaderScrollView 的 NestedScrollView）的
-      // 外层一起回顶。否则内容替换的滚动校正会被 NestedScrollView 转嫁成外层
-      // 塌陷，宿主分类栏/工具条整条滚出视口，看起来就是「分类栏消失」。
+      // 回顶时通过共享 scope 将联动页外层一起回顶；外部独立 Nested 宿主保留兜底。
+      // 否则内容替换后外层仍可能收起，宿主分类栏/工具条整条滚出视口。
       if (!_usesPrimaryScroll) return;
-      final nested = context
-          .findAncestorWidgetOfExactType<NestedScrollView>()
-          ?.controller;
+      final nested =
+          UtenCollapsingHeaderScrollView.outerControllerOf(context) ??
+          context.findAncestorWidgetOfExactType<NestedScrollView>()?.controller;
       if (nested != null && nested.hasClients && nested.position.pixels > 0) {
         nested.jumpTo(0);
       }
@@ -1699,6 +1698,13 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   List<MasterColumnDef<T>>? _platformBaseCache;
   TableColumnProjectionController? _projection;
   bool _platformRefreshScheduled = false;
+  String? _platformSchemaSignature;
+  String? _platformLayoutSignature;
+  String? _platformMetricSignature;
+  Map<String, String> _platformMetricKeys = const {};
+  Map<String, String> _platformDefinitionKeys = const {};
+  int? _platformMetricOwner;
+  int? _platformValuesRevision;
   bool _projectionScheduled = false;
   Object? _projectionOwner;
   int _platformStructureSeen = 0;
@@ -1773,7 +1779,10 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
           _platformAdditionalSource!.length == groups.length) {
         sameSource = true;
         for (var index = 0; index < groups.length; index++) {
-          if (!identical(_platformAdditionalSource![index].items, groups[index].items)) {
+          if (!identical(
+            _platformAdditionalSource![index].items,
+            groups[index].items,
+          )) {
             sameSource = false;
             break;
           }
@@ -1785,16 +1794,18 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       }
     }
     final rows = _items;
-    final appendStart =
-        _collectedSnapshot && _platformRows != null
-            ? pagedRowsAppendStart(_platformRows, rows)
-            : null;
+    final appendStart = _collectedSnapshot && _platformRows != null
+        ? pagedRowsAppendStart(_platformRows, rows)
+        : null;
     _platform.configure(
       context,
       descriptor: PlatformTableDescriptor<T>(
         kind: 'master',
         tableKey: widget.tableKey,
         columnKeys: widget.columns.map((c) => c.key).toList(),
+        // The original source list distinguishes a fresh opaque snapshot
+        // from a plain parent rebuild. Proven sealed appends stay incremental.
+        revision: widget.items,
         rows: rows,
         additionalRows: _platformAdditionalRows,
         immutableRows: _collectedSnapshot,
@@ -1818,9 +1829,129 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       },
     );
     _platformRows = rows;
-    _platformColumnCache = null;
-    // Callers re-apply the saved layout after their own column mutations;
-    // applying here as well doubled the work on every parent rebuild.
+    _refreshPlatformPresentation();
+  }
+
+  /// Loading notifications and validated row prefixes do not change a table's
+  /// schema or personal layout. Keep these snapshots separate from the fresh
+  /// widget.columns adapter: its current closures must never be cached by key.
+  bool _refreshPlatformPresentation({bool forceLayout = false}) {
+    final definitions = _platform.definitions;
+    final schema = jsonEncode([
+      _platform.authorizationRevision,
+      _platform.capabilities?.priceVisible,
+      _serverPaged,
+      for (final definition in definitions)
+        _platform.projectionDefinition(definition),
+    ]);
+    final schemaChanged = schema != _platformSchemaSignature;
+    if (schemaChanged) {
+      _platformSchemaSignature = schema;
+      _platformColumnCache = null;
+    }
+    final columns = _columns;
+    final metricKeys = {
+      for (final column in columns)
+        column.key: jsonEncode([
+          column.label,
+          column.type,
+          column.width,
+          column.emphasized,
+          column.cellBuilder == null,
+        ]),
+    };
+    final definitionKeys = {
+      for (final definition in definitions)
+        definition.key: jsonEncode(_platform.projectionDefinition(definition)),
+    };
+    final metrics = jsonEncode(metricKeys);
+    final metricsChanged = metrics != _platformMetricSignature;
+    if (schemaChanged || metricsChanged) {
+      _platformMetricSignature = metrics;
+      if (_platformMetricOwner != _platform.authorizationRevision) {
+        _textMeasures.clear();
+      } else {
+        // Newly discovered extension columns must not discard the measured
+        // business prefix. Reset only genuinely changed/removed column facts.
+        _textMeasures.removeWhere(
+          (key, _) =>
+              !metricKeys.containsKey(key) ||
+              metricKeys[key] != _platformMetricKeys[key] ||
+              definitionKeys[key] != _platformDefinitionKeys[key],
+        );
+      }
+      // A true schema/metric change must not publish an old in-flight width
+      // target. Geometry-only refits keep main's per-column scan cursors.
+      _widthGrowthTarget = null;
+      _widthGrowthPoolStale = true;
+      _widthsDirty = true;
+    }
+    _platformMetricKeys = metricKeys;
+    _platformDefinitionKeys = definitionKeys;
+    _platformMetricOwner = _platform.authorizationRevision;
+    final binding = _platform.binding;
+    final populated = <String>[
+      if (binding?.revealPopulatedColumnKeys.isNotEmpty == true)
+        for (final column in columns)
+          if (binding!.revealPopulatedColumnKeys.contains(
+                _platform.canonicalKey(column.key),
+              ) &&
+              _items.any((row) {
+                final value = column.value(row)?.trim();
+                return value != null && value.isNotEmpty && value != '—';
+              }))
+            column.key,
+    ];
+    final layout = jsonEncode([
+      _platform.tableKey,
+      _platform.authorizationRevision,
+      _platform.queryLifecycle,
+      _platform.hasSessionQueryPreferences,
+      _platform.layout.toJson(),
+      binding?.columnAliases,
+      binding?.defaultVisibleColumnKeys,
+      binding?.defaultColumnOrder,
+      _requiredLeadingKeys,
+      _temporaryLeadingKeys,
+      populated,
+      for (final column in columns)
+        [
+          column.key,
+          column.defaultVisible,
+          column.sortable,
+          _ownsHeaderFilter(column),
+          _supportsColumnSearch(column),
+        ],
+    ]);
+    final layoutChanged = forceLayout || layout != _platformLayoutSignature;
+    if (schemaChanged || layoutChanged) {
+      _platformLayoutSignature = layout;
+      _applyPlatformLayout();
+    }
+    final valuesChanged = _platformValuesRevision != _platform.valuesRevision;
+    _platformValuesRevision = _platform.valuesRevision;
+    final extensionValuesChanged = valuesChanged && definitions.isNotEmpty;
+    if (extensionValuesChanged && !schemaChanged && !metricsChanged) {
+      // Real values can change an earlier row as well as the appended tail.
+      // Revisit strings within the existing budget, retaining measured strings,
+      // headers and manual widths. Pure system columns need no values rescan.
+      var rescanned = false;
+      for (final column in definitions) {
+        final measure = _textMeasures[column.key];
+        if (measure != null && measure.scannedRows > 0) {
+          measure.scannedRows = 0;
+          rescanned = true;
+        }
+      }
+      if (rescanned) {
+        _widthGrowthPending = true;
+        _scheduleWidthGrowth();
+      }
+    }
+    return schemaChanged ||
+        metricsChanged ||
+        layoutChanged ||
+        extensionValuesChanged;
   }
 
   void _applyPlatformLayout() {
@@ -1933,32 +2064,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         return;
       }
       setState(() {
-        _displayRowsSource = null;
-        _rowFacetScope = null;
-        if (structure) {
-          _platformColumnCache = null;
-          _applyPlatformLayout();
-          _widthsDirty = true;
-        } else {
-          // Only displayed extension values changed: keep the column set,
-          // projection inputs and every business column's scan cursor; the
-          // growth scan re-walks just the platform columns from the top
-          // (their values for already-scanned rows changed; unloaded rows
-          // read empty and stay cheap).
-          if (_platform.definitions.isNotEmpty) {
-            var rescanned = false;
-            for (final column in _platform.definitions) {
-              final measure = _textMeasures[column.key];
-              if (measure != null && measure.scannedRows > 0) {
-                measure.scannedRows = 0;
-                rescanned = true;
-              }
-            }
-            if (rescanned) {
-              _widthGrowthPending = true;
-              _scheduleWidthGrowth();
-            }
-          }
+        if (_refreshPlatformPresentation()) {
+          _displayRowsSource = null;
+          _rowFacetScope = null;
         }
       });
       if (_fullscreen) _fsTick.value++;
@@ -3056,7 +3164,10 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   /// 分组行计划的输入键：displayItems/分组内容/提示行/展开态任一变化才重建，
   /// 父级纯重建（勾选、loading 等）不再为全部行分配计划条目。宿主每次 build
   /// 新建分组列表是常态，按计划真正读取的字段比较，而不是列表身份。
-  bool _samePlanGroups(List<MasterDataGroup<T>>? a, List<MasterDataGroup<T>> b) {
+  bool _samePlanGroups(
+    List<MasterDataGroup<T>>? a,
+    List<MasterDataGroup<T>> b,
+  ) {
     if (a == null || a.length != b.length) return false;
     for (var index = 0; index < b.length; index++) {
       final before = a[index];
@@ -3917,7 +4028,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       _displayRowsSource = null;
       _rowFacetScope = null;
     }
-    _invalidateColumnIndexes();
+    // Column indexes follow their actual column/layout owner, independently
+    // of a replacement row prefix or a loading-only controller notification.
     // 拖拽能力被宿主摘除（如切到只读态）：就地取消进行中的拖拽。
     if (widget.rowDrag == null && _dragActive) _cancelRowDrag();
     if (!widget.enableTextSelection ||
@@ -3972,7 +4084,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       _colLinks.clear(); // 旧下标的 LayerLink 作废，按新列集合下标重建。
     } else if (oldWidget.items != widget.items ||
         oldWidget.leadingGroups != widget.leadingGroups ||
-        oldWidget.presentationRevision != widget.presentationRevision) {
+        oldWidget.presentationRevision != widget.presentationRevision ||
+        !identical(oldWidget.columns, widget.columns)) {
       // 数据变了(翻页/筛选/排序/加载更多/静默重拉)→ 帧后只补量新出现的值，
       // 超出当前宽度才加宽；已手动调整的列不动。行池保留：扫描片按行实例
       // identical 校验公共前缀后钳制各列游标，逐批追加/同实例静默重拉只续量
@@ -3994,7 +4107,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     }
     if (_sticky != null) _scheduleStickyMeasure();
     // 翻页（currentPage 变化）→ 表体竖向回顶，从第一条开始。
-    // primary 模式下竖向 position 由祖先 NestedScrollView 持有（_bodyV 无 client），
+    // primary 模式下竖向 position 由共享宿主的 inner 持有（_bodyV 无 client），
     // 须走 PrimaryScrollController；且 didUpdateWidget 处于 build 期，inner position
     // 首次翻页可能尚未挂载 → 推迟到帧结束后再 jump。
     final requestedEnd =
@@ -4032,7 +4145,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         if (mounted) _fsTick.value++;
       });
     }
-    _applyPlatformLayout();
+    if (!_sameColumnKeys(oldWidget.columns, widget.columns)) {
+      _refreshPlatformPresentation(forceLayout: true);
+    }
   }
 
   /// 全屏切换：进入时弹全屏路由（正常树让位）；全屏里再点「退出全屏」pop 该路由。
@@ -4317,10 +4432,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         continue;
       }
       final def = _columns[i];
-      next[i] = _fitColumnWidth(
-        i,
-        _measureColumn(context, def, textScaler),
-      );
+      next[i] = _fitColumnWidth(i, _measureColumn(context, def, textScaler));
       // Geometry updates (especially tree expansion) must not collapse an
       // already measured column back to its header before the budgeted scan.
       if (preserveWidths &&
@@ -4464,6 +4576,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   void _scheduleWidthGrowth() {
     if (_widthGrowthScheduled) return;
     _widthGrowthScheduled = true;
+    // A small resumed scan may have no animation or budget-parked frame left.
+    // Drive the queued slice itself; its publication must not await a scroll.
+    WidgetsBinding.instance.scheduleFrame();
     _widthGrowthTimer = Timer(Duration.zero, () {
       _widthGrowthTimer = null;
       _widthGrowthScheduled = false;
@@ -4490,7 +4605,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
           // with the value-set dedup absorbing already-measured strings.
           var verified = 0;
           final shared = math.min(pool.length, fresh.length);
-          while (verified < shared && identical(fresh[verified], pool[verified])) {
+          while (verified < shared &&
+              identical(fresh[verified], pool[verified])) {
             verified++;
           }
           for (final measure in _textMeasures.values) {
@@ -6698,7 +6814,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
               context,
               switching ? 'switchingImpact' : 'loadImpact',
             ),
-            guidance: switching ? null : tableReadStatusText(context, 'guidance'),
+            guidance: switching
+                ? null
+                : tableReadStatusText(context, 'guidance'),
             retry: switching ? null : widget.onRetry,
           ),
         ),
@@ -7033,7 +7151,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                         _scheduleHBarUpdate();
                       }
                       // 只按宽度重建（2026-09-22 根治「表格一步步往置顶移动时一卡一卡」）：
-                      // 联动折叠(NestedScrollView)收/放头部时本区**每格滚轮都在变高**，
+                      // 历史 Nested 宿主收/放头部时本区每格都变高；保留视口仍须沿用此缓存，
                       // LayoutBuilder 每次都再跑一遍 builder——原来整棵表体子树跟着重建，
                       // 一格滚轮 25-31 个可见单元格从头建一遍再布局(探针数据)，而表内滚动
                       // 高度不变、只动偏移，所以「表内滚还好、往上移就卡」。表体子树里不含
@@ -10047,7 +10165,7 @@ class _BodyFlex extends StatelessWidget {
     if (embedded) {
       return child;
     }
-    // primary（联动折叠）用 tight：表格填满 NestedScrollView body 释放出的空间；
+    // primary（联动折叠）用 tight：表格填满共享宿主的有界 body；
     // 有浮动批量动作也填满本地行区，保持其贴底位置；其余短列表仍可收缩。
     return Flexible(
       fit: primary || virtualized || fill ? FlexFit.tight : FlexFit.loose,

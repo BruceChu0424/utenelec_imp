@@ -1,0 +1,6 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/widgets/master_entity_inline_edit_test.dart
+00:00 +0: (setUpAll)
+00:00 +0: committed rows are not retried when refresh fails, remaining drafts resume after a successful read
+00:09 +1: (tearDownAll)
+00:09 +1: All tests passed!

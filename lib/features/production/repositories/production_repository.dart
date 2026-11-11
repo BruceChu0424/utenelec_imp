@@ -1,3 +1,4 @@
+import '../models/material_preparation_original_command.dart';
 import '../../../shared/documents/imported_document_policy.dart';
 import 'dart:convert';
 
@@ -1390,23 +1391,16 @@ class ProductionPlanRepository {
     List<MaterialSupplyQuantityInput> quantities = const [],
     bool skipAutoClaim = false,
   }) async {
-    final json = await api.post(
-      '$_materialAnalysesBase/${analysis.analysisId}/notify',
-      query: _materialAnalysisProjection,
-      body: {
-        'version': analysis.version,
-        'fingerprint': analysis.fingerprint,
-        'idempotencyKey': idempotencyKey,
-        'target': target.wireName,
-        if (actionGroupKeys.isNotEmpty) 'actionGroupKeys': actionGroupKeys,
-        if (materialLineIds.isNotEmpty) 'materialLineIds': materialLineIds,
-        if (quantities.isNotEmpty)
-          'quantities': [for (final item in quantities) item.toJson()],
-        // ADR-099 修订(2026-09-29)：true = 用户选择「足额下单，不扣可用数量」，
-        // 服务端跳过自动认领公共在途/自制公共超产；缺省 = 原行为（先认领再下余量）。
-        if (skipAutoClaim) 'skipAutoClaim': true,
-      },
-    ); // ENDPOINT
+    final command = MaterialPreparationOriginalCommand.notify(
+      analysis: analysis,
+      idempotencyKey: idempotencyKey,
+      target: target,
+      actionGroupKeys: actionGroupKeys,
+      materialLineIds: materialLineIds,
+      quantities: quantities,
+      skipAutoClaim: skipAutoClaim,
+    );
+    final json = await replayMaterialPreparationCommand(command);
     return ProductionMaterialAnalysisView.fromJsonResponsive(json);
   }
 
@@ -1423,25 +1417,28 @@ class ProductionPlanRepository {
     bool approveNow = false,
     bool skipAutoClaim = false,
   }) async {
-    final json = await api.post(
-      '$_materialAnalysesBase/${analysis.analysisId}/issue-plans',
-      query: _materialAnalysisProjection,
-      body: {
-        'version': analysis.version,
-        'fingerprint': analysis.fingerprint,
-        'warehouseId': warehouseId,
-        'idempotencyKey': idempotencyKey,
-        'billDate': billDate,
-        'deliveryDate': ?deliveryDate,
-        'approveNow': approveNow,
-        'lines': [for (final line in lines) line.toJson()],
-        // ADR-099 修订(2026-09-29)：同 notify——true = 顶层行也不再认领公共供给，
-        // 按提交数量足额排产。
-        if (skipAutoClaim) 'skipAutoClaim': true,
-      },
-    ); // ENDPOINT
+    final command = MaterialPreparationOriginalCommand.issuePlans(
+      analysis: analysis,
+      warehouseId: warehouseId,
+      idempotencyKey: idempotencyKey,
+      billDate: billDate,
+      deliveryDate: deliveryDate,
+      approveNow: approveNow,
+      lines: lines,
+      skipAutoClaim: skipAutoClaim,
+    );
+    final json = await replayMaterialPreparationCommand(command);
     return ProductionMaterialGenerateResult.fromJsonResponsive(json);
   }
+
+  /// Sends only the captured original body to its whitelisted, existing endpoint.
+  Future<Map<String, dynamic>> replayMaterialPreparationCommand(
+    MaterialPreparationOriginalCommand command,
+  ) => api.post(
+    '$_materialAnalysesBase/${command.analysisId}/${command.operation}',
+    query: _materialAnalysisProjection,
+    body: command.toBody(),
+  );
 
   /// 下达预览(ADR-099；ADR-116 起只读)：服务端给出「按这批数量真实下达之后」的
   /// 分析快照（下层需求 / 还需安排 / 锚点剩余按计划产出量重算）。服务端是只读投影：
@@ -2346,6 +2343,8 @@ class ProductionDailyReportRepository {
     String? departmentId,
     String? executionSegmentId,
     List<String> executionSegmentIds = const [],
+    String? editingReportId,
+    int? expectedReportVersion,
   }) async {
     final json = await api.get(
       '/production/daily-reports/reportable-plan-lines',
@@ -2360,6 +2359,9 @@ class ProductionDailyReportRepository {
           'executionSegmentId': executionSegmentId,
         if (executionSegmentIds.isNotEmpty)
           'executionSegmentIds': executionSegmentIds.join(','),
+        'editingReportId': ?editingReportId,
+        if (editingReportId != null)
+          'expectedReportVersion': expectedReportVersion,
       },
     );
     return PagedResult.fromJsonResponsive(json, ReportablePlanLine.fromJson);

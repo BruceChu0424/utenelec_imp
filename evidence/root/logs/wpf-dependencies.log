@@ -1,0 +1,2 @@
+usage: restore_dependencies.py [-h] [--restore | --check]
+restore_dependencies.py: error: Pinned dependency is absent; run this tool with --restore

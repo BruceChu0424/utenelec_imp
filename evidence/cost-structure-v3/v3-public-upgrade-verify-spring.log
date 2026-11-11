@@ -1,0 +1,36 @@
+2026-11-10T21:46:53.254-07:00  INFO --- [           main] com.uten.imp.businesschain.CostStructureVersionUpgradeAudit : Starting CostStructureVersionUpgradeAudit using Java 21.0.11 with PID 24316 (D:\Projects\uten_imp_worktrees\feedback-cost-structure-v3-20261110\evidence\cost-structure-v3\v3-public-upgrade-verify-classes started by bruce in D:\Projects\uten_imp_worktrees\feedback-cost-structure-v3-20261110)
+2026-11-10T21:46:53.259-07:00 DEBUG --- [           main] com.uten.imp.businesschain.CostStructureVersionUpgradeAudit : Running with Spring Boot v4.1.1, Spring v7.0.9
+2026-11-10T21:46:53.260-07:00  INFO --- [           main] com.uten.imp.businesschain.CostStructureVersionUpgradeAudit : The following 1 profile is active: "dev"
+2026-11-10T21:47:06.290-07:00  INFO --- [           main] org.springframework.boot.tomcat.TomcatWebServer : Tomcat initialized with port 0 (http)
+2026-11-10T21:47:06.543-07:00  INFO --- [           main] org.springframework.boot.web.context.servlet.WebApplicationContextInitializer : Root WebApplicationContext: initialization completed in 13226 ms
+2026-11-10T21:47:08.111-07:00  INFO --- [           main] org.flywaydb.core.FlywayExecutor : Database: jdbc:postgresql://127.0.0.1:26632/imports (PostgreSQL 16.15)
+2026-11-10T21:47:15.376-07:00  INFO --- [           main] org.flywaydb.core.internal.command.DbMigrate : Current version of schema "public": 1131
+2026-11-10T21:47:15.394-07:00  INFO --- [           main] org.flywaydb.core.internal.command.DbMigrate : Schema "public" is up to date. No migration necessary.
+2026-11-10T21:47:16.901-07:00  INFO --- [           main] org.springframework.orm.jpa.persistenceunit.SpringPersistenceUnitInfo : No LoadTimeWeaver setup: ignoring JPA class transformer
+2026-11-10T21:47:16.949-07:00  INFO --- [           main] com.zaxxer.hikari.HikariDataSource : uten-imp - Starting...
+2026-11-10T21:47:16.986-07:00  INFO --- [           main] com.zaxxer.hikari.HikariDataSource : uten-imp - Start completed.
+2026-11-10T21:47:25.709-07:00  INFO --- [           main] org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean : Initialized JPA EntityManagerFactory for persistence unit 'default'
+2026-11-10T21:47:31.624-07:00  INFO --- [           main] org.springframework.boot.web.servlet.RegistrationBean : Filter localNetworkFilterRegistration was not registered (disabled)
+2026-11-10T21:47:31.625-07:00  INFO --- [           main] org.springframework.boot.web.servlet.RegistrationBean : Filter remoteBudgetFilterRegistration was not registered (disabled)
+2026-11-10T21:47:31.625-07:00  INFO --- [           main] org.springframework.boot.web.servlet.RegistrationBean : Filter jwtFilterRegistration was not registered (disabled)
+2026-11-10T21:47:31.625-07:00  INFO --- [           main] org.springframework.boot.web.servlet.RegistrationBean : Filter impersonationFilterRegistration was not registered (disabled)
+2026-11-10T21:47:31.625-07:00  INFO --- [           main] org.springframework.boot.web.servlet.RegistrationBean : Filter remoteAccessFilterRegistration was not registered (disabled)
+2026-11-10T21:47:31.625-07:00  INFO --- [           main] org.springframework.boot.web.servlet.RegistrationBean : Filter passwordChangeRequiredFilterRegistration was not registered (disabled)
+2026-11-10T21:47:31.712-07:00 DEBUG --- [           main] com.uten.imp.audit.AuditRequestContextFilter : Filter 'auditRequestContextFilter' configured for use
+2026-11-10T21:47:31.713-07:00 DEBUG --- [           main] com.uten.imp.common.web.FulfillmentHttpDeadlineFilter : Filter 'fulfillmentHttpDeadline' configured for use
+2026-11-10T21:47:31.713-07:00 DEBUG --- [           main] com.uten.imp.common.finance.BusinessPrecisionRequestFilter : Filter 'businessPrecisionRequestFilter' configured for use
+2026-11-10T21:47:31.714-07:00 DEBUG --- [           main] com.uten.imp.common.web.WarehouseScopeReadSnapshotFilter : Filter 'warehouseScopeReadSnapshotFilter' configured for use
+2026-11-10T21:47:35.122-07:00  INFO --- [           main] com.uten.imp.common.storage.LocalDiskStorageService : Local attachment storage enabled at D:\Projects\uten_imp_worktrees\feedback-remediate-c-20261110\evidence\imports\upgrade-storage
+2026-11-10T21:47:47.503-07:00  INFO --- [           main] com.zaxxer.hikari.HikariDataSource : document-scan-evidence - Starting...
+2026-11-10T21:47:47.504-07:00  INFO --- [           main] com.zaxxer.hikari.HikariDataSource : document-scan-evidence - Start completed.
+2026-11-10T21:48:09.046-07:00  INFO --- [knowledge-index] com.uten.imp.features.ai.chat.AiDocKnowledge : AI knowledge index: 295 documents, 2096 chunks, 85 glossary terms, 95649 terms, 577655 postings, about 12383 KB, built in 11873 ms
+2026-11-10T21:48:10.441-07:00  INFO --- [           main] org.springframework.boot.actuate.endpoint.web.EndpointLinksResolver : Exposing 1 endpoint beneath base path '/actuator'
+2026-11-10T21:48:10.617-07:00  INFO --- [           main] org.springframework.boot.tomcat.TomcatWebServer : Tomcat started on port 65481 (http) with context path '/'
+2026-11-10T21:48:10.655-07:00  INFO --- [           main] com.uten.imp.businesschain.CostStructureVersionUpgradeAudit : Started CostStructureVersionUpgradeAudit in 78.072 seconds (process running for 78.618)
+2026-11-10T21:48:11.716-07:00  INFO --- [           main] org.springframework.boot.tomcat.GracefulShutdown : Commencing graceful shutdown. Waiting for active requests to complete
+2026-11-10T21:48:11.721-07:00  INFO --- [tomcat-shutdown] org.springframework.boot.tomcat.GracefulShutdown : Graceful shutdown complete
+2026-11-10T21:48:11.773-07:00  INFO --- [           main] com.zaxxer.hikari.HikariDataSource : document-scan-evidence - Shutdown initiated...
+2026-11-10T21:48:11.777-07:00  INFO --- [           main] com.zaxxer.hikari.HikariDataSource : document-scan-evidence - Shutdown completed.
+2026-11-10T21:48:11.862-07:00  INFO --- [           main] org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean : Closing JPA EntityManagerFactory for persistence unit 'default'
+2026-11-10T21:48:11.870-07:00  INFO --- [           main] com.zaxxer.hikari.HikariDataSource : uten-imp - Shutdown initiated...
+2026-11-10T21:48:11.872-07:00  INFO --- [           main] com.zaxxer.hikari.HikariDataSource : uten-imp - Shutdown completed.

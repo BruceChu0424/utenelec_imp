@@ -1,0 +1,6 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+Analyzing 11 items...                                           
+
+   info - Unnecessary use of multiple underscores. Try using '_' - test\independent\retained_pane_resize_stress_test.dart:58:51 - unnecessary_underscores
+
+1 issue found. (ran in 5.0s)

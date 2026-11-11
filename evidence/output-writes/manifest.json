@@ -1,0 +1,552 @@
+{
+  "product": "90837039eac5cb6d3980f27648a7d9bb35303721",
+  "baseline": "022788ec7faccf66728943ab8b9290158c950262",
+  "evidence_bytes_preserved": true,
+  "files": [
+    {
+      "path": ".gitattributes",
+      "bytes": 101,
+      "sha256": "2d0bef1a40b1ba8bf3e7bbd4704c964e32a7e94713ee175aaa011dba33e853eb"
+    },
+    {
+      "path": ".gitignore",
+      "bytes": 22,
+      "sha256": "441c3bdee121329716daffecd3d77cd8290d03760871100fbc8dc3184fc46a11"
+    },
+    {
+      "path": "logs/private-flutter-analyze-recovery.log",
+      "bytes": 984,
+      "sha256": "4f319cb3f56ecbdb1f1d75d1af2478b3eedf4061d3a39830a295dde773e9c45d"
+    },
+    {
+      "path": "logs/private-flutter-analyze-source.log",
+      "bytes": 3807,
+      "sha256": "fe58d6a4aa743140d1b1c5587938e54b28774e574fcf8787cef913c4816222d5"
+    },
+    {
+      "path": "logs/private-flutter-baseline-flat.log",
+      "bytes": 12687,
+      "sha256": "5157024adce3651ea0b5508e5a5c9c639f6a8fa60421601f111c328b51b9d904"
+    },
+    {
+      "path": "logs/private-flutter-baseline-status.log",
+      "bytes": 2802,
+      "sha256": "277aafd289c88152b1e2e6352db61bd64a56dd2be65d476d2f16e8990f2b2632"
+    },
+    {
+      "path": "logs/private-flutter-baseline-warehouse.log",
+      "bytes": 2752,
+      "sha256": "2d3406dfffdd54259fe08e9afd13ca73f4dde0fe5c7f44b20d18fae1e1678b70"
+    },
+    {
+      "path": "logs/private-flutter-candidate-flat-2.log",
+      "bytes": 4014,
+      "sha256": "dd6e977e35f56216ec1a2da3056275c846e671a8061fc9d059584e0f8190aaaf"
+    },
+    {
+      "path": "logs/private-flutter-candidate-flat-3.log",
+      "bytes": 2056,
+      "sha256": "3a3814937730c370fe29e7a010b118a756a03352b8fe84b8cacdf29b67a51dc3"
+    },
+    {
+      "path": "logs/private-flutter-candidate-flat-4.log",
+      "bytes": 1325,
+      "sha256": "76419c416664a57ffcf0e2eb34657e7cf68b6886b8392304b60c81dce9d2565a"
+    },
+    {
+      "path": "logs/private-flutter-candidate-flat.log",
+      "bytes": 2132,
+      "sha256": "dc2844dd40fc353182a05cc1886b1907898abf2f40c33045fa257e4f40bbcf5e"
+    },
+    {
+      "path": "logs/private-flutter-candidate-status.log",
+      "bytes": 444,
+      "sha256": "b57ab95f0753865797fca9824bea323f7e08d3ff7cce8c41a0927955740f3488"
+    },
+    {
+      "path": "logs/private-flutter-captured-scope-fixed.log",
+      "bytes": 369,
+      "sha256": "5fdf0ea8ecf957d16fe7f47b102eeb5234c9b60d37979dc4c98de5969a28e59a"
+    },
+    {
+      "path": "logs/private-flutter-custom-callers.log",
+      "bytes": 20303,
+      "sha256": "a73306d6d7bb6341e0420f26f208f295692ae201e93fc1a98d91ae2d5175d8f1"
+    },
+    {
+      "path": "logs/private-flutter-deps.log",
+      "bytes": 581,
+      "sha256": "1dfbfff886b449f8e1898a129668b735c02e508f744ebf3a2f10dc9716a2bd11"
+    },
+    {
+      "path": "logs/private-flutter-final-analyze.log",
+      "bytes": 2697,
+      "sha256": "aa0e52789a1246fbc2d06e79c6d47eb48f97a3b664f70f33d0a60cd7c198553c"
+    },
+    {
+      "path": "logs/private-flutter-final-clean-analyze.log",
+      "bytes": 200,
+      "sha256": "ccec980e8f52285bb554975c9440011c1b248e41cd49ebb8901c003bbe1dd139"
+    },
+    {
+      "path": "logs/private-flutter-final-core.log",
+      "bytes": 32088,
+      "sha256": "d951ab2035989d5a4d2d77c41c66beebe33eba8875edf0e63d2082bbe0bab4bb"
+    },
+    {
+      "path": "logs/private-flutter-final-permission-bounded.log",
+      "bytes": 10710,
+      "sha256": "6e2c204ad6bee6b890fc30ee6a95ab232f024eb66574678b3bf1150f0451f99d"
+    },
+    {
+      "path": "logs/private-flutter-final-permission-fixed.log",
+      "bytes": 970,
+      "sha256": "c2f65fed44175f9a460c498bba48c444588dc51fefa222a3820b4c643ae8dea3"
+    },
+    {
+      "path": "logs/private-flutter-final-permission-pump.log",
+      "bytes": 2558,
+      "sha256": "9d9fb9f401467f59b169ebcf8c4e018666b763fcaf0cc7238d21ae4b4bdc134e"
+    },
+    {
+      "path": "logs/private-flutter-final-permission-pump2.log",
+      "bytes": 10710,
+      "sha256": "7393748191c59b9809c2cb943d5f9b62898e2cfbcdb04cc29f4614b374532d3a"
+    },
+    {
+      "path": "logs/private-flutter-final-permission.log",
+      "bytes": 10710,
+      "sha256": "b159fbf5811e38c9d03a3645515e056d8d1cd4c5955e4bfcc62b9eb01071ec96"
+    },
+    {
+      "path": "logs/private-flutter-inline-probe.log",
+      "bytes": 3340,
+      "sha256": "12b6cdb5118e9d5c8f50894a51ceae3d67170ccdb600d9ca0f9f5b436d09e906"
+    },
+    {
+      "path": "logs/private-flutter-recovery-page.log",
+      "bytes": 3276,
+      "sha256": "3ea77f0db9c86f9f0ca1ec138ab75f0e3c87550e76f7b8055be0922dce406179"
+    },
+    {
+      "path": "logs/private-flutter-recovery-sorting.log",
+      "bytes": 1504,
+      "sha256": "61c15471c97271a0d30a94a06e2f849dd81aed9fe95694fc69b1d82323a1e578"
+    },
+    {
+      "path": "logs/private-flutter-recovery-unit.log",
+      "bytes": 522,
+      "sha256": "e171518828b3e02b9822fe06c496bfdcbadce1108a8cca0b33b045b991271fe5"
+    },
+    {
+      "path": "logs/private-flutter-regression-core.log",
+      "bytes": 29930,
+      "sha256": "560a92111db3d8de71ede4f9b6caf77aa50e876e2425e2eab65082ca9f8fed00"
+    },
+    {
+      "path": "logs/private-flutter-regression-inline-fixed.log",
+      "bytes": 435,
+      "sha256": "eec438a149f500d7c2a5d693c6c58968018cea5b226e04f39344d3251d6b5d61"
+    },
+    {
+      "path": "logs/private-flutter-source-analyze-fixed.log",
+      "bytes": 422,
+      "sha256": "f80d7ee08f10c40f1c596990cb5c967a7763387cde933ca8716e5f08fd6d3a93"
+    },
+    {
+      "path": "logs/private-flutter-source-final-regression.log",
+      "bytes": 58895,
+      "sha256": "934bcc98469fb24e42a12accc8f3c8c50269f65a402d34006232a5ac3b499c9f"
+    },
+    {
+      "path": "logs/private-flutter-writes-flat-2.log",
+      "bytes": 5068,
+      "sha256": "187f0a08f0dc230b79277189798a1a89b59adcf7ad65d983c4ac82eb06a1ad33"
+    },
+    {
+      "path": "logs/private-flutter-writes-flat-3.log",
+      "bytes": 1196,
+      "sha256": "b704faf2d2191ab36f8bf094568ca9967847093b9f6d96f8683d210afab3c5af"
+    },
+    {
+      "path": "logs/private-flutter-writes-flat.log",
+      "bytes": 10246,
+      "sha256": "d325bd05b4a89b5723a396caa41ac76e00692d4a3f50b352c8618f47b3fdbade"
+    },
+    {
+      "path": "private-flutter-analyze-recovery.json",
+      "bytes": 3281,
+      "sha256": "5f64695e0cf9b9311da4bfc07b3161344285f71c37267e919c22a16a792785a8"
+    },
+    {
+      "path": "private-flutter-analyze-source.json",
+      "bytes": 4871,
+      "sha256": "bd0bff1d8d8c2ab586d88c9ebc8b1ba7a90d1229e66c317ad619f31dd9ad74c1"
+    },
+    {
+      "path": "private-flutter-baseline-flat.json",
+      "bytes": 3189,
+      "sha256": "09b4f56f557e3c26d29afa76daf01112958406b50b8d8c9a8f9c91f07f0aaf29"
+    },
+    {
+      "path": "private-flutter-baseline-status.json",
+      "bytes": 3153,
+      "sha256": "79d95cd11c59ffe79664a49e484dab417339d746feeae0795010c6641758f0f9"
+    },
+    {
+      "path": "private-flutter-baseline-warehouse.json",
+      "bytes": 3147,
+      "sha256": "839899c3efb7206a19aa34376e4f93000984ee56edad9c93ce0cc5dc8c87cb0b"
+    },
+    {
+      "path": "private-flutter-candidate-flat-2.json",
+      "bytes": 3341,
+      "sha256": "3252a3f99b74116789064f9312190b5146421985ff5a4990db238f723683d954"
+    },
+    {
+      "path": "private-flutter-candidate-flat-3.json",
+      "bytes": 3341,
+      "sha256": "3252a3f99b74116789064f9312190b5146421985ff5a4990db238f723683d954"
+    },
+    {
+      "path": "private-flutter-candidate-flat-4.json",
+      "bytes": 3341,
+      "sha256": "eec0593e04cfde537204cb34a8f6604db2ca76e0939a824b8d1815bd5b5024e1"
+    },
+    {
+      "path": "private-flutter-candidate-flat.json",
+      "bytes": 3341,
+      "sha256": "3252a3f99b74116789064f9312190b5146421985ff5a4990db238f723683d954"
+    },
+    {
+      "path": "private-flutter-candidate-status.json",
+      "bytes": 3229,
+      "sha256": "a79ad20db266a352077035941ef1d5f0ec2bd62c3cc580154d59af7069071912"
+    },
+    {
+      "path": "private-flutter-captured-scope-fixed.json",
+      "bytes": 3133,
+      "sha256": "04868e5b10e4da7fb9509ee363e720d4f9da0fa1baea9abaf84cfeea9299c9df"
+    },
+    {
+      "path": "private-flutter-custom-callers.json",
+      "bytes": 4319,
+      "sha256": "b3fe117d233ca11aa94d71ba9765e2bff96bfde14293e1f69df50291b562f27d"
+    },
+    {
+      "path": "private-flutter-deps.json",
+      "bytes": 2905,
+      "sha256": "126cb1998ea98fab91a29d7d3ce7256723b1964f5c703d78a11aad13369cd061"
+    },
+    {
+      "path": "private-flutter-final-analyze.json",
+      "bytes": 5345,
+      "sha256": "b7ad19f0b306e883eaa253585d9dee0a454cf91e4a94a9fb61738701d0b46a41"
+    },
+    {
+      "path": "private-flutter-final-clean-analyze.json",
+      "bytes": 5345,
+      "sha256": "f246dea09e0e40ffd7cca6ab8bbe736f3cc0fbe95ce4088f78ef2a61314098f4"
+    },
+    {
+      "path": "private-flutter-final-core.json",
+      "bytes": 3919,
+      "sha256": "c510cff3671c354831f8e46dfcb7530c4c8682343ca94263d0d660f3d4ce403a"
+    },
+    {
+      "path": "private-flutter-final-permission-bounded.json",
+      "bytes": 3157,
+      "sha256": "2424982117ff9343266817c7b63ee9c388e4100855419bd496a34094cd0c952c"
+    },
+    {
+      "path": "private-flutter-final-permission-fixed.json",
+      "bytes": 3157,
+      "sha256": "600f9251a038f567ec3bc4a06397f9982d9745d85e80ce8a882cfc70a993f99d"
+    },
+    {
+      "path": "private-flutter-final-permission-pump.json",
+      "bytes": 3157,
+      "sha256": "92f0ec441f883d7134d48806a8a95171548867be7307ba2e58a2bbcb6a699eed"
+    },
+    {
+      "path": "private-flutter-final-permission-pump2.json",
+      "bytes": 3157,
+      "sha256": "92f0ec441f883d7134d48806a8a95171548867be7307ba2e58a2bbcb6a699eed"
+    },
+    {
+      "path": "private-flutter-final-permission.json",
+      "bytes": 3111,
+      "sha256": "ce083e5a421ebe3e2e1d823aea7522f3498ba250933c1ffd14221fa0310c6382"
+    },
+    {
+      "path": "private-flutter-inline-probe.json",
+      "bytes": 3131,
+      "sha256": "0a5089654575a51633cebac090fada6cf72b9ef784bdf8feb35d91b758e5e44b"
+    },
+    {
+      "path": "private-flutter-recovery-page.json",
+      "bytes": 3179,
+      "sha256": "f7bd0eae4edddbb3a38241bd4481e5d50c412912a70648bdbeaf16f25d42d408"
+    },
+    {
+      "path": "private-flutter-recovery-sorting.json",
+      "bytes": 3363,
+      "sha256": "0b847162f9a99443d5b91d86f3e72a8e143d74ebf3d2084176d4833bfb939292"
+    },
+    {
+      "path": "private-flutter-recovery-unit.json",
+      "bytes": 3061,
+      "sha256": "5b39b4d555b2e921d3f73704c2caf2aaf913766f212d1fcc5d23e3b0733a54a2"
+    },
+    {
+      "path": "private-flutter-regression-core.json",
+      "bytes": 3979,
+      "sha256": "b4cc10b867c0bafbb66d27d496faa6d3ffbe7b364ac32e101710945286daaf3c"
+    },
+    {
+      "path": "private-flutter-regression-inline-fixed.json",
+      "bytes": 3131,
+      "sha256": "36d277e399a49f67052c50c2e2caef323c9008a4f60d4dbfbc53bf2bc080d2dc"
+    },
+    {
+      "path": "private-flutter-source-analyze-fixed.json",
+      "bytes": 5345,
+      "sha256": "b7ad19f0b306e883eaa253585d9dee0a454cf91e4a94a9fb61738701d0b46a41"
+    },
+    {
+      "path": "private-flutter-source-final-regression.json",
+      "bytes": 5367,
+      "sha256": "4303df4958b4d0bf6a5163f95256949a0d6475cfd1c3455a1fd26b73006d4e21"
+    },
+    {
+      "path": "private-flutter-writes-flat-2.json",
+      "bytes": 3197,
+      "sha256": "8e0d575facddd7db8db54860904752f04ce26d6d1405a775b8303a4c0c1c38ed"
+    },
+    {
+      "path": "private-flutter-writes-flat-3.json",
+      "bytes": 3193,
+      "sha256": "ee42c721c93f54cfa33e799d6f0c6a2284d6d74c0c24209efd72525c4fac7560"
+    },
+    {
+      "path": "private-flutter-writes-flat.json",
+      "bytes": 3197,
+      "sha256": "8e0d575facddd7db8db54860904752f04ce26d6d1405a775b8303a4c0c1c38ed"
+    },
+    {
+      "path": "private_flutter.py",
+      "bytes": 1592,
+      "sha256": "93a7b440a50d910a8a2bf34fdff8599c06a0f36fa254762aa4f7c319deeba13f"
+    },
+    {
+      "path": "REPORT.md",
+      "bytes": 9406,
+      "sha256": "b71392baee8afe66aa6be84833ea9cf2c76cbca5020659864a5a9ba726c315d6"
+    },
+    {
+      "path": "rerun.ps1",
+      "bytes": 3896,
+      "sha256": "f0f9751140afaff14c440d6c645c5e9521cb0d99c548dacefbb355dad0330116"
+    },
+    {
+      "path": "source-fingerprints.json",
+      "bytes": 8568,
+      "sha256": "88024f750b209468cad105613d2dbb6bf8ba0061f438084f0e2dac0efa868878"
+    }
+  ],
+  "runs": [
+    {
+      "receipt": "private-flutter-analyze-recovery.json",
+      "exit": 1,
+      "sdk_unchanged": true,
+      "result_line": null
+    },
+    {
+      "receipt": "private-flutter-analyze-source.json",
+      "exit": 1,
+      "sdk_unchanged": true,
+      "result_line": null
+    },
+    {
+      "receipt": "private-flutter-baseline-flat.json",
+      "exit": 1,
+      "sdk_unchanged": true,
+      "result_line": "00:15 +6 -6: Some tests failed."
+    },
+    {
+      "receipt": "private-flutter-baseline-status.json",
+      "exit": 1,
+      "sdk_unchanged": true,
+      "result_line": "00:07 +0 -1: Some tests failed."
+    },
+    {
+      "receipt": "private-flutter-baseline-warehouse.json",
+      "exit": 1,
+      "sdk_unchanged": true,
+      "result_line": "00:02 +0 -1: Some tests failed."
+    },
+    {
+      "receipt": "private-flutter-candidate-flat-2.json",
+      "exit": 1,
+      "sdk_unchanged": true,
+      "result_line": "00:00 +0 -1: Some tests failed."
+    },
+    {
+      "receipt": "private-flutter-candidate-flat-3.json",
+      "exit": 1,
+      "sdk_unchanged": true,
+      "result_line": "00:00 +0 -1: Some tests failed."
+    },
+    {
+      "receipt": "private-flutter-candidate-flat-4.json",
+      "exit": 0,
+      "sdk_unchanged": true,
+      "result_line": "00:08 +14: All tests passed!"
+    },
+    {
+      "receipt": "private-flutter-candidate-flat.json",
+      "exit": 1,
+      "sdk_unchanged": true,
+      "result_line": "00:00 +0 -1: Some tests failed."
+    },
+    {
+      "receipt": "private-flutter-candidate-status.json",
+      "exit": 0,
+      "sdk_unchanged": true,
+      "result_line": "00:17 +2: All tests passed!"
+    },
+    {
+      "receipt": "private-flutter-captured-scope-fixed.json",
+      "exit": 0,
+      "sdk_unchanged": true,
+      "result_line": "00:04 +1: All tests passed!"
+    },
+    {
+      "receipt": "private-flutter-custom-callers.json",
+      "exit": 0,
+      "sdk_unchanged": true,
+      "result_line": "01:17 +86 ~2: All tests passed!"
+    },
+    {
+      "receipt": "private-flutter-deps.json",
+      "exit": 0,
+      "sdk_unchanged": true,
+      "result_line": null
+    },
+    {
+      "receipt": "private-flutter-final-analyze.json",
+      "exit": 1,
+      "sdk_unchanged": true,
+      "result_line": null
+    },
+    {
+      "receipt": "private-flutter-final-clean-analyze.json",
+      "exit": 0,
+      "sdk_unchanged": true,
+      "result_line": null
+    },
+    {
+      "receipt": "private-flutter-final-core.json",
+      "exit": 0,
+      "sdk_unchanged": true,
+      "result_line": "01:04 +151: All tests passed!"
+    },
+    {
+      "receipt": "private-flutter-final-permission-bounded.json",
+      "exit": 1,
+      "sdk_unchanged": true,
+      "result_line": "01:37 +5 -5: Some tests failed."
+    },
+    {
+      "receipt": "private-flutter-final-permission-fixed.json",
+      "exit": 0,
+      "sdk_unchanged": true,
+      "result_line": "00:25 +10: All tests passed!"
+    },
+    {
+      "receipt": "private-flutter-final-permission-pump.json",
+      "exit": 1,
+      "sdk_unchanged": true,
+      "result_line": "00:00 +0 -1: Some tests failed."
+    },
+    {
+      "receipt": "private-flutter-final-permission-pump2.json",
+      "exit": 1,
+      "sdk_unchanged": true,
+      "result_line": "01:30 +5 -5: Some tests failed."
+    },
+    {
+      "receipt": "private-flutter-final-permission.json",
+      "exit": 1,
+      "sdk_unchanged": true,
+      "result_line": "01:37 +5 -5: Some tests failed."
+    },
+    {
+      "receipt": "private-flutter-inline-probe.json",
+      "exit": 1,
+      "sdk_unchanged": true,
+      "result_line": "00:04 +0 -1: Some tests failed."
+    },
+    {
+      "receipt": "private-flutter-recovery-page.json",
+      "exit": 1,
+      "sdk_unchanged": true,
+      "result_line": "00:08 +1 -1: Some tests failed."
+    },
+    {
+      "receipt": "private-flutter-recovery-sorting.json",
+      "exit": 0,
+      "sdk_unchanged": true,
+      "result_line": "00:11 +6: All tests passed!"
+    },
+    {
+      "receipt": "private-flutter-recovery-unit.json",
+      "exit": 0,
+      "sdk_unchanged": true,
+      "result_line": "00:02 +3: All tests passed!"
+    },
+    {
+      "receipt": "private-flutter-regression-core.json",
+      "exit": 1,
+      "sdk_unchanged": true,
+      "result_line": "01:00 +125 -1: Some tests failed."
+    },
+    {
+      "receipt": "private-flutter-regression-inline-fixed.json",
+      "exit": 0,
+      "sdk_unchanged": true,
+      "result_line": "00:09 +1: All tests passed!"
+    },
+    {
+      "receipt": "private-flutter-source-analyze-fixed.json",
+      "exit": 1,
+      "sdk_unchanged": true,
+      "result_line": null
+    },
+    {
+      "receipt": "private-flutter-source-final-regression.json",
+      "exit": 0,
+      "sdk_unchanged": true,
+      "result_line": "02:24 +274: All tests passed!"
+    },
+    {
+      "receipt": "private-flutter-writes-flat-2.json",
+      "exit": 1,
+      "sdk_unchanged": true,
+      "result_line": "10:22 +3 -3: Some tests failed."
+    },
+    {
+      "receipt": "private-flutter-writes-flat-3.json",
+      "exit": 1,
+      "sdk_unchanged": true,
+      "result_line": "10:16 +5 -1: Some tests failed."
+    },
+    {
+      "receipt": "private-flutter-writes-flat.json",
+      "exit": 1,
+      "sdk_unchanged": true,
+      "result_line": "10:26 +0 -6: Some tests failed."
+    }
+  ],
+  "fingerprint_content": "reviewed Git index bytes; binary raw logs and execution receipts equal original working bytes"
+}

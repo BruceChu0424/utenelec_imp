@@ -1,0 +1,6 @@
+{
+  "path": "test\\features\\basic_data\\pages\\master_menu_column_settings_probe_test.dart",
+  "sha256": "a6bd55e999bb7997d357a3d46a682ad5cd4d4fb3417222246284296363eded1a",
+  "red": "all-viewport-column-settings-2.log",
+  "firstBoundaryGreen": "menu-semantics-rail-boundary-1.log"
+}

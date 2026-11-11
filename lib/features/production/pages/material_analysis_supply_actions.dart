@@ -506,7 +506,30 @@ abstract class _MaterialAnalysisSupplyActionsState
     bool silent = false,
     bool allowExtra = false,
     bool skipAutoClaim = false,
+  }) => _preparationCommands.legacyAction<ProductionMaterialAnalysisView?>(
+    () => _notifyRouteInScope(
+      route,
+      onlyGroupKeys: onlyGroupKeys,
+      qtyByActionGroupKey: qtyByActionGroupKey,
+      silent: silent,
+      allowExtra: allowExtra,
+      skipAutoClaim: skipAutoClaim,
+    ),
+    busyValue: null,
+  );
+
+  Future<ProductionMaterialAnalysisView?> _notifyRouteInScope(
+    MaterialSupplyRoute route, {
+    Set<String>? onlyGroupKeys,
+    Map<String, String>? qtyByActionGroupKey,
+    bool silent = false,
+    bool allowExtra = false,
+    bool skipAutoClaim = false,
   }) async {
+    if (_preparationCommands.hasLegacyUnknown) {
+      await _preparationCommands.retryLegacyOriginal();
+      return null;
+    }
     final analysis = _analysis;
     if (analysis == null ||
         !_canNotify ||
@@ -619,19 +642,49 @@ abstract class _MaterialAnalysisSupplyActionsState
             if (skipAutoClaim) 'skipAutoClaim',
           ].join('|'),
         );
-        current = await ref
-            .read(productionPlanRepositoryProvider)
-            .notifyMaterialAnalysis(
-              analysis: current,
-              idempotencyKey: key,
-              target: route,
-              actionGroupKeys: actionGroupKeys,
-              materialLineIds: materialLineIds,
-              quantities: batchQuantities,
-              skipAutoClaim: skipAutoClaim,
-            );
+        final commandGroups = _preparationCommands.legacyGroups(
+          materialIds: materialLineIds.toSet(),
+          actionKeys: actionGroupKeys.toSet(),
+        );
+        _preparationCommands.beginLegacyOriginal(
+          MaterialPreparationOriginalCommand.notify(
+            analysis: current,
+            idempotencyKey: key,
+            target: route,
+            actionGroupKeys: actionGroupKeys,
+            materialLineIds: materialLineIds,
+            quantities: batchQuantities,
+            skipAutoClaim: skipAutoClaim,
+            rowLabels: _preparationCommands.legacyLabels(commandGroups),
+            lineIds: _preparationCommands.legacyLines(commandGroups),
+          ),
+        );
+        final accepted = await _preparationCommands.sendLegacyOriginal(
+          () => ref
+              .read(productionPlanRepositoryProvider)
+              .notifyMaterialAnalysis(
+                analysis: current,
+                idempotencyKey: key,
+                target: route,
+                actionGroupKeys: actionGroupKeys,
+                materialLineIds: materialLineIds,
+                quantities: batchQuantities,
+                skipAutoClaim: skipAutoClaim,
+              ),
+        );
+        if (accepted.analysisId != analysis.analysisId) {
+          throw const FormatException('下单回执对应另一份分析');
+        }
+        current = accepted;
         completed += batch.length;
-        if (!mounted || !currentScope()) return null;
+        if (!mounted || !currentScope()) {
+          await _preparationCommands.failLegacyOriginal(
+            StateError('原身份已退休'),
+            received: true,
+          );
+          return null;
+        }
+        await _preparationCommands.acknowledgeLegacyOriginal(current);
         _orderProgress?.segmentProgress(completed / submitTargets.length);
       }
       if (!mounted || !currentScope()) return null;
@@ -686,6 +739,7 @@ abstract class _MaterialAnalysisSupplyActionsState
       refreshBadges(ref);
       return current;
     } catch (error) {
+      await _preparationCommands.failLegacyOriginal(error);
       if (!mounted || !currentScope()) return null;
       if (await _recoverLatestAnalysisAfterConflict(
         error,
@@ -710,7 +764,8 @@ abstract class _MaterialAnalysisSupplyActionsState
       context.appError(
         completed == 0
             ? message
-            : '已提交 $completed / ${targets.length} 项；未完成项仍保持勾选，可直接重试。$message',
+            : '已提交 $completed / ${targets.length} 项；'
+                  '${_preparationCommands.hasLegacyUnknown ? '原请求结果未知的行只能按原内容重试核对。' : '明确未写入的行保持勾选，可修改后重试。'}$message',
         force: true,
       );
       return null;

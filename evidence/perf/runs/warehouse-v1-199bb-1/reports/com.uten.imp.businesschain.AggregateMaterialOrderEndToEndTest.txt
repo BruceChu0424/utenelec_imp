@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.uten.imp.businesschain.AggregateMaterialOrderEndToEndTest
+-------------------------------------------------------------------------------
+Tests run: 36, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 812.6 s -- in com.uten.imp.businesschain.AggregateMaterialOrderEndToEndTest

@@ -1,0 +1,9 @@
+{
+  "bytes": 14691638,
+  "sourceDatabase": "uten_imp",
+  "sourceRevision": "7b912287e53315228b469790ff066a9fab643e3c",
+  "capturedAt": "2026-11-10T22:31:18.5306780-07:00",
+  "sha256": "6fc6dad39d6b40671f8425ea1e24711dd9d40ddb0b7e4e3719f3f9c6b859ba30",
+  "fixture": "local synthetic Root B test database",
+  "sourceContainer": "86428cb3c55c"
+}

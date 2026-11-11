@@ -1,0 +1,16 @@
+2026-11-11 04:31:03.380 UTC [55] LOG:  checkpoint starting: time
+2026-11-11 04:31:12.773 UTC [55] LOG:  checkpoint complete: wrote 91 buffers (0.6%); 0 WAL file(s) added, 0 removed, 0 recycled; write=9.032 s, sync=0.036 s, total=9.394 s; sync files=23, longest=0.007 s, average=0.002 s; distance=303 kB, estimate=10188 kB; lsn=0/97F7C98, redo lsn=0/97EFBB8
+2026-11-11 04:36:03.855 UTC [55] LOG:  checkpoint starting: time
+2026-11-11 04:36:05.249 UTC [55] LOG:  checkpoint complete: wrote 13 buffers (0.1%); 0 WAL file(s) added, 0 removed, 0 recycled; write=1.210 s, sync=0.091 s, total=1.394 s; sync files=13, longest=0.064 s, average=0.007 s; distance=73 kB, estimate=9177 kB; lsn=0/9802220, redo lsn=0/98021E8
+2026-11-11 04:41:03.331 UTC [55] LOG:  checkpoint starting: time
+2026-11-11 04:41:05.996 UTC [55] LOG:  checkpoint complete: wrote 27 buffers (0.2%); 0 WAL file(s) added, 0 removed, 0 recycled; write=2.532 s, sync=0.025 s, total=2.665 s; sync files=20, longest=0.008 s, average=0.002 s; distance=108 kB, estimate=8270 kB; lsn=0/981D2F8, redo lsn=0/981D288
+2026-11-11 04:43:41.975 UTC [729] ERROR:  canceling statement due to lock timeout
+2026-11-11 04:43:41.975 UTC [729] STATEMENT:  SELECT pg_advisory_xact_lock(935,1)
+2026-11-11 04:43:52.100 UTC [729] ERROR:  canceling statement due to lock timeout
+2026-11-11 04:43:52.100 UTC [729] STATEMENT:  SELECT pg_advisory_xact_lock(935,1)
+2026-11-11 04:44:02.213 UTC [729] ERROR:  canceling statement due to lock timeout
+2026-11-11 04:44:02.213 UTC [729] STATEMENT:  SELECT pg_advisory_xact_lock(935,1)
+2026-11-11 04:46:04.066 UTC [55] LOG:  checkpoint starting: time
+2026-11-11 04:46:05.505 UTC [55] LOG:  checkpoint complete: wrote 13 buffers (0.1%); 0 WAL file(s) added, 0 removed, 0 recycled; write=1.277 s, sync=0.053 s, total=1.440 s; sync files=11, longest=0.016 s, average=0.005 s; distance=77 kB, estimate=7451 kB; lsn=0/9832D18, redo lsn=0/98306C0
+2026-11-11 04:51:04.586 UTC [55] LOG:  checkpoint starting: time
+2026-11-11 04:51:05.591 UTC [55] LOG:  checkpoint complete: wrote 9 buffers (0.1%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.814 s, sync=0.014 s, total=1.005 s; sync files=8, longest=0.007 s, average=0.002 s; distance=65 kB, estimate=6712 kB; lsn=0/9840D70, redo lsn=0/9840D38

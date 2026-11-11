@@ -1,0 +1,145 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart
+00:00 +0: goods server rejection retires old output irreversibly
+00:06 +1: clients server rejection retires old output irreversibly
+00:10 +2: suppliers server rejection retires old output irreversibly
+00:13 +3: accounts server rejection retires old output irreversibly
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following assertion was thrown running a test:
+pumpAndSettle timed out
+
+When the exception was thrown, this was the stack:
+#0      WidgetTester.pumpAndSettle.<anonymous closure> (package:flutter_test/src/widget_tester.dart:717:11)
+<asynchronous suspension>
+#1      TestAsyncUtils.guard.<anonymous closure> (package:flutter_test/src/test_async_utils.dart:130:27)
+<asynchronous suspension>
+#2      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart:497:7)
+<asynchronous suspension>
+#3      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#4      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+The test description was:
+  accounts server rejection retires old output irreversibly
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:32 +3 -1: accounts server rejection retires old output irreversibly [E]
+  Test failed. See exception logs above.
+  The test description was: accounts server rejection retires old output irreversibly
+  
+00:32 +3 -1: currencies server rejection retires old output irreversibly
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following assertion was thrown running a test:
+pumpAndSettle timed out
+
+When the exception was thrown, this was the stack:
+#0      WidgetTester.pumpAndSettle.<anonymous closure> (package:flutter_test/src/widget_tester.dart:717:11)
+<asynchronous suspension>
+#1      TestAsyncUtils.guard.<anonymous closure> (package:flutter_test/src/test_async_utils.dart:130:27)
+<asynchronous suspension>
+#2      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart:497:7)
+<asynchronous suspension>
+#3      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#4      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+The test description was:
+  currencies server rejection retires old output irreversibly
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:48 +3 -2: currencies server rejection retires old output irreversibly [E]
+  Test failed. See exception logs above.
+  The test description was: currencies server rejection retires old output irreversibly
+  
+00:48 +3 -2: colors server rejection retires old output irreversibly
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following assertion was thrown running a test:
+pumpAndSettle timed out
+
+When the exception was thrown, this was the stack:
+#0      WidgetTester.pumpAndSettle.<anonymous closure> (package:flutter_test/src/widget_tester.dart:717:11)
+<asynchronous suspension>
+#1      TestAsyncUtils.guard.<anonymous closure> (package:flutter_test/src/test_async_utils.dart:130:27)
+<asynchronous suspension>
+#2      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart:497:7)
+<asynchronous suspension>
+#3      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#4      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+The test description was:
+  colors server rejection retires old output irreversibly
+════════════════════════════════════════════════════════════════════════════════════════════════════
+01:04 +3 -3: colors server rejection retires old output irreversibly [E]
+  Test failed. See exception logs above.
+  The test description was: colors server rejection retires old output irreversibly
+  
+01:04 +3 -3: units server rejection retires old output irreversibly
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following assertion was thrown running a test:
+pumpAndSettle timed out
+
+When the exception was thrown, this was the stack:
+#0      WidgetTester.pumpAndSettle.<anonymous closure> (package:flutter_test/src/widget_tester.dart:717:11)
+<asynchronous suspension>
+#1      TestAsyncUtils.guard.<anonymous closure> (package:flutter_test/src/test_async_utils.dart:130:27)
+<asynchronous suspension>
+#2      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart:497:7)
+<asynchronous suspension>
+#3      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#4      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+The test description was:
+  units server rejection retires old output irreversibly
+════════════════════════════════════════════════════════════════════════════════════════════════════
+01:16 +3 -4: units server rejection retires old output irreversibly [E]
+  Test failed. See exception logs above.
+  The test description was: units server rejection retires old output irreversibly
+  
+01:16 +3 -4: moulds server rejection retires old output irreversibly
+01:18 +4 -4: warehouses server rejection retires old output irreversibly
+01:21 +5 -4: settlement_methods server rejection retires old output irreversibly
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following assertion was thrown running a test:
+pumpAndSettle timed out
+
+When the exception was thrown, this was the stack:
+#0      WidgetTester.pumpAndSettle.<anonymous closure> (package:flutter_test/src/widget_tester.dart:717:11)
+<asynchronous suspension>
+#1      TestAsyncUtils.guard.<anonymous closure> (package:flutter_test/src/test_async_utils.dart:130:27)
+<asynchronous suspension>
+#2      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart:497:7)
+<asynchronous suspension>
+#3      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#4      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+The test description was:
+  settlement_methods server rejection retires old output irreversibly
+════════════════════════════════════════════════════════════════════════════════════════════════════
+01:37 +5 -5: settlement_methods server rejection retires old output irreversibly [E]
+  Test failed. See exception logs above.
+  The test description was: settlement_methods server rejection retires old output irreversibly
+  
+01:37 +5 -5: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: accounts server rejection retires old output irreversibly
+  D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: colors server rejection retires old output irreversibly
+  D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: currencies server rejection retires old output irreversibly
+  D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: settlement_methods server rejection retires old output irreversibly
+  D:/Projects/uten_imp_worktrees/feedback-output-writes-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: units server rejection retires old output irreversibly

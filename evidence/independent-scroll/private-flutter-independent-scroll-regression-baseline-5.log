@@ -1,0 +1,7 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/feedback-scroll-baseline-14e-20261111/test/independent/scroll_offset_retention_regression_test.dart
+00:00 +0: observe width-wide-to-compact nonzero inner through header wheel
+SCROLL-FACT {"case":"width-wide-to-compact","initialInner":950.0,"initialOuter":96.0,"transitionInner":950.0,"transitionOuter":0.0,"afterSmallInner":950.0,"afterSmallOuter":24.0,"afterBoundaryInner":950.0,"afterBoundaryOuter":96.0,"outerMax":96.0}
+00:01 +1: observe height-tall-to-short nonzero inner through header wheel
+SCROLL-FACT {"case":"height-tall-to-short","initialInner":950.0,"initialOuter":96.0,"transitionInner":950.0,"transitionOuter":0.0,"afterSmallInner":950.0,"afterSmallOuter":24.0,"afterBoundaryInner":950.0,"afterBoundaryOuter":66.0,"outerMax":66.0}
+00:01 +2: All tests passed!

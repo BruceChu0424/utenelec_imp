@@ -1,0 +1,9 @@
+PASS automatic WPF diagnostics assertions=13
+PASS shared user error display cases=20; wire/outcome fields unchanged
+PASS explicit legacy selected export/read/owned HTTP request budget; selected=1001; synthetic workbook, not PG export
+PASS explicit legacy selected export/read/owned HTTP request budget; selected=50001; synthetic workbook, not PG export
+PASS native Core contracts
+PASS goods/downloads/publish/units/updater contracts
+CHECK native unit detail selection
+PASS native unit detail selection
+PASS native core contracts; goods assertions=174; downloads assertions=39; publish assertions=113; units assertions=38; history assertions=44; history UI=20; print assertions=23; columns=55; column UI=11; common drafts=16; exports=41; inline=70; updater assertions=203; update outcomes=13; process=x64

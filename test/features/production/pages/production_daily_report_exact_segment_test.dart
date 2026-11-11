@@ -3023,6 +3023,8 @@ Future<UtenEditableGridController<DailyGridRow>> _pumpAllocationPage(
 Future<UtenEditableGridController<DailyGridRow>> _pumpEditDraftPage(
   WidgetTester tester, {
   int candidateARoom = 6,
+  Map<String, dynamic> sourceOverrides = const {},
+  void Function(RequestOptions)? onSourceRequest,
   bool withMaterials = false,
   List<Map<String, dynamic>>? itemsOverride,
   List<Map<String, dynamic>>? materialsOverride,
@@ -3086,6 +3088,8 @@ Future<UtenEditableGridController<DailyGridRow>> _pumpEditDraftPage(
     'materialUsages': <dynamic>[],
   };
   final api = _api(
+    sourceOverrides: sourceOverrides,
+    onSourceRequest: onSourceRequest,
     responseOverride: (request) {
       if (request.path.endsWith('/direct-transfers/candidates') &&
           candidatesResponseOverride != null) {

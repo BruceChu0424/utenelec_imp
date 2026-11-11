@@ -30,7 +30,30 @@ public final class GoodsCostWorkbookParser {
                 Map<Integer, SpreadsheetEvidenceReader.Value> cells = new HashMap<>();
                 row.cells().forEach(cell -> cells.put((int) new CellReference(cell.address()).getCol(), cell));
                 Map<String, Integer> candidate = header(row.cells());
-                if (candidate.containsKey("name") && (candidate.containsKey("qty") || candidate.containsKey("price"))) {
+                boolean headerCandidate = candidate.containsKey("name")
+                        && (candidate.containsKey("qty") || candidate.containsKey("price"));
+                boolean literalHeader = headerCandidate && row.cells().stream()
+                        .allMatch(cell -> cell.literalText() && field(cell.text()) != null);
+                String title = row.cells().stream().map(SpreadsheetEvidenceReader.Value::text)
+                        .filter(t -> t.matches(".*产品名称[：:].*")).findFirst().orElse(null);
+                boolean literalTitle = title != null && row.cells().size() == 1
+                        && title.matches("^产品名称[：:].+") && row.cells().getFirst().literalText();
+                // A keyword match cannot retire a material row before its
+                // physical cells (including empty formula caches) are checked.
+                // Only an independently provable literal structure bypasses
+                // the preceding block's column positions.
+                if (key != null && !literalHeader && !literalTitle)
+                    requireRowColumns(declared, row, sheet.name());
+                if (headerCandidate) {
+                    if (row.cells().stream().anyMatch(cell -> cell.formula() != null))
+                        throw rowError(sheet.name(), row.number(), "表头不能使用公式，请保留原始文字");
+                    // The first header may declare an entirely unused extra
+                    // text column. It never authorizes values below that label.
+                    // A later mixed row or numeric header content is ambiguous,
+                    // and must not silently start a new block and drop data.
+                    if (!literalHeader && (key != null || row.cells().stream()
+                            .anyMatch(cell -> !cell.literalText() || number(cell.text()) != null)))
+                        throw rowError(sheet.name(), row.number(), "混有表头文字和明细数据，请分行保留，不能跳过本行");
                     requireColumns(declared,populated,headerRow);
                     declared=row.cells().stream().map(cell -> new com.uten.imp.common.importing.ImportColumnGuard.Header(
                             (int)new CellReference(cell.address()).getCol(),cell.text(),field(cell.text()))).toList();
@@ -40,9 +63,12 @@ public final class GoodsCostWorkbookParser {
                     fields = candidate; rows = new ArrayList<>(); key = sheet.name() + "!" + row.number();
                     continue;
                 }
-                String title = row.cells().stream().map(SpreadsheetEvidenceReader.Value::text)
-                        .filter(t -> t.matches(".*产品名称[：:].*")).findFirst().orElse(null);
                 if (title != null) {
+                    // A title is one literal cell on its own row. A material row
+                    // containing this phrase in an extra column is still data.
+                    if (!literalTitle)
+                        throw new ApiException(ErrorCode.VALIDATION_FAILED, sheet.name() + "!第" + row.number()
+                                + "行混有产品标题和明细数据，请分行保留，不能跳过本行");
                     requireColumns(declared,populated,headerRow);
                     declared=List.of();populated=new java.util.HashSet<>();
                     if (key != null && !rows.isEmpty()) blocks.add(new Block(key, label, sheet.name(), List.copyOf(rows)));
@@ -50,12 +76,23 @@ public final class GoodsCostWorkbookParser {
                     label = title.replaceFirst(".*产品名称[：:]", "").strip();
                     continue;
                 }
-                if (key == null) continue;
+                if (key == null) {
+                    if (row.cells().stream().anyMatch(c -> !c.text().isBlank() || c.formula() != null))
+                        throw new ApiException(ErrorCode.VALIDATION_FAILED, sheet.name() + "!第" + row.number()
+                                + "行未属于已识别的成本区块，请保留材料表头或独立产品标题后重新检测");
+                    continue;
+                }
                 for(var cell:row.cells())if(!cell.text().isBlank()||cell.formula()!=null)
                     populated.add((int)new CellReference(cell.address()).getCol());
                 String rowName = value(cells, fields.get("name"));
-                if (rowName.isBlank()) continue;
-                if (rowName.matches(".*(合计|小计|总计).*")) {
+                if (rowName.isBlank()) {
+                    if (row.cells().stream().anyMatch(c -> !c.text().isBlank() || c.formula() != null))
+                        throw new ApiException(ErrorCode.VALIDATION_FAILED, sheet.name() + "!第" + row.number() + "行有数据但材料名称为空，不能忽略");
+                    continue;
+                }
+                if (java.util.Set.of("合计", "小计", "总计").contains(rowName)) {
+                    if (row.cells().size() != 1 || !row.cells().getFirst().literalText())
+                        throw rowError(sheet.name(), row.number(), "汇总标记混有明细数据或公式，无法核实本行语义；请分行核对，不能忽略");
                     requireColumns(declared,populated,headerRow);
                     declared=List.of();populated=new java.util.HashSet<>();
                     if (!rows.isEmpty()) blocks.add(new Block(key, label, sheet.name(), List.copyOf(rows)));
@@ -104,6 +141,16 @@ public final class GoodsCostWorkbookParser {
             java.util.Set<Integer> populated,int headerRow) {
         var issues=com.uten.imp.common.importing.ImportColumnGuard.inspect(headers,populated,headerRow);
         if(!issues.isEmpty())throw new ApiException(ErrorCode.VALIDATION_FAILED,"第"+(headerRow+1)+"行表头："+issues.getFirst().message());
+    }
+    private static void requireRowColumns(List<com.uten.imp.common.importing.ImportColumnGuard.Header> headers,
+            SpreadsheetEvidenceReader.Row row, String sheet) {
+        var populated = row.cells().stream().map(cell -> (int)new CellReference(cell.address()).getCol())
+                .collect(Collectors.toSet());
+        var issues = com.uten.imp.common.importing.ImportColumnGuard.inspect(headers, populated, row.number() - 1);
+        if (!issues.isEmpty()) throw rowError(sheet, row.number(), issues.getFirst().message());
+    }
+    private static ApiException rowError(String sheet, int row, String message) {
+        return new ApiException(ErrorCode.VALIDATION_FAILED, sheet + "!第" + row + "行：" + message);
     }
     private static String value(Map<Integer, SpreadsheetEvidenceReader.Value> cells, Integer index) {
         if (index == null) return "";

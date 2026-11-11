@@ -1,0 +1,5 @@
+FAIL InvalidOperationException: A same-query failed refresh must retain the accepted complete result and output qualification.
+   在 Uten.Legacy.Tests.UiContractChecks.<>c__DisplayClass6_0.<RunCompleteReadOutputQualification>b__0(Boolean value, String message) 位置 D:\Projects\uten_imp_worktrees\feedback-remediate-20261110\clients\windows_legacy\Uten.Legacy.Tests\UiContractChecks.cs:行号 217
+   在 Uten.Legacy.Tests.UiContractChecks.RunCompleteReadOutputQualification() 位置 D:\Projects\uten_imp_worktrees\feedback-remediate-20261110\clients\windows_legacy\Uten.Legacy.Tests\UiContractChecks.cs:行号 249
+   在 Uten.Legacy.Tests.Program.RunUi[T](Func`1 check) 位置 D:\Projects\uten_imp_worktrees\feedback-remediate-20261110\clients\windows_legacy\Uten.Legacy.Tests\Program.cs:行号 216
+   在 Uten.Legacy.Tests.Program.Main(String[] args) 位置 D:\Projects\uten_imp_worktrees\feedback-remediate-20261110\clients\windows_legacy\Uten.Legacy.Tests\Program.cs:行号 116

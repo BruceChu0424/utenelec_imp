@@ -157,6 +157,31 @@ class UtenPageEdgePadding extends StatelessWidget {
   final Widget? child;
   final EdgeInsetsGeometry padding;
   final bool preserveStart;
+
+  UtenPageEdgePadding copyWith({Widget? child, EdgeInsetsGeometry? padding}) {
+    if (scrollBuilder != null) {
+      assert(child == null);
+      return UtenPageEdgePadding.scroll(
+        key: key,
+        padding: padding ?? this.padding,
+        preserveStart: preserveStart,
+        builder: scrollBuilder!,
+      );
+    }
+    return _pane
+        ? UtenPageEdgePadding.pane(
+            key: key,
+            padding: padding ?? this.padding,
+            child: child ?? this.child!,
+          )
+        : UtenPageEdgePadding(
+            key: key,
+            padding: padding ?? this.padding,
+            preserveStart: preserveStart,
+            child: child ?? this.child!,
+          );
+  }
+
   final bool _pane;
   final Widget Function(BuildContext context, EdgeInsets padding)?
   scrollBuilder;

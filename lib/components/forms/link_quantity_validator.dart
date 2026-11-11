@@ -1,3 +1,4 @@
+import '../../shared/formatters/exact_decimal.dart';
 import '../../core/formatters/exact_number_text.dart';
 
 /// Validates a quantity entered while linking an upstream document item.
@@ -12,8 +13,17 @@ import '../../core/formatters/exact_number_text.dart';
 String? validateLinkQuantity(
   String raw, {
   required double remaining,
+  String? remainingText,
   bool allowOverRemaining = false,
 }) {
+  if (remainingText != null) {
+    final value = financeExactDecimalUnits(raw);
+    if (value == null || value <= BigInt.zero) return '请输入大于 0 的本次数量（最多四位小数）';
+    final limit = financeExactDecimalUnits(remainingText);
+    if (limit == null || limit <= BigInt.zero) return '该明细已无可核对的剩余可引入数量';
+    if (!allowOverRemaining && value > limit) return '本次数量最多为 $remainingText';
+    return null;
+  }
   final value = double.tryParse(raw.trim());
   if (value == null || !value.isFinite || value <= 0) {
     return '请输入大于 0 的本次数量';
@@ -50,4 +60,13 @@ class LatestLinkRequestGuard {
   void invalidate() => _version++;
 
   bool isCurrent(int requestVersion) => requestVersion == _version;
+}
+
+/// Exact source-bound checks used after upstream imports and draft restoration.
+String? validateExactLinkedCapacity(String quantity, String remaining) {
+  final value = financeExactDecimalUnits(quantity);
+  final limit = financeExactDecimalUnits(remaining);
+  if (value == null || value < BigInt.zero) return '数量必须为非负数且最多四位小数';
+  if (limit == null || limit < BigInt.zero) return '来源剩余数量无法精确核对，请重新引入来源';
+  return value > limit ? '数量不能超过来源剩余量 $remaining' : null;
 }

@@ -6,6 +6,7 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/network/api_exception.dart';
+import '../../core/async/serial_task_queue.dart';
 import '../business_columns/business_column.dart';
 import '../paging/paged_read_intent.dart';
 import 'platform_table_binding.dart';
@@ -48,6 +49,7 @@ class PlatformTableController<T> extends ChangeNotifier {
   bool disposed = false;
   bool layoutTouched = false;
   int _generation = 0;
+  final _readQueue = SerialTaskQueue();
   String _tableKey = '';
   Object? _sourceRevision;
   List<T> _items = const [];
@@ -189,14 +191,16 @@ class PlatformTableController<T> extends ChangeNotifier {
     draftOf = stagedDraftOf ?? next?.draftOf;
     final rows = descriptor.rows;
     final additional = descriptor.additionalRows;
+    final explicitRevisionChanged = _sourceRevision != descriptor.revision;
+    final dataChanged =
+        explicitRevisionChanged ||
+        !identical(rows, _items) ||
+        !identical(additional, _additionalItems);
     // Only a proven immutable snapshot may skip the membership check. A
     // mutable host or a staged draft can change a record identity in place.
-    final provenRows =
-        !changed &&
-        descriptor.immutableRows &&
-        draftOf == null &&
-        _sourceRevision == descriptor.revision;
-    final rowsStable = provenRows && identical(rows, _items);
+    final provenRows = !changed && descriptor.immutableRows && draftOf == null;
+    final rowsStable =
+        provenRows && !explicitRevisionChanged && identical(rows, _items);
     final appendStart = provenRows ? descriptor.appendStart : null;
     _items = rows;
     _additionalItems = additional;
@@ -213,6 +217,7 @@ class PlatformTableController<T> extends ChangeNotifier {
       _tableKey = key;
       _container = container;
       _values.clear();
+      _valuesRevision++;
       _edits.clear();
       _definitions.clear();
       _recordColumnIds.clear();
@@ -282,6 +287,7 @@ class PlatformTableController<T> extends ChangeNotifier {
       );
     }
     if (draftOf != null) {
+      if (!changed && dataChanged) _valuesRevision++;
       for (final item in _allItems) {
         final draft = draftOf!(item);
         if (draft == null) continue;
@@ -298,6 +304,7 @@ class PlatformTableController<T> extends ChangeNotifier {
       }
     }
     if (historical && !rowsStable) {
+      if (!changed && dataChanged) _valuesRevision++;
       _values.clear();
       for (final item in _allItems) {
         final row = binding!.snapshotOf!(item);
@@ -335,7 +342,9 @@ class PlatformTableController<T> extends ChangeNotifier {
       }
     }
     if (dropped) _emitValues();
-    if (changed || projectionChanged) {
+    if (changed ||
+        projectionChanged ||
+        (explicitRevisionChanged && appendStart == null)) {
       unawaited(reload());
       return;
     }
@@ -477,6 +486,7 @@ class PlatformTableController<T> extends ChangeNotifier {
     _resetReadPlan();
     capabilities = null;
     _values.clear();
+    _valuesRevision++;
     _catalogDefinitions.clear();
     error = null;
     readFailure = null;
@@ -846,10 +856,10 @@ class PlatformTableController<T> extends ChangeNotifier {
   /// record again. Record growth and plain rebuilds never come through here.
   Future<void> reload() => _startPass(full: true);
 
-  Future<void> _startPass({bool full = false}) async {
+  Future<void> _startPass({bool full = false}) {
     final repo = repository;
     final owner = binding;
-    if (repo == null || owner == null || disposed) return;
+    if (repo == null || owner == null || disposed) return Future<void>.value();
     final generation = ++_generation;
     if (full || _revalidate) {
       _revalidate = false;
@@ -866,8 +876,24 @@ class PlatformTableController<T> extends ChangeNotifier {
     }
     _inFlight = const [];
     _passActive = true;
-    loading = true;
-    _emitStatus();
+    if (!loading) {
+      loading = true;
+      _emitStatus();
+    }
+    // Membership appends join the current drain. Owner/projection/full-read
+    // retirement changes the generation immediately, but new I/O waits for
+    // the already-sent pass to settle; stale queued tickets never start.
+    return _readQueue.run(() async {
+      if (disposed || generation != _generation) return;
+      await _drainPass(generation, repo, owner);
+    });
+  }
+
+  Future<void> _drainPass(
+    int generation,
+    PlatformTableRepository repo,
+    PlatformTableBinding<T> owner,
+  ) async {
     var structure = false;
     var values = false;
     // Records read but not yet applied; a failed pass returns them to the
@@ -1036,8 +1062,7 @@ class PlatformTableController<T> extends ChangeNotifier {
         pendingIds.clear();
         _values.removeWhere(
           (id, _) =>
-              !_isMember(id) &&
-              !_saving.contains((_authorizationRevision, id)),
+              !_isMember(id) && !_saving.contains((_authorizationRevision, id)),
         );
         _stageSelectedCalculations();
       } else {
@@ -1198,6 +1223,7 @@ class PlatformTableController<T> extends ChangeNotifier {
         .where((column) => !layout.hidden.contains(column.key))
         .map((column) => _definitions[column.id] ?? column)
         .where((column) => column.calculated && column.formula != null);
+    var changed = false;
     for (final item in _allItems) {
       final draft = draftOf!(item);
       if (draft == null ||
@@ -1209,9 +1235,11 @@ class PlatformTableController<T> extends ChangeNotifier {
         if (!masked(item, column) && !draft.ownsColumn(column.id)) {
           draft.setValue(column, null);
           _recordColumnIds.add(column.id);
+          changed = true;
         }
       }
     }
+    if (changed) _valuesRevision++;
   }
 
   PlatformRowValues? rowValues(T item) {
@@ -1318,6 +1346,7 @@ class PlatformTableController<T> extends ChangeNotifier {
       draft.setValue(column, value?.trim().isEmpty == true ? null : value);
       _definitions[column.id] = column;
       _recordColumnIds.add(column.id);
+      _valuesRevision++;
       _emit();
       return;
     }
@@ -1354,6 +1383,7 @@ class PlatformTableController<T> extends ChangeNotifier {
       }
       if ((_values[row.recordId]?.version ?? -1) > result.version) return;
       _values[row.recordId] = result;
+      _valuesRevision++;
       _loaded.add(row.recordId);
       for (final cell in result.cells) {
         _definitions[cell.columnId] = cell.definition;

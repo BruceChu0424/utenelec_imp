@@ -36,12 +36,23 @@ namespace Uten.Legacy.Core
             string projectionJson, string outputPath, MutationOwnerSnapshot owner, CancellationToken token, IProgress<long> progress = null,
             IReadOnlyList<string> selectedIds = null, int selectionVersion = 0)
         {
+            // Freeze caller scope before queueing; large UUID validation/JSON encoding must not
+            // monopolize the WPF dispatcher. The owned download rechecks identity before I/O.
+            var frozenParameters = parameters == null ? null : new Dictionary<string, string>(parameters, StringComparer.Ordinal);
+            var frozenIds = selectedIds == null ? null : Array.AsReadOnly(selectedIds.ToArray());
+            return Task.Run(() => PrepareLegacyUnitExportAsync(frozenParameters, password, projectionJson, outputPath,
+                owner, token, progress, frozenIds, selectionVersion), token);
+        }
+        private Task<UnitExportFile> PrepareLegacyUnitExportAsync(IDictionary<string, string> parameters, string password,
+            string projectionJson, string outputPath, MutationOwnerSnapshot owner, CancellationToken token, IProgress<long> progress,
+            IReadOnlyList<string> selectedIds, int selectionVersion)
+        {
             var body = new Dictionary<string, object> { ["password"] = ValidateExportPassword(password) };
             if (selectedIds != null)
             {
                 if(selectionVersion < 1)throw new ApiException("EXPORT_SELECTION_UNSUPPORTED", "当前服务器尚不支持选中导出；本次未生成文件，请更新服务端或明确选择全部结果。");
-                if (selectedIds.Count == 0 || selectedIds.Count > 1000 || selectedIds.Distinct(StringComparer.Ordinal).Count() != selectedIds.Count)
-                    throw new ApiException("EXPORT_SELECTION_INVALID", "本机导出最多选择1000项，请缩小选择或导出当前筛选全部资料。");
+                if (selectedIds.Count == 0 || selectedIds.Distinct(StringComparer.Ordinal).Count() != selectedIds.Count)
+                    throw new ApiException("EXPORT_SELECTION_INVALID", "所选资料编号必须完整且不重复。");
                 body.Add("selectedIds", selectedIds.Select(CanonicalCommandId).ToArray());
             }
             if (projectionJson != null)
@@ -68,7 +79,8 @@ namespace Uten.Legacy.Core
                 RequireMutationOwnerLocked(owner); RequireMutationPermissionsLocked(new[] { "unit:export" });
                 scope = CaptureLocked(); readLifetime = readCancellation.Token;
             }
-            string passwordBody = JsonValue.Serialize(body);
+            string passwordBody = JsonValue.Serialize(body, UnitExportBudget.RequestBytes);
+            if (Encoding.UTF8.GetByteCount(passwordBody) > UnitExportBudget.RequestBytes) throw new ApiException("REQUEST_TOO_LARGE", "导出条件超过16MiB请求预算。");
             return Task.Run(() => DownloadOwnedUnitExportAsync(relative, passwordBody, path, owner, scope, readLifetime, token, progress));
         }
         private async Task<UnitExportFile> DownloadOwnedUnitExportAsync(string relative, string passwordBody, string path,

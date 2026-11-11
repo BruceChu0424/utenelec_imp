@@ -149,7 +149,7 @@ class FinanceExpenseAnalysisPostgresTest {
         org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(auth);
         var tx=new org.springframework.transaction.support.TransactionTemplate(new org.springframework.jdbc.datasource.DataSourceTransactionManager(db.getDataSource()));
         try {
-            for(Integer version:Arrays.asList(null,0)) {
+            for(Integer version:Arrays.asList(null,0,1,2)) {
                 UUID id=UUID.randomUUID();String hash=id.toString().replace("-","").repeat(2);
                 var preview=new FinanceExpenseAnalysisContracts.NoteImportPreview(id,"2026-09","synthetic.xlsx",hash,
                         List.of(new FinanceExpenseAnalysisContracts.NoteImportRow(2,"OP_RENT","合成分类","合成分项","合成项目","不能自动写入","",-1)),List.of(),false);

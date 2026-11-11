@@ -394,6 +394,7 @@ Future<void> showUtenPrintPreview({
   String? subtitle,
   required Future<UtenPrintTable> Function() loader,
   Future<void> Function()? authorizePrint,
+  bool Function()? isCurrent,
   String? exportEndpoint,
   String? exportReport,
   Map<String, dynamic>? exportQuery,
@@ -405,7 +406,9 @@ Future<void> showUtenPrintPreview({
   bool showOutputScope = true,
 }) async {
   context = UtenAppBarActionScope.actionContextOf(context);
-  if (_openPrintOutputs[context] == true) return;
+  if (_openPrintOutputs[context] == true || !(isCurrent?.call() ?? true)) {
+    return;
+  }
   _openPrintOutputs[context] = true;
   try {
     final projection = applyTableProjection
@@ -434,7 +437,9 @@ Future<void> showUtenPrintPreview({
             selectedCount: selection.count,
           )
         : UtenTableOutputScope.all;
-    if (outputScope == null || !context.mounted) return;
+    if (outputScope == null || !context.mounted || !(isCurrent?.call() ?? true)) {
+      return;
+    }
     if (container != null &&
         (readBoundary != container.read(sensitiveReadBoundaryProvider) ||
             readRevision != container.read(readScopeRevisionProvider))) {
@@ -447,7 +452,7 @@ Future<void> showUtenPrintPreview({
         title: '正在读取选中记录',
         action: selection.snapshot,
       );
-      if (!context.mounted) return;
+      if (!context.mounted || !(isCurrent?.call() ?? true)) return;
       if (container != null &&
           (readBoundary != container.read(sensitiveReadBoundaryProvider) ||
               readRevision != container.read(readScopeRevisionProvider))) {
@@ -497,6 +502,7 @@ Future<void> showUtenPrintPreview({
                 : table;
           },
           authorizePrint: authorizePrint,
+          isCurrent: isCurrent,
           exportEndpoint: exportEndpoint,
           exportReport: exportReport,
           exportQuery: exportQuery,
@@ -630,6 +636,7 @@ class UtenPrintPreviewButton extends StatelessWidget {
     this.enabled = true,
     required this.loader,
     this.authorizePrint,
+    this.isCurrent,
     this.exportEndpoint,
     this.exportReport,
     this.exportQuery,
@@ -650,6 +657,7 @@ class UtenPrintPreviewButton extends StatelessWidget {
   final bool enabled;
   final Future<UtenPrintTable> Function() loader;
   final Future<void> Function()? authorizePrint;
+  final bool Function()? isCurrent;
   final String? exportEndpoint;
   final String? exportReport;
   final Map<String, dynamic>? exportQuery;
@@ -694,6 +702,7 @@ class UtenPrintPreviewButton extends StatelessWidget {
               subtitle: subtitle,
               loader: loader,
               authorizePrint: authorizePrint,
+              isCurrent: isCurrent,
               exportEndpoint: exportEndpoint,
               exportReport: exportReport,
               exportQuery: exportQuery,
@@ -715,6 +724,7 @@ class _UtenPrintPreviewDialog extends StatefulWidget {
     this.subtitle,
     required this.loader,
     this.authorizePrint,
+    this.isCurrent,
     this.exportEndpoint,
     this.exportReport,
     this.exportQuery,
@@ -732,6 +742,7 @@ class _UtenPrintPreviewDialog extends StatefulWidget {
   final String? subtitle;
   final Future<UtenPrintTable> Function() loader;
   final Future<void> Function()? authorizePrint;
+  final bool Function()? isCurrent;
   final String? exportEndpoint;
   final String? exportReport;
   final Map<String, dynamic>? exportQuery;
@@ -813,7 +824,12 @@ class _UtenPrintPreviewDialogState extends State<_UtenPrintPreviewDialog> {
   }
 
   bool _isCurrent(int version) {
-    if (!mounted || _invalidated || version != _contextVersion) return false;
+    if (!mounted ||
+        _invalidated ||
+        version != _contextVersion ||
+        !(widget.isCurrent?.call() ?? true)) {
+      return false;
+    }
     try {
       return widget.providerContainer == null ||
           (widget.readBoundary ==

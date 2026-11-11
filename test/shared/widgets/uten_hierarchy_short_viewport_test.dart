@@ -184,12 +184,6 @@ void main() {
                   ),
                 ],
               ),
-              splitBuilder: (leading, trailing) => Row(
-                children: [
-                  Expanded(child: leading),
-                  Expanded(child: trailing),
-                ],
-              ),
             ),
           ),
           width: 320,
@@ -255,12 +249,6 @@ void main() {
             key: _resultKey,
             primary: true,
             children: const [ListTile(title: Text('保持挂载的结果'))],
-          ),
-          splitBuilder: (leading, trailing) => Row(
-            children: [
-              Expanded(child: leading),
-              Expanded(child: trailing),
-            ],
           ),
         ),
         width: 320,

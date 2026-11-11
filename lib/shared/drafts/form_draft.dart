@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'package:crypto/crypto.dart' as crypto;
 import 'package:uuid/uuid.dart';
 
 import '../badges/badge_module.dart';
@@ -165,6 +167,11 @@ bool hasUnknownFormDraftSubmission(
 }) {
   final marker = honorMarker ? data[formDraftUnknownSubmissionKey] : null;
   if (marker == true) return true;
+  if (Uri.tryParse(route)?.path == RouteName.productionMaterialAnalysis &&
+      (data['legacyOriginalCommand'] is Map ||
+          data['submittedBodyJson'] is String)) {
+    return true;
+  }
   if (Uri.tryParse(route)?.path == '${RouteName.workshopMaterialIssue}/batch') {
     final commands = data['commands'];
     if (commands is Map &&
@@ -234,6 +241,30 @@ Set<String> unknownFormDraftCommandIdentities(
   required String route,
 }) {
   final form = Uri.tryParse(route)?.queryParameters['draftForm'];
+  if (Uri.tryParse(route)?.path == RouteName.productionMaterialAnalysis &&
+      hasUnknownFormDraftSubmission(data, route: route)) {
+    final identities = <String>{};
+    final legacy = data['legacyOriginalCommand'];
+    if (legacy is Map && legacy['bodyJson'] is String) {
+      final bytes = utf8.encode(
+        jsonEncode([
+          legacy['analysisId'],
+          legacy['operation'],
+          legacy['bodyJson'],
+        ]),
+      );
+      identities.add('material-original:${crypto.sha256.convert(bytes)}');
+    }
+    final aggregate = data['submittedBodyJson'];
+    if (aggregate is String) {
+      identities.add(
+        'material-aggregate:${crypto.sha256.convert(utf8.encode(jsonEncode([data['submittedAnalysisId'], aggregate])))}',
+      );
+    }
+    return identities.isEmpty
+        ? {'material-preparation:missing-original'}
+        : identities;
+  }
   if (const {'financeDocumentReview', 'financeDocumentEdit'}.contains(form)) {
     final intent = form == 'financeDocumentReview'
         ? data['intent']

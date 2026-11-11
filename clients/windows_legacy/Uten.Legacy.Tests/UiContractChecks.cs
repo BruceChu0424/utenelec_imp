@@ -206,6 +206,60 @@ namespace Uten.Legacy.Tests
             }
         }
 
+        internal static int RunCompleteReadOutputQualification()
+        {
+            if (Application.Current == null)
+            {
+                var application = new App(); application.InitializeComponent();
+                application.ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            }
+            int assertions = 0;
+            Action<bool, string> check = (value, message) => { if (!value) throw new InvalidOperationException(message); assertions++; };
+            var configuration = new ClientConfiguration(new[] { new ServerEndpoint("first", "Fixture", "https://first.company.test/api") }, "first");
+            var handler = new SearchReadUiHandler { TotalItems = 101 };
+            Func<Uri, CancellationToken, Task> failContinuation = (uri, token) => {
+                if (SearchReadUiHandler.Parameter(uri, "page") != "1") throw new HttpRequestException("synthetic continuation failure");
+                return Task.CompletedTask;
+            };
+            handler.BeforeList = failContinuation;
+            using (var session = new SessionCoordinator(configuration, handler, new MemoryStore()))
+            {
+                session.LoginAsync("fixture", "fixture-password", CancellationToken.None).GetAwaiter().GetResult();
+                var view = new UnitsWorkspaceView(session);
+                var window = new Window { Content = view, Width = 1400, Height = 850, Opacity = 0, ShowActivated = false, ShowInTaskbar = false };
+                var flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+                Func<bool> canAct = () => (bool)typeof(UnitsWorkspaceView).GetMethod("CanAct", flags).Invoke(view, null);
+                Func<Task> refresh = () => (Task)typeof(UnitsWorkspaceView).GetMethod("LoadPageAsync", flags).Invoke(view, new object[] { 1 });
+                try
+                {
+                    window.Show();
+                    var table = FindVisual<DataGrid>(view, item => true);
+                    PumpUntil(() => handler.ListReads > 0 && !ReadBusy(view, false), "The cold failed complete read must settle.");
+                    check(table.Items.Count == 0 && !canAct(), "A cold continuation failure must not qualify partial rows for output.");
+                    handler.BeforeList = null;
+                    var loaded = refresh();
+                    PumpUntil(() => loaded.IsCompleted && !ReadBusy(view, false), "The legal complete read must finish.");
+                    loaded.GetAwaiter().GetResult();
+                    check(table.Items.Count == 101 && canAct(), "A complete native result must qualify its actual actions.");
+                    table.SelectedItems.Add(table.Items[0]); table.SelectedItems.Add(table.Items[1]); Pump(window);
+                    handler.BeforeList = failContinuation;
+                    var failed = refresh();
+                    PumpUntil(() => failed.IsCompleted && !ReadBusy(view, false), "The same-query failed refresh must settle.");
+                    failed.GetAwaiter().GetResult();
+                    check(table.Items.Count == 101 && canAct(), "A same-query failed refresh must retain the accepted complete result and output qualification.");
+                    var selection = (PersistentRowSelection<UnitRecord>)typeof(UnitsWorkspaceView).GetField("selection", flags).GetValue(view);
+                    check(selection.Count == 2, "A same-query failed refresh must retain the existing selected identities.");
+                    var search = FindVisual<TextBox>(view, item => true);
+                    int previous = handler.ListReads; search.Text = "another query";
+                    PumpUntil(() => handler.ListReads > previous && !ReadBusy(view, false), "The changed-query continuation failure must settle.");
+                    check(table.Items.Count == 0 && !canAct(), "An accepted result from another query must never qualify the failed replacement.");
+                    check(handler.BusinessWrites == 0, "Read/output qualification must never write business data.");
+                }
+                finally { window.Content = null; window.Close(); view.Dispose(); }
+            }
+            return assertions;
+        }
+
         internal static int RunSearchReadCoalescing()
         {
             if (Application.Current == null)

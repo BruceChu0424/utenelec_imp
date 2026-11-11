@@ -1,0 +1,232 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/independent/default_collapsing_tooltip_reparent_test.dart
+00:00 +0: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/independent/default_collapsing_tooltip_reparent_test.dart: default retained header closed Tooltip crosses compact both ways with semantics
+00:00 +1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/independent/default_collapsing_tooltip_reparent_test.dart: default retained header visible Tooltip crosses compact both ways with semantics
+00:00 +2: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/independent/default_collapsing_tooltip_reparent_test.dart: default retained body closed Tooltip crosses compact both ways with semantics
+00:00 +3: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/independent/default_collapsing_tooltip_reparent_test.dart: default retained body visible Tooltip crosses compact both ways with semantics
+00:01 +4: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/independent/default_collapsing_tooltip_reparent_test.dart: retained viewport keeps pinned tab at the original extent while header and rows coordinate
+00:02 +5: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/independent/overflow_semantics_menu_reparent_test.dart: overflow real semantics menu close tooltip=false
+00:03 +6: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/independent/minimal_split_tooltip_reparent_test.dart: minimal leading closed Tooltip survives real split boundary
+00:03 +7: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/independent/minimal_split_tooltip_reparent_test.dart: minimal leading closed Tooltip survives real split boundary
+00:04 +8: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/independent/minimal_hierarchy_height_tooltip_test.dart: compact header closed tooltip survives real height boundary
+00:04 +9: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/independent/minimal_compact_header_width_test.dart: retained compact header closed tooltip survives icon width global=true
+00:04 +10: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/independent/minimal_compact_header_width_test.dart: retained compact header closed tooltip survives icon width global=true
+00:04 +11: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/independent/minimal_compact_header_width_test.dart: retained compact header closed tooltip survives icon width global=true
+00:04 +12: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/independent/minimal_compact_header_width_test.dart: retained compact header closed tooltip survives icon width global=true
+00:04 +13: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/independent/minimal_compact_header_width_test.dart: retained compact header closed tooltip survives icon width global=true
+00:04 +14: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/independent/minimal_compact_header_width_test.dart: retained compact header closed tooltip survives icon width global=true
+00:04 +15: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/independent/minimal_compact_header_width_test.dart: retained compact header closed tooltip survives icon width global=true
+00:04 +16: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/independent/retained_pane_resize_stress_test.dart: retained pane rtl tooltip leading=true survives 24 immediate resizes
+00:04 +17: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/independent/retained_pane_resize_stress_test.dart: retained pane rtl tooltip leading=true survives 24 immediate resizes
+00:05 +18: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/independent/retained_pane_resize_stress_test.dart: retained pane rtl tooltip leading=true survives 24 immediate resizes
+00:05 +19: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/independent/retained_pane_resize_stress_test.dart: retained pane rtl tooltip leading=true survives 24 immediate resizes
+00:05 +20: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/independent/retained_pane_resize_stress_test.dart: retained pane rtl tooltip leading=true survives 24 immediate resizes
+00:05 +21: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/independent/retained_pane_resize_stress_test.dart: retained pane rtl tooltip leading=true survives 24 immediate resizes
+00:05 +22: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/independent/retained_pane_resize_stress_test.dart: retained pane rtl tooltip leading=true survives 24 immediate resizes
+00:05 +23: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/independent/retained_pane_resize_stress_test.dart: retained pane rtl tooltip leading=true survives 24 immediate resizes
+00:05 +24: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/independent/retained_pane_resize_stress_test.dart: retained pane rtl tooltip leading=true survives 24 immediate resizes
+00:05 +25: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/shared/widgets/uten_hierarchy_short_viewport_test.dart: 179px tree scrolls all controls and selectable nodes; error=false
+00:05 +26: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/shared/widgets/uten_hierarchy_short_viewport_test.dart: 179px tree scrolls all controls and selectable nodes; error=false
+00:06 +27: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/shared/widgets/uten_hierarchy_short_viewport_test.dart: 179px tree scrolls all controls and selectable nodes; error=false
+00:06 +28: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/shared/widgets/uten_hierarchy_short_viewport_test.dart: 179px tree scrolls all controls and selectable nodes; error=false
+00:06 +29: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/shared/widgets/uten_hierarchy_short_viewport_test.dart: 179px tree scrolls all controls and selectable nodes; error=false
+00:06 +30: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/uten_collapsing_header_scroll_view_test.dart: primary 模式整树正常构建(不抛异常)
+00:06 +31: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/uten_collapsing_header_scroll_view_test.dart: primary 模式整树正常构建(不抛异常)
+00:07 +32: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/uten_collapsing_header_scroll_view_test.dart: primary 模式整树正常构建(不抛异常)
+00:07 +32 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/uten_collapsing_header_scroll_view_test.dart: primary 模式整树正常构建(不抛异常)
+00:07 +33 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/uten_collapsing_header_scroll_view_test.dart: primary 模式整树正常构建(不抛异常)
+00:07 +34 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/uten_collapsing_header_touch_test.dart: touch from table collapses header before rows Size(390.0, 844.0) count 2
+00:07 +35 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/uten_collapsing_header_touch_test.dart: touch from table collapses header before rows Size(390.0, 844.0) count 2
+00:07 +36 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/uten_collapsing_header_mode_transition_test.dart: compact/nested transitions retain table, row, IME and wheel offset (1.0)
+00:07 +37 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/uten_collapsing_header_mode_transition_test.dart: compact/nested transitions retain table, row, IME and wheel offset (1.0)
+00:07 +38 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/uten_collapsing_header_mode_transition_test.dart: compact/nested transitions retain table, row, IME and wheel offset (1.0)
+00:08 +39 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/uten_collapsing_header_mode_transition_test.dart: compact/nested transitions retain table, row, IME and wheel offset (1.0)
+00:08 +40 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/uten_collapsing_header_mode_transition_test.dart: compact/nested transitions retain table, row, IME and wheel offset (1.0)
+00:08 +41 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/uten_collapsing_header_mode_transition_test.dart: compact/nested transitions retain table, row, IME and wheel offset (1.0)
+00:08 +42 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/uten_collapsing_header_mode_transition_test.dart: compact/nested transitions retain table, row, IME and wheel offset (1.0)
+00:08 +43 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/uten_collapsing_header_mode_transition_test.dart: compact/nested transitions retain table, row, IME and wheel offset (1.0)
+00:08 +44 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/uten_collapsing_header_mode_transition_test.dart: compact/nested transitions retain table, row, IME and wheel offset (1.0)
+00:08 +45 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/uten_collapsing_header_mode_transition_test.dart: compact/nested transitions retain table, row, IME and wheel offset (1.0)
+00:09 +46 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/uten_collapsing_header_mode_transition_test.dart: compact/nested transitions retain table, row, IME and wheel offset (1.0)
+00:09 +47 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/uten_collapsing_header_mode_transition_test.dart: compact/nested transitions retain table, row, IME and wheel offset (1.0)
+00:09 +48 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/uten_collapsing_header_mode_transition_test.dart: compact/nested transitions retain table, row, IME and wheel offset (1.0)
+00:09 +49 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/uten_collapsing_header_mode_transition_test.dart: compact/nested transitions retain table, row, IME and wheel offset (1.0)
+00:09 +50 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/uten_collapsing_header_mode_transition_test.dart: compact/nested transitions retain table, row, IME and wheel offset (1.0)
+00:09 +51 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/uten_collapsing_header_mode_transition_test.dart: compact/nested transitions retain table, row, IME and wheel offset (1.0)
+00:09 +52 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/uten_collapsing_header_scroll_relayout_test.dart: 收头部阶段每格滚轮不再整树重建表体(与表内滚动同级)
+00:10 +53 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/uten_collapsing_header_scroll_relayout_test.dart: 收头部阶段每格滚轮不再整树重建表体(与表内滚动同级)
+00:10 +54 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/uten_collapsing_header_scroll_relayout_test.dart: 收头部阶段每格滚轮不再整树重建表体(与表内滚动同级)
+00:10 +55 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/uten_collapsing_header_scroll_relayout_test.dart: 收头部阶段每格滚轮不再整树重建表体(与表内滚动同级)
+00:10 +56 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/uten_collapsing_header_scroll_relayout_test.dart: 收头部阶段每格滚轮不再整树重建表体(与表内滚动同级)
+00:10 +57 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/uten_collapsing_header_scroll_relayout_test.dart: 收头部阶段每格滚轮不再整树重建表体(与表内滚动同级)
+00:10 +58 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/uten_collapsing_header_scroll_relayout_test.dart: 收头部阶段每格滚轮不再整树重建表体(与表内滚动同级)
+00:10 +59 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/components/uten_unified_page_layout_test.dart: three page edges and all chrome are window sized at Size(1366.0, 650.0) zoom 1.0
+00:10 +60 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/master_data_table_mutable_row_refresh_test.dart: in-place field mutation re-renders cells on a same-instance rebuild
+00:10 +61 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/master_data_table_mutable_row_refresh_test.dart: in-place field mutation re-renders cells on a same-instance rebuild
+00:10 +62 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/master_data_table_mutable_row_refresh_test.dart: in-place field mutation re-renders cells on a same-instance rebuild
+00:10 +63 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/master_data_table_width_cursor_test.dart: 同实例静默重拉: 已测前缀零取值零排版(值集超上限清空后亦然)
+00:11 +64 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/master_data_table_width_cursor_test.dart: 同实例静默重拉: 已测前缀零取值零排版(值集超上限清空后亦然)
+00:11 +65 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/master_data_table_width_cursor_test.dart: 同实例静默重拉: 已测前缀零取值零排版(值集超上限清空后亦然)
+00:11 +66 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/master_data_table_width_cursor_test.dart: 同实例静默重拉: 已测前缀零取值零排版(值集超上限清空后亦然)
+00:11 +67 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/master_data_table_width_cursor_test.dart: 同实例静默重拉: 已测前缀零取值零排版(值集超上限清空后亦然)
+00:11 +68 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/master_data_table_width_cursor_test.dart: 同实例静默重拉: 已测前缀零取值零排版(值集超上限清空后亦然)
+00:11 +69 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/master_data_table_width_cursor_test.dart: 同实例静默重拉: 已测前缀零取值零排版(值集超上限清空后亦然)
+00:11 +70 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/master_data_table_width_cursor_test.dart: 同实例静默重拉: 已测前缀零取值零排版(值集超上限清空后亦然)
+00:11 +71 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/uten_collapsing_header_mode_transition_test.dart: primary fullscreen retains live cell text, selection and controller (1.0)
+00:11 +72 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/uten_collapsing_header_mode_transition_test.dart: primary fullscreen retains live cell text, selection and controller (1.0)
+00:11 +73 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/uten_collapsing_header_mode_transition_test.dart: primary fullscreen retains live cell text, selection and controller (1.0)
+00:12 +74 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/master_data_table_width_cursor_test.dart: 追加只访问新增行; 换新实例(同值串)重走但零排版
+00:12 +75 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/uten_collapsing_header_scroll_relayout_test.dart: 滚轮门：置顶时掉头往下, 头部立刻放, 不吃空行程
+00:12 +76 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/uten_collapsing_header_scroll_relayout_test.dart: 滚轮门：置顶时掉头往下, 头部立刻放, 不吃空行程
+00:12 +77 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/uten_collapsing_header_scroll_relayout_test.dart: 滚轮门：置顶时掉头往下, 头部立刻放, 不吃空行程
+00:12 +78 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/uten_collapsing_header_scroll_relayout_test.dart: 滚轮门：置顶时掉头往下, 头部立刻放, 不吃空行程
+00:12 +79 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/master_data_table_width_cursor_test.dart: 平台扩展值逐批到达: 业务列取值恒等于行数, 平台值全部量到
+00:12 +80 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/master_data_table_width_cursor_test.dart: 平台扩展值逐批到达: 业务列取值恒等于行数, 平台值全部量到
+00:13 +81 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/master_data_table_width_cursor_test.dart: 平台扩展值逐批到达: 业务列取值恒等于行数, 平台值全部量到
+00:13 +82 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/components/uten_unified_page_layout_test.dart: no overflow and Popup keep the same background width input and focus
+00:13 +83 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/finance/finance_doc_detail_collapsing_header_test.dart: 收款单详情：上滚先收表头卡，明细表接着内滚
+00:13 +84 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/finance/finance_doc_detail_collapsing_header_test.dart: 收款单详情：上滚先收表头卡，明细表接着内滚
+00:13 +85 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/finance/finance_doc_detail_collapsing_header_test.dart: 收款单详情：上滚先收表头卡，明细表接着内滚
+00:14 +86 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/finance/finance_doc_detail_collapsing_header_test.dart: 收款单详情：上滚先收表头卡，明细表接着内滚
+00:14 +87 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/finance/finance_doc_detail_collapsing_header_test.dart: 收款单详情：上滚先收表头卡，明细表接着内滚
+00:15 +88 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/finance/finance_doc_detail_collapsing_header_test.dart: 收款单详情：上滚先收表头卡，明细表接着内滚
+00:15 +89 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/finance/finance_doc_detail_collapsing_header_test.dart: 收款单详情：上滚先收表头卡，明细表接着内滚
+00:15 +90 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/finance/finance_doc_detail_collapsing_header_test.dart: 收款单详情：上滚先收表头卡，明细表接着内滚
+00:15 +91 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/warehouse/warehouse_detail_collapsing_header_test.dart: 仓库单据详情：上滚先收表头卡，明细表接着内滚
+00:15 +92 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/warehouse/warehouse_detail_collapsing_header_test.dart: 仓库单据详情：上滚先收表头卡，明细表接着内滚
+00:16 +93 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/production/pages/production_daily_report_detail_collapsing_header_test.dart: 日报详情并列显示保存的实称总重量与单重，旧单仍可查看
+00:16 +94 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/production/pages/production_daily_report_detail_collapsing_header_test.dart: 日报详情并列显示保存的实称总重量与单重，旧单仍可查看
+00:16 +95 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/production/pages/production_daily_report_detail_collapsing_header_test.dart: 日报详情并列显示保存的实称总重量与单重，旧单仍可查看
+00:17 +96 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/production/pages/production_daily_report_detail_collapsing_header_test.dart: 日报详情并列显示保存的实称总重量与单重，旧单仍可查看
+00:17 +97 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/production/pages/production_daily_report_detail_collapsing_header_test.dart: 日报详情并列显示保存的实称总重量与单重，旧单仍可查看
+00:17 +98 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/production/pages/production_daily_report_detail_collapsing_header_test.dart: 日报详情并列显示保存的实称总重量与单重，旧单仍可查看
+00:17 +99 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/production/pages/production_daily_report_detail_collapsing_header_test.dart: 日报详情并列显示保存的实称总重量与单重，旧单仍可查看
+00:17 +100 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/production/pages/production_daily_report_detail_collapsing_header_test.dart: 日报详情并列显示保存的实称总重量与单重，旧单仍可查看
+00:17 +101 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/production/pages/production_daily_report_detail_collapsing_header_test.dart: 日报详情并列显示保存的实称总重量与单重，旧单仍可查看
+00:17 +102 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/sales/pages/sales_doc_detail_collapsing_header_test.dart: 销售订单详情：上滚先收表头卡，明细表接着内滚
+00:17 +103 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/sales/pages/sales_doc_detail_collapsing_header_test.dart: 销售订单详情：上滚先收表头卡，明细表接着内滚
+00:17 +104 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/sales/pages/sales_doc_detail_collapsing_header_test.dart: 销售订单详情：上滚先收表头卡，明细表接着内滚
+00:18 +105 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/sales/pages/sales_doc_detail_collapsing_header_test.dart: 销售订单详情：上滚先收表头卡，明细表接着内滚
+00:18 +106 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/sales/pages/sales_doc_detail_collapsing_header_test.dart: 销售订单详情：上滚先收表头卡，明细表接着内滚
+00:18 +107 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/sales/pages/sales_doc_detail_collapsing_header_test.dart: 销售订单详情：上滚先收表头卡，明细表接着内滚
+00:18 +108 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/sales/pages/sales_doc_detail_collapsing_header_test.dart: 销售订单详情：上滚先收表头卡，明细表接着内滚
+00:18 +109 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/sales/pages/sales_doc_detail_collapsing_header_test.dart: 销售订单详情：上滚先收表头卡，明细表接着内滚
+00:18 +110 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/subcontract/subcontract_doc_detail_collapsing_header_test.dart: 委外进仓详情 phone portrait 390x844 · textScale 1.5 不溢出
+00:19 +111 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/warehouse/warehouse_detail_collapsing_header_test.dart: 实物历史详情 desktop 1280x900 · textScale 1.5 不溢出
+00:19 +112 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/production/pages/production_daily_report_detail_collapsing_header_test.dart: 生产日报详情 desktop 1280x900 · textScale 1.5 不溢出
+00:19 +113 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/production/pages/production_daily_report_detail_collapsing_header_test.dart: 生产日报详情 desktop 1280x900 · textScale 1.5 不溢出
+00:19 +114 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/sales/pages/sales_doc_detail_collapsing_header_test.dart: 销售订单详情 desktop 1280x900 · textScale 1.5 不溢出
+00:19 +115 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/sales/pages/sales_doc_detail_collapsing_header_test.dart: 销售订单详情 desktop 1280x900 · textScale 1.5 不溢出
+00:19 +116 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/production/pages/production_daily_report_detail_collapsing_header_test.dart: 生产日报详情 phone portrait 390x844 · textScale 1.5 不溢出
+00:19 +117 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/production/pages/production_daily_report_detail_collapsing_header_test.dart: 生产日报详情 phone portrait 390x844 · textScale 1.5 不溢出
+00:20 +118 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/sales/pages/sales_doc_detail_collapsing_header_test.dart: 销售订单详情 phone portrait 390x844 · textScale 1.5 不溢出
+00:20 +119 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/sales/pages/sales_doc_detail_collapsing_header_test.dart: 销售订单详情 phone portrait 390x844 · textScale 1.5 不溢出
+00:20 +120 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/production/pages/production_daily_report_detail_collapsing_header_test.dart: 生产日报详情 phone landscape 844x390 · textScale 1.5 不溢出
+00:21 +121 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/warehouse/warehouse_detail_collapsing_header_test.dart: 销售出库作业详情 desktop 1280x900 · textScale 1.5 不溢出
+00:21 +122 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/sales/pages/sales_doc_detail_collapsing_header_test.dart: 销售订单详情 phone landscape 844x390 · textScale 1.5 不溢出
+00:21 +123 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/warehouse/warehouse_detail_collapsing_header_test.dart: 销售出库作业详情 phone portrait 390x844 · textScale 1.5 不溢出
+00:21 +124 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/warehouse/warehouse_detail_collapsing_header_test.dart: 销售出库作业详情 phone landscape 844x390 · textScale 1.5 不溢出
+00:25 +125 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:26 +126 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:27 +127 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:27 +128 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:27 +129 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:27 +130 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:27 +131 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:27 +132 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:27 +133 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:27 +134 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:27 +135 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:27 +136 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:27 +137 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:28 +138 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:28 +139 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:28 +140 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:28 +141 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:28 +142 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:28 +143 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:28 +144 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:28 +145 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:28 +146 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:28 +147 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:28 +148 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:28 +149 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:28 +150 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:28 +151 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:29 +152 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:29 +153 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:29 +154 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:29 +155 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:29 +156 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:29 +157 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:29 +158 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:29 +159 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:29 +160 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:29 +161 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:30 +162 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:30 +163 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:30 +164 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:30 +165 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:30 +166 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:30 +167 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:30 +168 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:30 +169 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:30 +170 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:30 +171 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:31 +172 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:31 +173 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:31 +174 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:31 +175 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:31 +176 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:31 +177 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:31 +178 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:31 +179 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:31 +180 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:31 +181 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:31 +182 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:31 +183 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:32 +184 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+MENU-SEMANTICS requested=false actual=true timing=mount
+00:32 +185 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:32 +186 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:32 +187 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:32 +188 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:32 +189 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:33 +189 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_column_settings_probe_test.dart: column settings prelude full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+MENU-SEMANTICS requested=false actual=true timing=mount
+00:33 +190 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:33 +191 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_column_settings_probe_test.dart: column settings prelude full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:33 +192 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_column_settings_probe_test.dart: column settings prelude full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=mount
+00:34 +193 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=true semantics=false timing=mount
+00:34 +194 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=true semantics=false timing=mount
+00:34 +195 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=true semantics=false timing=mount
+MENU-SEMANTICS requested=false actual=true timing=mount
+00:35 +196 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_column_settings_probe_test.dart: column settings prelude full App wide narrow actual ellipsis scheduler hover=true semantics=false timing=mount
+MENU-SEMANTICS requested=false actual=true timing=mount
+00:36 +197 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=true timing=mount
+MENU-SEMANTICS requested=true actual=true timing=mount
+00:37 +198 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_column_settings_probe_test.dart: column settings prelude full App wide narrow actual ellipsis scheduler hover=false semantics=true timing=mount
+MENU-SEMANTICS requested=true actual=true timing=mount
+00:38 +199 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=true semantics=true timing=mount
+MENU-SEMANTICS requested=true actual=true timing=mount
+00:38 +200 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_column_settings_probe_test.dart: column settings prelude full App wide narrow actual ellipsis scheduler hover=true semantics=true timing=mount
+MENU-SEMANTICS requested=true actual=true timing=mount
+00:40 +201 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=beforeMenu
+MENU-SEMANTICS requested=false actual=true timing=beforeMenu
+00:40 +202 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_column_settings_probe_test.dart: column settings prelude full App wide narrow actual ellipsis scheduler hover=false semantics=false timing=beforeMenu
+MENU-SEMANTICS requested=false actual=true timing=beforeMenu
+00:41 +203 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=true semantics=false timing=beforeMenu
+MENU-SEMANTICS requested=false actual=true timing=beforeMenu
+00:42 +204 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_column_settings_probe_test.dart: column settings prelude full App wide narrow actual ellipsis scheduler hover=true semantics=false timing=beforeMenu
+MENU-SEMANTICS requested=false actual=true timing=beforeMenu
+00:43 +204 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=true timing=beforeMenu
+MENU-SEMANTICS requested=true actual=true timing=beforeMenu
+00:43 +205 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=false semantics=true timing=beforeMenu
+00:44 +206 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_column_settings_probe_test.dart: column settings prelude full App wide narrow actual ellipsis scheduler hover=false semantics=true timing=beforeMenu
+MENU-SEMANTICS requested=true actual=true timing=beforeMenu
+00:45 +206 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=true semantics=true timing=beforeMenu
+MENU-SEMANTICS requested=true actual=true timing=beforeMenu
+00:46 +207 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_scheduler_probe_test.dart: full App wide narrow actual ellipsis scheduler hover=true semantics=true timing=beforeMenu
+00:46 +208 ~1: D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_menu_column_settings_probe_test.dart: column settings prelude full App wide narrow actual ellipsis scheduler hover=true semantics=true timing=beforeMenu
+MENU-SEMANTICS requested=true actual=true timing=beforeMenu
+00:47 +209 ~1: All tests passed!

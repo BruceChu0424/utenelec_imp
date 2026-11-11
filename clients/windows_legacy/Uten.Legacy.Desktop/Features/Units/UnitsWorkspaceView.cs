@@ -52,6 +52,7 @@ namespace Uten.Legacy.Desktop.Features.Units
         private CancellationTokenSource pageRead;
         private UnitEditorWindow editor;
         private UnitReadOwner loadedOwner;
+        private string loadedQueryPath;
         private UnitReadOwner scopeFence;
         private UnitColumnsSnapshot columnSnapshot;
         private Border tableSurface;
@@ -240,6 +241,9 @@ namespace Uten.Legacy.Desktop.Features.Units
         private Task ReloadPageAfterOperationAsync()
         {
             searchDelay.Stop();
+            // A confirmed write requires a fresh authoritative result even
+            // when the visible filter text did not change.
+            loadedOwner = null; loadedQueryPath = null;
             sequence++; pageRead?.Cancel();
             return LoadPageAsync(1);
         }
@@ -264,21 +268,25 @@ namespace Uten.Legacy.Desktop.Features.Units
         private async Task LoadPageCoreAsync(int target)
         {
             if (disposed || !session.IsAuthenticated || inlineWorkspace != null) return;
+            var query = new UnitQuery(1, 100, search.Text, new Dictionary<string, UnitFilter>(filters, StringComparer.Ordinal));
+            string queryPath = query.ToRelativePath();
+            bool retainComplete = loadedOwner?.IsCurrent(session) == true
+                && String.Equals(loadedQueryPath, queryPath, StringComparison.Ordinal);
             pageRead?.Cancel(); pageRead?.Dispose(); pageRead = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
             var token = pageRead.Token; long request = ++sequence;
             long ownerGeneration = session.Generation, ownerReadRevision = session.ReadScopeRevision;
-            loading = true; ClearSelection(false); status.Text = "正在读取单位资料…"; UpdateActions();
+            if (!retainComplete) { loadedOwner = null; loadedQueryPath = null; ClearSelection(false); }
+            loading = true; status.Text = "正在读取单位资料…"; UpdateActions();
             try
             {
-                var keyword = search.Text;
-                var queryFilters = new Dictionary<string, UnitFilter>(filters, StringComparer.Ordinal);
-                var snapshot = await service.CompleteAsync(new UnitQuery(1, 100, keyword, queryFilters),
+                var snapshot = await service.CompleteAsync(query,
                     () => !disposed && request == sequence && session.Generation == ownerGeneration
                         && session.ReadScopeRevision == ownerReadRevision,
                     token);
                 var allRows = snapshot.Value.Items;
                 if (disposed || request != sequence || !snapshot.IsCurrent(session)) return;
                 loadedOwner = snapshot.Owner;
+                loadedQueryPath = queryPath;
                 currentRows = allRows;
                 DisplayRows(allRows);
                 totalElements = snapshot.Value.Total;
@@ -305,9 +313,25 @@ namespace Uten.Legacy.Desktop.Features.Units
                     { columnSnapshot = null; ResetBaseColumns(); status.Text += "；表头尚未完整读取，输出已暂停，请刷新重试。"; }
                 }
             }
-            catch (OperationCanceledException) { }
-            catch (ApiException error) { if (!disposed && request == sequence) { loadedOwner = null; if (error.StatusCode == 403) ClearSelection(true); DisplayRows(null); status.Text = error.UserMessage; } }
-            catch (Exception) { if (!disposed && request == sequence) { loadedOwner = null; DisplayRows(null); status.Text = "读取单位资料失败，请点击刷新重试。"; } }
+            catch (OperationCanceledException) { if (!disposed && request == sequence && !retainComplete) DisplayRows(null); }
+            catch (ApiException error)
+            {
+                if (!disposed && request == sequence)
+                {
+                    if (!retainComplete || loadedOwner?.IsCurrent(session) != true || error.StatusCode == 401 || error.StatusCode == 403)
+                    { loadedOwner = null; loadedQueryPath = null; if (error.StatusCode == 403) ClearSelection(true); DisplayRows(null); }
+                    status.Text = error.UserMessage;
+                }
+            }
+            catch (Exception)
+            {
+                if (!disposed && request == sequence)
+                {
+                    if (!retainComplete || loadedOwner?.IsCurrent(session) != true)
+                    { loadedOwner = null; loadedQueryPath = null; DisplayRows(null); }
+                    status.Text = "读取单位资料失败，请点击刷新重试。";
+                }
+            }
             finally { if (!disposed && request == sequence) { loading = false; UpdateActions(); } }
         }
         private async Task LoadFacetsAsync()

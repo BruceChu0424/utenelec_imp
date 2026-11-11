@@ -1,0 +1,20 @@
+{
+  "product": "83712ff8a412d325039bc99fbf05d0dbdad06fa1",
+  "tree": "0b3c3447f091adaddee31684903c28f7d586df54",
+  "files": {
+    "lib/features/basic_data/widgets/posting_style_role_panel.dart": {
+      "blob": "b9ada9232735395dc023c80b4decacbd5c455282",
+      "sha256": "2e4b9d82dfb54b25c1466ef7278a8775d77c2087f132726c1b9e7240a6588975"
+    },
+    "test/features/finance/posting_style_role_panel_test.dart": {
+      "blob": "7936b2d43104ea690d4d476cb4a5b40084e26032",
+      "sha256": "b989f60c0505991027779e4d2e4505f9e180d7b985666629c83c080001fde4ac"
+    },
+    "test/features/finance/posting_style_role_full_app_test.dart": {
+      "blob": "5e3b6935e5c77aab09de498fdd57b37e36f5bb7a",
+      "sha256": "9c3d8bdaceb9d60cb838ea23bb351e6f1b56876c35ef34f597094f82ab9bab96"
+    }
+  },
+  "dropdownProductUnchanged": true,
+  "realBrowserPointerUnclosed": true
+}

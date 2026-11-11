@@ -142,9 +142,17 @@ void main() {
           expect(body.focus.hasFocus, isTrue);
           expect(tester.testTextInput.isRegistered, isTrue);
           expect(outer.positions, hasLength(1));
+          final owner = UtenCollapsingHeaderScrollView.outerControllerOf(
+            tester.element(input),
+          );
+          expect(owner, same(outer));
           expect(
-            find.byType(NestedScrollView),
-            step.$3 ? findsOneWidget : findsNothing,
+            find.byWidgetPredicate(
+              (widget) =>
+                  widget is CustomScrollView &&
+                  identical(widget.controller, outer),
+            ),
+            findsOneWidget,
           );
           await tester.ensureVisible(input);
           await tester.pumpAndSettle();

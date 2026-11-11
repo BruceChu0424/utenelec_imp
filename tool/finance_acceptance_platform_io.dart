@@ -1,14 +1,14 @@
 import 'dart:io';
-// The platform interface is intentionally overridden only by this local test entrypoint.
-// ignore: depend_on_referenced_packages
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
+import '../test/support/windows_acceptance_preferences.dart';
 
 /// Keeps preferences, encrypted plugin storage, drafts and exports inside this
 /// test run. The real Windows storage implementation and DPAPI remain enabled.
-Future<void> prepareAcceptanceRuntime() async {
+Future<void> prepareAcceptanceRuntime({String? rootPath}) async {
   final root = Directory(
-    'build/finance-closeout-20261104/native-runtime',
+    rootPath ?? 'build/finance-closeout-20261104/native-runtime',
   ).absolute;
+  isolateRealWindowsPreferences(root);
   PathProviderPlatform.instance = _AcceptancePaths(root);
 }
 

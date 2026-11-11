@@ -1,0 +1,20 @@
+[
+  {
+    "file": "acceptance-summary.json",
+    "actualRunFile": "D:\\Projects\\uten_imp_worktrees\\feedback-final-a-20261110\\evidence\\a-final-7b912287-1\\acceptance-summary.json",
+    "bytes": 7227,
+    "rawSha256": "edd388000b140dfc5440ccdc9ff1d91895ab0dbef51a7212ef004cee548c9b8b"
+  },
+  {
+    "file": "evidence-manifest.json",
+    "actualRunFile": "D:\\Projects\\uten_imp_worktrees\\feedback-final-a-20261110\\evidence\\a-final-7b912287-1\\evidence-manifest.json",
+    "bytes": 41584,
+    "rawSha256": "529cdf797f83578f00681e477c957433283245603cc79d5d46e824213ffc938e"
+  },
+  {
+    "file": "compiled-provenance.json",
+    "actualRunFile": "D:\\Projects\\uten_imp_worktrees\\feedback-final-a-20261110\\evidence\\a-final-7b912287-1\\compiled-provenance.json",
+    "bytes": 2600616,
+    "rawSha256": "bdc40bbdcfed04af0e64ae365e7da5ba717e96c01520d9ec29aa18be1a4565da"
+  }
+]

@@ -1,0 +1,7 @@
+runs/**/build/
+runs/**/dependency-build/
+runs/**/tmp-maven/
+runs/**/physical/tmp/
+runs/**/physical/probes/
+runs/**/artifacts/
+__pycache__/

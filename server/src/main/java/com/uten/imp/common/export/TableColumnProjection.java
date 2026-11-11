@@ -20,20 +20,20 @@ public final class TableColumnProjection {
     private final String scope;
     @NotEmpty @Size(max=160)
     private final List<@Valid Column> columns;
-    @Size(max=50000)
     private final List<java.util.Map<String,String>> rowSelection;
 
     @JsonCreator
     public TableColumnProjection(@JsonProperty("tableKey") @Size(max=300) String tableKey,
             @JsonProperty("scope") @Pattern(regexp="[a-z][a-z0-9_]{0,99}") String scope,
             @JsonProperty("columns") @NotEmpty @Size(max=160) List<@Valid Column> columns,
-            @JsonProperty("rowSelection") @Size(max=50000) List<java.util.Map<String,String>> rowSelection) {
+            @JsonProperty("rowSelection") List<java.util.Map<String,String>> rowSelection) {
         // Preserve malformed/null entries for the shared validator while
         // freezing the caller's list before authorization and publication.
         this.tableKey = tableKey;
         this.scope = scope;
         this.columns = columns == null ? null
                 : Collections.unmodifiableList(new ArrayList<>(columns));
+        ExportSelectionBudget.requireSnapshotBudget(rowSelection);
         this.rowSelection = rowSelection == null ? null : rowSelection.stream()
                 .map(row -> row == null ? null : Collections.unmodifiableMap(new java.util.LinkedHashMap<>(row))).toList();
     }

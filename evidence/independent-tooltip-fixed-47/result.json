@@ -1,0 +1,30 @@
+{
+  "reviewedProductSource": "47c96198ae10ab21a4f2d6d63b206e721214458c",
+  "actualExecutionHeadStart": "dd24b16003ba906ea233a70545e81f83088d2e65",
+  "actualExecutionHeadEnd": "dd24b16003ba906ea233a70545e81f83088d2e65",
+  "productDiff": [],
+  "originalAssertionsAndProbeSourceBytesUnchanged": true,
+  "runs": [
+    {
+      "tag": "minimal-18",
+      "pass": 4,
+      "failure": 0,
+      "exit": 0
+    },
+    {
+      "tag": "mould-hover-19",
+      "pass": 1,
+      "failure": 0,
+      "exit": 0
+    },
+    {
+      "tag": "mould-legal-20",
+      "pass": 1,
+      "failure": 0,
+      "exit": 0
+    }
+  ],
+  "setup17Excluded": true,
+  "height600Boundary": "not executed by this independent set",
+  "classification": "Flutter VM component/full Mould UI with synthetic API; not true Web/PG/target device"
+}

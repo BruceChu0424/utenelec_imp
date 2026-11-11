@@ -1,0 +1,58 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart
+00:00 +0: cold progressive failure cannot open print or create an export
+00:05 +1: accepted complete result stays usable after a same-query failed refresh
+00:13 +2: mould actual export sends all 1626 identities with selected=false
+00:21 +3: mould actual export sends all 1626 identities with selected=true
+00:28 +4: goods actual export header has no unsupported display columns
+00:32 +5: clients actual export header has no unsupported display columns
+00:37 +6: suppliers actual export header has no unsupported display columns
+00:40 +7: accounts actual export header has no unsupported display columns
+00:43 +8: currencies actual export header has no unsupported display columns
+00:45 +9: colors actual export header has no unsupported display columns
+00:47 +10: units actual export header has no unsupported display columns
+00:49 +11: moulds actual export header has no unsupported display columns
+00:52 +12: warehouses actual export header has no unsupported display columns
+00:56 +13: settlement_methods actual export header has no unsupported display columns
+00:59 +14: goods actual page prints every authorized server page beyond 500
+01:06 +15: clients actual page prints every authorized server page beyond 500
+01:14 +16: suppliers actual page prints every authorized server page beyond 500
+01:20 +17: accounts actual page prints every authorized server page beyond 500
+01:24 +18: currencies actual page prints every authorized server page beyond 500
+01:26 +19: colors actual page prints every authorized server page beyond 500
+01:28 +20: units actual page prints every authorized server page beyond 500
+01:31 +21: moulds actual page prints every authorized server page beyond 500
+01:34 +22: warehouses actual page prints every authorized server page beyond 500
+01:35 +23: settlement_methods actual page prints every authorized server page beyond 500
+01:37 +24: a scope revision during a real shared pane print never publishes its late pages
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following assertion was thrown running a test:
+pumpAndSettle timed out
+
+When the exception was thrown, this was the stack:
+#0      WidgetTester.pumpAndSettle.<anonymous closure> (package:flutter_test/src/widget_tester.dart:717:11)
+<asynchronous suspension>
+#1      TestAsyncUtils.guard.<anonymous closure> (package:flutter_test/src/test_async_utils.dart:130:27)
+<asynchronous suspension>
+#2      _pump (file:///D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart:314:3)
+<asynchronous suspension>
+#3      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart:517:25)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+The test description was:
+  a scope revision during a real shared pane print never publishes its late pages
+════════════════════════════════════════════════════════════════════════════════════════════════════
+03:00 +24 -1: a scope revision during a real shared pane print never publishes its late pages [E]
+  Test failed. See exception logs above.
+  The test description was: a scope revision during a real shared pane print never publishes its late pages
+  
+03:00 +24 -1: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/feedback-remediate-20261110/test/features/basic_data/pages/master_complete_print_consumers_test.dart: a scope revision during a real shared pane print never publishes its late pages

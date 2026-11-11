@@ -1,0 +1,22 @@
+{
+  "after" : {
+    "goods" : 5,
+    "goods_bom_items" : 4,
+    "goods_cost_import_mappings" : 2,
+    "finance_chart_codes" : 2,
+    "finance_operating_report_notes" : 2,
+    "finance_auxiliary_items" : 1,
+    "gl_entries" : 0
+  },
+  "legalMapping" : "00f55d5d-cba2-4d37-b3a2-b7d5ba789d95",
+  "legalImport" : "0d907111-05d2-4b06-afe8-7fb626de5480",
+  "before" : {
+    "goods" : 5,
+    "goods_bom_items" : 4,
+    "goods_cost_import_mappings" : 1,
+    "finance_chart_codes" : 2,
+    "finance_operating_report_notes" : 2,
+    "finance_auxiliary_items" : 1,
+    "gl_entries" : 0
+  }
+}

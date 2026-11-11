@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/inputs/uten_dropdown_field.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
+import '../../../core/network/api_mutation_reload_safety.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/authenticated_request_scope.dart';
 import '../../../shared/auth/permissions.dart';
@@ -24,6 +26,8 @@ class _PostingStyleRolePanelState extends ConsumerState<PostingStyleRolePanel> {
   List<PostingStyleRole> _roles = const [];
   final _options = <String, List<PaymentStyleNode>>{};
   final _choices = <String, String>{};
+  final _uncertainRoles = <String>{};
+  bool _refreshing = false;
   AuthenticatedRequestScope? _scope;
   int _generation = 0;
   int _operationGeneration = 0;
@@ -44,6 +48,8 @@ class _PostingStyleRolePanelState extends ConsumerState<PostingStyleRolePanel> {
         _scope = null;
         _options.clear();
         _choices.clear();
+        _uncertainRoles.clear();
+        _refreshing = false;
         _saving = null;
       });
       _load();
@@ -118,6 +124,7 @@ class _PostingStyleRolePanelState extends ConsumerState<PostingStyleRolePanel> {
           ..clear()
           ..addAll(options);
         _scope = scope;
+        _uncertainRoles.clear();
         _loading = false;
       });
     } catch (error) {
@@ -130,11 +137,27 @@ class _PostingStyleRolePanelState extends ConsumerState<PostingStyleRolePanel> {
     }
   }
 
+  Future<void> _refresh() async {
+    if (_refreshing || _loading || _saving != null) return;
+    final request = _generation + 1;
+    setState(() => _refreshing = true);
+    try {
+      await _load();
+    } finally {
+      if (mounted && request == _generation) {
+        setState(() => _refreshing = false);
+      }
+    }
+  }
+
   Future<void> _save(PostingStyleRole role) async {
     final style = _choices[role.roleKey];
     final scope = _scope;
     if (!role.canConfigure ||
         _saving != null ||
+        _refreshing ||
+        _loading ||
+        _uncertainRoles.contains(role.roleKey) ||
         style == null ||
         scope == null ||
         role.usable) {
@@ -161,12 +184,16 @@ class _PostingStyleRolePanelState extends ConsumerState<PostingStyleRolePanel> {
       });
     } catch (error) {
       if (!current()) return;
-      if (error is ApiException && error.code == 'CONFLICT') {
-        await _load();
-      }
+      final conflict = error is ApiException && error.code == 'CONFLICT';
+      if (conflict) await _load();
       if (!current()) return;
       setState(() {
-        _error = error is ApiException ? error.message : '保存科目用途失败，请核对后重试';
+        if (!conflict && !ApiMutationReloadSafety.isDefiniteRejection(error)) {
+          _uncertainRoles.add(role.roleKey);
+          _error = '保存结果暂时无法确认，请刷新科目用途核对后再操作。';
+        } else {
+          _error = error is ApiException ? error.message : '保存科目用途失败，请核对后重试';
+        }
       });
     } finally {
       if (current()) setState(() => _saving = null);
@@ -175,7 +202,7 @@ class _PostingStyleRolePanelState extends ConsumerState<PostingStyleRolePanel> {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
+    final panel = Material(
       child: SafeArea(
         child: Column(
           children: [
@@ -201,7 +228,9 @@ class _PostingStyleRolePanelState extends ConsumerState<PostingStyleRolePanel> {
                   ),
                   IconButton(
                     tooltip: '刷新',
-                    onPressed: _saving == null ? _load : null,
+                    onPressed: _saving == null && !_refreshing && !_loading
+                        ? _refresh
+                        : null,
                     icon: const Icon(Icons.refresh),
                   ),
                   UtenCloseButton(
@@ -222,7 +251,11 @@ class _PostingStyleRolePanelState extends ConsumerState<PostingStyleRolePanel> {
                 ),
               ),
             if (_loading)
-              const Expanded(child: Center(child: CircularProgressIndicator()))
+              Expanded(
+                child: _refreshing || _saving != null
+                    ? const SizedBox.shrink()
+                    : const Center(child: CircularProgressIndicator()),
+              )
             else if (!_readConfirmed)
               const Expanded(child: Center(child: Text('当前账号无权查看科目用途')))
             else
@@ -276,12 +309,13 @@ class _PostingStyleRolePanelState extends ConsumerState<PostingStyleRolePanel> {
                                 child: FilledButton(
                                   onPressed:
                                       _saving == null &&
+                                          !_uncertainRoles.contains(
+                                            role.roleKey,
+                                          ) &&
                                           _choices.containsKey(role.roleKey)
                                       ? () => _save(role)
                                       : null,
-                                  child: Text(
-                                    _saving == role.roleKey ? '正在保存' : '保存用途',
-                                  ),
+                                  child: const Text('保存用途'),
                                 ),
                               ),
                             ],
@@ -293,6 +327,21 @@ class _PostingStyleRolePanelState extends ConsumerState<PostingStyleRolePanel> {
               ),
           ],
         ),
+      ),
+    );
+    return PopScope(
+      canPop: _saving == null,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          panel,
+          if (_saving != null || _refreshing)
+            UtenBusyOverlay(
+              key: const ValueKey('posting-role-wait'),
+              title: _saving != null ? '正在保存科目用途' : '正在读取科目用途',
+              showDoNotLeaveHint: false,
+            ),
+        ],
       ),
     );
   }

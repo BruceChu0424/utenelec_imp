@@ -15,6 +15,17 @@ public class ReportExportBuildIdentity {
     private volatile String cached;
     public ReportExportBuildIdentity() {this(ReportExportBuildIdentity.class.getClassLoader());}
     ReportExportBuildIdentity(ClassLoader loader) {this.loader=Objects.requireNonNull(loader);}
+    @jakarta.annotation.PostConstruct
+    void initialize() {
+        // Resource discovery can be expensive on a cold Windows filesystem.
+        // Finish it before the application accepts commands, never while a
+        // first export owns the queue lock and its database deadline.
+        long started=System.nanoTime();
+        revision();
+        org.slf4j.LoggerFactory.getLogger(getClass()).info(
+                "Report export build fingerprint initialized in {} ms",
+                java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-started));
+    }
     public synchronized String revision() {
         if(cached!=null)return cached;
         try {

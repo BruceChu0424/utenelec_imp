@@ -1,0 +1,11 @@
+candidate-*/build/
+candidate-*/classes/
+candidate-*/test-classes/
+candidate-*/tmp*/
+baseline/probes-*/
+baseline/tmp*/
+*-classes/
+*-tmp/
+upgrade-storage/
+*.dump
+baseline/full-1048600.xlsx

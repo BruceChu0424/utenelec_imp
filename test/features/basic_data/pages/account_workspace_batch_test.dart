@@ -25,6 +25,7 @@ import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 
 import '../../../support/master_summary_stream_fixture.dart';
+import '../../../support/pump_until.dart';
 
 final _grants = StateProvider<Set<String>>(
   (_) => {
@@ -229,7 +230,7 @@ Future<ProviderContainer> _pump(
       ),
     ),
   );
-  await tester.pumpAndSettle();
+  await pumpAndSettleWithIo(tester);
   return ProviderScope.containerOf(tester.element(find.byType(AccountPage)));
 }
 
@@ -238,7 +239,7 @@ MasterDataTableView<AccountListItem> _table(WidgetTester tester) =>
 
 Future<void> _select(WidgetTester tester, Set<String> ids) async {
   _table(tester).onSelectedIdsChanged!(ids);
-  await tester.pumpAndSettle();
+  await pumpAndSettleWithIo(tester);
 }
 
 Finder _button(String text) => find.widgetWithText(UtenButton, text);
@@ -285,15 +286,15 @@ void main() {
         staleDelete.onTap() as Future<void>,
       ];
       unawaited(Future.wait(requests));
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(find.text('批量删除账户'), findsOneWidget);
       secondScope.complete();
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(find.byType(UtenAlertDialog), findsOneWidget);
       expect(wire.api.captures, capturesBefore + 1);
       expect(wire.writes, isEmpty);
       await _confirm(tester, '删除');
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       await Future.wait(requests);
       expect(wire.writes.map((write) => write.path), [
         '/master/accounts/a',
@@ -322,7 +323,7 @@ void main() {
       expect(menu.map((item) => item.label), ['停用选中(2)', '启用选中(2)', '删除选中(2)']);
       expect(menu.every((item) => item.preserveSelectionAfterAction), isTrue);
       container.read(_grants.notifier).state = {Perm.accountView};
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       await _select(tester, {'a'});
       expect(_button('删除选中'), findsNothing);
       expect(_button('停用选中'), findsNothing);
@@ -339,10 +340,10 @@ void main() {
       await _select(tester, {'a', 'c'});
       for (final action in ['删除选中', '停用选中']) {
         await _invokeBatch(tester, action);
-        await tester.pumpAndSettle();
+        await pumpAndSettleWithIo(tester);
         expect(wire.writes, isEmpty);
         await _confirm(tester, '取消');
-        await tester.pumpAndSettle();
+        await pumpAndSettleWithIo(tester);
         expect(_table(tester).selectedIds, {'a', 'c'});
       }
       expect(wire.writes, isEmpty);
@@ -357,9 +358,9 @@ void main() {
       final container = await _pump(tester, wire);
       await _select(tester, {'a', 'b', 'c'});
       await _invokeBatch(tester, '删除选中');
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       await _confirm(tester, '删除');
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(wire.writes.map((request) => (request.method, request.path)), [
         ('DELETE', '/master/accounts/a'),
         ('DELETE', '/master/accounts/b'),
@@ -382,7 +383,7 @@ void main() {
         isFalse,
       );
       container.read(_grants.notifier).state = {Perm.accountView};
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(find.byKey(const Key('master-batch-outcome')), findsNothing);
       expect(_table(tester).selectedIds, isEmpty);
       expect(tester.takeException(), isNull);
@@ -397,9 +398,9 @@ void main() {
       await _pump(tester, wire);
       await _select(tester, {'a', 'c'});
       await _invokeBatch(tester, status == '禁用' ? '停用选中' : '启用选中');
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       await _confirm(tester, '确认');
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(wire.writes.map((request) => (request.method, request.path)), [
         ('PATCH', '/master/accounts/a/status'),
         ('PATCH', '/master/accounts/c/status'),
@@ -420,7 +421,7 @@ void main() {
       final container = await _pump(tester, wire);
       await _select(tester, {'a', 'c'});
       await _invokeBatch(tester, '删除选中');
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(find.byType(UtenAlertDialog), findsOneWidget);
       container.read(_identity.notifier).state = const AuthenticatedScope(
         userId: 'operator-b',
@@ -429,7 +430,7 @@ void main() {
       container.read(_identity.notifier).state = const AuthenticatedScope(
         userId: 'operator-a',
       );
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(find.byType(UtenAlertDialog), findsNothing);
       expect(_table(tester).selectedIds, isEmpty);
       expect(wire.writes, isEmpty);
@@ -446,7 +447,7 @@ void main() {
         final container = await _pump(tester, wire);
         await _select(tester, {'a', 'b', 'c'});
         await _invokeBatch(tester, '删除选中');
-        await tester.pumpAndSettle();
+        await pumpAndSettleWithIo(tester);
         await _confirm(tester, '删除');
         for (var frame = 0; frame < 10 && wire.writes.isEmpty; frame++) {
           await tester.pump(const Duration(milliseconds: 30));
@@ -466,7 +467,7 @@ void main() {
         }
         await tester.pump();
         gate.complete();
-        await tester.pumpAndSettle();
+        await pumpAndSettleWithIo(tester);
         expect(wire.writes, hasLength(1));
         expect(_table(tester).selectedIds, isEmpty);
         expect(find.byKey(const Key('master-batch-outcome')), findsNothing);
@@ -483,9 +484,9 @@ void main() {
       await _pump(tester, wire);
       await _select(tester, {'a', 'c'});
       await _invokeBatch(tester, '删除选中');
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       await _confirm(tester, '删除');
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(wire.writes, hasLength(1));
       expect(_table(tester).selectedIds, {'a', 'c'});
       expect(find.text('权限或登录状态已变化，该账户尚未处理'), findsOneWidget);
@@ -503,7 +504,7 @@ void main() {
           .whereType<UtenMenuItem>()
           .singleWhere((item) => item.label.startsWith('删除选中'));
       await tester.tap(_button('编辑模式'));
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       final editor = tester.widget<MasterInlineEditActions<AccountListItem>>(
         find.byType(MasterInlineEditActions<AccountListItem>),
       );
@@ -512,27 +513,27 @@ void main() {
         read: (row) => row.name,
       );
       editor.controller.setValue('a', field, '未保存名称', originalValue: '一号银行户');
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(_button('删除选中'), findsNothing);
       final capturesBefore = wire.api.captures;
       unawaited(staleDelete.onTap() as Future<void>);
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(find.text('放弃未保存的修改？'), findsOneWidget);
       expect(find.text('批量删除账户'), findsNothing);
       expect(wire.api.captures, capturesBefore);
       await tester.tap(find.widgetWithText(TextButton, '继续编辑'));
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(editor.controller.dirty, isTrue);
       expect(wire.writes, isEmpty);
       unawaited(staleDelete.onTap() as Future<void>);
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       await tester.tap(find.widgetWithText(FilledButton, '放弃修改'));
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(editor.controller.dirty, isFalse);
       expect(find.text('批量删除账户'), findsOneWidget);
       expect(wire.writes, isEmpty);
       await _confirm(tester, '删除');
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(wire.writes.map((write) => write.path), [
         '/master/accounts/a',
         '/master/accounts/c',
@@ -565,7 +566,7 @@ void main() {
         find.byType(MasterDataTableView<AccountListItem>),
         const Offset(0, -700),
       );
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(wire.requests, hasLength(reads));
       expect(
         find.byKey(const ValueKey('master-table-page-next')),
@@ -574,11 +575,11 @@ void main() {
       expect(_table(tester).selectedIds, {'a'});
       await _select(tester, {'a', 'c'});
       await tester.tap(find.byTooltip('刷新'));
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(_table(tester).selectedIds, isEmpty);
       await _select(tester, {'a'});
       _table(tester).onFilterChanged('status', '禁用');
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(_table(tester).selectedIds, isEmpty);
     },
   );
@@ -591,10 +592,10 @@ void main() {
       expect(find.byType(UtenFloatingActionGroup), findsOneWidget);
       expect(_button('删除选中'), findsNothing);
       await _invokeBatch(tester, '删除选中');
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(find.text('批量删除账户'), findsOneWidget);
       await _confirm(tester, '取消');
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(tester.takeException(), isNull);
     },
   );

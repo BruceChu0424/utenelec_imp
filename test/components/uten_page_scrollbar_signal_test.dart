@@ -83,10 +83,13 @@ Future<void> _pumpLinked(
   );
   await tester.pumpAndSettle(const Duration(milliseconds: 10));
   expect(_rail(), findsOneWidget);
+  expect(_barDelegate(tester), isNotNull);
   expect(
-    _barDelegate(tester),
-    isNull,
-    reason: 'The ordinary NestedScrollView keeps its existing controller path',
+    UtenCollapsingHeaderScrollView.outerControllerOf(
+      tester.element(find.byType(MasterDataTableView<String>)),
+    ),
+    same(outer),
+    reason: 'The retained viewport exposes its actual outer controller',
   );
   expect(
     tester.widget<UtenContentScrollbar>(_rail()).onPointerSignal,

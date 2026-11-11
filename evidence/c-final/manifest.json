@@ -1,0 +1,553 @@
+{
+  "acceptedSource": "7b912287e53315228b469790ff066a9fab643e3c",
+  "fingerprintContent": "reviewed Git index bytes; binary raw logs/JSON/arguments/Excel preserve bytes",
+  "stageCount": 5,
+  "junit": {
+    "tests": 146,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 1
+  },
+  "files": [
+    {
+      "path": ".gitattributes",
+      "bytes": 103,
+      "sha256": "877f9dc0101376b246c0dbd8069203f34b35dc384097e364e58ab80088284b50"
+    },
+    {
+      "path": ".gitignore",
+      "bytes": 52,
+      "sha256": "7522ef2f8a8b025a64c806673f0c6c5b748ee7a63113a32fee059ada45965944"
+    },
+    {
+      "path": "CostStructureVersionUpgradeAudit.java",
+      "bytes": 16165,
+      "sha256": "f84c196c557437e7a2a074dfb4c905099465f9c64c9901cce8df119e21728cec"
+    },
+    {
+      "path": "ImportVersionUpgradeAudit.java",
+      "bytes": 27832,
+      "sha256": "95a0c82d17629c53bc3aefbf4f40fcdd73fff2d9d775b1bcef6e219dc926a8c2"
+    },
+    {
+      "path": "OriginalFileRegression.java",
+      "bytes": 2737,
+      "sha256": "2db44299c07c0b1b2232031d96143e39849c8190598e8a0c8261068f4dde32d6"
+    },
+    {
+      "path": "REPORT.md",
+      "bytes": 6061,
+      "sha256": "be6e43ee8a2fc1d57f90bedaf81bdc8c9c70466603cc8a27904a0fe6c5468473"
+    },
+    {
+      "path": "final-7b912287-files-auxiliary-extra-current.xlsx",
+      "bytes": 3667,
+      "sha256": "3717db97474cdfce62a58da5cb99d9304b66fa312900ce966fab26a331b58218"
+    },
+    {
+      "path": "final-7b912287-files-compile.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "final-7b912287-files-end.json",
+      "bytes": 3287,
+      "sha256": "167efdea65305b4390550e733504aa1fea9adf4b00cc072b969f47a6aaa1f981"
+    },
+    {
+      "path": "final-7b912287-files-start.json",
+      "bytes": 1272225,
+      "sha256": "c6af4822fed0e56e253b1062df0bef18ce279db1d27868ec26e434832299150a"
+    },
+    {
+      "path": "final-7b912287-files.exit",
+      "bytes": 3,
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354"
+    },
+    {
+      "path": "final-7b912287-files.log",
+      "bytes": 7517,
+      "sha256": "1e68239f09cba7aa7b28365eb576bfcda2f9b9c9f31d259a193ab7ac7b65b0a7"
+    },
+    {
+      "path": "final-7b912287-originals-compile.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "final-7b912287-originals-end.json",
+      "bytes": 3291,
+      "sha256": "16a83036f2681da607cdef5ce5d97ae8ca729ec1bbb2f36ab9cfa422df84e8ea"
+    },
+    {
+      "path": "final-7b912287-originals-start.json",
+      "bytes": 1272229,
+      "sha256": "d4be81bc787ba4d295cd2013112edb4d828133468499fc5c959def2ca8b1815c"
+    },
+    {
+      "path": "final-7b912287-originals.exit",
+      "bytes": 3,
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354"
+    },
+    {
+      "path": "final-7b912287-originals.log",
+      "bytes": 835,
+      "sha256": "90b41bbdb139e0ecaec6c67d1574b92ac92490c276be336d144b6c6875f149f8"
+    },
+    {
+      "path": "final-7b912287-v1-compile.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "final-7b912287-v1-end.json",
+      "bytes": 3284,
+      "sha256": "1aa228c9a9ab20907ee34e8f796af5f021e978b47dfc375eec310156b85079b9"
+    },
+    {
+      "path": "final-7b912287-v1-start.json",
+      "bytes": 1272222,
+      "sha256": "4c4092c2057fbb121073de7efa03d560c2860573c116df70fbdff7103cd4c9ef"
+    },
+    {
+      "path": "final-7b912287-v1.exit",
+      "bytes": 3,
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354"
+    },
+    {
+      "path": "final-7b912287-v1.log",
+      "bytes": 7362,
+      "sha256": "386ba969dd6b34417fc657ea076d92d8aa7096bfe493ee798157e017a0183908"
+    },
+    {
+      "path": "final-7b912287-v2-compile.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "final-7b912287-v2-end.json",
+      "bytes": 3284,
+      "sha256": "1545d07bae80498c6334852ce89fbb9f18cb4bf27c4b7472591e32c426cf06be"
+    },
+    {
+      "path": "final-7b912287-v2-result.json",
+      "bytes": 601,
+      "sha256": "4164e2599612b6c2a118455337c9275b1554d269eb71628449249a2841e7287e"
+    },
+    {
+      "path": "final-7b912287-v2-spring.log",
+      "bytes": 6480,
+      "sha256": "156877e9f0a02a125ce58f8eaa34f7325bb78e43afdf8847859d33c756cba323"
+    },
+    {
+      "path": "final-7b912287-v2-start.json",
+      "bytes": 1272222,
+      "sha256": "9c840eef3af3504116a5fd76900515cf9389f7dd438243a25092641cf442da36"
+    },
+    {
+      "path": "final-7b912287-v2.exit",
+      "bytes": 3,
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354"
+    },
+    {
+      "path": "final-7b912287-v2.log",
+      "bytes": 7895,
+      "sha256": "ebdf2afb966c7e051785b7c551b270071ff84e9b674136f5c128757cc65f4ffa"
+    },
+    {
+      "path": "finish-after-maven.ps1",
+      "bytes": 515,
+      "sha256": "e3d36ec52b601ad182993703b9b658e1181c610301d50307aed551f964014a38"
+    },
+    {
+      "path": "finish-orchestrator.exit",
+      "bytes": 3,
+      "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354"
+    },
+    {
+      "path": "finish-orchestrator.log",
+      "bytes": 1422,
+      "sha256": "0e8764d0a074f837515e7bbe8ce63cc4ba396f04744c23ec1dca5cc1de92549d"
+    },
+    {
+      "path": "junit-summary.json",
+      "bytes": 4236,
+      "sha256": "1d290c938b2965109cdc7309e34cd3d7fcf637a5a9ff5684a673a3c6c2aed093"
+    },
+    {
+      "path": "maven-23-classes-end.json",
+      "bytes": 3283,
+      "sha256": "1c37d62e73d58af7ac65fb1a2085012b43dedfd81c68b65ae2f9b666310790f0"
+    },
+    {
+      "path": "maven-23-classes-start.json",
+      "bytes": 1269263,
+      "sha256": "889b04aee7cb3bb0fdaec6be715591ae05f716825cc34f918d93eed4420c52b5"
+    },
+    {
+      "path": "maven-command.json",
+      "bytes": 1699,
+      "sha256": "dd8b4f631f3a7b5c2ca48c801313a30578b0d6634d1d3787d299eb3bafc677cd"
+    },
+    {
+      "path": "maven-start.json",
+      "bytes": 1269263,
+      "sha256": "889b04aee7cb3bb0fdaec6be715591ae05f716825cc34f918d93eed4420c52b5"
+    },
+    {
+      "path": "maven/exit.txt",
+      "bytes": 2,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "maven/maven.log",
+      "bytes": 2446545,
+      "sha256": "5ecd31a2fa00dbeaeff359356fe020942c402ed74a9bd70094d23c7d3eb739d8"
+    },
+    {
+      "path": "maven/reports/2026-11-10T22-08-55_819.dumpstream",
+      "bytes": 309,
+      "sha256": "e7fd8687d552c7c52d7d373ea00a6694c3c15d2eefa6e5abfc236f391406be1a"
+    },
+    {
+      "path": "maven/reports/TEST-com.uten.imp.businesschain.FinanceAccountingContinuationPostgresTest.xml",
+      "bytes": 467047,
+      "sha256": "ff3247bcb5c1757190c3e3457748777e17753e216161174be4a5c62fcbbed593"
+    },
+    {
+      "path": "maven/reports/TEST-com.uten.imp.businesschain.FinanceAuxiliaryPostgresTest.xml",
+      "bytes": 460544,
+      "sha256": "d34bd77a77d610ee9a2fd578e788dd8fec316f6f50545a7cd842aaf8905b4d2c"
+    },
+    {
+      "path": "maven/reports/TEST-com.uten.imp.businesschain.FinanceChartImportOriginalCommandsPostgresTest.xml",
+      "bytes": 62112,
+      "sha256": "fb31adfd41d8faff081bb52a05256daa3a38f283bbc4331d2dc37b9ab7f6d6c4"
+    },
+    {
+      "path": "maven/reports/TEST-com.uten.imp.businesschain.FinanceChartImportPostgresTest.xml",
+      "bytes": 60503,
+      "sha256": "d87d88c04ba7b9a54d0a2f6a19aeeed81f984122113615ddda8bd917d21a94d6"
+    },
+    {
+      "path": "maven/reports/TEST-com.uten.imp.common.export.PlatformWorkbookSchemaTest.xml",
+      "bytes": 55825,
+      "sha256": "f51baf4c70646ca645609798112c90cae5b1ae024438ed1a0c5a74ab8fa79e4d"
+    },
+    {
+      "path": "maven/reports/TEST-com.uten.imp.common.importing.ImportColumnGuardTest.xml",
+      "bytes": 55347,
+      "sha256": "db4b0d9384b6da19736997382733a721a32187eddf8fc144e2d51d8e2c28e987"
+    },
+    {
+      "path": "maven/reports/TEST-com.uten.imp.features.finance.gl.FinanceAccountingWorkbookParserTest.xml",
+      "bytes": 58279,
+      "sha256": "4bc4198bbcfa12c4bba799408b0e0d89578b8a795685b1bebc1556a33f252501"
+    },
+    {
+      "path": "maven/reports/TEST-com.uten.imp.features.finance.gl.FinanceChartWorkbookParserTest.xml",
+      "bytes": 55918,
+      "sha256": "ca3d377e1f9365336e4d0c544c52e7e94e92b0206a3e31cf45ce4622ea8d4553"
+    },
+    {
+      "path": "maven/reports/TEST-com.uten.imp.features.finance.gl.FinanceExpenseAnalysisPostgresTest.xml",
+      "bytes": 459150,
+      "sha256": "5098a21d063645b5b4e82f2a95927db56fc685b0c70851e09101a0af28ce9548"
+    },
+    {
+      "path": "maven/reports/TEST-com.uten.imp.features.finance.gl.FinanceOperatingNoteParserTest.xml",
+      "bytes": 55776,
+      "sha256": "20d17cbd90e0f5fef635b022a301b6dcac59eb412ad91bcd443c8fe16493f39f"
+    },
+    {
+      "path": "maven/reports/TEST-com.uten.imp.features.finance.gl.WorkbookColumnRemediationTest.xml",
+      "bytes": 56732,
+      "sha256": "3262a72cc7314919781f09eae7efb13066189731e15d2d8900eaea2ab4c22496"
+    },
+    {
+      "path": "maven/reports/TEST-com.uten.imp.features.finance.statement.FinanceAuxiliaryWorkbookParserTest.xml",
+      "bytes": 55616,
+      "sha256": "69c9abb9e3b790ede934a5f1d96f06997773b42d9ecf7d2115526cf78ad9c35d"
+    },
+    {
+      "path": "maven/reports/TEST-com.uten.imp.features.master.goods.GoodsBomImportStatePostgresTest.xml",
+      "bytes": 456396,
+      "sha256": "c04d7630a6f30d93c92596bf7baa4e1d39924117a40a1dde2033bda656336dd8"
+    },
+    {
+      "path": "maven/reports/TEST-com.uten.imp.features.master.goods.costing.CostStructureRowRemediationTest.xml",
+      "bytes": 55853,
+      "sha256": "71a8ba2bda93950eb0216df0888daca2a4c6c4836ae3c676280c92bbeffdbd12"
+    },
+    {
+      "path": "maven/reports/TEST-com.uten.imp.features.master.goods.costing.CostTitleColumnRemediationTest.xml",
+      "bytes": 55242,
+      "sha256": "afa81d57964ac714e2d66144aac3d0d16ac4afa9867e9d9af6caa0d5332ae454"
+    },
+    {
+      "path": "maven/reports/TEST-com.uten.imp.features.master.goods.costing.GoodsCostImportRemappingPostgresTest.xml",
+      "bytes": 57081,
+      "sha256": "d3f8257f9b6e09249218c34f1e806b38c91e31ce3c330243e6f775ebe39a2484"
+    },
+    {
+      "path": "maven/reports/TEST-com.uten.imp.features.master.goods.costing.GoodsCostWorkbookParserTest.xml",
+      "bytes": 55781,
+      "sha256": "ee810a5a1a63c38a135972bb2532f06fa7efa1263e0dac5f85928e854bef7a2c"
+    },
+    {
+      "path": "maven/reports/TEST-com.uten.imp.features.master.goods.importing.AdditionalSheetColumnRemediationTest.xml",
+      "bytes": 55278,
+      "sha256": "845ede997fa930281135f8e2b9211aec73112f8baff7c254b248e239ddc8a19b"
+    },
+    {
+      "path": "maven/reports/TEST-com.uten.imp.features.master.goods.importing.GoodsBomImportColumnContractTest.xml",
+      "bytes": 55102,
+      "sha256": "63a310a66e12fcb3192d5b140f91a1ac2d6e60c7bbbbc0322b2d0dbb9e34a542"
+    },
+    {
+      "path": "maven/reports/TEST-com.uten.imp.features.master.goods.importing.GoodsImportColumnContractTest.xml",
+      "bytes": 55972,
+      "sha256": "04643b7f34aec01c05fb1561cd494b9d49c925ce796d3edd41110fa89b960f5b"
+    },
+    {
+      "path": "maven/reports/TEST-com.uten.imp.features.master.goods.importing.GoodsImportHistoryPostgresTest.xml",
+      "bytes": 462800,
+      "sha256": "73de705b549c908e3bf88d330981d19d95de2b46ee56594f1aee3cf8c66fd9f1"
+    },
+    {
+      "path": "maven/reports/TEST-com.uten.imp.features.master.goods.importing.GoodsImportPlanSafetyTest.xml",
+      "bytes": 56217,
+      "sha256": "7a19cb21e447aae82dcf36231e420e35307f3c68dc5f6289e629801092055c1c"
+    },
+    {
+      "path": "maven/reports/TEST-com.uten.imp.migration.FinanceChartImportIntentUpgradePostgresTest.xml",
+      "bytes": 443641,
+      "sha256": "1258b2f5d0a4c62f0d474d0ff459a5b298e4ea0a02d96c728203d967e6f3e070"
+    },
+    {
+      "path": "maven/reports/com.uten.imp.businesschain.FinanceAccountingContinuationPostgresTest.txt",
+      "bytes": 390,
+      "sha256": "e14501a8b9424a14cebefdcead843800bf64eb15e9f6cf2937bb156d96363ab4"
+    },
+    {
+      "path": "maven/reports/com.uten.imp.businesschain.FinanceAuxiliaryPostgresTest.txt",
+      "bytes": 364,
+      "sha256": "c9291ecfccd7b8ac3b2a34a831715ef06b694c1d94d0e4983b5001646c1848e1"
+    },
+    {
+      "path": "maven/reports/com.uten.imp.businesschain.FinanceChartImportOriginalCommandsPostgresTest.txt",
+      "bytes": 401,
+      "sha256": "9c2927938ffa6591fa0478c05a22e6b33cb1339d7a1a529e759beb0f93271050"
+    },
+    {
+      "path": "maven/reports/com.uten.imp.businesschain.FinanceChartImportPostgresTest.txt",
+      "bytes": 368,
+      "sha256": "dbc32564a2e70d905f248b3e41858b31d1f4a89543c90ef5494e93e8c8b93099"
+    },
+    {
+      "path": "maven/reports/com.uten.imp.common.export.PlatformWorkbookSchemaTest.txt",
+      "bytes": 360,
+      "sha256": "d831644da28fde2c0e638b15dbf9c419fe646adf0ecb5c8260243916a270d4aa"
+    },
+    {
+      "path": "maven/reports/com.uten.imp.common.importing.ImportColumnGuardTest.txt",
+      "bytes": 356,
+      "sha256": "c97adae3321dbc5812f8163506213843b2c9f52e0f70cc2848fb073b260813c7"
+    },
+    {
+      "path": "maven/reports/com.uten.imp.features.finance.gl.FinanceAccountingWorkbookParserTest.txt",
+      "bytes": 390,
+      "sha256": "bcb9934383ffabda6e74ef2254245dc1f24e3383a1377b6bb57d200b2d801426"
+    },
+    {
+      "path": "maven/reports/com.uten.imp.features.finance.gl.FinanceChartWorkbookParserTest.txt",
+      "bytes": 380,
+      "sha256": "7b01a70aab6a1cab6dbea20f46d9c2f91bf270943bef054f922fb00964e1c290"
+    },
+    {
+      "path": "maven/reports/com.uten.imp.features.finance.gl.FinanceExpenseAnalysisPostgresTest.txt",
+      "bytes": 389,
+      "sha256": "de98a2f981fc0c51accf15f5a84561e4f9d3f397b3acd9f6bf31253a3c7b15f5"
+    },
+    {
+      "path": "maven/reports/com.uten.imp.features.finance.gl.FinanceOperatingNoteParserTest.txt",
+      "bytes": 380,
+      "sha256": "f552fb12cae272db66c376d056f574ad972747176ca7c713a555f77e63b0b969"
+    },
+    {
+      "path": "maven/reports/com.uten.imp.features.finance.gl.WorkbookColumnRemediationTest.txt",
+      "bytes": 378,
+      "sha256": "2423d9bba580c32d3ebc3a382eaa16dbebbd18a15fcb4c4bcc82f2511088edbd"
+    },
+    {
+      "path": "maven/reports/com.uten.imp.features.finance.statement.FinanceAuxiliaryWorkbookParserTest.txt",
+      "bytes": 402,
+      "sha256": "4dc09ebbd89c8b2e57b0826efbb3094b513e127eac3cc19b2e5c9b9c66e4d0e5"
+    },
+    {
+      "path": "maven/reports/com.uten.imp.features.master.goods.GoodsBomImportStatePostgresTest.txt",
+      "bytes": 386,
+      "sha256": "4f05a6ddb8076e2fa3abf97dd56d8c348035637ff4f7779735aff1163b7ac41d"
+    },
+    {
+      "path": "maven/reports/com.uten.imp.features.master.goods.costing.CostStructureRowRemediationTest.txt",
+      "bytes": 402,
+      "sha256": "0b042ad33fcce950fbfebbe0c4622642e4a091e1d08397f637351785c64d7f56"
+    },
+    {
+      "path": "maven/reports/com.uten.imp.features.master.goods.costing.CostTitleColumnRemediationTest.txt",
+      "bytes": 400,
+      "sha256": "7cb6e357a96faf69280e7670b417534c1849ce90941941b0d2b4c6d731efb84d"
+    },
+    {
+      "path": "maven/reports/com.uten.imp.features.master.goods.costing.GoodsCostImportRemappingPostgresTest.txt",
+      "bytes": 412,
+      "sha256": "2b5b1b880bd4cf6aa9dc8e63a998854ea8d797d3745f718f881527463244180b"
+    },
+    {
+      "path": "maven/reports/com.uten.imp.features.master.goods.costing.GoodsCostWorkbookParserTest.txt",
+      "bytes": 394,
+      "sha256": "302531a6497f997f3ca4dc05c098e46e47f18dc7105591ffa7e30c854f69d5c6"
+    },
+    {
+      "path": "maven/reports/com.uten.imp.features.master.goods.importing.AdditionalSheetColumnRemediationTest.txt",
+      "bytes": 416,
+      "sha256": "a34608516aaf659705f142ee092a26ad92a8ba82fc1020e9bbf4120a5f8d7eea"
+    },
+    {
+      "path": "maven/reports/com.uten.imp.features.master.goods.importing.GoodsBomImportColumnContractTest.txt",
+      "bytes": 408,
+      "sha256": "e6f00f68b17ef0b51d5c84f83dce38fb567a95c826b3454c5ed4f7a83d0060ca"
+    },
+    {
+      "path": "maven/reports/com.uten.imp.features.master.goods.importing.GoodsImportColumnContractTest.txt",
+      "bytes": 402,
+      "sha256": "0f8e63cc0551ed607215db9a9a1e1b4b4aaf3ff3def10ec99db63fe467a82373"
+    },
+    {
+      "path": "maven/reports/com.uten.imp.features.master.goods.importing.GoodsImportHistoryPostgresTest.txt",
+      "bytes": 405,
+      "sha256": "b1b03b7ac9d2ea38f0f07db98adb4103d2069ac8b09e4912f62f52390f82f522"
+    },
+    {
+      "path": "maven/reports/com.uten.imp.features.master.goods.importing.GoodsImportPlanSafetyTest.txt",
+      "bytes": 394,
+      "sha256": "3f0e5cf8a44373b0d32334a184d975a89c0096c0b4766a8e76b7fe4698b64e74"
+    },
+    {
+      "path": "maven/reports/com.uten.imp.migration.FinanceChartImportIntentUpgradePostgresTest.txt",
+      "bytes": 386,
+      "sha256": "dcc4b6f9087bcc537ff594851d1645846c2e6572241133e246d064ee5e9048d4"
+    },
+    {
+      "path": "old-v2-finance.json",
+      "bytes": 72884,
+      "sha256": "2c11afa4f39b4a8e1ce2b22afcbb0fb9992755fea6278f0d95d597a44c4312a7"
+    },
+    {
+      "path": "old-v2-program.json",
+      "bytes": 3814,
+      "sha256": "c07652c6d943a3f0bc78891a6a7fcc7a636b5db45327cccd012d07f1a6920d9a"
+    },
+    {
+      "path": "original-file-proof.json",
+      "bytes": 809,
+      "sha256": "beb9172819fed2c5cfc258672d20725ded051606eb4f67b4cd8d27d2bf65ad59"
+    },
+    {
+      "path": "originals/mixed-header-tail.xlsx",
+      "bytes": 3426,
+      "sha256": "4083d48ed841198a78cdf711a3ed902dd658a6281b2b899041b1b5b170e4c23d"
+    },
+    {
+      "path": "originals/ordinary-control.xlsx",
+      "bytes": 3418,
+      "sha256": "368f94ff5d3862ddb9304791bf8e6d97891370525d626cd204d5a43eeb5de885"
+    },
+    {
+      "path": "originals/reserved-name-control.xlsx",
+      "bytes": 3414,
+      "sha256": "82b0f764332052b0d1033727fec48a1fbfb3748ac994d3d69284c025a969148c"
+    },
+    {
+      "path": "originals/subtotal-name-control.xlsx",
+      "bytes": 3431,
+      "sha256": "ed23c572ee1141ddbce0b8ad893ccbbe0038c65179e0db39590f8e1bf26942ea"
+    },
+    {
+      "path": "run-arguments/final-7b912287-files-classes/java.args",
+      "bytes": 22942,
+      "sha256": "1278319bb87ef6624e2bef6d0e33ddabee54f53a657ff0d8d47a16b3f65d02f8"
+    },
+    {
+      "path": "run-arguments/final-7b912287-files-classes/javac.args",
+      "bytes": 22700,
+      "sha256": "c9fa53de72a4f047d9912b71379b95cd6e21a6b9a803cbbc4b2fbda865218105"
+    },
+    {
+      "path": "run-arguments/final-7b912287-originals-classes/java.args",
+      "bytes": 22558,
+      "sha256": "b954fff66b2bc9736dd2d9f07434f4f29d60ef422e1b16925e7202bc92d7a0c6"
+    },
+    {
+      "path": "run-arguments/final-7b912287-originals-classes/javac.args",
+      "bytes": 22606,
+      "sha256": "04cdbab5f5519d48938f4589e1d7b5f1a93f1054b1ab5ba05116ba8af531707e"
+    },
+    {
+      "path": "run-arguments/final-7b912287-v1-classes/java.args",
+      "bytes": 22934,
+      "sha256": "223088be70f792f15fef228e30a044642c8285fc830b9b1d25fadb575d93e91e"
+    },
+    {
+      "path": "run-arguments/final-7b912287-v1-classes/javac.args",
+      "bytes": 22694,
+      "sha256": "d31f674dac397af1cedcd06f9bc1cbedbdd87fd1a1040415cbf3218fd3ec580e"
+    },
+    {
+      "path": "run-arguments/final-7b912287-v2-classes/java.args",
+      "bytes": 22946,
+      "sha256": "ef847475383818b2d3ef405526efc07cee025c13d48f580a88ba893fec91538e"
+    },
+    {
+      "path": "run-arguments/final-7b912287-v2-classes/javac.args",
+      "bytes": 22701,
+      "sha256": "ae1c11bffff48d463798a2c90893005f0b69f98710289bab65caa05ab1460327"
+    },
+    {
+      "path": "run-finish.ps1",
+      "bytes": 1065,
+      "sha256": "6a4514d6f0b74ed9826242719ce8c1e387daf8f42029adb6ee0bd91f367c758f"
+    },
+    {
+      "path": "run-originals.ps1",
+      "bytes": 1374,
+      "sha256": "5cfdc375aa75f2a14914572fcdcd09db965d57f6e4dcfe37bf1d5d6bbd3a9240"
+    },
+    {
+      "path": "run-upgrade.ps1",
+      "bytes": 2055,
+      "sha256": "478ec40430dd7e5097d665f90380c0b9701f6d496d4b82cf82caf49db6f0683e"
+    },
+    {
+      "path": "run-v1-verify.ps1",
+      "bytes": 1773,
+      "sha256": "c62574fecef9d0d0daa82cab808a8d1f311f49609538b53d7a48146794b4978c"
+    },
+    {
+      "path": "source-proof.py",
+      "bytes": 3084,
+      "sha256": "a6b7fee8f9a889883f6afce0c38d342bc301fd038ddd0d498f8754afaef13bc0"
+    },
+    {
+      "path": "upgrade-final-7b912287-files-spring.log",
+      "bytes": 6439,
+      "sha256": "8434bf355bbe1eeea4c631e4f7d73a33c1bdbb7fcb4096c461d35c0c8ebf9bdb"
+    },
+    {
+      "path": "upgrade-final-7b912287-v1-spring.log",
+      "bytes": 6436,
+      "sha256": "b5d7e4594d2cc75fcc367c23753090fa952626bd5de393deea86c5fa0391e898"
+    }
+  ]
+}

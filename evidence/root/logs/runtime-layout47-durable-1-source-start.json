@@ -1,0 +1,10 @@
+{
+  "sourceGitObjects": {
+    "pom": "53c807826360e70a0928e3bfae56ef27d8f2dff8",
+    "java": "b1ffb5e95a42a3cfa3b305d08b4044bcdfceac84",
+    "resources": "a5736a1ee58b2dffad7559a189913a385eb7b189"
+  },
+  "kind": "frozen local integration candidate",
+  "sourceStart": "47c96198ae10ab21a4f2d6d63b206e721214458c",
+  "main": "d5200b6bf68aae203542c3828ddc0d6498be2870"
+}

@@ -1,3 +1,4 @@
+import '../../../shared/paging/complete_output_view_mixin.dart';
 import '../repositories/flat_master_summary_gateway.dart';
 import '../../../core/formatters/exact_number_text.dart';
 import '../../../components/layout/uten_compact_toolbar.dart';
@@ -67,7 +68,19 @@ class CurrencyPage extends ConsumerStatefulWidget {
 class _CurrencyPageState extends ConsumerState<CurrencyPage>
     with
         MasterInlinePageMixin<CurrencyPage, CurrencyListItem>,
-        ScopedPagedReadViewMixin<CurrencyPage> {
+        ScopedPagedReadViewMixin<CurrencyPage>,
+        CompleteOutputViewMixin<CurrencyPage> {
+  @override
+  Object get completeOutputQuery => [
+    ref.read(currencyRepositoryProvider),
+    _keyword,
+    _filters,
+    _sortKey,
+    _sortAsc,
+  ];
+  @override
+  bool get completeOutputHasData => _page != null;
+
   @override
   Future<void> onReadViewResumed() => _loadCurrencies(1);
 
@@ -87,11 +100,14 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage>
   }
 
   @override
+  CompleteOutputGuard get inlineOutputGuard => completeOutputGuard;
+  @override
   String get inlineEntityType => 'currencies';
   @override
   bool get inlineCanEdit => _canEdit;
   @override
-  bool get inlineReadReady => _page != null && !_loading && _error == null;
+  bool get inlineReadReady =>
+      completeOutputCurrent && !_loading && _error == null;
   @override
   String inlineIdOf(CurrencyListItem row) => row.id;
   @override
@@ -251,13 +267,11 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage>
     final repository = ref.read(currencyRepositoryProvider);
     final keyword = _keyword.trim().isEmpty ? null : _keyword;
     final filters = Map<String, String?>.unmodifiable(_filters);
-    Object pagingQuery() => [
-      ref.read(currencyRepositoryProvider),
-      _keyword,
-      _filters,
-      _sortKey,
-      _sortAsc,
-    ];
+    Object pagingQuery() => completeOutputQuery;
+    final outputRead = beginCompleteOutputRead(
+      _page,
+      preserveEditorInput: inlineEdit.active,
+    );
     final sort = _sortKey;
     final order = sort == null ? null : (_sortAsc ? 'asc' : 'desc');
     try {
@@ -265,6 +279,7 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage>
         page,
         query: pagingQuery(),
         currentQuery: pagingQuery,
+        outputGuard: completeOutputGuard,
         useCache: useCache,
         fetchComplete: completeFlatMasterList<CurrencyListItem>(
           repository,
@@ -295,6 +310,7 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage>
               !_loadRequests.isCurrent(generation)) {
             return;
           }
+          if (!mayPublishCompleteOutputPrefix(outputRead)) return;
           setState(() => _page = partial);
         },
       );
@@ -303,15 +319,28 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage>
           !_loadRequests.isCurrent(generation)) {
         return;
       }
+      if (!acceptCompleteOutputRead(outputRead)) return;
       setState(() {
         _page = result;
         _loading = false;
       });
     } on ApiException catch (e) {
-      if (isRetiredViewRead(e)) return;
+      if (isRetiredViewRead(e)) {
+        restoreCompleteOutputRead(outputRead, (fallback) {
+          _page = fallback;
+          _loading = false;
+        }, error: e);
+        return;
+      }
       if (!mounted ||
           !inlineAcceptsRead(inlineReadBoundary) ||
           !_loadRequests.isCurrent(generation)) {
+        return;
+      }
+      if (!restoreCompleteOutputRead(outputRead, (fallback) {
+        _page = fallback;
+        _loading = false;
+      }, error: e)) {
         return;
       }
       setState(() {
@@ -319,16 +348,34 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage>
         _loading = false;
       });
     } catch (retiredReadError) {
-      if (isRetiredViewRead(retiredReadError)) return;
+      if (isRetiredViewRead(retiredReadError)) {
+        restoreCompleteOutputRead(outputRead, (fallback) {
+          _page = fallback;
+          _loading = false;
+        }, error: retiredReadError);
+        return;
+      }
       if (!mounted ||
           !inlineAcceptsRead(inlineReadBoundary) ||
           !_loadRequests.isCurrent(generation)) {
+        return;
+      }
+      if (!restoreCompleteOutputRead(outputRead, (fallback) {
+        _page = fallback;
+        _loading = false;
+      }, error: retiredReadError)) {
         return;
       }
       setState(() {
         _error = '加载币种列表失败';
         _loading = false;
       });
+    } finally {
+      // A server denial can retire the output token inside the shared reader.
+      // The current request still owns its loading state and must close it.
+      if (mounted && _loadRequests.isCurrent(generation)) {
+        setState(() => _loading = false);
+      }
     }
   }
 
@@ -427,6 +474,7 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage>
         },
         onAccepted: () {
           if (!owner.isCurrent) return;
+          retireCompleteOutputAfterWrite();
           context.appSuccess('币种已创建');
           unawaited(_loadCurrencies(_visibleReadPage));
         },
@@ -482,6 +530,7 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage>
         },
         onAccepted: () {
           if (!owner.isCurrent) return;
+          retireCompleteOutputAfterWrite();
           context.appSuccess('币种已更新');
           unawaited(_loadCurrencies(_visibleReadPage));
         },
@@ -543,7 +592,10 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage>
         rows: _detailRows(detail),
         historyEntityType: 'currencies',
         historyRecordId: detail.id,
-        onHistoryChanged: () => _loadCurrencies(_visibleReadPage),
+        onHistoryChanged: () {
+          retireCompleteOutputAfterWrite();
+          unawaited(_loadCurrencies(_visibleReadPage));
+        },
         dialogScopeBuilder: owner.ownDialog,
         isCurrent: () => owner.isCurrent,
         canEdit: _canEdit,
@@ -846,6 +898,7 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage>
       // 闭包会丢失上方空值检查的类型提升，这里先钉成非空局部。
       final confirmedResult = result;
       if (!mounted || !owner.isCurrent || confirmedResult == null) return;
+      retireCompleteOutputAfterWrite(confirmed: confirmedResult.succeeded > 0);
       _setOperationBusy(owner, false);
       setState(
         () => _selectedCurrencyIds = {
@@ -971,6 +1024,8 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage>
 
   /// 打印预览数据：按当前筛选口径完整分页读取，列/格式化与页面表格一致。
   Future<UtenPrintTable> _printLoader() async {
+    if (!completeOutputCurrent) throw StateError('当前查询尚无完整结果，请重新加载后再输出');
+    final qualified = captureCompleteOutput();
     final repository = ref.read(currencyRepositoryProvider);
     final boundary = ref.read(sensitiveReadBoundaryProvider);
     final epoch = ref.read(exportContextEpochProvider);
@@ -983,7 +1038,7 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage>
     final columns = List.of(_columns);
     var retired = false;
     bool current() {
-      if (retired || !mounted) return false;
+      if (retired || !mounted || !qualified()) return false;
       retired =
           version != _queryEpoch ||
           epoch != ref.read(exportContextEpochProvider) ||
@@ -1037,7 +1092,10 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage>
           actions: [
             MasterOperationHistoryActions(
               entityType: 'currencies',
-              onChanged: _refresh,
+              onChanged: () {
+                retireCompleteOutputAfterWrite();
+                unawaited(_refresh());
+              },
             ),
             UtenRefreshButton(
               busy: _loading,
@@ -1119,8 +1177,9 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage>
                             // 工具条右侧留给分页；按钮纯文字无 icon（工具条无 icon 口径）。
                             toolbarLeadingActions: [
                               UtenPrintPreviewButton(
+                                enabled: completeOutputCurrent,
+                                isCurrent: captureCompleteOutput(),
                                 title: '币种资料',
-                                subtitle: '当前筛选的完整结果',
                                 loader: _printLoader,
                                 exportEndpoint: '/master/currencies/export',
                                 exportPermission: Perm.currencyExport,
@@ -1132,6 +1191,14 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage>
                                 icon: null,
                               ),
                               UtenExportButton(
+                                taskRecoveryEnabled: true,
+                                enabled: completeOutputCurrent,
+                                prepareExport: () async =>
+                                    !completeOutputCurrent
+                                    ? null
+                                    : UtenExportSelection(
+                                        stillCurrent: captureCompleteOutput(),
+                                      ),
                                 endpoint: '/master/currencies/export',
                                 requiredPermission: Perm.currencyExport,
                                 report: '',

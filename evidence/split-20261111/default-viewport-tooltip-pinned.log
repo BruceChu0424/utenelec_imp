@@ -1,0 +1,94 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/default_collapsing_tooltip_reparent_test.dart
+00:00 +0: default retained header closed Tooltip crosses compact both ways with semantics
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following assertion was thrown running a test:
+A SemanticsHandle was active at the end of the test.
+All SemanticsHandle instances must be disposed by calling dispose() on the SemanticsHandle.
+
+When the exception was thrown, this was the stack:
+#0      WidgetTester._verifySemanticsHandlesWereDisposed (package:flutter_test/src/widget_tester.dart:1074:7)
+#1      WidgetTester._endOfTestVerifications (package:flutter_test/src/widget_tester.dart:1063:5)
+#2      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1968:22)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+The test description was:
+  default retained header closed Tooltip crosses compact both ways with semantics
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:01 +0 -1: default retained header closed Tooltip crosses compact both ways with semantics [E]
+  Test failed. See exception logs above.
+  The test description was: default retained header closed Tooltip crosses compact both ways with semantics
+  
+00:01 +0 -1: default retained header visible Tooltip crosses compact both ways with semantics
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following assertion was thrown running a test:
+A SemanticsHandle was active at the end of the test.
+All SemanticsHandle instances must be disposed by calling dispose() on the SemanticsHandle.
+
+When the exception was thrown, this was the stack:
+#0      WidgetTester._verifySemanticsHandlesWereDisposed (package:flutter_test/src/widget_tester.dart:1074:7)
+#1      WidgetTester._endOfTestVerifications (package:flutter_test/src/widget_tester.dart:1063:5)
+#2      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1968:22)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+The test description was:
+  default retained header visible Tooltip crosses compact both ways with semantics
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:01 +0 -2: default retained header visible Tooltip crosses compact both ways with semantics [E]
+  Test failed. See exception logs above.
+  The test description was: default retained header visible Tooltip crosses compact both ways with semantics
+  
+00:01 +0 -2: default retained body closed Tooltip crosses compact both ways with semantics
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following assertion was thrown running a test:
+A SemanticsHandle was active at the end of the test.
+All SemanticsHandle instances must be disposed by calling dispose() on the SemanticsHandle.
+
+When the exception was thrown, this was the stack:
+#0      WidgetTester._verifySemanticsHandlesWereDisposed (package:flutter_test/src/widget_tester.dart:1074:7)
+#1      WidgetTester._endOfTestVerifications (package:flutter_test/src/widget_tester.dart:1063:5)
+#2      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1968:22)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+The test description was:
+  default retained body closed Tooltip crosses compact both ways with semantics
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:01 +0 -3: default retained body closed Tooltip crosses compact both ways with semantics [E]
+  Test failed. See exception logs above.
+  The test description was: default retained body closed Tooltip crosses compact both ways with semantics
+  
+00:01 +0 -3: default retained body visible Tooltip crosses compact both ways with semantics
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following assertion was thrown running a test:
+A SemanticsHandle was active at the end of the test.
+All SemanticsHandle instances must be disposed by calling dispose() on the SemanticsHandle.
+
+When the exception was thrown, this was the stack:
+#0      WidgetTester._verifySemanticsHandlesWereDisposed (package:flutter_test/src/widget_tester.dart:1074:7)
+#1      WidgetTester._endOfTestVerifications (package:flutter_test/src/widget_tester.dart:1063:5)
+#2      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1968:22)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+The test description was:
+  default retained body visible Tooltip crosses compact both ways with semantics
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:01 +0 -4: default retained body visible Tooltip crosses compact both ways with semantics [E]
+  Test failed. See exception logs above.
+  The test description was: default retained body visible Tooltip crosses compact both ways with semantics
+  
+00:01 +0 -4: retained viewport keeps pinned tab at the original extent while header and rows coordinate
+00:01 +1 -4: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/default_collapsing_tooltip_reparent_test.dart: default retained body closed Tooltip crosses compact both ways with semantics
+  D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/default_collapsing_tooltip_reparent_test.dart: default retained body visible Tooltip crosses compact both ways with semantics
+  D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/default_collapsing_tooltip_reparent_test.dart: default retained header closed Tooltip crosses compact both ways with semantics
+  D:/Projects/uten_imp_worktrees/feedback-split-20261111/test/independent/default_collapsing_tooltip_reparent_test.dart: default retained header visible Tooltip crosses compact both ways with semantics

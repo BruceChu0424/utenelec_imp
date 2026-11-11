@@ -13,10 +13,7 @@ public final class ExportRowSelection {
     private Set<String> numeric;
     public ExportRowSelection(TableColumnProjection projection) {
         requested = projection == null ? null : projection.rowSelection();
-        if (requested != null && (requested.isEmpty() || requested.size() > 50000 || requested.stream().anyMatch(
-                row -> row == null || row.isEmpty() || row.size() > 320 || row.entrySet().stream().anyMatch(
-                        entry -> entry.getKey() == null || entry.getKey().length() > 120 || entry.getValue() != null && entry.getValue().length() > 100000))))
-            throw invalid("选中行输出条件无效，请刷新后重选");
+        ExportSelectionBudget.requireRows(requested);
         if (requested != null && requested.stream().anyMatch(row -> !row.keySet().equals(requested.getFirst().keySet())))
             throw invalid("选中行字段不一致，请刷新后重选");
     }

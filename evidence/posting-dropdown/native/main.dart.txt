@@ -1,0 +1,266 @@
+import 'package:dio/dio.dart';
+import 'browser_focus.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:go_router/go_router.dart';
+import 'package:uten_imp/app.dart';
+import 'package:uten_imp/core/responsive/display_zoom_pointer_binding.dart';
+import 'package:uten_imp/core/diagnostics/diagnostic_log.dart';
+import 'package:uten_imp/core/router/app_router.dart';
+import 'package:uten_imp/core/router/business_window_host.dart';
+import 'package:uten_imp/features/shell/pages/main_shell_page.dart';
+import 'package:uten_imp/features/basic_data/pages/payment_style_page.dart';
+import 'package:uten_imp/features/settings/pages/settings_page.dart';
+import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/api_exception.dart';
+import 'package:uten_imp/core/network/authenticated_request_scope.dart';
+import 'package:uten_imp/core/network/server_config.dart';
+import 'package:uten_imp/core/network/connection_recovery.dart';
+import 'package:uten_imp/core/maintenance/server_maintenance.dart';
+import 'package:uten_imp/core/platform/platform_window_title.dart';
+import 'package:uten_imp/shared/platform_branding/platform_branding.dart';
+import 'package:uten_imp/shared/platform_branding/platform_branding_provider.dart';
+import 'package:uten_imp/shared/providers/session_provider.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
+import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/shared/models/user.dart';
+import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
+import 'package:uten_imp/features/basic_data/models/payment_style_node.dart';
+import 'package:uten_imp/features/basic_data/repositories/payment_style_repository.dart';
+import 'package:uten_imp/features/basic_data/repositories/posting_style_role_repository.dart';
+
+const stamp = '2026-11-11T00:00:00.123456Z';
+
+class Roles implements PostingStyleRoleRepository {
+  int writes = 0;
+  List<PostingStyleRole> roles = [
+    const PostingStyleRole(
+      roleKey: 'INVENTORY_ASSET',
+      description: '合成库存科目（仅内存）',
+      requiredCategory: 'ACCOUNT',
+      updatedAt: stamp,
+      usable: false,
+      canConfigure: true,
+    ),
+    const PostingStyleRole(
+      roleKey: 'AP_CONTROL',
+      description: '合成应付科目（仅内存）',
+      requiredCategory: 'LIABILITY',
+      updatedAt: stamp,
+      usable: false,
+      canConfigure: true,
+    ),
+  ];
+  @override
+  Future<AuthenticatedRequestScope> captureScope({
+    required bool Function() isCurrent,
+  }) => AuthenticatedRequestScope.capture(
+    baseUrl: 'https://synthetic.invalid/api',
+    storage: null,
+    isCurrent: isCurrent,
+  );
+  @override
+  Future<List<PostingStyleRole>> list(AuthenticatedRequestScope scope) async {
+    await scope.verify();
+    return roles;
+  }
+
+  @override
+  Future<PostingStyleRole> configure(
+    PostingStyleRole role,
+    String id,
+    AuthenticatedRequestScope scope,
+  ) async {
+    await scope.verify();
+    if (role.usable) throw ApiException('CONFLICT', '内存样例已配置', httpStatus: 409);
+    final index = int.tryParse(id.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
+    final next = PostingStyleRole(
+      roleKey: role.roleKey,
+      description: role.description,
+      requiredCategory: role.requiredCategory,
+      updatedAt: stamp,
+      usable: true,
+      styleId: id,
+      styleName: '合成选项$index',
+    );
+    roles = [for (final r in roles) r.roleKey == next.roleKey ? next : r];
+    AppDiagnostics.record(
+      'diag.fixture.write',
+      fields: {
+        'stage': 'configure',
+        'count': ++writes,
+        'reason': 'memory_only option_index=$index',
+      },
+    );
+    return next;
+  }
+}
+
+class Styles implements PaymentStyleRepository {
+  final rows = [
+    for (var i = 1; i <= 5; i++)
+      PaymentStyleNode(
+        id: 'account$i',
+        code: 'SK${i.toString().padLeft(6, '0')}',
+        name: '合成诊断-INVENTORY_ASSET-ONLY-MEMORY-OPTION-$i-xxxxxxxx',
+        category: 'ACCOUNT',
+        status: '使用',
+        children: [],
+      ),
+    for (var i = 1; i <= 3; i++)
+      PaymentStyleNode(
+        id: 'liability$i',
+        code: 'SK${(i + 1).toString().padLeft(6, '0')}',
+        name: '合成诊断-GRNI_CLEARING-ONLY-MEMORY-OPTION-$i-xxxxxxxx',
+        category: 'LIABILITY',
+        status: '使用',
+        children: [],
+      ),
+  ];
+  @override
+  Future<List<PaymentStyleNode>> tree({String? category}) async =>
+      category == null
+      ? rows
+      : rows.where((r) => r.category == category).toList();
+  @override
+  Future<List<PaymentStyleNode>> subtree(String id) async =>
+      rows.where((r) => r.id == id).toList();
+  @override
+  Future<PaymentStyleDetail> detail(String id) async {
+    final row = rows.firstWhere((r) => r.id == id);
+    return PaymentStyleDetail(
+      id: id,
+      code: row.code,
+      name: row.name,
+      category: row.category!,
+      level: 0,
+      path: '/$id',
+      childCount: 0,
+      status: '使用',
+    );
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class Session extends SessionNotifier {
+  @override
+  SessionState build() => const SessionState(
+    status: AuthStatus.authenticated,
+    user: AppUser(
+      id: 'synthetic-posting-diag',
+      code: 'SYNTHETIC',
+      name: '合成下拉诊断员',
+      permissions: [
+        Perm.paymentStyleView,
+        Perm.paymentStyleEdit,
+        Perm.financePostExecute,
+      ],
+    ),
+  );
+}
+
+class Confirmed extends SessionSnapshotNotifier {
+  @override
+  Future<SessionSnapshot?> build() async => SessionSnapshot();
+}
+
+class QuietMaintenance extends ServerMaintenanceController {
+  QuietMaintenance({required super.read, required super.ready});
+  @override
+  Future<void> checkNow() async {}
+}
+
+Future<void> main() async {
+  UtenWidgetsFlutterBinding();
+  await AppDiagnostics.initialize();
+  installBrowserFocusDiagnostics();
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.setString('themeMode', 'dark');
+  final roles = Roles();
+  final styles = Styles();
+  final dio = Dio(BaseOptions(baseUrl: 'https://synthetic.invalid/api'));
+  dio.interceptors.add(
+    InterceptorsWrapper(
+      onRequest: (request, handler) => handler.resolve(
+        Response<dynamic>(
+          requestOptions: request,
+          statusCode: 200,
+          data: <String, dynamic>{},
+        ),
+      ),
+    ),
+  );
+  final router = GoRouter(
+    navigatorKey: appNavigatorKey,
+    initialLocation: '/basicinfo/payment-style',
+    routes: [
+      ShellRoute(
+        builder: (_, _, child) =>
+            BusinessWindowHost(child: MainShellPage(child: child)),
+        routes: [
+          GoRoute(
+            path: '/basicinfo/payment-style',
+            builder: (_, _) => const PaymentStylePage(),
+          ),
+          GoRoute(path: '/settings', builder: (_, _) => const SettingsPage()),
+          GoRoute(
+            path: '/dashboard',
+            builder: (_, _) =>
+                const Scaffold(body: Center(child: Text('合成内存诊断'))),
+          ),
+        ],
+      ),
+    ],
+  );
+  final recovery = ConnectionRecoveryController(probe: () async => true);
+  final maintenance = QuietMaintenance(
+    read: () async => ServerMaintenanceSnapshot(
+      phase: ServerMaintenancePhase.available,
+      serverTime: DateTime.utc(2026, 11, 11),
+    ),
+    ready: () async => true,
+  );
+  runApp(
+    ProviderScope(
+      overrides: [
+        appRouterProvider.overrideWithValue(router),
+        sessionProvider.overrideWith(Session.new),
+        sessionSnapshotProvider.overrideWith(Confirmed.new),
+        authenticatedScopeProvider.overrideWithValue(
+          const AuthenticatedScope(userId: 'synthetic-posting-diag'),
+        ),
+        currentPermissionsProvider.overrideWithValue({
+          Perm.paymentStyleView,
+          Perm.paymentStyleEdit,
+          Perm.financePostExecute,
+        }),
+        isSuperAdminProvider.overrideWithValue(false),
+        apiClientProvider.overrideWithValue(ApiClient(dio)),
+        apiBaseUrlProvider.overrideWithValue('https://synthetic.invalid/api'),
+        connectionRecoveryProvider.overrideWith((_) => recovery),
+        serverMaintenanceControllerProvider.overrideWithValue(maintenance),
+        platformWindowTitleSyncProvider.overrideWith((_) {}),
+        platformBrandingSnapshotProvider.overrideWithValue(
+          PlatformBranding.defaults,
+        ),
+        sharedPreferencesProvider.overrideWithValue(prefs),
+        postingStyleRoleRepositoryProvider.overrideWithValue(roles),
+        paymentStyleRepositoryProvider.overrideWithValue(styles),
+      ],
+      child: const UtenApp(),
+    ),
+  );
+  AppDiagnostics.record(
+    'diag.fixture.ready',
+    fields: {
+      'stage': 'ready',
+      'count': 0,
+      'reason':
+          'synthetic_memory_only ordinary account5 liability3; no_http_backend',
+    },
+  );
+}

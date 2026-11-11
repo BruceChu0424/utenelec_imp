@@ -39,7 +39,7 @@ public class FinanceAuxiliaryImportService {
         public Preview(UUID importId,boolean receivable,String sourceSystem,UUID currencyId,LocalDate dateFrom,LocalDate dateTo,
                 String sourceName,String sha256,List<Row> rows,List<Issue> issues,boolean directoryApplied,
                 List<com.uten.imp.features.finance.report.ReportColumn> columns,String currencyMappingFingerprint){
-            this(importId,receivable,sourceSystem,currencyId,dateFrom,dateTo,sourceName,sha256,rows,issues,directoryApplied,columns,currencyMappingFingerprint,1);
+            this(importId,receivable,sourceSystem,currencyId,dateFrom,dateTo,sourceName,sha256,rows,issues,directoryApplied,columns,currencyMappingFingerprint,com.uten.imp.common.importing.ImportColumnGuard.VERSION);
         }
         public Preview {columns=columns==null?FinanceAuxiliaryReports.columns(receivable):List.copyOf(columns);currencyMappingFingerprint=currencyMappingFingerprint==null?"LEGACY":currencyMappingFingerprint;}
         public Preview(UUID importId,boolean receivable,String sourceSystem,UUID currencyId,LocalDate dateFrom,LocalDate dateTo,

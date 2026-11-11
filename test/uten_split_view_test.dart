@@ -15,6 +15,7 @@ import 'support/audit_screenshot_support.dart';
 const _longCategory = '货品资料中足以超过默认宽度的最长未分类名称（LEGACY_ORPHAN）';
 const _categoryPaneKey = Key('category-pane');
 const _categoryDeleteKey = Key('category-delete');
+const _leadingPaneKey = Key('split-leading-pane');
 
 Widget _categoryHost({String? persistenceKey, VoidCallback? onDelete}) =>
     MaterialApp(
@@ -70,27 +71,16 @@ Widget _host({String? persistenceKey}) {
     home: Scaffold(
       body: UtenSplitView(
         persistenceKey: persistenceKey,
-        leading: Container(color: Colors.red),
+        leading: Container(key: _leadingPaneKey, color: Colors.red),
         trailing: Container(color: Colors.blue),
       ),
     ),
   );
 }
 
-/// 左栏当前宽度（UtenSplitView 内第一个定宽 SizedBox）。
-double _leadingWidth(WidgetTester tester) {
-  final box = tester.widget<SizedBox>(
-    find
-        .descendant(
-          of: find.byType(UtenSplitView),
-          matching: find.byWidgetPredicate(
-            (w) => w is SizedBox && w.width != null && w.width! > 12,
-          ),
-        )
-        .first,
-  );
-  return box.width!;
-}
+/// Measure the actual pane; the surrounding layout may contain full-width boxes.
+double _leadingWidth(WidgetTester tester) =>
+    tester.getSize(find.byKey(_leadingPaneKey)).width;
 
 Finder _gutter() => find.byType(Tooltip);
 

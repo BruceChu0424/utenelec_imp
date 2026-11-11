@@ -1,0 +1,14 @@
+                    datname                    | state  | wait_event_type | wait_event |     elapsed     |                                                 query_shape                                                 
+-----------------------------------------------+--------+-----------------+------------+-----------------+-------------------------------------------------------------------------------------------------------------
+ auth_session_8a8ad2e9e63349d4b7470e7e88c368e3 | idle   | Client          | ClientRead | 00:00:01.49747  | COMMIT
+ auth_session_8a8ad2e9e63349d4b7470e7e88c368e3 | idle   | Client          | ClientRead | 00:00:01.497397 | COMMIT
+ auth_session_8a8ad2e9e63349d4b7470e7e88c368e3 | idle   | Client          | ClientRead | 00:00:00.383814 | WITH candidate AS (                                                                                        +
+                                               |        |                 |            |                 |     SELECT id                                                                                              +
+                                               |        |                 |            |                 |     FROM attachment_upload_sessions                                                                        +
+                                               |        |                 |            |                 |     WHERE (status = 'PENDING' AND expires_at <= now())                                                     +
+                                               |        |                 |            |                 |        OR (status = 'SCANNING'                                                                             +
+                                               |        |                 |            |                 |            AND expires_a
+ auth_session_8a8ad2e9e63349d4b7470e7e88c368e3 | idle   | Client          | ClientRead | 00:00:00.350379 | COMMIT
+ auth_session_8a8ad2e9e63349d4b7470e7e88c368e3 | active |                 |            | 00:00:00.01366  | INSERT INTO moulds(id,code,name,status,category_id,code_sequence,code_managed) VALUES($1,$2,$3,$4,$5,$6,$7)
+(5 rows)
+

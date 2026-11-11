@@ -1,0 +1,17 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/feedback-posting-dropdown-20261111/test/features/finance/posting_style_role_full_app_test.dart
+00:00 +0: D:/Projects/uten_imp_worktrees/feedback-posting-dropdown-20261111/test/features/finance/posting_style_role_full_app_test.dart: real App posting drawer mouse options=3 semantics
+00:02 +1: D:/Projects/uten_imp_worktrees/feedback-posting-dropdown-20261111/test/features/finance/posting_style_role_full_app_test.dart: real App posting drawer mouse options=3 semantics
+00:02 +2: D:/Projects/uten_imp_worktrees/feedback-posting-dropdown-20261111/test/features/finance/posting_style_role_full_app_test.dart: real App posting drawer mouse options=3 semantics
+00:02 +3: D:/Projects/uten_imp_worktrees/feedback-posting-dropdown-20261111/test/features/finance/posting_style_role_full_app_test.dart: real App posting drawer mouse options=3 semantics
+00:02 +4: D:/Projects/uten_imp_worktrees/feedback-posting-dropdown-20261111/test/features/finance/posting_style_role_full_app_test.dart: real App posting drawer mouse options=3 semantics
+00:02 +5: D:/Projects/uten_imp_worktrees/feedback-posting-dropdown-20261111/test/features/finance/posting_style_role_full_app_test.dart: real App posting drawer mouse options=3 semantics
+00:03 +6: D:/Projects/uten_imp_worktrees/feedback-posting-dropdown-20261111/test/features/finance/posting_style_role_full_app_test.dart: real App posting drawer mouse options=3 semantics
+00:03 +7: D:/Projects/uten_imp_worktrees/feedback-posting-dropdown-20261111/test/features/finance/posting_style_role_full_app_test.dart: real App posting drawer mouse options=3 semantics
+00:03 +8: D:/Projects/uten_imp_worktrees/feedback-posting-dropdown-20261111/test/features/finance/posting_style_role_full_app_test.dart: real App posting drawer mouse options=3 semantics
+POSTING-POINTER input=mouse options=3 reads=2 writes=0 value=account1
+00:04 +9: D:/Projects/uten_imp_worktrees/feedback-posting-dropdown-20261111/test/features/finance/posting_style_role_full_app_test.dart: real App posting drawer mouse options=5 semantics
+POSTING-POINTER input=mouse options=5 reads=2 writes=0 value=account1
+00:05 +10: D:/Projects/uten_imp_worktrees/feedback-posting-dropdown-20261111/test/features/finance/posting_style_role_full_app_test.dart: real App posting drawer platform-submit options=5 semantics
+POSTING-POINTER input=platform-submit options=5 reads=2 writes=0 value=account1
+00:06 +11: All tests passed!

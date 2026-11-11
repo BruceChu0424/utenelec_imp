@@ -144,6 +144,108 @@ class MasterDirectoryExportPostgresTest extends AuthSessionPostgresTestSupport {
         assertThatThrownBy(()->source.buildSource(()->master.read(original),invalid,"master_mould"))
                 .isInstanceOf(com.uten.imp.common.web.ApiException.class).hasMessageContaining("mouldType");
     }
+    @Test void mouldTaskKeepsReverseQuantityOrderAndExactDecimalText() throws Exception {
+        String token="SORT"+UUID.randomUUID().toString().substring(0,8);
+        Seed seed=seed("mould",token,1626);
+        jdbc.update("UPDATE moulds SET tqty=1626.125-right(code,6)::numeric WHERE category_id=(SELECT category_id FROM moulds WHERE id=?)",seed.ids().getFirst());
+        exporter("mould");
+        var req=new ReportExportRequest(UUID.randomUUID(),"master","mould",
+                Map.of("filter",objectMapper.writeValueAsString(Map.of("keyword",token))),"tqty","asc",null);
+        var payload=master.read(req);
+        assertThat(payload.rows()).hasSize(1626);
+        assertThat(payload.rows().getFirst()).containsEntry("code","MX-"+token+"-001625").containsEntry("tqty","1.125");
+        var selected=new ReportExportRequest(UUID.randomUUID(),"master","mould",
+                Map.of("filter",req.parameters().get("filter"),"selectedIds",objectMapper.writeValueAsString(seed.ids().subList(1624,1626))),"tqty","asc",null);
+        assertThat(master.read(selected).rows()).extracting(row->row.get("tqty")).containsExactly("1.125","2.125");
+    }
+    @Test void fiftyThousandAndOneRealSelectedMouldsExcludeAnotherMatchingRowAndKeepOrder(
+            @org.junit.jupiter.api.io.TempDir java.nio.file.Path directory) throws Exception {
+        String token="SEL"+UUID.randomUUID().toString().substring(0,8);
+        Seed seed=seed("mould",token,50002);
+        exporter("mould");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM moulds WHERE code LIKE ? AND NOT is_deleted",Integer.class,"MX-"+token+"-%")).isEqualTo(50002);
+        List<UUID> ids=seed.ids().subList(0,50001);
+        var req=new ReportExportRequest(UUID.randomUUID(),"master","mould",
+                Map.of("filter",objectMapper.writeValueAsString(Map.of("keyword",token)),"selectedIds",objectMapper.writeValueAsString(ids)),"tqty","desc",null);
+        master.validate(req);
+        var rows=new AtomicInteger();
+        var measurement=ProductionJdbcMeasurement.begin();long started=System.nanoTime();
+        try(var sink=ExportPageSink.open(page->{
+            for(var row:page.rows()) {
+                int original=50000-rows.getAndIncrement();
+                assertThat(row.get("code")).isEqualTo("MX-"+token+"-%06d".formatted(original));
+                assertThat(row.get("tqty")).isEqualTo(new BigDecimal(original).add(new BigDecimal("0.125")).toPlainString());
+            }
+        })) {
+            assertThat(master.read(req).total()).isEqualTo(50001);
+        } finally {
+            ProductionJdbcMeasurement.end();
+        }
+        assertThat(rows).hasValue(50001);
+        assertThat(measurement.maxPreparedParameterIndex).isLessThan(100);
+        System.out.println("D3_SELECTION_READ sourceMs="+(System.nanoTime()-started)/1000000+" jdbc="+measurement.result());
+        assertThat(MasterExportSelection.current()).isNull();
+        exporter("unit");
+        assertThatThrownBy(()->master.read(req)).isInstanceOfSatisfying(com.uten.imp.common.web.ApiException.class,
+                denied->assertThat(denied.getCode()).isEqualTo(com.uten.imp.common.web.ErrorCode.FORBIDDEN));
+        assertThat(MasterExportSelection.current()).isNull();exporter("mould");
+        try(var sink=ExportPageSink.open(page->{throw new java.util.concurrent.CancellationException("selection interruption");})) {
+            assertThatThrownBy(()->master.read(req)).isInstanceOf(java.util.concurrent.CancellationException.class);
+        }
+        assertThat(MasterExportSelection.current()).isNull();
+        var missing=new ArrayList<>(ids);missing.set(0,UUID.randomUUID());
+        var stale=new ReportExportRequest(UUID.randomUUID(),"master","mould",
+                Map.of("filter",req.parameters().get("filter"),"selectedIds",objectMapper.writeValueAsString(missing)),"tqty","desc",null);
+        assertThatThrownBy(()->master.read(stale)).hasMessageContaining("本次未生成文件");
+        System.out.println("D3_REAL_SELECTION selected=50001 matching=50002 excluded=1 ordered=50001 cancellation=preserved missing=rejected revokedAuthority=rejected");
+        long writeStart=System.nanoTime();
+        var workbook=context.getBean(XlsxExportService.class).buildSource(()->master.read(req),null,"master_mould");
+        long sourceAndWriteMs=(System.nanoTime()-writeStart)/1_000_000;
+        assertThat(workbook.payload().total()).isEqualTo(50001);
+        String evidence=System.getProperty("uten.export.evidence.directory");
+        java.nio.file.Path archive=evidence==null?directory:java.nio.file.Path.of(evidence);
+        java.nio.file.Files.createDirectories(archive);
+        java.nio.file.Path file=archive.resolve("selected-50001-"+token+".xlsx");
+        java.nio.file.Files.write(file,workbook.bytes(),java.nio.file.StandardOpenOption.CREATE_NEW);
+        long rereadStart=System.nanoTime();
+        assertSelectedMouldWorkbook(file,token);
+        assertThat(MasterExportSelection.current()).isNull();
+        System.out.println("D3_SELECTED_XLSX realDatabaseMatches=50002 realSelected=50001 physicalDataRows=50001 excluded=1 exactQuantityRows=50001 sourceAndWriteMs="+sourceAndWriteMs+
+                " rereadMs="+(System.nanoTime()-rereadStart)/1_000_000+" bytes="+java.nio.file.Files.size(file)+
+                " sha256="+HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(workbook.bytes()))+" file="+file.toAbsolutePath());
+    }
+    private static void assertSelectedMouldWorkbook(java.nio.file.Path file,String token)throws Exception {
+        var rows=new AtomicInteger();
+        try(var zip=new java.util.zip.ZipFile(file.toFile())) {
+            assertThat(zip.getEntry("xl/worksheets/sheet2.xml")).isNull();
+            var factory=javax.xml.parsers.SAXParserFactory.newInstance();
+            factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl",true);
+            var handler=new org.xml.sax.helpers.DefaultHandler() {
+                int row,column;StringBuilder value;boolean code,quantity;
+                public void startElement(String uri,String local,String tag,org.xml.sax.Attributes attributes) {
+                    if(tag.equals("row")){row=Integer.parseInt(attributes.getValue("r"));code=false;quantity=false;}
+                    if(tag.equals("c")){column=new org.apache.poi.ss.util.CellReference(attributes.getValue("r")).getCol();value=new StringBuilder();}
+                }
+                public void characters(char[] chars,int begin,int length){if(value!=null)value.append(chars,begin,length);}
+                public void endElement(String uri,String local,String tag) {
+                    if(tag.equals("c")) {
+                        if(row==1) {
+                            if(column==0)assertThat(value.toString()).isEqualTo("模具编号");
+                            if(column==3)assertThat(value.toString()).isEqualTo("套数");
+                        } else {
+                            int original=50000-rows.get();
+                            if(column==0){assertThat(value.toString()).isEqualTo("MX-"+token+"-%06d".formatted(original));code=true;}
+                            if(column==3){assertThat(value.toString()).isEqualTo(new BigDecimal(original).add(new BigDecimal("0.125")).toPlainString());quantity=true;}
+                        }
+                        value=null;
+                    }
+                    if(tag.equals("row")&&row>1){assertThat(code).isTrue();assertThat(quantity).isTrue();rows.incrementAndGet();}
+                }
+            };
+            try(var input=zip.getInputStream(zip.getEntry("xl/worksheets/sheet1.xml"))){factory.newSAXParser().parse(input,handler);}
+        }
+        assertThat(rows).hasValue(50001);
+    }
     private void assertCaller(String report)throws Exception{
         String token="MX"+UUID.randomUUID().toString().replace("-","").substring(0,10);
         Seed seed=seed(report,token,251);
@@ -250,10 +352,36 @@ class MasterDirectoryExportPostgresTest extends AuthSessionPostgresTestSupport {
         long base=Set.of("goods","mould","client","supplier").contains(report)?jdbc.queryForObject("SELECT COALESCE(MAX(code_sequence),0) FROM "+table,Long.class):0;
         UUID currency="account".equals(report)?accountCurrency():null;
         List<UUID> ids=new ArrayList<>(count);for(int index=0;index<count;index++)ids.add(UUID.randomUUID());
+        if("mould".equals(report)&&count>=10_000) {
+            long began=System.nanoTime();
+            for(int start=0;start<count;start+=1000) {
+                int offset=start,end=Math.min(start+1000,count);
+                jdbc.execute((org.springframework.jdbc.core.ConnectionCallback<Void>)connection->{
+                    var selected=connection.createArrayOf("uuid",ids.subList(offset,end).toArray(UUID[]::new));
+                    try(var statement=connection.prepareStatement("""
+                        INSERT INTO moulds(id,code,name,status,category_id,code_sequence,code_managed,tqty)
+                        SELECT source.id,?||lpad((?+source.ordinality-1)::text,6,'0'),
+                          ?||(?+source.ordinality-1)::text,'使用',?,?+source.ordinality,FALSE,
+                          CAST(?+source.ordinality-1 AS numeric)+0.125
+                        FROM unnest(CAST(? AS uuid[])) WITH ORDINALITY source(id,ordinality)
+                        """)) {
+                        statement.setString(1,"MX-"+token+"-");statement.setInt(2,offset);
+                        statement.setString(3,token+"-");statement.setInt(4,offset);
+                        statement.setObject(5,category);statement.setLong(6,base+offset);
+                        statement.setInt(7,offset);statement.setArray(8,selected);
+                        assertThat(statement.executeUpdate()).isEqualTo(end-offset);
+                    } finally {selected.free();}
+                    return null;
+                });
+            }
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM pg_trigger WHERE tgrelid='moulds'::regclass AND NOT tgisinternal AND tgenabled='D'",Integer.class)).isZero();
+            System.out.println("D3-MOULD-PREP realRows="+count+" boundedInsertRows=1000 disabledTriggers=0 seedMs="+(System.nanoTime()-began)/1000000);
+            return new Seed(List.copyOf(ids));
+        }
         String extras=switch(report){case "goods"->",category_id,code_sequence,auto_created,price,zk";
             case "client"->",category_id,owner_employee_id,code_sequence";case "supplier"->",category_id,code_sequence";case "account"->",style_id,currency_id";
-            case "mould"->",category_id,code_sequence,code_managed";case "warehouse"->",parent_id,is_accountable";default->"";};
-        int extraCount=switch(report){case "goods"->5;case "client","mould"->3;case "supplier","warehouse","account"->2;default->0;};
+            case "mould"->",category_id,code_sequence,code_managed,tqty";case "warehouse"->",parent_id,is_accountable";default->"";};
+        int extraCount=switch(report){case "goods"->5;case "mould"->4;case "client"->3;case "supplier","warehouse","account"->2;default->0;};
         String sql="INSERT INTO "+table+"(id,code,name,status"+extras+") VALUES("+String.join(",",Collections.nCopies(4+extraCount,"?"))+")";
         List<Integer> indices=java.util.stream.IntStream.range(0,count).boxed().toList();
         var write=new org.springframework.transaction.support.TransactionTemplate(context.getBean(org.springframework.transaction.PlatformTransactionManager.class));
@@ -273,7 +401,7 @@ class MasterDirectoryExportPostgresTest extends AuthSessionPostgresTestSupport {
                 case "client"->{ps.setObject(5,category);ps.setObject(6,employee);ps.setLong(7,base+index+1);}
                 case "supplier"->{ps.setObject(5,category);ps.setLong(6,base+index+1);}
                 case "account"->{ps.setObject(5,category);ps.setObject(6,currency);}
-                case "mould"->{ps.setObject(5,category);ps.setLong(6,base+index+1);ps.setBoolean(7,false);}
+                case "mould"->{ps.setObject(5,category);ps.setLong(6,base+index+1);ps.setBoolean(7,false);ps.setBigDecimal(8,BigDecimal.valueOf(index).add(new BigDecimal("0.125")));}
                 case "warehouse"->{ps.setObject(5,category);ps.setBoolean(6,true);}
                 default->{}
             }

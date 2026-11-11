@@ -16,7 +16,13 @@ namespace Uten.Legacy.Core
     public sealed partial class DpapiBusinessStateStore : IBusinessStateStore, IUnitExportReceiptStore
     {
         private const int MaximumPlainBytes = 8388608;
-        private const int MaximumEncryptedBytes = MaximumPlainBytes + 65536;
+        private const string OutputJournal = "unit-export-mutations";
+        private sealed class JournalRecords : Dictionary<string, MutationJournalRecord>
+        {
+            internal readonly Dictionary<string, string> Documents = new Dictionary<string, string>(StringComparer.Ordinal);
+            internal JournalRecords() : base(StringComparer.Ordinal) { }
+        }
+        private static int DocumentBudget(string kind) { return kind == OutputJournal ? UnitExportBudget.JournalBytes : MaximumPlainBytes; }
         private readonly object gate = new object();
         private readonly string root;
         private readonly Action<string> writeFault;
@@ -120,7 +126,16 @@ namespace Uten.Legacy.Core
                 {
                     var now = DateTime.UtcNow;
                     journal.Add(request.RequestId, new MutationJournalRecord(request, MutationJournalState.Sending, now, now));
-                    WriteDocument(request.Owner, "mutations", journal.Values.Select(JournalValue).ToArray());
+                    if (SessionCoordinator.IsUnitExportMutation(request.Action))
+                    {
+                        // Reserve a bounded complete original-receipt envelope before the first wire byte.
+                        // Quota refusal cannot evict any known/unknown ticket or create an unjournaled write.
+                        var output = journal.Values.Where(value => SessionCoordinator.IsUnitExportMutation(value.Action)).Select(JournalValue).ToArray();
+                        var retained = Encoding.UTF8.GetByteCount(JsonValue.Serialize(output, UnitExportBudget.JournalBytes));
+                        if ((long)retained + 2L * UnitExportBudget.JobReplyBytes > UnitExportBudget.JournalBytes)
+                            throw new IOException("本机导出票据与原回执保留空间不足；已有票据未删除，本次未发送。");
+                    }
+                    WriteJournal(request.Owner, journal, request.RequestId);
                     activeAttempts.Add(key, lease);
                     lease = null;
                 }
@@ -167,7 +182,7 @@ namespace Uten.Legacy.Core
                             result.Outcome == MutationOutcome.Confirmed && (request.ResponseKind == MutationResponseKind.BatchResult
                                 || request.ResponseKind == MutationResponseKind.OperationHistory || request.ResponseKind == MutationResponseKind.ExportJob
                                 || request.ResponseKind == MutationResponseKind.PlatformDefinition || request.ResponseKind == MutationResponseKind.PlatformRow) ? result.ResponseJson : null);
-                        WriteDocument(request.Owner, "mutations", journal.Values.Select(JournalValue).ToArray());
+                        WriteJournal(request.Owner, journal, request.RequestId);
                     }
                 }
                 finally { activeAttempts.Remove(key); lease.Dispose(); }
@@ -192,7 +207,7 @@ namespace Uten.Legacy.Core
                 var after = new MutationJournalRecord(request, before.State, before.CreatedAtUtc, DateTime.UtcNow,
                     before.StatusCode, before.ErrorCode, before.ConfirmedResourceId, notes, before.ResultJson, before.ConfirmedByReceiptQuery);
                 journal[requestId] = after;
-                WriteDocument(owner, "mutations", journal.Values.Select(JournalValue).ToArray());
+                WriteJournal(owner, journal, requestId);
                 return after;
             }
         }
@@ -221,11 +236,12 @@ namespace Uten.Legacy.Core
             }
             return values;
         }
-        private Dictionary<string, MutationJournalRecord> ReadJournal(MutationOwnerSnapshot owner, bool recover)
+        private JournalRecords ReadJournal(MutationOwnerSnapshot owner, bool recover)
         {
-            var values = new Dictionary<string, MutationJournalRecord>(StringComparer.Ordinal);
-            var changed = false;
-            foreach (var item in ReadEntries(owner, "mutations", 512))
+            var values = new JournalRecords();
+            var changed = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var kind in new[] { "mutations", OutputJournal })
+            foreach (var item in ReadEntries(owner, kind, 512))
             {
                 var value = ObjectValue(item);
                 var contractVersion = Integer(value, "contractVersion", 1, 4);
@@ -237,7 +253,7 @@ namespace Uten.Legacy.Core
                 Keys(value, journalKeys.ToArray());
                 MutationRequest request;
                 var action = ActionValue(value);
-                try { request = SessionCoordinator.BuildMutationRequest(action, Text(value, "id", 36), NullableText(value, "bodyJson", action == MutationAction.UnitPlatformValuesWrite ? 524288 : 65536, true), owner,
+                try { request = SessionCoordinator.BuildMutationRequest(action, Text(value, "id", 36), NullableText(value, "bodyJson", action == MutationAction.UnitExportSubmit ? UnitExportBudget.RequestBytes : action == MutationAction.UnitPlatformValuesWrite ? 524288 : 65536, true), owner,
                     NullableText(value, "resourceId", 36), NullableText(value, "observedStatus", 16)); }
                 catch (ApiException) { throw new InvalidDataException(); }
                 if (Text(value, "method", 8) != request.Method || Text(value, "path", 128) != request.RelativePath
@@ -252,7 +268,7 @@ namespace Uten.Legacy.Core
                 if (contractVersion >= 2)
                 {
                     if (Integer(value, "responseKind", 0, 6) != (int)request.ResponseKind) throw new InvalidDataException();
-                    resultJson = NullableText(value, "resultJson", 2097152, true);
+                    resultJson = NullableText(value, "resultJson", SessionCoordinator.IsUnitExportMutation(action) ? UnitExportBudget.JobReplyBytes : 2097152, true);
                 }
                 if (contractVersion == 3)
                 {
@@ -269,7 +285,7 @@ namespace Uten.Legacy.Core
                 var state = (MutationJournalState)Integer(value, "state", 1, 5);
                 var updated = Time(value, "updatedTicks");
                 if (recover && state == MutationJournalState.Sending && !AttemptIsLive(owner, request.RequestId))
-                { state = MutationJournalState.Unknown; updated = DateTime.UtcNow; changed = true; }
+                { state = MutationJournalState.Unknown; updated = DateTime.UtcNow; changed.Add(kind); }
                 var confirmedId = NullableText(value, "confirmedResourceId", 36);
                 if (confirmedId != null) CanonicalId(confirmedId);
                 if (request.ResponseKind == MutationResponseKind.UnitDetail || request.ResponseKind == MutationResponseKind.ExportJob
@@ -284,10 +300,28 @@ namespace Uten.Legacy.Core
                 var record = new MutationJournalRecord(request, state, Time(value, "createdTicks"), updated,
                     (int?)NullableInteger(value, "statusCode", 100, 599), SafeErrorCode(NullableText(value, "errorCode", 80)), confirmedId,
                     NullableText(value, "reviewNote", 8000, true), resultJson, confirmedByReceiptQuery);
-                if (values.ContainsKey(record.RequestId)) throw new InvalidDataException(); values.Add(record.RequestId, record);
+                if (kind == OutputJournal && !SessionCoordinator.IsUnitExportMutation(action)) throw new InvalidDataException();
+                if (values.ContainsKey(record.RequestId) || values.Count >= 512) throw new InvalidDataException();
+                values.Add(record.RequestId, record); values.Documents.Add(record.RequestId, kind);
             }
-            if (changed) WriteDocument(owner, "mutations", values.Values.Select(JournalValue).ToArray());
+            foreach (var kind in changed) WriteJournalDocument(owner, values, kind);
             return values;
+        }
+        // Existing tickets stay in their original envelope. New output tickets alone use the
+        // output document; no ordinary mutation/draft budget or owner/lease boundary changes.
+        private void WriteJournal(MutationOwnerSnapshot owner, JournalRecords records, string id)
+        {
+            string kind;
+            if (!records.Documents.TryGetValue(id, out kind))
+            {
+                kind = SessionCoordinator.IsUnitExportMutation(records[id].Action) ? OutputJournal : "mutations";
+                records.Documents.Add(id, kind);
+            }
+            WriteJournalDocument(owner, records, kind);
+        }
+        private void WriteJournalDocument(MutationOwnerSnapshot owner, JournalRecords records, string kind)
+        {
+            WriteDocument(owner, kind, records.Values.Where(value => records.Documents[value.RequestId] == kind).Select(JournalValue).ToArray());
         }
         private bool AttemptIsLive(MutationOwnerSnapshot owner, string id)
         {
@@ -302,13 +336,13 @@ namespace Uten.Legacy.Core
             var path = Path.Combine(NamespaceDirectory(owner), kind + ".dpapi");
             if (!File.Exists(path)) return new object[0];
             RejectExistingLink(path);
-            if (new FileInfo(path).Length > MaximumEncryptedBytes) throw new InvalidDataException();
+            if (new FileInfo(path).Length > DocumentBudget(kind) + 65536) throw new InvalidDataException();
             byte[] plain = null;
             try
             {
                 plain = ProtectedData.Unprotect(File.ReadAllBytes(path), Entropy(owner, kind), DataProtectionScope.CurrentUser);
-                if (plain.Length > MaximumPlainBytes) throw new InvalidDataException();
-                var document = JsonValue.ParseObject(new UTF8Encoding(false, true).GetString(plain), MaximumPlainBytes);
+                if (plain.Length > DocumentBudget(kind)) throw new InvalidDataException();
+                var document = JsonValue.ParseObject(new UTF8Encoding(false, true).GetString(plain), DocumentBudget(kind));
                 Keys(document, "schema", "owner", "entries");
                 if (Integer(document, "schema", 1, 1) != 1) throw new InvalidDataException();
                 var identity = ObjectValue(document["owner"]);
@@ -327,11 +361,11 @@ namespace Uten.Legacy.Core
             var directory = NamespaceDirectory(owner);
             var path = Path.Combine(directory, kind + ".dpapi"); RejectExistingLink(path);
             var value = new Dictionary<string, object> { { "schema", 1 }, { "owner", OwnerValue(owner) }, { "entries", entries } };
-            var plain = new UTF8Encoding(false, true).GetBytes(JsonValue.Serialize(value));
+            var plain = new UTF8Encoding(false, true).GetBytes(JsonValue.Serialize(value, DocumentBudget(kind)));
             byte[] encrypted;
             try
             {
-                if (plain.Length > MaximumPlainBytes) throw new IOException("本机业务保全文件已到大小上限。");
+                if (plain.Length > DocumentBudget(kind)) throw new IOException("本机业务保全文件已到大小上限。");
                 encrypted = ProtectedData.Protect(plain, Entropy(owner, kind), DataProtectionScope.CurrentUser);
             }
             finally { Array.Clear(plain, 0, plain.Length); }

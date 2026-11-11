@@ -1,0 +1,53 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/master_data_table_view_platform_refresh_test.dart
+00:00 +0: fresh same-key column getters retain current closures and widths
+WIDTH-PROBE ensure pending=false dirty=true scheduled=false cursors={}
+WIDTH-PROBE schedule scheduled=false pending=true
+WIDTH-PROBE timer pending=true parked=false scheduled=false values={name: 0}
+WIDTH-PROBE schedule scheduled=false pending=true
+WIDTH-PROBE timer pending=true parked=false scheduled=false values={name: 13}
+WIDTH-PROBE schedule scheduled=false pending=true
+WIDTH-PROBE timer pending=true parked=false scheduled=false values={}
+WIDTH-PROBE ensure pending=true dirty=true scheduled=false cursors={}
+WIDTH-PROBE schedule scheduled=false pending=true
+WIDTH-PROBE timer pending=true parked=false scheduled=false values={name: 0}
+WIDTH-PROBE schedule scheduled=false pending=true
+WIDTH-PROBE timer pending=true parked=false scheduled=false values={name: 43}
+WIDTH-PROBE ensure pending=false dirty=false scheduled=false cursors={name: 50}
+WIDTH-PROBE update sameRaw=true sameGroups=true values={name: 50} manual={}
+WIDTH-PROBE ensure pending=true dirty=false scheduled=false cursors={name: 0}
+WIDTH-PROBE schedule scheduled=false pending=true
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: a value greater than <87.0>
+  Actual: <87.0>
+   Which: is not a value greater than <87.0>
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/master_data_table_view_platform_refresh_test.dart:193:7)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/master_data_table_view_platform_refresh_test.dart line 193
+The test description was:
+  fresh same-key column getters retain current closures and widths
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:01 +0 -1: fresh same-key column getters retain current closures and widths [E]
+  Test failed. See exception logs above.
+  The test description was: fresh same-key column getters retain current closures and widths
+  
+Warning: At least one test in this suite creates an HttpClient. When running a test suite that uses
+TestWidgetsFlutterBinding, all HTTP requests will return status code 400, and no network request
+will actually be made. Any test expecting a real network connection and status code will fail.
+To test code that needs an HttpClient, provide your own HttpClient implementation to the code under
+test, so that your test can consistently provide a testable response to the code under test.
+00:01 +0 -1: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/feedback-integrate-main-20261110/test/master_data_table_view_platform_refresh_test.dart: fresh same-key column getters retain current closures and widths

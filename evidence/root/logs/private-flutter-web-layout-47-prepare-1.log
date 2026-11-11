@@ -1,0 +1,16 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+Compiling lib\main.dart for the Web...                          
+Wasm dry run findings:
+Found incompatibilities with WebAssembly.
+
+package:flutter_secure_storage_web/flutter_secure_storage_web.dart 5:1 - dart:html unsupported (0)
+package:flutter_secure_storage_web/flutter_secure_storage_web.dart 6:1 - dart:js_util unsupported (15)
+package:flutter_secure_storage_web/src/subtle.dart 21:1 - dart:html unsupported (0)
+package:flutter_secure_storage_web/src/subtle.dart 22:1 - dart:js_util unsupported (15)
+package:flutter_secure_storage_web/src/subtle.dart 26:1 - package:js/js.dart unsupported (14)
+
+Consider addressing these issues to enable wasm builds. See docs for more info: https://docs.flutter.dev/platform-integration/web/wasm
+
+Use --no-wasm-dry-run to disable these warnings.
+Compiling lib\main.dart for the Web...                            223.1s
+√ Built evidence\root\web

@@ -127,8 +127,8 @@ class GoodsCostImportRemappingPostgresTest {
         assertThat(sql.queryForObject("SELECT count(*) FROM goods_cost_import_mappings",Integer.class)).isZero();
     }
     @Test void missingOrZeroColumnValidationCannotApplyOrRewriteItsImmutablePreview() throws Exception {
-        for(Integer version:Arrays.asList(null,0)) {
-            String name="legacy-"+(version==null?"absent":"zero")+".xlsx";UUID file=file(name,version);
+        for(Integer version:Arrays.asList(null,0,1,2)) {
+            String name="legacy-"+(version==null?"absent":version.toString())+".xlsx";UUID file=file(name,version);
             String original=sql.queryForObject("SELECT preview::text FROM goods_cost_imports WHERE id=?",String.class,file);
             assertThatThrownBy(()->apply(file,input(List.of(),List.of(manualFee())),mapping("FEE")))
                     .isInstanceOf(ApiException.class).hasMessageContaining("重新检测");
@@ -141,7 +141,7 @@ class GoodsCostImportRemappingPostgresTest {
     private Applied apply(UUID file,DraftInput input,Mapping mapping){return tx(()->service.apply(new Apply(file,"block",input,List.of(mapping))));}
     private <T> T tx(Supplier<T> work){return transaction.execute(status->work.get());}
     private UUID file(String name)throws Exception {
-        return file(name,1);
+        return file(name,com.uten.imp.common.importing.ImportColumnGuard.VERSION);
     }
     private UUID file(String name,Integer contractVersion)throws Exception {
         UUID id=UUID.randomUUID();String hash=ImmutableDocumentStore.digest(name.getBytes(StandardCharsets.UTF_8));

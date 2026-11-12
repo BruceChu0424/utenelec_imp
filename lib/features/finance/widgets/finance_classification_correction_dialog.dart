@@ -801,10 +801,7 @@ class _CorrectionState extends ConsumerState<_Correction>
                                   return '${f?['billNo'] ?? f?['sourceBillNo'] ?? f?['applicationId'] ?? f?['offsetId'] ?? ''}';
                                 },
                               ),
-                              financeSourceColumn(
-                                'expectedRevision',
-                                '原分类版本',
-                              ),
+                              financeSourceColumn('expectedRevision', '原分类版本'),
                               financeSourceColumn(
                                 'actualStatus',
                                 '实际状态',

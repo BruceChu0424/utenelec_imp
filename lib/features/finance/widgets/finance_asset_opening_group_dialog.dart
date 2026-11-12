@@ -1924,9 +1924,11 @@ class _DraftPickerState extends ConsumerState<_DraftPicker>
                 aiSensitive: true,
                 type: 'money',
                 sortable: true,
-                value: (r) => r[widget.ledger == FinanceAssetLedger.fixedAsset
-                    ? 'originalValue'
-                    : 'totalAmount']?.toString(),
+                value: (r) =>
+                    r[widget.ledger == FinanceAssetLedger.fixedAsset
+                            ? 'originalValue'
+                            : 'totalAmount']
+                        ?.toString(),
               ),
               MasterColumnDef(
                 key: 'categoryName',

@@ -347,7 +347,8 @@ class _FinanceAssetPostingPanelState
               child: const Text('取消'),
             ),
             UtenButton(
-              onPressed: () => Navigator.pop(dialogContext, controller.text.trim()),
+              onPressed: () =>
+                  Navigator.pop(dialogContext, controller.text.trim()),
               child: const Text('确认'),
             ),
           ],

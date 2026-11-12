@@ -401,7 +401,12 @@ class _DetailState extends ConsumerState<FinanceApplicationDetail> {
                         100,
                         sortable: true,
                       ),
-                      financeApplicationColumn('step_no', '步骤', 80, sortable: true),
+                      financeApplicationColumn(
+                        'step_no',
+                        '步骤',
+                        80,
+                        sortable: true,
+                      ),
                       financeApplicationColumn('label_snapshot', '原流程岗位', 250),
                       financeApplicationColumn('assigneesLabel', '明确指派人员', 260),
                       financeApplicationColumn('stateLabel', '节点状态', 130),
@@ -440,7 +445,12 @@ class _DetailState extends ConsumerState<FinanceApplicationDetail> {
                             '报销类别',
                             140,
                           ),
-                          financeApplicationColumn('date', '日期', 130, sortable: true),
+                          financeApplicationColumn(
+                            'date',
+                            '日期',
+                            130,
+                            sortable: true,
+                          ),
                           financeApplicationColumn('description', '说明', 300),
                           financeApplicationColumn(
                             'amountExact',

@@ -695,55 +695,55 @@ class _FinanceProcurementApprovalReviewPageState
     final ok = await showDialog<bool>(
       context: context,
       builder: (dialogCtx) => UtenAlertDialog(
-          title: Text('驳回 $widgetSafeBillNo'),
-          content: SizedBox(
-            width: 440,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const UtenReviewerResponsibilityNotice(
-                  actionLabel: '订货财务审批·驳回',
-                  description: '确认后系统将记录当前审核员、驳回原因和时间，请对本次决定负责。',
-                ),
-                const SizedBox(height: UtenSpacing.s12),
-                TextField(
-                  key: const Key('finance-order-review-reject-reason'),
-                  controller: controller,
-                  autofocus: true,
-                  maxLength: 1000,
-                  minLines: 3,
-                  maxLines: 5,
-                  decoration: const UtenInputDecoration(
-                    InputDecoration(
-                      labelText: '驳回原因（选填）',
-                      hintText: '驳回原因（如：单价待复核 / 供应商资料待更新）',
-                      border: OutlineInputBorder(),
-                    ),
-                    info: '驳回不改动订货单内容；原因将通知原制单人修改后重新提交。',
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actionsAlignment: MainAxisAlignment.center,
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogCtx, false),
-              child: const Text('取消'),
-            ),
-            FinanceReviewClaimButton(
-              key: const Key('finance-order-review-reject-submit'),
-              claim: claim,
-              style: FilledButton.styleFrom(
-                backgroundColor: Theme.of(dialogCtx).colorScheme.error,
+        title: Text('驳回 $widgetSafeBillNo'),
+        content: SizedBox(
+          width: 440,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const UtenReviewerResponsibilityNotice(
+                actionLabel: '订货财务审批·驳回',
+                description: '确认后系统将记录当前审核员、驳回原因和时间，请对本次决定负责。',
               ),
-              onPressed: () => Navigator.pop(dialogCtx, true),
-              child: const Text('确认驳回'),
-            ),
-          ],
+              const SizedBox(height: UtenSpacing.s12),
+              TextField(
+                key: const Key('finance-order-review-reject-reason'),
+                controller: controller,
+                autofocus: true,
+                maxLength: 1000,
+                minLines: 3,
+                maxLines: 5,
+                decoration: const UtenInputDecoration(
+                  InputDecoration(
+                    labelText: '驳回原因（选填）',
+                    hintText: '驳回原因（如：单价待复核 / 供应商资料待更新）',
+                    border: OutlineInputBorder(),
+                  ),
+                  info: '驳回不改动订货单内容；原因将通知原制单人修改后重新提交。',
+                ),
+              ),
+            ],
+          ),
         ),
-      );
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx, false),
+            child: const Text('取消'),
+          ),
+          FinanceReviewClaimButton(
+            key: const Key('finance-order-review-reject-submit'),
+            claim: claim,
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(dialogCtx).colorScheme.error,
+            ),
+            onPressed: () => Navigator.pop(dialogCtx, true),
+            child: const Text('确认驳回'),
+          ),
+        ],
+      ),
+    );
     final reason = controller.text;
     if (ok != true || !mounted) return;
     setState(() => _busy = true);

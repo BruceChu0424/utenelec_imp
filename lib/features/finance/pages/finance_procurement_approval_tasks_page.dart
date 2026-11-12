@@ -685,53 +685,53 @@ class _FinanceProcurementApprovalTasksPageState
         builder: (ctx) {
           var value = '';
           return UtenAlertDialog(
-              title: Text('批量驳回($count 笔)'),
-              content: SizedBox(
-                width: 440,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const UtenReviewerResponsibilityNotice(
-                      actionLabel: '批量驳回订货财务审核',
-                      description: '确认后，系统将以此登录员工记录整批退回责任。',
-                    ),
-                    const SizedBox(height: UtenSpacing.s12),
-                    Text('${_selectedBillSummary()}将使用同一个驳回原因，整批原子提交。'),
-                    const SizedBox(height: UtenSpacing.s12),
-                    TextField(
-                      autofocus: true,
-                      minLines: 3,
-                      maxLines: 5,
-                      maxLength: 1000,
-                      onChanged: (v) => value = v.trim(),
-                      decoration: const UtenInputDecoration(
-                        InputDecoration(
-                          labelText: '退回原因（选填）',
-                          hintText: '请写清需要制单人修改的内容',
-                        ),
+            title: Text('批量驳回($count 笔)'),
+            content: SizedBox(
+              width: 440,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const UtenReviewerResponsibilityNotice(
+                    actionLabel: '批量驳回订货财务审核',
+                    description: '确认后，系统将以此登录员工记录整批退回责任。',
+                  ),
+                  const SizedBox(height: UtenSpacing.s12),
+                  Text('${_selectedBillSummary()}将使用同一个驳回原因，整批原子提交。'),
+                  const SizedBox(height: UtenSpacing.s12),
+                  TextField(
+                    autofocus: true,
+                    minLines: 3,
+                    maxLines: 5,
+                    maxLength: 1000,
+                    onChanged: (v) => value = v.trim(),
+                    decoration: const UtenInputDecoration(
+                      InputDecoration(
+                        labelText: '退回原因（选填）',
+                        hintText: '请写清需要制单人修改的内容',
                       ),
                     ),
-                  ],
-                ),
-              ),
-              actionsAlignment: MainAxisAlignment.center,
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  child: const Text('取消'),
-                ),
-                FinanceReviewClaimButton(
-                  claim: claim,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: Theme.of(ctx).colorScheme.error,
-                    foregroundColor: Theme.of(ctx).colorScheme.onError,
                   ),
-                  onPressed: () => Navigator.pop(ctx, value),
-                  child: const Text('确认批量驳回'),
+                ],
+              ),
+            ),
+            actionsAlignment: MainAxisAlignment.center,
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('取消'),
+              ),
+              FinanceReviewClaimButton(
+                claim: claim,
+                style: FilledButton.styleFrom(
+                  backgroundColor: Theme.of(ctx).colorScheme.error,
+                  foregroundColor: Theme.of(ctx).colorScheme.onError,
                 ),
-              ],
-            );
+                onPressed: () => Navigator.pop(ctx, value),
+                child: const Text('确认批量驳回'),
+              ),
+            ],
+          );
         },
       );
       if (reason == null || !mounted) return;

@@ -105,7 +105,7 @@ class WorkshopNoticeScopePostgresTest {
         jdbc.execute("CREATE TABLE production_planning_package_documents(document_id uuid,execution_segment_id uuid,document_type text)");
         jdbc.execute("CREATE TABLE production_execution_segment_events(action text,draw_document_ids uuid[],draw_item_quantities jsonb, counter_event_id uuid, receiving_confirmation_id uuid, receiving_direction smallint)");
         jdbc.execute("CREATE TABLE stock_document_items(id uuid,doc_id uuid,qty numeric DEFAULT 1,issued_qty numeric DEFAULT 0,is_deleted boolean DEFAULT false)");
-        jdbc.execute("CREATE TABLE production_material_stock_postings(stock_document_item_id uuid,posting_type text, recorded_tx_id xid8)");
+        jdbc.execute("CREATE TABLE production_material_stock_postings(stock_document_item_id uuid,posting_type text, recorded_tx_id xid8, ledger_order bigint)");
         jdbc.execute("ALTER TABLE production_execution_segments ADD COLUMN notice_fixture_issued boolean NOT NULL DEFAULT TRUE");
         // This fixture has no execution splits. Full split guards and borrowed
         // material prerequisites are covered by ProductionExecutionBatchEndToEndTest.

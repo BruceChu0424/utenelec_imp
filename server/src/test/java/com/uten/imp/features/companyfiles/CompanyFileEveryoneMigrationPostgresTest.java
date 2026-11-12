@@ -70,9 +70,14 @@ class CompanyFileEveryoneMigrationPostgresTest {
     void downloadCodeRetiresAndWriteCodesLeaveTheCommonModuleSurface() {
         assertThat(db.queryForObject(
                 "SELECT count(*) FROM permissions WHERE code='company_file:download'", Integer.class)).isZero();
+        // V1127 把「我的申请」五个自助码（apply×4=sort 20、application:view=sort 21）
+        // 并回「常用模块」；view 码自 V979 起与源码同 sort（50/60 并列组），次键 code 定序防并列漂移。
         assertThat(db.queryForList(
-                "SELECT code FROM permissions WHERE module='常用模块' ORDER BY sort_order", String.class))
-                .containsExactly("company_file:view", "expense:apply", "payroll:view:self",
+                "SELECT code FROM permissions WHERE module='常用模块' ORDER BY sort_order,code", String.class))
+                .containsExactly("company_file:view",
+                        "application:apply", "application:apply:payment", "application:apply:prepayment",
+                        "application:apply:travel", "application:view",
+                        "expense:apply", "payroll:view:self",
                         "suggestion:submit", "suggestion:view", "visitor:host_confirm", "visitor:host_view");
         assertThat(db.queryForObject(
                 "SELECT count(*) FROM permissions WHERE module='系统管理' AND code LIKE 'company_file:%'",

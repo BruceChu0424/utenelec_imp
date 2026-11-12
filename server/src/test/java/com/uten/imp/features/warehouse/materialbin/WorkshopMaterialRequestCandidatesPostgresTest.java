@@ -195,11 +195,16 @@ class WorkshopMaterialRequestCandidatesPostgresTest {
                 """, kg);
         UUID familiar = goods("ZZZ", "常用颗粒", kg, "ORDER");
         db.update("INSERT INTO v_workshop_material_bin_ledger VALUES (?,?,NULL)", bin, familiar);
+        // 2026-11-09 上限 1000：单页 1000 一页取全 508 不丢；显式小页(200)分 3 页（200+200+108）同样不丢行。
+        var whole = service.requestMaterials(workshop, null, null, 1, 1000);
+        assertThat(whole.getSize()).isEqualTo(Pageables.MAX_PAGE_SIZE);
+        assertThat(whole.getTotal()).isEqualTo(508);
+        assertThat(whole.getTotalPages()).isEqualTo(1);
+        assertThat(whole.getItems().getFirst().goodsId()).isEqualTo(familiar);
+        assertThat(whole.getItems()).hasSize(508);
         var seen = new HashSet<UUID>();
-        // 2026-11-08 上限 200：1000 夹到 Pageables.MAX_PAGE_SIZE，508 行分 3 页（200+200+108）不丢行。
         for (int page = 1; page <= 3; page++) {
-            var result = service.requestMaterials(workshop, null, null, page, 1000);
-            assertThat(result.getSize()).isEqualTo(Pageables.MAX_PAGE_SIZE);
+            var result = service.requestMaterials(workshop, null, null, page, 200);
             assertThat(result.getPage()).isEqualTo(page);
             assertThat(result.getTotal()).isEqualTo(508);
             assertThat(result.getTotalPages()).isEqualTo(3);
@@ -207,7 +212,7 @@ class WorkshopMaterialRequestCandidatesPostgresTest {
             for (var row : result.getItems()) assertThat(seen.add(row.goodsId())).isTrue();
         }
         assertThat(seen).hasSize(508);
-        var beyond = service.requestMaterials(workshop, null, null, 4, 1000);
+        var beyond = service.requestMaterials(workshop, null, null, 4, 200);
         assertThat(beyond.getItems()).isEmpty();
         assertThat(beyond.getTotal()).isEqualTo(508);
     }

@@ -68,6 +68,35 @@ class InventoryValueOutputRefreshContinuationPostgresTest {
         // function from the same current migrated catalog rejectActiveDirty copies.
         MigratedProjectionSchema.createCurrentTables(jdbc,"imported_document_registry");
         MigratedProjectionSchema.createCurrentFunctions(jdbc,"fn_imported_business_document_registered");
+        // 644e78496 起生产代码调 V1129 的两个函数，本链库停在迁移前历史版本。桩忠实
+        // 再现 V1129 语义(可报余量=MIN(净发料/单耗)-未清账已报，capacity>=计划量时
+        // NULL 回计划量口径；证明落库为否)，只依赖本链历史版本已有的列。
+        jdbc.execute("""
+                CREATE OR REPLACE FUNCTION fn_execution_partial_material_report_room(p_segment uuid,p_exclude uuid DEFAULT NULL)
+                RETURNS numeric LANGUAGE sql STABLE AS $$
+                WITH dem AS MATERIALIZED (
+                  SELECT demand.per_product_qty, COALESCE(net.net_qty,0) AS net_qty
+                  FROM production_material_demands demand
+                  LEFT JOIN LATERAL (
+                    SELECT SUM(CASE posting.posting_type WHEN 'ISSUE' THEN posting.qty_base
+                               WHEN 'GOOD_RETURN_REVERSE' THEN posting.qty_base ELSE -posting.qty_base END) AS net_qty
+                    FROM production_material_stock_postings posting WHERE posting.demand_id=demand.id) net ON TRUE
+                  WHERE demand.execution_segment_id=p_segment AND NOT demand.is_deleted
+                    AND demand.material_increment_request_id IS NULL AND demand.status NOT IN('RELEASED','REVERSED')),
+                room AS MATERIALIZED (SELECT COALESCE(MIN(net_qty/NULLIF(per_product_qty,0)),0) AS cap FROM dem)
+                SELECT CASE
+                  WHEN NOT EXISTS(SELECT 1 FROM production_execution_segments s WHERE s.id=p_segment AND NOT s.is_deleted) THEN 0
+                  WHEN room.cap>=segment.planned_qty THEN NULL
+                  ELSE GREATEST(room.cap-(SELECT COALESCE(SUM(item.qty),0) FROM production_daily_report_items item
+                      JOIN production_daily_reports report ON report.id=item.report_id
+                      WHERE item.execution_segment_id=p_segment AND item.fqc_recovery_authorization_id IS NULL
+                        AND NOT item.is_deleted AND NOT report.is_deleted AND report.status IN (0,1)
+                        AND (p_exclude IS NULL OR report.id<>p_exclude)),0) END
+                FROM production_execution_segments segment CROSS JOIN room
+                WHERE segment.id=p_segment AND NOT segment.is_deleted
+                $$;
+                CREATE OR REPLACE FUNCTION fn_capture_execution_full_material_kit(uuid) RETURNS boolean LANGUAGE sql AS 'SELECT FALSE';
+                """);
         try(var choices=BusinessPrecisionContext.use(Map.of())){
             var scenario=new MakePublicSupplyEndToEndTest();beans.autowireBean(scenario);scenario.prepare();
             Set<UUID> existing=new HashSet<>(jdbc.queryForList("SELECT execution_segment_id FROM stock_value_production_cost_objects",UUID.class));

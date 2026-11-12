@@ -169,6 +169,13 @@ class FixtureSchemaDriftGuardPostgresTest {
             // WorkbenchBadgeSourceFailureTest 的慢来源锁探针：另一连接持排他锁构造
             // 语句时限取消路径，单列整数表不是业务 schema 关系。
             "badge_timeout_probe",
+            // GoodsIdentifierReuseSafetyPostgresTest 自建的旧系统货品引用探针：
+            // 只给删除守卫提供一个“仍有旧引用”的外键来源，不属于业务 schema。
+            "uten_older_goods_reference",
+            // PartialMaterialReportCapacityPostgresTest(V1129 合同)的容量调整桩表：
+            // 手写函数桩 fn_execution_partial_material_report_room 从这里扣减余量，
+            // 真实迁移里的余量由账面推导、没有这张表。
+            "capacity_adjustments",
             // BusinessIdentifierRegistryMigrationContractTest 里对迁移 SQL 做
             // contains 断言时，字面量拼接出的伪表名（不是真的建表语句）。
             "upper");

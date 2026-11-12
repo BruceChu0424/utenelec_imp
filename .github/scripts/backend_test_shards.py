@@ -42,6 +42,10 @@ OPTIONAL_GATES = {
     "UTEN_CONTROLLED_LOAD_WINDOW",
     # RestoredLocalOriginalsTest：指向本机恢复目录的清单路径，只读不改源数据。
     "UTEN_RECOVERY_MANIFEST",
+    # 2026-11 阶梯探针族（Fulfillment/StockLedger/ReportTable/WarehouseTaskCenter 等
+    # *LadderProbeTest）：对着运维提供的库（UTEN_DB_URL/USER/PASSWORD）量分批阶梯
+    # 计时，属 UTEN_PROGRESSIVE_PROBE 同款选择启用诊断，普通分片缺门跳过是设计内。
+    "UTEN_LADDER_PROBE",
 }
 EXPORTER = "com.uten.imp.migration.FlywayChecksumManifestExporterTest#exportsCanonicalFlywayChecksumsOnlyWhenExplicitlyRequested"
 EXPORT_CHECKSUMS_PROPERTY = "uten.exportFlywayChecksums"

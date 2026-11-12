@@ -77,6 +77,9 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
                 CREATE FUNCTION fn_fqc_replenishment_material_ready(uuid) RETURNS boolean LANGUAGE sql AS 'SELECT FALSE';
                 CREATE TABLE production_execution_segment_splits(source_segment_id uuid);
                 CREATE FUNCTION fn_split_batch_empty_issued(uuid) RETURNS boolean LANGUAGE sql AS 'SELECT FALSE';
+                -- 644e78496 起分段列表 SELECT 携带 fn_execution_partial_material_report_room 余量
+                -- 布尔列；本 oracle 未钉部分报工余量语义，桩为“余量概念不适用”(NULL)。
+                CREATE FUNCTION fn_execution_partial_material_report_room(uuid,uuid) RETURNS numeric LANGUAGE sql STABLE AS 'SELECT NULL::numeric';
                 CREATE FUNCTION fn_can_split_execution_batch(uuid) RETURNS boolean LANGUAGE sql AS 'SELECT FALSE';
                 CREATE FUNCTION fn_production_material_usage_source_segments(uuid) RETURNS TABLE(segment_id uuid) LANGUAGE sql AS 'SELECT NULL::uuid WHERE FALSE';
                 CREATE FUNCTION fn_execution_start_material_ready(uuid) RETURNS boolean LANGUAGE sql AS 'SELECT FALSE';
@@ -144,7 +147,7 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
                 """);
         jdbc.execute("""
                 CREATE TABLE production_material_stock_postings(id uuid PRIMARY KEY, demand_id uuid,
-                    posting_type text, qty_base numeric, stock_document_item_id uuid, recorded_tx_id xid8);
+                    posting_type text, qty_base numeric, stock_document_item_id uuid, recorded_tx_id xid8, ledger_order bigint);
                 CREATE TABLE production_planning_package_documents(document_id uuid, document_type text, execution_segment_id uuid);
                 CREATE TABLE stock_documents(id uuid, doc_type text, status integer, warehouse_id uuid, is_deleted boolean DEFAULT FALSE,transfer_kind text NOT NULL DEFAULT 'NORMAL',defect_reason text,channel_request_key text,legacy_id integer);
                 CREATE TABLE stock_document_items(id uuid, doc_id uuid,qty numeric DEFAULT 1,issued_qty numeric DEFAULT 0,is_deleted boolean DEFAULT false,legacy_id integer);
@@ -921,7 +924,8 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
             assertThat(export.getSize()).isEqualTo(500);
             assertThat(export.getItems()).extracting(ProductionExecutionWorkbenchSegment::segmentId)
                     .containsExactlyElementsOf(expected);
-            assertThat(service.workshopTasks(1, 500, null, "PREPARING", null, null, null).getSize()).isEqualTo(200);
+            // 2026-11-09 页上限由 200 上调到 Pageables.MAX_PAGE_SIZE=1000，500 不再被夹到 200。
+            assertThat(service.workshopTasks(1, 500, null, "PREPARING", null, null, null).getSize()).isEqualTo(500);
             // One statement now serves both bucket columns with the original values and order.
             var facets = service.workshopTaskFacets(null, "PREPARING", null, null, null, null, null);
             assertThat(facets.get("sourcePlan")).isEmpty();

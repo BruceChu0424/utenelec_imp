@@ -293,20 +293,18 @@ class AttachmentRetainedHistoryPostgresTest {
                 .doesNotContain(stale.getId().toString(),never.getId().toString());
     }
 
-    /** 具名实现（避免匿名/lambda 实现多态接口触发 confusing-method-signature）。 */
-    private static final class HeatPublisher implements org.springframework.context.ApplicationEventPublisher {
-        private final AttachmentUsageRecorder recorder;
-        HeatPublisher(AttachmentUsageRecorder recorder) { this.recorder = recorder; }
-        // 只覆写 publishEvent(Object)：ApplicationEvent 重载用接口 default
-        //（Spring 自带跨签名委托），本类不再声明第二个 publishEvent——两个同名
-        // 重载同置一个类会触发 confusing-method-signature（静态类型决定分派）。
-        // AttachmentAccessedEvent 不是 ApplicationEvent，用例事件走 Object 重载。
-        @Override public void publishEvent(Object event) {
-            if (event instanceof AttachmentAccessedEvent accessed) recorder.onAccessed(accessed);
-        }
-    }
-    private static HeatPublisher publisherFor(AttachmentUsageRecorder recorder) {
-        return new HeatPublisher(recorder);
+    // 事件入口用运行时代理承载：ApplicationEventPublisher 的两个同名重载使任何
+    // 源码实现（具名/匿名/lambda、覆写其一或两者）都触发 CodeQL
+    // confusing-method-signature（静态类型决定分派）。代理类由 Mockito 运行时
+    // 生成，源码不声明 publishEvent；AttachmentAccessedEvent 不是 ApplicationEvent，
+    // 生产发布走 Object 重载，桩只钉该重载并把事件转交热度记录器。
+    private static org.springframework.context.ApplicationEventPublisher publisherFor(AttachmentUsageRecorder recorder) {
+        var publisher = org.mockito.Mockito.mock(org.springframework.context.ApplicationEventPublisher.class);
+        org.mockito.Mockito.doAnswer(invocation -> {
+            if (invocation.getArgument(0) instanceof AttachmentAccessedEvent accessed) recorder.onAccessed(accessed);
+            return null;
+        }).when(publisher).publishEvent(org.mockito.ArgumentMatchers.<Object>any());
+        return publisher;
     }
 
     private Instant lastUsed(Attachment row){

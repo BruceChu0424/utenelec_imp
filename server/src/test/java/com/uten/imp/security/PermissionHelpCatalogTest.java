@@ -63,8 +63,12 @@ class PermissionHelpCatalogTest {
         var db=PermissionCatalogTestSupport.database();
         assertThat(PermissionBusinessDescriptions.catalog().keySet()).containsExactlyInAnyOrderElementsOf(PermissionCatalogTestSupport.catalogCodes());
         var before=db.queryForList("SELECT id,code,action_type,module,category,sort_order,grant_policy::text,high_risk,baseline,baseline_pinned,sensitivity,explicit_grant_required FROM permissions ORDER BY code");
-        Path migration=Path.of("src/main/resources/db/migration/V983__task_read_all_permission_help.sql");
-        db.execute(Files.readString(migration));
+        // 权威文案以 permission-help.json 为源、由 help 重放迁移链携带；重放必须推进到
+        // 链上最后一个 help 迁移（V983 之后再重放 V1132），只重放 V983 会把文案退回旧版。
+        for (String name : new String[]{
+                "V983__task_read_all_permission_help.sql", "V1132__permission_help_resync.sql"}) {
+            db.execute(Files.readString(Path.of("src/main/resources/db/migration/" + name)));
+        }
         assertThat(db.queryForList("SELECT id,code,action_type,module,category,sort_order,grant_policy::text,high_risk,baseline,baseline_pinned,sensitivity,explicit_grant_required FROM permissions ORDER BY code")).isEqualTo(before);
         db.queryForList("SELECT code,name,description FROM permissions").forEach(row->{
             var help=PermissionBusinessDescriptions.catalog().get(row.get("code"));

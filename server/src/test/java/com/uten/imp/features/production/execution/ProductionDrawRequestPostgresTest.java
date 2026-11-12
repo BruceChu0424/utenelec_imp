@@ -72,7 +72,7 @@ class ProductionDrawRequestPostgresTest {
                 CREATE TABLE production_planning_package_document_items(document_item_id uuid,document_type text,demand_id uuid);
                 CREATE TABLE production_material_demands(id uuid,execution_segment_id uuid,is_deleted boolean DEFAULT false, consumption_snapshot jsonb, material_increment_request_id uuid);
                 CREATE TABLE production_material_stock_postings(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-                  stock_document_item_id uuid,posting_type text, recorded_tx_id xid8);
+                  stock_document_item_id uuid,posting_type text, recorded_tx_id xid8, ledger_order bigint);
                 CREATE TABLE departments(id uuid PRIMARY KEY,name text);
                 CREATE TABLE goods(id uuid PRIMARY KEY,code text,name text, default_purchase_price_color_id uuid, default_purchase_price_currency_id uuid, default_purchase_price_supplier_id uuid, default_purchase_price_tax_rate numeric(18,4), default_purchase_price_unit_id uuid, default_subcontract_price_color_id uuid, default_subcontract_price_currency_id uuid, default_subcontract_price_supplier_id uuid, default_subcontract_price_tax_rate numeric(18,4), default_subcontract_price_unit_id uuid, production_overproduction_rate numeric(9,6), name_en VARCHAR(255), name_en_source VARCHAR(8), client_goods_name text, currency_id uuid);
                 CREATE TABLE warehouses(id uuid PRIMARY KEY,name text,
@@ -80,7 +80,9 @@ class ProductionDrawRequestPostgresTest {
                 CREATE TABLE units(id uuid PRIMARY KEY,name text);
                 CREATE TABLE colors(id uuid PRIMARY KEY,name text,remark text);
                 ALTER TABLE goods ADD COLUMN unit_id uuid;
-                CREATE TABLE stock_balances(warehouse_id uuid,goods_id uuid,color_id uuid,qty numeric);
+                CREATE TABLE stock_balances(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),warehouse_id uuid,goods_id uuid,color_id uuid,qty numeric,
+                  amount_local numeric(18,4) DEFAULT 0,weight numeric(18,4),weight_estimated boolean NOT NULL DEFAULT FALSE,last_movement_date timestamptz,
+                  created_at timestamptz NOT NULL DEFAULT now(),updated_at timestamptz NOT NULL DEFAULT now(),created_by uuid,updated_by uuid);
                 CREATE FUNCTION fn_stock_measurement_usable(uuid,uuid,uuid) RETURNS boolean LANGUAGE sql AS 'SELECT true';
                 CREATE FUNCTION fn_segment_bin_material_state(uuid) RETURNS text LANGUAGE sql AS 'SELECT ''NO_BIN''::text';
                 """);
@@ -159,7 +161,7 @@ class ProductionDrawRequestPostgresTest {
 
     @Test void stockReferenceUsesExactWarehouseAndColorAndNeverEntersIntentFingerprint() {
         var original=preview();
-        jdbc.update("INSERT INTO stock_balances VALUES (?,?,NULL,123456.7890),(?,?,NULL,8),(?,?,?,999)",
+        jdbc.update("INSERT INTO stock_balances(warehouse_id,goods_id,color_id,qty) VALUES (?,?,NULL,123456.7890),(?,?,NULL,8),(?,?,?,999)",
                 WH_A,GOODS,WH_B,GOODS,WH_A,GOODS,UUID.randomUUID());
         var current=preview();
         assertThat(current.fingerprint()).isEqualTo(original.fingerprint());

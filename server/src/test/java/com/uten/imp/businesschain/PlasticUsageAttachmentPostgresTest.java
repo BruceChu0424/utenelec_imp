@@ -105,6 +105,11 @@ class PlasticUsageAttachmentPostgresTest {
         // function from the current migrated catalog like the other pinned chains.
         MigratedProjectionSchema.createCurrentTables(db, "imported_document_registry");
         MigratedProjectionSchema.createCurrentFunctions(db, "fn_imported_business_document_registered");
+        // 644e78496 起报工链读取 fn_execution_partial_material_report_room 余量并在写入前
+        // 路由 fn_capture_execution_full_material_kit；本链钉 V1087 历史架构，桩为
+        // “余量概念不适用”(NULL)与“不落证明”，模板列顺序断言不受影响。
+        db.execute("CREATE OR REPLACE FUNCTION fn_execution_partial_material_report_room(uuid,uuid) RETURNS numeric LANGUAGE sql STABLE AS 'SELECT NULL::numeric'");
+        db.execute("CREATE OR REPLACE FUNCTION fn_capture_execution_full_material_kit(uuid) RETURNS boolean LANGUAGE sql AS 'SELECT FALSE'");
         // 一期: 发 3 公斤、退回 0.5、盘剩 1.3 → 实际 1.2; 报工 5 件 x 0.2 公斤 → 理论 1.0
         CloseBench bench = CloseBench.create(beans, "plastic");
         UUID granule = bench.granule("塑料颗粒", "OWN");

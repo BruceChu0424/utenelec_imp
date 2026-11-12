@@ -119,7 +119,10 @@ class InstantInventoryCompleteStreamServiceTest {
         var dataTransactionClosed = new java.util.concurrent.atomic.AtomicBoolean(false);
         org.mockito.Mockito.doAnswer(call -> {
             call.getArgument(1, Runnable.class).run();
-            call.getArgument(2, BiFunction.class).apply(proof, (Runnable) () -> { });
+            // 与上方 serve(...) 同款泛型化取参：raw BiFunction 会给编译留下 unchecked
+            // 警告注解，发布门禁按“无错误或警告”拦下。
+            BiFunction<VersionedSummaryPages.ReadProof, Runnable, ?> reader = call.getArgument(2);
+            reader.apply(proof, (Runnable) () -> { });
             dataTransactionClosed.set(true);
             return proof.snapshot(1050L);
         }).when(pages).readWithProof(any(), any(), any());

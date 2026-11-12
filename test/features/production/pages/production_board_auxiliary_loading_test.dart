@@ -211,11 +211,13 @@ void main() {
       for (
         var frame = 0;
         frame < 400 &&
-        (api.progressQueries.length < 2 ||
-            find
-                .byKey(const ValueKey('production-progress-plan-progress-0'))
-                .evaluate()
-                .isEmpty);
+            (api.progressQueries.length < 2 ||
+                find
+                    .byKey(
+                      const ValueKey('production-progress-plan-progress-0'),
+                    )
+                    .evaluate()
+                    .isEmpty);
         frame++
       ) {
         await tester.pump(const Duration(milliseconds: 16));
@@ -268,11 +270,13 @@ void main() {
       for (
         var frame = 0;
         frame < 400 &&
-        (api.progressQueries.length < 2 ||
-            find
-                .byKey(const ValueKey('production-progress-plan-progress-0'))
-                .evaluate()
-                .isEmpty);
+            (api.progressQueries.length < 2 ||
+                find
+                    .byKey(
+                      const ValueKey('production-progress-plan-progress-0'),
+                    )
+                    .evaluate()
+                    .isEmpty);
         frame++
       ) {
         await tester.pump(const Duration(milliseconds: 16));

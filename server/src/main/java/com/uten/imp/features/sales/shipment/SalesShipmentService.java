@@ -973,12 +973,13 @@ public class SalesShipmentService {
         String reason=request==null?null:trimToNull(request.reason());
         // 2026-11-11 口径：退回原因选填，留空记「未填写原因」（通知销售仍可读）。
         if (reason==null) reason="未填写原因";
+        java.util.UUID expectedClaimId=request==null?null:request.expectedClaimId();
         Map<String,Object> info=financeAuditInfo(s);
-        appendFinanceReleaseEvent(s,"REJECTED",currentUser.requireId(),OffsetDateTime.now(),info,request.expectedClaimId(),reason);
+        appendFinanceReleaseEvent(s,"REJECTED",currentUser.requireId(),OffsetDateTime.now(),info,expectedClaimId,reason);
         s.setFinanceRejected(true);
         s.setFinanceRejectionReason(reason);
         shipmentRepo.saveAndFlush(s);
-        taskClaims.release(CustomerShipmentPolicy.CLAIM_TYPE,id.toString(),request.expectedClaimId());
+        taskClaims.release(CustomerShipmentPolicy.CLAIM_TYPE,id.toString(),expectedClaimId);
         chainNotice.resolveReviewNotices("SALES_SHIPMENT",id,"FINANCE_REJECTED");
         chainNotice.notifyShipmentFinanceRejected(id,reason);
         return financeAuditInfo(s);

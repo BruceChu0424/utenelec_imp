@@ -234,7 +234,8 @@ void main() {
       repository.rowError = ApiException('FORBIDDEN', '无查看权限', httpStatus: 403);
       await selectFilterSegment(tester, '分批等待中');
       await tester.pumpAndSettle();
-      expect(_shortTable(tester).error, '无查看权限');
+      // 真失败带匿名关联号后缀（a7a54d709 read_failure_diagnostics）。
+      expect(_shortTable(tester).error, matches(r'无查看权限（关联号 [0-9A-Z]{6}）'));
       expect(_shortTable(tester).items, isEmpty);
       expect(tester.takeException(), isNull);
     },

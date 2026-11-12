@@ -210,7 +210,12 @@ void main() {
       await tester.tap(find.text('历史记录'));
       for (
         var frame = 0;
-        frame < 200 && api.progressQueries.length < 2;
+        frame < 400 &&
+        (api.progressQueries.length < 2 ||
+            find
+                .byKey(const ValueKey('production-progress-plan-progress-0'))
+                .evaluate()
+                .isEmpty);
         frame++
       ) {
         await tester.pump(const Duration(milliseconds: 16));
@@ -262,7 +267,12 @@ void main() {
       await tester.tap(find.text('历史记录'));
       for (
         var frame = 0;
-        frame < 200 && api.progressQueries.length < 2;
+        frame < 400 &&
+        (api.progressQueries.length < 2 ||
+            find
+                .byKey(const ValueKey('production-progress-plan-progress-0'))
+                .evaluate()
+                .isEmpty);
         frame++
       ) {
         await tester.pump(const Duration(milliseconds: 16));

@@ -129,7 +129,8 @@ void main() {
           body: _table(primary: true),
         ),
       );
-      expect(find.byType(NestedScrollView), findsOneWidget);
+      // 稳定槽位重构后不再内嵌 NestedScrollView；钉分栏形态挂载本体。
+      expect(find.byType(UtenCollapsingHeaderScrollView), findsOneWidget);
       final inner = _tableVerticalPosition(tester);
 
       // 跨过交接点的一格只收头部；超出头部高度的余量不会带走第一行。

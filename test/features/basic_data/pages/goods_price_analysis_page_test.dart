@@ -26,6 +26,7 @@ import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/inputs/uten_search_bar.dart';
 import '../../../support/uten_search_test_actions.dart';
+import '../../../support/uten_test_actions.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
@@ -2208,13 +2209,17 @@ void main() {
       expect(table.totalPages, 1);
       expect(table.items, hasLength(201));
       final reads = repository.tableQueries.length;
-      final scrollable = find
-          .descendant(
-            of: find.byKey(const Key('goods-price-history-table')),
-            matching: find.byType(Scrollable),
-          )
-          .last;
-      await tester.drag(scrollable, const Offset(0, -1500));
+      // 14e7be5e7/d3be61be8/e4746735b 保留式联动视口起，历史页内容按自然高度进入
+      // 页面外层滚动：表内「最后一个 Scrollable」是表体下的横向滚动条，已随家具
+      // 落到 1000px 视口之外，drag 会命中视口外坐标。表体竖向滚动改经唯一
+      // master-table-body 控制器：滚到底再回顶，完整结果已接受、不触发重读。
+      final body = utenTestTableBodyController(
+        tester,
+        find.byKey(const Key('goods-price-history-table')),
+      );
+      body.jumpTo(body.position.maxScrollExtent);
+      await tester.pumpAndSettle();
+      body.jumpTo(0);
       await tester.pumpAndSettle();
       expect(repository.tableQueries.length, reads);
       final updated = tester.widget<MasterDataTableView<PriceObservation>>(
@@ -2473,7 +2478,13 @@ void main() {
       );
       table.onRowTap!(selected);
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('goods-price-facet-confirm')));
+      // 14e7be5e7/d3be61be8/e4746735b 保留式联动视口起，弹层按自然高度滚入外层
+      // 视口：表体 + 确认条整体高于弹层高度，确认条在折叠头收起前位于折叠区
+      // 之下。先把确认条滚入弹层视口再点按，不缩表面尺寸。
+      final confirm = find.byKey(const Key('goods-price-facet-confirm'));
+      await tester.ensureVisible(confirm);
+      await tester.pumpAndSettle();
+      await tester.tap(confirm);
       await tester.pumpAndSettle();
       expect(returned, isA<(String, MasterFacetBucket)>());
       expect((returned as (String, MasterFacetBucket)).$2.value, 'PO-260');
@@ -2512,7 +2523,12 @@ void main() {
       expect(bar.selectedCount, 1);
       final staleConfirm = bar.onConfirm!;
       if (change == 'cancel') {
-        await tester.tap(find.text('取消'));
+        // 同上：14e7be5e7/d3be61be8/e4746735b 保留式联动视口起确认条在弹层
+        // 折叠区之下，先滚入弹层视口再点「取消」。
+        final cancel = find.text('取消');
+        await tester.ensureVisible(cancel);
+        await tester.pumpAndSettle();
+        await tester.tap(cancel);
         await tester.pumpAndSettle();
         expect(find.byType(GoodsPriceFacetPicker), findsNothing);
       } else {

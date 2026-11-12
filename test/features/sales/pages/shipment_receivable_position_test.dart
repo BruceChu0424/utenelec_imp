@@ -587,6 +587,7 @@ void main() {
       final old = Completer<Map<String, dynamic>>(),
           fresh = Completer<Map<String, dynamic>>();
       host.api.queuedInfo.addAll([old, fresh]);
+      await _revealReference(tester, find.text('客户到账参考（辅助）'));
       await tester.tap(find.text('客户到账参考（辅助）'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
@@ -598,6 +599,7 @@ void main() {
       await tester.tap(find.text('取消'));
       await tester.pumpAndSettle();
       expect(find.byType(UtenBusyOverlay), findsNothing);
+      await _revealReference(tester, find.text('客户到账参考（辅助）'));
       await tester.tap(find.text('客户到账参考（辅助）'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
@@ -643,6 +645,7 @@ void main() {
       await _openReferences(tester);
       final pending = Completer<Map<String, dynamic>>();
       host.api.queuedInfo.add(pending);
+      await _revealReference(tester, find.text('客户到账参考（辅助）'));
       await tester.tap(find.text('客户到账参考（辅助）'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
@@ -676,6 +679,7 @@ void main() {
       state.restoreReviewInputs(inputs);
       final failed = Completer<Map<String, dynamic>>();
       host.api.queuedInfo.add(failed);
+      await _revealReference(tester, find.text('客户到账参考（辅助）'));
       await tester.tap(find.text('客户到账参考（辅助）'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
@@ -691,6 +695,7 @@ void main() {
         findsOneWidget,
       );
       expect(state.captureReviewInputs(), inputs);
+      await _revealReference(tester, find.text('客户到账参考（辅助）'));
       await tester.tap(find.text('客户到账参考（辅助）'));
       await tester.pumpAndSettle();
       expect(
@@ -727,6 +732,7 @@ void main() {
     await _pump(tester, 'review', api: api);
     await _openReferences(tester);
     api.readInfoThroughTransport = true;
+    await _revealReference(tester, find.text('客户到账参考（辅助）'));
     await tester.tap(find.text('客户到账参考（辅助）'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
@@ -934,6 +940,7 @@ void main() {
         expect(find.text('文件暂时无法读取，请重试；如果权限已调整，请刷新单据。'), findsOneWidget);
         final retry = Completer<List<Map<String, dynamic>>>();
         api.attachmentReplies.add(retry);
+        await _revealReference(tester, find.text('重新读取'));
         await tester.tap(find.text('重新读取'));
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 100));
@@ -1087,6 +1094,17 @@ Future<void> _backToOverview(WidgetTester tester) async {
 Future<void> _openReferences(WidgetTester tester) async {
   await tester.tap(find.byKey(const ValueKey('detail-summary-toggle')).first);
   await tester.pumpAndSettle();
+}
+
+/// d3be61be8 保留式联动视口起，审核页参考资料区（货款表格的行尾合计条）按
+/// 自然高度延入滚动内容：展开后「更多资料」的表尾自动揭示只保证表格末行入
+/// 视口，参考区尾部的「客户到账参考」标题/附件重试按钮仍可能压在 900px 表
+/// 面之外（实测标题中心 903px、重试按钮 948px）。点按前先把目标滚入真实
+/// 视口；不缩表面尺寸。
+Future<void> _revealReference(WidgetTester tester, Finder target) async {
+  await tester.ensureVisible(target);
+  await tester.pumpAndSettle();
+  expect(target.hitTestable(), findsOneWidget);
 }
 
 class _Host {

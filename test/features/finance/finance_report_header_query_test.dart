@@ -13,6 +13,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_export_button.dart';
+import 'package:uten_imp/components/layout/uten_collapsing_header_scroll_view.dart';
 import 'package:uten_imp/components/layout/uten_filter_toolbar.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/components/data_display/uten_totals_summary_bar.dart';
@@ -151,14 +152,30 @@ void main() {
       await refresh;
       await tester.pumpAndSettle();
       expect(api.plasticRequests.map((query) => query['page']), [1, 2, 1, 2]);
-      final owner = tester.state<NestedScrollViewState>(
-        find.descendant(
-          of: find.byType(FinanceReportTablePage),
-          matching: find.byType(NestedScrollView),
-        ),
+      // d3be61be8 起 UtenCollapsingHeaderScrollView 不再内嵌 NestedScrollView：
+      // 联动外层改经公开 outerControllerOf 取得，jumpTo(0) = 展开页头；表体竖向
+      // 拾取注入的 PrimaryScrollController（primary:true），此卡片表体无溢出，
+      // jumpTo(0) 与旧 innerController.jumpTo(0) 一样是 no-op。归零滚动仍不得
+      // 触发重读。
+      final tableFinder = find.byType(
+        MasterDataTableView<Map<String, dynamic>>,
       );
-      owner.innerController.jumpTo(0);
-      owner.outerController.jumpTo(0);
+      final inner = PrimaryScrollController.of(tester.element(tableFinder));
+      final outer = UtenCollapsingHeaderScrollView.outerControllerOf(
+        find
+            .descendant(
+              of: find.byType(FinanceReportTablePage),
+              matching: find.byWidgetPredicate((_) => true),
+            )
+            .evaluate()
+            .first,
+      );
+      if (inner.hasClients) {
+        inner.jumpTo(0);
+      }
+      if (outer != null && outer.hasClients) {
+        outer.jumpTo(0);
+      }
       await tester.pumpAndSettle();
       expect(field().items, hasLength(1001));
       expect(api.plasticRequests.map((query) => query['page']), [1, 2, 1, 2]);
@@ -705,7 +722,8 @@ void main() {
       expect(table().facets, isEmpty);
       expect(table().summaryBar, isNull);
       expect(table().filters['search.orderNo'], 'REJECTED-NEW-SCOPE');
-      expect(table().error, '暂时无法检索');
+      // 真失败带匿名关联号后缀（a7a54d709 read_failure_diagnostics）。
+      expect(table().error, matches(r'暂时无法检索（关联号 [0-9A-Z]{6}）'));
       expect(table().serverColumnSearchKeys, contains('orderNo'));
       // A second unsuccessful correction still has the same authorized schema;
       // unknown result counts and old rows never become an accepted query.
@@ -749,7 +767,8 @@ void main() {
         expect(table().serverColumnSearchKeys, isEmpty);
         expect(table().summaryBar, isNull);
         expect(table().filters['search.orderNo'], 'REVOKED-SOURCE');
-        expect(table().error, '暂时无法检索');
+        // 真失败带匿名关联号后缀（a7a54d709 read_failure_diagnostics）。
+        expect(table().error, matches(r'暂时无法检索（关联号 [0-9A-Z]{6}）'));
         expect(tester.takeException(), isNull);
       },
     );

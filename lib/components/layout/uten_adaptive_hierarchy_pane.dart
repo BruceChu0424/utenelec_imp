@@ -216,7 +216,9 @@ class _AdaptiveHierarchyPaneState extends State<UtenAdaptiveHierarchyPane> {
                     maintainState: true,
                     maintainAnimation: true,
                     child: Material(
-                      color: Theme.of(context).colorScheme.surface,
+                      // 左列不铺底色，直接透出页面 scaffold 背景，
+                      // 浅色主题下不再出现整列发白的色块（2026-11-11）。
+                      color: Colors.transparent,
                       child: Column(
                         children: [
                           Visibility(

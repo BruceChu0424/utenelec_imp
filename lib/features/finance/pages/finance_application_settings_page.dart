@@ -240,6 +240,8 @@ class _SettingsState extends ConsumerState<FinanceApplicationSettingsPage>
                       key: 'roleKey',
                       label: '原流程岗位',
                       width: 250,
+                      // 类别列：按当前行值出选项筛选（2026-11-11 口径）。
+                      filterFromRows: true,
                       value: (r) => definitions[r['roleKey']]?.toString() ?? '',
                       columnSearchEnabled: false,
                     ),

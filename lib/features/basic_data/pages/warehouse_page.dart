@@ -1545,7 +1545,15 @@ class _WarehousePageState extends ConsumerState<WarehousePage>
                         key: field.key,
                         label: field.label,
                         width: 180,
-                        filterFromRows: field.type == MasterFieldType.select,
+                        // 2026-11-11 口径：类别列按值筛选（select 字段沿用，另含
+                        // 编号/所属车间/上级仓库，就地收集筛选桶）。本地排序保持
+                        // 关闭——基础资料列表的行序是业务权威序
+                        //（master_complete_print_consumers_test 钉住该契约）。
+                        filterFromRows:
+                            field.type == MasterFieldType.select ||
+                            field.key == 'code' ||
+                            field.key == 'workshopDepartmentId' ||
+                            field.key == 'parentName',
                         facetSearchEnabled:
                             field.type == MasterFieldType.select,
                         value: (row) => _displayField(row, field),

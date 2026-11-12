@@ -105,30 +105,38 @@ class WarehouseStockOutboundDetailTable extends StatelessWidget {
           key: 'goodsCode',
           label: l10n.warehouseOutboundGoodsCode,
           width: 125,
+          // 2026-11-11 口径：编号列排序+按值筛选、类别列按值筛选、数值/日期列排序（全量表就地处理）。
+          sortable: true,
+          filterFromRows: true,
           value: (r) => names.goodsInfo(r.item.goodsId)?.code ?? '—',
         ),
         MasterColumnDef(
           key: 'color',
           label: l10n.warehouseOutboundColor,
           width: 90,
+          filterFromRows: true,
           value: (r) => names.color(r.item.colorId),
         ),
         MasterColumnDef(
           key: 'warehouse',
           label: inbound ? '入库仓库' : l10n.warehouseSubcontractOutboundWarehouse,
           width: 165,
+          filterFromRows: true,
           value: (r) => names.warehouse(r.document.warehouseId),
         ),
         MasterColumnDef(
           key: 'series',
           label: l10n.warehouseStockOutboundSeries,
           width: 100,
+          filterFromRows: true,
           value: (r) => names.goodsInfo(r.item.goodsId)?.series ?? '—',
         ),
         MasterColumnDef(
           key: 'place',
           label: l10n.warehouseStockOutboundPlace,
           width: 110,
+          sortable: true,
+          filterFromRows: true,
           value: (r) =>
               r.item.place?.trim().isNotEmpty == true ? r.item.place : '—',
         ),
@@ -136,6 +144,8 @@ class WarehouseStockOutboundDetailTable extends StatelessWidget {
           key: 'suggestedPlace',
           label: l10n.warehouseOutboundPlaceHint,
           width: 135,
+          sortable: true,
+          filterFromRows: true,
           value: (r) => names.goodsInfo(r.item.goodsId)?.stockPlace ?? '—',
         ),
         // 2026-10-10「数量 + 单位」内联口径：单位列删除，数量直接带单位。
@@ -165,6 +175,8 @@ class WarehouseStockOutboundDetailTable extends StatelessWidget {
           key: 'source',
           label: l10n.warehouseStockOutboundSource,
           width: 170,
+          sortable: true,
+          filterFromRows: true,
           value: (r) => r.item.sourceDocNo ?? r.document.sourceDocNo ?? '—',
         ),
         MasterColumnDef(

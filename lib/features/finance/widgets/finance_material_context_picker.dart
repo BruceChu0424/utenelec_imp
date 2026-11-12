@@ -179,7 +179,15 @@ class _MaterialContextPickerState extends ConsumerState<_MaterialContextPicker>
             child: financeSourceTable(
               tableKey: 'finance.material-context.picker.v1',
               columns: [
-                financeSourceColumn('auxiliaryCode', '往来编号', width: 130),
+                // 2026-11-11 口径：编号列可排序 + 按值筛选；币别/口径/状态类别列
+                //按值筛选（全量对账资料快照就地收集桶）。
+                financeSourceColumn(
+                  'auxiliaryCode',
+                  '往来编号',
+                  width: 130,
+                  sortable: true,
+                  filterByValue: true,
+                ),
                 financeSourceColumn('auxiliaryName', '往来名称', width: 190),
                 financeSourceColumn(
                   'productNameCaption',
@@ -189,17 +197,30 @@ class _MaterialContextPickerState extends ConsumerState<_MaterialContextPicker>
                       (row['productNameCaption'] ?? row['goodsName'])
                           ?.toString(),
                 ),
-                financeSourceColumn('accountCode', '科目编码', width: 120),
+                financeSourceColumn(
+                  'accountCode',
+                  '科目编码',
+                  width: 120,
+                  sortable: true,
+                  filterByValue: true,
+                ),
                 financeSourceColumn(
                   'accountingCurrencyCode',
                   '账簿币别属性',
                   width: 130,
+                  filterByValue: true,
                 ),
-                financeSourceColumn('actualCurrencyCode', '原表实际币别', width: 130),
+                financeSourceColumn(
+                  'actualCurrencyCode',
+                  '原表实际币别',
+                  width: 130,
+                  filterByValue: true,
+                ),
                 financeSourceColumn(
                   'amountBasis',
                   '金额口径',
                   width: 140,
+                  filterByValue: true,
                   value: (row) => row['amountBasis'] == 'ORIGINAL'
                       ? '实际原币'
                       : row['amountBasis'] == 'LOCAL'
@@ -210,6 +231,7 @@ class _MaterialContextPickerState extends ConsumerState<_MaterialContextPicker>
                   'state',
                   '状态',
                   width: 100,
+                  filterByValue: true,
                   value: (row) => row['state'] == 'APPROVED' ? '资料已审核' : '待审核',
                 ),
               ],

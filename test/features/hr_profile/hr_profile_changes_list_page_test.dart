@@ -355,7 +355,7 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('batch reject applies one shared reason to every batch', (
+  testWidgets('batch reject applies one shared (optional) reason to every batch', (
     tester,
   ) async {
     SharedPreferences.setMockInitialValues(const {});
@@ -379,23 +379,14 @@ void main() {
       reason: '批量驳回弹窗须带审核责任提示',
     );
 
-    // 空原因不关闭对话框
+    // 空原因视为确认：关闭对话框并逐批复核（空串意见）
     await tester.tap(find.byKey(const Key('uten-batch-reject-confirm')));
     await tester.pumpAndSettle();
-    expect(find.byType(UtenBatchRejectDialog), findsOneWidget);
-    expect(repo.reviewCalls, isEmpty);
-
-    await tester.enterText(
-      find.byKey(const Key('uten-batch-reject-reason')),
-      '身份证号与档案不符',
-    );
-    await tester.tap(find.byKey(const Key('uten-batch-reject-confirm')));
-    await tester.pumpAndSettle();
-
+    expect(find.byType(UtenBatchRejectDialog), findsNothing);
     expect(repo.reviewCalls.length, 2);
     expect(repo.reviewCalls.map((c) => c[0]).toSet(), {'batch-1', 'batch-2'});
     expect(repo.reviewCalls.every((c) => c[1] == 'reject'), isTrue);
-    expect(repo.reviewCalls.every((c) => c[2] == '身份证号与档案不符'), isTrue);
+    expect(repo.reviewCalls.every((c) => c[2] == ''), isTrue);
 
     await tester.pumpWidget(const SizedBox());
   });

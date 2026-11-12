@@ -54,7 +54,7 @@ public class CustomerPrepaymentOffsetService {
             throw validation("同一应收与销售单来源不能在一个转销批次中重复");
         }
         String idempotencyKey = bounded(request.idempotencyKey(), 120, "提交标识");
-        String reason = bounded(request.reason(), 2000, "应用原因");
+        String reason = optionalReason(request.reason(), 2000, "应用原因");
         String requestHash = hash(request.sourceLedgerId(), targets, reason);
         BatchDetail existing = findIdempotent(idempotencyKey, requestHash);
         if (existing != null) return existing;
@@ -205,7 +205,7 @@ public class CustomerPrepaymentOffsetService {
         if (batchId == null || request == null || request.expectedVersion() == null) {
             throw validation("预收转销反转请求不完整");
         }
-        String reason = bounded(request.reason(), 2000, "反转原因");
+        String reason = optionalReason(request.reason(), 2000, "反转原因");
         Object[] batch = lockBatch(batchId);
         if (!"APPLIED".equals(batch[3])) throw conflict("只有已应用批次可反转");
         long version = number(batch[4]).longValue();
@@ -477,6 +477,15 @@ public class CustomerPrepaymentOffsetService {
         String trimmed = value.trim();
         if (trimmed.length() > max) throw validation(label + "不能超过 " + max + " 个字符");
         return trimmed;
+    }
+
+    /**
+     * 操作原因选填（2026-11-11 口径）：留空归一「未填写原因」——批次 reason 列
+     * NOT NULL, 且该值参与幂等指纹(hash), 归一保证同一次空原因重放的指纹稳定。
+     */
+    private static String optionalReason(String value, int max, String label) {
+        if (value == null || value.isBlank()) return "未填写原因";
+        return bounded(value, max, label);
     }
 
     private static OpenItem require(Map<UUID, OpenItem> map, UUID id) {

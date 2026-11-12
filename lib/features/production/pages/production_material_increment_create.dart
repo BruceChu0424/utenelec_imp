@@ -348,6 +348,13 @@ class _IncrementCreateState
         key: field.$1,
         label: field.$2,
         width: field.$3,
+        // 2026-11-11 口径：编号列排序+按值筛选，颜色/单位列按值筛选（全量表就地处理）。
+        sortable: field.$1 == 'goodsCode',
+        filterFromRows: const {
+          'goodsCode',
+          'colorName',
+          'unitName',
+        }.contains(field.$1),
         value: (row) => row[field.$1]?.toString() ?? '—',
       ),
     MasterColumnDef(

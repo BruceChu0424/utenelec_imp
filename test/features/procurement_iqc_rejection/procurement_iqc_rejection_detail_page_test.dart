@@ -176,12 +176,7 @@ void main() {
         ),
         findsOneWidget,
       );
-      expect(
-        find.byWidgetPredicate(
-          (w) => w is Tooltip && (w.message ?? '').contains('退回说明不能为空'),
-        ),
-        findsOneWidget,
-      );
+      // 退回说明选填：空说明不再报错（凭证号仍必填）。
 
       await tester.enterText(
         find.byKey(const Key('iqc-action-reference')),
@@ -276,12 +271,7 @@ void main() {
       ),
       findsOneWidget,
     );
-    expect(
-      find.byWidgetPredicate(
-        (w) => w is Tooltip && (w.message ?? '').contains('贷项确认原因不能为空'),
-      ),
-      findsOneWidget,
-    );
+    // 贷项确认原因选填：空原因不再报错（凭证号仍必填）。
   });
 
   testWidgets(

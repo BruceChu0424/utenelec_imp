@@ -2,7 +2,6 @@ package com.uten.imp.features.sales.order.dto;
 
 import jakarta.validation.constraints.DecimalMin;
 import com.uten.imp.common.validation.DocumentQuantity;
-import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 import lombok.Setter;
@@ -24,8 +23,7 @@ public class OrderYieldRequest {
     @DocumentQuantity
     private BigDecimal qty;
 
-    /** 让单原因（必填，记审计 + 通知被让单销售）。 */
-    @NotBlank(message = "让单须填写原因")
+    /** 让单原因（选填，记审计 + 通知被让单销售）。 */
     private String reason;
 
     /** 调入方订单号（可选，通知文案用，便于被让单销售了解库存去向）。 */

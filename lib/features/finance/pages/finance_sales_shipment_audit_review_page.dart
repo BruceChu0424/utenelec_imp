@@ -732,71 +732,60 @@ class _FinanceSalesShipmentAuditReviewPageState
     }
     final generation = _loadGeneration;
     final controller = _rejectReason;
-    String? errorText;
     final reason = await showDialog<String>(
       context: context,
-      builder: (dialogCtx) => StatefulBuilder(
-        builder: (dialogCtx, setDialogState) => UtenAlertDialog(
-          title: Text('退回销售 ${_detail?.billNo ?? ''}'),
-          content: SizedBox(
-            width: 440,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const UtenReviewerResponsibilityNotice(
-                  actionLabel: '出货财务退回',
-                  description: '退回后销售可修改再确认；系统将记录退回人、原因和时间。',
-                  compact: true,
-                ),
-                const SizedBox(height: UtenSpacing.s12),
-                TextField(
-                  key: const Key('finance-shipment-audit-reject-reason'),
-                  controller: controller,
-                  autofocus: true,
-                  maxLength: 500,
-                  maxLines: 3,
-                  decoration: UtenInputDecoration(
-                    InputDecoration(
-                      labelText: '退回原因(必填)',
-                      border: const OutlineInputBorder(),
-                      error: utenFieldError(errorText),
-                    ),
-                    info: '写明需要销售修改的内容，如结账方式或明细数量。原因将通知销售，确认后本单回到「待销售确认」。',
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actionsAlignment: MainAxisAlignment.center,
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogCtx),
-              child: const Text('取消'),
-            ),
-            FinanceReviewClaimButton(
-              key: const Key('finance-shipment-audit-reject-submit'),
-              claim: claim,
-              style: FilledButton.styleFrom(
-                backgroundColor: Theme.of(dialogCtx).colorScheme.error,
-                foregroundColor: Theme.of(dialogCtx).colorScheme.onError,
+      builder: (dialogCtx) => UtenAlertDialog(
+        title: Text('退回销售 ${_detail?.billNo ?? ''}'),
+        content: SizedBox(
+          width: 440,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const UtenReviewerResponsibilityNotice(
+                actionLabel: '出货财务退回',
+                description: '退回后销售可修改再确认；系统将记录退回人、原因和时间。',
+                compact: true,
               ),
-              onPressed: () {
-                final value = controller.text.trim();
-                if (value.isEmpty) {
-                  setDialogState(() => errorText = '请填写退回原因');
-                  return;
-                }
-                Navigator.pop(dialogCtx, value);
-              },
-              child: const Text('确认退回'),
-            ),
-          ],
+              const SizedBox(height: UtenSpacing.s12),
+              TextField(
+                key: const Key('finance-shipment-audit-reject-reason'),
+                controller: controller,
+                autofocus: true,
+                maxLength: 500,
+                maxLines: 3,
+                decoration: const UtenInputDecoration(
+                  InputDecoration(
+                    labelText: '退回原因（选填）',
+                    border: OutlineInputBorder(),
+                  ),
+                  info: '写明需要销售修改的内容，如结账方式或明细数量。原因将通知销售，确认后本单回到「待销售确认」。',
+                ),
+              ),
+            ],
+          ),
         ),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx),
+            child: const Text('取消'),
+          ),
+          FinanceReviewClaimButton(
+            key: const Key('finance-shipment-audit-reject-submit'),
+            claim: claim,
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(dialogCtx).colorScheme.error,
+              foregroundColor: Theme.of(dialogCtx).colorScheme.onError,
+            ),
+            onPressed: () => Navigator.pop(dialogCtx, controller.text.trim()),
+            child: const Text('确认退回'),
+          ),
+        ],
       ),
     );
     // 弹窗退场动画仍在用 controller（~150ms）：延迟释放，避免 used-after-dispose。
-    if (reason == null || reason.isEmpty || !mounted) return;
+    if (reason == null || !mounted) return;
     setState(() => _busy = true);
     try {
       if (!await claim.validateForDecision() ||
@@ -1513,6 +1502,9 @@ class _FinanceSalesShipmentAuditReviewPageState
                 key: 'goodsCode',
                 label: '编号',
                 width: 130,
+                // 2026-11-11 口径：编号列可排序 + 按值筛选（全量明细表就地收集桶）。
+                sortable: true,
+                filterFromRows: true,
                 value: (it) => UtenGoodsAttributeCell.text(
                   salesGoodsCodeLabel(
                     it,
@@ -1530,12 +1522,15 @@ class _FinanceSalesShipmentAuditReviewPageState
                 key: 'colorName',
                 label: '颜色',
                 width: 96,
+                // 类别列：按当前行值出选项筛选。
+                filterFromRows: true,
                 value: (it) => names.color(it.colorId),
               ),
               MasterColumnDef(
                 key: 'stockPlace',
                 label: '库位号',
                 width: 90,
+                filterFromRows: true,
                 value: (it) => names.goodsInfo(it.goodsId)?.stockPlace ?? '—',
               ),
               // 2026-10-10「数量+单位」全站口径：单位内联在数字后（12 PCS），
@@ -1545,6 +1540,7 @@ class _FinanceSalesShipmentAuditReviewPageState
                 label: '数量',
                 width: 125,
                 type: 'number',
+                sortable: true,
                 value: (it) => formatExactQtyWithUnit(
                   it.exactDecimals['qty'] ?? it.qty?.toString(),
                   names.unit(it.unitId),
@@ -1556,6 +1552,7 @@ class _FinanceSalesShipmentAuditReviewPageState
                 label: '单价',
                 width: 140,
                 type: 'money',
+                sortable: true,
                 value: (it) => masked
                     ? '***'
                     : financeMoneyWithUnitSuffix(
@@ -1568,6 +1565,7 @@ class _FinanceSalesShipmentAuditReviewPageState
                 label: '总金额',
                 width: 140,
                 type: 'money',
+                sortable: true,
                 value: (it) => masked
                     ? '***'
                     : financeMoneyWithUnitSuffix(

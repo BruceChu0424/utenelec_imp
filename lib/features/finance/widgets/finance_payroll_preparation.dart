@@ -1353,41 +1353,54 @@ class _GlPickerState extends ConsumerState<_PayrollGlPicker>
               Expanded(
                 child: MasterDataTableView<Map<String, dynamic>>(
                   columns: [
+                    // 2026-11-11 口径：编号列可排序 + 按值筛选；日期/金额列可排序
+                    //（全量余额池快照就地排序、收集桶）。
                     financeApplicationColumn(
                       'voucherNo',
                       '原凭证号',
                       200,
                       filters: false,
+                      sortable: true,
+                      filterByValue: true,
                     ),
                     financeApplicationColumn(
                       'allocationNo',
                       '辅助分配编号',
                       130,
                       filters: false,
+                      sortable: true,
+                      filterByValue: true,
                     ),
                     financeApplicationColumn(
                       'date',
                       '原分录日期',
                       130,
                       filters: false,
+                      sortable: true,
                     ),
                     financeApplicationColumn(
                       'sourceAmountLocal',
                       '原账载本币金额',
                       190,
                       filters: false,
+                      sortable: true,
+                      type: 'money',
                     ),
                     financeApplicationColumn(
                       'amountLocal',
                       '现可认领本币上限',
                       210,
                       filters: false,
+                      sortable: true,
+                      type: 'money',
                     ),
                     financeApplicationColumn(
                       'amountOriginal',
                       '现可认领原币上限',
                       210,
                       filters: false,
+                      sortable: true,
+                      type: 'money',
                     ),
                     MasterColumnDef(
                       key: 'issues',

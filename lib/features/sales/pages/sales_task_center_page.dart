@@ -79,10 +79,22 @@ class _SalesTaskCenterPageState extends ConsumerState<SalesTaskCenterPage> {
   /// 当前选中大类；null = 未选择引导态（不发请求）。
   String? _group;
 
+  /// 草稿大类（旧深链 ?group=masterDrafts）的搜索词：宿主分类栏同行承担
+  /// （2026-11-11 宽屏同排口径），内嵌草稿表不再自建独占一行的搜索框。
+  /// 其余大类的搜索在各列表页自己的「分段+搜索」工具条里，宿主栏不带搜索。
+  final _draftsSearch = TextEditingController();
+  String _draftsKeyword = '';
+
   @override
   void initState() {
     super.initState();
     _group = widget.initialGroup;
+  }
+
+  @override
+  void dispose() {
+    _draftsSearch.dispose();
+    super.dispose();
   }
 
   @override
@@ -240,12 +252,23 @@ class _SalesTaskCenterPageState extends ConsumerState<SalesTaskCenterPage> {
 
     // 大类行（2026-09-24 用户口径「表格滑到顶」）：选中大类后它随正文一起进
     // 折叠头滚走——滑到头后只剩表格自身工具条；未选大类时仍钉在占位区上方。
+    // 草稿大类在台时分类栏携带搜索框（宽屏同行/窄屏换行，UtenFilterToolbar
+    // 自适应），其余大类的搜索在内嵌页自己的分段工具条里。
+    final draftsSearchVisible = _group == 'masterDrafts';
     final categoryBar = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         UtenFilterToolbar<String>(
           segmentsKey: const Key('sales-task-center-groups'),
           autoSelectBadgeReady: countsReady,
+          searchKey: draftsSearchVisible
+              ? const Key('sales-task-center-drafts-search')
+              : null,
+          searchController: draftsSearchVisible ? _draftsSearch : null,
+          searchHint: draftsSearchVisible ? '搜索类别、草稿或备注' : null,
+          onSearchChanged: draftsSearchVisible
+              ? (value) => setState(() => _draftsKeyword = value.trim())
+              : null,
           segments: [
             for (final g in groups)
               UtenFilterSegment(
@@ -299,11 +322,14 @@ class _SalesTaskCenterPageState extends ConsumerState<SalesTaskCenterPage> {
   Widget _buildGroupBody(String group, {Widget? externalHeader}) =>
       switch (group) {
         // 兼容旧 ?group=masterDrafts 深链；常规入口已统一到右上角草稿按钮。
+        // 搜索词来自宿主分类栏（同行口径），本地不再自建搜索行。
         'masterDrafts' => FormDraftCategoryList(
           scope: const FormDraftCategoryScope(
             module: BadgeModule.sales,
             routePrefix: '/basicinfo/',
           ),
+          search: _draftsKeyword,
+          showSearch: false,
           externalHeader: externalHeader,
         ),
         'progress' => SalesOrderProgressPage(

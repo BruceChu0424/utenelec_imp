@@ -429,7 +429,7 @@ void main() {
     },
   );
 
-  testWidgets('cancel requires a reason and keeps revision history', (
+  testWidgets('cancel reason is optional; empty reason posts directly', (
     tester,
   ) async {
     final api = await _pump(
@@ -438,13 +438,23 @@ void main() {
     );
     await tester.tap(find.byKey(const ValueKey('sales-quote-cancel')));
     await tester.pumpAndSettle();
+    // 2026-11 起取消原因选填：空原因直接提交，不再内联拦截。
+    api.afterPost = _quote(status: -1);
     await tester.tap(find.byKey(const ValueKey('sales-quote-cancel-submit')));
     await tester.pumpAndSettle();
-    expect(api.postPaths, isEmpty);
-    // 2026-09-04 起表单错误进字段内 ⓘ 披露（UtenInputDecoration）：
-    // 必填校验不再渲染底部错误文本，断言错误图标 + 完整语义标签。
-    expect(find.byIcon(Icons.error_outline), findsOneWidget);
-    expect(find.bySemanticsLabel('请填写取消原因'), findsOneWidget);
+    expect(api.postBodies['/sales/quotes/quote-1/cancel'], {
+      'expectedRevision': 4,
+      'reason': '',
+    });
+  });
+
+  testWidgets('cancel with a reason keeps revision history', (tester) async {
+    final api = await _pump(
+      tester,
+      _quote(status: 1, actions: const ['cancel']),
+    );
+    await tester.tap(find.byKey(const ValueKey('sales-quote-cancel')));
+    await tester.pumpAndSettle();
     await tester.enterText(
       find.byKey(const ValueKey('sales-quote-cancel-reason')),
       '客户未接受报价',

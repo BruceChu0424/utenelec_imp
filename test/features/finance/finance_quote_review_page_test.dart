@@ -863,22 +863,33 @@ void main() {
     expect(_text(tester, _discount('c')), '1', reason: 'unchecked row stays');
   });
 
-  testWidgets('return requires a reason; chips fill it; posts text + lease', (
+  testWidgets('return reason is optional; empty submit posts directly', (
     tester,
   ) async {
     final (repo, claims) = await _pump(tester, _review());
     final claimId = claims.leases['quote-1']!.claimId;
     await tester.tap(find.byKey(const Key('quote-finance-return')));
     await tester.pumpAndSettle();
+    // 2026-11 起退回原因选填：空原因直接提交，不再内联拦截。
     await tester.tap(find.byKey(const Key('quote-finance-return-submit')));
-    await tester.pump();
-    expect(repo.returns, isEmpty);
+    await tester.pumpAndSettle();
+    expect(repo.returns, [
+      {'expectedRevision': 5, 'expectedClaimId': claimId, 'text': ''},
+    ]);
     expect(
-      find.byWidgetPredicate(
-        (w) => w is Tooltip && w.message?.contains('请填写退回原因') == true,
-      ),
-      findsOneWidget,
+      claims.released,
+      isNotEmpty,
+      reason: 'lease released after decision',
     );
+  });
+
+  testWidgets('return chips fill the optional reason; posts text + lease', (
+    tester,
+  ) async {
+    final (repo, claims) = await _pump(tester, _review());
+    final claimId = claims.leases['quote-1']!.claimId;
+    await tester.tap(find.byKey(const Key('quote-finance-return')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('quote-finance-return-chip-0')));
     await tester.pump();
     await tester.tap(find.byKey(const Key('quote-finance-return-chip-2')));

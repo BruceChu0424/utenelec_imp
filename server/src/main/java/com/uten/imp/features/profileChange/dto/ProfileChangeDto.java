@@ -81,7 +81,7 @@ public final class ProfileChangeDto {
     /** HR 审批动作。 */
     public record ReviewAction(
             @NotBlank @Size(max = 16) String action,   // "approve" | "reject"
-            @Size(max = 1000) String comment   // 驳回意见（reject 必填，approve 可选）
+            @Size(max = 1000) String comment   // 驳回意见（选填）
     ) {}
 
     /** 员工自查列表项。 */

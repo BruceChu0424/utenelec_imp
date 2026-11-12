@@ -172,8 +172,19 @@ class _GoodsCostActualPanelState extends ConsumerState<GoodsCostActualPanel> {
         : key == 'businessDate'
         ? 'date'
         : 'text',
-    sortable: numeric || key == 'businessDate' || key == 'revisionVersion',
-    filterFromRows: key == 'unitName' || key == 'sourceDocType',
+    // 2026-11-11 口径：数值/日期列可排序；编号/单号列（货品编号、执行号）
+    // 可排序 + 按值筛选；类别列（单位、来源类型）按值筛选（全量表就地收集桶）。
+    sortable:
+        numeric ||
+        key == 'businessDate' ||
+        key == 'revisionVersion' ||
+        key == 'goodsCode' ||
+        key == 'executionNo',
+    filterFromRows:
+        key == 'unitName' ||
+        key == 'sourceDocType' ||
+        key == 'goodsCode' ||
+        key == 'executionNo',
     facetSearchEnabled: key == 'unitName' || key == 'sourceDocType',
     defaultVisible: visible,
     value: (r) => costText(r[key]),

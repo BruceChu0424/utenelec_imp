@@ -13,6 +13,9 @@ List<MasterColumnDef<Position>> positionPickerTableColumns() => [
     key: 'code',
     label: '编号',
     width: 150,
+    // 2026-11-11 口径：编号列可排序 + 按值筛选（全量候选就地收集桶）。
+    sortable: true,
+    filterFromRows: true,
     value: (position) => position.code,
   ),
   MasterColumnDef<Position>(

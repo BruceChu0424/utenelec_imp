@@ -103,13 +103,6 @@ class _ProcurementIqcRejectionActionDialogState
     return null;
   }
 
-  String? _requiredNote(String? value) {
-    final text = value?.trim() ?? '';
-    if (text.isEmpty) return '$_noteLabel不能为空';
-    if (text.length > 2000) return '$_noteLabel不能超过 2000 个字符';
-    return null;
-  }
-
   Future<void> _submit() async {
     if (_busy || !(_formKey.currentState?.validate() ?? false)) return;
     setState(() {
@@ -187,12 +180,13 @@ class _ProcurementIqcRejectionActionDialogState
       ? '实物退回日期'
       : '供应商贷项日期';
 
+  /// 说明/原因统一选填：标签带「（选填）」，不再做非空校验（长度仍由 maxLength 限制）。
   String get _noteLabel => switch (widget.kind) {
-    ProcurementIqcRejectionActionKind.recordReturn => '退回说明',
-    ProcurementIqcRejectionActionKind.confirmCredit => '贷项确认原因',
-    ProcurementIqcRejectionActionKind.closeNoCredit => '无需贷项原因',
-    ProcurementIqcRejectionActionKind.reverse => '反向原因',
-    ProcurementIqcRejectionActionKind.retryFinanceProjection => '重试原因',
+    ProcurementIqcRejectionActionKind.recordReturn => '退回说明（选填）',
+    ProcurementIqcRejectionActionKind.confirmCredit => '贷项确认原因（选填）',
+    ProcurementIqcRejectionActionKind.closeNoCredit => '无需贷项原因（选填）',
+    ProcurementIqcRejectionActionKind.reverse => '反向原因（选填）',
+    ProcurementIqcRejectionActionKind.retryFinanceProjection => '重试原因（选填）',
   };
 
   @override
@@ -358,14 +352,12 @@ class _ProcurementIqcRejectionActionDialogState
                           minLines: 3,
                           maxLines: 5,
                           maxLength: 2000,
-                          validator: _requiredNote,
                           errorBuilder: utenTextFieldErrorBuilder,
                           decoration: UtenInputDecoration(
                             InputDecoration(
                               label: fieldLabel(
                                 _noteLabel,
                                 theme,
-                                required: true,
                                 info: '说明会追加到操作记录里，提交后不能修改或删除',
                               ),
                             ),

@@ -190,16 +190,36 @@ class FinancePayrollDeductionSection extends StatelessWidget {
         child: financeSourceTable(
           tableKey: 'finance-payroll-original-deduction-items',
           columns: [
-            financeSourceColumn('employeeCode', '员工编号', width: 130),
-            financeSourceColumn('employeeName', '员工姓名', width: 140),
+            // 2026-11-11 口径：编号列可排序 + 按值筛选；姓名类别列按值筛选；
+            //金额列可排序（全量原扣款快照就地排序、收集桶）。
+            financeSourceColumn(
+              'employeeCode',
+              '员工编号',
+              width: 130,
+              sortable: true,
+              filterByValue: true,
+            ),
+            financeSourceColumn(
+              'employeeName',
+              '员工姓名',
+              width: 140,
+              filterByValue: true,
+            ),
             financeSourceColumn(
               'name',
               '原扣款项目',
               width: 190,
+              filterByValue: true,
               value: (r) => '${r['code'] ?? ''} ${r['name'] ?? ''}',
             ),
             financeSourceColumn('description', '原说明', width: 260),
-            financeSourceColumn('amount', '原扣款金额', width: 180, type: 'money'),
+            financeSourceColumn(
+              'amount',
+              '原扣款金额',
+              width: 180,
+              type: 'money',
+              sortable: true,
+            ),
             financeSourceColumn(
               'allocationState',
               '份额核对',

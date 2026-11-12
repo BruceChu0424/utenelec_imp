@@ -41,8 +41,15 @@ class _ApprovalCenterPageState extends ConsumerState<ApprovalCenterPage> {
   int _refreshTick = 0;
   final _refreshController = UtenRefreshController();
 
+  /// 订单审批分段的页面级搜索（2026-11-11 口径：宽屏搜索框与分类标签同行，
+  /// 不再让内嵌页自建独占一行的搜索工具条）。报销/申请分段的检索走各自表格
+  /// 列头筛选，宿主不提供页面级搜索框。
+  final _orderSearch = TextEditingController();
+  String _orderSearchKeyword = '';
+
   @override
   void dispose() {
+    _orderSearch.dispose();
     _refreshController.dispose();
     super.dispose();
   }
@@ -173,9 +180,20 @@ class _ApprovalCenterPageState extends ConsumerState<ApprovalCenterPage> {
         ? _historyKind
         : groups.firstOrNull;
     final active = history ? historyKind : group;
+    // 订单分段在台（含历史态）时分类栏携带搜索框：宽屏与分段同行、
+    // 窄屏自动换行（UtenFilterToolbar 自适应），关键词下传内嵌页。
+    final orderSearchVisible = ordersAllowed && active == 'order';
     final categoryBar = UtenFilterToolbar<String>(
       segmentsKey: const Key('approval-center-categories'),
       autoSelectBadgeReady: summaryLoaded,
+      searchKey: orderSearchVisible
+          ? const Key('approval-center-order-search')
+          : null,
+      searchController: orderSearchVisible ? _orderSearch : null,
+      searchHint: orderSearchVisible ? '搜索单据号、客户或业务员' : null,
+      onSearchChanged: orderSearchVisible
+          ? (value) => setState(() => _orderSearchKeyword = value.trim())
+          : null,
       segments: [
         for (final key in groups)
           UtenFilterSegment(
@@ -255,6 +273,7 @@ class _ApprovalCenterPageState extends ConsumerState<ApprovalCenterPage> {
         initialHistory: history,
         historyOnly: history,
         refreshTick: _refreshTick,
+        externalKeyword: _orderSearchKeyword,
         externalHeader: groupHeader,
       );
     }

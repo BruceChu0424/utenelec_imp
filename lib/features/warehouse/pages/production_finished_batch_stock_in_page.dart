@@ -597,6 +597,8 @@ class _ProductionFinishedBatchStockInPageState
       key: 'warehouseName',
       label: '仓库',
       width: 150,
+      // 2026-11-11 口径：类别列按值筛选、数值/日期列排序（本页全量加载）。
+      filterFromRows: true,
       value: (task) => task.warehouseName ?? '—',
     ),
     MasterColumnDef<ProductionFinishedInboundTask>(
@@ -637,6 +639,7 @@ class _ProductionFinishedBatchStockInPageState
       info: '一批实物 = 同一报工、同一次录入送入仓库的需求份、计划公共备货与实际超产，合在一起登记、判定和点收。',
       width: 100,
       type: 'number',
+      sortable: true,
       value: (task) => '${task.lineCount}',
     ),
     MasterColumnDef<ProductionFinishedInboundTask>(
@@ -644,6 +647,7 @@ class _ProductionFinishedBatchStockInPageState
       label: '单据日期',
       width: 120,
       type: 'date',
+      sortable: true,
       value: (task) => task.documentDateKnown
           ? ChinaDateTime.formatDate(task.documentDate)
           : '—',

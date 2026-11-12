@@ -3071,10 +3071,9 @@ public class StockDocService implements ProductionPreStockedInboundPort {
     @PreAuthorize("hasAuthority('stock_doc:reverse_issue')")
     public StockDocDetail reverseIssue(UUID id, StockDocIssueRequest req) {
         tx.bind();
-        String cancellationReason = req == null ? null : req.getReason();
-        if (cancellationReason == null || cancellationReason.isBlank()) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "取消出库必须填写原因");
-        }
+        // 取消原因选填：空原因照常取消，仅保留后续 strip() 的空安全。
+        String cancellationReason = req == null || req.getReason() == null
+                ? "" : req.getReason();
         var mutationGuard = lockProductionDocuments(List.of(id));
         StockDocument d = requireDrawForIssue(id);
 

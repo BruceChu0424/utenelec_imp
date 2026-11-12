@@ -4957,12 +4957,6 @@ abstract class AppLocalizations {
   /// **'驳回申请'**
   String get profileChangeRejectDialogTitle;
 
-  /// No description provided for @profileChangeRejectReasonRequired.
-  ///
-  /// In zh, this message translates to:
-  /// **'请填写驳回原因'**
-  String get profileChangeRejectReasonRequired;
-
   /// No description provided for @profileChangeRejectReasonHint.
   ///
   /// In zh, this message translates to:
@@ -12350,7 +12344,7 @@ abstract class AppLocalizations {
   /// No description provided for @quoteFinanceReturnReasonLabel.
   ///
   /// In zh, this message translates to:
-  /// **'退回原因(必填)'**
+  /// **'退回原因（选填）'**
   String get quoteFinanceReturnReasonLabel;
 
   /// No description provided for @quoteFinanceReturnReasonRequired.
@@ -15469,14 +15463,8 @@ abstract class AppLocalizations {
   /// No description provided for @salesQuoteCancelReason.
   ///
   /// In zh, this message translates to:
-  /// **'取消原因（如客户未接受报价、订单未取得）'**
+  /// **'取消原因（选填，如客户未接受报价、订单未取得）'**
   String get salesQuoteCancelReason;
-
-  /// No description provided for @salesQuoteCancelReasonRequired.
-  ///
-  /// In zh, this message translates to:
-  /// **'请填写取消原因'**
-  String get salesQuoteCancelReasonRequired;
 
   /// No description provided for @salesQuoteCancelledDone.
   ///

@@ -631,7 +631,9 @@ class _DepartmentOverviewPaneState extends ConsumerState<DepartmentOverviewPane>
       key: 'code',
       label: '工号',
       width: 90,
+      // 2026-11-11 口径：编号列可排序 + 按值筛选（部门在册员工全量就地收集桶）。
       sortable: true,
+      filterFromRows: true,
       value: (e) => e.code,
     ),
     MasterColumnDef(

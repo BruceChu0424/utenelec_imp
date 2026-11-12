@@ -189,7 +189,7 @@ class _VisitorApprovalListPageState
       description: l10n.visitorBatchRejectDescription(ids.length),
       confirmLabel: l10n.visitorBatchRejectConfirm,
     );
-    if (reason == null || reason.isEmpty || !mounted) return;
+    if (reason == null || !mounted) return;
     await _runBatch(
       ids,
       verb: l10n.visitorBatchVerbReject,

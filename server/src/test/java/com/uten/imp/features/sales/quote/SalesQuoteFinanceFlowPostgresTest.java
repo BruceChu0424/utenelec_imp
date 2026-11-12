@@ -419,11 +419,10 @@ class SalesQuoteFinanceFlowPostgresTest {
                 new QuoteFinanceEditRequest.Line(itemIds.get(0), new BigDecimal("0.9"), BigDecimal.ONE, null, null)))))
                 .isInstanceOf(ApiException.class);
 
-        // 退回销售: 原因必填; 退回后财务仍可见(已退回), 销售草稿计数不含退回件, 红徽章计 1。
-        assertThatThrownBy(() -> finance.returnToSales(quoteId,
-                new QuoteFinanceDecisionRequest(7, claim.claimId(), " "))).isInstanceOf(ApiException.class);
+        // 退回销售: 原因选填(2026-11-11 口径, 留空记「未填写原因」)——空白原因照常退回;
+        // 退回后财务仍可见(已退回), 销售草稿计数不含退回件, 红徽章计 1。
         QuoteFinanceReviewDto returned = finance.returnToSales(quoteId,
-                new QuoteFinanceDecisionRequest(7, claim.claimId(), "客户要改数量"));
+                new QuoteFinanceDecisionRequest(7, claim.claimId(), " "));
         assertThat(returned.statusBucket()).isEqualTo("FINANCE_REJECTED");
         assertThat(finance.list("returned", null, 1, 100).getItems()).anyMatch(item -> item.id().equals(quoteId));
 

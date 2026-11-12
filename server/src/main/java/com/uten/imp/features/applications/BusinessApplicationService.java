@@ -182,11 +182,11 @@ public class BusinessApplicationService {
                 jdbc.update("UPDATE business_applications SET status='DRAFT',approval_stage=NULL,version=version+1,updated_at=now() WHERE id=?",id);append(row,"WITHDRAWN",u,stage,null);}
             case "cancel-payment" -> {
                 if(!canCancelPayment(row,u))throw new ApiException(ErrorCode.FORBIDDEN,"仅原付款登记人可撤销登记");
-                String reason=in.reason()==null?"":in.reason().trim();if(reason.isBlank()||reason.length()>1000)throw invalid("撤销原因必填，最多1000字");
+                String reason=in.reason()==null?"":in.reason().trim();if(reason.length()>1000)throw invalid("撤销原因最多1000字");
                 var f=fields(row);String original="原财务单 "+text(row,"finance_document_type")+" "+text(row,"finance_document_id")+"；原付款日期 "+f.get("paymentDate")+"；原流水 "+f.get("paymentReference");
                 f.remove("paymentDate");f.remove("paymentReference");f.remove("financeDocumentType");
                 jdbc.update("UPDATE business_applications SET status='APPROVED',approval_stage='PAYMENT',finance_document_id=NULL,finance_document_type=NULL,fields=?::jsonb,version=version+1,updated_at=now() WHERE id=?",encoded(f),id);
-                append(row,"PAYMENT_CANCELLED",u,"PAYMENT",reason+"；"+original+"；仅撤销申请登记，财务账需另行核对");notifyOwner(row,"付款登记已撤销，等待财务核对修正");}
+                append(row,"PAYMENT_CANCELLED",u,"PAYMENT",(reason.isEmpty()?"":reason+"；")+original+"；仅撤销申请登记，财务账需另行核对");notifyOwner(row,"付款登记已撤销，等待财务核对修正");}
             case "link-finance" -> {
                 if(!canLinkFinanceBase(row,u))throw new ApiException(ErrorCode.FORBIDDEN,"当前申请不可关联供应商预付入账");
                 var fields=in.fields();if(fields==null||fields.keySet().stream().anyMatch(key->!Set.of("financeDocumentType","financeDocumentId").contains(key)))throw invalid("关联入账只能选择财务记录，不能修改原付款事实");
@@ -200,7 +200,7 @@ public class BusinessApplicationService {
                 if(!canAct(row,u))throw new ApiException(ErrorCode.FORBIDDEN,"当前申请不属于你的节点或部门范围，不能自审或同轮重复办理多个节点");
                 if("DEPARTMENT".equals(stage))departmentRouting.requireReviewForUpdate(u,(UUID)row.get("applicant_id"),(UUID)row.get("department_id"),text(row,"department_approval_snapshot"));
                 if("reject".equals(action)){
-                    String reason=in.reason()==null?"":in.reason().trim();if(reason.isBlank()||reason.length()>1000)throw invalid("驳回原因必填，最多1000字");
+                    String reason=in.reason()==null?"":in.reason().trim();if(reason.length()>1000)throw invalid("驳回原因最多1000字");
                     jdbc.update("UPDATE business_applications SET status='REJECTED',approval_stage=NULL,reject_reason=?,version=version+1,updated_at=now() WHERE id=?",reason,id);append(row,"REJECTED",u,stage,reason);notifyOwner(row,"申请被驳回，请查看原因并修订");
                 }else if("receive".equals(action)){
                     if(!"FINANCE_RECEIVE".equals(stage))throw invalid("当前节点不是财务接收保管");finish(row,"COMPLETED");append(row,"RECEIVED",u,stage,in.reason());notifyOwner(row,"出差申请已由财务接收保管");

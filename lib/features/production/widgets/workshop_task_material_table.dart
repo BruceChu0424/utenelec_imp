@@ -283,12 +283,16 @@ class _WorkshopTaskMaterialTableState
               key: 'goodsCode',
               label: '编号',
               width: 130,
+              // 2026-11-11 口径：编号列可排序 + 按值筛选，颜色列按值筛选。
+              sortable: true,
+              filterFromRows: true,
               value: (row) => row.goodsCode,
             ),
             MasterColumnDef(
               key: 'colorName',
               label: '颜色',
               width: 90,
+              filterFromRows: true,
               value: (row) => row.colorName,
             ),
             MasterColumnDef(

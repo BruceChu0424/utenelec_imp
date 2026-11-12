@@ -1317,6 +1317,8 @@ class _HrReconcilePageState extends ConsumerState<HrReconcilePage>
         key: 'kind',
         label: l10n.hrReconcileColKind,
         width: 76,
+        // 2026-11-11 口径：类别列按值筛选（整计划全量行就地收集桶）。
+        filterFromRows: true,
         value: (row) => _kindLabel(l10n, row.kind),
         cellBuilder: (context, row) =>
             HrReconcileKindTag(rowNo: row.rowNo, kind: row.kind),
@@ -1331,18 +1333,25 @@ class _HrReconcilePageState extends ConsumerState<HrReconcilePage>
         key: 'code',
         label: l10n.employeeFieldCode,
         width: 112,
+        // 2026-11-11 口径：编号列可排序 + 按值筛选（全量表就地收集桶）。
+        sortable: true,
+        filterFromRows: true,
         value: (row) => row.employee.code,
       ),
       MasterColumnDef(
         key: 'department',
         label: l10n.hrReconcileColDepartment,
         width: 156,
+        // 2026-11-11 口径：类别列按值筛选（全量表就地收集桶）。
+        filterFromRows: true,
         value: (row) => row.employee.deptName ?? '—',
       ),
       MasterColumnDef(
         key: 'position',
         label: l10n.hrReconcileColPosition,
         width: 132,
+        // 2026-11-11 口径：类别列按值筛选（全量表就地收集桶）。
+        filterFromRows: true,
         value: (row) => row.employee.positionName ?? '—',
       ),
       MasterColumnDef(

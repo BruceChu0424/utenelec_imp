@@ -69,7 +69,12 @@ class _FinanceDocumentUnapprovalActionState
               onPressed: () => Navigator.pop(dialogContext, false),
               child: const Text('取消'),
             ),
-            TextButton(
+            // 反审是破坏性操作：确认键红色实心（与全站驳回/撤回语义一致）。
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(dialogContext).colorScheme.error,
+                foregroundColor: Theme.of(dialogContext).colorScheme.onError,
+              ),
               onPressed: () => Navigator.pop(dialogContext, true),
               child: const Text('确认反审'),
             ),

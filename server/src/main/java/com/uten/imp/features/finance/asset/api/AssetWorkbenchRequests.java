@@ -20,6 +20,17 @@ public final class AssetWorkbenchRequests {
 
     public static final String PERIOD = "^\\d{4}-(?:0[1-9]|1[0-2])$";
 
+    /**
+     * 撤销入账 / 关闭与重开资产期间的原因列带非空 CHECK
+     * （reversal_reason、close_reason、reopen_reason 均要求非空白），
+     * 留空统一记默认原因；其余动作原因列可空，留空落 NULL/空串。
+     */
+    public static final String DEFAULT_REASON = "未填写原因";
+
+    private static String normalizeCheckedReason(String value) {
+        return value == null || value.isBlank() ? DEFAULT_REASON : value.trim();
+    }
+
     private AssetWorkbenchRequests() {}
 
     public record FixedAssetDraft(
@@ -107,26 +118,26 @@ public final class AssetWorkbenchRequests {
 
     public record ReasonCommand(
             @NotNull @Min(0) Long expectedVersion,
-            @NotBlank @Size(max = 2000) String reason) {}
+            @Size(max = 2000) String reason) {}
 
     public record TransferCommand(
             @NotNull @Min(0) Long expectedVersion,
             @NotNull UUID targetDepartmentId,
             @NotNull UUID custodianId,
             @NotBlank @Size(max = 300) String location,
-            @NotBlank @Size(max = 2000) String reason,
+            @Size(max = 2000) String reason,
             @NotNull LocalDate effectiveDate) {}
 
     public record OperatingStatusCommand(
             @NotNull @Min(0) Long expectedVersion,
             @NotBlank @Pattern(regexp = "^(?:PENDING_ACCEPTANCE|IN_USE|IDLE|UNDER_REPAIR|LOANED|LOST_PENDING)$")
                     String operatingStatus,
-            @NotBlank @Size(max = 2000) String reason,
+            @Size(max = 2000) String reason,
             @NotNull LocalDate effectiveDate) {}
 
     public record DisposalCommand(
             @NotNull @Min(0) Long expectedVersion,
-            @NotBlank @Size(max = 2000) String reason,
+            @Size(max = 2000) String reason,
             @NotNull LocalDate effectiveDate,
             @com.fasterxml.jackson.annotation.JsonFormat(shape=com.fasterxml.jackson.annotation.JsonFormat.Shape.STRING)
             @NotNull @DecimalMin("0.00") @Digits(integer = 40, fraction = 24) BigDecimal proceedsAmount,
@@ -134,7 +145,7 @@ public final class AssetWorkbenchRequests {
 
     public record TerminationCommand(
             @NotNull @Min(0) Long expectedVersion,
-            @NotBlank @Size(max = 2000) String reason,
+            @Size(max = 2000) String reason,
             @NotNull LocalDate effectiveDate,
             @Size(max = 1000) String evidenceReference) {}
 
@@ -149,13 +160,19 @@ public final class AssetWorkbenchRequests {
 
     public record PostingReasonCommand(
             @NotNull @Min(0) Long expectedVersion,
-            @NotBlank @Size(max = 2000) String reason) {}
+            @Size(max = 2000) String reason) {
+        public PostingReasonCommand { reason = normalizeCheckedReason(reason); }
+    }
 
     public record PeriodCloseCommand(
-            @NotBlank @Size(max = 2000) String reason,
-            @NotNull @Min(0) Long expectedVersion) {}
+            @Size(max = 2000) String reason,
+            @NotNull @Min(0) Long expectedVersion) {
+        public PeriodCloseCommand { reason = normalizeCheckedReason(reason); }
+    }
 
     public record PeriodReopenCommand(
-            @NotBlank @Size(max = 2000) String reason,
-            @NotNull @Min(0) Long expectedVersion) {}
+            @Size(max = 2000) String reason,
+            @NotNull @Min(0) Long expectedVersion) {
+        public PeriodReopenCommand { reason = normalizeCheckedReason(reason); }
+    }
 }

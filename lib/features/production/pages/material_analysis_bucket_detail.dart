@@ -395,6 +395,8 @@ class _MaterialAnalysisBucketPageState
       key: 'goodsCode',
       label: '编号',
       width: 130,
+      // 2026-11-11 口径：编号/数值列可排序；按值筛选仍由宿主 textFacets 提供。
+      sortable: true,
       value: _rowGoodsCode,
     ),
     MasterColumnDef<_BucketRow>(
@@ -1228,6 +1230,7 @@ class _MaterialAnalysisBucketPageState
         label: host._l10n.materialRequired,
         width: 135,
         type: 'number',
+        sortable: true,
         value: (row) =>
             formatQtyWithUnit(_rowRequiredQty(row), _rowUnitName(row)),
         exactValueOf: (row) => _rowRequiredQty(row)?.toString(),
@@ -1238,6 +1241,7 @@ class _MaterialAnalysisBucketPageState
         label: host._l10n.materialPublicAvailable,
         width: 145,
         type: 'number',
+        sortable: true,
         value: (row) =>
             formatQtyWithUnit(_rowAvailableQty(row), _rowUnitName(row)),
         exactValueOf: (row) => _rowAvailableQty(row)?.toString(),
@@ -1252,6 +1256,7 @@ class _MaterialAnalysisBucketPageState
           width: 125,
           minimumWidthOf: (_) => 48,
           type: 'number',
+          sortable: true,
           value: (row) =>
               formatQtyWithUnit(_rowShortageQty(row), _rowUnitName(row)),
           exactValueOf: (row) => _rowShortageQty(row)?.toString(),
@@ -1284,6 +1289,7 @@ class _MaterialAnalysisBucketPageState
           label: '下单数量',
           width: 145,
           type: 'number',
+          sortable: true,
           value: (row) =>
               formatQtyWithUnit(_rowIssuedQty(row), _rowUnitName(row)),
           exactValueOf: (row) => _rowIssuedQty(row)?.toString(),

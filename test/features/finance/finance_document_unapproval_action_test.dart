@@ -63,7 +63,7 @@ void main() {
       await tester.tap(find.text('反审'));
       await tester.pumpAndSettle();
       expect(api.posts, 0);
-      await tester.tap(find.widgetWithText(TextButton, '确认反审'));
+      await tester.tap(find.widgetWithText(FilledButton, '确认反审'));
       await tester.pumpAndSettle();
       expect(api.posts, 1);
       expect(api.postedPath, '/documents/financeExpense/original/unapprove');
@@ -165,7 +165,7 @@ void main() {
       await tester.tap(find.text('反审'));
       await tester.pumpAndSettle();
       expect(api.posts, 0);
-      await tester.tap(find.widgetWithText(TextButton, '确认反审'));
+      await tester.tap(find.widgetWithText(FilledButton, '确认反审'));
       await tester.pumpAndSettle();
       expect(api.posts, 1);
       expect(api.postedPath, '/documents/salesOrder/original/unapprove');
@@ -205,7 +205,7 @@ void main() {
       );
       (container.read(sessionProvider.notifier) as _Reader).switchIdentity();
       await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(TextButton, '确认反审'));
+      await tester.tap(find.widgetWithText(FilledButton, '确认反审'));
       await tester.pumpAndSettle();
       expect(api.posts, 0);
       expect(completed, 0);

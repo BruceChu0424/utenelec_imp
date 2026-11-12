@@ -205,10 +205,6 @@ class _ExpenseApprovalDetailPageState
     final id = widget.claimId;
     if (_acting || claim == null || !_canApprove) return;
     final reason = _comment.text.trim();
-    if (reason.isEmpty) {
-      context.appError('请填写驳回原因');
-      return;
-    }
     await _runAction(
       (current) async {
         if (!current() || !_canApprove) return false;
@@ -558,8 +554,8 @@ class _ExpenseApprovalDetailPageState
                             maxLines: 3,
                             decoration: const UtenInputDecoration(
                               InputDecoration(
-                                labelText: '驳回原因',
-                                hintText: '驳回时必填，通过时不会提交',
+                                labelText: '驳回原因（选填）',
+                                hintText: '驳回时填写，通过时不会提交',
                               ),
                               info: '驳回后申请人可修订重提：请写明修改要求（如缺票、金额不符）。',
                             ),

@@ -28,7 +28,19 @@ public final class ActualOutputSupplementContracts {
     }
     public record ReportPreview(java.util.List<ReportLinePreview> lines,boolean requiresSupplements) {}
     public record ApproveRequest(@NotBlank @Size(min=8,max=128) String idempotencyKey) {}
-    public record CancelRequest(@NotBlank @Size(max=1000) String reason,@NotBlank @Size(min=8,max=128) String idempotencyKey) {}
+    /**
+     * 取消追加实产：原因选填(2026-11-11 口径「弹窗原因不用必填」)。留空在构造期归一为
+     * 「未填写原因」——落库列 production_actual_output_supplement_reversals.reason
+     * 库级 CHECK 要求 btrim 后非空(单个字可原样保留)，消费方直接取 {@code reason()} 落库。
+     */
+    public record CancelRequest(@Size(max=1000) String reason,@NotBlank @Size(min=8,max=128) String idempotencyKey) {
+        public static final String DEFAULT_REASON = "未填写原因";
+        public CancelRequest {
+            if (reason == null || reason.strip().isEmpty()) {
+                reason = DEFAULT_REASON;
+            }
+        }
+    }
     public record Preview(UUID sourceSegmentId,UUID sourcePlanId,String sourcePlanNo,String segmentCode,
                           UUID goodsId,UUID colorId,UUID unitId,BigDecimal unitRate,UUID workshopDepartmentId,UUID responsibleEmployeeId,
                           BigDecimal plannedQty,BigDecimal priorReportedQty,BigDecimal effectiveRate,BigDecimal thresholdQty,

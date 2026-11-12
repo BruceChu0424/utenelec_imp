@@ -447,6 +447,8 @@ class _TasksWindowState extends ConsumerState<_TasksWindow> {
                     key: 'code',
                     label: '编号',
                     width: 130,
+                    // 2026-11-11 口径：编号列补就地排序（按值筛选此前已开）。
+                    sortable: true,
                     value: (target) => target.code,
                     filterFromRows: true,
                   ),
@@ -725,6 +727,8 @@ class _TasksWindowState extends ConsumerState<_TasksWindow> {
                     key: 'code',
                     label: '编号',
                     width: 130,
+                    // 2026-11-11 口径：编号/单号列补就地排序（完整任务快照，按值筛选此前已开）。
+                    sortable: true,
                     value: (task) => task.code,
                     filterFromRows: true,
                   ),
@@ -744,6 +748,7 @@ class _TasksWindowState extends ConsumerState<_TasksWindow> {
                     key: 'shipment',
                     label: '来源出货单',
                     width: 150,
+                    sortable: true,
                     value: (task) => task.value('shipmentNo'),
                     filterFromRows: true,
                   ),

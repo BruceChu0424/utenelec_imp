@@ -94,6 +94,7 @@ class SalesManagerReviewPage extends ConsumerStatefulWidget {
     this.historyOnly = false,
     this.refreshTick = 0,
     this.externalHeader,
+    this.externalKeyword,
   });
   final String initialKind;
   final bool embedded;
@@ -106,6 +107,11 @@ class SalesManagerReviewPage extends ConsumerStatefulWidget {
   /// 宿主父分类行：由本页挂进折叠头随页滚走（上滑先把表格钉顶，
   /// 2026-09-24「表格滑到顶」口径，同仓库任务中心/业务审核中心范式）。
   final Widget? externalHeader;
+
+  /// 宿主(审批中心)分类栏自带的搜索词（2026-11-11 口径：宽屏搜索框与分类标签
+  /// 同行，嵌入态不再自建独占一行的搜索工具条）。非 null 时隐藏自身搜索行并
+  /// 直接采用该关键词；变化时重拉当前队列（同仓库任务中心 externalKeyword 范式）。
+  final String? externalKeyword;
   @override
   ConsumerState<SalesManagerReviewPage> createState() =>
       _SalesManagerReviewPageState();
@@ -206,6 +212,9 @@ class _SalesManagerReviewPageState extends ConsumerState<SalesManagerReviewPage>
   }
 
   final _search = TextEditingController();
+
+  /// 宿主提供搜索词时直接采用（自身控制器只在独立页/无宿主搜索时生效）。
+  String get _keyword => widget.externalKeyword ?? _search.text.trim();
   final String _kind = 'all';
   String _state = 'PENDING';
   final Map<String, String> _filters = {};
@@ -256,6 +265,12 @@ class _SalesManagerReviewPageState extends ConsumerState<SalesManagerReviewPage>
         if (mounted) UtenRefreshScope.track(context, _reloadFromButton());
       });
     }
+    // 宿主分类栏搜索词变化（提交触发）：重拉当前队列。帧后执行同上。
+    if (oldWidget.externalKeyword != widget.externalKeyword) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _reload(clear: true);
+      });
+    }
   }
 
   Future<void> _reload({bool clear = false}) async {
@@ -273,7 +288,7 @@ class _SalesManagerReviewPageState extends ConsumerState<SalesManagerReviewPage>
         ref.read(authenticatedScopeProvider) == scope &&
         setEquals(permissions, ref.read(currentPermissionsProvider));
     final kind = _kind, state = _state;
-    final keyword = _search.text.trim();
+    final keyword = _keyword;
     final filters = Map<String, String?>.unmodifiable(_filters);
     setState(() {
       _loading = true;
@@ -459,7 +474,9 @@ class _SalesManagerReviewPageState extends ConsumerState<SalesManagerReviewPage>
                 onPressed: () => Navigator.pop(context, false),
                 child: const Text('返回核对'),
               ),
-              TextButton(
+              // 主操作走实心主色（弹窗 actions 区的 TextButton 会被统一改写成
+              // 浅底描边样式，两个 TextButton 会长得一样，主次不分）。
+              FilledButton(
                 onPressed: () => Navigator.pop(context, true),
                 child: const Text('批准并转交财务'),
               ),
@@ -577,6 +594,8 @@ class _SalesManagerReviewPageState extends ConsumerState<SalesManagerReviewPage>
         label: '状态',
         width: 180,
         columnSearchEnabled: true,
+        // 类别列：按当前行值出选项筛选（2026-11-11 全站表格列口径）。
+        filterFromRows: true,
         value: (r) => r.stateLabel,
         cellColor: (_, r) => utenStatusBadgeCellColor(switch (r.state) {
           'APPROVED' => UtenStatusBadgeType.success,
@@ -589,30 +608,37 @@ class _SalesManagerReviewPageState extends ConsumerState<SalesManagerReviewPage>
         label: '单据类型',
         width: 100,
         columnSearchEnabled: true,
+        filterFromRows: true,
         value: (r) => r.kind == 'quote' ? '报价单' : '订货单',
       ),
       MasterColumnDef(
         key: 'billNo',
         label: '单据号',
         width: 165,
+        // 标识列：可排序 + 按值筛选（全量快照表就地处理）。
+        sortable: true,
+        filterFromRows: true,
         value: (r) => r.billNo,
       ),
       MasterColumnDef(
         key: 'client',
         label: '客户',
         width: 190,
+        filterFromRows: true,
         value: (r) => r.client,
       ),
       MasterColumnDef(
         key: 'seller',
         label: '业务员',
         width: 100,
+        filterFromRows: true,
         value: (r) => r.seller,
       ),
       MasterColumnDef(
         key: 'billDate',
         type: 'date',
         columnSearchEnabled: true,
+        sortable: true,
         label: '单据日期',
         width: 110,
         value: (r) => r.billDate,
@@ -621,6 +647,7 @@ class _SalesManagerReviewPageState extends ConsumerState<SalesManagerReviewPage>
         key: 'currency',
         label: '币种',
         width: 80,
+        filterFromRows: true,
         value: (r) => financeCurrencyText(name: r.currency, fallback: '—'),
       ),
       MasterColumnDef(
@@ -628,6 +655,7 @@ class _SalesManagerReviewPageState extends ConsumerState<SalesManagerReviewPage>
         label: '单据金额',
         type: 'money',
         columnSearchEnabled: true,
+        sortable: true,
         width: 145,
         value: (r) => '${r.currency} ${r.amount}',
         aiSensitive: true,
@@ -644,12 +672,14 @@ class _SalesManagerReviewPageState extends ConsumerState<SalesManagerReviewPage>
           key: 'approver',
           label: '负责人审核人',
           width: 120,
+          filterFromRows: true,
           value: (r) => r.approver,
         ),
         MasterColumnDef(
           key: 'approvedAt',
           type: 'date',
           columnSearchEnabled: true,
+          sortable: true,
           label: '批准时间',
           width: 190,
           value: (r) => r.approvedAt,
@@ -718,7 +748,9 @@ class _SalesManagerReviewPageState extends ConsumerState<SalesManagerReviewPage>
                           if (!_busy) _reload(clear: true);
                         },
                       )
-                    else
+                    // 2026-11-11 口径：嵌入态搜索框由宿主分类栏同行承担
+                    //（externalKeyword）；仅当宿主未提供搜索词时兜底自建搜索行。
+                    else if (widget.externalKeyword == null)
                       UtenFilterToolbar<String>(
                         searchKey: const Key('sales-review-search'),
                         searchController: _search,
@@ -771,7 +803,6 @@ class _SalesManagerReviewPageState extends ConsumerState<SalesManagerReviewPage>
                             ? (_, ids) => [
                                 UtenButton(
                                   key: const Key('sales-manager-batch-approve'),
-                                  type: UtenButtonType.danger,
                                   size: UtenButtonSize.large,
                                   onPressed:
                                       _busy ||
@@ -804,7 +835,7 @@ class _SalesManagerReviewPageState extends ConsumerState<SalesManagerReviewPage>
                         paginationScope: (
                           _kind,
                           _state,
-                          _search.text.trim(),
+                          _keyword,
                           Object.hashAll(
                             _filters.entries.map((e) => '${e.key}:${e.value}'),
                           ),

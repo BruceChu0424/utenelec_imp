@@ -108,92 +108,74 @@ showSubcontractShortDeliveryWaitDialog(
   }
 }
 
-/// 「接受损耗·结案」：列出真实后果；未达到最少应到数量时说明必填。
+/// 「接受损耗·结案」：列出真实后果；说明统一选填（含未达最少应到数量时）。
 Future<SubcontractShortDeliveryDecision?>
 showSubcontractShortDeliveryAcceptDialog(
   BuildContext context, {
   required SubcontractShortDeliveryCase row,
 }) async {
   final note = TextEditingController();
-  final noteRequired = row.isBelowFloor;
   final unit = row.unitName;
   try {
     return await UtenDialog.showAndWaitForExit<
       SubcontractShortDeliveryDecision
     >(
       context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setState) {
-          final canConfirm = !noteRequired || note.text.trim().isNotEmpty;
-          return UtenAlertDialog(
-            scrollable: false,
-            title: const Text('接受损耗，结案'),
-            content: ConstrainedBox(
-              constraints: BoxConstraints(
-                maxWidth: 460,
-                maxHeight: MediaQuery.sizeOf(ctx).height * 0.6,
-              ),
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _CaseSummary(row: row),
-                    const SizedBox(height: UtenSpacing.s12),
-                    Text(
-                      '本案件剩余 ${formatSubcontractQty(row.shortfallQtyValue, unit)} 不再等待到货；请核对结案后果：',
-                      style: Theme.of(ctx).textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: UtenSpacing.s8),
-                    const _Bullet('短交对应材料按原冻结规则生成损耗与责任记录，具体财务处理按实际案件审核。'),
-                    const _Bullet('保留订货原量与实收事实；未满足客户需求的部分仍保留分析缺口，可以另行补单。'),
-                    const _Bullet('记录短交数量与比例，是否承担责任按案件判定；供料损耗上限不自动免除成品交付义务。'),
-                    const SizedBox(height: UtenSpacing.s12),
-                    UtenInput(
-                      key: const Key('short-delivery-accept-note'),
-                      label: noteRequired ? '说明(必填)' : '说明(选填)',
-                      hint: noteRequired
-                          ? '未达到最少应到数量，请说明接受短交的原因'
-                          : '例如：委外商确认损耗',
-                      controller: note,
-                      required: noteRequired,
-                      maxLines: 3,
-                      onChanged: (_) => setState(() {}),
-                    ),
-                  ],
+      builder: (ctx) => UtenAlertDialog(
+        scrollable: false,
+        title: const Text('接受损耗，结案'),
+        content: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: 460,
+            maxHeight: MediaQuery.sizeOf(ctx).height * 0.6,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _CaseSummary(row: row),
+                const SizedBox(height: UtenSpacing.s12),
+                Text(
+                  '本案件剩余 ${formatSubcontractQty(row.shortfallQtyValue, unit)} 不再等待到货；请核对结案后果：',
+                  style: Theme.of(ctx).textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
-              ),
+                const SizedBox(height: UtenSpacing.s8),
+                const _Bullet('短交对应材料按原冻结规则生成损耗与责任记录，具体财务处理按实际案件审核。'),
+                const _Bullet('保留订货原量与实收事实；未满足客户需求的部分仍保留分析缺口，可以另行补单。'),
+                const _Bullet('记录短交数量与比例，是否承担责任按案件判定；供料损耗上限不自动免除成品交付义务。'),
+                const SizedBox(height: UtenSpacing.s12),
+                UtenInput(
+                  key: const Key('short-delivery-accept-note'),
+                  label: '说明（选填）',
+                  hint: '例如：委外商确认损耗',
+                  controller: note,
+                  maxLines: 3,
+                ),
+              ],
             ),
-            actionsAlignment: MainAxisAlignment.center,
-            actions: [
-              UtenButton(
-                type: UtenButtonType.ghost,
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('取消'),
-              ),
-              UtenButton(
-                key: const Key('short-delivery-accept-confirm'),
-                type: UtenButtonType.danger,
-                onPressed: canConfirm
-                    ? () => Navigator.pop(ctx, (
-                        decision: 'ACCEPT_LOSS',
-                        expectedCompleteBy: null,
-                        note: note.text.trim().isEmpty
-                            ? null
-                            : note.text.trim(),
-                      ))
-                    : null,
-                onDisabledTap: () =>
-                    ScaffoldMessenger.maybeOf(ctx)?.showSnackBar(
-                      const SnackBar(content: Text('未达到最少应到数量的结案必须填写说明')),
-                    ),
-                child: const Text('确认接受损耗并结案'),
-              ),
-            ],
-          );
-        },
+          ),
+        ),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          UtenButton(
+            type: UtenButtonType.ghost,
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('取消'),
+          ),
+          UtenButton(
+            key: const Key('short-delivery-accept-confirm'),
+            type: UtenButtonType.danger,
+            onPressed: () => Navigator.pop(ctx, (
+              decision: 'ACCEPT_LOSS',
+              expectedCompleteBy: null,
+              note: note.text.trim().isEmpty ? null : note.text.trim(),
+            )),
+            child: const Text('确认接受损耗并结案'),
+          ),
+        ],
       ),
     );
   } finally {

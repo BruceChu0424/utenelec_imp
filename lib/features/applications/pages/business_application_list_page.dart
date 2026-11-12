@@ -757,12 +757,17 @@ final _columns = <MasterColumnDef<BusinessApplication>>[
     key: 'applicationNo',
     label: '申请单号',
     width: 240,
+    // 2026-11-11 口径：编号列可排序 + 按值筛选（全量申请快照就地收集桶）。
+    sortable: true,
+    filterFromRows: true,
     value: (v) => v.applicationNo,
   ),
   MasterColumnDef(
     key: 'kind',
     label: '申请类别',
     width: 150,
+    // 类别列：按当前行值出选项筛选。
+    filterFromRows: true,
     value: (v) => v.kindLabel,
   ),
   MasterColumnDef(key: 'title', label: '标题', width: 240, value: (v) => v.title),
@@ -770,12 +775,16 @@ final _columns = <MasterColumnDef<BusinessApplication>>[
     key: 'applicantName',
     label: '申请人',
     width: 110,
+    // 类别列（人员名）：按当前行值出选项筛选。
+    filterFromRows: true,
     value: (v) => v.applicantName,
   ),
   MasterColumnDef(
     key: 'departmentName',
     label: '部门',
     width: 140,
+    // 类别列：按当前行值出选项筛选。
+    filterFromRows: true,
     value: (v) => v.departmentName ?? '',
   ),
   MasterColumnDef(
@@ -783,6 +792,8 @@ final _columns = <MasterColumnDef<BusinessApplication>>[
     label: '金额',
     width: 140,
     type: 'money',
+    // 2026-11-11 口径：金额列可排序（数值解析剥掉「元」后缀）。
+    sortable: true,
     value: (v) => '${v.amount} 元',
   ),
   MasterColumnDef(

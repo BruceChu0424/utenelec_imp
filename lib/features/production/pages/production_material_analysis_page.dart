@@ -2856,6 +2856,8 @@ class _ProductionMaterialAnalysisPageState
               label: '本次分析数量',
               width: 160,
               type: 'number',
+              // 2026-11-11 口径：数值/日期列可排序（待分析需求全量，就地排序）。
+              sortable: true,
               columnSearchEnabled: false,
               value: (source) => _qty(source.requestedQty),
             ),
@@ -2864,6 +2866,7 @@ class _ProductionMaterialAnalysisPageState
               label: '交货日期',
               width: 160,
               type: 'date',
+              sortable: true,
               columnSearchEnabled: false,
               value: (source) => _dateOnly(source.deliveryDate),
             ),

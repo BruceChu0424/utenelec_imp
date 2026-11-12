@@ -822,7 +822,7 @@ void main() {
     );
   });
 
-  testWidgets('reject requires reason and posts finance-audit-reject', (
+  testWidgets('reject submits optional reason and posts finance-audit-reject', (
     tester,
   ) async {
     final api = await _pumpReviewPage(
@@ -851,25 +851,7 @@ void main() {
     final submit = find.byKey(
       const Key('finance-shipment-audit-reject-submit'),
     );
-    // 原因为空时提交被拦（文案进输入框 ⓘ Tooltip，不发起 POST）。
-    await tester.tap(submit);
-    await tester.pump();
-    expect(
-      find.byWidgetPredicate(
-        (widget) =>
-            widget is Tooltip && widget.message?.contains('请填写退回原因') == true,
-      ),
-      findsOneWidget,
-    );
-    expect(
-      api.postPaths.where((path) => path.endsWith('/finance-audit-reject')),
-      isEmpty,
-    );
-    await tester.enterText(
-      find.byKey(const Key('finance-shipment-audit-reject-reason')),
-      '结账方式有误，请改为月结',
-    );
-    await tester.pump();
+    // 2026-11 起退回原因选填：空原因直接提交，不再内联拦截。
     await tester.tap(submit);
     await tester.pumpAndSettle();
     expect(

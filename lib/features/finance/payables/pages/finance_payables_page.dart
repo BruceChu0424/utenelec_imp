@@ -577,6 +577,8 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage>
       label: '应付(本币)',
       width: 150,
       type: 'money',
+      // 2026-11-11 口径：金额列可排序（服务端 SORTS 白名单含 grossLocal）。
+      sortable: true,
       value: (item) => financeLocalMoneyWithUnitSuffix(item.grossLocal),
     ),
     MasterColumnDef(
@@ -632,6 +634,8 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage>
       label: '未付(本币)',
       width: 150,
       type: 'money',
+      // 2026-11-11 口径：金额列可排序（服务端 SORTS 白名单含 outstandingLocal）。
+      sortable: true,
       value: (item) => financeLocalMoneyWithUnitSuffix(item.outstandingLocal),
     ),
     MasterColumnDef(

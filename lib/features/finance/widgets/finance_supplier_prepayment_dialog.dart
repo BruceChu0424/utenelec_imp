@@ -646,7 +646,12 @@ class _AdvanceCommandState extends ConsumerState<_AdvanceCommand> {
               onPressed: () => Navigator.pop(dialog, false),
               child: const Text('继续填写'),
             ),
-            TextButton(
+            // 放弃是破坏性操作：红色实心，与「继续填写」拉开主次。
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(dialog).colorScheme.error,
+                foregroundColor: Theme.of(dialog).colorScheme.onError,
+              ),
               onPressed: () => Navigator.pop(dialog, true),
               child: const Text('放弃'),
             ),

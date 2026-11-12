@@ -280,14 +280,18 @@ class _EvidenceDirectoryState extends ConsumerState<_EvidenceDirectory>
                 child: financeSourceTable(
                   tableKey: 'finance.subcontract.quantity.evidence',
                   columns: [
+                    // 2026-11-11 口径：用途/证据类型/状态类别列按值筛选；
+                    //数量列可排序（全量证据快照就地排序、收集桶）。
                     financeSourceColumn(
                       'purpose',
                       '用途',
+                      filterByValue: true,
                       value: (r) => _purposes[_map(r['input'])['purpose']],
                     ),
                     financeSourceColumn(
                       'type',
                       '证据类型',
+                      filterByValue: true,
                       value: (r) => _types[_map(r['input'])['evidenceType']],
                       width: 210,
                     ),
@@ -307,21 +311,25 @@ class _EvidenceDirectoryState extends ConsumerState<_EvidenceDirectory>
                       'original',
                       '原PCS输入',
                       type: 'number',
+                      sortable: true,
                       value: (r) => _map(r['input'])['quantityPcs']?.toString(),
                     ),
                     financeSourceColumn(
                       'appliedQuantityPcs',
                       '实际采用PCS',
                       type: 'number',
+                      sortable: true,
                     ),
                     financeSourceColumn(
                       'bookEstimatedPcs',
                       '账载估计PCS',
                       type: 'number',
+                      sortable: true,
                     ),
                     financeSourceColumn(
                       'apply',
                       '原表采用',
+                      filterByValue: true,
                       value: (r) => _map(r['input'])['applyToStatement'] == true
                           ? '用于原表数量'
                           : '仅作差异对比',
@@ -329,11 +337,13 @@ class _EvidenceDirectoryState extends ConsumerState<_EvidenceDirectory>
                     financeSourceColumn(
                       'status',
                       '审核状态',
+                      filterByValue: true,
                       value: (r) => _status(r['status']),
                     ),
                     financeSourceColumn(
                       'enabled',
                       '启用',
+                      filterByValue: true,
                       value: (r) =>
                           _map(r['input'])['enabled'] == true ? '启用' : '停用',
                     ),

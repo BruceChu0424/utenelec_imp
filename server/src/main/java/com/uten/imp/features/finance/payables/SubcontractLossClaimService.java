@@ -457,7 +457,8 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
         if (!Set.of("OPEN", "DISPUTED").contains(loss.status())) {
             throw conflict("仅待处理或争议中的责任单可作决定");
         }
-        String reason = bounded(request.reason(), 2000, "责任决定说明");
+        // 说明选填：只保留长度上限，不再要求非空。
+        String reason = optionalBounded(request.reason(), 2000, "责任决定说明");
         if (request.disputed()) {
             if (request.resolutions() != null && !request.resolutions().isEmpty()) {
                 throw validation("标记争议时不能同时提交赔偿方案");

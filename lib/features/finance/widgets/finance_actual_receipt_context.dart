@@ -136,10 +136,15 @@ class _FinanceActualReceiptContextState
                             emptyMessage: '暂无已核对的收款明细',
                             tableKey: 'finance.shipment.actual-receipts',
                             columns: [
+                              // 2026-11-11 口径：单据号列可排序 + 按值筛选；
+                              // 时间/金额列可排序；币种类别列按值筛选
+                              //（本区块是全量快照内最近已核对收款，就地收集桶）。
                               MasterColumnDef(
                                 key: 'billNo',
                                 label: '收款单号',
                                 width: 180,
+                                sortable: true,
+                                filterFromRows: true,
                                 value: (r) => r.billNo,
                                 columnSearchEnabled: false,
                               ),
@@ -147,6 +152,7 @@ class _FinanceActualReceiptContextState
                                 key: 'bankBookedAt',
                                 label: '实际到账时间',
                                 width: 210,
+                                sortable: true,
                                 value: (r) => r.bankBookedAt,
                                 columnSearchEnabled: false,
                               ),
@@ -154,6 +160,7 @@ class _FinanceActualReceiptContextState
                                 key: 'accountCurrency',
                                 label: '账户币种',
                                 width: 100,
+                                filterFromRows: true,
                                 value: (r) => r.accountCurrency,
                                 columnSearchEnabled: false,
                               ),
@@ -161,6 +168,8 @@ class _FinanceActualReceiptContextState
                                 key: 'accountAmount',
                                 label: '实收账户原币',
                                 width: 160,
+                                type: 'money',
+                                sortable: true,
                                 value: (r) => r.accountAmount,
                                 columnSearchEnabled: false,
                                 cellBuilder: (_, r) =>
@@ -170,6 +179,8 @@ class _FinanceActualReceiptContextState
                                 key: 'cashLocal',
                                 label: '实收本币',
                                 width: 160,
+                                type: 'money',
+                                sortable: true,
                                 value: (r) => r.cashLocal,
                                 columnSearchEnabled: false,
                                 cellBuilder: (_, r) => Text(

@@ -283,10 +283,6 @@ class _SupplierCreditApplyPanelState
       return;
     }
     final reason = _reason.text.trim();
-    if (reason.isEmpty) {
-      context.appError('请填写贷项应用原因');
-      return;
-    }
     final sourceCapacity = financeAmountUnits(
       widget.source.outstandingOriginal,
     )?.abs();
@@ -393,7 +389,7 @@ class _SupplierCreditApplyPanelState
                     maxLength: 2000,
                     maxLines: 2,
                     decoration: const UtenInputDecoration(
-                      InputDecoration(labelText: '应用原因(必填)'),
+                      InputDecoration(labelText: '应用原因（选填）'),
                     ),
                   ),
                 ],

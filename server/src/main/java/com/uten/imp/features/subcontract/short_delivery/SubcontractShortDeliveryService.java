@@ -519,9 +519,7 @@ public class SubcontractShortDeliveryService
         }
         String severity = SubcontractShortDeliveryPolicy.severity(
                 fact.orderedQty(), fact.deliveredQty());
-        if (SubcontractShortDeliveryPolicy.isBelowFloor(severity) && (note == null || note.isBlank())) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "成品未达到订货目标，短交结案必须填写说明");
-        }
+        // 结案说明统一选填：未达最少应到数量时也不再强制填写。
         BigDecimal allowedShortfall = SubcontractShortDeliveryPolicy.allowedLossQty().subtract(fact.settledLossQty())
                 .max(BigDecimal.ZERO).min(shortfall);
         String cause = "委外回厂短交结案(订货单 " + fact.orderBillNo() + " 第 " + fact.lineNo() + " 行，短交 "

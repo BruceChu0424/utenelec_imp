@@ -1055,8 +1055,11 @@ class _FinanceAccountingImportSurfaceState
       (error.code == 'VALIDATION_FAILED' || error.code == 'CONFLICT');
   Future<void> _act(String action) async {
     if (_busy || _loading || !_canMutate || !formDraftIdentityIsCurrent) return;
-    if (_pending == null && _reason.text.trim().isEmpty) {
-      context.appWarning('请填写核对依据或退回/撤回原因');
+    // 双语义字段：提交/复核的核对依据是业务核证内容，保持必填；
+    // 退回/撤回只是操作说明，原因选填。
+    final requiresReason = action == 'submit' || action == 'approve';
+    if (_pending == null && requiresReason && _reason.text.trim().isEmpty) {
+      context.appWarning('请填写核对依据');
       return;
     }
     if (_pending == null && _needsReconfirm) {

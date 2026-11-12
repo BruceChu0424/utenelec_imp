@@ -229,7 +229,7 @@ public class ProductionMaterialReturnRequestService {
     @Transactional
     public Document cancel(UUID planId, UUID documentId, Cancel request) {
         if (request==null) throw validation("请填写取消原因");
-        String key=key(request.idempotencyKey()),reason=reason(request.reason());
+        String key=key(request.idempotencyKey()),reason=cancelReason(request.reason());
         tx.bind();lockPlan(planId);
         List<?> headers=em.createNativeQuery("SELECT execution_segment_id FROM production_material_return_requests WHERE id=:id AND plan_id=:plan")
                 .setParameter("id",documentId).setParameter("plan",planId).getResultList();
@@ -347,7 +347,15 @@ public class ProductionMaterialReturnRequestService {
     private static BigDecimal baseQty(BigDecimal qty,BigDecimal rate){try{return qty.multiply(rate).setScale(4,RoundingMode.UNNECESSARY);}catch(ArithmeticException failure){throw validation("按原单位换算后的基本量超过4位小数，请调整退料数量");}}
     private static BigDecimal inUnit(Object qty,BigDecimal rate){return decimal(qty).divide(rate,4,RoundingMode.DOWN);}
     private static String key(String value){if(value==null||!value.matches("[A-Za-z0-9._:-]{8,128}"))throw validation("缺少有效的防重复提交标识");return value;}
-    private static String reason(String value){if(value==null||value.strip().length()<2||value.strip().length()>500)throw validation("请填写2-500字的退料或取消原因");return value.strip();}
+    /** 退料申请(B类创建表单)的原因仍按原口径 2-500 字必填。 */
+    private static String reason(String value){if(value==null||value.strip().length()<2||value.strip().length()>500)throw validation("请填写2-500字的退料说明");return value.strip();}
+    /** 撤回退料申请的原因选填(2026-11-11 口径)：留空/不足 2 字记「未填写原因」——两处落库列(V560)库级 CHECK 均要求 2-500 字，不能存空串。 */
+    private static String cancelReason(String value){
+        String trimmed=value==null?"":value.strip();
+        if(trimmed.length()<2)return "未填写原因";
+        if(trimmed.length()>500)throw validation("撤回原因不能超过500字");
+        return trimmed;
+    }
     private static void requireSegment(UUID id){if(id==null)throw validation("请选择准确车间任务");}
     private static UUID uuid(Object value){return value==null?null:(UUID)value;}
     private static String str(Object value){return value==null?null:value.toString();}

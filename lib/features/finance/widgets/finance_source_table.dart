@@ -58,12 +58,18 @@ MasterColumnDef<Map<String, dynamic>> financeSourceColumn(
   String type = 'text',
   String? Function(Map<String, dynamic>)? value,
   List<UtenTableHeaderGroup> headerGroups = const [],
+  bool sortable = false,
+  bool filterByValue = false,
 }) => MasterColumnDef<Map<String, dynamic>>(
   key: key,
   label: label,
   width: width,
   type: type,
   headerGroups: headerGroups,
+  // 2026-11-11 口径：sortable=编号/日期/金额/数量列；filterByValue=类别列按值
+  // 筛选。financeSourceTable 调用方未传 onPage 的是全量快照表，就地排序/收集桶。
+  sortable: sortable,
+  filterFromRows: filterByValue,
   value: value ?? (row) => row[key]?.toString(),
   exactValueOf: type == 'money' || type == 'number'
       ? (row) => row['${key}Exact']?.toString() ?? row[key]?.toString()

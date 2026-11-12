@@ -102,6 +102,7 @@ class SalesOrderCurrencyFilterTest {
                 mock(SalesMutationFootprintService.class),
                 mock(ClientDefaultTermsSyncService.class),
                 mock(com.uten.imp.features.sales.SalesPriceAuthority.class),
-                mock(com.uten.imp.features.sales.SalesIntakeSaveHooks.class)));
+                mock(com.uten.imp.features.sales.SalesIntakeSaveHooks.class),
+                mock(com.uten.imp.features.master.goods.GoodsService.class)));
     }
 }

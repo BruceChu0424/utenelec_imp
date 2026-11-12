@@ -684,8 +684,7 @@ class _FinanceProcurementApprovalTasksPageState
         context: context,
         builder: (ctx) {
           var value = '';
-          return StatefulBuilder(
-            builder: (ctx, setDialogState) => UtenAlertDialog(
+          return UtenAlertDialog(
               title: Text('批量驳回($count 笔)'),
               content: SizedBox(
                 width: 440,
@@ -705,10 +704,10 @@ class _FinanceProcurementApprovalTasksPageState
                       minLines: 3,
                       maxLines: 5,
                       maxLength: 1000,
-                      onChanged: (v) => setDialogState(() => value = v.trim()),
+                      onChanged: (v) => value = v.trim(),
                       decoration: const UtenInputDecoration(
                         InputDecoration(
-                          labelText: '退回原因(必填)',
+                          labelText: '退回原因（选填）',
                           hintText: '请写清需要制单人修改的内容',
                         ),
                       ),
@@ -728,17 +727,14 @@ class _FinanceProcurementApprovalTasksPageState
                     backgroundColor: Theme.of(ctx).colorScheme.error,
                     foregroundColor: Theme.of(ctx).colorScheme.onError,
                   ),
-                  onPressed: value.isEmpty
-                      ? null
-                      : () => Navigator.pop(ctx, value),
+                  onPressed: () => Navigator.pop(ctx, value),
                   child: const Text('确认批量驳回'),
                 ),
               ],
-            ),
-          );
+            );
         },
       );
-      if (reason == null || reason.isEmpty || !mounted) return;
+      if (reason == null || !mounted) return;
       await _runBatchAction(
         () => ref
             .read(financeProcurementWorkflowRepositoryProvider)

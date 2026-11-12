@@ -273,6 +273,8 @@ class _WarehouseDocumentHistoryDetailPageState
           key: 'iqcStatus',
           label: '质量状态',
           width: 72,
+          // 2026-11-11 口径：编号列排序+按值筛选、类别列按值筛选、数值/日期列排序（全量表就地处理）。
+          filterFromRows: true,
           value: (item) => item.inspectionStatusLabel,
           // 质量状态整格底色（ADR-169）：不合格=红 / 检验完成=绿 / 待检=黄 /
           // 部分完成=橙 / 已撤销=灰；未关联/无需质检保持无色，判定共用 config。
@@ -284,6 +286,7 @@ class _WarehouseDocumentHistoryDetailPageState
         label: '行号',
         width: 64,
         type: 'number',
+        sortable: true,
         value: (item) => item.lineNo?.toString() ?? '—',
       ),
       // 2026-09-14 用户口径（全站表格统一）：名称 → 编号 → 颜色的固定顺序。
@@ -297,6 +300,8 @@ class _WarehouseDocumentHistoryDetailPageState
         key: 'goodsCode',
         label: '编号',
         width: 130,
+        sortable: true,
+        filterFromRows: true,
         value: (item) => UtenGoodsAttributeCell.text(item.goodsCode),
         cellBuilder: (_, item) => UtenGoodsAttributeCell(item.goodsCode),
       ),
@@ -305,6 +310,7 @@ class _WarehouseDocumentHistoryDetailPageState
           key: 'colorName',
           label: '颜色',
           width: 96,
+          filterFromRows: true,
           value: (item) => UtenGoodsAttributeCell.text(item.colorName),
           cellBuilder: (_, item) => UtenGoodsAttributeCell(item.colorName),
         ),
@@ -325,6 +331,8 @@ class _WarehouseDocumentHistoryDetailPageState
           key: 'parentGoodsCode',
           label: '父件编号',
           width: 130,
+          sortable: true,
+          filterFromRows: true,
           value: (item) => UtenGoodsAttributeCell.text(item.parentGoodsCode),
           cellBuilder: (_, item) =>
               UtenGoodsAttributeCell(item.parentGoodsCode),
@@ -333,6 +341,7 @@ class _WarehouseDocumentHistoryDetailPageState
           key: 'parentColorName',
           label: '父件颜色',
           width: 96,
+          filterFromRows: true,
           value: (item) => UtenGoodsAttributeCell.text(item.parentColorName),
           cellBuilder: (_, item) =>
               UtenGoodsAttributeCell(item.parentColorName),
@@ -343,6 +352,8 @@ class _WarehouseDocumentHistoryDetailPageState
           key: 'stockPlace',
           label: '当前建议库位',
           width: 126,
+          sortable: true,
+          filterFromRows: true,
           value: (item) => item.stockPlace ?? '—',
         ),
       MasterColumnDef(
@@ -350,6 +361,7 @@ class _WarehouseDocumentHistoryDetailPageState
         label: '数量',
         width: 135,
         type: 'number',
+        sortable: true,
         value: (item) => _historyQtyWithUnit(item.qty, item.unitName),
       ),
       // 重量紧跟数量 (ADR-135)：千克按用户显示单位换算并带单位；没称显示「未称」。
@@ -359,6 +371,7 @@ class _WarehouseDocumentHistoryDetailPageState
           label: '重量',
           width: 110,
           type: 'weight',
+          sortable: true,
           value: (item) => formatWeightValue(item.weightKg, display: display),
         ),
       // 箱数是胶箱数量，单位是「箱」而非货品单位，保持纯数字不内联（2026-10-10）。
@@ -368,6 +381,7 @@ class _WarehouseDocumentHistoryDetailPageState
           label: '箱数',
           width: 90,
           type: 'number',
+          sortable: true,
           value: (item) => item.boxQty ?? '—',
         ),
       if (has((item) => item.returnedQty))
@@ -376,6 +390,7 @@ class _WarehouseDocumentHistoryDetailPageState
           label: '已退数量',
           width: 143,
           type: 'number',
+          sortable: true,
           value: (item) => _historyQtyWithUnit(item.returnedQty, item.unitName),
         ),
       if (has((item) => item.wastedQty))
@@ -384,6 +399,7 @@ class _WarehouseDocumentHistoryDetailPageState
           label: '损耗数量',
           width: 143,
           type: 'number',
+          sortable: true,
           value: (item) => _historyQtyWithUnit(item.wastedQty, item.unitName),
         ),
       if (has((item) => item.atSupplierQty))
@@ -392,6 +408,7 @@ class _WarehouseDocumentHistoryDetailPageState
           label: '委外商在手',
           width: 153,
           type: 'number',
+          sortable: true,
           value: (item) =>
               _historyQtyWithUnit(item.atSupplierQty, item.unitName),
         ),
@@ -401,6 +418,7 @@ class _WarehouseDocumentHistoryDetailPageState
           label: '已耗用',
           width: 135,
           type: 'number',
+          sortable: true,
           value: (item) => _historyQtyWithUnit(item.consumedQty, item.unitName),
         ),
       if (has((item) => item.supplierEndingQty))
@@ -409,6 +427,7 @@ class _WarehouseDocumentHistoryDetailPageState
           label: '委外商结余',
           width: 153,
           type: 'number',
+          sortable: true,
           value: (item) =>
               _historyQtyWithUnit(item.supplierEndingQty, item.unitName),
         ),
@@ -418,6 +437,7 @@ class _WarehouseDocumentHistoryDetailPageState
           label: '期末数量',
           width: 143,
           type: 'number',
+          sortable: true,
           value: (item) => _historyQtyWithUnit(item.endingQty, item.unitName),
         ),
       if (has((item) => item.standardQty))
@@ -426,6 +446,7 @@ class _WarehouseDocumentHistoryDetailPageState
           label: '标准数量',
           width: 143,
           type: 'number',
+          sortable: true,
           value: (item) => _historyQtyWithUnit(item.standardQty, item.unitName),
         ),
       if (has((item) => item.wasteRate))
@@ -434,6 +455,7 @@ class _WarehouseDocumentHistoryDetailPageState
           label: '损耗率',
           width: 96,
           type: 'number',
+          sortable: true,
           value: (item) => item.wasteRate ?? '—',
         ),
       if (has((item) => item.passedBaseQty))
@@ -442,6 +464,7 @@ class _WarehouseDocumentHistoryDetailPageState
           label: '品质合格量',
           width: 153,
           type: 'number',
+          sortable: true,
           value: (item) =>
               _historyQtyWithUnit(item.passedBaseQty, item.unitName),
         ),
@@ -451,6 +474,7 @@ class _WarehouseDocumentHistoryDetailPageState
           label: '仓库已入库',
           width: 153,
           type: 'number',
+          sortable: true,
           value: (item) =>
               _historyQtyWithUnit(item.stockedBaseQty, item.unitName),
         ),
@@ -460,6 +484,7 @@ class _WarehouseDocumentHistoryDetailPageState
           label: '合格待入库',
           width: 153,
           type: 'number',
+          sortable: true,
           value: (item) =>
               _historyQtyWithUnit(item.pendingStockInBaseQty, item.unitName),
         ),
@@ -469,6 +494,7 @@ class _WarehouseDocumentHistoryDetailPageState
           label: '不合格基础量',
           width: 161,
           type: 'number',
+          sortable: true,
           value: (item) =>
               _historyQtyWithUnit(item.failedBaseQty, item.unitName),
         ),
@@ -477,6 +503,8 @@ class _WarehouseDocumentHistoryDetailPageState
           key: 'referenceDocumentNo',
           label: '来源单据',
           width: 170,
+          sortable: true,
+          filterFromRows: true,
           value: (item) => item.sourceDocNo ?? '—',
         ),
       if (has((item) => item.cause))

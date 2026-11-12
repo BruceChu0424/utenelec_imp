@@ -986,7 +986,7 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
               onPressed: () => Navigator.pop(dialog, false),
               child: Text(_l.commonCancel),
             ),
-            TextButton(
+            FilledButton(
               onPressed: () => Navigator.pop(dialog, true),
               child: Text(_l.commonConfirm),
             ),

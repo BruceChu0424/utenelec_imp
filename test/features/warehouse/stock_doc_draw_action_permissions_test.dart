@@ -325,12 +325,12 @@ void main() {
         (widget) =>
             widget is TextField &&
             widget.decoration != null &&
-            utenDecorationFieldName(widget.decoration!) == '取消原因(必填)',
+            utenDecorationFieldName(widget.decoration!) == '取消原因（选填）',
       );
       expect(reason, findsOneWidget);
       expect(
         tester.widget<TextField>(reason).decoration!.labelText,
-        '取消原因(必填)',
+        '取消原因（选填）',
       );
       expect(find.text('确认取消出库'), findsOneWidget);
     },

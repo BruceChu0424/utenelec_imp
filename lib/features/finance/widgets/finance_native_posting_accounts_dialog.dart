@@ -410,7 +410,12 @@ class _EditorState extends ConsumerState<_Editor> {
               onPressed: () => Navigator.pop(ctx, false),
               child: const Text('继续填写'),
             ),
-            TextButton(
+            // 放弃是破坏性操作：红色实心，与「继续填写」拉开主次。
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(ctx).colorScheme.error,
+                foregroundColor: Theme.of(ctx).colorScheme.onError,
+              ),
               onPressed: () => Navigator.pop(ctx, true),
               child: const Text('放弃'),
             ),

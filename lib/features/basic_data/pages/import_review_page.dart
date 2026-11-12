@@ -245,12 +245,17 @@ class _ImportReviewPageState extends State<ImportReviewPage> {
         width: 88,
         type: 'number',
         columnSearchEnabled: false,
+        // 2026-11-11 口径：数值列可排序（按真实数值排序）。
+        sortable: true,
         value: (row) => '${row.sourceRow}',
       ),
       MasterColumnDef(
         key: 'identity',
         label: l10n.importReviewIdentity,
         width: 220,
+        // 2026-11-11 口径：标识列可排序 + 按值筛选（全量表就地收集桶）。
+        sortable: true,
+        filterFromRows: true,
         value: (row) => row.identityLabel,
       ),
       MasterColumnDef(

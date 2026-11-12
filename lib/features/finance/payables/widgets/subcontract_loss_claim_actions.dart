@@ -228,11 +228,8 @@ class _LossDecisionEditorState extends ConsumerState<_LossDecisionEditor> {
   }
 
   void _submit() {
+    // 说明/争议原因选填：空说明照常提交。
     final reason = _reason.text.trim();
-    if (reason.isEmpty) {
-      context.appError(_disputed ? '请填写争议原因' : '请填写责任决定说明');
-      return;
-    }
     if (_disputed) {
       Navigator.of(context).pop(
         SubcontractLossDecisionDraft(
@@ -353,7 +350,7 @@ class _LossDecisionEditorState extends ConsumerState<_LossDecisionEditor> {
               maxLines: 3,
               decoration: UtenInputDecoration(
                 InputDecoration(
-                  labelText: _disputed ? '争议原因(必填)' : '责任决定说明(必填)',
+                  labelText: _disputed ? '争议原因（选填）' : '责任决定说明（选填）',
                 ),
               ),
             ),

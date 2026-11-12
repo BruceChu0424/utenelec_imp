@@ -971,7 +971,8 @@ public class SalesShipmentService {
         requireFinanceAuditEditableState(s);
         requireFinanceDecision(s,request);
         String reason=request==null?null:trimToNull(request.reason());
-        if (reason==null) throw new ApiException(ErrorCode.VALIDATION_FAILED,"请填写退回原因，方便销售修改");
+        // 2026-11-11 口径：退回原因选填，留空记「未填写原因」（通知销售仍可读）。
+        if (reason==null) reason="未填写原因";
         Map<String,Object> info=financeAuditInfo(s);
         appendFinanceReleaseEvent(s,"REJECTED",currentUser.requireId(),OffsetDateTime.now(),info,request.expectedClaimId(),reason);
         s.setFinanceRejected(true);
@@ -1010,8 +1011,9 @@ public class SalesShipmentService {
             com.uten.imp.features.sales.shipment.dto.ShipmentFinanceBatchDecisionRequest request) {
         tx.bind();
         String reason = trimToNull(request.reason());
+        // 2026-11-11 口径：退回原因选填，留空记「未填写原因」（同单笔口径）。
         if (reason == null) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "请填写退回原因，方便销售修改");
+            reason = "未填写原因";
         }
         mutationFootprint.lockShipments(request.items().stream()
                 .map(com.uten.imp.features.sales.shipment.dto.ShipmentFinanceBatchDecisionRequest.Item::id).toList());

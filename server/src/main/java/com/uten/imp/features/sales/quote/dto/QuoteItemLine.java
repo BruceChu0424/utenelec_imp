@@ -49,6 +49,12 @@ public class QuoteItemLine extends com.uten.imp.common.columns.ExtraColumnReques
     /** 客户文件上的品名/描述原文。 */
     @Size(max = 500, message = "文件品名不能超过 500 个字符")
     private String clientGoodsName;
+    /**
+     * 行内编辑的英文名称(2026-11-11): 非空且与货品主档不同时, 保存后回写货品主档
+     * (下次选货带出最新值); 空 = 不改动(不回写, 也不清空主档)。
+     */
+    @Size(max = 255, message = "英文名称不能超过 255 个字符")
+    private String nameEn;
     /** 客户文件上的单价原文数值(币种见表头 clientFileCurrency), 只作参考。 */
     @DecimalMin(value = "0", message = "文件单价不能为负数")
     private BigDecimal clientPrice;

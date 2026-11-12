@@ -734,7 +734,9 @@ class _DeptEmployeePickerSheetState
                 width: 120,
                 value: (employee) => employee.employeeCode,
                 columnSearchEnabled: true,
+                // 2026-11-11 口径：编号列可排序 + 按值筛选（全量候选就地收集桶）。
                 sortable: true,
+                filterFromRows: true,
               ),
               MasterColumnDef(
                 key: 'department',

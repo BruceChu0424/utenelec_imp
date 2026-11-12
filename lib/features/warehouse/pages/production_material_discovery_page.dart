@@ -420,12 +420,16 @@ class _DiscoveryPageState extends ConsumerState<ProductionMaterialDiscoveryPage>
       key: 'goodsCode',
       label: l10n.materialDiscoveryCode,
       width: 120,
+      // 2026-11-11 口径：编号列排序+按值筛选、类别列按值筛选、数值/日期列排序（全量表就地处理）。
+      sortable: true,
+      filterFromRows: true,
       value: (row) => row.label('goodsCode'),
     ),
     MasterColumnDef(
       key: 'colorName',
       label: l10n.materialDiscoveryColor,
       width: 100,
+      filterFromRows: true,
       value: (row) => row.label('colorName'),
     ),
     MasterColumnDef(
@@ -441,6 +445,8 @@ class _DiscoveryPageState extends ConsumerState<ProductionMaterialDiscoveryPage>
       label: '参考库位',
       info: '货品资料中的参考库位；实际发料仓仍需仓管确认。',
       width: 130,
+      sortable: true,
+      filterFromRows: true,
       value: (row) => row.label('stockPlace'),
     ),
     MasterColumnDef(
@@ -448,6 +454,7 @@ class _DiscoveryPageState extends ConsumerState<ProductionMaterialDiscoveryPage>
       label: '${l10n.materialDiscoveryQuantity} *',
       width: 214,
       type: 'number',
+      sortable: true,
       value: (row) => row.qty.text,
       exactValueOf: (row) => row.qty.text,
       exactListenableOf: (row) => row.qty,

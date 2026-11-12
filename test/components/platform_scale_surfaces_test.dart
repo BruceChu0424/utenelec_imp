@@ -18,7 +18,6 @@ import 'package:uten_imp/components/feedback/uten_notification_badge.dart';
 import 'package:uten_imp/components/feedback/uten_in_progress_badge.dart';
 import 'package:uten_imp/components/feedback/uten_scoped_badges.dart';
 import 'package:uten_imp/components/print/uten_print_preview.dart';
-import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/performance/performance_tier.dart';
@@ -219,7 +218,7 @@ void main() {
   });
 
   for (final window in [const Size(320, 600), const Size(320, 320)]) {
-    testWidgets('批量驳回200% $window：原因必填，保留责任提示和确认返回值', (tester) async {
+    testWidgets('批量驳回200% $window：原因选填，保留责任提示和确认返回值', (tester) async {
       String? returned;
       await pump(
         tester,
@@ -245,16 +244,16 @@ void main() {
         find.byKey(const Key('uten-batch-reject-confirm')),
       );
       await tester.pumpAndSettle();
+      // 原因选填：空原因确认返回空串并关闭对话框（空串=确认，null 才是取消）。
       await tester.tap(find.byKey(const Key('uten-batch-reject-confirm')));
       await tester.pumpAndSettle();
-      expect(
-        find.byWidgetPredicate(
-          (widget) =>
-              widget is UtenFieldHintIcon && widget.errorMessage == '请填写驳回原因',
-        ),
-        findsOneWidget,
-      );
-      expect(returned, isNull);
+      expect(returned, '');
+      expect(find.byKey(const Key('uten-batch-reject-confirm')), findsNothing);
+
+      // 填写原因后再确认：返回所填文本。
+      returned = null;
+      await tester.tap(find.text('打开'));
+      await tester.pumpAndSettle();
       await tester.enterText(
         find.byKey(const Key('uten-batch-reject-reason')),
         '尺寸不符合要求',

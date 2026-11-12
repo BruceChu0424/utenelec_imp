@@ -855,7 +855,7 @@ void main() {
       expect(find.text('批量驳回(2 笔)'), findsOneWidget);
       final reason = find.byWidgetPredicate(
         (widget) =>
-            widget is TextField && widget.decoration?.labelText == '退回原因(必填)',
+            widget is TextField && widget.decoration?.labelText == '退回原因（选填）',
       );
       await tester.enterText(reason, '价格与交期需要重新确认');
       await tester.pump();

@@ -499,12 +499,29 @@ class _InventoryCostPostingDialogState
       ('valueRevision', l10n.inventoryCostRevision, 95),
       ('voucherId', l10n.inventoryCostVoucher, 290),
     ];
+    // 2026-11-11 口径：状态/来源类型/期间=按值筛选；金额/日期/期间=可排序
+    //（全量过账快照就地收集桶）；来源单据/来源/凭证列是技术 UUID，不设筛选。
+    const sortableKeys = {
+      'amountLocal',
+      'businessDate',
+      'sourcePeriod',
+      'targetPeriod',
+    };
+    const filterableKeys = {
+      'postingStatus',
+      'sourceDocType',
+      'sourcePeriod',
+      'targetPeriod',
+    };
     final columns = fields
         .map(
           (field) => MasterColumnDef<Map<String, dynamic>>(
             key: field.$1,
             label: field.$2,
             width: field.$3,
+            type: field.$1 == 'amountLocal' ? 'money' : 'text',
+            sortable: sortableKeys.contains(field.$1),
+            filterFromRows: filterableKeys.contains(field.$1),
             value: (row) => field.$1 == 'postingStatus'
                 ? inventoryCostStatusLabel(l10n, _value(row, field.$1))
                 : _value(row, field.$1),

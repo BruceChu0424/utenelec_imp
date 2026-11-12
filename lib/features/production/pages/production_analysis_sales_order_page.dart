@@ -265,6 +265,8 @@ class _ProductionAnalysisSalesOrderPageState
       key: 'inAnalysis',
       label: '本次分析',
       width: 100,
+      // 2026-11-11 口径：编号列排序+按值筛选、类别列按值筛选、数值/日期列排序（全量表就地处理）。
+      filterFromRows: true,
       info: '该行是否是当前这张物料分析的来源行。',
       value: (l) => l.inAnalysis ? '是' : '—',
     ),
@@ -273,6 +275,7 @@ class _ProductionAnalysisSalesOrderPageState
       label: '行号',
       width: 70,
       type: 'number',
+      sortable: true,
       value: (l) => l.lineNo?.toString() ?? '—',
     ),
     MasterColumnDef(
@@ -287,6 +290,8 @@ class _ProductionAnalysisSalesOrderPageState
       key: 'goodsCode',
       label: '编号',
       width: 130,
+      sortable: true,
+      filterFromRows: true,
       value: (l) => UtenGoodsAttributeCell.text(l.goodsCode),
       cellBuilder: (_, l) => UtenGoodsAttributeCell(l.goodsCode),
     ),
@@ -294,6 +299,7 @@ class _ProductionAnalysisSalesOrderPageState
       key: 'colorName',
       label: '颜色',
       width: 96,
+      filterFromRows: true,
       value: (l) => UtenGoodsAttributeCell.text(l.colorName),
       cellBuilder: (_, l) => UtenGoodsAttributeCell(l.colorName),
     ),
@@ -302,6 +308,7 @@ class _ProductionAnalysisSalesOrderPageState
       label: '订货量',
       width: 136,
       type: 'number',
+      sortable: true,
       value: (l) => formatQtyWithUnit(l.qty, l.unitName),
     ),
     MasterColumnDef(
@@ -309,6 +316,7 @@ class _ProductionAnalysisSalesOrderPageState
       label: '已发',
       width: 126,
       type: 'number',
+      sortable: true,
       value: (l) => formatQtyWithUnit(l.shippedQty, l.unitName),
     ),
     MasterColumnDef(
@@ -316,6 +324,7 @@ class _ProductionAnalysisSalesOrderPageState
       label: '未发',
       width: 126,
       type: 'number',
+      sortable: true,
       info: '未交付量 = 订货 − 已发 + 已退 − 核销。',
       value: (l) => formatQtyWithUnit(l.outstandingQty, l.unitName),
     ),
@@ -324,6 +333,7 @@ class _ProductionAnalysisSalesOrderPageState
       label: '已预留',
       width: 126,
       type: 'number',
+      sortable: true,
       value: (l) => formatQtyWithUnit(l.reservedQty, l.unitName),
     ),
     MasterColumnDef(
@@ -331,6 +341,7 @@ class _ProductionAnalysisSalesOrderPageState
       label: '已排产',
       width: 126,
       type: 'number',
+      sortable: true,
       value: (l) => formatQtyWithUnit(l.plannedQty, l.unitName),
     ),
     MasterColumnDef(
@@ -338,6 +349,7 @@ class _ProductionAnalysisSalesOrderPageState
       label: '已完工',
       width: 126,
       type: 'number',
+      sortable: true,
       value: (l) => formatQtyWithUnit(l.producedQty, l.unitName),
     ),
     MasterColumnDef(
@@ -345,6 +357,7 @@ class _ProductionAnalysisSalesOrderPageState
       label: '剩余未排',
       width: 140,
       type: 'number',
+      sortable: true,
       // 刻意不叫「待排产」：调度台那一屏的「缺口」是扣过活动分析承接量的口径
       // (ADR-088)，同名不同口径会让人拿两屏数字对账。
       info:
@@ -357,6 +370,7 @@ class _ProductionAnalysisSalesOrderPageState
       label: '交货日期',
       width: 120,
       type: 'date',
+      sortable: true,
       value: (l) => _date(l.deliverDate) ?? '—',
     ),
   ];

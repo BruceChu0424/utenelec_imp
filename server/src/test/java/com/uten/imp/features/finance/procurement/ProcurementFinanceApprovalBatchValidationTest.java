@@ -52,9 +52,11 @@ class ProcurementFinanceApprovalBatchValidationTest {
         }
         assertThrows(ApiException.class,
                 () -> fixture.service().approveBatch(tooMany, null));
+        // 2026-11-11 口径：驳回原因选填——空原因不再在入口拦截（归一「未填写原因」
+        // 继续流程），超长原因仍在任何数据库访问前拒绝。
         assertThrows(ApiException.class,
                 () -> fixture.service().rejectBatch(
-                        List.of(new BatchDecisionItem(caseId, 1L)), " "));
+                        List.of(new BatchDecisionItem(caseId, 1L)), "x".repeat(1001)));
 
         verifyNoInteractions(fixture.jdbc());
     }

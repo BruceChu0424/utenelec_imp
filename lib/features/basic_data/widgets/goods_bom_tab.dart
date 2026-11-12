@@ -3672,6 +3672,9 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
         label: '学习来源',
         width: 110,
         minimumWidthOf: (_) => 48,
+        // 2026-11-11 口径：类别列按值筛选（树表就地收集桶，保留可见父节点）；
+        // 树表不做表头排序（扁平排序会打散层级，全站树表均未开放排序）。
+        filterFromRows: true,
         value: (r) => r.node.item.systemLearned ? l10n.bomLearnedEdge : null,
         cellColor: (context, r) => r.node.item.systemLearned
             ? utenStatusBadgeCellColor(UtenStatusBadgeType.fuchsia)
@@ -3692,6 +3695,9 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
         key: 'code',
         label: '编号',
         width: 110,
+        // 2026-11-11 口径：编号列按值筛选（树表就地收集桶，保留可见父节点）；
+        // 不加表头排序——扁平排序会打散 BOM 层级。
+        filterFromRows: true,
         value: (r) => r.node.item.componentCode,
       ),
       MasterColumnDef(
@@ -3719,6 +3725,8 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
         label: '颜色',
         width: 80,
         minimumWidthOf: (_) => 48,
+        // 2026-11-11 口径：类别列按值筛选（树表就地收集桶，保留可见父节点）。
+        filterFromRows: true,
         value: (r) => r.node.item.componentColorName,
         cellBuilder: !_canEdit ? null : (context, r) => _colorCell(r),
       ),
@@ -3751,6 +3759,8 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
         label: '来源',
         width: 64,
         minimumWidthOf: (_) => 48,
+        // 2026-11-11 口径：类别列按值筛选（树表就地收集桶，保留可见父节点）。
+        filterFromRows: true,
         value: (r) => r.node.item.componentSourceType,
         cellBuilder: (context, r) =>
             _masterCell(r, 'sourceType', r.node.item.componentSourceType),
@@ -3760,6 +3770,8 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
         label: '计量方式',
         width: 92,
         minimumWidthOf: (_) => 48,
+        // 2026-11-11 口径：类别列按值筛选（树表就地收集桶，保留可见父节点）。
+        filterFromRows: true,
         value: (r) =>
             r.isPlaceholder ? null : r.node.item.consumptionBasis.label,
         cellBuilder: !_canEdit
@@ -3830,6 +3842,8 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
         label: '尾包',
         width: 72,
         minimumWidthOf: (_) => 48,
+        // 2026-11-11 口径：类别列按值筛选（树表就地收集桶，保留可见父节点）。
+        filterFromRows: true,
         value: (r) => r.isPlaceholder ? null : r.node.item.partialPackageLabel,
         cellBuilder: !_canEdit
             ? null

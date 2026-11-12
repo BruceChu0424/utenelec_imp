@@ -68,12 +68,19 @@ MasterColumnDef<Map<String, dynamic>> financeApplicationColumn(
   String label,
   double width, {
   bool filters = true,
+  bool sortable = false,
+  bool filterByValue = false,
+  String type = 'text',
 }) => MasterColumnDef(
   key: key,
   label: label,
   width: width,
+  type: type,
+  sortable: sortable,
   value: (r) => r[key]?.toString() ?? '',
-  filterFromRows: filters,
+  // 2026-11-11 口径：sortable=编号/日期/金额列；filterByValue=类别列按值
+  // 筛选（不连带开启列搜索，filters 仍单独控制搜索）。
+  filterFromRows: filters || filterByValue,
   columnSearchEnabled: filters,
 );
 
@@ -86,10 +93,12 @@ String? financeApplicationCurrencyLabel(Map<String, dynamic> row) =>
 MasterColumnDef<Map<String, dynamic>> financeApplicationCurrencyColumn({
   String? Function(Map<String, dynamic>) value =
       financeApplicationCurrencyLabel,
+  bool filterByValue = false,
 }) => MasterColumnDef(
   key: 'currency',
   label: '币种',
   width: 80,
+  filterFromRows: filterByValue,
   value: value,
   columnSearchEnabled: false,
 );
@@ -422,24 +431,29 @@ class _FinanceApplicationsState extends ConsumerState<FinanceApplicationsPage>
                 '申请单号',
                 170,
                 filters: false,
+                sortable: true,
+                filterByValue: true,
               ),
               financeApplicationColumn(
                 'kindLabel',
                 '申请类型',
                 165,
                 filters: false,
+                filterByValue: true,
               ),
               financeApplicationColumn(
                 'applicant_name_snapshot',
                 '申请人',
                 130,
                 filters: false,
+                filterByValue: true,
               ),
               financeApplicationColumn(
                 'department_name_snapshot',
                 '部门',
                 150,
                 filters: false,
+                filterByValue: true,
               ),
               financeApplicationColumn('title', '申请事由', 250, filters: false),
               financeApplicationColumn(
@@ -447,14 +461,18 @@ class _FinanceApplicationsState extends ConsumerState<FinanceApplicationsPage>
                 '申请日期',
                 130,
                 filters: false,
+                sortable: true,
               ),
               financeApplicationColumn(
                 'amount_original',
                 '原币金额',
                 160,
                 filters: false,
+                sortable: true,
+                type: 'money',
               ),
               financeApplicationCurrencyColumn(
+                filterByValue: true,
                 value: (row) => row['amount_original'] == null
                     ? null
                     : financeApplicationCurrencyLabel(row),
@@ -463,6 +481,7 @@ class _FinanceApplicationsState extends ConsumerState<FinanceApplicationsPage>
                 key: 'status',
                 label: '状态',
                 width: 165,
+                filterFromRows: true,
                 value: (r) => financeApplicationStatus(r['status']),
                 columnSearchEnabled: false,
               ),
@@ -471,6 +490,7 @@ class _FinanceApplicationsState extends ConsumerState<FinanceApplicationsPage>
                 '当前步骤',
                 200,
                 filters: false,
+                filterByValue: true,
               ),
             ],
             items: current ? _rows : [],
@@ -689,7 +709,14 @@ class _ApplicationSourcePickerState
               Expanded(
                 child: MasterDataTableView<Map<String, dynamic>>(
                   columns: [
-                    financeApplicationColumn('code', '编号', 190, filters: false),
+                    financeApplicationColumn(
+                      'code',
+                      '编号',
+                      190,
+                      filters: false,
+                      sortable: true,
+                      filterByValue: true,
+                    ),
                     financeApplicationColumn('name', '名称', 300, filters: false),
                     if (const {
                       'EXPENSE_CLAIM',
@@ -701,8 +728,10 @@ class _ApplicationSourcePickerState
                         '原币金额',
                         160,
                         filters: false,
+                        sortable: true,
+                        type: 'money',
                       ),
-                      financeApplicationCurrencyColumn(),
+                      financeApplicationCurrencyColumn(filterByValue: true),
                     ],
                   ],
                   items: current ? _rows : [],

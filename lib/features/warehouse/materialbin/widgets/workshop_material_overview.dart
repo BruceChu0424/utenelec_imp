@@ -447,6 +447,8 @@ class _WorkshopMaterialOverviewState
       key: 'source',
       label: l10n.wmBinColSource,
       width: 170,
+      // 2026-11-11 口径：类别列（来源仓）按值筛选。
+      filterFromRows: true,
       value: (s) =>
           !s.opened ? null : (s.sourceWarehouseName ?? l10n.wmBinSourceDefault),
     ),

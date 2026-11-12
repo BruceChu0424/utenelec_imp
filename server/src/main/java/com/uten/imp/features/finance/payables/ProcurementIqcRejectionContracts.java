@@ -149,7 +149,7 @@ public final class ProcurementIqcRejectionContracts {
             @NotNull UUID commandId,
             @NotBlank @Size(max = 200) String returnReference,
             @NotNull LocalDate returnDate,
-            @NotBlank @Size(max = 2000) String returnNote) {
+            @Size(max = 2000) String returnNote) {
     }
 
     public record ConfirmCreditRequest(
@@ -157,7 +157,7 @@ public final class ProcurementIqcRejectionContracts {
             @NotNull UUID commandId,
             @NotBlank @Size(max = 200) String creditReference,
             @NotNull LocalDate creditDate,
-            @NotBlank @Size(max = 2000) String reason,
+            @Size(max = 2000) String reason,
             @DecimalMin(value = "0", inclusive = false) @DocumentQuantity
             BigDecimal baseQty,
             BigDecimal actualAmountOriginal,
@@ -215,13 +215,13 @@ public final class ProcurementIqcRejectionContracts {
     public record CloseNoCreditRequest(
             @Min(1) long expectedVersion,
             @NotNull UUID commandId,
-            @NotBlank @Size(max = 2000) String reason) {
+            @Size(max = 2000) String reason) {
     }
 
     public record ReverseRequest(
             @Min(1) long expectedVersion,
             @NotNull UUID commandId,
-            @NotBlank @Size(max = 2000) String reason,
+            @Size(max = 2000) String reason,
             UUID creditDocumentId) {
         public ReverseRequest(long expectedVersion, UUID commandId, String reason) {
             this(expectedVersion, commandId, reason, null);
@@ -273,6 +273,6 @@ public final class ProcurementIqcRejectionContracts {
     public record RetryFinanceProjectionRequest(
             @Min(1) long expectedVersion,
             @NotNull UUID commandId,
-            @NotBlank @Size(max = 2000) String reason) {
+            @Size(max = 2000) String reason) {
     }
 }

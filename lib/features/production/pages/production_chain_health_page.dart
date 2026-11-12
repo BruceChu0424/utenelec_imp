@@ -198,6 +198,8 @@ class _ProductionChainHealthPageState
                 key: 'category',
                 label: '问题类型',
                 width: 220,
+                // 2026-11-11 口径：编号列排序+按值筛选、类别列按值筛选、数值/日期列排序（全量表就地处理）。
+                filterFromRows: true,
                 value: (row) => row.category.label,
                 cellBuilder: (_, row) => Row(
                   children: [
@@ -220,6 +222,8 @@ class _ProductionChainHealthPageState
                 key: 'billNo',
                 label: '单据编号',
                 width: 160,
+                sortable: true,
+                filterFromRows: true,
                 value: (row) => row.issue.billNo ?? '—',
               ),
               MasterColumnDef(
@@ -257,6 +261,8 @@ class _ProductionChainHealthPageState
                 key: 'refId',
                 label: '来源标识',
                 width: 220,
+                sortable: true,
+                filterFromRows: true,
                 defaultVisible: false,
                 value: (row) => row.issue.refId,
               ),

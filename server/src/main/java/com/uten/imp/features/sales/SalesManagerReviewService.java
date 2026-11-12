@@ -191,11 +191,24 @@ public class SalesManagerReviewService implements com.uten.imp.application.port.
         if(order.isFinanceRejected()) throw new ApiException(ErrorCode.CONFLICT,"订单已由财务退回，须销售修订并重新提交后再审核");
         if (!order.getManagerReview().pending()) throw new ApiException(ErrorCode.CONFLICT,"订单已不在待负责人审核状态，请刷新");
     }
-    private static String note(String value, boolean required) {
+    /** 审核备注选填：空白归 null（事件表与通知按无备注处理）；超 500 字拒绝。 */
+    private static String note(String value) {
         String result=value==null ? "" : value.strip();
-        if ((required && result.isEmpty()) || result.length()>500)
-            throw new ApiException(ErrorCode.VALIDATION_FAILED,"请填写原因，且不要超过 500 字");
+        if (result.length()>500)
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,"原因不能超过 500 字");
         return result.isEmpty()?null:result;
+    }
+
+    /**
+     * 驳回/反审核原因选填（2026-11-11 口径「操作弹窗原因统一选填」）：留空归一
+     * 「未填写原因」——事件表 reason、驳回通知与订单上的驳回原因仍可读；超 500 字仍拒绝。
+     */
+    private static String decisionNote(String value) {
+        String result = value == null ? "" : value.strip();
+        if (result.isEmpty()) return "未填写原因";
+        if (result.length() > 500)
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,"原因不能超过 500 字");
+        return result;
     }
     @Transactional
     @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('sales_order_manager:view') and hasAuthority('sales_order_manager:confirm')")
@@ -206,7 +219,7 @@ public class SalesManagerReviewService implements com.uten.imp.application.port.
         SalesOrder order=lock(id,request.expectedRevision()); requirePending(order);
         claims.requireActiveClaimByMe(ORDER_TARGET,id.toString(),request.expectedClaimId());
         order.getManagerReview().setDecisionClaimId(request.expectedClaimId());
-        approve(order,note(request.remark(),false));
+        approve(order,note(request.remark()));
     }
     @Transactional
     @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('sales_order_manager:view') and hasAuthority('sales_order_manager:confirm')")
@@ -220,7 +233,7 @@ public class SalesManagerReviewService implements com.uten.imp.application.port.
                 || ids.stream().anyMatch(id -> request.expectedRevisions().get(id) == null || request.expectedClaimIds().get(id) == null))
             throw new ApiException(ErrorCode.VALIDATION_FAILED,"每笔订单都须提供审核修订号和本次认领编号");
         var locked=new ArrayList<SalesOrder>();
-        String remark=note(request.remark(),false);
+        String remark=note(request.remark());
         for (UUID id:ids) { var order=lock(id,request.expectedRevisions().get(id)); requirePending(order); locked.add(order); }
         claims.requireActiveClaimsByMe(ORDER_TARGET,ids.stream().map(id -> new TaskClaimMutationGuardPort.ClaimExpectation(
                 id.toString(),request.expectedClaimIds().get(id))).toList());
@@ -241,7 +254,7 @@ public class SalesManagerReviewService implements com.uten.imp.application.port.
     public void rejectOrder(UUID id, FinanceRejectRequest request) {
         requireAccess("order","reject"); tx.bind();
         if (request == null) throw new ApiException(ErrorCode.VALIDATION_FAILED,"请提供负责人审核驳回请求");
-        String reason=note(request.reason(),true);
+        String reason=decisionNote(request.reason());
         if (request.expectedClaimId() == null) throw new ApiException(ErrorCode.VALIDATION_FAILED,"缺少本次审核认领编号，请重新认领后重试");
         SalesOrder order=lock(id,request.expectedRevision()); requirePending(order);
         claims.requireActiveClaimByMe(ORDER_TARGET,id.toString(),request.expectedClaimId());
@@ -255,7 +268,7 @@ public class SalesManagerReviewService implements com.uten.imp.application.port.
     public record ReverseRequest(
             @jakarta.validation.constraints.NotNull UUID decisionId,
             @jakarta.validation.constraints.NotNull Long expectedRevision,
-            @jakarta.validation.constraints.NotBlank @jakarta.validation.constraints.Size(max=500) String reason) {}
+            @jakarta.validation.constraints.Size(max=500) String reason) {}
 
     @Transactional
     @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('sales_order_manager:view') and hasAuthority('sales_order_manager:reverse')")
@@ -263,7 +276,7 @@ public class SalesManagerReviewService implements com.uten.imp.application.port.
         requireAccess("order","reverse"); tx.bind();
         if (request == null || request.decisionId() == null)
             throw new ApiException(ErrorCode.VALIDATION_FAILED,"缺少反审核决定身份，请重新核对后提交");
-        String reason=note(request.reason(),true);
+        String reason=decisionNote(request.reason());
         SalesOrder order=lock(id,request.expectedRevision());
         if (!order.getManagerReview().approved() || order.isFinanceRejected())
             throw new ApiException(ErrorCode.CONFLICT,"只有负责人已批准、财务尚未办结的订单可以反审核");

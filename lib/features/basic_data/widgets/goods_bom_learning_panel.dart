@@ -436,6 +436,8 @@ class _GoodsBomLearningPanelState extends ConsumerState<GoodsBomLearningPanel> {
         key: 'code',
         label: l10n.materialDiscoveryCode,
         width: 90,
+        // 2026-11-11 口径：编号列可排序 + 按值筛选（全量表就地收集桶）。
+        sortable: true,
         filterFromRows: true,
         value: (row) => row.componentCode,
       ),

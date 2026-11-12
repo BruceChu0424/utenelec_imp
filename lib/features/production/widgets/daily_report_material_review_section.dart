@@ -156,6 +156,9 @@ class DailyReportMaterialReviewSection extends StatelessWidget {
                       key: 'source',
                       label: '来源工单',
                       width: 150,
+                      // 2026-11-11 口径：编号列排序+按值筛选、类别列按值筛选、数值/日期列排序（全量表就地处理）。
+                      sortable: true,
+                      filterFromRows: true,
                       value: (row) => row.materialExecutionSegmentCode ?? '—',
                       cellBuilder: (_, row) =>
                           text(row.materialExecutionSegmentCode),
@@ -171,6 +174,8 @@ class DailyReportMaterialReviewSection extends StatelessWidget {
                       key: 'code',
                       label: '编号',
                       width: 120,
+                      sortable: true,
+                      filterFromRows: true,
                       value: (row) => row.goodsCode ?? '—',
                       cellBuilder: (_, row) => text(row.goodsCode),
                     ),
@@ -178,6 +183,7 @@ class DailyReportMaterialReviewSection extends StatelessWidget {
                       key: 'color',
                       label: '颜色',
                       width: 100,
+                      filterFromRows: true,
                       value: (row) => row.colorName ?? '—',
                     ),
                     quantityColumn('usage', '本次实际用料', (row) => row.usageQty),

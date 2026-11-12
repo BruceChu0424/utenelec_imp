@@ -1244,6 +1244,8 @@ class _WorkshopMaterialBinPageState
             key: 'requestReviewStatus',
             label: '状态',
             width: 90,
+            // 2026-11-11 口径：编号列排序+按值筛选、类别列按值筛选、数值/日期列排序（全量表就地处理）。
+            filterFromRows: true,
             value: (row) => _requestEditor.rows.containsKey(row.key)
                 ? _requestEditor.lastSubmitted!.isPending
                       ? '待审批'
@@ -1266,6 +1268,7 @@ class _WorkshopMaterialBinPageState
             key: 'countReviewStatus',
             label: '状态',
             width: 90,
+            filterFromRows: true,
             value: (r) => _countEditor.rowSubmitted(_countKey(r)) ? '待审核' : '—',
             cellColor: (_, r) => utenStatusBadgeCellColor(
               _countEditor.rowSubmitted(_countKey(r))
@@ -1277,6 +1280,8 @@ class _WorkshopMaterialBinPageState
           key: 'goodsCode',
           label: '料号',
           width: 120,
+          sortable: true,
+          filterFromRows: true,
           value: (r) => r.goodsCode,
         ),
         MasterColumnDef(
@@ -1289,6 +1294,7 @@ class _WorkshopMaterialBinPageState
           key: 'colorName',
           label: '颜色',
           width: 90,
+          filterFromRows: true,
           value: (r) => r.colorName,
         ),
         if (_requestEditor.active)
@@ -1301,6 +1307,7 @@ class _WorkshopMaterialBinPageState
           label: '估计还剩',
           width: 150,
           type: 'number',
+          sortable: true,
           value: (r) =>
               formatQtyWithUnit(r.estimatedRemainingQty, kg, maxDecimals: 2),
         ),
@@ -1309,6 +1316,7 @@ class _WorkshopMaterialBinPageState
           label: _countEditor.active ? '账面数量' : '账面',
           width: 145,
           type: 'number',
+          sortable: true,
           value: (r) {
             final snapshot = _countEditor.addedRows[_countKey(r)];
             if (snapshot == null) {
@@ -1344,6 +1352,7 @@ class _WorkshopMaterialBinPageState
           label: '本期领入',
           width: 150,
           type: 'number',
+          sortable: true,
           value: (r) => formatQtyWithUnit(r.periodInQty, kg, maxDecimals: 2),
         ),
         MasterColumnDef(
@@ -1351,6 +1360,7 @@ class _WorkshopMaterialBinPageState
           label: '本期退回',
           width: 150,
           type: 'number',
+          sortable: true,
           value: (r) =>
               formatQtyWithUnit(r.periodReturnQty, kg, maxDecimals: 2),
         ),
@@ -1359,6 +1369,7 @@ class _WorkshopMaterialBinPageState
           label: '其它耗用',
           width: 150,
           type: 'number',
+          sortable: true,
           value: (r) => formatQtyWithUnit(r.periodOtherQty, kg, maxDecimals: 2),
         ),
         MasterColumnDef(
@@ -1366,6 +1377,7 @@ class _WorkshopMaterialBinPageState
           label: '估计已用',
           width: 150,
           type: 'number',
+          sortable: true,
           value: (r) =>
               formatQtyWithUnit(r.estimatedUsedQty, kg, maxDecimals: 2),
         ),
@@ -1375,6 +1387,7 @@ class _WorkshopMaterialBinPageState
           info: '扣除预留和安全库存后，可从仓库发出的数量。',
           width: 150,
           type: 'number',
+          sortable: true,
           value: (r) =>
               formatQtyWithUnit(r.warehouseAvailableQty, kg, maxDecimals: 2),
         ),

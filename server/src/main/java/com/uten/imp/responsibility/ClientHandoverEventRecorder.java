@@ -310,10 +310,10 @@ class ClientHandoverEventRecorder {
     }
 
     private static void requireReason(String reason, int affectedCount) {
-        if (affectedCount > 0
-                && (reason == null || reason.isBlank() || reason.length() > 2000)) {
+        // 原因选填：只保留长度上限，不再要求非空。
+        if (affectedCount > 0 && reason != null && reason.length() > 2000) {
             throw new ApiException(
-                    ErrorCode.VALIDATION_FAILED, "客户权限交接原因须为 1–2000 个字符");
+                    ErrorCode.VALIDATION_FAILED, "客户权限交接原因不能超过 2000 个字符");
         }
     }
 

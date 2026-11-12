@@ -222,7 +222,7 @@ class _HrProfileChangesListPageState
       subjectLabel: '修改申请',
       description: '驳回原因将同步给 ${ids.length} 位申请人，请说明具体问题。',
     );
-    if (reason == null || reason.isEmpty || !mounted) return;
+    if (reason == null || !mounted) return;
     await _runBatch(
       ids,
       action: 'reject',
@@ -538,6 +538,8 @@ class _HrProfileChangesListPageState
       key: 'employeeCode',
       label: '工号',
       width: 90,
+      // 2026-11-11 口径：编号列可排序（服务端分页表，走服务端排序）。
+      sortable: true,
       value: (m) => m.employeeCode,
     ),
     MasterColumnDef(

@@ -403,6 +403,8 @@ class _GoodsQuoteHistoryTabState extends ConsumerState<GoodsQuoteHistoryTab>
                   key: 'orderNo',
                   label: '当前关联订货单',
                   width: 160,
+                  // 2026-11-11 口径：单据号列可排序（服务端分页表，走服务端排序）。
+                  sortable: true,
                   value: (r) => r.text('orderNo').isEmpty
                       ? '未关联订货单'
                       : '${r.text('orderNo')}${r.orderDeleted ? '（已删除）' : ''}',

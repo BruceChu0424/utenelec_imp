@@ -881,12 +881,8 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage>
       );
       scope.checkCurrent();
       if (!mounted || input == null) return;
-      // 取消出库必填原因(审计)。
+      // 取消出库原因选填(审计)，空原因照常提交。
       final cancellationReason = input.reason;
-      if (cancellationReason.length < 2) {
-        context.appError('取消出库必须填写至少 2 个字的原因');
-        return;
-      }
 
       // 组装请求行(>0 才提交；后端会再校验上限)；取消出库不带重量(服务端按原流水镜像)。
       final body = <Map<String, dynamic>>[];
@@ -1656,18 +1652,23 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage>
           key: 'goodsCode',
           label: '编号',
           width: 110,
+          // 2026-11-11 口径：编号列排序+按值筛选、类别列按值筛选、数值/日期列排序（全量表就地处理）。
+          sortable: true,
+          filterFromRows: true,
           value: (it) => names.goodsInfo(it.goodsId)?.code ?? '—',
         ),
         MasterColumnDef(
           key: 'color',
           label: '颜色',
           width: 80,
+          filterFromRows: true,
           value: (it) => names.color(it.colorId),
         ),
         MasterColumnDef(
           key: 'series',
           label: '系列',
           width: 80,
+          filterFromRows: true,
           value: (it) => names.goodsInfo(it.goodsId)?.series ?? '—',
         ),
         // V787 行级仓库：明细行各自落的仓（跨仓单据逐行可见）；空 = 表头仓。
@@ -1676,12 +1677,15 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage>
             key: 'warehouse',
             label: '仓库',
             width: 140,
+            filterFromRows: true,
             value: (it) => names.warehouse(it.warehouseId ?? _d!.warehouseId),
           ),
         MasterColumnDef(
           key: 'stockPlace',
           label: '库位号',
           width: 80,
+          sortable: true,
+          filterFromRows: true,
           value: (it) => it.place?.trim().isNotEmpty == true
               ? it.place!
               : names.goodsInfo(it.goodsId)?.stockPlace ?? '—',
@@ -1692,6 +1696,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage>
             label: '账面数量',
             width: 125,
             type: 'number',
+            sortable: true,
             value: (it) => formatQtyWithUnit(it.qty ?? 0, unitOf(it)),
           ),
           MasterColumnDef(
@@ -1699,6 +1704,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage>
             label: '实盘数量',
             width: 125,
             type: 'number',
+            sortable: true,
             value: (it) =>
                 formatQtyWithUnit(it.countQty, unitOf(it), maxDecimals: 1),
           ),
@@ -1707,6 +1713,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage>
             label: '盈亏',
             width: 125,
             type: 'number',
+            sortable: true,
             value: (it) =>
                 formatQtyWithUnit(it.surplusQty, unitOf(it), maxDecimals: 1),
           ),
@@ -1719,6 +1726,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage>
             label: '待点收上限',
             width: 135,
             type: 'number',
+            sortable: true,
             value: (it) => formatQtyWithUnit(
               it.reportedQty ?? it.qty ?? 0,
               unitOf(it),
@@ -1730,6 +1738,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage>
             label: detail.status == 1 ? '仓库实收' : '待点收',
             width: 135,
             type: 'number',
+            sortable: true,
             value: (it) =>
                 formatQtyWithUnit(it.qty ?? 0, unitOf(it), maxDecimals: 2),
           ),
@@ -1740,6 +1749,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage>
             label: '数量',
             width: 125,
             type: 'number',
+            sortable: true,
             value: (it) =>
                 formatQtyWithUnit(it.qty ?? 0, unitOf(it), maxDecimals: 2),
           ),
@@ -2247,7 +2257,7 @@ class _CancelIssueDialogState extends State<_CancelIssueDialog> {
               maxLines: 4,
               decoration: const UtenInputDecoration(
                 InputDecoration(
-                  labelText: '取消原因(必填)',
+                  labelText: '取消原因（选填）',
                   border: OutlineInputBorder(),
                 ),
               ),

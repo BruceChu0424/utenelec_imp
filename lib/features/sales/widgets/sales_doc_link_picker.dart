@@ -316,6 +316,8 @@ List<MasterColumnDef<SalesDocListItem>> _docColumns(
     label: '单据号',
     width: 140,
     columnSearchEnabled: true,
+    // 2026-11-11 口径：单据号可排序（共享面板走服务端排序白名单）。
+    sortable: true,
     value: (d) => d.billNo,
   ),
   MasterColumnDef(

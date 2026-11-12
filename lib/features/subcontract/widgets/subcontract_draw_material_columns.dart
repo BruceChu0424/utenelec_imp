@@ -44,8 +44,10 @@ List<MasterColumnDef<SubcontractDrawMaterial>> subcontractDrawMaterialColumns({
     MasterColumnDef(
       key: 'goodsCode',
       label: '编号',
+      // 2026-11-11 口径：编号列可排序 + 按值筛选（全量物料表就地收集桶）。
       width: 130,
       sortable: true,
+      filterFromRows: true,
       value: (row) => label(row.goodsCode),
     ),
     MasterColumnDef(

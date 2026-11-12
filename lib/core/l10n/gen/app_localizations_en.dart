@@ -2730,10 +2730,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileChangeRejectDialogTitle => 'Reject request';
 
   @override
-  String get profileChangeRejectReasonRequired =>
-      'Rejection reason is required';
-
-  @override
   String get profileChangeRejectReasonHint =>
       'Explain why; the employee will see this';
 
@@ -7056,7 +7052,7 @@ class AppLocalizationsEn extends AppLocalizations {
       'Price needs confirming with the customer';
 
   @override
-  String get quoteFinanceReturnReasonLabel => 'Return reason (required)';
+  String get quoteFinanceReturnReasonLabel => 'Return reason (optional)';
 
   @override
   String get quoteFinanceReturnReasonRequired => 'Please enter a return reason';
@@ -8882,10 +8878,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get salesQuoteCancelReason =>
-      'Reason (for example, customer declined or opportunity lost)';
-
-  @override
-  String get salesQuoteCancelReasonRequired => 'Enter a cancellation reason';
+      'Reason (optional, for example, customer declined or opportunity lost)';
 
   @override
   String get salesQuoteCancelledDone => 'Quote cancelled; history retained';

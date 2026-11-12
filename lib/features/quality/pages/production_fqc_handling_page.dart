@@ -1419,6 +1419,8 @@ class _ProductionFqcSheetHandlingPageState
     MasterColumnDef<FqcReportRow>(
       key: 'submissionState',
       label: '提交状态',
+      // 类别列：按当前行值出选项筛选（全量检查单明细就地收集桶）。
+      filterFromRows: true,
       width: 72,
       value: (row) => row.submissionLabel,
       // 提交状态整格底色（ADR-169 逐页显式映射）：明确拒绝=红（服务端驳回）/
@@ -1438,12 +1440,17 @@ class _ProductionFqcSheetHandlingPageState
     MasterColumnDef<FqcReportRow>(
       key: 'reportNo',
       label: '报工单',
+      // 2026-11-11 口径：单号列可排序 + 按值筛选（全量检查单明细就地收集桶）。
+      sortable: true,
+      filterFromRows: true,
       width: 160,
       value: (row) => row.inspection.reportNo ?? row.inspection.id,
     ),
     MasterColumnDef<FqcReportRow>(
       key: 'planNo',
       label: '生产计划',
+      sortable: true,
+      filterFromRows: true,
       width: 150,
       value: (row) => row.inspection.planNo ?? '—',
     ),
@@ -1462,6 +1469,9 @@ class _ProductionFqcSheetHandlingPageState
     MasterColumnDef<FqcReportRow>(
       key: 'goodsCode',
       label: '编号',
+      // 2026-11-11 口径：编号列可排序 + 按值筛选。
+      sortable: true,
+      filterFromRows: true,
       width: 130,
       value: (row) => UtenGoodsAttributeCell.text(row.inspection.goodsCode),
       cellBuilder: (_, row) => UtenGoodsAttributeCell(row.inspection.goodsCode),
@@ -1469,6 +1479,8 @@ class _ProductionFqcSheetHandlingPageState
     MasterColumnDef<FqcReportRow>(
       key: 'colorName',
       label: '颜色',
+      // 类别列：按当前行值出选项筛选。
+      filterFromRows: true,
       width: 100,
       value: (row) => row.inspection.colorName ?? '—',
     ),
@@ -1477,6 +1489,7 @@ class _ProductionFqcSheetHandlingPageState
       label: '报工数量',
       width: 135,
       type: 'number',
+      sortable: true,
       value: (row) => formatQtyWithUnit(
         row.inspection.reportedQty,
         row.inspection.unitName,
@@ -1496,6 +1509,8 @@ class _ProductionFqcSheetHandlingPageState
     MasterColumnDef<FqcReportRow>(
       key: 'place',
       label: '储放位置',
+      // 类别列：按当前行值出选项筛选（仓/库位值集合有限）。
+      filterFromRows: true,
       width: 150,
       value: (row) => fqcStorageText(row.inspection),
       cellBuilder: (context, row) {
@@ -1515,6 +1530,7 @@ class _ProductionFqcSheetHandlingPageState
       label: '已合格',
       width: 125,
       type: 'number',
+      sortable: true,
       value: (row) => formatQtyWithUnit(
         row.inspection.passedQty,
         row.inspection.unitName,
@@ -1527,6 +1543,7 @@ class _ProductionFqcSheetHandlingPageState
       label: '已不合格',
       width: 130,
       type: 'number',
+      sortable: true,
       value: (row) => formatQtyWithUnit(
         row.inspection.failedQty,
         row.inspection.unitName,
@@ -1539,6 +1556,7 @@ class _ProductionFqcSheetHandlingPageState
       label: '待检数量',
       width: 135,
       type: 'number',
+      sortable: true,
       value: (row) => formatQtyWithUnit(
         row.inspection.remainingQty,
         row.inspection.unitName,
@@ -1551,6 +1569,8 @@ class _ProductionFqcSheetHandlingPageState
       label: '合格数量',
       width: 150,
       type: 'number',
+      // 2026-11-11 口径：数量列可排序（输入列就地按当前值排，同财务核价页）。
+      sortable: true,
       value: (row) => row.pass.text,
       exactValueOf: (row) => row.pass.text,
       exactListenableOf: (row) => row.pass,
@@ -1567,6 +1587,7 @@ class _ProductionFqcSheetHandlingPageState
       label: '不合格数量',
       width: 150,
       type: 'number',
+      sortable: true,
       value: (row) => row.fail.text,
       exactValueOf: (row) => row.fail.text,
       exactListenableOf: (row) => row.fail,

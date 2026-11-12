@@ -566,6 +566,8 @@ class _RequestState
       key: 'submissionStatus',
       label: '提交状态',
       width: 72,
+      // 2026-11-11 口径：编号列排序+按值筛选、类别列按值筛选、数值/日期列排序（全量表就地处理）。
+      filterFromRows: true,
       value: (row) => _completed.contains(row.task.segmentId)
           ? '已提交'
           : (_uncertain || _sourceChanged ? '待核对' : '待提交'),
@@ -574,18 +576,23 @@ class _RequestState
       key: 'task',
       label: '车间任务',
       width: 150,
+      sortable: true,
+      filterFromRows: true,
       value: (row) => row.task.segmentCode,
     ),
     MasterColumnDef(
       key: 'planNo',
       label: '生产计划',
       width: 150,
+      sortable: true,
+      filterFromRows: true,
       value: (row) => row.task.planNo,
     ),
     MasterColumnDef(
       key: 'workshop',
       label: '领料车间',
       width: 140,
+      filterFromRows: true,
       value: (row) => row.task.workshopName ?? '—',
     ),
     MasterColumnDef(
@@ -598,12 +605,15 @@ class _RequestState
       key: 'productCode',
       label: '货品编号',
       width: 120,
+      sortable: true,
+      filterFromRows: true,
       value: (row) => row.task.productCode ?? '—',
     ),
     MasterColumnDef(
       key: 'productColor',
       label: '货品颜色',
       width: 100,
+      filterFromRows: true,
       value: (row) => row.task.productColorName ?? '—',
     ),
     // 2026-10-10 数量内联口径：计划产量单位内联在数字后（formatQtyWithUnit，
@@ -613,6 +623,7 @@ class _RequestState
       label: '计划产量',
       width: 120,
       type: 'number',
+      sortable: true,
       value: (row) =>
           formatQtyWithUnit(row.task.plannedQty, row.task.productUnitName),
     ),
@@ -648,18 +659,22 @@ class _RequestState
         key: 'materialMemory',
         label: '用料来源',
         width: 180,
+        filterFromRows: true,
         value: (row) => row.memoryLabel ?? '本次填写',
       ),
     MasterColumnDef(
       key: 'goodsCode',
       label: '材料编号',
       width: 120,
+      sortable: true,
+      filterFromRows: true,
       value: (row) => row.label('goodsCode'),
     ),
     MasterColumnDef(
       key: 'colorName',
       label: '材料颜色',
       width: 130,
+      filterFromRows: true,
       value: (row) => row.label('colorName'),
     ),
     MasterColumnDef(
@@ -673,6 +688,8 @@ class _RequestState
       label: '参考库位',
       info: '货品资料中的参考库位；实际发料仓由仓库确认。',
       width: 130,
+      sortable: true,
+      filterFromRows: true,
       value: (row) => row.label('stockPlace'),
     ),
     MasterColumnDef(
@@ -680,6 +697,7 @@ class _RequestState
       label: '领料数量（选填）',
       width: 204,
       type: 'number',
+      sortable: true,
       value: (row) => row.qty.text,
       exactValueOf: (row) => row.qty.text,
       exactListenableOf: (row) => row.qty,

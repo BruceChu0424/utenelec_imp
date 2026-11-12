@@ -404,6 +404,8 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
         key: 'status',
         label: '状态',
         width: 130,
+        // 2026-11-11 口径：类别列按值筛选（全量任务行就地收集桶）。
+        filterFromRows: true,
         value: _identityStatus,
         cellColor: (context, item) => utenStatusBadgeCellColor(
           _draftsFor(item).isEmpty
@@ -415,6 +417,9 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
       key: 'code',
       label: '工号',
       width: 110,
+      // 2026-11-11 口径：编号列可排序 + 按值筛选（全量任务行就地收集桶）。
+      sortable: true,
+      filterFromRows: true,
       value: (item) => item.code,
       // 卡片形态：工号进姓名副行。
     ),
@@ -465,6 +470,8 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
       key: 'positionName',
       label: '岗位',
       width: 140,
+      // 2026-11-11 口径：类别列按值筛选（全量任务行就地收集桶）。
+      filterFromRows: true,
       value: (item) => item.positionName,
     ),
     MasterColumnDef(
@@ -472,6 +479,8 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
       label: _dateColumnLabel,
       width: 130,
       type: 'date',
+      // 2026-11-11 口径：日期列可排序。
+      sortable: true,
       value: (item) => item.date,
     ),
     if (_type.hasTimeline)
@@ -481,6 +490,8 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
         width: 110,
         type: 'number',
         info: _daysColumnInfo,
+        // 2026-11-11 口径：数值列可排序（按真实数值排序）。
+        sortable: true,
         value: (item) => _daysText(s, item),
         cellBuilder: (context, item) {
           final overdue =

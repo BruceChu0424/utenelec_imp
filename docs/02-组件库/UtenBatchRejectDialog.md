@@ -10,9 +10,9 @@
 审批队列多选后点「批量驳回(N)」时弹出的**统一驳回原因对话框**：一次填写原因、逐单应用到所选
 全部单据。解决三个一致性问题：
 
-1. 每个审批页各写一份原因弹窗，文案、必填校验与责任提示各不相同；
+1. 每个审批页各写一份原因弹窗，文案与责任提示各不相同；
 2. 批量驳回属于正式审核事实，必须显示 [`UtenReviewerResponsibilityNotice`](UtenReviewerResponsibilityNotice.md)；
-3. 原因必填的失败反馈要留在对话框内（不能关闭后才提示）。
+3. 驳回原因的口径全站统一（2026-11-11 起**选填**，见下）。
 
 ## 二、API
 
@@ -26,7 +26,7 @@ final reason = await showUtenBatchRejectDialog(
   description: '……',              // 可选，默认「驳回原因将同步给 N 位申请人，请说明具体问题。」
   confirmLabel: '确认拒绝',        // 可选，默认「确认驳回」
 );
-if (reason == null) return;       // 取消 = null；返回值是已 trim 的非空原因
+if (reason == null) return;       // 取消 = null；确认 = 已 trim 的原因（可为空串）
 ```
 
 - 组件本体 `UtenBatchRejectDialog` 也可直接 `showDialog` 使用（通常走上面的便捷函数）。
@@ -36,8 +36,10 @@ if (reason == null) return;       // 取消 = null；返回值是已 trim 的非
 ## 三、行为契约
 
 - 结构自上而下固定：**责任提示 → 影响说明 → 原因输入框**；`actionsAlignment: center`（全站弹窗口径）。
-- 原因**必填**：空提交只在字段上显示 `请填写驳回原因`（`UtenInputDecoration` + `utenFieldError`），
-  **不关闭对话框**、不返回值；用户开始输入即清除错误。
+- 原因**选填**（2026-11-11 用户口径「操作弹窗原因/备注类输入统一选填」）：label 标注
+  `驳回原因（选填）`；空原因点确认即返回空串（视为已确认，逐单照常驳回），不再做必填拦截。
+  调用方以 `reason == null` 判取消、`reason` 非空串与否都视为确认。
+- 确认键为红色实心（驳回=破坏性操作，与全站弹窗按钮主次规则一致）。
 - `TextEditingController` 由对话框自持并在 `dispose` 释放——关闭退出动画期间仍会重建 TextField，
   外层提前 dispose 会触发 "used after being disposed" 断言。
 - 对话框只负责拿到原因；**逐单循环调用单审 API、失败聚合提示由调用页负责**
@@ -59,4 +61,4 @@ if (reason == null) return;       // 取消 = null；返回值是已 trim 的非
 
 ## 全平台界面缩放适配（2026-10-13）
 
-采用 UtenAlertDialog 约束当前画布、安全区和键盘。正文可滚动，低高窗口连同动作可滚；责任姓名与工号可换行，不缩小或截断。原因必填、逐单驳回语义及控制器随路由卸载释放保持。
+采用 UtenAlertDialog 约束当前画布、安全区和键盘。正文可滚动，低高窗口连同动作可滚；责任姓名与工号可换行，不缩小或截断。原因选填、逐单驳回语义及控制器随路由卸载释放保持。

@@ -485,13 +485,10 @@ class _AdminDataHandoverPanelState
         const SizedBox(height: UtenSpacing.s16),
         UtenInput(
           controller: _reasonController,
-          label: '人工交接原因',
+          label: '人工交接原因（选填）',
           hint: '例如：离职补交接、岗位调整或临时责任转移',
-          required: true,
           maxLines: 3,
           inputFormatters: [LengthLimitingTextInputFormatter(2000)],
-          validator: (value) =>
-              value?.trim().isEmpty != false ? '请填写人工交接原因' : null,
         ),
         const SizedBox(height: UtenSpacing.s12),
         Semantics(

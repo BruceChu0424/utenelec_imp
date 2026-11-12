@@ -232,11 +232,31 @@ warehouseSalesOutboundTableColumns({
     info: info,
     // This table receives complete document details. Numeric facts can be
     // ordered locally; row numbers identify lines and are not summed facts.
-    sortable: type == 'number',
+    // 2026-11-11 口径：单号/编号/库位号列可排序 + 按值筛选，类别列按值筛选。
+    sortable:
+        type == 'number' ||
+        const {
+          'billNo',
+          'goodsCode',
+          'currentStockPlaceHint',
+          'actualStockPlace',
+          'clientProductCode',
+          'sourceDocumentNo',
+        }.contains(key),
     filterFromRows: const {
       'result',
       'warehouseWorkStatus',
       'unitName',
+      'billNo',
+      'client',
+      'goodsCode',
+      'colorName',
+      'warehouse',
+      'currentStockPlaceHint',
+      'actualStockPlace',
+      'clientProductCode',
+      'clientModel',
+      'sourceDocumentNo',
     }.contains(key),
     facetSearchEnabled: true,
     value: (row) => value(row) ?? '—',

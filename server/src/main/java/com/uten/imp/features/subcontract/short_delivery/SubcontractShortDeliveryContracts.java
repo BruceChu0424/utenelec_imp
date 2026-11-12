@@ -17,7 +17,7 @@ public final class SubcontractShortDeliveryContracts {
     private SubcontractShortDeliveryContracts() {
     }
 
-    /** 判定请求：WAIT_MORE 必填预计到齐日(不早于今天); ACCEPT_LOSS 低于下限时必填说明。 */
+    /** 判定请求：WAIT_MORE 必填预计到齐日(不早于今天); ACCEPT_LOSS 说明选填。 */
     public record DecisionRequest(
             @NotBlank @Pattern(regexp = "WAIT_MORE|ACCEPT_LOSS") String decision,
             LocalDate expectedCompleteBy,

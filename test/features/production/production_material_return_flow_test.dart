@@ -471,7 +471,11 @@ void main() {
       await tester.ensureVisible(find.text('撤回申请'));
       await tester.tap(find.text('撤回申请'));
       await tester.pumpAndSettle();
-      await tester.enterText(find.widgetWithText(TextField, '撤回原因'), '留待下一批生产');
+      // 2026-11-11 口径：撤回原因选填（label 加了（选填）后缀）。
+      await tester.enterText(
+        find.widgetWithText(TextField, '撤回原因（选填）'),
+        '留待下一批生产',
+      );
       await tester.tap(find.text('确认撤回'));
       await tester.pumpAndSettle();
       expect(repository.pending, 0);

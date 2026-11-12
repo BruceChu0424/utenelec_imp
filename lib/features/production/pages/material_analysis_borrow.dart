@@ -553,8 +553,12 @@ abstract class _MaterialAnalysisBorrowState
         title: '撤销这笔借用',
         fieldKey: Key('borrow-revoke-reason'),
         initialValue: '',
-        info: '撤销后借出方恢复分配、借入方重新出现缺口。请填写撤销原因。',
+        // 2026-11-11 口径：操作弹窗原因类输入统一选填；留空服务端记「未填写原因」。
+        requireReason: false,
+        reasonLabel: '撤销原因（选填）',
+        info: '撤销后借出方恢复分配、借入方重新出现缺口。原因选填，留空记为「未填写原因」。',
         confirmLabel: '确认撤销',
+        minReasonLength: 2,
       ),
     );
     if (reason == null ||
@@ -624,8 +628,12 @@ abstract class _MaterialAnalysisBorrowState
         title: '撤销跨计划让料',
         fieldKey: Key('cross-reallocation-revoke-reason'),
         initialValue: '',
-        info: '撤销会重新计算两份计划的物料覆盖。请填写业务原因。',
+        // 2026-11-11 口径：操作弹窗原因类输入统一选填；留空服务端记「未填写原因」。
+        requireReason: false,
+        reasonLabel: '撤销原因（选填）',
+        info: '撤销会重新计算两份计划的物料覆盖。原因选填，留空记为「未填写原因」。',
         confirmLabel: '确认撤销',
+        minReasonLength: 2,
       ),
     );
     if (reason == null ||

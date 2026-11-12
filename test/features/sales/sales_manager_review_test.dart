@@ -858,7 +858,8 @@ void main() {
         await tester.tap(find.byKey(const Key('sales-manager-order-reverse')));
         await tester.pumpAndSettle();
         await tester.enterText(
-          find.widgetWithText(TextField, '反审核原因'),
+          // 2026-11-11 口径：反审核原因选填（label 加了（选填）后缀）。
+          find.widgetWithText(TextField, '反审核原因（选填）'),
           '重新核对交期',
         );
         await tester.tap(find.text('确认反审核'));

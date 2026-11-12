@@ -92,9 +92,7 @@ public class ProfileChangeReviewService {
                 employeeRepo.save(emp);
             }
             case "reject" -> {
-                if (comment == null || comment.isBlank()) {
-                    throw new ApiException(ErrorCode.VALIDATION_FAILED, "驳回意见必填");
-                }
+                // 驳回意见选填：空意见照常驳回，仅不再强制填写。
                 for (ProfileChangeRequest r : rs) {
                     r.setStatus("rejected");
                 }

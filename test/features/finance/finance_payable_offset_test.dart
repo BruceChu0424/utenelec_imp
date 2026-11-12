@@ -79,7 +79,7 @@ void main() {
       expect(api.pages, [1, 2, 3]);
       expect(api.currencies, everyElement('currency-usd'));
       await tester.enterText(
-        find.widgetWithText(TextField, '应用原因(必填)'),
+        find.widgetWithText(TextField, '应用原因（选填）'),
         '新贷项冲抵已核验余额',
       );
       await tester.tap(find.text('确认应用 (1)'));

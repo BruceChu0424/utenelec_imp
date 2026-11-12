@@ -1054,6 +1054,8 @@ class _QualityBatchApprovalPageState
         MasterColumnDef(
           key: 'status',
           label: '本次报告',
+          // 类别列：按当前行值出选项筛选（全量批次行就地收集桶）。
+          filterFromRows: true,
           width: 190,
           value: (row) => row.isFqc
               ? (row.wholeLot
@@ -1088,18 +1090,23 @@ class _QualityBatchApprovalPageState
         MasterColumnDef(
           key: 'kind',
           label: '类型',
+          filterFromRows: true,
           width: 60,
           value: (row) => row.kindLabel,
         ),
         MasterColumnDef(
           key: 'docNo',
           label: '单号',
+          // 2026-11-11 口径：单号列可排序 + 按值筛选。
+          sortable: true,
+          filterFromRows: true,
           width: 60,
           value: (row) => row.docNo,
         ),
         MasterColumnDef(
           key: 'quantityTranche',
           label: '数量来源',
+          filterFromRows: true,
           width: 85,
           value: (row) => row.iqc?.item.quantityTrancheLabel ?? '—',
         ),
@@ -1114,6 +1121,9 @@ class _QualityBatchApprovalPageState
         MasterColumnDef(
           key: 'goodsCode',
           label: '编号',
+          // 2026-11-11 口径：编号列可排序 + 按值筛选。
+          sortable: true,
+          filterFromRows: true,
           width: 130,
           value: (row) => UtenGoodsAttributeCell.text(row.goodsCode),
           cellBuilder: (_, row) => UtenGoodsAttributeCell(row.goodsCode),
@@ -1121,6 +1131,8 @@ class _QualityBatchApprovalPageState
         MasterColumnDef(
           key: 'color',
           label: '颜色',
+          // 类别列：按当前行值出选项筛选。
+          filterFromRows: true,
           width: 60,
           value: (row) => row.colorName ?? '—',
         ),
@@ -1129,6 +1141,8 @@ class _QualityBatchApprovalPageState
           label: '合格数量',
           width: 150,
           type: 'number',
+          // 2026-11-11 口径：数量列可排序（输入列就地按当前值排，同财务核价页）。
+          sortable: true,
           info: inspectionQuantityColumnHint(context, passed: true),
           value: (row) => row.iqc?.pass.text ?? '—',
           exactValueOf: (row) => row.iqc?.pass.text,
@@ -1142,6 +1156,7 @@ class _QualityBatchApprovalPageState
           label: '不合格数量',
           width: 150,
           type: 'number',
+          sortable: true,
           info: inspectionQuantityColumnHint(context, passed: false),
           value: (row) => row.iqc?.fail.text ?? '—',
           exactValueOf: (row) => row.iqc?.fail.text,
@@ -1155,6 +1170,7 @@ class _QualityBatchApprovalPageState
           label: '待检/本次合格',
           width: 120,
           type: 'number',
+          sortable: true,
           // 2026-10-10 T9「数量+单位」口径：单位内联进数量（IQC 用基本单位名、
           // FQC 用报工单位），独立单位列已撤除；排序按组件的数值容错解析剥后缀。
           value: (row) => row.iqc != null
@@ -1185,6 +1201,9 @@ class _QualityBatchApprovalPageState
         MasterColumnDef(
           key: 'source',
           label: '来源单据',
+          // 2026-11-11 口径：单号列可排序 + 按值筛选。
+          sortable: true,
+          filterFromRows: true,
           width: 60,
           value: (row) =>
               row.iqc?.item.sourceOrderNo ?? row.fqc?.reportNo ?? '—',
@@ -1193,12 +1212,16 @@ class _QualityBatchApprovalPageState
           MasterColumnDef(
             key: 'plan',
             label: '生产计划',
+            sortable: true,
+            filterFromRows: true,
             width: 60,
             value: (row) => row.fqc?.planNo ?? '—',
           ),
         MasterColumnDef(
           key: 'preStocked',
           label: '储放位置',
+          // 类别列：按当前行值出选项筛选。
+          filterFromRows: true,
           width: 60,
           value: (row) => row.preStockedLabel,
           cellBuilder: (context, row) {

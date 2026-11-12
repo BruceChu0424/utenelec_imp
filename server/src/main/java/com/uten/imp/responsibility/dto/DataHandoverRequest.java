@@ -15,7 +15,7 @@ public record DataHandoverRequest(
         @NotNull UUID sourceEmployeeId,
         @NotNull UUID targetEmployeeId,
         @NotEmpty @Size(max = 8) Set<@NotBlank String> scopes,
-        @NotBlank @Size(max = 2000) String reason,
+        @Size(max = 2000) String reason,
         @NotNull LocalDate effectiveDate
 ) {
 }

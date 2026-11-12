@@ -1225,11 +1225,14 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
     MasterColumnDef<FinanceDocItem> currencyColumn(
       String key,
       String label,
-      String? Function(FinanceDocItem) nameOf,
-    ) => MasterColumnDef(
+      String? Function(FinanceDocItem) nameOf, {
+      bool filterByValue = false,
+    }) => MasterColumnDef(
       key: key,
       label: label,
       width: 90,
+      // 币种类别列可按值筛选；整单恒定币种列（本位币/单价币种）不传，避免单桶菜单。
+      filterFromRows: filterByValue,
       value: (item) => financeCurrencyText(name: nameOf(item), fallback: '—'),
     );
     final localCurrency = currencyColumn(
@@ -1244,6 +1247,9 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
           label: _cfg.isClient ? '出货单/原来源' : '应付单号',
           info: '保存时从本批应收固定的原始来源；历史没有该快照时保留原应收编号，不推造出货单号。',
           width: 180,
+          // 2026-11-11 口径：编号列可排序 + 按值筛选（全量明细表就地收集桶）。
+          sortable: true,
+          filterFromRows: true,
           value: (it) => it.appliedSourceDocNo ?? it.appliedBillNo,
         ),
         MasterColumnDef(
@@ -1255,12 +1261,14 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
               : FinanceDocConfig.paymentOriginalAmountLabel,
           width: _cfg.isClient ? 180 : 130,
           type: 'money',
+          sortable: true,
           value: (it) => financeExactMoneyDisplay(it.amountOriginalText),
         ),
         currencyColumn(
           'currency',
           '应收币种',
           (it) => names.currency(it.currencyId),
+          filterByValue: true,
         ),
         MasterColumnDef(
           key: 'exchangeRate',
@@ -1269,6 +1277,7 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
               : '当前批次实际到账汇率',
           width: 190,
           type: 'number',
+          sortable: true,
           value: (it) => it.exchangeRateText,
         ),
         MasterColumnDef(
@@ -1276,6 +1285,7 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
           label: receiptLocalColumnLabel,
           width: 170,
           type: 'money',
+          sortable: true,
           value: (it) => financeExactMoneyDisplay(it.amountLocalText),
         ),
         localCurrency,
@@ -1285,6 +1295,7 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
             label: '历史冲销(应收原币)',
             width: 180,
             type: 'money',
+            sortable: true,
             value: (it) => financeExactMoneyDisplay(it.writeOffAmountText),
           ),
           MasterColumnDef(
@@ -1292,6 +1303,7 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
             label: '历史冲销(人民币)',
             width: 150,
             type: 'money',
+            sortable: true,
             value: (it) => financeExactMoneyDisplay(it.writeOffLocalText),
           ),
         ],
@@ -1300,6 +1312,7 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
           label: '冲减应收账面金额(人民币)',
           width: 200,
           type: 'money',
+          sortable: true,
           value: (it) => financeExactMoneyDisplay(it.appliedAmountLocalText),
         ),
         MasterColumnDef(
@@ -1307,6 +1320,7 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
           label: '汇兑差额(人民币)',
           width: 160,
           type: 'money',
+          sortable: true,
           value: (it) => financeExactMoneyDisplay(it.exchangeDiffText),
         ),
         MasterColumnDef(
@@ -1314,6 +1328,7 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
           label: _cfg.isClient ? '收款前未收' : '付款前未付',
           width: 110,
           type: 'money',
+          sortable: true,
           value: (it) => financeExactMoneyDisplay(it.balanceBeforeOriginalText),
         ),
         MasterColumnDef(
@@ -1321,6 +1336,7 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
           label: _cfg.isClient ? '收款后未收' : '付款后未付',
           width: 110,
           type: 'money',
+          sortable: true,
           value: (it) => financeExactMoneyDisplay(it.balanceAfterOriginalText),
         ),
         MasterColumnDef(
@@ -1334,6 +1350,9 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
           key: 'bill',
           label: '应付单号',
           width: 180,
+          // 2026-11-11 口径：编号列可排序 + 按值筛选。
+          sortable: true,
+          filterFromRows: true,
           value: (it) => it.appliedBillNo,
         ),
         MasterColumnDef(
@@ -1341,18 +1360,21 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
           label: financePaymentOriginalAmountLabel,
           width: 110,
           type: 'money',
+          sortable: true,
           value: (it) => financeExactMoneyDisplay(it.amountOriginalText),
         ),
         currencyColumn(
           'currency',
           '付款币种',
           (it) => names.currency(it.currencyId ?? detail.currencyId),
+          filterByValue: true,
         ),
         MasterColumnDef(
           key: 'amountLocal',
           label: '付款本币',
           width: 110,
           type: 'money',
+          sortable: true,
           value: (it) => financeExactMoneyDisplay(it.amountLocalText),
         ),
         localCurrency,
@@ -1361,6 +1383,7 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
           label: '核销账面本币',
           width: 120,
           type: 'money',
+          sortable: true,
           value: (it) => financeExactMoneyDisplay(it.appliedAmountLocalText),
         ),
         MasterColumnDef(
@@ -1368,6 +1391,7 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
           label: '汇兑差额',
           width: 110,
           type: 'money',
+          sortable: true,
           value: (it) => financeExactMoneyDisplay(it.exchangeDiffText),
         ),
       ] else if (_cfg.isAllocate) ...[
@@ -1376,12 +1400,16 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
             key: 'postingPurpose',
             label: '支出类型',
             width: 130,
+            // 类别列：按当前行值出选项筛选。
+            filterFromRows: true,
             value: (it) => it.postingPurpose.label,
           ),
         MasterColumnDef(
           key: 'style',
           label: _cfg.type == FinanceDocType.expense ? '费用项目' : '收入项目',
           width: 160,
+          // 类别列：按当前行值出选项筛选。
+          filterFromRows: true,
           value: (it) => _cfg.type == FinanceDocType.expense
               ? names.expenseStyleName(it.expenseStyleId, it.postingPurpose)
               : names.styleName(it.incomeStyleId, styleCat),
@@ -1390,6 +1418,8 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
           key: 'department',
           label: '部门',
           width: 140,
+          // 类别列：按当前行值出选项筛选。
+          filterFromRows: true,
           value: (it) => it.departmentLabel,
         ),
         MasterColumnDef(
@@ -1397,6 +1427,7 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
           label: '数量',
           width: 90,
           type: 'number',
+          sortable: true,
           value: (it) => it.qtyText,
         ),
         MasterColumnDef(
@@ -1404,6 +1435,7 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
           label: '单价',
           width: 90,
           type: 'money',
+          sortable: true,
           value: (it) => financeExactMoneyDisplay(it.priceText),
         ),
         if (names.currencyIsBase(detail.currencyId) != true)
@@ -1417,6 +1449,7 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
           label: '金额',
           width: 100,
           type: 'money',
+          sortable: true,
           value: (it) => financeExactMoneyDisplay(it.amountLocalText),
         ),
         localCurrency,
@@ -1425,6 +1458,8 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
           key: 'inAccount',
           label: '转入账户',
           width: 160,
+          // 类别列：按当前行值出选项筛选。
+          filterFromRows: true,
           value: (it) => names.account(it.inAccountId),
         ),
         MasterColumnDef(
@@ -1432,6 +1467,7 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
           label: '日期',
           width: 110,
           type: 'date',
+          sortable: true,
           value: (it) => (it.occurDate ?? '').length >= 10
               ? it.occurDate!.substring(0, 10)
               : it.occurDate,
@@ -1441,6 +1477,7 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
           label: '金额',
           width: 110,
           type: 'money',
+          sortable: true,
           value: (it) => financeExactMoneyDisplay(it.amountLocalText),
         ),
         localCurrency,
@@ -1453,6 +1490,9 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
           label: '应收编号',
           width: 170,
           info: '系统正式应收的原编号，用于高级核对；不替换前列真实出货或历史期初原来源。',
+          // 2026-11-11 口径：编号列可排序 + 按值筛选。
+          sortable: true,
+          filterFromRows: true,
           value: (it) => it.appliedBillNo,
         ),
       );

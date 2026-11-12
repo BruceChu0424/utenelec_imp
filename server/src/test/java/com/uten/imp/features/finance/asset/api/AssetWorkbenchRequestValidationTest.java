@@ -34,9 +34,12 @@ class AssetWorkbenchRequestValidationTest {
     }
 
     @Test
-    void reversalAlwaysRequiresReasonAndVersion() {
+    void reversalRequiresVersionAndNormalizesBlankReasonToDefault() {
         var request = new AssetWorkbenchRequests.PostingReasonCommand(null, " ");
-        assertThat(validator.validate(request)).hasSize(2);
+        // reason 选填：空白在构造期归一为 DEFAULT_REASON（落库列有非空 CHECK），
+        // 仅 expectedVersion 违反 @NotNull。
+        assertThat(validator.validate(request)).hasSize(1);
+        assertThat(request.reason()).isEqualTo(AssetWorkbenchRequests.DEFAULT_REASON);
     }
 
     @Test

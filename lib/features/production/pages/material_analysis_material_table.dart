@@ -9416,7 +9416,8 @@ abstract class _MaterialAnalysisMaterialTableState
                 controller: reasonController,
                 maxLength: 500,
                 decoration: const UtenInputDecoration(
-                  InputDecoration(labelText: '撤回原因（必填）'),
+                  // 2026-11-11 口径：操作弹窗原因/备注类输入统一选填。
+                  InputDecoration(labelText: '撤回原因（选填）'),
                 ),
               ),
             ],
@@ -9427,10 +9428,6 @@ abstract class _MaterialAnalysisMaterialTableState
       reasonController.dispose();
     }
     if ((!mounted || !operationCurrent()) || confirmed != true) return false;
-    if (reason.length < 2) {
-      context.appWarning('撤回原因至少填写两个字');
-      return false;
-    }
     if (_busy ||
         !_sameAnalysisSnapshot(analysis, sessionScope) ||
         !_canWithdrawIssuedAnalysisPlan(plan)) {

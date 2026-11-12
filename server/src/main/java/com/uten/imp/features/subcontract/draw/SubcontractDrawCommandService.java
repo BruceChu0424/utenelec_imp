@@ -197,9 +197,6 @@ public class SubcontractDrawCommandService {
             throw validation("缺少委外任务");
         }
         String reason = request == null || request.reason() == null ? "" : request.reason().strip();
-        if (reason.isEmpty()) {
-            throw validation("结束领料必须填写原因");
-        }
         if (reason.length() > 200) {
             throw validation("结束领料原因不能超过 200 个字");
         }
@@ -231,9 +228,6 @@ public class SubcontractDrawCommandService {
             throw validation("缺少领料出仓单");
         }
         String normalized = reason == null ? "" : reason.strip();
-        if (normalized.isEmpty()) {
-            throw validation("退回领料必须填写原因");
-        }
         if (normalized.length() > 200) {
             throw validation("退回原因不能超过 200 个字");
         }

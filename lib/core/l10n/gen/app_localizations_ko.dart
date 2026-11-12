@@ -2669,9 +2669,6 @@ class AppLocalizationsKo extends AppLocalizations {
   String get profileChangeRejectDialogTitle => '요청 반려';
 
   @override
-  String get profileChangeRejectReasonRequired => '반려 사유를 입력해 주세요';
-
-  @override
   String get profileChangeRejectReasonHint => '사유를 작성해 주세요. 직원에게 표시됩니다';
 
   @override
@@ -6877,7 +6874,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get quoteFinanceReturnChipPrice => '가격은 영업이 고객과 확인 필요';
 
   @override
-  String get quoteFinanceReturnReasonLabel => '반려 사유(필수)';
+  String get quoteFinanceReturnReasonLabel => '반려 사유(선택)';
 
   @override
   String get quoteFinanceReturnReasonRequired => '반려 사유를 입력하세요';
@@ -8591,10 +8588,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get salesQuoteCancelQuote => '견적 취소';
 
   @override
-  String get salesQuoteCancelReason => '취소 사유 (고객 거절, 수주 실패 등)';
-
-  @override
-  String get salesQuoteCancelReasonRequired => '취소 사유를 입력하세요';
+  String get salesQuoteCancelReason => '취소 사유(선택, 고객 거절, 수주 실패 등)';
 
   @override
   String get salesQuoteCancelledDone => '견적이 취소되었으며 이력은 보존됩니다';

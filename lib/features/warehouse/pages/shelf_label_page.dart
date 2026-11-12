@@ -427,6 +427,8 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
         label: '层',
         width: 64,
         type: 'number',
+        // 2026-11-11 口径：编号/数值列可排序；按值筛选仍由宿主 _facets 联动货架图与打印。
+        sortable: true,
         value: (r) => r.level == null ? '' : '${r.level}',
       ),
       MasterColumnDef(
@@ -434,12 +436,14 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
         label: '位',
         width: 64,
         type: 'number',
+        sortable: true,
         value: (r) => r.slot == null ? '' : '${r.slot}',
       ),
       MasterColumnDef(
         key: 'place',
         label: '库位号',
         width: 120,
+        sortable: true,
         info: placeInfo,
         value: (r) => r.place ?? '',
       ),
@@ -454,6 +458,7 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
         key: 'goodsCode',
         label: '编号',
         width: 130,
+        sortable: true,
         value: (r) => r.goodsCode ?? '',
       ),
       MasterColumnDef(
@@ -468,6 +473,7 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
         label: '即时库存',
         width: 145,
         type: 'number',
+        sortable: true,
         info: qtyInfo,
         value: (r) => formatQtyWithUnit(r.qty, r.unitName, maxDecimals: 2),
       ),

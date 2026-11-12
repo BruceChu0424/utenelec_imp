@@ -5,7 +5,6 @@ import com.uten.imp.common.validation.RequestLimits;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Validation;
 import jakarta.validation.Validator;
-import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PositiveOrZero;
@@ -262,19 +261,20 @@ class ClientDtoSnapshotIsolationTest {
     }
 
     // These references retain the original record contracts. They are never mutation targets.
+    // 2026-11-11 口径：修改原因选填——reason 仅保留 @Size 上限（与生产 DTO 同步去 NotBlank）。
     private record PreviousAccessDetail(UUID clientId, UUID ownerEmployeeId, String ownerEmployeeName,
             long accessVersion, List<ClientAccessViewer> viewers, List<ClientAccessViewer> owners) { }
 
     private record PreviousUpdateRequest(UUID ownerEmployeeId,
             @Size(max = RequestLimits.ADMIN_SCOPE_OWNERS) List<@NotNull UUID> viewerEmployeeIds,
             @NotNull @PositiveOrZero Long expectedAccessVersion,
-            @NotBlank @Size(max = 1000) String reason,
+            @Size(max = 1000) String reason,
             @Size(max = RequestLimits.ADMIN_SCOPE_OWNERS) List<@NotNull UUID> ownerEmployeeIds) { }
 
     private record PreviousBatchRequest(@NotEmpty @Size(max = RequestLimits.BATCH_IDS) List<@NotNull UUID> clientIds,
             UUID ownerEmployeeId,
             @Size(max = RequestLimits.ADMIN_SCOPE_OWNERS) List<@NotNull UUID> viewerEmployeeIds,
-            @NotBlank @Size(max = 1000) String reason,
+            @Size(max = 1000) String reason,
             @Size(max = RequestLimits.ADMIN_SCOPE_OWNERS) List<@NotNull UUID> ownerEmployeeIds) { }
 
     private static <T> T construct(Class<T> type, List<UUID> ids, List<String> names) throws Exception {

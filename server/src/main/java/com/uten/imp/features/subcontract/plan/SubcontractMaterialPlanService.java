@@ -875,9 +875,6 @@ public class SubcontractMaterialPlanService {
     @Transactional(propagation = Propagation.MANDATORY)
     public void closeDrawForOrderItem(UUID orderItemId, String reason) {
         String normalized = reason == null ? "" : reason.strip();
-        if (normalized.isEmpty()) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "结束领料必须填写原因");
-        }
         if (normalized.length() > 200) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "结束领料原因不能超过 200 个字");
         }

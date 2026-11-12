@@ -54,7 +54,6 @@ class _QuoteFinanceReturnDialog extends StatefulWidget {
 
 class _QuoteFinanceReturnDialogState extends State<_QuoteFinanceReturnDialog> {
   late final _reason = widget.reasonController ?? TextEditingController();
-  String? _error;
 
   @override
   void dispose() {
@@ -72,17 +71,11 @@ class _QuoteFinanceReturnDialogState extends State<_QuoteFinanceReturnDialog> {
     setState(() {
       _reason.text = next;
       _reason.selection = TextSelection.collapsed(offset: next.length);
-      _error = null;
     });
   }
 
-  void _submit(AppLocalizations l10n) {
-    final reason = _reason.text.trim();
-    if (reason.isEmpty) {
-      setState(() => _error = l10n.quoteFinanceReturnReasonRequired);
-      return;
-    }
-    Navigator.pop(context, reason);
+  void _submit() {
+    Navigator.pop(context, _reason.text.trim());
   }
 
   @override
@@ -132,14 +125,10 @@ class _QuoteFinanceReturnDialogState extends State<_QuoteFinanceReturnDialog> {
                 autofocus: true,
                 maxLength: 500,
                 maxLines: 3,
-                onChanged: (_) {
-                  if (_error != null) setState(() => _error = null);
-                },
                 decoration: UtenInputDecoration(
                   InputDecoration(
                     labelText: l10n.quoteFinanceReturnReasonLabel,
                     border: const OutlineInputBorder(),
-                    error: utenFieldError(_error),
                   ),
                 ),
               ),
@@ -161,7 +150,7 @@ class _QuoteFinanceReturnDialogState extends State<_QuoteFinanceReturnDialog> {
             backgroundColor: Theme.of(context).colorScheme.error,
             minimumSize: const Size(0, 48),
           ),
-          onPressed: () => _submit(l10n),
+          onPressed: _submit,
           child: Text(l10n.quoteFinanceReturnSubmit),
         ),
       ],

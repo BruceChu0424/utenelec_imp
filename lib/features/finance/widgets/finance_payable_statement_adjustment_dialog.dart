@@ -522,21 +522,38 @@ class _AdjustmentState extends ConsumerState<_Adjustment>
               child: financeSourceTable(
                 tableKey: 'finance.payable-statement-adjustments.confirm',
                 columns: [
-                  financeSourceColumn('targetBillNo', '原应付单号', width: 220),
-                  financeSourceColumn('targetSourceDocNo', '原业务单号', width: 220),
+                  // 2026-11-11 口径：单号列可排序 + 按值筛选；类别/金额列按口径
+                  //配置（全量确认清单快照就地排序、收集桶）。
+                  financeSourceColumn(
+                    'targetBillNo',
+                    '原应付单号',
+                    width: 220,
+                    sortable: true,
+                    filterByValue: true,
+                  ),
+                  financeSourceColumn(
+                    'targetSourceDocNo',
+                    '原业务单号',
+                    width: 220,
+                    sortable: true,
+                    filterByValue: true,
+                  ),
                   financeSourceColumn(
                     'decision',
                     '决定',
+                    filterByValue: true,
                     value: (r) => _label(r['decision']),
                   ),
                   financeSourceColumn(
                     'feeKind',
                     '手续费/尾数',
+                    filterByValue: true,
                     value: (r) => _label(r['feeKind']),
                   ),
                   financeSourceColumn(
                     'category',
                     '原审批归属',
+                    filterByValue: true,
                     value: (r) => _label(r['category']),
                   ),
                   financeSourceColumn(
@@ -564,9 +581,19 @@ class _AdjustmentState extends ConsumerState<_Adjustment>
                     'amountOriginal',
                     '明确原币金额',
                     type: 'money',
+                    sortable: true,
                   ),
-                  financeSourceColumn('amountLocal', '减少账面本币', type: 'money'),
-                  financeSourceColumn('counterpartAccountCode', '对方财务科目'),
+                  financeSourceColumn(
+                    'amountLocal',
+                    '减少账面本币',
+                    type: 'money',
+                    sortable: true,
+                  ),
+                  financeSourceColumn(
+                    'counterpartAccountCode',
+                    '对方财务科目',
+                    filterByValue: true,
+                  ),
                   financeSourceColumn(
                     'debtAccount',
                     '原应付财务科目',

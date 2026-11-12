@@ -1240,14 +1240,48 @@ void main() {
       ),
       findsOneWidget,
     );
+    // 2026-11-11 口径：撤回原因选填，留空直接提交，服务端记「未填写原因」。
     await tester.tap(
       find.byKey(const Key('production-finished-arrival-reverse-confirm')),
     );
-    await tester.pump();
+    await tester.pumpAndSettle();
     expect(
       find.byKey(const Key('production-finished-arrival-reverse-error')),
-      findsOneWidget,
+      findsNothing,
     );
+
+    expect(api.reversedRegistrationIds, [
+      '40000000-0000-0000-0000-000000000001',
+    ]);
+    expect(api.lastReverseBody?['reason'], '');
+    expect(
+      (api.lastReverseBody?['idempotencyKey'] as String?)?.length,
+      greaterThanOrEqualTo(8),
+    );
+    // 撤回后页面重拉：回到待登记态 (可再次登记)。
+    expect(find.byKey(InboundRoute.inspectFirst.submitKey), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('撤回原因填写后仍按 trim 提交，不再要求至少两个字', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1280, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final api = _ArrivalRegistrationApi(
+      registered: true,
+      warehouseId: 'warehouse-1',
+      place: 'CP-A-01',
+      reversible: true,
+    );
+    await _openPage(tester, api: api, canRegister: true);
+
+    await tester.tap(
+      find.byKey(
+        const ValueKey(
+          'production-finished-arrival-reverse-40000000-0000-0000-0000-000000000001',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
     await tester.enterText(
       find.byKey(const Key('production-finished-arrival-reverse-reason')),
       '  仓库选错  ',
@@ -1265,8 +1299,6 @@ void main() {
       (api.lastReverseBody?['idempotencyKey'] as String?)?.length,
       greaterThanOrEqualTo(8),
     );
-    // 撤回后页面重拉：回到待登记态 (可再次登记)。
-    expect(find.byKey(InboundRoute.inspectFirst.submitKey), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

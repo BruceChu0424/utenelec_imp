@@ -349,6 +349,9 @@ final List<MasterColumnDef<ExpenseClaimInvoice>> _columns = [
     key: 'invoiceNo',
     label: '发票号码',
     width: 150,
+    // 2026-11-11 口径：编号列可排序 + 按值筛选（发票登记是全量快照）。
+    sortable: true,
+    filterFromRows: true,
     info:
         '数电票 20 位（无发票代码）；纸质/旧电子票 8 位号码 + 发票代码。'
         '全公司存活报销单间唯一，防止重复报销。',
@@ -358,6 +361,8 @@ final List<MasterColumnDef<ExpenseClaimInvoice>> _columns = [
     key: 'invoiceCode',
     label: '发票代码',
     width: 110,
+    sortable: true,
+    filterFromRows: true,
     value: (invoice) => invoice.invoiceCode,
   ),
   MasterColumnDef(

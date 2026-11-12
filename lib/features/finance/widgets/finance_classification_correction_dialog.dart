@@ -782,24 +782,33 @@ class _CorrectionState extends ConsumerState<_Correction>
                           child: financeSourceTable(
                             tableKey: 'finance.classification.correction.nodes',
                             columns: [
+                              // 2026-11-11 口径：节点/状态类别列按值筛选；单号列
+                              //可排序 + 按值筛选；日期列可排序（全量节点快照）。
                               financeSourceColumn(
                                 'kind',
                                 '节点',
+                                filterByValue: true,
                                 value: (r) => _kinds['${r['kind']}'],
                               ),
                               financeSourceColumn(
                                 'billNo',
                                 '业务单号',
                                 width: 240,
+                                sortable: true,
+                                filterByValue: true,
                                 value: (r) {
                                   final f = r['fact'] as Map?;
                                   return '${f?['billNo'] ?? f?['sourceBillNo'] ?? f?['applicationId'] ?? f?['offsetId'] ?? ''}';
                                 },
                               ),
-                              financeSourceColumn('expectedRevision', '原分类版本'),
+                              financeSourceColumn(
+                                'expectedRevision',
+                                '原分类版本',
+                              ),
                               financeSourceColumn(
                                 'actualStatus',
                                 '实际状态',
+                                filterByValue: true,
                                 value: (r) {
                                   final status = (r['fact'] as Map?)?['status'];
                                   return status == -1 || status == 'REVERSED'
@@ -813,6 +822,7 @@ class _CorrectionState extends ConsumerState<_Correction>
                                 'eventDate',
                                 '发生日期',
                                 type: 'date',
+                                sortable: true,
                                 value: (r) {
                                   final f = r['fact'] as Map? ?? {};
                                   return '${f['billDate'] ?? f['effectiveDate'] ?? f['effectiveFrom'] ?? ''}';
@@ -822,6 +832,7 @@ class _CorrectionState extends ConsumerState<_Correction>
                                 'reversedAt',
                                 '反向日期',
                                 type: 'date',
+                                sortable: true,
                                 value: (r) =>
                                     ((r['fact'] as Map?)?['reversedAt'])
                                         ?.toString(),

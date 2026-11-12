@@ -1,6 +1,7 @@
 // 产成品送检登记撤回原因弹窗（V548）：单张/批量登记页共用。
 //
-// 只收原因文本（2–500 字，trim 后提交）；能否撤回由服务端按「每条 FQC 仍待检、无决定/
+// 只收原因文本（选填，至多 500 字，trim 后提交；2026-11-11 口径：操作弹窗原因类输入
+// 统一选填，留空服务端记「未填写原因」）；能否撤回由服务端按「每条 FQC 仍待检、无决定/
 // 放行/恢复授权」判定，本弹窗不做业务判断，也不猜测撤回后的库存或品质事实。
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
@@ -49,10 +50,7 @@ class _ArrivalRegistrationReversalDialogState
 
   void _submit() {
     final reason = _reason.text.trim();
-    if (reason.length < 2) {
-      setState(() => _error = '请填写至少 2 个字的撤回原因');
-      return;
-    }
+    // 原因选填(2026-11-11 口径)：留空直接提交；上限仍由 maxLength/输入格式化器限制。
     if (reason.length > 500) {
       setState(() => _error = '撤回原因不能超过 500 个字符');
       return;
@@ -92,8 +90,8 @@ class _ArrivalRegistrationReversalDialogState
               inputFormatters: [LengthLimitingTextInputFormatter(500)],
               decoration: const UtenInputDecoration(
                 InputDecoration(
-                  labelText: '撤回原因',
-                  hintText: '必填，如：仓库选错、实物未到、需重新分仓',
+                  labelText: '撤回原因（选填）',
+                  hintText: '如：仓库选错、实物未到、需重新分仓',
                   counterText: '',
                 ),
               ),

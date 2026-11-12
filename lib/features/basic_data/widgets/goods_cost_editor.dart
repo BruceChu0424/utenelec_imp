@@ -477,7 +477,7 @@ extension _GoodsCostEditor on _GoodsCostTabState {
             onPressed: () => Navigator.pop(dialog, false),
             child: Text(_l.commonCancel),
           ),
-          TextButton(
+          FilledButton(
             key: const Key('cost-currency-convert-confirm'),
             onPressed: () {
               if (form.currentState?.validate() == true) {
@@ -1494,7 +1494,7 @@ extension _GoodsCostEditor on _GoodsCostTabState {
               onPressed: () => Navigator.pop(dialog),
               child: Text(_l.commonCancel),
             ),
-            TextButton(
+            FilledButton(
               onPressed: () => Navigator.pop(dialog, selected.toList()),
               child: Text(_l.commonConfirm),
             ),
@@ -2155,7 +2155,7 @@ extension _GoodsCostEditor on _GoodsCostTabState {
               onPressed: () => Navigator.pop(dialog, false),
               child: Text(_l.commonCancel),
             ),
-            TextButton(
+            FilledButton(
               onPressed: mode == null
                   ? null
                   : () => Navigator.pop(dialog, reason.text.trim().isNotEmpty),
@@ -2328,7 +2328,7 @@ extension _GoodsCostEditor on _GoodsCostTabState {
             onPressed: () => Navigator.pop(dialog),
             child: Text(_l.commonCancel),
           ),
-          TextButton(
+          FilledButton(
             onPressed: () {
               if (form.currentState?.validate() == true) {
                 Navigator.pop(dialog, controller.text.trim());

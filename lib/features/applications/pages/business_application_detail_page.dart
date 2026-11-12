@@ -402,7 +402,7 @@ class _BusinessApplicationDetailPageState
                 maxLength: 1000,
                 maxLines: 4,
                 decoration: InputDecoration(
-                  labelText: cancelPayment ? '撤销原因 *' : '驳回原因 *',
+                  labelText: cancelPayment ? '撤销原因（选填）' : '驳回原因（选填）',
                 ),
               ),
               actions: [
@@ -414,12 +414,8 @@ class _BusinessApplicationDetailPageState
                 UtenButton(
                   type: UtenButtonType.danger,
                   onPressed: () {
-                    final value = controller.text.trim();
-                    if (value.isEmpty) {
-                      dialogContext.appWarning('请填写驳回原因');
-                      return;
-                    }
-                    Navigator.of(dialogContext).pop(value);
+                    // 原因选填：空原因确认返回空串（_act 视为已确认），取消返回 null。
+                    Navigator.of(dialogContext).pop(controller.text.trim());
                   },
                   child: Text(cancelPayment ? '撤销付款登记' : '驳回申请'),
                 ),

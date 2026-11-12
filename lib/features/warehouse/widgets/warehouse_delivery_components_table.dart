@@ -85,6 +85,8 @@ class WarehouseDeliveryComponentsTabs extends StatelessWidget {
                       key: 'shipment',
                       label: '出货单号',
                       width: 160,
+                      // 2026-11-11 口径：单号/编号列补就地排序（按值筛选此前已开）。
+                      sortable: true,
                       value: (row) => row.detail.header.billNo,
                       filterFromRows: true,
                     ),
@@ -99,6 +101,7 @@ class WarehouseDeliveryComponentsTabs extends StatelessWidget {
                       key: 'code',
                       label: '编号',
                       width: 140,
+                      sortable: true,
                       value: (row) => row.component.goodsCode,
                       filterFromRows: true,
                     ),

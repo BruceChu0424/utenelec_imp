@@ -274,7 +274,6 @@ class _CustomerPrepaymentApplyPanelState
     if (source == null) return '请选择一笔可用客户预收';
     if (!source.hasAvailable) return '所选客户预收已无可用余额，请刷新';
     if (_targets.isEmpty) return '请选择至少一笔同客户、同币种的正应收';
-    if (_reason.text.trim().isEmpty) return '请填写应用预收原因';
     final available = financeAmountUnits(source.availableOriginal);
     if (available == null || available <= BigInt.zero) {
       return '所选客户预收可用余额待财务核验';
@@ -385,7 +384,7 @@ class _CustomerPrepaymentApplyPanelState
           decoration: UtenInputDecoration(
             InputDecoration(
               label: fieldLabel(
-                '反转原因(必填)',
+                '反转原因（选填）',
                 Theme.of(dialogContext),
                 info: '反转会恢复预收和目标应收余额，并保留审计记录',
               ),
@@ -398,10 +397,7 @@ class _CustomerPrepaymentApplyPanelState
             child: const Text('取消'),
           ),
           FilledButton(
-            onPressed: () {
-              final value = reason.trim();
-              if (value.isNotEmpty) Navigator.pop(dialogContext, value);
-            },
+            onPressed: () => Navigator.pop(dialogContext, reason.trim()),
             child: const Text('确认反转'),
           ),
         ],
@@ -581,7 +577,7 @@ class _CustomerPrepaymentApplyPanelState
           decoration: UtenInputDecoration(
             InputDecoration(
               label: fieldLabel(
-                '抵扣说明(必填)',
+                '抵扣说明（选填）',
                 theme,
                 info: workflowFieldText(context).workflowPrepaymentApplyHint,
               ),

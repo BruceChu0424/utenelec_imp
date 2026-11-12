@@ -440,10 +440,14 @@ class _SubcontractLossClaimDetailPanelState
           },
         ),
         columns: [
+          // 2026-11-11 口径：状态/颜色类别列按值筛选；编号列可排序 + 按值筛选；
+          //数量/金额列可排序（全量估值明细快照就地排序、收集桶；币种列是整单
+          //恒定值不筛）。
           MasterColumnDef(
             key: 'valuationStatus',
             label: '估值状态',
             width: 72,
+            filterFromRows: true,
             value: (row) => _valuationStatusText(row.valuationStatus),
             cellBuilder: (_, row) => _ValuationStatusCell(row.valuationStatus),
           ),
@@ -457,12 +461,15 @@ class _SubcontractLossClaimDetailPanelState
             key: 'goodsCode',
             label: '编号',
             width: 130,
+            sortable: true,
+            filterFromRows: true,
             value: (row) => row.goodsCode,
           ),
           MasterColumnDef(
             key: 'colorName',
             label: '颜色',
             width: 90,
+            filterFromRows: true,
             value: (row) => row.colorName,
           ),
           MasterColumnDef(
@@ -470,6 +477,7 @@ class _SubcontractLossClaimDetailPanelState
             label: '实际损耗',
             width: 120,
             type: 'number',
+            sortable: true,
             value: (row) => row.actualLossQty,
           ),
           MasterColumnDef(
@@ -477,6 +485,7 @@ class _SubcontractLossClaimDetailPanelState
             label: '允许损耗',
             width: 120,
             type: 'number',
+            sortable: true,
             value: (row) => row.allowedLossQty,
           ),
           MasterColumnDef(
@@ -484,6 +493,7 @@ class _SubcontractLossClaimDetailPanelState
             label: '超耗',
             width: 110,
             type: 'number',
+            sortable: true,
             value: (row) => row.excessLossQty,
           ),
           if (_canViewFinancialAmounts) ...[
@@ -492,6 +502,7 @@ class _SubcontractLossClaimDetailPanelState
               label: '单位账面价值',
               width: 145,
               type: 'money',
+              sortable: true,
               value: (row) => row.unitBookValueLocal,
             ),
             MasterColumnDef(
@@ -499,6 +510,7 @@ class _SubcontractLossClaimDetailPanelState
               label: '账面损失',
               width: 130,
               type: 'money',
+              sortable: true,
               value: (row) => row.lossBookValueLocal,
             ),
             MasterColumnDef(

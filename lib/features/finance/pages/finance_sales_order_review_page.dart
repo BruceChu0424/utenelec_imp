@@ -34,7 +34,6 @@ import '../../../components/data_display/uten_status_badge.dart';
 import '../widgets/sales_order_revision_table.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/forms/maker_audit_fields.dart';
-import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -279,7 +278,8 @@ class _FinanceSalesOrderReviewPageState
             TextField(
               controller: _rejectReason,
               maxLength: 500,
-              decoration: const InputDecoration(labelText: '反审核原因'),
+              // 2026-11-11 口径：操作原因类输入统一选填。
+              decoration: const InputDecoration(labelText: '反审核原因（选填）'),
             ),
           ],
         ),
@@ -288,7 +288,12 @@ class _FinanceSalesOrderReviewPageState
             onPressed: () => Navigator.pop(dialogContext, false),
             child: const Text('取消'),
           ),
-          TextButton(
+          // 反审核是破坏性操作：确认键用红色实心，与全站驳回/撤回语义一致。
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(dialogContext).colorScheme.error,
+              foregroundColor: Theme.of(dialogContext).colorScheme.onError,
+            ),
             onPressed: () => Navigator.pop(dialogContext, true),
             child: const Text('确认反审核'),
           ),
@@ -302,10 +307,6 @@ class _FinanceSalesOrderReviewPageState
       return;
     }
     final reason = _rejectReason.text.trim();
-    if (reason.isEmpty) {
-      context.appWarning('请填写反审核原因');
-      return;
-    }
     final actorId = ref.read(sessionProvider).user?.employeeId;
     if (actorId == null || actorId.isEmpty) {
       context.appWarning('当前审核员身份尚未读取，请刷新后重试');
@@ -673,11 +674,9 @@ class _FinanceSalesOrderReviewPageState
       return;
     }
     final controller = _rejectReason;
-    String? errorText;
     final ok = await showDialog<bool>(
       context: context,
-      builder: (dialogCtx) => StatefulBuilder(
-        builder: (dialogCtx, setDialogState) => UtenAlertDialog(
+      builder: (dialogCtx) => UtenAlertDialog(
           title: Text('驳回 ${reviewed.billNo}'),
           content: SizedBox(
             width: 440,
@@ -697,10 +696,9 @@ class _FinanceSalesOrderReviewPageState
                   maxLength: 500,
                   maxLines: 3,
                   decoration: UtenInputDecoration(
-                    InputDecoration(
-                      labelText: '驳回原因(必填)',
-                      border: const OutlineInputBorder(),
-                      error: utenFieldError(errorText),
+                    const InputDecoration(
+                      labelText: '驳回原因（选填）',
+                      border: OutlineInputBorder(),
                     ),
                     info:
                         '${workflowFieldText(context).workflowFinanceRejectHint} 驳回不会改动订单与库存预留；原因将通知归属销售，修正后可重新确认。',
@@ -721,19 +719,12 @@ class _FinanceSalesOrderReviewPageState
               style: FilledButton.styleFrom(
                 backgroundColor: Theme.of(dialogCtx).colorScheme.error,
               ),
-              onPressed: () {
-                if (controller.text.trim().isEmpty) {
-                  setDialogState(() => errorText = '请填写驳回原因');
-                  return;
-                }
-                Navigator.pop(dialogCtx, true);
-              },
+              onPressed: () => Navigator.pop(dialogCtx, true),
               child: const Text('确认驳回'),
             ),
           ],
         ),
-      ),
-    );
+      );
     final reason = controller.text;
     if (ok != true || !mounted) return;
     setState(() => _busy = true);
@@ -1362,6 +1353,10 @@ class _FinanceSalesOrderReviewPageState
               key: 'goodsCode',
               label: '编号',
               width: 130,
+              // 2026-11-11 口径：编号列可排序（字母数字自然序）+ 按值筛选
+              //（全量加载明细表走 filterFromRows 就地收集桶，同编号行可聚看）。
+              sortable: true,
+              filterFromRows: true,
               value: (it) => UtenGoodsAttributeCell.text(it.goodsCode),
               cellBuilder: (_, it) => UtenGoodsAttributeCell(it.goodsCode),
             ),
@@ -1369,6 +1364,8 @@ class _FinanceSalesOrderReviewPageState
               key: 'colorName',
               label: '颜色',
               width: 96,
+              // 类别列：按当前行值出选项筛选。
+              filterFromRows: true,
               value: (it) => UtenGoodsAttributeCell.text(it.colorName),
               cellBuilder: (_, it) => UtenGoodsAttributeCell(it.colorName),
             ),
@@ -1379,12 +1376,15 @@ class _FinanceSalesOrderReviewPageState
               label: '数量',
               width: 125,
               type: 'number',
+              sortable: true,
               value: (it) => formatExactQtyWithUnit(it.qty, it.unitName),
             ),
             MasterColumnDef<SalesOrderFinanceReviewLine>(
               key: 'deliveryPlan',
               label: '交付方式',
               width: 112,
+              // 类别列（整装/散件/按BOM…）：按当前行值出选项筛选（2026-11-11）。
+              filterFromRows: true,
               value: (item) => orderDeliveryLabel(item.deliveryPlan),
               measureWidthOf: (context, item, scaler) =>
                   OrderDeliveryPlanCell.contentWidthOf(
@@ -1412,6 +1412,7 @@ class _FinanceSalesOrderReviewPageState
               label: '单价',
               width: 130,
               type: 'money',
+              sortable: true,
               value: (it) => financeMoneyWithUnitSuffix(
                 it.price,
                 currencyName: r.currencyName,
@@ -1423,6 +1424,7 @@ class _FinanceSalesOrderReviewPageState
               label: '折扣',
               width: 80,
               type: 'number',
+              sortable: true,
               value: (it) => _trimNum(it.discount),
             ),
             MasterColumnDef(
@@ -1430,6 +1432,7 @@ class _FinanceSalesOrderReviewPageState
               label: '总金额(订单币种)',
               width: 150,
               type: 'money',
+              sortable: true,
               value: (it) => financeMoneyWithUnitSuffix(
                 it.amountOriginal,
                 currencyName: r.currencyName,
@@ -1448,6 +1451,7 @@ class _FinanceSalesOrderReviewPageState
                 label: l10n.quoteFinanceOrderColQuotePrice,
                 width: 130,
                 type: 'money',
+                sortable: true,
                 value: (it) =>
                     financeLocalMoneyWithUnitSuffix(_trimNum(it.quotePrice)),
               ),
@@ -1456,12 +1460,15 @@ class _FinanceSalesOrderReviewPageState
                 label: l10n.quoteFinanceOrderColQuoteDiscount,
                 width: 96,
                 type: 'number',
+                sortable: true,
                 value: (it) => _trimNum(it.quoteDiscount),
               ),
               MasterColumnDef(
                 key: 'matchesQuote',
                 label: l10n.quoteFinanceOrderColMatch,
                 width: 96,
+                // 是/否类别列：按值筛选快速定位与报价不符的行。
+                filterFromRows: true,
                 value: (it) => switch (it.matchesQuote) {
                   true => l10n.quoteFinanceOrderMatchYes,
                   false => l10n.quoteFinanceOrderMatchNo,
@@ -1482,6 +1489,7 @@ class _FinanceSalesOrderReviewPageState
                 ),
                 width: 140,
                 type: 'money',
+                sortable: true,
                 value: (it) => r.clientFileCurrency == null
                     ? _trimNum(it.clientPrice)
                     : financeMoneyWithUnitSuffix(
@@ -1493,6 +1501,8 @@ class _FinanceSalesOrderReviewPageState
                 key: 'clientModel',
                 label: l10n.quoteFinanceOrderColFileModel,
                 width: 130,
+                // 型号会重复：按值筛选可聚看同一型号的行（2026-11-11）。
+                filterFromRows: true,
                 value: (it) => it.clientModel,
               ),
               MasterColumnDef(

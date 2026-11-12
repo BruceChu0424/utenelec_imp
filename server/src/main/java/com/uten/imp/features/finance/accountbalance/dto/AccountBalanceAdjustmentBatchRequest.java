@@ -14,7 +14,7 @@ import java.util.List;
 public record AccountBalanceAdjustmentBatchRequest(
         @NotBlank @Pattern(regexp = "FULL|SELECTED") String scope,
         @NotNull LocalDate effectiveDate,
-        @NotBlank @Size(max = 500) String reason,
+        @Size(max = 500) String reason,
         @NotBlank @Size(min = 8, max = 128)
         @Pattern(regexp = "[A-Za-z0-9._:-]+") String idempotencyKey,
         @NotEmpty @Size(max = 2000)

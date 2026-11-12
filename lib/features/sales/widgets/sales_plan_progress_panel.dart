@@ -521,6 +521,9 @@ class _ProgressList extends ConsumerWidget {
         key: 'goodsCode',
         label: '编号',
         width: 0,
+        // 2026-11-11 口径：编号列可排序 + 按值筛选（全量表就地收集桶）。
+        sortable: true,
+        filterFromRows: true,
         value: (line) => UtenGoodsAttributeCell.text(line.goodsCode),
         cellBuilder: (_, line) => UtenGoodsAttributeCell(line.goodsCode),
       ),
@@ -528,6 +531,8 @@ class _ProgressList extends ConsumerWidget {
         key: 'colorName',
         label: '颜色',
         width: 0,
+        // 类别列：按当前行值出选项筛选。
+        filterFromRows: true,
         value: (line) => UtenGoodsAttributeCell.text(line.colorName),
         cellBuilder: (_, line) => UtenGoodsAttributeCell(line.colorName),
       ),
@@ -535,6 +540,8 @@ class _ProgressList extends ConsumerWidget {
         key: 'spec',
         label: '规格',
         width: 0,
+        // 规格会重复：按值筛选可聚看同一规格的行（同 2026-11-11 型号口径）。
+        filterFromRows: true,
         value: (line) => UtenGoodsAttributeCell.text(line.spec),
         cellBuilder: (_, line) => UtenGoodsAttributeCell(line.spec),
       ),

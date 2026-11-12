@@ -1176,6 +1176,8 @@ class _WorkshopMaterialReportsPageState
           key: 'productCode',
           label: '编号',
           width: 110,
+          // 2026-11-11 口径：编号/颜色列补按值筛选（与「按产品」表一致；排序此前已开）。
+          filterFromRows: true,
           value: (r) => UtenGoodsAttributeCell.text(r.productCode),
           cellBuilder: (_, r) => UtenGoodsAttributeCell(r.productCode),
           sortable: true,
@@ -1191,6 +1193,7 @@ class _WorkshopMaterialReportsPageState
           key: 'materialColor',
           label: '颜色',
           width: 84,
+          filterFromRows: true,
           value: (r) => UtenGoodsAttributeCell.text(r.materialColorName),
           cellBuilder: (_, r) => UtenGoodsAttributeCell(r.materialColorName),
           sortable: true,

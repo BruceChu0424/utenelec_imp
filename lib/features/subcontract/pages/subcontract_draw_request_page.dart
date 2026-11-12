@@ -832,7 +832,9 @@ class _SubcontractDrawRequestPageState
       MasterColumnDef(
         key: 'goodsCode',
         label: '编号',
+        // 2026-11-11 口径：编号列可排序 + 按值筛选（全量预览表就地收集桶）。
         sortable: true,
+        filterFromRows: true,
         width: 130,
         value: (line) => _label(line.goodsCode),
       ),
@@ -850,6 +852,8 @@ class _SubcontractDrawRequestPageState
         info: _quantityHelp,
         width: 230,
         type: 'number',
+        // 2026-11-11 口径：数量列可排序（输入列就地按当前值排，同财务核价页）。
+        sortable: true,
         value: (line) => _rawInput(line.identity),
         exactValueOf: (line) => _rawInput(line.identity),
         exactListenableOf: (line) => _inputs[line.identity],

@@ -1685,7 +1685,9 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
                 MasterColumnDef(
                   key: 'goodsCode',
                   label: '编号',
+                  // 2026-11-11 口径：编号列可排序 + 按值筛选（全量明细表就地收集桶）。
                   sortable: true,
+                  filterFromRows: true,
                   width: 130,
                   value: (it) => UtenGoodsAttributeCell.text(
                     names.goodsInfo(it.goodsId)?.code,

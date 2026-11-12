@@ -4,7 +4,6 @@ import 'package:uten_imp/components/feedback/uten_modal_bottom_sheet.dart';
 import '../../../shared/documents/document_unapproval_action.dart';
 import '../../../shared/documents/document_unapproval.dart';
 import '../../../shared/auth/native_read_view_scope_mixin.dart';
-import 'package:uten_imp/components/inputs/uten_field_message.dart';
 import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import '../../../shared/business_columns/business_columns_table.dart';
 import '../../../shared/delivery/order_delivery_plan.dart';
@@ -610,53 +609,37 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
     final revision = _detail!.quoteWorkflow.reviewRevision;
     final l10n = AppLocalizations.of(context);
     var reason = '';
-    var attempted = false;
     final result = await showDialog<String>(
       context: context,
       builder: (ctx) => trackNativeReadDialog(
         ctx,
-        StatefulBuilder(
-          builder: (ctx, setDialogState) => UtenAlertDialog(
-            title: Text(l10n.salesQuoteCancelQuote),
-            content: SizedBox(
-              width: 460,
-              child: TextField(
-                key: const ValueKey('sales-quote-cancel-reason'),
-                autofocus: true,
-                maxLines: 3,
-                maxLength: 500,
-                onChanged: (value) => setDialogState(() => reason = value),
-                decoration: UtenInputDecoration(
-                  InputDecoration(
-                    labelText: l10n.salesQuoteCancelReason,
-                    error: attempted && reason.trim().isEmpty
-                        ? UtenFieldMessage.error(
-                            l10n.salesQuoteCancelReasonRequired,
-                          )
-                        : null,
-                  ),
-                ),
+        UtenAlertDialog(
+          title: Text(l10n.salesQuoteCancelQuote),
+          content: SizedBox(
+            width: 460,
+            child: TextField(
+              key: const ValueKey('sales-quote-cancel-reason'),
+              autofocus: true,
+              maxLines: 3,
+              maxLength: 500,
+              onChanged: (value) => reason = value,
+              decoration: UtenInputDecoration(
+                InputDecoration(labelText: l10n.salesQuoteCancelReason),
               ),
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: Text(l10n.salesQuoteStatusCancel),
-              ),
-              UtenButton(
-                key: const ValueKey('sales-quote-cancel-submit'),
-                type: UtenButtonType.danger,
-                onPressed: () {
-                  if (reason.trim().isEmpty) {
-                    setDialogState(() => attempted = true);
-                    return;
-                  }
-                  Navigator.pop(ctx, reason.trim());
-                },
-                child: Text(l10n.salesQuoteCancelQuote),
-              ),
-            ],
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text(l10n.salesQuoteStatusCancel),
+            ),
+            UtenButton(
+              key: const ValueKey('sales-quote-cancel-submit'),
+              type: UtenButtonType.danger,
+              onPressed: () => Navigator.pop(ctx, reason.trim()),
+              child: Text(l10n.salesQuoteCancelQuote),
+            ),
+          ],
         ),
       ),
     );
@@ -2443,6 +2426,9 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
                   key: 'goodsCode',
                   label: '编号',
                   width: 130,
+                  // 2026-11-11 口径：编号列可排序 + 按值筛选（全量明细表就地收集桶）。
+                  sortable: true,
+                  filterFromRows: true,
                   value: (it) => UtenGoodsAttributeCell.text(
                     salesGoodsCodeLabel(
                       it,
@@ -2460,6 +2446,8 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
                   key: 'colorName',
                   label: '颜色',
                   width: 96,
+                  // 类别列：按当前行值出选项筛选。
+                  filterFromRows: true,
                   value: (it) => names.color(it.colorId),
                 ),
                 // 2026-09-25 用户口径：订货单明细列与编辑页对齐（补折扣/机加价/围数/
@@ -2470,6 +2458,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
                   label: '数量',
                   width: 125,
                   type: 'number',
+                  sortable: true,
                   value: (it) => formatExactQtyWithUnit(
                     it.exactDecimals['qty'] ?? it.qty?.toString(),
                     names.unitEntries[it.unitId],
@@ -2490,6 +2479,8 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
                     key: 'deliveryPlan',
                     label: '交付方式',
                     width: 112,
+                    // 类别列（整装/散件/按BOM…）：按当前行值出选项筛选（2026-11-11）。
+                    filterFromRows: true,
                     value: (item) => orderDeliveryLabel(item.deliveryPlan),
                     measureWidthOf: (context, item, scaler) =>
                         OrderDeliveryPlanCell.contentWidthOf(
@@ -2525,6 +2516,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
                   label: '单价',
                   width: 140,
                   type: 'money',
+                  sortable: true,
                   value: (it) {
                     if (masked) return '***';
                     final p = financeMoneyWithUnitSuffix(
@@ -2544,6 +2536,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
                         ? '沿用来源订单的折扣；金额以服务端分配的来源订单金额为准。'
                         : null,
                     width: 80,
+                    sortable: true,
                     value: (it) => masked
                         ? '***'
                         : _cfg.type == SalesDocType.shipment
@@ -2565,6 +2558,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
                       : '金额',
                   width: 140,
                   type: 'money',
+                  sortable: true,
                   value: (it) => masked
                       ? '***'
                       : financeMoneyWithUnitSuffix(
@@ -3504,7 +3498,7 @@ class _LineActionSheetState extends State<_LineActionSheet> {
                   controller: _priorityReason,
                   autofocus: true,
                   decoration: const UtenInputDecoration(
-                    InputDecoration(labelText: '急单原因(必填)'),
+                    InputDecoration(labelText: '急单原因（选填）'),
                   ),
                 ),
               ],
@@ -3535,7 +3529,7 @@ class _LineActionSheetState extends State<_LineActionSheet> {
               TextField(
                 controller: _yieldReason,
                 decoration: const UtenInputDecoration(
-                  InputDecoration(labelText: '让单原因(必填)'),
+                  InputDecoration(labelText: '让单原因（选填）'),
                 ),
               ),
               const SizedBox(height: UtenSpacing.s12),
@@ -3561,10 +3555,6 @@ class _LineActionSheetState extends State<_LineActionSheet> {
 
   void _applyPriority() {
     final reason = _priorityReason.text.trim();
-    if (_priority == 1 && reason.isEmpty) {
-      context.appWarning('请填写急单原因');
-      return;
-    }
     widget.onSetPriority(_priority, _priority == 1 ? reason : null);
     Navigator.of(context).pop();
   }
@@ -3576,12 +3566,7 @@ class _LineActionSheetState extends State<_LineActionSheet> {
       context.appWarning('让单数量要大于 0，且不能超过可发数量 $reserved');
       return;
     }
-    final reason = _yieldReason.text.trim();
-    if (reason.isEmpty) {
-      context.appWarning('请填写让单原因');
-      return;
-    }
-    widget.onYield(qty, reason);
+    widget.onYield(qty, _yieldReason.text.trim());
     Navigator.of(context).pop();
   }
 }

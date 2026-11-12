@@ -266,10 +266,15 @@ public class AccountBalanceAdjustmentService {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
                     "核对范围只能是 FULL 或 SELECTED");
         }
+        // 2026-11-11 口径：核对原因选填，留空归一「未填写原因」——批次 reason 列
+        // NOT NULL 且有非空 CHECK，不能存空串；超 500 字仍拒绝。
         String reason = request.reason().trim();
-        if (reason.isEmpty() || reason.length() > 500) {
+        if (reason.isEmpty()) {
+            reason = "未填写原因";
+        }
+        if (reason.length() > 500) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                    "余额核对原因不能为空且不能超过 500 个字符");
+                    "余额核对原因不能超过 500 个字符");
         }
         String key = request.idempotencyKey().trim();
         if (key.length() < 8 || key.length() > 128

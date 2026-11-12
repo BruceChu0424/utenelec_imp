@@ -35,7 +35,6 @@ import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/forms/maker_audit_fields.dart';
-import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsible_section.dart';
@@ -622,59 +621,51 @@ class _ProductionPlanDetailPageState
     final isCancel = action == ProductionPlanningPackageLifecycleAction.cancel;
     final verb = isCancel ? '取消' : '冲销';
     final reasonController = TextEditingController();
-    String? validationError;
     final reason = await UtenDialog.showAndWaitForExit<String>(
       context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) => UtenAlertDialog(
-          title: Text('$verb生产计划包'),
-          content: SizedBox(
-            width: utenDialogWidth(dialogContext, 460),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  isCancel
-                      ? '仅未开工且没有执行事实的计划包可取消。系统会原子释放占用并关闭可撤销的下游草稿。'
-                      : '仅未开工且没有执行事实的计划包可冲销。系统会保留审计历史并回退可逆事实。',
-                ),
-                const SizedBox(height: UtenSpacing.s12),
-                TextField(
-                  controller: reasonController,
-                  maxLength: 500,
-                  autofocus: true,
-                  decoration: UtenInputDecoration(
-                    InputDecoration(
-                      labelText: '$verb原因',
-                      hintText: '请填写具体业务原因',
-                      error: utenFieldError(validationError),
-                    ),
+      builder: (dialogContext) => UtenAlertDialog(
+        title: Text('$verb生产计划包'),
+        content: SizedBox(
+          width: utenDialogWidth(dialogContext, 460),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                isCancel
+                    ? '仅未开工且没有执行事实的计划包可取消。系统会原子释放占用并关闭可撤销的下游草稿。'
+                    : '仅未开工且没有执行事实的计划包可冲销。系统会保留审计历史并回退可逆事实。',
+              ),
+              const SizedBox(height: UtenSpacing.s12),
+              TextField(
+                controller: reasonController,
+                maxLength: 500,
+                autofocus: true,
+                decoration: UtenInputDecoration(
+                  // 2026-11-11 口径：操作弹窗原因/备注类输入统一选填；留空服务端记「未填写」。
+                  InputDecoration(
+                    labelText: '$verb原因（选填）',
+                    hintText: '如需留痕可填写具体业务原因',
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-          actionsAlignment: MainAxisAlignment.center,
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('返回核对'),
-            ),
-            UtenButton(
-              type: UtenButtonType.danger,
-              onPressed: () {
-                final value = reasonController.text.trim();
-                if (value.isEmpty) {
-                  setDialogState(() => validationError = '必须填写原因');
-                  return;
-                }
-                Navigator.pop(dialogContext, value);
-              },
-              child: Text('确认$verb'),
-            ),
-          ],
         ),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('返回核对'),
+          ),
+          UtenButton(
+            type: UtenButtonType.danger,
+            onPressed: () {
+              Navigator.pop(dialogContext, reasonController.text.trim());
+            },
+            child: Text('确认$verb'),
+          ),
+        ],
       ),
     );
     reasonController.dispose();

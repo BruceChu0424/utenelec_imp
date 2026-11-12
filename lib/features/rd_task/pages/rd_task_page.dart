@@ -1051,6 +1051,8 @@ class _DesktopTaskTable extends StatelessWidget {
           key: 'goodsCode',
           label: '编号',
           width: 130,
+          // 2026-11-11 口径：服务端排序白名单已含本列，补表头排序入口。
+          sortable: true,
           value: (item) => UtenGoodsAttributeCell.text(item.goodsCode),
           cellBuilder: (_, item) => UtenGoodsAttributeCell(item.goodsCode),
         ),

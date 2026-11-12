@@ -592,18 +592,22 @@ class _ProductionFqcInspectionsPageState
     MasterColumnDef(
       key: 'reportNo',
       label: '报工单',
+      // 2026-11-11 口径：单号列可排序（服务端分页，排序走宿主 onSortChange）。
+      sortable: true,
       width: 180,
       value: (inspection) => inspection.reportNo ?? '—',
     ),
     MasterColumnDef(
       key: 'planNo',
       label: '生产计划',
+      sortable: true,
       width: 170,
       value: (inspection) => inspection.planNo ?? '—',
     ),
     MasterColumnDef(
       key: 'sheetNo',
       label: '检查单号',
+      sortable: true,
       width: 170,
       value: (inspection) => inspection.sheetNo ?? '无检查单',
     ),
@@ -617,6 +621,7 @@ class _ProductionFqcInspectionsPageState
     MasterColumnDef(
       key: 'goodsCode',
       label: '编号',
+      sortable: true,
       width: 140,
       value: (inspection) => inspection.goodsCode ?? '—',
     ),

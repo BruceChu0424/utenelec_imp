@@ -11,7 +11,6 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_empty.dart';
-import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../core/network/api_exception.dart';
@@ -401,7 +400,7 @@ class _SubcontractDrawTaskDetailDialogState
   }
 }
 
-/// 结束领料原因(必填，最多 200 字)。
+/// 结束领料原因(选填，最多 200 字)。
 class _CloseDrawReasonDialog extends StatefulWidget {
   const _CloseDrawReasonDialog({required this.task});
 
@@ -414,7 +413,6 @@ class _CloseDrawReasonDialog extends StatefulWidget {
 class _CloseDrawReasonDialogState extends State<_CloseDrawReasonDialog> {
   static const _maxLength = 200;
   final _reason = TextEditingController();
-  String? _error;
 
   @override
   void dispose() {
@@ -423,16 +421,8 @@ class _CloseDrawReasonDialogState extends State<_CloseDrawReasonDialog> {
   }
 
   void _submit() {
-    final text = _reason.text.trim();
-    if (text.isEmpty) {
-      setState(() => _error = '请填写结束领料的原因');
-      return;
-    }
-    if (text.length > _maxLength) {
-      setState(() => _error = '原因最多 $_maxLength 字');
-      return;
-    }
-    Navigator.of(context).pop(text);
+    // 原因选填：空原因确认返回空串（调用方视为已确认），取消返回 null。
+    Navigator.of(context).pop(_reason.text.trim());
   }
 
   @override
@@ -457,18 +447,12 @@ class _CloseDrawReasonDialogState extends State<_CloseDrawReasonDialog> {
               autofocus: true,
               maxLength: _maxLength,
               maxLines: 3,
-              decoration: UtenInputDecoration(
+              decoration: const UtenInputDecoration(
                 InputDecoration(
-                  labelText: '结束原因(必填)',
+                  labelText: '结束原因（选填）',
                   hintText: '如：委外商做不完，剩余数量不再加工',
-                  error: _error == null
-                      ? null
-                      : UtenFieldMessage.error(_error!),
                 ),
               ),
-              onChanged: (_) {
-                if (_error != null) setState(() => _error = null);
-              },
             ),
           ],
         ),

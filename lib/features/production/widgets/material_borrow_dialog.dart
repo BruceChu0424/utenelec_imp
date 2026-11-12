@@ -127,7 +127,8 @@ class _MaterialBorrowDialogState extends State<MaterialBorrowDialog> {
       return;
     }
     final reason = _reasonController.text.trim();
-    if (reason.length < 2) return;
+    // 2026-11-11 口径：调拨原因选填（后端空白归一「未填写原因」入审计），
+    // 同时去掉此前静默吞掉确认点击的 <2 字拦截。
     Navigator.pop(
       context,
       MaterialBorrowRequestDraft(
@@ -254,9 +255,9 @@ class _MaterialBorrowDialogState extends State<MaterialBorrowDialog> {
                 decoration: UtenInputDecoration(
                   InputDecoration(
                     label: fieldLabel(
-                      '调拨原因(必填)',
+                      '调拨原因（选填）',
                       theme,
-                      info: '会写入审计记录，例如"客户 X 加急，先保这单"。',
+                      info: '会写入审计记录，例如"客户 X 加急，先保这单"；留空记「未填写原因」。',
                     ),
                   ),
                 ),

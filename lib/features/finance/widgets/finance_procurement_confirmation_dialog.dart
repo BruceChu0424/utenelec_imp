@@ -984,10 +984,21 @@ class _ConfirmationDetailState extends ConsumerState<_ConfirmationDetail> {
               onPressed: () => Navigator.pop(dialog, false),
               child: const Text('取消'),
             ),
-            TextButton(
-              onPressed: () => Navigator.pop(dialog, true),
-              child: const Text('确认'),
-            ),
+            // 审核确认=主色实心；反审=红色实心（破坏性），随 action 分色。
+            if (action == 'approve')
+              FilledButton(
+                onPressed: () => Navigator.pop(dialog, true),
+                child: const Text('确认'),
+              )
+            else
+              FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: Theme.of(dialog).colorScheme.error,
+                  foregroundColor: Theme.of(dialog).colorScheme.onError,
+                ),
+                onPressed: () => Navigator.pop(dialog, true),
+                child: const Text('确认'),
+              ),
           ],
         ),
       );

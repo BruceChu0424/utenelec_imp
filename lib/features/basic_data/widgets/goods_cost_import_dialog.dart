@@ -192,6 +192,10 @@ class _GoodsCostImportDialogState extends State<GoodsCostImportDialog> {
                     label: _l.costGoodsCode,
                     width: 150,
                     minimumWidthOf: (_) => 48,
+                    // 2026-11-11 口径：编号列可排序 + 按值筛选（全量行就地收集桶）；
+                    // 行序只影响显示，不改变导入映射本身。
+                    sortable: true,
+                    filterFromRows: true,
                     value: (r) => costText(r.source['code']),
                     cellBuilder: (_, r) => _text(r.source['code']),
                   ),
@@ -200,6 +204,8 @@ class _GoodsCostImportDialogState extends State<GoodsCostImportDialog> {
                     label: _l.costUnit,
                     width: 100,
                     minimumWidthOf: (_) => 48,
+                    // 2026-11-11 口径：类别列按值筛选（全量行就地收集桶）。
+                    filterFromRows: true,
                     value: (r) => costText(r.source['unit']),
                     cellBuilder: (_, r) => _text(r.source['unit']),
                   ),

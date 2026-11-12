@@ -192,6 +192,11 @@ class SalesGridRow extends EditableGridRow
   /// 文件型号(客户的型号/货号，可编辑；保存后系统学习客户叫法)。
   final clientModel = TextEditingController();
 
+  /// 行内英文名称(2026-11-11)：报价/订货行可编辑——选货品自动带出主档值，可改、
+  /// 可空缺手填；保存时非空且与主档不同则回写货品主档(下次选货带出最新值)。
+  /// 空值不回写(不清空主档)。其余单据类型该列保持只读展示。
+  final nameEn = TextEditingController();
+
   /// 文件品名(客户文件原文或用户明确输入，不从主档英文名称填充)。
   final clientGoodsName = TextEditingController();
 
@@ -356,6 +361,7 @@ class SalesGridRow extends EditableGridRow
     r.price.text =
         financeExactTrimmed(li.priceText ?? li.price?.toString()) ?? '';
     r.discount.text = salesSourceDiscountText(li.discountText);
+    r.nameEn.text = goods.nameEn ?? '';
   }
 
   /// 识别客户文件导入的一行：货品/颜色/单位、数量、标价预览(只读)、折扣、
@@ -388,6 +394,7 @@ class SalesGridRow extends EditableGridRow
     r.discount.text = p.discount ?? '';
     r.clientModel.text = p.clientModel ?? '';
     r.clientGoodsName.text = p.clientGoodsName ?? '';
+    r.nameEn.text = p.goodsNameEn ?? '';
     r.remark.text = p.remark ?? '';
     r.markAiReview(p.reviewReason, goodsMatch: p.goodsMatchReason);
     return r;
@@ -418,6 +425,7 @@ class SalesGridRow extends EditableGridRow
     'qty': qty,
     'weight': weight,
     'price': price,
+    'nameEn': nameEn,
     'machiningPrice': machiningPrice,
     'circumference': circumference,
     'inboundQty': inboundQty,
@@ -558,6 +566,7 @@ class SalesGridRow extends EditableGridRow
     // 文件原文随行复制；识别行键/人工确认/英文名勾选/财务定价/报价核定属于原行，不复制。
     c.clientModel.text = clientModel.text;
     c.clientGoodsName.text = clientGoodsName.text;
+    c.nameEn.text = nameEn.text;
     c.clientPrice = clientPrice;
     if (c.canEditTotal) pricing.copyStateTo(c.pricing);
     return c;
@@ -586,6 +595,7 @@ class SalesGridRow extends EditableGridRow
     remark.dispose();
     clientModel.dispose();
     clientGoodsName.dispose();
+    nameEn.dispose();
     aiReviewNotifier.dispose();
     aiFilledNotifier.dispose();
     invalidNotifier.dispose();
@@ -744,17 +754,38 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
         ),
       ),
     ),
-    EditableGridColumn<SalesGridRow>(
-      key: 'nameEn',
-      label: intakeText.businessColumnNameEn,
-      width: 180,
-      textOf: (r) => r.goods?.nameEn ?? '',
-      listenableOf: (r) => r.goodsNotifier,
-      cellBuilder: (context, row) => ValueListenableBuilder<GoodsOption?>(
-        valueListenable: row.goodsNotifier,
-        builder: (context, goods, _) => UtenGoodsAttributeCell(goods?.nameEn),
+    // 英文名称：报价/订货可编辑(2026-11-11)——选货品自动带出主档值，可改、可
+    // 空缺手填；保存时非空且与主档不同则回写货品主档，下次选货带出最新值。
+    // 其余单据类型保持只读展示主档值。
+    if (isQuote || docType == SalesDocType.order)
+      EditableGridColumn<SalesGridRow>(
+        key: 'nameEn',
+        label: intakeText.businessColumnNameEn,
+        width: 180,
+        textOf: (r) => r.nameEn.text,
+        listenableOf: (r) => r.nameEn,
+        cellBuilder: (context, row) => TextField(
+          controller: row.nameEn,
+          decoration: UtenInputDecoration(
+            InputDecoration(
+              isDense: true,
+              hintText: intakeText.businessColumnNameEn,
+            ),
+          ),
+        ),
+      )
+    else
+      EditableGridColumn<SalesGridRow>(
+        key: 'nameEn',
+        label: intakeText.businessColumnNameEn,
+        width: 180,
+        textOf: (r) => r.goods?.nameEn ?? '',
+        listenableOf: (r) => r.goodsNotifier,
+        cellBuilder: (context, row) => ValueListenableBuilder<GoodsOption?>(
+          valueListenable: row.goodsNotifier,
+          builder: (context, goods, _) => UtenGoodsAttributeCell(goods?.nameEn),
+        ),
       ),
-    ),
     EditableGridColumn<SalesGridRow>(
       key: 'goodsCode',
       label: '编号',

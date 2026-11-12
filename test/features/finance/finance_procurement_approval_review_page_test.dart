@@ -4,7 +4,7 @@
 //    换算率/单位列退役）、汇率编辑器默认值/编辑联动/提交体、供应商红色加粗、
 //    highlightColumnKeys（采购超收%/委外损耗%）、折合人民币实时重算；
 //  - 通过：选填备注 + 汇率随单笔 batch-approve 提交，成功后 pop(true) 回列表；
-//  - 驳回：原因必填，空原因内联报错；
+//  - 驳回：原因选填，空原因直接提交；
 //  - 非 PENDING / 无动作 case 不渲染底栏（服务端 allowedActions 为准）。
 import 'package:flutter/material.dart';
 import 'package:uten_imp/core/network/server_config.dart';
@@ -1079,7 +1079,7 @@ void main() {
     );
   });
 
-  testWidgets('reject requires a reason before submit', (tester) async {
+  testWidgets('reject submits with optional reason', (tester) async {
     final repository = _FakeWorkflowRepo(_pendingReview());
     await _pumpReviewPage(tester, repository);
 
@@ -1089,31 +1089,15 @@ void main() {
       find.byKey(const Key('finance-order-review-reject-reason')),
     );
     expect(reason.controller!.text, isEmpty);
-    expect(reason.decoration?.hintText, '驳回原因');
-    // 空原因：内联校验拦截，不提交。
-    await tester.tap(
-      find.byKey(const Key('finance-order-review-reject-submit')),
-    );
-    await tester.pump();
-    expect(
-      find.byWidgetPredicate(
-        (w) => w is Tooltip && (w.message ?? '').contains('请填写驳回原因'),
-      ),
-      findsOneWidget,
-    );
-    expect(repository.rejected, isEmpty);
-
-    await tester.enterText(
-      find.byKey(const Key('finance-order-review-reject-reason')),
-      '税率与结算方式需要重新确认',
-    );
+    expect(reason.decoration?.hintText, '驳回原因（选填）');
+    // 2026-11 起驳回原因选填：空原因直接提交，不再内联拦截。
     await tester.tap(
       find.byKey(const Key('finance-order-review-reject-submit')),
     );
     await tester.pumpAndSettle();
 
     expect(repository.rejected, hasLength(1));
-    expect(repository.rejected.single.reason, '税率与结算方式需要重新确认');
+    expect(repository.rejected.single.reason, '');
     expect(find.text('任务中心列表'), findsOneWidget);
   });
 

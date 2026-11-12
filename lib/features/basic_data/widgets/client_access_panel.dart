@@ -434,17 +434,11 @@ class _ClientAccessPanelState extends ConsumerState<ClientAccessPanel> {
           UtenInput(
             key: const ValueKey('client-access-reason'),
             controller: _reasonController,
-            label: '修改原因',
+            label: '修改原因（选填）',
             hint: '例如：客户交接、协同跟进或临时查看',
             inputFormatters: [LengthLimitingTextInputFormatter(1000)],
             maxLines: 3,
-            required: true,
             enabled: !_saving,
-            validator: (value) {
-              final reason = value?.trim() ?? '';
-              if (reason.isEmpty) return '请填写修改原因，便于审计追溯';
-              return reason.length > 1000 ? '修改原因不能超过 1000 个字符' : null;
-            },
           ),
         ],
       ),

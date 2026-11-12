@@ -26,11 +26,11 @@ public final class CustomerPrepaymentContracts {
             @NotBlank @Size(max = 120) String idempotencyKey,
             @NotNull UUID sourceLedgerId,
             @NotEmpty @Size(max = 500) List<@Valid Target> targets,
-            @NotBlank @Size(max = 2000) String reason) {}
+            @Size(max = 2000) String reason) {}
 
     public record ReverseRequest(
             @NotNull Long expectedVersion,
-            @NotBlank @Size(max = 2000) String reason) {}
+            @Size(max = 2000) String reason) {}
 
     public record Allocation(
             UUID id,

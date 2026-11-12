@@ -5,7 +5,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/core/responsive/display_zoom.dart';
-import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/core/theme/uten_control_theme.dart';
 import 'package:uten_imp/features/quality/widgets/inspection_report_confirm_dialog.dart';
@@ -68,22 +67,19 @@ void main() {
       final submit = find.byKey(const Key('inspection-report-confirm-submit'));
       await tester.ensureVisible(submit);
       await tester.pumpAndSettle();
+      // 结论原因选填：即便有不合格行（requireReason=true）空原因也能直接提交。
       await tester.tap(submit);
       await tester.pumpAndSettle();
-      expect(result, isNull);
-      await tester.ensureVisible(find.byType(TextField));
-      await tester.pumpAndSettle();
-      final errorHint = find.byWidgetPredicate(
-        (widget) =>
-            widget is UtenFieldHintIcon && widget.errorMessage == '结论原因必填',
+      expect(result, '');
+      expect(
+        find.byKey(const Key('inspection-report-confirm-submit')),
+        findsNothing,
       );
-      expect(errorHint, findsOneWidget);
-      await tester.ensureVisible(errorHint);
-      await tester.pumpAndSettle();
-      await tester.tap(errorHint);
-      await tester.pumpAndSettle();
-      expect(find.textContaining('结论原因必填'), findsOneWidget);
-      await tester.ensureVisible(find.byType(TextField));
+      expect(tester.takeException(), isNull);
+
+      // 填写原因后再确认：返回所填文本，草稿回调同步。
+      result = null;
+      await tester.tap(find.text('打开'));
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField), '原始检验结论原因');
       await tester.pumpAndSettle();

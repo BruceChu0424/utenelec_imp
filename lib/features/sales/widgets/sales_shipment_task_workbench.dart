@@ -17,7 +17,6 @@ import '../../../components/feedback/uten_progress_dialog.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
-import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
@@ -688,78 +687,67 @@ class _SalesShipmentTaskWorkbenchState
     if (claim == null || !mounted) return;
     try {
       final controller = TextEditingController();
-      String? errorText;
       late final String? reason;
       try {
         reason = await UtenDialog.showAndWaitForExit<String>(
           context,
-          builder: (ctx) => StatefulBuilder(
-            builder: (ctx, setDialogState) => UtenAlertDialog(
-              title: Text('批量退回($count 笔)'),
-              content: SizedBox(
-                width: 440,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const UtenReviewerResponsibilityNotice(
-                      actionLabel:
-                          '批量退回${FinanceRequirementNames.customerShipmentReview}',
-                      description: '确认后，系统将以此登录员工记录整批退回责任。',
-                      compact: true,
-                    ),
-                    const SizedBox(height: UtenSpacing.s12),
-                    Text('${_selectedBillSummary()}将使用同一个退回原因，整批一起提交。'),
-                    const SizedBox(height: UtenSpacing.s12),
-                    TextField(
-                      key: const Key('finance-shipment-batch-reject-reason'),
-                      controller: controller,
-                      autofocus: true,
-                      maxLength: 500,
-                      maxLines: 3,
-                      decoration: UtenInputDecoration(
-                        InputDecoration(
-                          labelText: '退回原因(必填)',
-                          border: const OutlineInputBorder(),
-                          error: utenFieldError(errorText),
-                        ),
-                        info: '写明需要销售修改的内容；整批共用同一原因。',
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              actionsAlignment: MainAxisAlignment.center,
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  child: const Text('取消'),
-                ),
-                FinanceReviewClaimButton(
-                  claim: claim,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: Theme.of(ctx).colorScheme.error,
-                    foregroundColor: Theme.of(ctx).colorScheme.onError,
+          builder: (ctx) => UtenAlertDialog(
+            title: Text('批量退回($count 笔)'),
+            content: SizedBox(
+              width: 440,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const UtenReviewerResponsibilityNotice(
+                    actionLabel:
+                        '批量退回${FinanceRequirementNames.customerShipmentReview}',
+                    description: '确认后，系统将以此登录员工记录整批退回责任。',
+                    compact: true,
                   ),
-                  onPressed: () {
-                    final value = controller.text.trim();
-                    if (value.isEmpty) {
-                      setDialogState(() => errorText = '请填写退回原因');
-                      return;
-                    }
-                    Navigator.pop(ctx, value);
-                  },
-                  child: const Text('确认批量退回'),
-                ),
-              ],
+                  const SizedBox(height: UtenSpacing.s12),
+                  Text('${_selectedBillSummary()}将使用同一个退回原因，整批一起提交。'),
+                  const SizedBox(height: UtenSpacing.s12),
+                  TextField(
+                    key: const Key('finance-shipment-batch-reject-reason'),
+                    controller: controller,
+                    autofocus: true,
+                    maxLength: 500,
+                    maxLines: 3,
+                    decoration: const UtenInputDecoration(
+                      InputDecoration(
+                        labelText: '退回原因（选填）',
+                        border: OutlineInputBorder(),
+                      ),
+                      info: '写明需要销售修改的内容；整批共用同一原因。',
+                    ),
+                  ),
+                ],
+              ),
             ),
+            actionsAlignment: MainAxisAlignment.center,
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('取消'),
+              ),
+              FinanceReviewClaimButton(
+                claim: claim,
+                style: FilledButton.styleFrom(
+                  backgroundColor: Theme.of(ctx).colorScheme.error,
+                  foregroundColor: Theme.of(ctx).colorScheme.onError,
+                ),
+                onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+                child: const Text('确认批量退回'),
+              ),
+            ],
           ),
         );
       } finally {
         controller.dispose();
       }
       final confirmedReason = reason;
-      if (confirmedReason == null || confirmedReason.isEmpty || !mounted) {
+      if (confirmedReason == null || !mounted) {
         return;
       }
       await _runBatch(

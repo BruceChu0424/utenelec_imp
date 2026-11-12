@@ -162,10 +162,13 @@ class _MaterialReferencePickerState
             rows: _current ? _rows : const [],
             idOf: (r) => (r['id'] ?? r['contextId']).toString(),
             columns: [
+              // 2026-11-11 口径：编码列可排序 + 按值筛选（全量参考目录快照）。
               financeSourceColumn(
                 widget.kind == 'contexts' ? 'accountCode' : 'code',
                 '编码',
                 width: 190,
+                sortable: true,
+                filterByValue: true,
               ),
               financeSourceColumn(
                 widget.kind == 'contexts' ? 'productNameCaption' : 'name',
@@ -447,22 +450,51 @@ class _MaterialMovementPickerState
             rows: _current ? _rows : const [],
             idOf: (r) => r['movementId'].toString(),
             columns: [
-              financeSourceColumn('billNo', '原单号', width: 190),
+              // 2026-11-11 口径：单号/编码列可排序 + 按值筛选；日期/数量列可排序
+              //（全量快照就地排序、收集桶）。
+              financeSourceColumn(
+                'billNo',
+                '原单号',
+                width: 190,
+                sortable: true,
+                filterByValue: true,
+              ),
               financeSourceColumn(
                 'originalSummary',
                 '原摘要／备注（人工核对）',
                 width: 340,
               ),
-              financeSourceColumn('businessDate', '原表业务日期'),
-              financeSourceColumn('confirmationDate', '实际确认／反向日', width: 190),
-              financeSourceColumn('goodsCode', '真实货品编码'),
+              financeSourceColumn('businessDate', '原表业务日期', sortable: true),
+              financeSourceColumn(
+                'confirmationDate',
+                '实际确认／反向日',
+                width: 190,
+                sortable: true,
+              ),
+              financeSourceColumn(
+                'goodsCode',
+                '真实货品编码',
+                sortable: true,
+                filterByValue: true,
+              ),
               financeSourceColumn('goodsName', '真实货品名称', width: 220),
-              financeSourceColumn('baseQuantity', '库存基本量', type: 'number'),
-              financeSourceColumn('weightKg', '实称(KG)', type: 'number'),
+              financeSourceColumn(
+                'baseQuantity',
+                '库存基本量',
+                type: 'number',
+                sortable: true,
+              ),
+              financeSourceColumn(
+                'weightKg',
+                '实称(KG)',
+                type: 'number',
+                sortable: true,
+              ),
               financeSourceColumn(
                 'estimatedWeightKg',
                 '参考(KG)',
                 type: 'number',
+                sortable: true,
               ),
             ],
             busy: _busy,

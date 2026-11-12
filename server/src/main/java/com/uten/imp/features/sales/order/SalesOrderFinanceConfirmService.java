@@ -16,7 +16,6 @@ import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import jakarta.validation.constraints.NotEmpty;
-import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
@@ -91,9 +90,8 @@ public class SalesOrderFinanceConfirmService {
         public FinanceConfirmRequest(String remark,Long expectedRevision) { this(remark,expectedRevision,null); }
     }
 
-    /** 驳回请求体（reason 必填：驳回要告诉销售"改什么"，空原因驳回 fail-closed）。 */
+    /** 驳回请求体（reason 选填：原因将通知归属销售，修正后可重新确认）。 */
     public record FinanceRejectRequest(
-            @NotBlank(message = "驳回原因不能为空")
             @Size(max = 500, message = "驳回原因不能超过 500 个字符") String reason,
             Long expectedRevision,UUID expectedClaimId) {
         public FinanceRejectRequest(String reason) { this(reason, null); }
@@ -827,7 +825,7 @@ public class SalesOrderFinanceConfirmService {
         SalesOrder order = requireDecisionOrderForUpdate(orderId);
         com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_orders",order);
         order.getManagerReview().requireFinanceReady();
-        if (request == null) throw new ApiException(ErrorCode.VALIDATION_FAILED,"请填写财务驳回原因");
+        if (request == null) throw new ApiException(ErrorCode.VALIDATION_FAILED,"缺少驳回请求体");
         requireReviewRevision(order, request.expectedRevision());
         if (order.getStatus() == null || order.getStatus() != 1) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核的销售订货单可做财务驳回");
@@ -838,13 +836,13 @@ public class SalesOrderFinanceConfirmService {
         if (order.isFinanceConfirmed()) {
             throw new ApiException(ErrorCode.BUSINESS, "该订单已财务确认，不能驳回");
         }
-        String reason = request.reason() == null
-                ? "" : request.reason().trim();
-        if (reason.isEmpty() || reason.length() > 500) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "驳回原因不能为空且不能超过 500 个字符");
+        // 驳回原因选填：留空落 NULL（列可空），通知侧对空原因统一显示"未填写原因"。
+        String reason = request.reason() == null ? null : request.reason().trim();
+        if (reason != null && reason.isEmpty()) {
+            reason = null;
         }
         if (order.isFinanceRejected()) {
-            if (reason.equals(order.getFinanceRejectedReason())) {
+            if (java.util.Objects.equals(reason, order.getFinanceRejectedReason())) {
                 return; // 同一决策重放幂等，不刷新人员/时间，也不重复投递通知。
             }
             throw new ApiException(

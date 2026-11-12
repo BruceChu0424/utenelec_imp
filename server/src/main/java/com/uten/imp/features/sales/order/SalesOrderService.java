@@ -143,6 +143,8 @@ public class SalesOrderService {
     private final com.uten.imp.features.sales.SalesPriceAuthority priceAuthority;
     /** ADR-134 保存后学习(文件型号/品名、客户资料)与识别任务采用事件。 */
     private final com.uten.imp.features.sales.SalesIntakeSaveHooks intakeHooks;
+    /** 行内编辑英文名称的回写(2026-11-11), 在快照捕获前更新货品主档。 */
+    private final com.uten.imp.features.master.goods.GoodsService goodsService;
 
     /** 看不到价格的人保存新行、文件单价又推算不出合理折扣时追加到行备注。 */
     private static final String MASKED_DISCOUNT_NOTE = "文件单价换算不出合理折扣, 暂按原价, 请有价格权限的同事核对";
@@ -1715,6 +1717,7 @@ public class SalesOrderService {
                 .collect(java.util.stream.Collectors.toMap(
                         SalesOrderItem::getId, item -> item));
         java.util.Set<UUID> seenExistingIds = new java.util.HashSet<>();
+        applyLineNameEnWriteBack(requested);
         Map<UUID, SalesGoodsSnapshot> goodsSnapshots = SalesGoodsSnapshot.fromMaster(
                 em,
                 requested.stream().map(OrderItemLine::getGoodsId).toList(),
@@ -2410,9 +2413,7 @@ public class SalesOrderService {
         if (priority < 1 || priority > 3) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "优先级取值 1急单/2普通/3现货");
         }
-        if (priority == 1 && (req.getReason() == null || req.getReason().isBlank())) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "设为急单须填写原因");
-        }
+        // 2026-11-11 口径：急单原因选填（原「设为急单须填写原因」拦截删除）。
         UUID orderId = mutationFootprint.lockOrderItem(orderItemId);
         SalesOrderItem it = em.find(SalesOrderItem.class, orderItemId, LockModeType.PESSIMISTIC_WRITE);
         if (it == null || isDeletedOrderItem(orderItemId)) {
@@ -2460,9 +2461,7 @@ public class SalesOrderService {
         if (req == null || req.getQty() == null || req.getQty().signum() <= 0) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "让单数量必须大于 0");
         }
-        if (req.getReason() == null || req.getReason().isBlank()) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "让单须填写原因");
-        }
+        // 2026-11-11 口径：让单原因选填（原「让单须填写原因」拦截删除）。
         UUID orderId = mutationFootprint.lockOrderItem(orderItemId);
         SalesOrderItem it = em.find(SalesOrderItem.class, orderItemId, LockModeType.PESSIMISTIC_WRITE);
         if (it == null || isDeletedOrderItem(orderItemId)) {
@@ -2505,11 +2504,13 @@ public class SalesOrderService {
         if (updated != 1) {
             throw new ApiException(ErrorCode.CONFLICT, "订单预留累计小于让单量，禁止自动吞并错账");
         }
-        String reason = req.getReason().trim();
+        // 让单原因选填：留空归一「未填写原因」（旁路通知文本仍可读）。
+        String reason = req.getReason() == null || req.getReason().isBlank()
+                ? "未填写原因" : req.getReason().trim();
         currentUser.get().ifPresent(u -> auditService.logCommitted(u.getId(), u.getUsername(),
                 "sales_reservation_yield", "sales_order_item",
                 "订单行=" + orderItemId + "；释放预留="
-                        + yieldRow.stripTrailingZeros().toPlainString() + "；原因=已填写",
+                        + yieldRow.stripTrailingZeros().toPlainString() + "；原因=" + reason,
                 "success"));
         // 3) 旁路通知被让单的归属销售（缺口已回待排产，提交后发送）
         chainNotice.notifyReservationYielded(orderItemId, yieldRow.stripTrailingZeros().toPlainString(),
@@ -2895,6 +2896,7 @@ public class SalesOrderService {
             throw new ApiException(
                     ErrorCode.VALIDATION_FAILED, "订货明细不能为空");
         }
+        applyLineNameEnWriteBack(lines);
         Map<UUID, SalesGoodsSnapshot> goodsSnapshots = SalesGoodsSnapshot.fromMaster(
                 em,
                 lines.stream().map(OrderItemLine::getGoodsId).toList(),
@@ -2960,7 +2962,10 @@ public class SalesOrderService {
                     SalesGoodsSnapshot.require(
                             goodsSnapshots, l.getGoodsId(), "销售订单明细"),
                     null);
-            if (quoteTerms.get(index) != null) it.setGoodsNameEnSnapshot(quoteTerms.get(index).goodsNameEn());
+            // 报价转单的行沿用报价核定时的英文名快照; 用户已在行内改过英文名称
+            //(nameEn 非空)时以主档新值为准(applyLineNameEnWriteBack 已先行回写)。
+            if (quoteTerms.get(index) != null && (l.getNameEn() == null || l.getNameEn().isBlank()))
+                it.setGoodsNameEnSnapshot(quoteTerms.get(index).goodsNameEn());
             it.setColorId(l.getColorId());
             it.setUnitId(l.getUnitId());
             it.setUnitRate(l.getUnitRate());
@@ -3235,6 +3240,23 @@ public class SalesOrderService {
 
     private static BigDecimal decimalKey(BigDecimal value) {
         return value == null ? null : value.stripTrailingZeros();
+    }
+
+    /**
+     * 行内编辑英文名称的回写(2026-11-11): 请求行带了非空 nameEn 且与货品主档不同时,
+     * 在快照捕获前把新值写回主档(来源 MANUAL), 行快照与后续选货随即取到最新值。
+     * 同一货品多行取最后一个非空值; 权限/写范围不满足时静默跳过(同学档学习口径)。
+     */
+    private void applyLineNameEnWriteBack(List<OrderItemLine> lines) {
+        Map<UUID, String> pending = new java.util.LinkedHashMap<>();
+        for (OrderItemLine line : lines) {
+            String value = line.getNameEn();
+            if (value == null || value.isBlank() || line.getGoodsId() == null) continue;
+            pending.put(line.getGoodsId(), value);
+        }
+        for (Map.Entry<UUID, String> entry : pending.entrySet()) {
+            goodsService.applyNameEnFromSalesDoc(entry.getKey(), entry.getValue());
+        }
     }
 
     private void captureGoodsSnapshots(

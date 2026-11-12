@@ -9805,9 +9805,11 @@ class _FilterCellState extends State<_FilterCell> {
                   ),
                 if (hasFacets) const Divider(height: 1, thickness: 1),
               ],
-              if (hasFacets ||
-                  sanitized != null ||
-                  widget.onSearch != null) ...[
+              // 2026-11-11 用户口径：值筛选段（所有/选项/其他）只在该列真的配了
+              // 值筛选（facets/filterFromRows/远程候选）、已有选中值或已提交关键
+              // 字（此时「所有」是一键清除入口）时出现；默认态的纯关键字搜索列
+              //（名称等）菜单只有搜索框，不再渲染空的「所有 + 无匹配项」。
+              if (hasFacets || sanitized != null || widget.search != null) ...[
                 _menuItem(
                   ctx,
                   label: '所有', // TODO(l10n): 补 arb
@@ -9856,6 +9858,7 @@ class _FilterCellState extends State<_FilterCell> {
                     child: Text(basicDataL10n(ctx).tableFacetLoadFailed),
                   ),
                 if (buckets.isEmpty &&
+                    hasFacets &&
                     !_remoteLoading &&
                     !_remoteFailed &&
                     !_remoteComposing)

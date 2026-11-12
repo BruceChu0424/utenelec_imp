@@ -269,9 +269,6 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('最少应到 1000 件'), findsOneWidget);
     expect(find.textContaining('供料损耗上限不自动免除成品交付义务'), findsOneWidget);
-    await tester.tap(find.byKey(const Key('short-delivery-accept-confirm')));
-    await tester.pumpAndSettle();
-    expect(repo.decisions, isEmpty);
     await tester.enterText(
       find.byKey(const Key('short-delivery-accept-note')),
       '负责人确认接受100件短交，客户需求继续补齐',
@@ -365,7 +362,7 @@ void main() {
     expect(repo.decisions.single['expectedCompleteBy'], date);
     expect(repo.decisions.single['decision'], 'WAIT_MORE');
   });
-  testWidgets('待判定段：严重短交带标签与操作按钮，接受损耗必须填说明后才提交', (tester) async {
+  testWidgets('待判定段：严重短交带标签与操作按钮，接受损耗说明选填', (tester) async {
     final repo = await _pump(
       tester,
       rows: [_case(id: 'a', severity: 'SEVERE')],
@@ -386,20 +383,12 @@ void main() {
     expect(find.textContaining('未满足客户需求的部分仍保留分析缺口'), findsOneWidget);
     expect(find.textContaining('供料损耗上限不自动免除成品交付义务'), findsOneWidget);
     expect(find.textContaining('不重新下单'), findsNothing);
-    // 未达到最少应到数量：说明必填，没填之前确认按钮禁用。
-    await tester.tap(find.byKey(const Key('short-delivery-accept-confirm')));
-    await tester.pumpAndSettle();
-    expect(repo.decisions, isEmpty);
-    await tester.enterText(
-      find.byKey(const Key('short-delivery-accept-note')),
-      '委外商确认报废 40 件',
-    );
-    await tester.pumpAndSettle();
+    // 未达最少应到数量：说明也选填，空说明确认直接提交。
     await tester.tap(find.byKey(const Key('short-delivery-accept-confirm')));
     await tester.pumpAndSettle();
     expect(repo.decisions.length, 1);
     expect(repo.decisions.single['decision'], 'ACCEPT_LOSS');
-    expect(repo.decisions.single['note'], '委外商确认报废 40 件');
+    expect(repo.decisions.single['note'], isNull);
     expect(repo.decisions.single['expectedVersion'], 3);
     expect(repo.decisions.single['expectedCompleteBy'], isNull);
     expect(find.textContaining('已接受损耗结清：订货'), findsOneWidget);

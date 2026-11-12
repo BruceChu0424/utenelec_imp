@@ -99,8 +99,10 @@ public class FinanceApplicationService {
     @Transactional
     public Map<String,Object> review(UUID id,Action input,boolean approved){roles.live(FinanceApplicationPermissions.REVIEW);tx.bind();return operation(id,input.requestId(),approved?"APPROVE":"REJECT",input,()->{
         var app=lockSourceAndRow(id);version(app,input.expectedVersion());legacy.requireRound(app);requirePending(app);claims.requireActiveClaimByMe(CLAIM,id.toString(),input.expectedClaimId());fresh(app,input.sourceFingerprint());
-        int round=((Number)app.get("submission_round")).intValue(),step=((Number)app.get("current_step")).intValue();var node=db.queryForMap("SELECT * FROM finance_application_nodes WHERE application_id=? AND submission_round=? AND step_no=? FOR UPDATE",id,round,step);String reason=text(input.reason(),1000,"处理意见");
-        var actor=roles.staff();String name=actorName();if(!approved&&reason.strip().isEmpty())throw invalid("请填写退回原因");
+        int round=((Number)app.get("submission_round")).intValue(),step=((Number)app.get("current_step")).intValue();var node=db.queryForMap("SELECT * FROM finance_application_nodes WHERE application_id=? AND submission_round=? AND step_no=? FOR UPDATE",id,round,step);String rawReason=text(input.reason(),1000,"处理意见");
+        var actor=roles.staff();String name=actorName();
+        // 2026-11-11 口径：退回原因选填，留空记「未填写原因」（通知申请人仍可读）。
+        final String reason=!approved&&rawReason.strip().isEmpty()?"未填写原因":rawReason;
         if(approved&&"PAYROLL_PAYMENT".equals(app.get("kind"))&&"FINANCE_REVIEW_2".equals(node.get("role_key"))&&app.get("payroll_instruction_fingerprint")==null)throw conflict("请先核对并保存原工资会计准备及其全部来源问题");
         String status=approved?("ARCHIVE".equals(node.get("action"))?"ARCHIVED":"APPROVED"):"REJECTED";
         db.update("UPDATE finance_application_nodes SET status=?,decided_by=?,decided_name_snapshot=?,decided_at=now(),reason=? WHERE application_id=? AND submission_round=? AND step_no=?",status,actor.getEmployeeId(),name,reason,id,round,step);

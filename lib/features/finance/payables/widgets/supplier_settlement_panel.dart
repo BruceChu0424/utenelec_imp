@@ -664,7 +664,7 @@ class _SupplierSettlementDetailPanelState
     final reason = await showSupplierSettlementReasonDialog(
       context: context,
       title: reverse ? '反转月结批次' : '登记月结争议',
-      label: reverse ? '反转原因(必填)' : '争议原因(必填)',
+      label: reverse ? '反转原因（选填）' : '争议原因（选填）',
     );
     if (reason == null || !mounted) return;
     setState(() => _writing = true);

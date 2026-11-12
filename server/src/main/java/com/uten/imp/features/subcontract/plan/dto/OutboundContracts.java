@@ -82,7 +82,7 @@ public final class OutboundContracts {
         }
     }
 
-    /** 仓库整张退回一张领料草稿(本次不发)。reason 必填, 不超过 200 字, 会告诉提交领料的委外人员。 */
+    /** 仓库整张退回一张领料草稿(本次不发)。reason 选填, 不超过 200 字, 会告诉提交领料的委外人员。 */
     public record ReturnToDrawRequest(String reason) {
     }
 }

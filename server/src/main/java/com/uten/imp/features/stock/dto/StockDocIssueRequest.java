@@ -36,7 +36,7 @@ public class StockDocIssueRequest {
     private List<@Valid Line> lines;
 
     /**
-     * 取消出库：必填的取消原因（进审计，不落 remark）。
+     * 取消出库：选填的取消原因（进审计，不落 remark）。
      * 正向出库（issue / approve-and-issue / 批量）：选填的出库备注，服务端按单条
      * ≤200 字追加到单据 remark（多轮出库用「；」连接、整条相同不重复、总长 ≤500）。
      */

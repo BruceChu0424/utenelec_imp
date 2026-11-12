@@ -378,10 +378,14 @@ class _DetailState extends ConsumerState<FinanceApplicationDetail> {
                       title: '原申请款项',
                       child: _table(financeApplicationRows(payload['lines']), [
                         financeApplicationColumn('label', '款项说明', 300),
+                        // 2026-11-11 口径：金额/日期/编号列可排序；类别列按值
+                        //筛选（helper 默认已带；币种列是整单恒定值不筛）。
                         financeApplicationColumn(
                           'amountOriginal',
                           '申请原币金额',
                           190,
+                          sortable: true,
+                          type: 'money',
                         ),
                         financeApplicationCurrencyColumn(
                           value: (_) => financeApplicationCurrencyLabel(data),
@@ -391,8 +395,13 @@ class _DetailState extends ConsumerState<FinanceApplicationDetail> {
                   UtenCollapsibleSection(
                     title: '原流程节点与签名',
                     child: _table(nodes, [
-                      financeApplicationColumn('submission_round', '提交轮次', 100),
-                      financeApplicationColumn('step_no', '步骤', 80),
+                      financeApplicationColumn(
+                        'submission_round',
+                        '提交轮次',
+                        100,
+                        sortable: true,
+                      ),
+                      financeApplicationColumn('step_no', '步骤', 80, sortable: true),
                       financeApplicationColumn('label_snapshot', '原流程岗位', 250),
                       financeApplicationColumn('assigneesLabel', '明确指派人员', 260),
                       financeApplicationColumn('stateLabel', '节点状态', 130),
@@ -401,7 +410,12 @@ class _DetailState extends ConsumerState<FinanceApplicationDetail> {
                         '实际办理人',
                         150,
                       ),
-                      financeApplicationColumn('decided_at', '办理时间', 210),
+                      financeApplicationColumn(
+                        'decided_at',
+                        '办理时间',
+                        210,
+                        sortable: true,
+                      ),
                       financeApplicationColumn('reason', '处理意见', 280),
                     ]),
                   ),
@@ -426,9 +440,15 @@ class _DetailState extends ConsumerState<FinanceApplicationDetail> {
                             '报销类别',
                             140,
                           ),
-                          financeApplicationColumn('date', '日期', 130),
+                          financeApplicationColumn('date', '日期', 130, sortable: true),
                           financeApplicationColumn('description', '说明', 300),
-                          financeApplicationColumn('amountExact', '金额原文', 160),
+                          financeApplicationColumn(
+                            'amountExact',
+                            '金额原文',
+                            160,
+                            sortable: true,
+                            type: 'money',
+                          ),
                           financeApplicationCurrencyColumn(
                             value: (_) => expenseClaimCurrencyName,
                           ),
@@ -449,15 +469,36 @@ class _DetailState extends ConsumerState<FinanceApplicationDetail> {
                     UtenCollapsibleSection(
                       title: '原工资事实',
                       child: _table(financeApplicationRows(snapshot['slips']), [
-                        financeApplicationColumn('employeeCode', '员工编号', 130),
+                        // 2026-11-11 口径：编号列可排序（按值筛选 helper 默认已带）；
+                        //金额列可排序；币种列是整单恒定值不筛。
+                        financeApplicationColumn(
+                          'employeeCode',
+                          '员工编号',
+                          130,
+                          sortable: true,
+                        ),
                         financeApplicationColumn('employeeName', '员工姓名', 160),
-                        financeApplicationColumn('grossIncome', '原应发工资', 180),
+                        financeApplicationColumn(
+                          'grossIncome',
+                          '原应发工资',
+                          180,
+                          sortable: true,
+                          type: 'money',
+                        ),
                         financeApplicationColumn(
                           'totalDeduction',
                           '原扣款合计',
                           180,
+                          sortable: true,
+                          type: 'money',
                         ),
-                        financeApplicationColumn('netIncome', '原实发工资', 180),
+                        financeApplicationColumn(
+                          'netIncome',
+                          '原实发工资',
+                          180,
+                          sortable: true,
+                          type: 'money',
+                        ),
                         financeApplicationCurrencyColumn(
                           value: (_) => financeApplicationCurrencyLabel(data),
                         ),

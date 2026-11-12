@@ -288,8 +288,8 @@ public class ClientAccessService {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "客户权限版本不正确");
         }
         String reason = request.reason() == null ? "" : request.reason().trim();
-        if (reason.isEmpty() || reason.length() > 1000) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "变更原因须为 1–1000 个字符");
+        if (reason.length() > 1000) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "变更原因不能超过 1000 个字符");
         }
         List<UUID> rawViewers = request.viewerEmployeeIds() == null
                 ? List.of()

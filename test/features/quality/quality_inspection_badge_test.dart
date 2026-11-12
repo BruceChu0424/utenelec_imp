@@ -447,7 +447,7 @@ void main() {
     );
     await _submitReport(tester);
     _expectReportTotals('24 个', '24 个');
-    await tester.enterText(_reportReasonField('结论原因(必填)'), '外观不良');
+    await tester.enterText(_reportReasonField('结论原因（选填）'), '外观不良');
     await tester.tap(find.byKey(const Key('inspection-report-confirm-submit')));
     await tester.pumpAndSettle();
     final line = repository.decideBatchCalls.single.items.single;
@@ -478,9 +478,8 @@ void main() {
       findsOneWidget,
     );
     _expectReportTotals('5 个', '0 个');
-    final reason = _reportReasonField('结论原因(选填)');
+    final reason = _reportReasonField('结论原因（选填）');
     expect(reason, findsOneWidget);
-    expect(tester.widget<TextField>(reason).decoration?.hintText, '结论原因(选填)');
     expect(tester.widget<TextField>(reason).controller!.text, isEmpty);
 
     await tester.tap(find.byKey(const Key('inspection-report-confirm-submit')));
@@ -496,7 +495,7 @@ void main() {
     expect(repository.disposeCalls, isEmpty);
   });
 
-  testWidgets('填不合格数量时结论原因必填，填好后才提交', (tester) async {
+  testWidgets('填不合格数量时结论原因选填，空原因可直接提交', (tester) async {
     final repository = _dispositionRepository();
     await _pumpInspectionDetailPage(tester, repository);
 
@@ -512,29 +511,20 @@ void main() {
     await tester.pump();
     await _submitReport(tester);
 
-    final reason = _reportReasonField('结论原因(必填)');
+    final reason = _reportReasonField('结论原因（选填）');
     expect(reason, findsOneWidget);
-    expect(tester.widget<TextField>(reason).decoration?.hintText, '结论原因(必填)');
     expect(tester.widget<TextField>(reason).controller!.text, isEmpty);
     _expectReportTotals('0 个', '5 个');
 
     await tester.tap(find.byKey(const Key('inspection-report-confirm-submit')));
-    await tester.pump();
-
-    // 错误经 ⓘ 字段说明披露（全站约定）：弹窗不关、未提交即可判定校验生效，
-    // ⓘ 内容展示由组件测试（disabled_field_hint_test）覆盖。
-    expect(find.text('确认提交检验报告'), findsOneWidget);
-    expect(repository.decideBatchCalls, isEmpty);
-
-    await tester.enterText(_reportReasonField('结论原因(必填)'), '外观不良退供应商');
-    await tester.tap(find.byKey(const Key('inspection-report-confirm-submit')));
     await tester.pumpAndSettle();
 
+    // 结论原因统一选填：空原因照常提交（reason 置空提交后端）。
     expect(repository.decideBatchCalls, hasLength(1));
     final call = repository.decideBatchCalls.single;
     expect(call.items.single.passBaseQty, 0);
     expect(call.items.single.failBaseQty, 5);
-    expect(call.reason, '外观不良退供应商');
+    expect(call.reason, isNull);
   });
 
   testWidgets('多行一次提交报告：单事务 decide-batch 带全部所选行', (tester) async {

@@ -352,19 +352,37 @@ class _DirectoryState extends ConsumerState<FinanceStatementDocumentDialog>
               child: financeSourceTable(
                 tableKey: 'finance-statement-documents-$_kind',
                 columns: [
+                  // 2026-11-11 口径：状态/人员类别列按值筛选；版本/时间列可排序
+                  //（全量单据清单快照就地排序、收集桶）。
                   if (_kind != 'REVIEWS')
-                    financeSourceColumn('revision', '版本', width: 90),
+                    financeSourceColumn(
+                      'revision',
+                      '版本',
+                      width: 90,
+                      sortable: true,
+                    ),
                   financeSourceColumn(
                     'status',
                     '状态',
+                    filterByValue: true,
                     value: (r) =>
                         _statuses[r['status']] ?? r['status']?.toString(),
                   ),
-                  financeSourceColumn('submitted_name', '提交人'),
-                  financeSourceColumn('submitted_at', '提交时间', width: 210),
+                  financeSourceColumn(
+                    'submitted_name',
+                    '提交人',
+                    filterByValue: true,
+                  ),
+                  financeSourceColumn(
+                    'submitted_at',
+                    '提交时间',
+                    width: 210,
+                    sortable: true,
+                  ),
                   financeSourceColumn(
                     _kind == 'REVIEWS' ? 'approved_name' : 'reviewed_name',
                     '审核人',
+                    filterByValue: true,
                   ),
                   financeSourceColumn(
                     _kind == 'REVIEWS' ? 'document_sha256' : 'source_reference',

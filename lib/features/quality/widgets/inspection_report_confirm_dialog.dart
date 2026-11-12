@@ -7,7 +7,6 @@ import 'package:flutter/material.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_confirmation_summary.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
-import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../core/theme/uten_tokens.dart';
 
@@ -68,7 +67,6 @@ class _InspectionReportConfirmDialog extends StatefulWidget {
 class _InspectionReportConfirmDialogState
     extends State<_InspectionReportConfirmDialog> {
   final _reason = TextEditingController();
-  String? _reasonError;
 
   @override
   void initState() {
@@ -137,17 +135,11 @@ class _InspectionReportConfirmDialogState
             const SizedBox(height: UtenSpacing.s12),
             TextField(
               controller: _reason,
-              onChanged: (_) {
-                if (_reasonError != null) setState(() => _reasonError = null);
-              },
               maxLines: 3,
               maxLength: 500,
               decoration: UtenInputDecoration(
-                InputDecoration(
-                  labelText: hasFail ? '结论原因(必填)' : '结论原因(选填)',
-                  error: _reasonError == null
-                      ? null
-                      : UtenFieldMessage.error(_reasonError!),
+                const InputDecoration(
+                  labelText: '结论原因（选填）',
                 ),
                 info: hasFail
                     ? '请说明不合格原因，便于后续退货、返工或其它处置。'
@@ -166,12 +158,8 @@ class _InspectionReportConfirmDialogState
         UtenButton(
           key: const Key('inspection-report-confirm-submit'),
           onPressed: () {
-            final reason = _reason.text.trim();
-            if (hasFail && reason.isEmpty) {
-              setState(() => _reasonError = '结论原因必填');
-              return;
-            }
-            Navigator.of(context).pop(reason);
+            // 结论原因统一选填：空原因照常提交（空串=确认）。
+            Navigator.of(context).pop(_reason.text.trim());
           },
           child: const Text('确认提交报告'),
         ),

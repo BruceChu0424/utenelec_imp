@@ -245,16 +245,25 @@ class _PolicyDirectoryState extends ConsumerState<_PolicyDirectory>
                       ? 'finance.subcontract.loss.sourceChoices'
                       : 'finance.subcontract.loss.policies',
                   columns: [
-                    financeSourceColumn('goodsCode', '物料编码'),
+                    // 2026-11-11 口径：编码列可排序 + 按值筛选；颜色/单位/来源/
+                    //状态类别列按值筛选；数值/日期列可排序（全量策略快照就地收集桶）。
+                    financeSourceColumn(
+                      'goodsCode',
+                      '物料编码',
+                      sortable: true,
+                      filterByValue: true,
+                    ),
                     financeSourceColumn('goodsName', '品名及规格', width: 220),
                     financeSourceColumn(
                       'colorName',
                       '颜色',
+                      filterByValue: true,
                       value: (r) => r['colorName']?.toString() ?? '全部颜色',
                     ),
                     financeSourceColumn(
                       'unitName',
                       '单位',
+                      filterByValue: true,
                       value: (r) => [
                         r['unitCode'],
                         r['unitName'],
@@ -264,6 +273,7 @@ class _PolicyDirectoryState extends ConsumerState<_PolicyDirectory>
                       financeSourceColumn(
                         'actualSource',
                         '来源',
+                        filterByValue: true,
                         value: (r) =>
                             r['actualSource'] == true ? '原发料行' : '商品主档基本单位',
                       )
@@ -272,25 +282,34 @@ class _PolicyDirectoryState extends ConsumerState<_PolicyDirectory>
                         'rate_percent_original',
                         '原输入（%）',
                         type: 'number',
+                        sortable: true,
                       ),
                       financeSourceColumn(
                         'ratePercent',
                         '实际采用值（%）',
                         type: 'number',
+                        sortable: true,
                       ),
-                      financeSourceColumn('effective_from', '生效日期'),
-                      financeSourceColumn('effective_to', '截止日期'),
+                      financeSourceColumn('effective_from', '生效日期', sortable: true),
+                      financeSourceColumn('effective_to', '截止日期', sortable: true),
                       financeSourceColumn(
                         'status',
                         '审核状态',
+                        filterByValue: true,
                         value: (r) => _status(r['status']),
                       ),
                       financeSourceColumn(
                         'enabled',
                         '启用状态',
+                        filterByValue: true,
                         value: (r) => r['enabled'] == true ? '启用' : '停用',
                       ),
-                      financeSourceColumn('revision', '版本', type: 'int'),
+                      financeSourceColumn(
+                        'revision',
+                        '版本',
+                        type: 'int',
+                        sortable: true,
+                      ),
                     ],
                   ],
                   rows: _rows,

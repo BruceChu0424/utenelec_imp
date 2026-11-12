@@ -142,17 +142,21 @@ public class FinanceAccountingImportService {
     private Preview reset(UUID id,Review request,boolean own) {
         authorize();tx.bind();lock();String action=own?"WITHDRAW":"REJECT",replay=operationReplay(id,action,request);
         if(replay!=null)return decode(replay,Preview.class);
-        var item=stored(id,true);requireReview(item,request);
+        var item=stored(id,true);requireReview(item,request,false);
         if(own!=item.submittedBy().equals(current.requireId()))throw conflict(own?"只能撤回自己提交的批次":"请由另一位复核人退回");
         var pair=stored(item.paired(),true);if(!pair.status().equals("SUBMITTED")||!Objects.equals(pair.paired(),id))throw conflict("成对批次状态不一致");
-        for(var value:List.of(item,pair))db.update("UPDATE finance_accounting_import_batches SET status='PREVIEW',row_version=row_version+1,reason=?,paired_import_id=NULL WHERE id=?",request.reason().strip(),value.id());
+        // 退回/撤回原因选填：空白落 NULL（reason 列可空），仍保留 1000 字上限。
+        String resetReason=relaxedReason(request.reason());
+        for(var value:List.of(item,pair))db.update("UPDATE finance_accounting_import_batches SET status='PREVIEW',row_version=row_version+1,reason=?,paired_import_id=NULL WHERE id=?",resetReason,value.id());
         // A reviewer may return a batch to its owner but cannot then read the owner's private preview.
         var result=new Preview(id,item.kind(),"",item.system(),item.hash(),"PREVIEW",item.version()+1,item.submittedBy(),null,null,null);
         operationResult(id,action,request,encode(result));return result;
     }
-    private void requireReview(Stored item,Review request){if(request==null||!item.status().equals("SUBMITTED")||item.version()!=request.expectedVersion()||!item.kind().equals("VOUCHERS"))throw conflict("凭证批次状态或版本已变化");reason(request.reason());}
+    /** 复核(approve)仍须填写依据；退回/撤回(reject/withdraw)原因选填，见 {@link #requireReview(Stored,Review,boolean)}。 */
+    private void requireReview(Stored item,Review request){requireReview(item,request,true);}
+    private void requireReview(Stored item,Review request,boolean requireReason){if(request==null||!item.status().equals("SUBMITTED")||item.version()!=request.expectedVersion()||!item.kind().equals("VOUCHERS"))throw conflict("凭证批次状态或版本已变化");if(requireReason)reason(request.reason());}
     private String operationReplay(UUID id,String action,Review request) {
-        if(request==null||request.requestId()==null)throw invalid("请保留原复核请求编号后重试");reason(request.reason());
+        if(request==null||request.requestId()==null)throw invalid("请保留原复核请求编号后重试");if("APPROVE".equals(action))reason(request.reason());
         var rows=db.queryForList("SELECT actor_id,import_id,action,fingerprint,result::text FROM finance_accounting_review_operations WHERE request_id=?",request.requestId());
         if(rows.isEmpty())return null;var row=rows.getFirst();
         String fingerprint=ImmutableDocumentStore.digest(encode(request).getBytes(java.nio.charset.StandardCharsets.UTF_8));
@@ -363,6 +367,8 @@ public class FinanceAccountingImportService {
                 balances.id(),line.accountCode(),ref.auxiliaryId(),line.currencyId(),date,line.direction()==1?line.amount():BigDecimal.ZERO,line.direction()==-1?line.amount():BigDecimal.ZERO,entryId,ref.role(),ref.partyId(),ref.sourceSystem(),ref.sourceCode(),ref.sourceName(),line.accountCode(),line.accountName(),line.pathName(),line.source().getOrDefault("sha256",balances.hash()),line.sourceRow(),submitter,current.requireId(),line.original()==null?null:entryId==null?line.original():line.original().multiply(BigDecimal.valueOf(line.direction())),line.exchangeRate(),line.source().get("sourceReference"),line.originalCurrencyId());
     }
     private static void reason(String reason){if(reason==null||reason.isBlank()||reason.length()>1000)throw invalid("请填写1至1000字的接续/复核依据");}
+    /** 退回/撤回原因选填：空白归 NULL（reason 列可空），仅保留长度上限。 */
+    private static String relaxedReason(String reason){if(reason==null)return null;String stripped=reason.strip();if(stripped.length()>1000)throw invalid("退回/撤回原因不能超过1000字");return stripped.isEmpty()?null:stripped;}
     private String encode(Object value){try{return json.writeValueAsString(value);}catch(Exception error){throw new IllegalStateException("原账套来源保存失败",error);}}
     private <T>T decode(String value,Class<T> type){try{return json.readValue(value,type);}catch(Exception error){throw new IllegalStateException("原账套来源读取失败",error);}}
     private static ApiException invalid(String message){return new ApiException(ErrorCode.VALIDATION_FAILED,message);}

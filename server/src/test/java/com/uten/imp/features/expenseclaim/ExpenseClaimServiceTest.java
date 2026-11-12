@@ -294,14 +294,16 @@ class ExpenseClaimServiceTest {
     }
 
     @Test
-    void rejectBatchRequiresReason() {
+    void rejectBatchAllowsBlankReason() {
         when(authUser.getPermissions()).thenReturn(Set.of("expense:approve:executive"));
 
+        // 2026-11-11 原因选填：空原因不再被 VALIDATION_FAILED 拦在批量入口，
+        // 而是照常进入逐单驳回（这里未打桩单据，按 NOT_FOUND 落地即证明放行）。
         ApiException error = assertThrows(ApiException.class, () -> service.rejectBatch(
                 new ExpenseClaimBatchRequest(List.of(UUID.randomUUID()), "  ")));
 
-        assertEquals(ErrorCode.VALIDATION_FAILED, error.getCode());
-        verifyNoInteractions(claimRepository);
+        assertEquals(ErrorCode.NOT_FOUND, error.getCode());
+        verify(claimRepository).findByIdForUpdate(any(UUID.class));
     }
 
     @Test

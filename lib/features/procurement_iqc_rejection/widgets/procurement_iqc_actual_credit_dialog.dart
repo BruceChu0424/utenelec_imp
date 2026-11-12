@@ -586,13 +586,13 @@ class _ProcurementIqcActualCreditDialogState
                             const SizedBox(height: 12),
                             _field(
                               'iqc-action-note',
-                              '贷项确认原因 *',
+                              // 2026-11-11 口径：操作原因类输入统一选填（与确认
+                              // 贷项接口 @Size(max=2000) 可空一致）。
+                              '贷项确认原因（选填）',
                               _reason,
                               lines: 3,
                               validator: (value) =>
-                                  value == null || value.trim().isEmpty
-                                  ? '贷项确认原因不能为空'
-                                  : value.trim().length > 2000
+                                  value != null && value.trim().length > 2000
                                   ? '原因不能超过 2000 个字符'
                                   : null,
                             ),

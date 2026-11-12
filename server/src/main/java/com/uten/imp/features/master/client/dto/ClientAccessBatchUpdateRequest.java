@@ -4,7 +4,6 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 import com.uten.imp.common.validation.RequestLimits;
-import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -32,7 +31,7 @@ public final class ClientAccessBatchUpdateRequest {
     private final UUID ownerEmployeeId;
     @Size(max = RequestLimits.ADMIN_SCOPE_OWNERS)
     private final List<@NotNull UUID> viewerEmployeeIds;
-    @NotBlank @Size(max = 1000)
+    @Size(max = 1000)
     private final String reason;
     @Size(max = RequestLimits.ADMIN_SCOPE_OWNERS)
     private final List<@NotNull UUID> ownerEmployeeIds;
@@ -42,7 +41,7 @@ public final class ClientAccessBatchUpdateRequest {
             @JsonProperty("clientIds") @NotEmpty @Size(max = RequestLimits.BATCH_IDS) List<@NotNull UUID> clientIds,
             @JsonProperty("ownerEmployeeId") UUID ownerEmployeeId,
             @JsonProperty("viewerEmployeeIds") @Size(max = RequestLimits.ADMIN_SCOPE_OWNERS) List<@NotNull UUID> viewerEmployeeIds,
-            @JsonProperty("reason") @NotBlank @Size(max = 1000) String reason,
+            @JsonProperty("reason") @Size(max = 1000) String reason,
             @JsonProperty("ownerEmployeeIds") @Size(max = RequestLimits.ADMIN_SCOPE_OWNERS) List<@NotNull UUID> ownerEmployeeIds) {
         this.clientIds = clientIds == null ? null
                 : Collections.unmodifiableList(new ArrayList<>(clientIds));
@@ -77,7 +76,7 @@ public final class ClientAccessBatchUpdateRequest {
     }
 
     @JsonProperty("reason")
-    @NotBlank @Size(max = 1000)
+    @Size(max = 1000)
     public String reason() {
         return reason;
     }

@@ -820,12 +820,16 @@ class _ProductionExecutionBatchPageState
                   key: 'code',
                   label: l10n.productionBatchGoodsCode,
                   width: 130,
+                  // 2026-11-11 口径：编号列排序+按值筛选、类别列按值筛选、数值/日期列排序（全量表就地处理）。
+                  sortable: true,
+                  filterFromRows: true,
                   value: (row) => row.goodsCode,
                 ),
                 MasterColumnDef(
                   key: 'color',
                   label: l10n.productionBatchColor,
                   width: 110,
+                  filterFromRows: true,
                   value: (row) => row.colorName,
                 ),
                 // 2026-10-10 数量内联口径：独立「单位」列撤销（紧凑模式原本就是
@@ -836,6 +840,7 @@ class _ProductionExecutionBatchPageState
                   width: 200,
                   info: l10n.productionBatchMaterialQuantityHint,
                   type: 'number',
+                  sortable: true,
                   value: (row) => formatQtyWithUnit(row.qty, row.unitName),
                   cellColor: (context, _) => Theme.of(
                     context,
@@ -857,6 +862,7 @@ class _ProductionExecutionBatchPageState
                   key: 'warehouse',
                   label: l10n.productionBatchWarehouse,
                   width: 190,
+                  filterFromRows: true,
                   value: (row) => row.warehouseName,
                   // 线边仓（车间直送）行标注「自动投入」：这些料不走领料申请。
                   // 2026-10-06 行高统一口径：单行（仓库名 + 徽章横排），

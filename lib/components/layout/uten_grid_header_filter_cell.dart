@@ -508,48 +508,58 @@ class _GridHeaderFilterCellState extends State<GridHeaderFilterCell> {
                     ),
                   const Divider(height: 1),
                 ],
-                _menuItem(
-                  ctx,
-                  label: '所有',
-                  isSelected: _sanitized == null && widget.search.isEmpty,
-                  onTap: () {
-                    if (version == _menuVersion) {
-                      _select(null);
-                    }
-                  },
-                  theme: theme,
-                ),
-                for (final b in buckets)
+                // 2026-11-11 用户口径：值筛选段只在该列真的有值筛选（桶/空值桶/
+                // 已选值）或已提交关键字（「所有」=一键清除）时出现；默认态的纯
+                // 关键字搜索列菜单只有搜索框，不再渲染孤零零的「所有」。
+                if (widget.buckets.isNotEmpty ||
+                    widget.nullCount > 0 ||
+                    widget.selected != null ||
+                    widget.search.isNotEmpty) ...[
                   _menuItem(
                     ctx,
-                    label: b.count > 0 ? '${b.display}（${b.count}）' : b.display,
-                    isSelected: _sanitized == b.value,
+                    label: '所有',
+                    isSelected: _sanitized == null && widget.search.isEmpty,
                     onTap: () {
                       if (version == _menuVersion) {
-                        _selectCandidate(b);
+                        _select(null);
                       }
                     },
                     theme: theme,
                   ),
-                if (widget.nullCount > 0)
-                  _menuItem(
-                    ctx,
-                    label: '其他（${widget.nullCount}）',
-                    isSelected: _sanitized == kGridHeaderFilterNullValue,
-                    onTap: () {
-                      if (version == _menuVersion) {
-                        _select(kGridHeaderFilterNullValue);
-                      }
-                    },
-                    theme: theme,
-                  ),
-                if (buckets.isEmpty &&
-                    q.isNotEmpty &&
-                    widget.buckets.isNotEmpty)
-                  const Padding(
-                    padding: EdgeInsets.all(UtenSpacing.s12),
-                    child: Text('无匹配项'),
-                  ),
+                  for (final b in buckets)
+                    _menuItem(
+                      ctx,
+                      label: b.count > 0
+                          ? '${b.display}（${b.count}）'
+                          : b.display,
+                      isSelected: _sanitized == b.value,
+                      onTap: () {
+                        if (version == _menuVersion) {
+                          _selectCandidate(b);
+                        }
+                      },
+                      theme: theme,
+                    ),
+                  if (widget.nullCount > 0)
+                    _menuItem(
+                      ctx,
+                      label: '其他（${widget.nullCount}）',
+                      isSelected: _sanitized == kGridHeaderFilterNullValue,
+                      onTap: () {
+                        if (version == _menuVersion) {
+                          _select(kGridHeaderFilterNullValue);
+                        }
+                      },
+                      theme: theme,
+                    ),
+                  if (buckets.isEmpty &&
+                      q.isNotEmpty &&
+                      widget.buckets.isNotEmpty)
+                    const Padding(
+                      padding: EdgeInsets.all(UtenSpacing.s12),
+                      child: Text('无匹配项'),
+                    ),
+                ],
               ],
             );
           },

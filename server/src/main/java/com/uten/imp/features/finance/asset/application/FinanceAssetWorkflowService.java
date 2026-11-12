@@ -269,7 +269,8 @@ public class FinanceAssetWorkflowService {
     @PreAuthorize("hasAuthority('finance_asset:approve')")
     public AssetWorkbenchResponses.WorkflowResult reject(UUID id, long expectedVersion, String reason, boolean deferred) {
         tx.bind(); UUID actor = authorization.requireActorId(FinanceAssetAuthorization.APPROVE);
-        if (reason == null || reason.isBlank()) throw validation("请填写驳回原因");
+        // 2026-11-11 口径：驳回原因选填，留空记「未填写原因」（驳回通知/审批记录仍可读）。
+        if (reason == null || reason.isBlank()) reason = "未填写原因";
         String table = deferred ? "deferred_expenses" : "fixed_assets";
         Locked locked = lock(deferred, id); FinanceAssetStateMachine.requireObjectTransition(locked.status(), "DRAFT");
         version(locked.version(), expectedVersion); AssetPostingPolicy.requireDifferentActor(actor, locked.submittedBy(), "驳回");

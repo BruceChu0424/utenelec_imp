@@ -211,7 +211,7 @@ public class SupplierOpenItemOffsetService {
                     .setParameter("targetBefore", target.balanceOriginal())
                     .setParameter("targetAfter", targetAfterOriginal)
                     .setParameter("effectiveDate", effectiveDate)
-                    .setParameter("reason", bounded(reason, 2000, "抵销原因"))
+                    .setParameter("reason", optionalReason(reason, 2000, "抵销原因"))
                     .setParameter("actor", currentUser.requireId())
                     .executeUpdate();
 
@@ -234,6 +234,8 @@ public class SupplierOpenItemOffsetService {
     @Transactional(propagation = Propagation.MANDATORY)
     public void reverseBatch(UUID offsetBatchId,String reason) {
         tx.bind();
+        // 反转原因选填：留空归一「未填写原因」——下方 SQL 与后续事件统一使用。
+        reason = (reason == null || reason.isBlank()) ? "未填写原因" : reason.trim();
         @SuppressWarnings("unchecked")
         List<Object[]> identities=em.createNativeQuery("""
                 SELECT DISTINCT supplier_id,currency_id
@@ -432,6 +434,15 @@ public class SupplierOpenItemOffsetService {
         String trimmed = value.trim();
         if (trimmed.length() > max) throw validation(label + "不能超过 " + max + " 个字符");
         return trimmed;
+    }
+
+    /**
+     * 操作原因选填（2026-11-11 口径）：留空归一「未填写原因」——
+     * supplier_open_item_offsets.reason 列 NOT NULL，不能存空串。
+     */
+    private static String optionalReason(String value, int max, String label) {
+        if (value == null || value.isBlank()) return "未填写原因";
+        return bounded(value, max, label);
     }
 
     private static ApiException validation(String message) {

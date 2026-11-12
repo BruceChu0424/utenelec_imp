@@ -329,8 +329,8 @@ public class DataHandoverService {
             throw validation("交接生效日期不能为空或晚于今天");
         }
         String reason = request.reason() == null ? "" : request.reason().trim();
-        if (reason.isEmpty() || reason.length() > 2000) {
-            throw validation("交接原因须为 1–2000 个字符");
+        if (reason.length() > 2000) {
+            throw validation("交接原因不能超过 2000 个字符");
         }
         Set<String> scopes = "MANUAL".equals(mode)
                 ? normalizeExecutionScopes(request.scopes())

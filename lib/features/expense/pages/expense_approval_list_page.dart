@@ -777,9 +777,7 @@ class _ExpenseApprovalListPageState
         isCurrent: current,
         write: () async {
           final reason = await confirm();
-          if (reason == null ||
-              (!approve && reason.trim().isEmpty) ||
-              !current()) {
+          if (reason == null || !current()) {
             return null;
           }
           attempted = true;

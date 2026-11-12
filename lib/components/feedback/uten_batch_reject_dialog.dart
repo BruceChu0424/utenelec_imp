@@ -3,19 +3,19 @@
 //
 // 用途：审批队列多选后「批量驳回(N)」——一次填写原因、逐单应用到所选全部单据。
 // 内置 UtenReviewerResponsibilityNotice（驳回是正式审核事实，责任提示位于原因
-// 输入框之上）；原因必填，空提交只显示字段错误、不关闭对话框。
+// 输入框之上）；原因选填，确认时空原因按空串返回（调用方视为已确认）。
 //
 // controller 由对话框自持、随路由卸载释放——关闭退出动画仍在重建 TextField，
 // 外层提前 dispose 会触发 "used after being disposed" 断言。
 import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_tokens.dart';
-import '../inputs/uten_field_message.dart';
 import '../inputs/uten_input_decoration.dart';
 import 'uten_reviewer_responsibility_notice.dart';
 import 'uten_dialog.dart';
 
-/// 弹出批量驳回原因对话框；返回非空原因文本，取消返回 null。
+/// 弹出批量驳回原因对话框；返回原因文本（选填，空原因确认返回空串），取消返回
+/// null——调用方以 null 判取消、空串视为已确认。
 ///
 /// [count] 所选单据数（标题与说明文案用）；[actionLabel] 责任提示中的动作名
 ///（如「报销审批驳回」）；[subjectLabel] 单据名词（如「报销单」「修改申请」）。
@@ -77,7 +77,6 @@ class UtenBatchRejectDialog extends StatefulWidget {
 
 class _UtenBatchRejectDialogState extends State<UtenBatchRejectDialog> {
   final TextEditingController _controller = TextEditingController();
-  String? _validationError;
 
   @override
   void dispose() {
@@ -86,12 +85,8 @@ class _UtenBatchRejectDialogState extends State<UtenBatchRejectDialog> {
   }
 
   void _submit() {
-    final text = _controller.text.trim();
-    if (text.isEmpty) {
-      setState(() => _validationError = '请填写驳回原因');
-      return;
-    }
-    Navigator.pop(context, text);
+    // 原因选填：空原因确认返回空串（调用方视为已确认），取消返回 null。
+    Navigator.pop(context, _controller.text.trim());
   }
 
   @override
@@ -119,16 +114,10 @@ class _UtenBatchRejectDialogState extends State<UtenBatchRejectDialog> {
               controller: _controller,
               autofocus: true,
               maxLines: 3,
-              onChanged: (_) {
-                if (_validationError != null) {
-                  setState(() => _validationError = null);
-                }
-              },
               decoration: UtenInputDecoration(
                 InputDecoration(
-                  labelText: '驳回原因',
-                  hintText: '必填，将应用到所选全部${widget.subjectLabel}',
-                  error: utenFieldError(_validationError),
+                  labelText: '驳回原因（选填）',
+                  hintText: '将应用到所选全部${widget.subjectLabel}',
                 ),
               ),
             ),
@@ -141,8 +130,13 @@ class _UtenBatchRejectDialogState extends State<UtenBatchRejectDialog> {
           onPressed: () => Navigator.pop(context),
           child: const Text('取消'),
         ),
+        // 驳回是破坏性操作：确认键红色实心（此前默认青绿主色与语义不符）。
         FilledButton(
           key: const Key('uten-batch-reject-confirm'),
+          style: FilledButton.styleFrom(
+            backgroundColor: Theme.of(context).colorScheme.error,
+            foregroundColor: Theme.of(context).colorScheme.onError,
+          ),
           onPressed: _submit,
           child: Text(widget.confirmLabel),
         ),

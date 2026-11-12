@@ -694,12 +694,16 @@ class _ProductionDrawRequestPageState
         key: 'goodsCode',
         label: '编号',
         width: 130,
+        // 2026-11-11 口径：编号列排序+按值筛选、类别列按值筛选、数值/日期列排序（全量表就地处理）。
+        sortable: true,
+        filterFromRows: true,
         value: (row) => _label(row.goodsCode),
       ),
       MasterColumnDef(
         key: 'color',
         label: '颜色',
         width: 100,
+        filterFromRows: true,
         value: (row) => _label(row.colorName),
       ),
       // 2026-10-10 数量内联口径：独立「单位」列撤销——待申请量数字后内联单位，
@@ -722,6 +726,7 @@ class _ProductionDrawRequestPageState
         info: '本次提交仓库的数量，可分批填写。其余数量保留待申请，不修改原任务和需求。',
         width: 204,
         type: 'number',
+        sortable: true,
         value: (row) => _quantities[row.identity]?.text,
         exactValueOf: (row) => _quantities[row.identity]?.text,
         exactListenableOf: (row) => _quantities[row.identity],
@@ -818,12 +823,17 @@ class _ProductionDrawRequestPageState
               key: 'planNo',
               label: '生产计划',
               width: 170,
+              // 2026-11-11 口径：计划号/任务号列可排序 + 按值筛选（来源明细全量）。
+              sortable: true,
+              filterFromRows: true,
               value: (line) => _label(preview.taskFor(line.segmentId)?.planNo),
             ),
             MasterColumnDef(
               key: 'segment',
               label: '车间任务',
               width: 170,
+              sortable: true,
+              filterFromRows: true,
               value: (line) =>
                   _label(preview.taskFor(line.segmentId)?.segmentCode),
             ),

@@ -140,11 +140,7 @@ Future<String?> showSupplierSettlementReasonDialog({
             child: const Text('取消'),
           ),
           FilledButton(
-            onPressed: () {
-              final value = controller.text.trim();
-              if (value.isEmpty) return;
-              Navigator.of(dialogContext).pop(value);
-            },
+            onPressed: () => Navigator.of(dialogContext).pop(controller.text.trim()),
             child: const Text('确认'),
           ),
         ],

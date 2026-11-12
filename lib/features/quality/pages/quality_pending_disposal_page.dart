@@ -1787,6 +1787,8 @@ class _ProcurementInspectionDetailPageState
     MasterColumnDef(
       key: 'status',
       label: '状态',
+      // 类别列：按当前行值出选项筛选（全量待检明细就地收集桶）。
+      filterFromRows: true,
       width: 72,
       value: (item) => switch (item.status) {
         'PARTIAL' => '部分处置',
@@ -1798,6 +1800,7 @@ class _ProcurementInspectionDetailPageState
     MasterColumnDef(
       key: 'quantityTranche',
       label: '数量来源',
+      filterFromRows: true,
       width: 85,
       value: (item) => item.quantityTrancheLabel,
     ),
@@ -1814,6 +1817,9 @@ class _ProcurementInspectionDetailPageState
     MasterColumnDef(
       key: 'goodsCode',
       label: '编号',
+      // 2026-11-11 口径：编号列可排序 + 按值筛选。
+      sortable: true,
+      filterFromRows: true,
       width: 130,
       value: (item) => UtenGoodsAttributeCell.text(item.goodsCode),
       cellBuilder: (_, item) => UtenGoodsAttributeCell(item.goodsCode),
@@ -1821,12 +1827,16 @@ class _ProcurementInspectionDetailPageState
     MasterColumnDef(
       key: 'colorName',
       label: '颜色',
+      // 类别列：按当前行值出选项筛选。
+      filterFromRows: true,
       width: 100,
       value: (item) => item.colorName ?? '—',
     ),
     MasterColumnDef(
       key: 'unit',
       label: '验收单位',
+      // 类别列：按当前行值出选项筛选（单位+换算事实组合值集合有限）。
+      filterFromRows: true,
       width: 190,
       // 单位后直接带上本行的换算事实（原单 1 箱 = 24 个）：合格/不合格列的 ⓘ
       // 已上表头，逐行不同的倍率必须在正文里看得见，否则会有人把箱数当个数填。
@@ -1837,6 +1847,9 @@ class _ProcurementInspectionDetailPageState
     MasterColumnDef(
       key: 'sourceOrderNo',
       label: '来源订货单',
+      // 2026-11-11 口径：单号列可排序 + 按值筛选。
+      sortable: true,
+      filterFromRows: true,
       width: 160,
       value: (item) => item.sourceOrderNo ?? '—',
     ),
@@ -1844,6 +1857,8 @@ class _ProcurementInspectionDetailPageState
     MasterColumnDef(
       key: 'preStocked',
       label: '储放位置',
+      // 类别列：按当前行值出选项筛选（待检区/已入库值集合有限）。
+      filterFromRows: true,
       width: 200,
       value: (item) => item.preStocked?.label ?? '待检区',
       cellBuilder: (context, item) {
@@ -1866,6 +1881,7 @@ class _ProcurementInspectionDetailPageState
       label: '到检量',
       width: 135,
       type: 'number',
+      sortable: true,
       value: (item) => formatQtyWithUnit(
         item.receivedBaseQty ?? 0,
         item.baseUnitName,
@@ -1878,6 +1894,7 @@ class _ProcurementInspectionDetailPageState
       label: '合格数量',
       width: 150,
       type: 'number',
+      sortable: true,
       // 2026-09-11：提示 ⓘ 统一挂表头，行内只留报错（行内 ⓘ 把输入框挤窄）。
       info: inspectionQuantityColumnHint(context, passed: true),
       value: (item) => _reportRows[item.id]?.pass.text ?? '0',
@@ -1911,6 +1928,7 @@ class _ProcurementInspectionDetailPageState
       label: '不合格数量',
       width: 150,
       type: 'number',
+      sortable: true,
       info: inspectionQuantityColumnHint(context, passed: false),
       value: (item) => _reportRows[item.id]?.fail.text ?? '0',
       exactValueOf: (item) => _reportRows[item.id]?.fail.text,
@@ -1945,6 +1963,7 @@ class _ProcurementInspectionDetailPageState
       label: '剩余待检',
       width: 145,
       type: 'number',
+      sortable: true,
       value: (item) => formatQtyWithUnit(
         item.remainingBaseQty ?? 0,
         item.baseUnitName,

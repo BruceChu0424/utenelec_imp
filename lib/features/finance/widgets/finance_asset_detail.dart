@@ -1193,10 +1193,9 @@ class _FinanceAssetActionInputState
                 ],
                 const SizedBox(height: UtenSpacing.s12),
                 UtenInput(
-                  label: '原因 *',
+                  label: '原因（选填）',
                   controller: _reason,
                   maxLines: 3,
-                  validator: (value) => validateRequired(value, '原因'),
                 ),
                 const SizedBox(height: UtenSpacing.s20),
                 Align(

@@ -155,7 +155,7 @@ class _SalesScarcityPageState extends ConsumerState<SalesScarcityPage> {
                 TextField(
                   controller: reasonCtrl,
                   decoration: const UtenInputDecoration(
-                    InputDecoration(labelText: '让单原因(必填)'),
+                    InputDecoration(labelText: '让单原因（选填）'),
                   ),
                 ),
               ],
@@ -184,10 +184,6 @@ class _SalesScarcityPageState extends ConsumerState<SalesScarcityPage> {
     if (input == null) return;
     if (qty == null || qty <= 0 || qty > reserved) {
       context.appWarning('让单数量要大于 0，且不能超过 $reserved');
-      return;
-    }
-    if (reason.isEmpty) {
-      context.appWarning('请填写让单原因');
       return;
     }
     setState(() => _busy = true);

@@ -91,16 +91,27 @@ public final class ProductionFinishedArrivalContracts {
             boolean reversible) {
     }
 
-    /** V548 登记撤回请求：原因必填（2–500 字）+ 稳定幂等键。 */
+    /**
+     * V548 登记撤回请求：原因选填(2026-11-11 口径「弹窗原因不用必填」)+ 稳定幂等键。
+     * 留空/不足 2 字在构造期归一为「未填写原因」——库级 CHECK
+     * production_finished_arrival_reversal_reason_chk 要求 2-500 字，不能存空串。
+     */
     public record ArrivalRegistrationReversalRequest(
             @NotBlank
             @Size(min = 8, max = 128)
             @Pattern(regexp = "[A-Za-z0-9._:-]+",
                     message = "防重复提交标识只能包含字母、数字或 ._:-")
             String idempotencyKey,
-            @NotBlank
-            @Size(min = 2, max = 500, message = "撤回原因必须为 2 到 500 个字符")
+            @Size(max = 500, message = "撤回原因不能超过 500 个字符")
             String reason) {
+
+        public static final String DEFAULT_REASON = "未填写原因";
+
+        public ArrivalRegistrationReversalRequest {
+            if (reason == null || reason.strip().length() < 2) {
+                reason = DEFAULT_REASON;
+            }
+        }
     }
 
     /** V547 本次登记命令生成的品质检查单（每个成品仓一张）。 */

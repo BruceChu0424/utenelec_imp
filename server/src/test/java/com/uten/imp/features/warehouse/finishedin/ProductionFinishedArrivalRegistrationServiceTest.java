@@ -144,9 +144,15 @@ class ProductionFinishedArrivalRegistrationServiceTest {
                         "reverse-key-001", "仓库选错"));
         assertThat(normalized.reason()).isEqualTo("仓库选错");
         assertThat(normalized.requestHash()).isNotEqualTo(other.requestHash());
+        // 2026-11-11 口径：撤回原因选填——留空/不足 2 字在契约构造期归一为「未填写原因」，
+        // 不再因 1 个字被拒；上限 500 仍拒绝。
+        assertThat(ProductionFinishedArrivalRegistrationService.normalizeReversal(
+                registrationId, new ProductionFinishedArrivalContracts.ArrivalRegistrationReversalRequest(
+                        "reverse-key-001", " x ")).reason())
+                .isEqualTo(ProductionFinishedArrivalContracts.ArrivalRegistrationReversalRequest.DEFAULT_REASON);
         assertThatThrownBy(() -> ProductionFinishedArrivalRegistrationService.normalizeReversal(
                 registrationId, new ProductionFinishedArrivalContracts.ArrivalRegistrationReversalRequest(
-                        "reverse-key-001", " x ")))
+                        "reverse-key-001", "字".repeat(501))))
                 .isInstanceOf(ApiException.class);
     }
 

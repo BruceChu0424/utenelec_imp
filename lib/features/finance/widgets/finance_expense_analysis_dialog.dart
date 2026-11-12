@@ -376,6 +376,8 @@ class _ManagerState extends ConsumerState<_Manager>
           key: 'reviewed',
           label: '归属状态',
           width: 100,
+          // 类别列：按当前行值出选项筛选（分组目录是全量读取，2026-11-11 口径）。
+          filterFromRows: true,
           value: (row) => row['reviewed'] == true ? '已核对' : '待核对',
         ),
       ],

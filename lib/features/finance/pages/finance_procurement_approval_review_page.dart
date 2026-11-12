@@ -692,11 +692,9 @@ class _FinanceProcurementApprovalReviewPageState
       return;
     }
     final controller = _rejectReason;
-    String? errorText;
     final ok = await showDialog<bool>(
       context: context,
-      builder: (dialogCtx) => StatefulBuilder(
-        builder: (dialogCtx, setDialogState) => UtenAlertDialog(
+      builder: (dialogCtx) => UtenAlertDialog(
           title: Text('驳回 $widgetSafeBillNo'),
           content: SizedBox(
             width: 440,
@@ -716,13 +714,11 @@ class _FinanceProcurementApprovalReviewPageState
                   maxLength: 1000,
                   minLines: 3,
                   maxLines: 5,
-                  onChanged: (_) => setDialogState(() => errorText = null),
-                  decoration: UtenInputDecoration(
+                  decoration: const UtenInputDecoration(
                     InputDecoration(
-                      labelText: '驳回原因',
-                      hintText: '驳回原因(必填，如：单价待复核 / 供应商资料待更新)',
-                      border: const OutlineInputBorder(),
-                      error: utenFieldError(errorText),
+                      labelText: '驳回原因（选填）',
+                      hintText: '驳回原因（如：单价待复核 / 供应商资料待更新）',
+                      border: OutlineInputBorder(),
                     ),
                     info: '驳回不改动订货单内容；原因将通知原制单人修改后重新提交。',
                   ),
@@ -742,19 +738,12 @@ class _FinanceProcurementApprovalReviewPageState
               style: FilledButton.styleFrom(
                 backgroundColor: Theme.of(dialogCtx).colorScheme.error,
               ),
-              onPressed: () {
-                if (controller.text.trim().isEmpty) {
-                  setDialogState(() => errorText = '请填写驳回原因');
-                  return;
-                }
-                Navigator.pop(dialogCtx, true);
-              },
+              onPressed: () => Navigator.pop(dialogCtx, true),
               child: const Text('确认驳回'),
             ),
           ],
         ),
-      ),
-    );
+      );
     final reason = controller.text;
     if (ok != true || !mounted) return;
     setState(() => _busy = true);

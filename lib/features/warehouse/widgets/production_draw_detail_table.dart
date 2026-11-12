@@ -363,6 +363,8 @@ class ProductionDrawDetailTable extends StatelessWidget {
           key: 'issueStatus',
           label: '状态',
           width: 72,
+          // 2026-11-11 口径：编号列排序+按值筛选、类别列按值筛选、数值/日期列排序（全量表就地处理）。
+          filterFromRows: true,
           value: (row) => row.isMergedGroup
               ? (row.group!
                             .map((r) => r.document!.issueStatus)
@@ -412,6 +414,8 @@ class ProductionDrawDetailTable extends StatelessWidget {
           key: 'goodsCode',
           label: '编号',
           width: 120,
+          sortable: true,
+          filterFromRows: true,
           value: (row) => row.isMergedGroup
               ? names.goodsInfo(row.group!.first.item!.goodsId)?.code ?? '—'
               : row.discovery?.label('goodsCode') ??
@@ -425,6 +429,7 @@ class ProductionDrawDetailTable extends StatelessWidget {
           key: 'color',
           label: '颜色',
           width: 90,
+          filterFromRows: true,
           value: (row) => row.isMergedGroup
               ? names.color(row.group!.first.item!.colorId)
               : row.discovery?.label('colorName') ??
@@ -434,6 +439,7 @@ class ProductionDrawDetailTable extends StatelessWidget {
           key: 'warehouse',
           label: discoveryRows.isEmpty ? '仓库' : '仓库 *',
           width: discoveryRows.isEmpty ? 160 : 200,
+          filterFromRows: true,
           value: (row) => row.isMergedGroup
               ? _joinedOrDash(
                   row.group!.map(
@@ -458,6 +464,7 @@ class ProductionDrawDetailTable extends StatelessWidget {
           key: 'department',
           label: '领料车间',
           width: 150,
+          filterFromRows: true,
           value: (row) => row.isMergedGroup
               ? _joinedOrDash(
                   row.group!.map(
@@ -473,6 +480,7 @@ class ProductionDrawDetailTable extends StatelessWidget {
           key: 'worker',
           label: '领料负责人',
           width: 140,
+          filterFromRows: true,
           value: (row) => row.isMergedGroup
               ? _joinedOrDash(
                   row.group!.map(
@@ -493,6 +501,8 @@ class ProductionDrawDetailTable extends StatelessWidget {
           key: 'place',
           label: '库位号',
           width: 100,
+          sortable: true,
+          filterFromRows: true,
           value: (row) => row.isMergedGroup
               ? '—'
               : row.discovery?.label('stockPlace') ??
@@ -508,6 +518,7 @@ class ProductionDrawDetailTable extends StatelessWidget {
           label: discoveryRows.isEmpty ? '应领数量' : '应领数量 *',
           width: discoveryRows.isEmpty ? 140 : 215,
           type: 'number',
+          sortable: true,
           value: (row) => row.isMergedGroup
               ? _mergedQty(row.group!, (item) => item.qtyText, _unitOf(row))
               : row.discovery == null
@@ -530,6 +541,7 @@ class ProductionDrawDetailTable extends StatelessWidget {
           label: '已出库',
           width: 140,
           type: 'number',
+          sortable: true,
           value: (row) => row.isMergedGroup
               ? _mergedQty(
                   row.group!,
@@ -551,6 +563,7 @@ class ProductionDrawDetailTable extends StatelessWidget {
           label: '已出库重量',
           width: 120,
           type: 'number',
+          sortable: true,
           info: '各轮出库实称/分摊的重量合计(已扣取消出库); 「≈」为按库存均重或单重估算。',
           value: (row) => _issuedWeightText(row.item),
           exactValueOf: (row) => (row.item?.issuedQty ?? 0) > 0
@@ -572,6 +585,7 @@ class ProductionDrawDetailTable extends StatelessWidget {
           label: '待出库',
           width: 140,
           type: 'number',
+          sortable: true,
           value: (row) => row.isMergedGroup
               ? _mergedQty(
                   row.group!,
@@ -597,6 +611,7 @@ class ProductionDrawDetailTable extends StatelessWidget {
             label: '本次出库',
             width: 155,
             type: 'number',
+            sortable: true,
             value: (row) => issueQtyControllers![row.item?.id]?.text ?? '',
             exactValueOf: (row) => issueQtyControllers![row.item?.id]?.text,
             exactListenableOf: (row) => issueQtyControllers![row.item?.id],
@@ -664,6 +679,8 @@ class ProductionDrawDetailTable extends StatelessWidget {
           key: 'planNo',
           label: '生产计划',
           width: 170,
+          sortable: true,
+          filterFromRows: true,
           value: (row) => row.isMergedGroup
               ? _joinedOrDash(row.group!.map((r) => r.document?.planNo ?? ''))
               : row.discovery?.request.planNo ?? row.document?.planNo ?? '—',
@@ -687,6 +704,8 @@ class ProductionDrawDetailTable extends StatelessWidget {
           key: 'sourceDocNo',
           label: '来源',
           width: 170,
+          sortable: true,
+          filterFromRows: true,
           value: (row) => row.isMergedGroup
               ? '—'
               : row.discovery?.request.segmentCode ??
@@ -710,6 +729,7 @@ class ProductionDrawDetailTable extends StatelessWidget {
             label: '单据重量',
             width: 110,
             type: 'number',
+            sortable: true,
             value: (row) => row.item?.weight == null
                 ? '—'
                 : formatWeightValue(row.item!.weightText),

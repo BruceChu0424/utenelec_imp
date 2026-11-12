@@ -1454,6 +1454,9 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
           key: 'goodsCode',
           label: l10n.quoteFinanceColCode,
           width: 130,
+          // 2026-11-11 口径：编号列可排序 + 按值筛选（全量明细表就地收集桶）。
+          sortable: true,
+          filterFromRows: true,
           value: (line) => UtenGoodsAttributeCell.text(line.goodsCode),
           cellBuilder: (_, line) => UtenGoodsAttributeCell(line.goodsCode),
         ),
@@ -1461,6 +1464,8 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
           key: 'colorName',
           label: l10n.quoteFinanceColColor,
           width: 96,
+          // 类别列：按当前行值出选项筛选。
+          filterFromRows: true,
           value: (line) => UtenGoodsAttributeCell.text(line.colorName),
           cellBuilder: (_, line) => UtenGoodsAttributeCell(line.colorName),
         ),
@@ -1471,6 +1476,7 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
           label: l10n.quoteFinanceColQty,
           width: 125,
           type: 'number',
+          sortable: true,
           value: (line) => formatExactQtyWithUnit(line.qty, line.unitName),
         ),
         MasterColumnDef(
@@ -1478,6 +1484,7 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
           label: '报价单价',
           width: 160,
           type: 'money',
+          sortable: true,
           info: '提交的报价单价只读，财务通过成交单价和折扣核价。',
           // 报价域恒本币：金额带「元」后缀（2026-10-10 口径）。
           value: (line) => financeLocalMoneyWithUnitSuffix(line.storedPrice),
@@ -1487,6 +1494,7 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
           label: l10n.quoteFinanceColListPrice,
           width: 140,
           type: 'money',
+          sortable: true,
           info: l10n.quoteFinanceColListPriceInfo,
           value: (line) => !line.hasListPrice
               ? l10n.quoteFinanceNoListPrice
@@ -1514,6 +1522,7 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
                 : '${l10n.quoteFinanceColFilePrice} ${financeCurrencyText(name: review.clientFileCurrency)}',
             width: 150,
             type: 'money',
+            sortable: true,
             // 文件单价是客户文件原币：后缀带 review.clientFileCurrency（缺失不拼）。
             value: (line) => financeMoneyWithUnitSuffix(
               financeExactTrimmed(line.clientPrice),
@@ -1525,6 +1534,7 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
             label: l10n.quoteFinanceColFilePriceLocal,
             width: 140,
             type: 'money',
+            sortable: true,
             value: (line) => financeLocalMoneyWithUnitSuffix(
               financeExactTrimmed(line.clientPriceLocal),
             ),
@@ -1535,6 +1545,7 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
           label: l10n.quoteFinanceColDealPrice,
           width: 190,
           type: 'money',
+          sortable: true,
           info: l10n.quoteFinanceColDealPriceInfo,
           value: (line) => quoteMoney(_drafts[line.itemId]?.deal.text),
           cellBuilderHandlesSemantics: true,
@@ -1546,6 +1557,7 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
           label: l10n.quoteFinanceColDiscount,
           width: 130,
           type: 'number',
+          sortable: true,
           info: l10n.quoteFinanceColDiscountInfo,
           value: (line) => _drafts[line.itemId]?.discount.text,
           cellBuilderHandlesSemantics: true,
@@ -1557,6 +1569,7 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
           label: l10n.quoteFinanceColLineAmount,
           width: 160,
           type: 'money',
+          sortable: true,
           value: (line) {
             // 没改的行即服务端金额，改过的行为预览(填错时为空)。
             final draft = _drafts[line.itemId];
@@ -1586,6 +1599,7 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
             label: l10n.quoteFinanceColFileDiff,
             width: 150,
             type: 'money',
+            sortable: true,
             info: l10n.quoteFinanceColFileDiffInfo,
             value: (line) => _fileDiffText(l10n, line),
             cellColor: (context, line) {
@@ -1602,6 +1616,7 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
             label: l10n.quoteFinanceColLastConfirmed,
             width: 120,
             type: 'number',
+            sortable: true,
             value: (line) =>
                 financeExactTrimmed(line.lastFinanceConfirmedDiscount),
           ),
@@ -1610,6 +1625,7 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
           label: l10n.quoteFinanceColSalesProposed,
           width: 120,
           type: 'number',
+          sortable: true,
           value: (line) => financeExactTrimmed(line.salesProposedDiscount),
         ),
         if (hasFile) ...[
@@ -1617,6 +1633,8 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
             key: 'clientModel',
             label: l10n.quoteFinanceColFileModel,
             width: 130,
+            // 型号会重复：按值筛选可聚看同一型号的行（2026-11-11）。
+            filterFromRows: true,
             value: (line) => line.clientModel,
           ),
           MasterColumnDef(

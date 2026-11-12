@@ -5975,24 +5975,11 @@ void main() {
       isFalse,
       reason: '没确认前不许发取消请求',
     );
-    // 原因必填：空原因确认要被拦下——一个取消请求都不许发。
+    // 2026-11-11 口径：撤回原因选填——空原因确认直接发撤回请求(服务端记「未填写原因」)，
+    // 不再被前端拦下。
     await tester.enterText(
       find.byKey(const Key('material-plan-cancel-reason')),
       '',
-    );
-    await tester.tap(find.text('确认整批撤回'));
-    await tester.pumpAndSettle();
-    expect(
-      requests.any((r) => r.path.endsWith('/withdraw')),
-      isFalse,
-      reason: '空原因必须被拦下，不发取消请求',
-    );
-    // 重新打开，填上原因确认：取消请求带原因与幂等键发出。
-    await tester.tap(cancelPlan);
-    await tester.pumpAndSettle();
-    await tester.enterText(
-      find.byKey(const Key('material-plan-cancel-reason')),
-      '客户改单',
     );
     requests.clear();
     await tester.tap(find.text('确认整批撤回'));
@@ -6007,7 +5994,7 @@ void main() {
       cancelRequest.path,
       '/production/material-analyses/analysis-1/plans/plan-1/withdraw',
     );
-    expect(cancelRequest.body?['reason'], '客户改单');
+    expect(cancelRequest.body?['reason'], '');
     expect(cancelRequest.body?['idempotencyKey'], isNotNull);
     expect(cancelRequest.body?['version'], 3);
     expect(cancelRequest.body?['fingerprint'], 'a' * 64);

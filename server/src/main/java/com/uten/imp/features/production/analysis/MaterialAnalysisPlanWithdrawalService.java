@@ -130,11 +130,11 @@ public class MaterialAnalysisPlanWithdrawalService {
     }
 
     private static void validate(UUID analysisId, UUID planId, PlanWithdrawalRequest request) {
+        // 原因选填(2026-11-11 口径)：留空记「未填写原因」，非空上限由契约 @Size(max=500) 保证。
         if (analysisId == null || planId == null || request == null || request.version() == null
                 || request.fingerprint() == null || !request.fingerprint().matches("(?i)[0-9a-f]{64}")
-                || request.idempotencyKey() == null || !request.idempotencyKey().matches("[A-Za-z0-9._:-]{8,128}")
-                || request.reason() == null || request.reason().strip().length() < 2 || request.reason().length() > 500) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "撤回计划缺少版本、防重复提交标识或有效原因");
+                || request.idempotencyKey() == null || !request.idempotencyKey().matches("[A-Za-z0-9._:-]{8,128}")) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "撤回计划缺少版本或防重复提交标识");
         }
     }
 

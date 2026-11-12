@@ -65,6 +65,8 @@ class WmProductSummaryTable extends StatelessWidget {
           key: field.$1,
           label: field.$2,
           width: field.$3,
+          // 2026-11-11 口径：编号列除按值筛选外补就地排序（完整汇总，非分页）。
+          sortable: field.$1 == 'productCode',
           filterFromRows: true,
           value: (row) {
             final value = row[field.$1];

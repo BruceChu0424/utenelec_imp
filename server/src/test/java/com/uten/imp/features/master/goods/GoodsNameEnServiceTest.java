@@ -167,6 +167,23 @@ class GoodsNameEnServiceTest {
         verify(goodsRepo, never()).save(stub);
     }
 
+    @Test
+    void salesDocLineEditWritesManualSourceAndNeedsTheAuthority() {
+        Goods goods = existingGoods(null, null);
+
+        login(Set.of("sales_order:edit"), false);
+        assertThat(service.applyNameEnFromSalesDoc(goods.getId(), "LINE EDITED NAME")).isFalse();
+        assertThat(goods.getNameEn()).isNull();
+
+        login(Set.of("goods:name_en:edit"), false);
+        assertThat(service.applyNameEnFromSalesDoc(goods.getId(), "  Line   Edited  Name ")).isTrue();
+        assertThat(goods.getNameEn()).isEqualTo("Line Edited Name");
+        assertThat(goods.getNameEnSource()).as("单据行手改=用户明确输入").isEqualTo(GoodsNameEn.SOURCE_MANUAL);
+        assertThat(service.applyNameEnFromSalesDoc(goods.getId(), "Line Edited Name")).as("值相同不写").isFalse();
+        assertThat(service.applyNameEnFromSalesDoc(goods.getId(), "  ")).as("空值不回写也不清空").isFalse();
+        assertThat(goods.getNameEn()).isEqualTo("Line Edited Name");
+    }
+
     // ------------------------------------------------------------------
 
     private GoodsSaveRequest baseRequest() {

@@ -279,6 +279,8 @@ class _ImportSheetState extends ConsumerState<_ImportSheet> {
                     key: 'status',
                     label: '初筛状态',
                     width: 72,
+                    // 2026-11-11 口径：状态列按值筛选，编号/数值列补就地排序。
+                    filterFromRows: true,
                     value: _availabilityStatus,
                   ),
                   // 2026-09-14 全站列序统一：名称 → 编号 → 颜色 → …
@@ -293,6 +295,7 @@ class _ImportSheetState extends ConsumerState<_ImportSheet> {
                     key: 'code',
                     label: '编号',
                     width: 130,
+                    sortable: true,
                     filterFromRows: true,
                     value: (item) => item.code,
                   ),
@@ -323,6 +326,7 @@ class _ImportSheetState extends ConsumerState<_ImportSheet> {
                     label: '单台用量',
                     width: 90,
                     type: 'number',
+                    sortable: true,
                     info: '按计算采用的用量(有真实数据时用真实使用数量)',
                     value: (item) => _fmt(item.perQty),
                   ),
@@ -331,6 +335,7 @@ class _ImportSheetState extends ConsumerState<_ImportSheet> {
                     label: '总需求',
                     width: 90,
                     type: 'number',
+                    sortable: true,
                     value: (item) => item.periodic ? '—' : _fmt(item.needQty),
                   ),
                   MasterColumnDef(
@@ -338,6 +343,7 @@ class _ImportSheetState extends ConsumerState<_ImportSheet> {
                     label: '即时库存',
                     width: 90,
                     type: 'number',
+                    sortable: true,
                     value: (item) => _fmt(item.onhand),
                   ),
                 ],

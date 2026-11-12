@@ -46,7 +46,7 @@ ProductionMaterialIncrementRequest _request() =>
 
 void main() {
   testWidgets(
-    'failed return preserves reason and rejects a one-character reason locally',
+    'failed return preserves reason and no longer blocks a one-character reason',
     (tester) async {
       await tester.pumpWidget(
         ProviderScope(
@@ -63,15 +63,14 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('退回'));
       await tester.pumpAndSettle();
+      // 2026-11-11 口径：弹窗原因选填，不再本地拦截 1 个字的原因，直接发请求。
       await tester.enterText(find.byType(TextFormField), '短');
       await tester.tap(find.text('确认'));
       await tester.pumpAndSettle();
-      expect(
-        tester
-            .state<FormFieldState<String>>(find.byType(TextFormField))
-            .errorText,
-        '请填写 2 至 500 字的原因',
-      );
+      expect(find.text('审批版本发生变化'), findsOneWidget);
+      await tester.tap(find.text('退回'));
+      await tester.pumpAndSettle();
+      expect(find.text('短'), findsOneWidget);
       await tester.enterText(find.byType(TextFormField), '请补充实耗依据');
       await tester.tap(find.text('确认'));
       await tester.pumpAndSettle();

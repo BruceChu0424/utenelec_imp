@@ -599,13 +599,25 @@ class _MaterialDirectory extends ConsumerState<FinanceMaterialStatementSurface>
         '${row['billNo']} ${row['goodsCode']} ${row['businessDate']}',
   };
   List<MasterColumnDef<Map<String, dynamic>>> _contextColumns() => [
+    // 2026-11-11 口径：科目编码列可排序 + 按值筛选；币别/状态类别列按值筛选
+    //（全量分组目录快照就地排序、收集桶）。
     financeSourceColumn('auxiliaryName', '财务辅助项目', width: 190),
-    financeSourceColumn('accountCode', '财务科目代码'),
+    financeSourceColumn(
+      'accountCode',
+      '财务科目代码',
+      sortable: true,
+      filterByValue: true,
+    ),
     financeSourceColumn('productNameCaption', '产品名称（57#）', width: 240),
-    financeSourceColumn('accountingCurrencyCode', '会计币别'),
+    financeSourceColumn(
+      'accountingCurrencyCode',
+      '会计币别',
+      filterByValue: true,
+    ),
     financeSourceColumn(
       'actualCurrencyId',
       '纸面金额单位',
+      filterByValue: true,
       value: (r) => [
         r['actualCurrencyCode'],
         r['actualCurrencyName'],
@@ -614,6 +626,7 @@ class _MaterialDirectory extends ConsumerState<FinanceMaterialStatementSurface>
     financeSourceColumn(
       'state',
       '分组资料',
+      filterByValue: true,
       value: (r) => r['state'] == 'APPROVED' ? '已核对' : '草稿',
     ),
   ];

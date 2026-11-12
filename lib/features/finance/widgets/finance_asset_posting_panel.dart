@@ -324,44 +324,33 @@ class _FinanceAssetPostingPanelState
 
   Future<String?> _reasonDialog(String title) async {
     final controller = TextEditingController();
-    String? errorText;
     late final String? result;
     try {
       result = await UtenDialog.showAndWaitForExit<String>(
         context,
         barrierDismissible: false,
-        builder: (dialogContext) => StatefulBuilder(
-          builder: (context, setDialogState) => UtenAlertDialog(
-            title: Text(title),
-            content: SizedBox(
-              width: 480,
-              child: UtenInput(
-                label: '原因 *',
-                controller: controller,
-                maxLines: 3,
-                validator: (_) => errorText,
-              ),
+        builder: (dialogContext) => UtenAlertDialog(
+          title: Text(title),
+          content: SizedBox(
+            width: 480,
+            child: UtenInput(
+              label: '原因（选填）',
+              controller: controller,
+              maxLines: 3,
             ),
-            actionsAlignment: MainAxisAlignment.center,
-            actions: [
-              UtenButton(
-                type: UtenButtonType.ghost,
-                onPressed: () => Navigator.pop(dialogContext),
-                child: const Text('取消'),
-              ),
-              UtenButton(
-                onPressed: () {
-                  final value = controller.text.trim();
-                  if (value.isEmpty) {
-                    setDialogState(() => errorText = '请填写原因');
-                    return;
-                  }
-                  Navigator.pop(dialogContext, value);
-                },
-                child: const Text('确认'),
-              ),
-            ],
           ),
+          actionsAlignment: MainAxisAlignment.center,
+          actions: [
+            UtenButton(
+              type: UtenButtonType.ghost,
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('取消'),
+            ),
+            UtenButton(
+              onPressed: () => Navigator.pop(dialogContext, controller.text.trim()),
+              child: const Text('确认'),
+            ),
+          ],
         ),
       );
     } finally {

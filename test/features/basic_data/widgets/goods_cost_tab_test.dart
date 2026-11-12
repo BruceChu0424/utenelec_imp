@@ -1499,7 +1499,7 @@ void main() {
         await tapUtenTestAction(tester, find.byKey(const Key('cost-download')));
         await tester.pumpAndSettle();
         expect(find.byType(UtenBusyOverlay), findsNothing);
-        await tester.tap(find.widgetWithText(TextButton, '确认'));
+        await tester.tap(find.widgetWithText(FilledButton, '确认'));
         await tester.pumpAndSettle();
         expect(find.byKey(const Key('uten-export-filename')), findsOneWidget);
         await tester.tap(find.byKey(const ValueKey('table-output-selected')));
@@ -1542,7 +1542,7 @@ void main() {
       expect(find.byType(AlertDialog), findsOneWidget);
       expect(find.byType(UtenBusyOverlay), findsNothing);
       expect(repo.snapshotsCreated, 0);
-      await tester.tap(find.widgetWithText(TextButton, '确认'));
+      await tester.tap(find.widgetWithText(FilledButton, '确认'));
       // Preparation starts after the original option route fully leaves its overlay.
       for (var frame = 0; frame < 60 && repo.snapshotsCreated == 0; frame++) {
         await tester.pump(const Duration(milliseconds: 16));
@@ -1660,7 +1660,7 @@ void main() {
           'MATERIAL',
           'FEES',
         ]);
-        await tester.tap(find.widgetWithText(TextButton, '确认'));
+        await tester.tap(find.widgetWithText(FilledButton, '确认'));
         await tester.pumpAndSettle();
         final selection = (await preparing)!;
         expect(selection.extension, 'xlsx');
@@ -4142,7 +4142,7 @@ void main() {
       );
       final preparing = download.prepareExport!();
       await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(TextButton, '确认'));
+      await tester.tap(find.widgetWithText(FilledButton, '确认'));
       await tester.pumpAndSettle();
       final selection = await preparing;
       expect(selection?.bodyParams['snapshotId'], 'snapshot-fullscreen');

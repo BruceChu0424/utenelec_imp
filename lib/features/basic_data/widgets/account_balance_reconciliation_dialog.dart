@@ -495,11 +495,7 @@ class _AccountBalanceReconciliationDialogState
       }
     }
     final reason = _reasonController.text.trim();
-    final reasonError = reason.isEmpty
-        ? '必须填写本次余额核对原因'
-        : reason.length > 500
-        ? '原因不能超过 500 个字符'
-        : null;
+    final reasonError = reason.length > 500 ? '原因不能超过 500 个字符' : null;
     final visibleIds = _visibleAccounts.map((item) => item.id).toSet();
     final hiddenErrors = {
       ...nextErrors.keys,
@@ -994,9 +990,8 @@ class _AccountBalanceReconciliationDialogState
       decoration: UtenInputDecoration(
         InputDecoration(
           label: fieldLabel(
-            widget.singleAccountOnly ? '修改原因' : '核对原因',
+            widget.singleAccountOnly ? '修改原因（选填）' : '核对原因（选填）',
             Theme.of(context),
-            required: true,
             info: '原因会写入不可变调整批次和账户流水。',
           ),
           hintText: '例如：新系统上线前按银行对账单和现金盘点结果重录余额',

@@ -58,6 +58,8 @@ List<MasterColumnDef<InsightHealthRow>> insightHealthColumns({
     key: 'code',
     label: '编号',
     width: 130,
+    // 2026-11-11 口径：服务端排序白名单已含本列，补表头排序入口。
+    sortable: true,
     value: (r) => r.code ?? '—',
   ),
   MasterColumnDef(
@@ -125,6 +127,7 @@ List<MasterColumnDef<InsightHealthRow>> insightHealthColumns({
     label: '0-30天',
     width: 100,
     type: 'number',
+    sortable: true,
     info: '按先进先出把当前库存分到各次入库上, 入库距今 0-30 天的数量',
     value: (r) => _qty(r.age0to30),
     exactValueOf: (r) => r.age0to30?.toString(),
@@ -134,6 +137,7 @@ List<MasterColumnDef<InsightHealthRow>> insightHealthColumns({
     label: '31-90天',
     width: 100,
     type: 'number',
+    sortable: true,
     value: (r) => _qty(r.age31to90),
     exactValueOf: (r) => r.age31to90?.toString(),
   ),
@@ -142,6 +146,7 @@ List<MasterColumnDef<InsightHealthRow>> insightHealthColumns({
     label: '91-180天',
     width: 100,
     type: 'number',
+    sortable: true,
     value: (r) => _qty(r.age91to180),
     exactValueOf: (r) => r.age91to180?.toString(),
   ),
@@ -150,6 +155,7 @@ List<MasterColumnDef<InsightHealthRow>> insightHealthColumns({
     label: '181-365天',
     width: 105,
     type: 'number',
+    sortable: true,
     value: (r) => _qty(r.age181to365),
     exactValueOf: (r) => r.age181to365?.toString(),
   ),
@@ -167,6 +173,7 @@ List<MasterColumnDef<InsightHealthRow>> insightHealthColumns({
     label: '期初(无入库记录)',
     width: 140,
     type: 'number',
+    sortable: true,
     info: '找不到入库记录的数量 (系统上线前的结存等), 库龄未知',
     value: (r) => _qty(r.ageUnknown),
     exactValueOf: (r) => r.ageUnknown?.toString(),
@@ -459,6 +466,8 @@ List<MasterColumnDef<InsightCounterpartSummary>> insightCounterpartColumns({
     label: '次数',
     width: 90,
     type: 'number',
+    // 2026-11-11 口径：数值列可排序（往来方汇总全量加载，就地排序）。
+    sortable: true,
     info: '供应商 = 到货称重次数; 车间 = 领料称重次数',
     value: (s) => _days(s.events),
     exactValueOf: (s) => s.events?.toString(),
@@ -468,6 +477,7 @@ List<MasterColumnDef<InsightCounterpartSummary>> insightCounterpartColumns({
     label: '异常次数',
     width: 100,
     type: 'number',
+    sortable: true,
     info: '供应商 = 来料少数的次数; 车间 = 领料超发的次数',
     value: (s) => _days(s.flagged),
     exactValueOf: (s) => s.flagged?.toString(),
@@ -477,6 +487,7 @@ List<MasterColumnDef<InsightCounterpartSummary>> insightCounterpartColumns({
     label: '平均偏差',
     width: 100,
     type: 'number',
+    sortable: true,
     exactValueOf: (s) => s.avgPct?.abs().toString(),
     value: (s) => s.avgPct == null
         ? '—'
@@ -488,6 +499,7 @@ List<MasterColumnDef<InsightCounterpartSummary>> insightCounterpartColumns({
     label: '差额重量',
     width: 120,
     type: 'weight',
+    sortable: true,
     exactValueOf: (s) => s.kg?.abs().toString(),
     info: '供应商 = 少了的重量; 车间 = 多发的重量',
     value: (s) =>

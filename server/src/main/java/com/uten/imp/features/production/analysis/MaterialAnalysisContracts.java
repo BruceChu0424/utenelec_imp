@@ -372,15 +372,24 @@ public final class MaterialAnalysisContracts {
         }
     }
 
-    /** Withdraw one exact ordinary source plan, including its execution packages. */
+    /**
+     * Withdraw one exact ordinary source plan, including its execution packages.
+     * <p>原因选填(2026-11-11 用户口径「弹窗原因不用必填」，对照 {@link CancelRequest} 选填样板)：
+     * 留空落命令审计与计划包红冲时记 {@link CancelRequest#DEFAULT_REASON}；填了就去首尾空白，
+     * 上限 500 由 {@code @Size} 保证。所有消费方一律取 {@link #effectiveReason()}。
+     */
     public record PlanWithdrawalRequest(
             @NotNull @JsonAlias("expectedVersion") Long version,
             @NotBlank @Pattern(regexp = "(?i)[0-9a-f]{64}") String fingerprint,
             @NotBlank @Size(min = 8, max = 128)
             @Pattern(regexp = "[A-Za-z0-9._:-]+") String idempotencyKey,
-            @NotBlank @Size(max = 500)
-            @Pattern(regexp = "(?s)\\s*\\S.*\\S\\s*", message = "撤回原因至少 2 个字") String reason) {
-        public String effectiveReason() { return reason.strip(); }
+            @Size(max = 500) String reason) {
+
+        /** 落命令审计 / 计划包红冲用的原因：空白 → {@link CancelRequest#DEFAULT_REASON}，否则去首尾空白。 */
+        public String effectiveReason() {
+            String trimmed = reason == null ? "" : reason.strip();
+            return trimmed.isEmpty() ? CancelRequest.DEFAULT_REASON : trimmed;
+        }
     }
 
     /**
@@ -401,6 +410,17 @@ public final class MaterialAnalysisContracts {
 
         public static final String DEFAULT_REASON = "未填写原因";
 
+        /**
+         * 2026-11-11 口径「操作弹窗原因统一选填」：撤销借用等直接取 {@code reason()} 落库的
+         * 消费方(库级 CHECK 要求撤销原因 2-1000 字、不能存空串)在构造期就把空白归一成
+         * {@link #DEFAULT_REASON}；取 {@link #effectiveReason()} 的消费方输出不变。
+         */
+        public CancelRequest {
+            if (reason != null && reason.strip().isEmpty()) {
+                reason = DEFAULT_REASON;
+            }
+        }
+
         /** 落库 / 进指纹 / 写审计用的原因：空白 → {@link #DEFAULT_REASON}，否则去首尾空白。 */
         public String effectiveReason() {
             String trimmed = reason == null ? "" : reason.strip();
@@ -412,6 +432,9 @@ public final class MaterialAnalysisContracts {
      * 现货层借用（调货）：把同一分析内某条直接组件路径上已分配的合格现货
      * 覆盖量调拨给另一产品的同物料直接组件路径。只影响分析软分配与齐套
      * 投影，不写 stock_reservations、不动库存账本；正式预留后不可再调。
+     * <p>原因选填(2026-11-11 口径「弹窗原因不用必填」)：留空/不足 2 字在构造期
+     * 归一为 {@link CancelRequest#DEFAULT_REASON} 落审计——库级 CHECK
+     * analysis_borrow_reason_chk 要求 2-1000 字，不能存空串。
      */
     public record BorrowRequest(
             @NotNull @JsonAlias("expectedVersion") Long version,
@@ -421,7 +444,13 @@ public final class MaterialAnalysisContracts {
             @NotNull UUID toMaterialLineId,
             @NotNull @DecimalMin(value = "0", inclusive=false)
             @DocumentQuantity BigDecimal qty,
-            @NotBlank @Size(min = 2, max = 1000) String reason) {
+            @Size(max = 1000) String reason) {
+
+        public BorrowRequest {
+            if (reason == null || reason.strip().length() < 2) {
+                reason = CancelRequest.DEFAULT_REASON;
+            }
+        }
     }
 
     /** 某条物料路径上的一笔有效借用投影（双向可见：借出方与借入方都能看到）。 */
@@ -451,14 +480,25 @@ public final class MaterialAnalysisContracts {
             @NotBlank @Size(min = 8, max = 128) String idempotencyKey) {
     }
 
-    /** 撤销仍未正式占用的跨计划让料；双端 CAS 防止用旧快照夺回库存权益。 */
+    /**
+     * 撤销仍未正式占用的跨计划让料；双端 CAS 防止用旧快照夺回库存权益。
+     * 撤销原因选填(2026-11-11 口径)：留空/不足 2 字在构造期归一为
+     * {@link CancelRequest#DEFAULT_REASON}——库级 CHECK preplan_reallocation_close_chk
+     * 要求撤销原因 2-1000 字，不能存空串。
+     */
     public record CrossReallocationRevokeRequest(
             @NotNull Long sourceVersion,
             @NotBlank @Pattern(regexp = "(?i)[0-9a-f]{64}") String sourceFingerprint,
             @NotNull Long targetVersion,
             @NotBlank @Pattern(regexp = "(?i)[0-9a-f]{64}") String targetFingerprint,
-            @NotBlank @Size(min = 2, max = 1000) String reason,
+            @Size(max = 1000) String reason,
             @NotBlank @Size(min = 8, max = 128) String idempotencyKey) {
+
+        public CrossReallocationRevokeRequest {
+            if (reason == null || reason.strip().length() < 2) {
+                reason = CancelRequest.DEFAULT_REASON;
+            }
+        }
     }
 
     /** 服务端已按同仓、同物料维度、真实缺口和双端对象范围过滤的接受计划候选。 */

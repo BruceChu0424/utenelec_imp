@@ -1630,12 +1630,21 @@ public class ProcurementFinanceApprovalService {
         return port;
     }
 
+    /**
+     * 驳回原因选填（2026-11-11 口径「操作弹窗原因/备注类输入统一选填」）：
+     * 留空归一为「未填写原因」——rejection_reason 列有
+     * (status='REJECTED')=(rejection_reason IS NOT NULL) 的库级 CHECK，不能存空；
+     * 超过 1000 字仍然拒绝。
+     */
     private static String normalizeReason(String value) {
         String reason = value == null ? "" : value.trim();
-        if (reason.isEmpty() || reason.length() > 1000) {
+        if (reason.isEmpty()) {
+            return "未填写原因";
+        }
+        if (reason.length() > 1000) {
             throw new ApiException(
                     ErrorCode.VALIDATION_FAILED,
-                    "驳回原因必填且不能超过1000字");
+                    "驳回原因不能超过1000字");
         }
         return reason;
     }

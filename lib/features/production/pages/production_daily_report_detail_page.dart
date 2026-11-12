@@ -1565,6 +1565,9 @@ class _ProductionDailyReportDetailPageState
                 key: 'goodsCode',
                 label: '编号',
                 width: 130,
+                // 2026-11-11 口径：编号列排序+按值筛选、类别列按值筛选、数值/日期列排序（全量表就地处理）。
+                sortable: true,
+                filterFromRows: true,
                 value: (row) =>
                     UtenGoodsAttributeCell.text(row.source.goodsCode),
                 cellBuilder: (_, row) =>
@@ -1574,6 +1577,7 @@ class _ProductionDailyReportDetailPageState
                 key: 'colorName',
                 label: '颜色',
                 width: 96,
+                filterFromRows: true,
                 value: (row) => UtenGoodsAttributeCell.text(
                   _dictText(row.source.colorName),
                 ),
@@ -1586,6 +1590,7 @@ class _ProductionDailyReportDetailPageState
                 label: '完工申报量',
                 width: 146,
                 type: 'number',
+                sortable: true,
                 value: (row) =>
                     productionQuantityWithUnit(
                       row.qtyText,
@@ -1599,6 +1604,7 @@ class _ProductionDailyReportDetailPageState
                 label: '不良数',
                 width: 130,
                 type: 'number',
+                sortable: true,
                 info: productionDailyReportDefectInfo,
                 value: (row) {
                   final quantity = productionExactQuantityUnits(
@@ -1674,6 +1680,7 @@ class _ProductionDailyReportDetailPageState
                 key: 'destination',
                 label: '产出去向',
                 width: 120,
+                filterFromRows: true,
                 value: (row) => row.isDirectTransfer ? '转下一道工序' : '送入仓库',
               ),
               MasterColumnDef(

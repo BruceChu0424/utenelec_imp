@@ -2586,9 +2586,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get profileChangeRejectDialogTitle => '驳回申请';
 
   @override
-  String get profileChangeRejectReasonRequired => '请填写驳回原因';
-
-  @override
   String get profileChangeRejectReasonHint => '请说明驳回原因，员工会看到';
 
   @override
@@ -6679,7 +6676,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get quoteFinanceReturnChipPrice => '价格需销售与客户确认';
 
   @override
-  String get quoteFinanceReturnReasonLabel => '退回原因(必填)';
+  String get quoteFinanceReturnReasonLabel => '退回原因（选填）';
 
   @override
   String get quoteFinanceReturnReasonRequired => '请填写退回原因';
@@ -8368,10 +8365,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get salesQuoteCancelQuote => '取消报价';
 
   @override
-  String get salesQuoteCancelReason => '取消原因（如客户未接受报价、订单未取得）';
-
-  @override
-  String get salesQuoteCancelReasonRequired => '请填写取消原因';
+  String get salesQuoteCancelReason => '取消原因（选填，如客户未接受报价、订单未取得）';
 
   @override
   String get salesQuoteCancelledDone => '报价已取消，历史记录保留';

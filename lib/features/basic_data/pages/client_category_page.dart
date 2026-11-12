@@ -822,6 +822,8 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
       key: 'code',
       label: '客户编码',
       width: 100,
+      // 2026-11-11 口径：编号列可排序（服务端分页表，走服务端排序）。
+      sortable: true,
       value: (m) => m.code,
     ),
     MasterColumnDef(

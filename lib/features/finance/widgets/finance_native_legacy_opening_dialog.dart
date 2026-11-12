@@ -501,19 +501,38 @@ class _LegacyOpeningState extends ConsumerState<_LegacyOpening>
               child: financeSourceTable(
                 tableKey: 'finance.native-legacy-openings.confirm',
                 columns: [
-                  financeSourceColumn('oldNo', '旧单号', width: 200),
-                  financeSourceColumn('code', '财务科目'),
+                  // 2026-11-11 口径：单号列可排序 + 按值筛选；科目类别列按值筛选；
+                  //金额列可排序（全量核对证据快照就地排序、收集桶）。
+                  financeSourceColumn(
+                    'oldNo',
+                    '旧单号',
+                    width: 200,
+                    sortable: true,
+                    filterByValue: true,
+                  ),
+                  financeSourceColumn(
+                    'code',
+                    '财务科目',
+                    filterByValue: true,
+                  ),
                   financeSourceColumn('name', '原科目名称', width: 200),
-                  financeSourceColumn('amountLocal', '本币份额', type: 'money'),
+                  financeSourceColumn(
+                    'amountLocal',
+                    '本币份额',
+                    type: 'money',
+                    sortable: true,
+                  ),
                   financeSourceColumn(
                     'nativeOriginal',
                     '旧记录原币份额',
                     type: 'money',
+                    sortable: true,
                   ),
                   financeSourceColumn(
                     'financialOriginal',
                     '原金融原币份额',
                     type: 'money',
+                    sortable: true,
                     value: (r) => r['financialOriginal']?.toString() ?? '待核',
                   ),
                 ],

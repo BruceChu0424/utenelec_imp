@@ -368,6 +368,8 @@ List<MasterColumnDef<PurchaseDocListItem>> _docColumns(
     key: 'billNo',
     label: '单据号',
     width: 140,
+    // 2026-11-11 口径：单号列可排序（服务端分页，排序走宿主 onSortChange）。
+    sortable: true,
     columnSearchEnabled: true,
     value: (d) => d.billNo,
   ),

@@ -508,11 +508,12 @@ public class SalesQuoteFinanceService {
     private QuoteFinanceReviewDto returnToSales(UUID id, QuoteFinanceDecisionRequest req, boolean manager) {
         tx.bind();
         if (!manager) requireEligibleReviewer();
-        if (req == null) throw new ApiException(ErrorCode.VALIDATION_FAILED,"请写明退回原因, 告诉销售要改什么");
+        if (req == null) req = new QuoteFinanceDecisionRequest(null, null, null);
         requireDecisionInputs(req.expectedRevision(), req.expectedClaimId());
+        // 2026-11-11 口径：退回原因选填，留空记「未填写原因」（销售侧提示仍可读）。
         String reason = req.text() == null ? "" : req.text().strip();
         if (reason.isEmpty()) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "请写明退回原因, 告诉销售要改什么");
+            reason = "未填写原因";
         }
         SalesQuote q = lockForDecision(id);
         com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_quotes",q);

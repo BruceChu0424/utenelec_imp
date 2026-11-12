@@ -1034,6 +1034,8 @@ class _ServerStatusPageState extends ConsumerState<_ServerStatusSession>
           // TODO(l10n): 补 arb
           label: '上次错误',
           width: 170,
+          // 2026-11-11 口径：类别列（错误类型）按值筛选。
+          filterFromRows: true,
           value: (job) => job.lastErrorType ?? '—',
         ),
         MasterColumnDef(

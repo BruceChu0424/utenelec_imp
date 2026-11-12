@@ -1378,6 +1378,24 @@ public class GoodsService {
      */
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public boolean learnNameEn(UUID goodsId, String text) {
+        return writeNameEnInternal(goodsId, text, GoodsNameEn.SOURCE_LEARNED);
+    }
+
+    /**
+     * 报价/订货单行内直接编辑英文名称后的回写(2026-11-11): 用户在单据行上改了英文名称并
+     * 保存时, 把该值写回货品主档, 下次选货即带出最新值。校验口径同学档学习(权限/写范围/
+     * 未删除/非占位), 差异是来源记 MANUAL(用户明确输入)。须在单据保存事务内调用, 且在
+     * 行快照捕获之前, 让快照直接取到回写后的新值。
+     *
+     * @return 是否真的改了
+     */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public boolean applyNameEnFromSalesDoc(UUID goodsId, String text) {
+        return writeNameEnInternal(goodsId, text, GoodsNameEn.SOURCE_MANUAL);
+    }
+
+    /** 学习/单据行回写共用的写入核心: 值规范化, 静默校验(不满足返回 false), 行锁后按来源落库。 */
+    private boolean writeNameEnInternal(UUID goodsId, String text, String source) {
         String value = GoodsNameEn.normalize(text);
         if (goodsId == null || value == null
                 || value.codePointCount(0, value.length()) > GoodsNameEn.MAX_LENGTH) {
@@ -1390,8 +1408,9 @@ public class GoodsService {
         if (g.isDeleted() || g.isAutoCreated() || !canWrite(g)) return false;
         if (value.equals(g.getNameEn())) return false;
         g.setNameEn(value);
-        g.setNameEnSource(GoodsNameEn.SOURCE_LEARNED);
-        repo.save(g);
+        g.setNameEnSource(source);
+        // 立即落库: 单据保存事务里随后的原生快照查询能读到新值。
+        repo.saveAndFlush(g);
         return true;
     }
 

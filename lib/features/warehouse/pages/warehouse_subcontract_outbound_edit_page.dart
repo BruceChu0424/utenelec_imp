@@ -38,7 +38,6 @@ import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
-import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
@@ -1200,7 +1199,7 @@ class _PickGate {
   final bool canReturn;
 }
 
-/// 「退回委外(不发)」原因(必填，最多 200 字)。
+/// 「退回委外(不发)」原因(选填，最多 200 字)。
 class _ReturnToDrawReasonDialog extends StatefulWidget {
   const _ReturnToDrawReasonDialog({required this.billNo});
 
@@ -1214,7 +1213,6 @@ class _ReturnToDrawReasonDialog extends StatefulWidget {
 class _ReturnToDrawReasonDialogState extends State<_ReturnToDrawReasonDialog> {
   static const _maxLength = 200;
   final _reason = TextEditingController();
-  String? _error;
 
   @override
   void dispose() {
@@ -1223,16 +1221,8 @@ class _ReturnToDrawReasonDialogState extends State<_ReturnToDrawReasonDialog> {
   }
 
   void _submit() {
-    final text = _reason.text.trim();
-    if (text.isEmpty) {
-      setState(() => _error = '请填写不发的原因');
-      return;
-    }
-    if (text.length > _maxLength) {
-      setState(() => _error = '原因最多 $_maxLength 字');
-      return;
-    }
-    Navigator.of(context).pop(text);
+    // 原因选填：空原因确认返回空串（调用方视为已确认），取消返回 null。
+    Navigator.of(context).pop(_reason.text.trim());
   }
 
   @override
@@ -1258,18 +1248,12 @@ class _ReturnToDrawReasonDialogState extends State<_ReturnToDrawReasonDialog> {
               autofocus: true,
               maxLength: _maxLength,
               maxLines: 3,
-              decoration: UtenInputDecoration(
+              decoration: const UtenInputDecoration(
                 InputDecoration(
-                  labelText: '不发原因(必填)',
+                  labelText: '不发原因（选填）',
                   hintText: '如：物料破损，本批不能发',
-                  error: _error == null
-                      ? null
-                      : UtenFieldMessage.error(_error!),
                 ),
               ),
-              onChanged: (_) {
-                if (_error != null) setState(() => _error = null);
-              },
             ),
           ],
         ),

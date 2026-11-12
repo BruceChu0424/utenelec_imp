@@ -1179,7 +1179,9 @@ class _SubcontractDocDetailPageState
                     MasterColumnDef(
                       key: 'goodsCode',
                       label: '编号',
+                      // 2026-11-11 口径：编号列可排序 + 按值筛选（全量明细表就地收集桶）。
                       sortable: true,
+                      filterFromRows: true,
                       width: 130,
                       value: (it) => UtenGoodsAttributeCell.text(
                         names.goodsInfo(it.goodsId)?.code,
@@ -1656,12 +1658,18 @@ class _SubcontractDocDetailPageState
       String label,
       String? Function(SubcontractOrderMaterialLine) valueOf, {
       bool numeric = false,
+      bool sortable = false,
+      bool filterFromRows = false,
     }) => MasterColumnDef(
       key: key,
       label: label,
       width: 0,
       type: numeric ? 'number' : 'text',
       columnSearchEnabled: false,
+      // 2026-11-11 口径：数值列可排序、编号/类别列可按值筛选（嵌入式全量表
+      // 就地排序/收集桶）。
+      sortable: sortable,
+      filterFromRows: filterFromRows,
       value: (material) => display(valueOf(material)),
       cellBuilder: numeric
           ? (_, material) => Align(
@@ -1712,23 +1720,48 @@ class _SubcontractDocDetailPageState
                     '所属成品',
                     (m) =>
                         m.orderLineNo == null ? null : '第 ${m.orderLineNo} 行',
+                    filterFromRows: true,
                   ),
                   column('goodsName', '物料名称', (m) => m.goodsName),
-                  column('goodsCode', '物料编号', (m) => m.goodsCode),
-                  column('colorName', '颜色', (m) => m.colorName),
-                  column('unitName', '单位', (m) => m.unitName),
-                  column('unitQty', '单耗', (m) => m.bomUnitQty, numeric: true),
+                  column(
+                    'goodsCode',
+                    '物料编号',
+                    (m) => m.goodsCode,
+                    sortable: true,
+                    filterFromRows: true,
+                  ),
+                  column(
+                    'colorName',
+                    '颜色',
+                    (m) => m.colorName,
+                    filterFromRows: true,
+                  ),
+                  column(
+                    'unitName',
+                    '单位',
+                    (m) => m.unitName,
+                    filterFromRows: true,
+                  ),
+                  column(
+                    'unitQty',
+                    '单耗',
+                    (m) => m.bomUnitQty,
+                    numeric: true,
+                    sortable: true,
+                  ),
                   column(
                     'plannedQty',
                     '需发量',
                     (m) => m.plannedQty,
                     numeric: true,
+                    sortable: true,
                   ),
                   column(
                     'issuedQty',
                     '已发量',
                     (m) => m.frozen ? m.issuedQty : null,
                     numeric: true,
+                    sortable: true,
                   ),
                 ],
                 items: materials,

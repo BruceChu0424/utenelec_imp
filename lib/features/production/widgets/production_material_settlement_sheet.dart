@@ -631,7 +631,8 @@ class _MaterialSettlementSheetState
             onChanged: (value) => reasonText = value.trim(),
             maxLength: 500,
             decoration: const UtenInputDecoration(
-              InputDecoration(labelText: '撤回原因'),
+              // 2026-11-11 口径：操作说明/原因类输入统一选填（不填可提交）。
+              InputDecoration(labelText: '撤回原因（选填）'),
               info: '仅待收料申请可以撤回，撤回后数量重新可用于本工单登记或申请退仓。',
             ),
           ),
@@ -641,14 +642,13 @@ class _MaterialSettlementSheetState
             onPressed: () => Navigator.pop(context, false),
             child: const Text('返回'),
           ),
-          TextButton(
-            onPressed: () {
-              if (reasonText.length < 2) {
-                context.appWarning('请填写至少 2 个字的撤回原因');
-                return;
-              }
-              Navigator.pop(context, true);
-            },
+          // 撤回是破坏性操作：确认键红色实心。
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+              foregroundColor: Theme.of(context).colorScheme.onError,
+            ),
+            onPressed: () => Navigator.pop(context, true),
             child: const Text('确认撤回'),
           ),
         ],

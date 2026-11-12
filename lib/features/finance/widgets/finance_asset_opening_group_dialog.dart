@@ -1896,17 +1896,18 @@ class _DraftPickerState extends ConsumerState<_DraftPicker>
             tableKey: 'finance.asset-opening.draft-picker',
             items: _rows,
             columns: [
-              for (final f in [
-                ('code', '编码'),
-                ('name', '名称'),
-                (
-                  widget.ledger == FinanceAssetLedger.fixedAsset
-                      ? 'originalValue'
-                      : 'totalAmount',
-                  '原值／全额',
-                ),
-                ('categoryName', '会计政策'),
-              ])
+              // 2026-11-11 口径：编号列可排序 + 按值筛选；金额列可排序；
+              // 类别列（会计政策）按值筛选（全量草稿快照就地收集桶）。
+              MasterColumnDef(
+                key: 'code',
+                label: '编码',
+                width: 210,
+                aiSensitive: true,
+                sortable: true,
+                filterFromRows: true,
+                value: (r) => r['code']?.toString(),
+              ),
+              for (final f in [('name', '名称')])
                 MasterColumnDef(
                   key: f.$1,
                   label: f.$2,
@@ -1914,6 +1915,27 @@ class _DraftPickerState extends ConsumerState<_DraftPicker>
                   aiSensitive: true,
                   value: (r) => r[f.$1]?.toString(),
                 ),
+              MasterColumnDef(
+                key: widget.ledger == FinanceAssetLedger.fixedAsset
+                    ? 'originalValue'
+                    : 'totalAmount',
+                label: '原值／全额',
+                width: 210,
+                aiSensitive: true,
+                type: 'money',
+                sortable: true,
+                value: (r) => r[widget.ledger == FinanceAssetLedger.fixedAsset
+                    ? 'originalValue'
+                    : 'totalAmount']?.toString(),
+              ),
+              MasterColumnDef(
+                key: 'categoryName',
+                label: '会计政策',
+                width: 210,
+                aiSensitive: true,
+                filterFromRows: true,
+                value: (r) => r['categoryName']?.toString(),
+              ),
               MasterColumnDef(
                 key: 'select',
                 label: '操作',

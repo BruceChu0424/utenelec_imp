@@ -977,6 +977,8 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage>
       label: '系统编号',
       width: 150,
       value: (row) => row.node.code,
+      // 2026-11-11 口径：编号列可排序 + 按值筛选（全量表就地收集桶）。
+      sortable: true,
       filterFromRows: true,
     ),
     MasterColumnDef(
@@ -992,6 +994,8 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage>
       width: 120,
       value: (row) => row.node.sortOrder?.toString(),
       filterFromRows: true,
+      // 2026-11-11 口径：数值列可排序（按真实数值排序）。
+      sortable: true,
       type: 'number',
     ),
     MasterColumnDef(

@@ -955,6 +955,9 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
         label: '交货日期',
         width: 110,
         type: 'date',
+        // 2026-11-11 口径：日期列可排序（服务端 progressOrderBy 白名单含
+        // deliverDate）；开单日期未入白名单，暂不标 sortable。
+        sortable: true,
         value: (r) => _date(r.deliverDate),
       ),
       MasterColumnDef(

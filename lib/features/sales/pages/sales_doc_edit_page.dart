@@ -1072,13 +1072,16 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
             allowPricingInput: allowPricingInput,
           ),
           initialize: (row, it) {
+            // 名称+编号：回显行的编号列与名称列同源（goodsInfo 缓存）。
+            // 英文名称可编辑(2026-11-11)：与展示同源取主档当前值，保存时按差异回写。
+            final goodsOption = ref
+                .read(salesMasterNameServiceProvider)
+                .goodsOptionOf(it.goodsId);
             row
               ..documentItemId = it.id
               ..deliveryPlan = it.deliveryPlan
-              // 名称+编号：回显行的编号列与名称列同源（goodsInfo 缓存）。
-              ..goods = ref
-                  .read(salesMasterNameServiceProvider)
-                  .goodsOptionOf(it.goodsId)
+              ..goods = goodsOption
+              ..nameEn.text = goodsOption?.nameEn ?? ''
               ..orderItemId = it.orderItemId
               ..outItemId = it.outItemId
               ..colorId = it.colorId
@@ -1364,6 +1367,9 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
           name: g.name,
           nameEn: g.nameEn,
         )
+        // 英文名称：报价/订货行可编辑——选货品自动带出主档值，用户可改可空缺
+        // 手填(2026-11-11)；其余单据类型该列只读展示主档值。
+        ..nameEn.text = g.nameEn ?? ''
         // 颜色/单位直接回填货品主档 UUID，单元格只读显示。
         ..colorId = g.colorId
         ..unitId = g.unitId
@@ -1378,8 +1384,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
       // 订单/报价折扣：货品 zk 倍率仅作建议初值(1=原价；空/0→1)，销售可逐行调整；
       // 看不到价格的账号留空(保存时服务端按文件单价计算)。
       if (_hasClientPricing) {
-        // 英文名称由基础列直接显示。文件品名只保留客户文件或用户明确输入，
-        // 不把主档英文名称写进客户原文，避免未上传文件也展开文件列。
+        // 英文名称在基础列就地编辑并随保存回写主档(2026-11-11)；文件品名只保留
+        // 客户文件或用户明确输入，不把主档英文名称写进客户原文，避免未上传文件也展开文件列。
         String? pricingReason;
         if (_priceMasked) {
           target.discount.clear();
@@ -2145,6 +2151,12 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
         if (_hasClientPricing)
           'extraColumns': r.extraColumnsPayload(priceMasked: _priceMasked),
         'qty': r.qty.text.trim(),
+        // 行内英文名称(2026-11-11)：非空才送——服务端与货品主档比对，不同则回写
+        // 主档；空 = 不改动(不清空主档)。
+        if ((widget.docType == SalesDocType.order ||
+                widget.docType == SalesDocType.quote) &&
+            r.nameEn.text.trim().isNotEmpty)
+          'nameEn': r.nameEn.text.trim(),
         // 只送单价原文; 金额由服务端按 数量 × 单价 × 折扣 精确派生(ADR-112), 请求不带金额。
         if (price != null && !_freeCustomerShipment && !_priceMasked)
           'price': r.price.text.trim(),

@@ -1027,15 +1027,12 @@ public class ExpenseClaimService {
         return new ExpenseClaimBatchResultDto(ids.size());
     }
 
-    /** 批量驳回：统一原因必填，单事务全成全败。 */
+    /** 批量驳回：统一原因（选填），单事务全成全败。 */
     @Transactional
     public ExpenseClaimBatchResultDto rejectBatch(ExpenseClaimBatchRequest request) {
         AuthUser user = requireStaff();
         requireApprover(user);
         String reason = request.reason() == null ? "" : request.reason().trim();
-        if (reason.isEmpty()) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "批量驳回必须填写原因");
-        }
         List<UUID> ids = request.ids().stream().distinct().sorted().toList();
         for (UUID id : ids) {
             decide(user, id, false, reason);
@@ -1097,10 +1094,8 @@ public class ExpenseClaimService {
             else if(!applicationDecision)hrNotice.notifyExpenseClaimStage(claim.getId(),claim.getApplicantNameSnapshot(),
                     claim.getTotalAmount().toPlainString()+" 元",claim.getApplicantId(),claim.getApplicantDepartmentId(),next);
         } else {
+            // 驳回原因选填：空原因照常驳回，仅不再强制填写。
             String normalized = reason == null ? "" : reason.trim();
-            if (normalized.isEmpty()) {
-                throw new ApiException(ErrorCode.VALIDATION_FAILED, "请填写驳回原因");
-            }
             claim.setStatus("REJECTED");
             claim.setRejectReason(normalized);
             claim.setRejectedBy(user.getEmployeeId());

@@ -21,7 +21,6 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_detail_summary_card.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
-import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -307,58 +306,45 @@ class _PayrollReviewPageState extends ConsumerState<PayrollReviewPage> {
 
   Future<String?> _askRejectReason() async {
     final controller = TextEditingController();
-    String? validationError;
     late final String? reason;
     try {
       reason = await UtenDialog.showAndWaitForExit<String>(
         context,
-        builder: (dialogContext) => StatefulBuilder(
-          builder: (context, setDialogState) => UtenAlertDialog(
-            title: const Text('驳回工资批次'),
-            content: SizedBox(
-              width: 440,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const UtenReviewerResponsibilityNotice(
-                    actionLabel: '工资审核驳回',
-                    description: '确认后系统将记录当前审核员、驳回原因和时间，请对本次决定负责。',
+        builder: (dialogContext) => UtenAlertDialog(
+          title: const Text('驳回工资批次'),
+          content: SizedBox(
+            width: 440,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const UtenReviewerResponsibilityNotice(
+                  actionLabel: '工资审核驳回',
+                  description: '确认后系统将记录当前审核员、驳回原因和时间，请对本次决定负责。',
+                ),
+                const SizedBox(height: UtenSpacing.s12),
+                TextField(
+                  controller: controller,
+                  autofocus: true,
+                  maxLines: 3,
+                  decoration: const UtenInputDecoration(
+                    InputDecoration(labelText: '驳回原因（选填）'),
                   ),
-                  const SizedBox(height: UtenSpacing.s12),
-                  TextField(
-                    controller: controller,
-                    autofocus: true,
-                    maxLines: 3,
-                    decoration: UtenInputDecoration(
-                      InputDecoration(
-                        labelText: '驳回原因',
-                        error: utenFieldError(validationError),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
-            actionsAlignment: MainAxisAlignment.center,
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(dialogContext),
-                child: const Text('取消'),
-              ),
-              FilledButton(
-                onPressed: () {
-                  final value = controller.text.trim();
-                  if (value.isEmpty) {
-                    setDialogState(() => validationError = '请填写驳回原因');
-                    return;
-                  }
-                  Navigator.pop(dialogContext, value);
-                },
-                child: const Text('确认驳回'),
-              ),
-            ],
           ),
+          actionsAlignment: MainAxisAlignment.center,
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, controller.text.trim()),
+              child: const Text('确认驳回'),
+            ),
+          ],
         ),
       );
     } finally {
@@ -576,7 +562,9 @@ final List<MasterColumnDef<PayrollSlip>> _slipColumns = [
     key: 'employeeCode',
     label: '工号',
     width: 100,
+    // 2026-11-11 口径：编号列可排序 + 按值筛选（批次明细全量就地收集桶）。
     sortable: true,
+    filterFromRows: true,
     value: (s) => s.employeeCode,
   ),
   MasterColumnDef(

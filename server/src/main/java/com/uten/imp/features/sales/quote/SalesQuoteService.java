@@ -128,6 +128,8 @@ public class SalesQuoteService {
     private final SalesQuoteRevisionLog revisionLog;
     private final SalesQuoteNoticePort notices;
     private final TaskClaimMutationGuardPort taskClaim;
+    /** 行内编辑英文名称的回写(2026-11-11), 在快照捕获前更新货品主档。 */
+    private final com.uten.imp.features.master.goods.GoodsService goodsService;
 
     // ------------------------------------------------------------------ 读
 
@@ -777,6 +779,7 @@ public class SalesQuoteService {
      */
     private List<SalesQuoteItem> saveItems(SalesQuote q, List<QuoteItemLine> lines, List<SalesQuoteItem> existing) {
         List<QuoteItemLine> requested = lines == null ? List.of() : lines;
+        applyLineNameEnWriteBack(requested);
         Map<UUID, SalesGoodsSnapshot> goodsSnapshots = SalesGoodsSnapshot.fromMaster(
                 em,
                 requested.stream().map(QuoteItemLine::getGoodsId).toList(),
@@ -921,6 +924,23 @@ public class SalesQuoteService {
                     Boolean.TRUE.equals(line.getSetNameEn())));
         }
         return lines;
+    }
+
+    /**
+     * 行内编辑英文名称的回写(2026-11-11): 请求行带了非空 nameEn 且与货品主档不同时,
+     * 在快照捕获前把新值写回主档(来源 MANUAL), 行快照与后续选货随即取到最新值。
+     * 同一货品多行取最后一个非空值; 权限/写范围不满足时静默跳过(同学档学习口径)。
+     */
+    private void applyLineNameEnWriteBack(List<QuoteItemLine> lines) {
+        Map<UUID, String> pending = new java.util.LinkedHashMap<>();
+        for (QuoteItemLine line : lines) {
+            String value = line.getNameEn();
+            if (value == null || value.isBlank() || line.getGoodsId() == null) continue;
+            pending.put(line.getGoodsId(), value);
+        }
+        for (Map.Entry<UUID, String> entry : pending.entrySet()) {
+            goodsService.applyNameEnFromSalesDoc(entry.getKey(), entry.getValue());
+        }
     }
 
     private void captureGoodsSnapshots(

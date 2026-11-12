@@ -187,16 +187,17 @@ Map<String, dynamic> quoteFinanceReopenBody({required int expectedRevision}) =>
     <String, dynamic>{'expectedRevision': expectedRevision};
 
 /// 退回 / 确认请求体(服务端 QuoteFinanceDecisionRequest；退回原因写在 text)。
+/// 退回原因选填(2026-11-11)：调用方提供了 text 就随体发送(空串=用户确认留空，
+/// 服务端归一「未填写原因」)；确认路径不传 text 则整个键省略。
 Map<String, dynamic> quoteFinanceDecisionBody({
   required int expectedRevision,
   required String expectedClaimId,
   String? text,
 }) {
-  final trimmed = text?.trim();
   return <String, dynamic>{
     'expectedRevision': expectedRevision,
     'expectedClaimId': expectedClaimId,
-    if (trimmed != null && trimmed.isNotEmpty) 'text': trimmed,
+    if (text != null) 'text': text.trim(),
   };
 }
 

@@ -228,6 +228,9 @@ public class SubcontractDrawCommandService {
             throw validation("缺少领料出仓单");
         }
         String normalized = reason == null ? "" : reason.strip();
+        // 2026-11-11 口径「操作弹窗原因统一选填」：留空归一「未填写原因」，
+        // 退回通知与释放档案仍可读；超长仍拒绝。
+        if (normalized.isEmpty()) normalized = "未填写原因";
         if (normalized.length() > 200) {
             throw validation("退回原因不能超过 200 个字");
         }

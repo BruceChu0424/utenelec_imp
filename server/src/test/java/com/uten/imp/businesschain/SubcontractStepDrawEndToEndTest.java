@@ -1188,18 +1188,17 @@ class SubcontractStepDrawEndToEndTest extends SubcontractFullChainTestContext {
         assertNotEquals(withdrawnDraft, closedDraft, "撤回后重新领料建出新草稿");
         assertRow(taskRow(orderId), "9.5", "0.5", "0", "0", "DRAW_SUBMITTED");
         mine.add(closedDraft);
-        ApiException blank = assertThrows(ApiException.class,
-                () -> drawCommands.close(item, new DrawCloseRequest("  ")));
-        assertEquals(ErrorCode.VALIDATION_FAILED, blank.getCode(), "结束领料必须填原因");
-        assertTrue(drawCommands.close(item, new DrawCloseRequest("委外商剩余半套不做了")).closed());
+        // 2026-11-11 口径「操作弹窗原因统一选填」：结束领料留空归一「未填写原因」
+        // （库 CHECK 1-200 字由归一值兜底），不再构成校验失败。
+        assertTrue(drawCommands.close(item, new DrawCloseRequest("  ")).closed());
         assertEquals(Boolean.TRUE, db.queryForObject("SELECT is_deleted FROM subcontract_material_issues WHERE id=?",
                 Boolean.class, closedDraft), "结束领料先撤回未发领料");
         qty("0", reserved(closedDraft), "结束领料释放占用");
         assertEquals(2, count("""
                 SELECT COUNT(*) FROM subcontract_material_plan_items
                 WHERE order_item_id=? AND NOT is_deleted AND draw_closed_at IS NOT NULL
-                  AND draw_close_reason='委外商剩余半套不做了' AND draw_closed_by=?
-                """, item, w.superAdminUserId()), "两条计划行都结束领料并记原因与操作人");
+                  AND draw_close_reason='未填写原因' AND draw_closed_by=?
+                """, item, w.superAdminUserId()), "两条计划行都结束领料并记归一原因与操作人");
         assertNull(taskRow(orderId), "结束领料后不再出现在「领料」");
         Map<String, Object> summary = db.queryForMap("SELECT * FROM fn_subcontract_draw_summary(?)", item);
         assertEquals(Boolean.FALSE, summary.get("any_open"));
@@ -1806,9 +1805,8 @@ class SubcontractStepDrawEndToEndTest extends SubcontractFullChainTestContext {
         assertFalse(detail.allowedActions().contains("WITHDRAW"), "点了必然 409 的「撤回」不给");
         assertTrue(detail.allowedActions().contains("CLOSE"));
 
-        // 退回必须写原因; 只有委外出仓执行权限的人能退回。
-        ApiException blank = assertThrows(ApiException.class, () -> drawCommands.returnToDraw(draft, "  "));
-        assertEquals(ErrorCode.VALIDATION_FAILED, blank.getCode());
+        // 2026-11-11 口径「操作弹窗原因统一选填」：退回原因留空归一「未填写原因」，
+        // 不再构成校验失败；只有委外出仓执行权限的人能退回。
         UUID viewer = fixture.createUserWithPerms(w, tag + "-viewer", "subcontract_outbound:view");
         fixture.loginAs(viewer);
         ApiException forbidden = assertThrows(ApiException.class, () -> drawCommands.returnToDraw(draft, "料损"));

@@ -214,8 +214,8 @@ class SalesManagerReviewFlowPostgresTest {
         assertCode(() -> managers.confirmOrder(order.getId(),new SalesOrderFinanceConfirmService.FinanceConfirmRequest(null,null,claim.claimId())),ErrorCode.VALIDATION_FAILED);
         assertCode(() -> managers.confirmOrder(order.getId(),new SalesOrderFinanceConfirmService.FinanceConfirmRequest(null,reviewed,null)),ErrorCode.VALIDATION_FAILED);
         assertCode(() -> managers.rejectOrder(order.getId(),null),ErrorCode.VALIDATION_FAILED);
-        for (String reason : java.util.Arrays.asList(null,"","  "))
-            assertCode(() -> managers.rejectOrder(order.getId(),new SalesOrderFinanceConfirmService.FinanceRejectRequest(reason,reviewed,claim.claimId())),ErrorCode.VALIDATION_FAILED);
+        // 2026-11-11 口径：驳回/反审核原因选填（decisionNote 留空归一「未填写原因」），
+        // 空白原因的归一行为在下方独立用例验证，不再构成校验失败。
         assertCode(() -> managers.rejectOrder(order.getId(),new SalesOrderFinanceConfirmService.FinanceRejectRequest("请核对",null,claim.claimId())),ErrorCode.VALIDATION_FAILED);
         assertCode(() -> managers.rejectOrder(order.getId(),new SalesOrderFinanceConfirmService.FinanceRejectRequest("请核对",reviewed,null)),ErrorCode.VALIDATION_FAILED);
         assertConflict(() -> managers.confirmOrder(order.getId(),new SalesOrderFinanceConfirmService.FinanceConfirmRequest(null,reviewed+1,claim.claimId())));
@@ -232,10 +232,19 @@ class SalesManagerReviewFlowPostgresTest {
         assertCode(() -> managers.reverseOrder(order.getId(),null),ErrorCode.VALIDATION_FAILED);
         assertCode(() -> managers.reverseOrder(order.getId(),new com.uten.imp.features.sales.SalesManagerReviewService.ReverseRequest(null,reviewed+1,"重新核对")),ErrorCode.VALIDATION_FAILED);
         assertCode(() -> managers.reverseOrder(order.getId(),new com.uten.imp.features.sales.SalesManagerReviewService.ReverseRequest(UUID.randomUUID(),null,"重新核对")),ErrorCode.VALIDATION_FAILED);
-        for (String reason : java.util.Arrays.asList(null,"","  "))
-            assertCode(() -> managers.reverseOrder(order.getId(),new com.uten.imp.features.sales.SalesManagerReviewService.ReverseRequest(UUID.randomUUID(),reviewed+1,reason)),ErrorCode.VALIDATION_FAILED);
         assertThat(revision(order.getId())).isEqualTo(reviewed+1);
         assertThat(orderFinance.managerReview(order.getId()).financeConfirmed()).isTrue();
+    }
+
+    /** 2026-11-11 口径「操作弹窗原因统一选填」：空白驳回原因归一「未填写原因」记入事件。 */
+    @Test void blankRejectReasonNormalizesToUnfilledInsteadOfValidationFailure() {
+        Fixture f=fixture("manager-order-blank-reason"); UUID manager=manager(); var order=submittedOrder(f);
+        loginAs(manager); var claim=claims.claim(MANAGER_ORDER,order.getId().toString());
+        long reviewed=revision(order.getId());
+        managers.rejectOrder(order.getId(),new SalesOrderFinanceConfirmService.FinanceRejectRequest(null,reviewed,claim.claimId()));
+        assertThat(jdbc.queryForObject(
+                "SELECT reason FROM sales_order_manager_review_events WHERE order_id=? ORDER BY revision DESC LIMIT 1",
+                String.class,order.getId())).isEqualTo("未填写原因");
     }
 
     @Test void managerBatchRequiresEveryOriginalRevisionAndLeaseBeforeAnyDecision() {
@@ -281,8 +290,8 @@ class SalesManagerReviewFlowPostgresTest {
         assertCode(() -> confirm.accept(new QuoteFinanceDecisionRequest(revision,null,null)),ErrorCode.VALIDATION_FAILED);
         assertCode(() -> reject.accept(new QuoteFinanceDecisionRequest(null,lease,"请核对")),ErrorCode.VALIDATION_FAILED);
         assertCode(() -> reject.accept(new QuoteFinanceDecisionRequest(revision,null,"请核对")),ErrorCode.VALIDATION_FAILED);
-        for(String reason:java.util.Arrays.asList(null,"","  "))
-            assertCode(() -> reject.accept(new QuoteFinanceDecisionRequest(revision,lease,reason)),ErrorCode.VALIDATION_FAILED);
+        // 2026-11-11 口径：驳回/退回原因选填，空白原因不再构成校验失败（归一行为由
+        // blankRejectReasonNormalizesToUnfilledInsteadOfValidationFailure 代表验证）。
         assertCode(() -> edit.accept(new QuoteFinanceEditRequest(null,lease,null,null,null,List.of())),ErrorCode.VALIDATION_FAILED);
         assertCode(() -> edit.accept(new QuoteFinanceEditRequest(revision,null,null,null,null,List.of())),ErrorCode.VALIDATION_FAILED);
         assertCode(() -> edit.accept(new QuoteFinanceEditRequest(revision,lease,null,null,null,java.util.Arrays.asList((QuoteFinanceEditRequest.Line)null))),ErrorCode.VALIDATION_FAILED);

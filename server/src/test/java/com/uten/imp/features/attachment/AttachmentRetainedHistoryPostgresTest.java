@@ -297,13 +297,10 @@ class AttachmentRetainedHistoryPostgresTest {
     private static final class HeatPublisher implements org.springframework.context.ApplicationEventPublisher {
         private final AttachmentUsageRecorder recorder;
         HeatPublisher(AttachmentUsageRecorder recorder) { this.recorder = recorder; }
-        // 两个重载各自独立实现：跨重载委托（cast 后转调另一签名）会被
-        // confusing-method-signature 判为静态类型决定分派的混淆形态。
-        // AttachmentAccessedEvent 不是 ApplicationEvent（领域事件走 Object 重载），
-        // ApplicationEvent 重载对用例事件恒为空操作。
-        @Override public void publishEvent(org.springframework.context.ApplicationEvent event) {
-            // no attachment domain event is an ApplicationEvent
-        }
+        // 只覆写 publishEvent(Object)：ApplicationEvent 重载用接口 default
+        //（Spring 自带跨签名委托），本类不再声明第二个 publishEvent——两个同名
+        // 重载同置一个类会触发 confusing-method-signature（静态类型决定分派）。
+        // AttachmentAccessedEvent 不是 ApplicationEvent，用例事件走 Object 重载。
         @Override public void publishEvent(Object event) {
             if (event instanceof AttachmentAccessedEvent accessed) recorder.onAccessed(accessed);
         }

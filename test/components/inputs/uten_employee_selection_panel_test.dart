@@ -93,7 +93,15 @@ void main() {
       final departmentLabels = find.text('同名部门');
       // Two tree nodes plus two employee subtitles.
       expect(departmentLabels, findsNWidgets(4));
-      await tester.tap(departmentLabels.at(0));
+      // 47c96198a 把分栏改为稳定槽位 Stack：元素顺序中候选表格（trailing）先于
+      // 部门树（leading），位置式 find.text.at(0)/.first 会命中表格副标题而非树
+      // 节点，部门点击必须按树作用域定位。
+      final treeLabels = find.descendant(
+        of: find.byKey(const Key('uten-employee-picker-departments')),
+        matching: find.text('同名部门'),
+      );
+      expect(treeLabels, findsNWidgets(2));
+      await tester.tap(treeLabels.at(0));
       await tester.pumpAndSettle();
       expect(
         find.byKey(const ValueKey('employee-picker-item-a')),
@@ -103,7 +111,7 @@ void main() {
         find.byKey(const ValueKey('employee-picker-item-b')),
         findsNothing,
       );
-      await tester.tap(find.text('同名部门').at(1));
+      await tester.tap(treeLabels.at(1));
       await tester.pumpAndSettle();
       expect(
         find.byKey(const ValueKey('employee-picker-item-a')),
@@ -183,7 +191,16 @@ void main() {
                 .where((item) => item.employeeCode!.contains(query))
                 .toList(),
     );
-    await tester.tap(find.text('销售部').first);
+    // 47c96198a 稳定槽位 Stack：候选表格在元素顺序上先于部门树，部门点击按树
+    // 作用域定位，避免误点表格里的部门副标题。
+    await tester.tap(
+      find
+          .descendant(
+            of: find.byKey(const Key('uten-employee-picker-departments')),
+            matching: find.text('销售部'),
+          )
+          .first,
+    );
     await tester.pumpAndSettle();
     await tester.tap(
       find.byKey(const ValueKey('employee-picker-item-sales-1')),

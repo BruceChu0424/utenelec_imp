@@ -2271,7 +2271,12 @@ void main() {
     );
     await _check(tester, _rowCheckbox('shared-0'));
     await _submitSelected(tester);
-    expect(find.textContaining('撤销汇总草稿(1)'), findsOneWidget);
+    // 09b94aaff 起 409 须带 code=CONFLICT 才算明确拒绝（夹具已镜像服务端契约）；
+    // 78730ed45：明确拒绝后产品视图的临时汇总意图回到编辑器——不留下
+    // 「撤销汇总草稿」徽标，行的勾选与原数量都保留。
+    expect(find.textContaining('撤销汇总草稿(1)'), findsNothing);
+    expect(_nodeSelected(tester, 'shared-0'), isTrue);
+    expect(_qtyText(tester, _orderQty('shared-0')), '1000');
     await _check(tester, _rowCheckbox('shared-1'));
     await _showMaterialSummary(tester);
     await tester.tap(find.byKey(const Key('material-analysis-submit-orders')));
@@ -2622,7 +2627,9 @@ void main() {
         .body!;
     expect(_records(first['groups']).single['qty'], '3100');
     expect(first['previewFingerprint'], 'c' * 64);
-    expect(tester.widget<TextField>(field).controller!.text, '3100');
+    // 09b94aaff：503 属结果未知——原命令原样保留待重试核对，汇总行以锁定态
+    // 显示本次总量「3100 个」（改数须先撤销未提交草稿），不再回可编辑输入框。
+    expect(find.text('3100 个'), findsOneWidget);
     failures.clear();
     await tester.tap(find.byKey(const Key('material-analysis-submit-orders')));
     await tester.pumpAndSettle();
@@ -2985,6 +2992,10 @@ void main() {
             );
             _fixtureMaterial(data, 'h')['preparationAvailableQty'] =
                 scenario.remaining == 0 ? 3 : 1;
+            // 78730ed45：AVAILABLE_THEN_ORDER 的覆盖总量预览按服务端增量折算
+            // 核对，行上须有权威 planningUncoveredQty；置为需求量（计划尚未覆盖
+            // 任何需求）保持「新增 = 输入」的既有数量口径。
+            _fixtureMaterial(data, 'h')['planningUncoveredQty'] = 3;
             final parentKey = _fixtureMaterial(
               data,
               'raw-direct',
@@ -2996,6 +3007,7 @@ void main() {
               child['sourceRequiredQty'] = 6;
               child['additionalSupplyRecommendedQty'] = 6;
               child['netShortageQty'] = 6;
+              child['planningUncoveredQty'] = 6;
             }
             return data;
           },
@@ -3011,6 +3023,7 @@ void main() {
                 child['requiredQty'] = scenario.remaining;
                 child['additionalSupplyRecommendedQty'] = scenario.remaining;
                 child['netShortageQty'] = scenario.remaining;
+                child['planningUncoveredQty'] = scenario.remaining;
                 if (scenario.remaining == 0) {
                   child['requirementState'] = 'INACTIVE_PARENT_COVERED';
                   child['actionable'] = false;
@@ -3019,6 +3032,7 @@ void main() {
               if (scenario.remaining == 0) {
                 final parent = _fixtureMaterial(next, 'h');
                 parent['preparationAdoptedQty'] = 3;
+                parent['planningUncoveredQty'] = 0;
                 final preparation = parent['aggregatePreparation'] as Map;
                 preparation['orderedQty'] = 0;
                 preparation['allocatedOrderedQty'] = 0;
@@ -4241,13 +4255,10 @@ void main() {
         await _submitSelected(tester);
         expect(_aggregateSubmits(), isEmpty);
         expect(_nodeSelected(tester, 'm-6g'), isTrue);
-        expect(
-          find.descendant(
-            of: find.byKey(const ValueKey('material-table-row-m-6g')),
-            matching: find.text('200 个'),
-          ),
-          findsOneWidget,
-        );
+        // 78730ed45：预览被最终拒绝（canonical 来源证明不符）后，产品视图的
+        // 临时汇总意图回到编辑器——追加格保留原输入 200，行不再被草稿锁成
+        // 只读「200 个」。
+        expect(_qtyText(tester, _appendQty('m-6g')), '200');
       },
     );
   }
@@ -9799,7 +9810,10 @@ Future<bool> _rejectIfConfigured(
       response: Response<dynamic>(
         requestOptions: request,
         statusCode: status,
-        data: {'message': '夹具按配置拒绝'},
+        // 09b94aaff 起客户端按服务端真实契约分类：409 只有带 code=CONFLICT
+        // （服务端 conflict() 一律 ErrorCode.CONFLICT）才算明确拒绝，裸 409
+        // 归「结果未知」。夹具镜像同一契约。
+        data: {if (status == 409) 'code': 'CONFLICT', 'message': '夹具按配置拒绝'},
       ),
     ),
   );

@@ -233,7 +233,8 @@ void main() {
         }),
         isEmpty,
       );
-      expect(find.text('生产进度后续批读取失败'), findsOneWidget);
+      // a7a54d709：真实完整读取失败消息追加「（关联号 XXXXXX）」，按前缀断言。
+      expect(find.textContaining('生产进度后续批读取失败'), findsOneWidget);
       expect(find.text('重试'), findsOneWidget);
       expect([
         for (final query in api.progressQueries)
@@ -333,7 +334,8 @@ void main() {
       expect(api.progressQueries.last['keyword'], 'NEW-QUERY');
       expect(previous, findsNothing);
       expect(planCards(), isEmpty);
-      expect(find.text('生产进度读取失败'), findsOneWidget);
+      // a7a54d709：真实完整读取失败消息追加「（关联号 XXXXXX）」，按前缀断言。
+      expect(find.textContaining('生产进度读取失败'), findsOneWidget);
       expect(find.text('重试'), findsOneWidget);
       // The retry reads the same new query and shows its own plans.
       api.failKeyword = null;

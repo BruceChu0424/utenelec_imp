@@ -207,7 +207,8 @@ void main() {
         find.byKey(const ValueKey('supplier-offset-target-target-0')),
         findsNothing,
       );
-      expect(find.text('服务暂不可用'), findsOneWidget);
+      // a7a54d709：真实完整读取失败消息追加「（关联号 XXXXXX）」，按前缀断言。
+      expect(find.textContaining('服务暂不可用'), findsOneWidget);
       expect(find.text('重试'), findsOneWidget);
       // No confirmation may build on a half or failed read.
       final confirm = tester.widget<UtenButton>(

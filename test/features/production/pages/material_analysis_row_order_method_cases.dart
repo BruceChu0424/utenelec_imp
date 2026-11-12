@@ -444,7 +444,19 @@ void materialRowOrderMethodCases() {
   }
 
   testWidgets('逐行下单方式：同货品三来源三种方式同批提交互不串用', (tester) async {
-    await _pump(tester, mutate: _threeSharedBuySources);
+    await _pump(
+      tester,
+      mutate: (data) {
+        _threeSharedBuySources(data);
+        // 78730ed45：AVAILABLE_ONLY / AVAILABLE_THEN_ORDER 的覆盖总量预览按
+        // 服务端增量折算核对，行上须有权威 planningUncoveredQty；等于需求量
+        // （计划尚未覆盖任何需求）保持「新增 = 输入」的既有数量口径。
+        for (var i = 0; i < 3; i++) {
+          _fixtureMaterial(data, 'shared-$i')['planningUncoveredQty'] = 1000;
+        }
+        return data;
+      },
+    );
     await selectMaterialOrderMethod(
       tester,
       _orderMethod('shared-1'),

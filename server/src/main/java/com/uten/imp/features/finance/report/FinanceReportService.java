@@ -634,7 +634,7 @@ public class FinanceReportService {
         LocalDate to = dateTo != null ? dateTo : BusinessTime.today();
         return "AR".equals(dir)
                 ? receivableSummaryRows(keyword, from, to, page, size,headers,sort,order)
-                : payableSummaryAuthorized(keyword, from, to, page, size,headers,sort,order);
+                : payableSummaryRows(keyword, from, to, page, size,headers,sort,order);
     }
 
     /** B 应收款汇总（按客户；期初/发货/回款/退货/期末 用「立帐 − 收款」时序一致口径，保证 期初+发货+退货−回款=期末）。
@@ -655,7 +655,7 @@ public class FinanceReportService {
         if(!ar){assertOpeningWindowReplayable("AP",keyword,from,to);return FinanceClassifiedPayableSummary.read(em,keyword,from,to,page,size,options);}
         FinancePartySummaryTemplate.requireOptions(true,options);
         var source=ar?receivableSummaryRows(keyword,from,to,page,size,options.filters(),options.sort(),options.order()):
-                payableSummaryAuthorized(keyword,from,to,page,size,options.filters(),options.sort(),options.order());
+                payableSummaryRows(keyword,from,to,page,size,options.filters(),options.sort(),options.order());
         return FinancePartySummaryTemplate.present(ar,source);
     }
 
@@ -848,16 +848,16 @@ public class FinanceReportService {
     public ReportTableResponse payableSummary(String keyword, LocalDate from, LocalDate to,
                                               int page, int size) {
         requireCompanyWideReportAccess();
-        return payableSummaryAuthorized(keyword, from, to, page, size);
+        return payableSummaryRows(keyword, from, to, page, size);
     }
 
-    private ReportTableResponse payableSummaryAuthorized(
+    private ReportTableResponse payableSummaryRows(
             String keyword, LocalDate from, LocalDate to,
             int page, int size) {
-        return payableSummaryAuthorized(keyword,from,to,page,size,Map.of(),null,null);
+        return payableSummaryRows(keyword,from,to,page,size,Map.of(),null,null);
     }
 
-    private ReportTableResponse payableSummaryAuthorized(String keyword,LocalDate from,LocalDate to,int page,int size,
+    private ReportTableResponse payableSummaryRows(String keyword,LocalDate from,LocalDate to,int page,int size,
             Map<String,String> headers,String sort,String order) {
         assertOpeningWindowReplayable("AP", keyword, from, to);
         List<ReportColumn> cols = List.of(

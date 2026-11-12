@@ -45,29 +45,43 @@ class UtenReviewerResponsibilityNotice extends ConsumerWidget {
     final detail = description ?? '确认后，系统将以此登录员工记录$actionLabel责任。';
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
-    Widget identity() => Row(
-      key: const Key('reviewer-responsibility-notice'),
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        if (inline) const SizedBox(width: UtenSpacing.s8),
-        Icon(
-          Icons.gpp_maybe_outlined,
-          size: inline || compact ? UtenSpacing.s20 : UtenSpacing.s24,
-          color: colors.error,
-        ),
-        const SizedBox(width: UtenSpacing.s4),
-        Flexible(
-          child: Text(
-            '$reviewerLabel：$currentActor',
-            style: theme.textTheme.labelLarge?.copyWith(
-              color: colors.error,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-        ),
-        UtenFieldHintIcon(info: detail, dense: true),
-      ],
+    final actorStyle = theme.textTheme.labelLarge?.copyWith(
+      color: colors.error,
+      fontWeight: FontWeight.w800,
     );
+    final icon = Icon(
+      Icons.gpp_maybe_outlined,
+      size: inline || compact ? UtenSpacing.s20 : UtenSpacing.s24,
+      color: colors.error,
+    );
+    // 200% 字号可调档（docs/00-项目准则/04-字体与字号可调.md）不允许溢出：
+    // 带边框的整行提示用 Wrap，提示 icon 满行折到下一行；inline 紧凑位保持
+    // 单行 Row 原拓扑（12bc07b99 统一形态，行内不折行）。
+    Widget identity() => inline
+        ? Row(
+            key: const Key('reviewer-responsibility-notice'),
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(width: UtenSpacing.s8),
+              icon,
+              const SizedBox(width: UtenSpacing.s4),
+              Flexible(
+                child: Text('$reviewerLabel：$currentActor', style: actorStyle),
+              ),
+              UtenFieldHintIcon(info: detail, dense: true),
+            ],
+          )
+        : Wrap(
+            key: const Key('reviewer-responsibility-notice'),
+            spacing: UtenSpacing.s4,
+            runSpacing: UtenSpacing.s4,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              icon,
+              Text('$reviewerLabel：$currentActor', style: actorStyle),
+              UtenFieldHintIcon(info: detail, dense: true),
+            ],
+          );
 
     return Semantics(
       container: true,

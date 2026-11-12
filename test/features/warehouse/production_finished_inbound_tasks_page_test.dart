@@ -226,6 +226,8 @@ void main() {
     var table = _table(tester);
     expect(table.selectable, isTrue);
     expect(table.batchActionsBuilder, isNotNull);
+    // aa646f7cf（2026-11-10 截图反馈图3）：仓库任务公共列投影删除来源单据/
+    // 往来方列（入库方向本就无生产工单列），仓库列后直接接业务日期。
     expect(table.columns.map((column) => column.label), [
       '状态',
       '单据 / 任务单号',
@@ -238,13 +240,15 @@ void main() {
       '合格待入库',
       '剩余待退回',
       '下一步',
-      '来源单据',
-      '客户 / 供应商 / 委外商',
       '仓库',
       '业务日期',
       '负责人',
       '制单人',
     ]);
+    final labels = table.columns.map((column) => column.label);
+    for (final retired in const ['来源单据', '客户 / 供应商 / 委外商']) {
+      expect(labels, isNot(contains(retired)));
+    }
     final actionLabels = [
       for (final item in table.items)
         (table.rowMenuBuilder!(item).single as UtenMenuItem).label,

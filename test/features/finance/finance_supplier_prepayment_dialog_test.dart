@@ -78,7 +78,8 @@ void main() {
         finder,
       );
       expect(table.items, isEmpty);
-      expect(table.error, '后批无权限');
+      // a7a54d709：真实完整读取失败消息追加「（关联号 XXXXXX）」，按前缀断言。
+      expect(table.error, startsWith('后批无权限'));
       expect(facts, findsNothing);
       expect(
         tester
@@ -219,7 +220,8 @@ void main() {
       );
       expect(table.items, isEmpty);
       expect(api.reads.any((query) => query['page'] == 2), isTrue);
-      expect(table.error, '后批无权限');
+      // a7a54d709：真实完整读取失败消息追加「（关联号 XXXXXX）」，按前缀断言。
+      expect(table.error, startsWith('后批无权限'));
       await tester.tap(
         find
             .descendant(
@@ -233,7 +235,9 @@ void main() {
       await tester.pumpAndSettle();
       expect(
         find.byWidgetPredicate(
-          (widget) => widget is SelectableText && widget.data == '后批无权限',
+          (widget) =>
+              widget is SelectableText &&
+              (widget.data ?? '').startsWith('后批无权限'),
         ),
         findsOneWidget,
       );

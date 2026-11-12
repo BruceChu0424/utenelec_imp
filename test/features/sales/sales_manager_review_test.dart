@@ -38,6 +38,7 @@ import 'package:uten_imp/shared/paging/complete_paged_snapshot.dart'
 import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/repositories/task_claim_repository.dart';
 import '../../helpers/badge_summary_fixture.dart';
+import '../../support/uten_test_actions.dart';
 import '../../helpers/finance_claim_fixture.dart';
 
 const _capture = bool.fromEnvironment('UTEN_MANAGER_CAPTURE');
@@ -469,11 +470,14 @@ void main() {
         await wheel(40);
         expect(tester.getTopLeft(table).dy, lessThan(initialTableTop));
         expect(tester.getTopLeft(categories).dy, lessThan(initialCategoryTop));
-        final nested = tester.state<NestedScrollViewState>(
-          find.byType(NestedScrollView),
-        );
-        final outer = nested.outerController;
-        final inner = nested.innerController;
+        // 47c96198a/14e7be5e7 起页面滚动拓扑从 NestedScrollView 换成
+        // UtenCollapsingHeaderScrollView：外层折叠头控制器经 outerControllerOf
+        // 取视图内后代 context，表体控制器用 utenTestTableBodyController；
+        // 滚轮交接契约（先收头、置顶截停、停顿窗、回程对称）在新拓扑下等价重钉。
+        final outer = UtenCollapsingHeaderScrollView.outerControllerOf(
+          tester.element(categories),
+        )!;
+        final inner = utenTestTableBodyController(tester, table);
         expect(outer.offset, closeTo(40, .01));
         expect(
           inner.offset,
@@ -560,10 +564,10 @@ void main() {
     await tester.sendEventToBinding(pointer.scroll(const Offset(0, 40)));
     await tester.pump(const Duration(milliseconds: 20));
     expect(tester.getTopLeft(table).dy, lessThan(before));
-    final nested = tester.state<NestedScrollViewState>(
-      find.byType(NestedScrollView),
-    );
-    expect(nested.innerController.offset, 0);
+    // 47c96198a/14e7be5e7 滚动拓扑改版：表体控制器经 utenTestTableBodyController
+    // 拾取，筛选项上的滚轮仍须先收折叠头、不进表内。
+    final inner = utenTestTableBodyController(tester, table);
+    expect(inner.offset, 0);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
     await tester.pumpAndSettle();

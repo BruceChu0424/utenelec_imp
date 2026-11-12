@@ -106,7 +106,9 @@ void main() {
         finder,
       );
       expect(table.items, isEmpty);
-      expect(table.error, '后批无权限');
+      // a7a54d709：真实完整读取失败的用户消息追加匿名「（关联号 XXXXXX）」，
+      // 只钉业务前缀，不钉关联号本身。
+      expect(table.error, startsWith('后批无权限'));
       expect(api.commands, isEmpty);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
@@ -206,7 +208,9 @@ void main() {
         finder,
       );
       expect(table.items, isEmpty);
-      expect(table.error, '后批无权限');
+      // a7a54d709：真实完整读取失败的用户消息追加匿名「（关联号 XXXXXX）」，
+      // 只钉业务前缀，不钉关联号本身。
+      expect(table.error, startsWith('后批无权限'));
       // The read stopped at the rejected second batch of the progressive plan.
       expect(api.sourceReads.any((query) => query['page'] == 2), isTrue);
       expect(

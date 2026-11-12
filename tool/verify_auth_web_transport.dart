@@ -112,6 +112,11 @@ window.fetch = (input, init) => {
           chunks++;
           await Future<void>.delayed(const Duration(milliseconds: 8));
         }
+        // 慢读必须确定性超过客户端 80ms 接收超时：不同平台的回环会把 4MB
+        // 以少量大块送达（块数×8ms 可能 < 80ms），读完后补足下限再响应。
+        while (watch.elapsedMilliseconds < 600) {
+          await Future<void>.delayed(const Duration(milliseconds: 25));
+        }
         request.response.headers.contentType = ContentType.json;
         request.response.write(
           jsonEncode({

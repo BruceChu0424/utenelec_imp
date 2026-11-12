@@ -148,6 +148,9 @@ void main() {
     expect(table.selectable, isFalse, reason: '服务端未授予办理资格不给勾选');
     expect(table.batchActionsBuilder, isNull);
     expect(table.facets['status'], isEmpty, reason: '列表只有待发料一种状态');
+    // aa646f7cf（2026-11-10 截图反馈图3）：仓库任务公共列投影删除来源单据/
+    // 往来方列；生产工单列只在领料(DRAW/ALL)来源显示，委外来源不适用；
+    // 出库方向新增库位号列、数量列加粗强调。
     expect(table.columns.map((column) => column.label), [
       '状态',
       '单据 / 任务单号',
@@ -156,16 +159,22 @@ void main() {
       '颜色',
       '规格',
       '数量',
-      '来源单据',
-      '生产工单',
-      '客户 / 供应商 / 委外商',
       '仓库',
+      '库位号',
       '业务日期',
       '负责人',
       '制单人',
     ]);
     final labels = table.columns.map((column) => column.label);
-    for (final retired in const ['任务状态', '目标件行数', '出仓草稿单', '等子件到货']) {
+    for (final retired in const [
+      '来源单据',
+      '客户 / 供应商 / 委外商',
+      '生产工单',
+      '任务状态',
+      '目标件行数',
+      '出仓草稿单',
+      '等子件到货',
+    ]) {
       expect(labels, isNot(contains(retired)));
     }
     expect(table.items.map((row) => row.targetId), [

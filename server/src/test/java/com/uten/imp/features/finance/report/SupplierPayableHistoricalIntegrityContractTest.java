@@ -14,7 +14,7 @@ class SupplierPayableHistoricalIntegrityContractTest {
     void periodReportExplainsNewLossClaimCreditsInItsDisplayedMovementColumns() throws IOException {
         String report = source("features/finance/report/FinanceReportService.java");
         String payableSummary = between(report,
-                "private ReportTableResponse payableSummaryAuthorized",
+                "private ReportTableResponse payableSummaryRows",
                 "private ReportTableResponse executeRawPaged");
 
         assertThat(payableSummary)
@@ -26,7 +26,7 @@ class SupplierPayableHistoricalIntegrityContractTest {
     void historicalAsOfDoesNotDependOnRowsThatThePostingServicePhysicallyDeletes() throws IOException {
         String report = source("features/finance/report/FinanceReportService.java");
         String payableSummary = between(report,
-                "private ReportTableResponse payableSummaryAuthorized",
+                "private ReportTableResponse payableSummaryRows",
                 "private ReportTableResponse executeRawPaged");
         String arApPosting = source("features/finance/arap/ArApLedgerServiceImpl.java");
 

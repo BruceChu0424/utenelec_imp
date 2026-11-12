@@ -477,7 +477,7 @@ void main() {
     final outer = UtenCollapsingHeaderScrollView.outerControllerOf(
       tester.element(toolbarFinder),
     )!;
-    final inner = PrimaryScrollController.of(tester.element(toolbarFinder))!;
+    final inner = PrimaryScrollController.of(tester.element(toolbarFinder));
     final pointer = TestPointer(7, PointerDeviceKind.mouse);
     final tableCenter = tester.getCenter(tableFinder);
 

@@ -229,8 +229,10 @@ Future<void> main() async {
           if (outcome is! Response<Map<String, dynamic>>) throw outcome;
           final response = outcome;
           _expect(response.data!['bytes'] == bytes.length);
+          // 服务端读完后补足 600ms 下限：慢读时long于 80ms 接收超时是确定性的，
+          // 不再依赖平台相关的分块数（chunks 只作观测记录）。
           _expect((response.data!['readMillis'] as num) > 80);
-          _expect((response.data!['chunks'] as num) > 1);
+          observations['slowFileChunks'] = response.data!['chunks'];
           _expect(progress.last.$1 == bytes.length);
           observations['slowFileUpload'] = response.data;
         } finally {

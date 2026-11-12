@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:uten_imp/components/feedback/uten_date_range_picker.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
@@ -829,7 +830,9 @@ void main() {
       find.descendant(of: table, matching: find.textContaining(' ~ ')).last,
     );
     await tester.pumpAndSettle();
-    expect(find.text('选择流水日期范围'), findsOneWidget);
+    // 2026-11-10 自绘日期弹窗改版（7413a81f4 窗口）：helpText（选择流水日期
+    // 范围）只作语义标签（semanticLabel），不再可见渲染；断言改钉弹窗本体。
+    expect(find.byType(UtenDateRangePickerDialog), findsOneWidget);
     await tester.tap(find.text('1'));
     await tester.pump();
     await tester.tap(find.text('1'));

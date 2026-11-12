@@ -515,7 +515,8 @@ void main() {
       await tester.pumpAndSettle();
       await _search(tester, 'MAT');
       await tester.pumpAndSettle();
-      expect(find.text('网络暂时不可用'), findsWidgets);
+      // a7a54d709：真实完整读取失败消息追加「（关联号 XXXXXX）」，按前缀断言。
+      expect(find.textContaining('网络暂时不可用'), findsWidgets);
       final list = find.byKey(const Key('goods-picker-paged-list'));
       final originalElement = tester.element(list);
       await tester.tap(find.text('重试').last);

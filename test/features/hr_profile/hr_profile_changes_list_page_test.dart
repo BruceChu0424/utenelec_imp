@@ -355,39 +355,42 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('batch reject applies one shared (optional) reason to every batch', (
-    tester,
-  ) async {
-    SharedPreferences.setMockInitialValues(const {});
-    final preferences = await SharedPreferences.getInstance();
-    final repo = _FakeProfileChangeRepository();
-    await tester.pumpWidget(_app(repo, preferences));
-    await tester.pumpAndSettle();
+  testWidgets(
+    'batch reject applies one shared (optional) reason to every batch',
+    (tester) async {
+      SharedPreferences.setMockInitialValues(const {});
+      final preferences = await SharedPreferences.getInstance();
+      final repo = _FakeProfileChangeRepository();
+      await tester.pumpWidget(_app(repo, preferences));
+      await tester.pumpAndSettle();
 
-    final table = _table(tester);
-    expect(table.selectable, isTrue, reason: '待审段开多选');
-    table.onSelectedIdsChanged!({'batch-1', 'batch-2'});
-    await tester.pumpAndSettle();
+      final table = _table(tester);
+      expect(table.selectable, isTrue, reason: '待审段开多选');
+      table.onSelectedIdsChanged!({'batch-1', 'batch-2'});
+      await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const Key('hr-profile-changes-batch-reject')));
-    await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const Key('hr-profile-changes-batch-reject')),
+      );
+      await tester.pumpAndSettle();
 
-    expect(find.byType(UtenBatchRejectDialog), findsOneWidget);
-    expect(
-      find.byKey(const Key('reviewer-responsibility-notice')),
-      findsOneWidget,
-      reason: '批量驳回弹窗须带审核责任提示',
-    );
+      expect(find.byType(UtenBatchRejectDialog), findsOneWidget);
+      expect(
+        find.byKey(const Key('reviewer-responsibility-notice')),
+        findsOneWidget,
+        reason: '批量驳回弹窗须带审核责任提示',
+      );
 
-    // 空原因视为确认：关闭对话框并逐批复核（空串意见）
-    await tester.tap(find.byKey(const Key('uten-batch-reject-confirm')));
-    await tester.pumpAndSettle();
-    expect(find.byType(UtenBatchRejectDialog), findsNothing);
-    expect(repo.reviewCalls.length, 2);
-    expect(repo.reviewCalls.map((c) => c[0]).toSet(), {'batch-1', 'batch-2'});
-    expect(repo.reviewCalls.every((c) => c[1] == 'reject'), isTrue);
-    expect(repo.reviewCalls.every((c) => c[2] == ''), isTrue);
+      // 空原因视为确认：关闭对话框并逐批复核（空串意见）
+      await tester.tap(find.byKey(const Key('uten-batch-reject-confirm')));
+      await tester.pumpAndSettle();
+      expect(find.byType(UtenBatchRejectDialog), findsNothing);
+      expect(repo.reviewCalls.length, 2);
+      expect(repo.reviewCalls.map((c) => c[0]).toSet(), {'batch-1', 'batch-2'});
+      expect(repo.reviewCalls.every((c) => c[1] == 'reject'), isTrue);
+      expect(repo.reviewCalls.every((c) => c[2] == ''), isTrue);
 
-    await tester.pumpWidget(const SizedBox());
-  });
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
 }

@@ -1428,9 +1428,7 @@ Future<String?> _confirmDecision(
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              action == 'approve'
-                  ? '将按提交的目标数量和重量更新库存，并保留审核及差额记录。'
-                  : '库存保持不变。',
+              action == 'approve' ? '将按提交的目标数量和重量更新库存，并保留审核及差额记录。' : '库存保持不变。',
             ),
             if (action == 'approve' && setupCount > 0)
               Text('同时按申请用途确认 $setupCount 种材料，关联 BOM 调整对所有使用该材料的产品生效。'),
@@ -1448,30 +1446,30 @@ Future<String?> _confirmDecision(
             ),
           ],
         ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('取消'),
-            ),
-            // 通过=主色实心；驳回/撤回=红色实心，随动作分色。
-            if (action == 'approve')
-              FilledButton(
-                key: const Key('stock-count-review-confirm'),
-                onPressed: () => Navigator.pop(context, input.text.trim()),
-                child: const Text('确认'),
-              )
-            else
-              FilledButton(
-                key: const Key('stock-count-review-confirm'),
-                style: FilledButton.styleFrom(
-                  backgroundColor: Theme.of(context).colorScheme.error,
-                  foregroundColor: Theme.of(context).colorScheme.onError,
-                ),
-                onPressed: () => Navigator.pop(context, input.text.trim()),
-                child: const Text('确认'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          // 通过=主色实心；驳回/撤回=红色实心，随动作分色。
+          if (action == 'approve')
+            FilledButton(
+              key: const Key('stock-count-review-confirm'),
+              onPressed: () => Navigator.pop(context, input.text.trim()),
+              child: const Text('确认'),
+            )
+          else
+            FilledButton(
+              key: const Key('stock-count-review-confirm'),
+              style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.error,
+                foregroundColor: Theme.of(context).colorScheme.onError,
               ),
-          ],
-        ),
+              onPressed: () => Navigator.pop(context, input.text.trim()),
+              child: const Text('确认'),
+            ),
+        ],
+      ),
     );
   } finally {
     input.dispose();

@@ -138,9 +138,7 @@ class _InspectionReportConfirmDialogState
               maxLines: 3,
               maxLength: 500,
               decoration: UtenInputDecoration(
-                const InputDecoration(
-                  labelText: '结论原因（选填）',
-                ),
+                const InputDecoration(labelText: '结论原因（选填）'),
                 info: hasFail
                     ? '请说明不合格原因，便于后续退货、返工或其它处置。'
                     : '可补充检验依据或需要仓库注意的事项。',

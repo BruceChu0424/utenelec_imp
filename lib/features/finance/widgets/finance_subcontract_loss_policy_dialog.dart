@@ -290,8 +290,16 @@ class _PolicyDirectoryState extends ConsumerState<_PolicyDirectory>
                         type: 'number',
                         sortable: true,
                       ),
-                      financeSourceColumn('effective_from', '生效日期', sortable: true),
-                      financeSourceColumn('effective_to', '截止日期', sortable: true),
+                      financeSourceColumn(
+                        'effective_from',
+                        '生效日期',
+                        sortable: true,
+                      ),
+                      financeSourceColumn(
+                        'effective_to',
+                        '截止日期',
+                        sortable: true,
+                      ),
                       financeSourceColumn(
                         'status',
                         '审核状态',

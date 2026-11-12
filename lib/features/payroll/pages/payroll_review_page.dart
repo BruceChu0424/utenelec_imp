@@ -341,7 +341,8 @@ class _PayrollReviewPageState extends ConsumerState<PayrollReviewPage> {
               child: const Text('取消'),
             ),
             FilledButton(
-              onPressed: () => Navigator.pop(dialogContext, controller.text.trim()),
+              onPressed: () =>
+                  Navigator.pop(dialogContext, controller.text.trim()),
               child: const Text('确认驳回'),
             ),
           ],

@@ -46,6 +46,16 @@ OPTIONAL_GATES = {
     # *LadderProbeTest）：对着运维提供的库（UTEN_DB_URL/USER/PASSWORD）量分批阶梯
     # 计时，属 UTEN_PROGRESSIVE_PROBE 同款选择启用诊断，普通分片缺门跳过是设计内。
     "UTEN_LADDER_PROBE",
+    # 2026-11-09 即时库存单扫描完整流探针（InstantInventoryCompleteStreamProbeTest）：
+    # 只读驱动生产读形（ReportExportCursor 单扫描逐批），对照逐批 OFFSET 阶梯计时，
+    # 同样只在运维提供 UTEN_DB_URL/USER/PASSWORD 时启用。
+    "UTEN_INVENTORY_STREAM_PROBE",
+    # 2026-11-09 货品资料 3.9 万行加载定位探针（GoodsSummaryStreamProbeTest）：
+    # 同日同族的选择启用只读测量，普通分片缺门跳过是设计内。
+    "UTEN_GOODS_STREAM_PROBE",
+    # FeedbackBWebSeedTest：B 线修复的隔离迁移库种子（UTEN_REMEDIATION_B_JDBC_URL +
+    # 种子放行门），只在专用验收运行器提供整套输入时启用，普通套件不得播种。
+    "UTEN_REMEDIATION_B_ALLOW_SEED",
 }
 EXPORTER = "com.uten.imp.migration.FlywayChecksumManifestExporterTest#exportsCanonicalFlywayChecksumsOnlyWhenExplicitlyRequested"
 EXPORT_CHECKSUMS_PROPERTY = "uten.exportFlywayChecksums"

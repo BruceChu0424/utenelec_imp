@@ -138,9 +138,9 @@ showSubcontractShortDeliveryAcceptDialog(
                 const SizedBox(height: UtenSpacing.s12),
                 Text(
                   '本案件剩余 ${formatSubcontractQty(row.shortfallQtyValue, unit)} 不再等待到货；请核对结案后果：',
-                  style: Theme.of(ctx).textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: Theme.of(
+                    ctx,
+                  ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: UtenSpacing.s8),
                 const _Bullet('短交对应材料按原冻结规则生成损耗与责任记录，具体财务处理按实际案件审核。'),

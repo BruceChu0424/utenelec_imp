@@ -510,11 +510,7 @@ class _LegacyOpeningState extends ConsumerState<_LegacyOpening>
                     sortable: true,
                     filterByValue: true,
                   ),
-                  financeSourceColumn(
-                    'code',
-                    '财务科目',
-                    filterByValue: true,
-                  ),
+                  financeSourceColumn('code', '财务科目', filterByValue: true),
                   financeSourceColumn('name', '原科目名称', width: 200),
                   financeSourceColumn(
                     'amountLocal',

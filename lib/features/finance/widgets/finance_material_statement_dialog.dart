@@ -609,11 +609,7 @@ class _MaterialDirectory extends ConsumerState<FinanceMaterialStatementSurface>
       filterByValue: true,
     ),
     financeSourceColumn('productNameCaption', '产品名称（57#）', width: 240),
-    financeSourceColumn(
-      'accountingCurrencyCode',
-      '会计币别',
-      filterByValue: true,
-    ),
+    financeSourceColumn('accountingCurrencyCode', '会计币别', filterByValue: true),
     financeSourceColumn(
       'actualCurrencyId',
       '纸面金额单位',
